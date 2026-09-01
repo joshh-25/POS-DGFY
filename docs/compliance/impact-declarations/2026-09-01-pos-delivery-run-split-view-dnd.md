@@ -11,8 +11,8 @@ verification_evidence: npm run build:pos -- real Vite build, OK,npm run build:sk
 rollback_note: Pure frontend addition plus one pure-move extraction, zero apps/dgfy-api changes, zero migrations. Removing the 4th "Queue + Run" tab, DeliveryRunDropPanel.jsx, queueRunDropAssignment.js, and reverting the handleBulkAssignSubmit optional-ids parameter back to single-arg restores Phase 227's checkbox-only bulk-add flow exactly. The IncomingQueueOrderList.jsx extraction is independently revertible (inline the JSX back into TerminalOperationsPanels.jsx) without touching the split-view feature at all, since it changes only where the card-grid JSX lives, not its behavior -- the two pre-existing Phase 227 behavior tests (deliveryRunBulkAssign.behavior.test.jsx, deliveryRunsWorkspace.behavior.test.jsx) pass unmodified against it. DeliveryRunMembersList.jsx's new `readOnly` prop defaults to false, so DeliveryRunsWorkspacePanel.jsx's existing call site is unaffected either way.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T02:48:17.000Z
-preflight_request_ref: NOT-EXECUTED-NO-LIVE-ENVIRONMENT
+preflight_run_at: 2026-09-01T04:22:52.918Z
+preflight_request_ref: PREFLIGHT-33469394801-2026-09-01-POS-DELIVERY-RUN-SPLIT-VIEW-DND
 ---
 
 # POS Active Queue + Delivery Run split view with drag-and-drop assignment (Phase 232, #1289)

@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/commercePaymentSandboxConfirmation.us
 rollback_note: No schema or migration change -- currency/qr_code_image_url/expires_at already exist on commerce_payment_sessions and were already populated at session-creation time; this phase only adds them to the admin serializer's response shape. The new route/use case/controller/adminService function are all additive-only (a second, independent entry point alongside the existing loopback-gated storefront route, which is untouched). Reverting this PR removes the new admin route, use case, and UI section with no other behavior change; the existing loopback confirm-test route and PaymentOperations.jsx's other actions are unaffected either way.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T02:34:21Z
-preflight_request_ref: NOT-EXECUTED-1268-PAYMONGO-SANDBOX-TEST-PAYMENT-DEBUG-TOOL
+preflight_run_at: 2026-09-01T04:22:52.916Z
+preflight_request_ref: PREFLIGHT-33469394801-2026-09-01-PAYMONGO-SANDBOX-TEST-PAYMENT-DEBUG-TOOL
 ---
 
 # PayMongo Sandbox Test Payment Debug Tool (#1268)

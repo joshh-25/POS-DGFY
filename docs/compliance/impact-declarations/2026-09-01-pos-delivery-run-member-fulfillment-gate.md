@@ -11,8 +11,8 @@ verification_evidence: node --check apps/dgfy-api/src/modules/pos/repositories/p
 rollback_note: One additive/nullable/read-only backend nested include (apps/dgfy-api/src/modules/pos/repositories/posRepository.js -- a `deliveryRun` include with `{delivery_run_id, label, status}` added inside the existing `deliveryJob` include, no schema/migration change) plus one new pure frontend helper (`getActiveRunMembership`) and one `disabled`/`title`/`aria-label` change scoped to a single button in TerminalOperationsPanels.jsx. Rollback is a plain code revert: removing the backend nested include stops `deliveryRun` being returned (existing consumers that don't reference it are unaffected, matching the other 6 call sites of buildTransactionInclude); removing the frontend gate restores the per-order "Out for Delivery" control to always-enabled (subject to the pre-existing permission/lock/online/shift gating), with no other UI removed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1291-POS-DELIVERY-RUN-MEMBER-FULFILLMENT-GATE
+preflight_run_at: 2026-09-01T04:22:52.918Z
+preflight_request_ref: PREFLIGHT-33469394801-2026-09-01-POS-DELIVERY-RUN-MEMBER-FULFILLMENT-GATE
 ---
 
 # Disable the per-order "Out for Delivery" action for active Delivery Run members (Phase 229, #1291)
