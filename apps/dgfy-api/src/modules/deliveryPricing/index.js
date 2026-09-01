@@ -26,3 +26,8 @@ export {
     DeliveryFeePolicyError,
     DELIVERY_FEE_CALC_VERSION
 } from './domain/deliveryFeePolicy.js';
+
+// Phase 242 (#1333): the advertised discovery "from ₱X" price -- a landlord-side read-model
+// consumer, not the checkout path (see this function's own module header for why it lives here
+// rather than in storeUseCases.js).
+export { resolveAdvertisedDeliveryFromPrice } from './domain/deliveryFromPrice.js';

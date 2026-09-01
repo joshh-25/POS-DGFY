@@ -112,6 +112,17 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: 0
         },
+        // Phase 242 (#1333, epic #1321). `store_delivery_fee` above is a FROM-price as of this
+        // phase, not the charged fee -- this column is what makes it interpretable. Mirrors the
+        // configured mode resolveDeliveryFeeConfig() reports (and pos_transactions.delivery_fee_mode
+        // persists), including for a calculated-mode store whose calc blob is malformed: that store
+        // stays `calculated` here and falls open to its fixed rate at checkout, same as everywhere
+        // else in the epic.
+        delivery_fee_mode: {
+            type: DataTypes.STRING(32),
+            allowNull: false,
+            defaultValue: 'fixed'
+        },
         catalog_count: {
             type: DataTypes.INTEGER.UNSIGNED,
             allowNull: false,
