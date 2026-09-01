@@ -437,9 +437,9 @@ jobs:
           # YAML block-scalar indentation -- a plain heredoc does not strip leading spaces on its
           # own (only `<<-` strips leading TABS), and this file's own indent width is spaces
           # throughout, so an un-stripped heredoc would land as an indented code block in the
-          # rendered PR body instead of the intended headings/paragraphs. `${{ }}` expressions are
-          # substituted by the Actions runtime before bash ever sees this script, so they resolve
-          # correctly here regardless of the heredoc delimiter's own quoting.
+          # rendered PR body instead of the intended headings/paragraphs. GitHub Actions expression
+          # substitution runs before bash ever sees this script, so it resolves correctly here
+          # regardless of the heredoc delimiter's own quoting.
           cat << PR_BODY_EOF | sed 's/^ \{10\}//' > /tmp/pr-body.md
           ## Summary
 
