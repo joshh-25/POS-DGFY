@@ -273,6 +273,25 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         delivery_distance_source: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_source` ENUM('road','fallback','none') NOT NULL DEFAULT 'none'"
+        }),
+        // Phase 237 (#1329, epic #1321): five additive money-provenance columns for the resolved
+        // delivery-fee breakdown. Kept in lockstep with migration 20260903000001 -- DDL strings must
+        // stay string-identical (a drift test asserts this, addDeliveryFeeBreakdown.migration.test.js).
+        // See docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md.
+        delivery_fee_mode: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_mode` ENUM('fixed','calculated','free') NOT NULL DEFAULT 'fixed' AFTER `delivery_distance_source`"
+        }),
+        delivery_fee_base: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_base` DECIMAL(14,4) NOT NULL DEFAULT 0"
+        }),
+        delivery_fee_waiver: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_waiver` DECIMAL(14,4) NOT NULL DEFAULT 0"
+        }),
+        delivery_fee_override: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_override` DECIMAL(14,4) NULL DEFAULT NULL"
+        }),
+        delivery_fee_calc_version: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_calc_version` SMALLINT UNSIGNED NOT NULL DEFAULT 1"
         })
     }),
     employee_attendance_sessions: Object.freeze({

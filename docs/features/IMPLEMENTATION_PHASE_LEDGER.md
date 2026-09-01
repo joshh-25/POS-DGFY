@@ -15658,4 +15658,123 @@ deploy workflow (`runner-probe.yml` is added, never dispatched); no force-push o
 
 ### Next eligible phase
 
-234.
+234 (not yet recorded in this ledger as its own entry; the next entry actually recorded here is
+Phase 237, a separate epic/track -- see that entry's own "Ledger gap" note for why 233/235/236 of
+epic #1321 have no ledger entries of their own either).
+
+## Phase 237 - Wire calculated + free delivery-fee modes (#1329, epic #1321) — RISK GATE
+
+### Ledger gap, flagged not silently papered over
+
+This ledger's most recently recorded entry before this one is Phase 232, which itself named "233"
+as next-eligible. But Phases 233 (#1324, PR #1337), 235 (#1325, PR #1352), and 236 (#1328, PR #1361)
+of epic #1321 ("Customer delivery pricing") already merged to `develop` -- confirmed live via
+`git log` on this PR's own base commit -- with no ledger entry ever recorded for any of the three.
+This phase continues the real numeric sequence those three PRs actually used (237, following 236),
+not the ledger's stale "233" trailer. Backfilling accurate 233/235/236 entries retroactively is out
+of this phase's own scope -- named as a finding for `pm` to track separately rather than
+reconstructed hastily here. (Phase 234 is untouched by this note -- it belongs to a different,
+unrelated track and is not part of epic #1321.)
+
+### Initiative and release
+
+Epic #1321 ("Customer delivery pricing"), the risk gate: the first phase in the epic where a
+customer-visible storefront price actually changes based on tenant delivery-fee-mode configuration.
+Wires the `calculated` and `free` delivery-fee modes (Phase 233's config schema, Phase 235's pure
+formula, Phase 236's road-distance observation capture) into the real fee-resolution choke point,
+`resolveStoreDeliveryFee`/`resolveCheckoutContext` in `storeUseCases.js`.
+
+### Objective and scope
+
+Per the Planner's full plan (`docs/ai/PR.md`-format PR body carries the plan's own D1-D6 decision
+table): rewrite `resolveStoreDeliveryFee` as an `async` function resolving a full 10-field breakdown
+(the ticket's own 9 fields plus a 10th `outOfRange: boolean`, D1); enforce ADR 0078 Decision 2
+`[binding]`'s out-of-range hard block at checkout + payment-session only, never at cart quote (D6);
+pin the whole resolved breakdown across a webhook-replay finalization, advisory-only past a 60-minute
+TTL, never hard-invalidated (Wave 0 decision #2 / D2); touch
+`modules/commercePayments/usecases/finalizePaidCommerceSession.js` and a landlord-DB migration to
+make the pin real (D3); minimal out-of-range storefront affordance only -- the full fee-breakdown
+summary line across 6 frontend files in 3 mode trees is explicitly OUT of scope, split to a follow-up
+ticket via `pm` (D4); both new migrations are a Worker checkpoint (D5).
+
+### Status
+
+`in_progress`. All backend code, the ADR 0012 amendment, the compliance declaration, and full test
+coverage are complete and self-verified (see below). **The two new migrations, the matching
+`sync-tenant-schemas.js` entries, and the `PosTransaction.js`/`CommercePaymentSession.js` model
+field additions are held pending explicit Worker-checkpoint approval per D5/`.agents/skills/implement/SKILL.md`
+-- drafted, self-verified, but not yet committed.** PR #1377 is open (`Refs #1329`) carrying
+everything else. `pr-reviewer`'s first pass `BLOCK`ed on three findings (merge conflict against
+`develop`, incomplete pin-shape validation, an explicit-`null`-coordinate gap); addressed in a
+2026-09-02 fixup pass -- see the compliance declaration's own dated Amendments section for the
+fix-by-fix detail, not restated here. This entry will be updated once D5's migration approval lands.
+
+### Dependencies
+
+Phase 233 (#1324, PR #1337, fee-mode config schema), Phase 235 (#1325, PR #1352, pure calculated-fee
+formula, unwired until this phase), Phase 236 (#1328, PR #1361, observation-only road-distance
+capture, now wired into fee pricing for the first time) -- all three merged to `develop`. Phase 238
+(#1330, POS staff fee override, already merged) is a post-hoc override of the persisted
+`pos_transactions.delivery_fee` column and is explicitly NOT a resolve-time input this phase reads.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `apps/dgfy-api` `.js` file and both new
+  `apps/dgfy-migration-runner` `.cjs` migration files -- no syntax errors (no build step; Tier 0
+  equivalent).
+- [x] `storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js` (new, 2/2) -- the ticket's
+  own named acceptance evidence: cart quote, checkout, and payment-session creation resolve strictly
+  `===` `delivery_fee`/`total_amount` from one frozen fixture, calculated and free modes both.
+- [x] `storeCheckoutCalculatedDeliveryFee.unit.test.js` (13/13, up from 10 in the 2026-09-02 review
+  fixup) -- ADR 0078 Decision 2 `[binding]` fail-open-to-fixed on every named failure branch, the
+  happy-path formula (hand-computed against the real algorithm: 5400m -> ₱97), the in-range boundary
+  at exactly `max_distance_km`, the out-of-range hard block at all three entry points, and (RF-3) a
+  4-row no-usable-coordinates matrix (omitted/explicit-null/empty-string/non-numeric).
+- [x] `storeCheckoutDeliveryFeePin.unit.test.js` (26/26, up from 10 in the 2026-09-02 review fixup)
+  -- the pin mechanism itself, the advisory-TTL-never-enforces behavior, `finalizePaidCommerceSession.js`'s
+  own plumbing, and (RF-2) full field-by-field shape validation of every persisted breakdown field,
+  not just mode/finalFee/calcVersion.
+- [x] `addDeliveryFeeBreakdown.migration.test.js` (new, 10/10) -- both migrations' idempotence/down
+  behavior, plus a drift guard confirming `sync-tenant-schemas.js`'s DDL strings are
+  column-definition-identical to the tenant-fanout migration's own DDL.
+- [x] `deliveryFeePolicy.unit.test.js` (31/31, 1 new case) -- the new `DELIVERY_FEE_CALC_VERSION`
+  constant.
+- [x] `deliveryFeeModeConfig.checkoutFallback.unit.test.js` (5/5, unmodified) and
+  `storeCheckoutRoadDistanceCapture.unit.test.js` (10/10, up from 7 -- RF-4 added an explicit
+  `store_delivery_fee_mode: 'fixed'` fixture variant to the byte-identity parameterized regression,
+  alongside the pre-existing absent-config case) -- together the actual evidence that every
+  fixed-mode tenant, explicit or defaulted, stays byte-identical to pre-237.
+- [x] Whole-suite regression gate -- `storeCartQuotePreviewNoContactRequired`,
+  `storeCheckoutAffiliatePricing`, `storeCheckoutDownpaymentResolution`,
+  `storeCheckoutInventoryReservation`, `storeCheckoutVoucherPromoStacking`, `storePaymentTruth`,
+  `storeUsecases.applicationResult` -- 105/105, all unmodified.
+- [x] `npm run check:architecture` -- OK (52 modules, 537 code files; 92 controller files).
+- [x] `npm run lint:docs` -- OK (85 ADRs incl. the ADR 0012 amendment, 29 governed docs).
+- [x] `npm run check:compliance` -- confirmed to fail first (listing `storeUseCases.js` and
+  `finalizePaidCommerceSession.js`), then pass once the declaration was added.
+- [ ] Deployed verification -- **not run**, and not expected to be: the PR itself uses `Refs #1329`
+  (not `Closes`) specifically because this is the epic's risk gate and needs a deployed
+  Verifier/QA pass before the issue closes, per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule.
+- [ ] D5 migration checkpoint -- **not yet approved**, see Status above.
+
+### Links
+
+- Tracking issue: #1329 (epic #1321). Follow-up filed separately (D4, storefront fee-breakdown
+  summary line across 6 files in 3 mode trees) -- handed to `pm` to file, not improvised here.
+- `apps/dgfy-api/src/modules/deliveryPricing/index.js`, `domain/deliveryFeePolicy.js` (additive
+  exports), `README.md` (updated shipped/not-shipped tables).
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (the core diff),
+  `apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js` (pin
+  plumbing).
+- `docs/architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md` (amended,
+  2026-09-02 block).
+- `docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md`.
+- Held pending D5 approval: `apps/dgfy-migration-runner/migrations/20260903000001-add-delivery-fee-breakdown.cjs`,
+  `20260903000002-add-payment-session-delivery-breakdown.cjs`,
+  `apps/dgfy-api/scripts/sync-tenant-schemas.js`, `apps/dgfy-api/src/models/PosTransaction.js`,
+  `apps/dgfy-api/src/models/Landlord/CommercePaymentSession.js`.
+
+### Next eligible phase
+
+238 (#1330, POS staff fee override, already merged separately -- confirm its own ledger status
+before claiming further numbers; this entry does not assert 238's own status).
