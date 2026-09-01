@@ -1,0 +1,98 @@
+{
+  "_comment": "Acceptance fixtures for src/modules/deliveryPricing/domain/deliveryFeePolicy.js (Phase 235, #1325, epic #1321). Money is integer centavos and distance is integer meters internally, per ADR 0066 Decision 2 (binding). Unless noted, `config` is REFERENCE_CONFIG: { min_fee: 50, included_km: 3, per_km_rate: 10, increment_km: 0.5, max_distance_km: 15 } -- derived constants: minFeeCentavos=5000, perKmRateCentavos=1000, includedMeters=3000, incrementMeters=500, maxDistanceMeters=15000, perIncrementCentavos=500 (PHP5.00/increment).",
+
+  "REFERENCE_CONFIG": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 },
+
+  "cases": [
+    {
+      "id": "dfp-at-included-zero",
+      "description": "distance 0 -> min fee, nothing charged beyond it",
+      "input": { "distanceMeters": 0, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 } },
+      "expected": { "feeCentavos": 5000, "billedKm": 0, "incrementsCharged": 0, "outOfRange": false }
+    },
+    {
+      "id": "dfp-at-included-mid",
+      "description": "distance under the included distance -> min fee, billedKm reflects actual distance",
+      "input": { "distanceMeters": 1500, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 } },
+      "expected": { "feeCentavos": 5000, "billedKm": 1.5, "incrementsCharged": 0, "outOfRange": false }
+    },
+    {
+      "id": "dfp-at-included-boundary",
+      "description": "distance exactly at the included distance -> still min fee, no increment charged",
+      "input": { "distanceMeters": 3000, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 } },
+      "expected": { "feeCentavos": 5000, "billedKm": 3, "incrementsCharged": 0, "outOfRange": false }
+    },
+    {
+      "id": "dfp-on-half-km-boundary",
+      "description": "exactly on a 0.5km increment boundary beyond included -- charges 1 increment, not 2",
+      "input": { "distanceMeters": 3500, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 } },
+      "expected": { "feeCentavos": 5500, "billedKm": 3.5, "incrementsCharged": 1, "outOfRange": false }
+    },
+    {
+      "id": "dfp-just-over-half-km-boundary",
+      "description": "1 meter past that boundary -> the next increment is charged in full",
+      "input": { "distanceMeters": 3501, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 } },
+      "expected": { "feeCentavos": 6000, "billedKm": 4, "incrementsCharged": 2, "outOfRange": false }
+    },
+    {
+      "id": "dfp-at-max-distance",
+      "description": "exactly at max distance -> capped fee, still in range (strict > for out-of-range)",
+      "input": { "distanceMeters": 15000, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 } },
+      "expected": { "feeCentavos": 17000, "billedKm": 15, "incrementsCharged": 24, "outOfRange": false }
+    },
+    {
+      "id": "dfp-just-beyond-max",
+      "description": "1 meter beyond max distance -> outOfRange, zero fee, no partial computation",
+      "input": { "distanceMeters": 15001, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 } },
+      "expected": { "feeCentavos": 0, "billedKm": 0, "incrementsCharged": 0, "outOfRange": true }
+    },
+    {
+      "id": "dfp-well-beyond-max",
+      "description": "far beyond max distance -> outOfRange",
+      "input": { "distanceMeters": 50000, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 } },
+      "expected": { "feeCentavos": 0, "billedKm": 0, "incrementsCharged": 0, "outOfRange": true }
+    },
+    {
+      "id": "dfp-non-exact-decimal-rate",
+      "description": "a per_km_rate that doesn't divide evenly exercises the Math.round rate-per-increment path",
+      "input": { "distanceMeters": 4000, "config": { "min_fee": 30, "included_km": 2, "per_km_rate": 7.33, "increment_km": 0.5, "max_distance_km": 10 } },
+      "expected": { "feeCentavos": 4468, "billedKm": 4, "incrementsCharged": 4, "outOfRange": false }
+    },
+    {
+      "id": "dfp-throws-missing-config",
+      "description": "config undefined -> INVALID_CONFIG",
+      "input": { "distanceMeters": 1000 },
+      "throws": { "code": "INVALID_CONFIG" }
+    },
+    {
+      "id": "dfp-throws-empty-config",
+      "description": "config {} -> INVALID_CONFIG",
+      "input": { "distanceMeters": 1000, "config": {} },
+      "throws": { "code": "INVALID_CONFIG" }
+    },
+    {
+      "id": "dfp-throws-zero-increment",
+      "description": "increment_km: 0 would divide-by-zero -> INVALID_CONFIG",
+      "input": { "distanceMeters": 1000, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0, "max_distance_km": 15 } },
+      "throws": { "code": "INVALID_CONFIG" }
+    },
+    {
+      "id": "dfp-throws-unreachable-cap",
+      "description": "max_distance_km smaller than included_km is an unreachable/unusable formula -> INVALID_CONFIG",
+      "input": { "distanceMeters": 1000, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 2 } },
+      "throws": { "code": "INVALID_CONFIG" }
+    },
+    {
+      "id": "dfp-throws-negative-distance",
+      "description": "a negative distance is never silently coerced to 0 -> INVALID_DISTANCE_METERS",
+      "input": { "distanceMeters": -5, "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 } },
+      "throws": { "code": "INVALID_DISTANCE_METERS" }
+    },
+    {
+      "id": "dfp-throws-non-numeric-distance",
+      "description": "a non-numeric distance -> INVALID_DISTANCE_METERS",
+      "input": { "distanceMeters": "abc", "config": { "min_fee": 50, "included_km": 3, "per_km_rate": 10, "increment_km": 0.5, "max_distance_km": 15 } },
+      "throws": { "code": "INVALID_DISTANCE_METERS" }
+    }
+  ]
+}
