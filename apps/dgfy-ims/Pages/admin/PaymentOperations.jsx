@@ -597,7 +597,7 @@ export default function PaymentOperations() {
         </form>
       </div>
 
-      {certification?.mode !== 'live' && (
+      {certification?.mode === 'test' && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
           <div>
             <h2 className="font-semibold text-slate-900 flex items-center gap-2"><QrCode className="w-4 h-4" /> QR Ph Sandbox Test Payment</h2>
