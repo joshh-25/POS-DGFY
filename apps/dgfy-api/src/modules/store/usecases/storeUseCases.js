@@ -2214,7 +2214,7 @@ const resolveCheckoutContext = async ({
     // TTL only -- see the module-level comment on DELIVERY_QUOTE_PIN_ADVISORY_TTL_MS: this NEVER
     // hard-invalidates the pin, because the money is already captured and this repo has no rollback
     // mechanism (#495 open). A shape/version-invalid pin falls through to normal resolution.
-    let delivery = null;
+    let delivery;
     // #1331 (Phase 240 plan §5.5): tracks which branch below actually ran, so the delivery voucher
     // block further down knows whether to trust a freshly-recomputed waiver or clamp to the pin.
     let deliveryBreakdownWasPinned = false;
