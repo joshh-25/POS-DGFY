@@ -1,6 +1,6 @@
 import React from 'react';
 import { toast } from 'sonner';
-import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Search, Package } from 'lucide-react';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Truck, Search, Table2, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
@@ -8,14 +8,7 @@ import {
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
   DELIVERY_JOB_STATUS_LABELS,
-  hasCompleteDeliveryAssignment,
-  isManualDeliveryJob,
-  isCompletionPaymentPending,
-  getDeliveryJobActionLabel,
-  getFulfillmentActionLabel,
-  getIncomingOrderUtilityActions,
-  getNextDeliveryJobStatus,
-  getNextStatusActions
+  isManualDeliveryJob
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
@@ -24,6 +17,17 @@ import QueueRunAssignBar from './QueueRunAssignBar.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
 import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
+import {
+  formatOrderDateTime,
+  formatOrderAmount,
+  humanizeOrderStatus,
+  resolveOrderDownpaymentSplit,
+  resolveBalanceCollectionLabel,
+  parseDeliveryCoords
+} from '../utils/incomingQueueOrderFormatting.js';
+import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActions.js';
+import { readQueueViewModePreference, writeQueueViewModePreference, QUEUE_VIEW_MODES } from '../utils/queueViewModePreference.js';
+import QueueOrderTableView from './QueueOrderTableView.jsx';
 // Phase 211 (#1180)'s own precedent for this gate: orderFulfillmentUi.js:56 reuses this exact
 // normalizeWorkflowMode(...) === 'retail' pattern rather than the WORKFLOW_PAGE_CAPABILITIES nav
 // gate -- the delivery-runs tab is an in-page view over a mode-agnostic API (ADR 0034), not a
@@ -31,26 +35,6 @@ import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
 import { normalizeWorkflowMode } from '../../settings/workflowMode.js';
 
 const createIdempotencyKey = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
-
-const parseDeliveryCoords = (order = {}) => {
-  if (
-    order?.delivery_latitude === null
-    || order?.delivery_latitude === undefined
-    || order?.delivery_latitude === ''
-    || order?.delivery_longitude === null
-    || order?.delivery_longitude === undefined
-    || order?.delivery_longitude === ''
-  ) {
-    return null;
-  }
-  const lat = Number(order?.delivery_latitude);
-  const lng = Number(order?.delivery_longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return {
-    latitude: lat,
-    longitude: lng
-  };
-};
 
 function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
   const isIncomingQueue = title === 'Incoming Online Queue';
@@ -76,39 +60,6 @@ function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
     </section>
   );
 }
-
-const formatOrderDateTime = (value) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return '-';
-  return date.toLocaleString();
-};
-
-const formatOrderAmount = (value) => {
-  const amount = Number(value || 0);
-  return `PHP ${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
-};
-
-const humanizeOrderStatus = (value) => String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
-
-// Phase 144 (#824): a downpayment order is persisted as COD (payment_type forced to 'cash' by
-// Phase 141, because the balance IS collected in person) with payment_status 'partially_paid'.
-// Until now the card rendered exactly those two facts and nothing else, so staff handing over
-// goods could not see how much cash to collect. amount_paid/balance_due are already on the wire
-// from listIncomingOnlineOrders -- this only reads them.
-const resolveOrderDownpaymentSplit = (order) => {
-  const amountPaid = Number(order?.amount_paid || 0);
-  const balanceDue = Number(order?.balance_due || 0);
-  if (order?.payment_status !== 'partially_paid' || !(amountPaid > 0)) return null;
-  return { amountPaid, balanceDue };
-};
-
-// Balance is always collected in person -- ADR 0069 clause 2 [binding], carried forward by ADR
-// 0070. Mirrors the storefront's own resolveDownpaymentBalanceLabel so both surfaces word it the
-// same way.
-const resolveBalanceCollectionLabel = (orderMethod) => (
-  orderMethod === 'delivery' ? 'Collect on delivery' : 'Collect at pickup'
-);
 
 function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDeliveryRuns = false, runCount = null }) {
   const tabs = [
@@ -417,6 +368,14 @@ function IncomingQueueWorkspace({
 }) {
   const [orderSort, setOrderSort] = React.useState('newest');
   const [activeView, setActiveView] = React.useState('active');
+  // Phase 229 (#1288): Active Queue view-mode toggle (card/table). Initialized lazily from
+  // per-terminal localStorage (React.useState's function form runs the read exactly once, on
+  // mount) so a returning operator's last choice sticks; card view stays the default whenever no
+  // stored preference exists or the stored value fails normalization.
+  const [viewMode, setViewMode] = React.useState(() => readQueueViewModePreference());
+  const handleViewModeChange = (nextMode) => {
+    setViewMode(writeQueueViewModePreference(nextMode));
+  };
   const [deliveryRunCount, setDeliveryRunCount] = React.useState(null);
   const isRetailMode = normalizeWorkflowMode(workflowMode) === 'retail';
   const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
@@ -659,6 +618,34 @@ function IncomingQueueWorkspace({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="group"
+            aria-label="Active Queue view mode"
+            className="flex h-10 items-center rounded-lg border border-slate-200 bg-white p-0.5"
+          >
+            <button
+              type="button"
+              aria-pressed={viewMode === QUEUE_VIEW_MODES.CARD}
+              onClick={() => handleViewModeChange(QUEUE_VIEW_MODES.CARD)}
+              className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold transition ${viewMode === QUEUE_VIEW_MODES.CARD
+                ? 'bg-[#1A4E8D] text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+              Card
+            </button>
+            <button
+              type="button"
+              aria-pressed={viewMode === QUEUE_VIEW_MODES.TABLE}
+              onClick={() => handleViewModeChange(QUEUE_VIEW_MODES.TABLE)}
+              className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold transition ${viewMode === QUEUE_VIEW_MODES.TABLE
+                ? 'bg-[#1A4E8D] text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Table2 className="h-4 w-4" />
+              Table
+            </button>
+          </div>
           <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
             Sort
             <select
@@ -732,197 +719,62 @@ function IncomingQueueWorkspace({
             </div>
           </div>
         </div>
+      ) : viewMode === QUEUE_VIEW_MODES.TABLE ? (
+        <QueueOrderTableView
+          orders={sortedIncomingOrders}
+          isRetailMode={isRetailMode}
+          selectedOrderIds={selectedOrderIds}
+          toggleOrderSelection={toggleOrderSelection}
+          bulkAssignSubmitting={bulkAssignSubmitting}
+          canTransactPos={canTransactPos}
+          canViewPos={canViewPos}
+          locked={locked}
+          isOnline={isOnline}
+          hasActiveShift={hasActiveShift}
+          incomingOrderActionState={incomingOrderActionState}
+          incomingReceiptOpeningId={incomingReceiptOpeningId}
+          workflowMode={workflowMode}
+          handleOpenCashCollection={handleOpenCashCollection}
+          handleOpenBalanceSettlement={handleOpenBalanceSettlement}
+          handleViewBalancePaymentProof={handleViewBalancePaymentProof}
+          handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
+          handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+          handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
+          onRequestRejection={setPendingRejectionOrderId}
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {sortedIncomingOrders.map((order) => {
             const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
-            const nextActions = getNextStatusActions(order, workflowMode);
-            const nextDeliveryJobStatus = getNextDeliveryJobStatus(order);
-            const utilityActions = getIncomingOrderUtilityActions(order);
-            const canCollectCash = order.payment_type === 'cash'
-              && order.payment_status === 'unpaid'
-              && (
-                (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
-                || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
-              );
-            // Phase 148 (#825): the balance-settlement twin of canCollectCash. Deliberately a
-            // separate predicate on a disjoint payment_status -- collect-cash owns 'unpaid', this
-            // owns 'partially_paid', so the two buttons can never both appear on one card and the
-            // live COD path's own condition is untouched.
-            const orderBalanceDue = Number(order.balance_due || 0);
-            const canSettleBalance = order.payment_status === 'partially_paid'
-              && orderBalanceDue > 0
-              && (
-                (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
-                || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
-              );
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
             const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
-            const hasDeliveryAssignment = hasCompleteDeliveryAssignment(deliveryJob || {});
             const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
             const mapLink = deliveryCoords
               ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
               : '';
 
-            const buttons = [];
-            if (canCollectCash) {
-              buttons.push(
-                <Button
-                  key="collect_cash"
-                  type="button"
-                  size="sm"
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
-                  onClick={() => handleOpenCashCollection?.(order)}
-                >
-                  <Wallet className="mr-2 h-4 w-4 shrink-0" />
-                  {order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'}
-                </Button>
-              );
-            }
-            if (canSettleBalance) {
-              buttons.push(
-                <Button
-                  key="settle_balance"
-                  type="button"
-                  size="sm"
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
-                  onClick={() => handleOpenBalanceSettlement?.(order)}
-                >
-                  <Wallet className="mr-2 h-4 w-4 shrink-0" />
-                  Settle Balance
-                </Button>
-              );
-            }
-            // Phase 204 (#965): "View proof" -- the smallest place the settled payment is already
-            // displayed, not a full evidence-browser UI. Independent of canSettleBalance: the
-            // balance may already be settled (payment_status moved off 'partially_paid') while the
-            // order is still visible in this queue during fulfillment.
-            if (order.has_payment_proof) {
-              buttons.push(
-                <Button
-                  key="view_payment_proof"
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleViewBalancePaymentProof?.(order)}
-                >
-                  <Receipt className="mr-2 h-4 w-4 shrink-0" />
-                  View Proof
-                </Button>
-              );
-            }
-            if (nextDeliveryJobStatus && nextDeliveryJobStatus !== 'assigned' && manualDeliveryJob && hasDeliveryAssignment) {
-              const deliveryJobActionKey = `delivery-job:${nextDeliveryJobStatus}`;
-              buttons.push(
-                <Button
-                  key={deliveryJobActionKey}
-                  type="button"
-                  size="sm"
-                  variant={nextDeliveryJobStatus === 'delivered' ? 'default' : 'outline'}
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
-                  onClick={() => handleDeliveryJobStatusChange?.(order.pos_transaction_id, nextDeliveryJobStatus)}
-                >
-                  <Truck className="mr-2 h-4 w-4 shrink-0" />
-                  {actionLoading === deliveryJobActionKey ? 'Saving...' : getDeliveryJobActionLabel(nextDeliveryJobStatus)}
-                </Button>
-              );
-            }
-            nextActions.forEach((status) => {
-              const getStatusIcon = (statusName) => {
-                switch (statusName) {
-                case 'confirmed':
-                  return <Check className="mr-2 h-4 w-4 shrink-0" />;
-                case 'rejected':
-                  return <Ban className="mr-2 h-4 w-4 shrink-0" />;
-                case 'preparing':
-                  return <Clipboard className="mr-2 h-4 w-4 shrink-0" />;
-                case 'packed':
-                  return <Package className="mr-2 h-4 w-4 shrink-0" />;
-                case 'ready_for_pickup':
-                  return <ShoppingBag className="mr-2 h-4 w-4 shrink-0" />;
-                case 'out_for_delivery':
-                  return <Truck className="mr-2 h-4 w-4 shrink-0" />;
-                case 'completed':
-                  return <Check className="mr-2 h-4 w-4 shrink-0" />;
-                default:
-                  return null;
-                }
-              };
-              buttons.push(
-                <Button
-                  key={`incoming-workspace-action-${order.pos_transaction_id}-${status}`}
-                  type="button"
-                  size="sm"
-                  variant={status === 'rejected' ? 'destructive' : 'outline'}
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order))}
-                  onClick={() => {
-                    if (status === 'rejected') {
-                      setPendingRejectionOrderId(Number(order.pos_transaction_id));
-                      return;
-                    }
-                    handleIncomingOrderStatusChange?.(order.pos_transaction_id, status);
-                  }}
-                >
-                  {actionLoading === status ? null : getStatusIcon(status)}
-                  {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}
-                </Button>
-              );
+            // Phase 229 (#1288): the ~150-line per-order button-eligibility construction that used
+            // to live inline here now lives in incomingQueueOrderActions.js, shared verbatim with
+            // QueueOrderTableView.jsx's Actions column so the two view modes can never drift on
+            // which actions an order gets.
+            const buttons = buildIncomingQueueOrderActions(order, {
+              actionLoading,
+              workflowMode,
+              canTransactPos,
+              canViewPos,
+              locked,
+              isOnline,
+              hasActiveShift,
+              incomingReceiptOpeningId,
+              handleOpenCashCollection,
+              handleOpenBalanceSettlement,
+              handleViewBalancePaymentProof,
+              handleDeliveryJobStatusChange,
+              handleIncomingOrderStatusChange,
+              handleOpenIncomingOrderReceipt,
+              onRequestRejection: setPendingRejectionOrderId
             });
-            if (utilityActions.includes('print_receipt')) {
-              buttons.push(
-                <Button
-                  key="print_receipt"
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
-                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, {
-                    printMode: true,
-                    retryPrint: order.receipt_print_status === 'failed'
-                  })}
-                >
-                  <Printer className="mr-2 h-4 w-4 shrink-0" />
-                  {incomingReceiptOpeningId === Number(order.pos_transaction_id)
-                    ? 'Printing...'
-                    : order.receipt_print_status === 'failed'
-                      ? 'Retry Print'
-                    : order.receipt_print_status === 'printed'
-                        ? 'Reprint Receipt'
-                        : 'Print Receipt'}
-                </Button>
-              );
-            }
-            if (utilityActions.includes('print_order')) {
-              buttons.push(
-                <Button
-                  key="print_order"
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
-                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printOrder: true })}
-                >
-                  <Printer className="mr-2 h-4 w-4 shrink-0" />
-                  {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Printing...' : 'Print Order'}
-                </Button>
-              );
-            }
-            if (utilityActions.includes('open_order')) {
-              buttons.push(
-                <Button
-                  key="open_order"
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
-                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: false })}
-                >
-                  <ExternalLink className="mr-2 h-4 w-4 shrink-0" />
-                  {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open Order'}
-                </Button>
-              );
-            }
 
             const bulkAssignEligibility = getRunAssignEligibility(order, {});
             const orderId = Number(order.pos_transaction_id);
