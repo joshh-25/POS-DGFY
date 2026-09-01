@@ -29,6 +29,13 @@
 // in JS -- so rounding once immediately keeps every value downstream a clean integer. No other
 // rounding happens on these converted values anywhere else in the module.
 
+// Phase 237 (#1329, epic #1321). Versions the WHOLE delivery-fee resolution algorithm in
+// storeUseCases.js's resolveStoreDeliveryFee -- not just this module's calculated-mode branch, so a
+// fixed-mode order also persists calcVersion 1. A future phase that changes the formula bumps this,
+// so historical pos_transactions rows stay interpretable without a backfill (ADR 0012's
+// forward-only, no-historical-recompute posture, restated in this phase's ADR 0012 amendment).
+export const DELIVERY_FEE_CALC_VERSION = 1;
+
 export class DeliveryFeePolicyError extends Error {
     constructor(code, message, details = {}) {
         super(message);
