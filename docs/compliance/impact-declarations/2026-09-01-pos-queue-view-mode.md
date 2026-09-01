@@ -11,8 +11,8 @@ verification_evidence: npm run build:pos -- real Vite build, OK,npm run build:sk
 rollback_note: Purely additive, frontend-only, zero-backend change -- no new API route, no new database field, no schema/migration. Rollback is a plain code revert of this PR's commits: removing the view-mode toggle, QueueOrderTableView.jsx, and the two new utils files restores the Active Queue to card-view-only, exactly as it behaved before this phase. The two small, behavior-preserving extractions this phase makes from TerminalOperationsPanels.jsx (the per-order action-button construction into incomingQueueOrderActions.js, and the order-formatting helpers into incomingQueueOrderFormatting.js) are also revertible as a unit with the rest of this PR -- card view's own rendering is functionally unchanged by the extraction (see the re-run test evidence above), so reverting the whole PR cleanly restores the pre-phase state. The one-line posTerminalStorage.js addition (a new RECOVERABLE_PREFERENCE_PREFIXES entry) is likewise additive and reverts cleanly. The view-mode preference itself lives only in per-terminal localStorage (pos_queue_view_mode_v1) -- no data migration is needed on rollback, a stale stored value is simply never read again.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1288-QUEUE-VIEW-MODE
+preflight_run_at: 2026-09-01T04:22:52.918Z
+preflight_request_ref: PREFLIGHT-33469394801-2026-09-01-POS-QUEUE-VIEW-MODE
 ---
 
 # POS Active Queue view-mode toggle: card and table (Phase 230, #1288)

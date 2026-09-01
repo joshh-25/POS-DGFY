@@ -11,8 +11,8 @@ verification_evidence: npm run build:pos -- real Vite build, OK,npm run build:sk
 rollback_note: Frontend-only, zero apps/dgfy-api diff. New files under packages/web-core/src/features/pos/ (utils/deliveryRunQueueFilter.js, hooks/useDeliveryRunOptions.js, components/QueueRunFilterControl.jsx) plus modifications to TerminalOperationsPanels.jsx and QueueRunAssignBar.jsx. Rollback is a plain code revert: removing the new files and reverting the two modified files restores the pre-Phase-231 Active Queue exactly, including QueueRunAssignBar's own independent fetchDeliveryRuns call (the hook it now uses is a strict lift of that same call, not a behavior change to the underlying API usage). No schema, route, or permission change exists to roll back.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1290-POS-ACTIVE-QUEUE-DELIVERY-RUN-FILTER
+preflight_run_at: 2026-09-01T04:22:52.918Z
+preflight_request_ref: PREFLIGHT-33469394801-2026-09-01-POS-ACTIVE-QUEUE-DELIVERY-RUN-FILTER
 ---
 
 # Active Queue delivery-run filter (Phase 231, #1290)
