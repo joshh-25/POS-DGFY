@@ -20,8 +20,8 @@ rollback_note: Revert this PR's diff. No migration, no model field, no validator
   adds.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1326-VOUCHER-BENEFIT-TARGET-AXIS
+preflight_run_at: 2026-09-01T18:51:27.077Z
+preflight_request_ref: PREFLIGHT-33545741502-2026-09-02-VOUCHER-BENEFIT-TARGET-AXIS
 ---
 
 # Voucher benefit_target axis, items-only default, no DDL (Phase 239, #1326)

@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/roadDistanceProvider.test.js -- actua
 rollback_note: Two additive, nullable/defaulted columns on pos_transactions (delivery_distance_meters, delivery_distance_source) capture an observation only -- neither is read by resolveStoreDeliveryFee or folded into delivery_fee/total_amount anywhere in this diff (see the §6-equivalent fee-boundary regression test). The routeCalculator/ timeoutMs param is additive and optional; every pre-existing caller that omits it keeps today's env-driven default timeout, byte-identical. Reverting this commit set removes the new deliveryPricing/repositories/roadDistanceProvider.js adapter, its resolveCheckoutContext wiring, and the two routeCalculator param additions; the two new pos_transactions columns can be dropped with no dependent read path to break, and no fee-math change to undo anywhere in the codebase.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1328-SERVER-SIDE-ROAD-DISTANCE-CAPTURE
+preflight_run_at: 2026-09-01T18:51:27.077Z
+preflight_request_ref: PREFLIGHT-33545741502-2026-09-02-SERVER-SIDE-ROAD-DISTANCE-CAPTURE-OBSERVATION-ONLY
 ---
 
 # Server-side road-distance capture, observation only (Phase 236, #1328)

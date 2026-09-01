@@ -11,8 +11,8 @@ verification_evidence: npx vitest run (from apps/dgfy-ims) ../../packages/web-co
 rollback_note: Revert this PR's diff. orderFulfillmentUi.js's getIncomingOrderUtilityActions is the sole behavioral change to an existing action-eligibility function (out_for_delivery gains 'print_receipt' alongside the pre-existing 'open_order'); OnlineOrderReceiptModal.jsx's additions are purely additive render blocks (merchant header, delivery-job block) gated on data already present in the fetched order payload; TerminalPageDialogLayer.jsx's change is one new prop (businessSettings) passed to an existing render site. No API, database, or hardware-dispatch code changes at all -- reverting the four touched frontend files fully restores prior behavior.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1319
+preflight_run_at: 2026-09-01T18:51:27.077Z
+preflight_request_ref: PREFLIGHT-33545741502-2026-09-02-POS-DELIVERY-HANDOFF-RECEIPT
 ---
 
 # POS Delivery Handoff Receipt (#1319)

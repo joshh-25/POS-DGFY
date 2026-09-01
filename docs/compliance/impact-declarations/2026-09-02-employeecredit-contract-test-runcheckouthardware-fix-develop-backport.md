@@ -11,8 +11,8 @@ verification_evidence: packages/web-core/src/features/pos/__tests__/employeeCred
 rollback_note: Test-file-only change, plain revert of this PR's single commit restores the pre-fix (stale) assertions. No API, schema, payment, fiscal calculation, authorization, persistence, or hardware command behavior changes -- the underlying source (usePosCheckoutWorkflow.js) is untouched by this PR.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1367-EMPLOYEECREDIT-CONTRACT-TEST-DEVELOP-BACKPORT
+preflight_run_at: 2026-09-01T18:51:27.075Z
+preflight_request_ref: PREFLIGHT-33545741502-2026-09-02-EMPLOYEECREDIT-CONTRACT-TEST-RUNCHECKOUTHARDWARE-FIX-DEVELOP-BACKPORT
 ---
 
 # employeeCredit contract test fix -- develop back-port of PR #1367
