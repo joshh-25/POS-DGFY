@@ -38,10 +38,9 @@ Both self-hosted runners are online:
 
 Every workflow **without an explicit hosted exception** runs on one of these two labels today
 (`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`, "Status as of 2026-08-13") — this is not a blanket "zero
-hosted jobs" claim. Three pre-existing exceptions already run on `ubuntu-latest`, predate this
-policy, and stay hosted regardless of it: `build-android-manual.yml` / `pr-android-build-checks.yml`
-(no Android SDK on either self-hosted box) and `deploy-production.yml` (`workflow_dispatch`-only,
-trimmed since its trigger workflow was archived). See the job-by-job inventory below for the full,
+hosted jobs" claim. One pre-existing exception already runs on `ubuntu-latest`, predates this
+policy, and stays hosted regardless of it: `build-android-manual.yml` / `pr-android-build-checks.yml`
+(no Android SDK on either self-hosted box). See the job-by-job inventory below for the full,
 reconciled picture.
 
 **GitHub-hosted availability — verified live, not assumed.** #1363's epic body asserts minutes are
@@ -88,8 +87,7 @@ which is exactly why that stays self-hosted).
 | `deploy.yml` / `deploy-main.yml` (SSH publish) | `sieitz-runner` (generic) | SSH key material, network reach to DEV/STAGING/BETA/PROD, credential cleanup step (`if: always()`, since this box is persistent, not ephemeral) | `vpn_required: false` everywhere — both self-hosted boxes reach the DEV/STAGING LAN directly; VPN only matters from a hosted runner with no LAN path (see "VPN" below) |
 | `verify-deployment.yml` | `sieitz-runner` | Read-only `docker compose ps`/`docker inspect`/in-container `curl`; `vpn_required` input, default `false` | No runner affinity needed post-#599 |
 | `tenant-schema-report.yml`, `compliance-preflight-sweep.yml` | `sieitz-runner` | Read-only; the sweep runs against its own ephemeral CI-provisioned instance, no deployed environment touched | |
-| `deploy-production.yml` | `ubuntu-latest` (hardcoded) | Currently `workflow_dispatch`-only, trimmed since its trigger workflow was archived | Pre-existing hosted exception, predates this policy |
-| `build-android-manual.yml` | `ubuntu-latest` (hardcoded) | Android SDK + Gradle | Same as above — hosted regardless of self-hosted/hosted policy |
+| `build-android-manual.yml` | `ubuntu-latest` (hardcoded) | Android SDK + Gradle | Pre-existing hosted exception, predates this policy — hosted regardless of it |
 
 **SOPS/decrypted secrets, and other jobs that stay local-only regardless of runner class:**
 anything that needs the promoter's own locally-decrypted secrets or the promoter's own git-branch
