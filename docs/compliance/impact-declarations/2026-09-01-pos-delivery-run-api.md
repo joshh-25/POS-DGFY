@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/deliveryRun.usecase.test.js -- actual
 rollback_note: No schema change in this phase -- Phase 224 (PR #1275) already landed delivery_runs, delivery_run_personnel, and delivery_jobs.delivery_run_id. This phase is API-only (routes/use cases/validators), so rollback is a plain code revert with no migration to reason about. The extracted applyDeliveryPersonnelAssignment helper is additive/refactor-only for the existing per-order assignment path -- reverting this PR restores the prior single inline implementation with no data-shape change.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1273-PHASE-225-DELIVERY-RUN-API
+preflight_run_at: 2026-09-01T01:05:32.411Z
+preflight_request_ref: PREFLIGHT-33457125207-2026-09-01-POS-DELIVERY-RUN-API
 ---
 
 # POS delivery run API + accountable write-through (Phase 225, #1273/#1081)

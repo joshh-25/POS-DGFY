@@ -71,7 +71,13 @@ env:
   REDIS_CONTAINER: dgfy-preflight-redis-${{ github.run_id }}-${{ github.run_attempt }}
   PREFLIGHT_DB_NAME: sku_inventory_manager_preflight
   PREFLIGHT_DB_PASSWORD: preflightci
-  PREFLIGHT_API_PORT: 5000
+  # #1284: NOT 5000 -- this runner host's own persistent DEV deployment of dgfy-api also
+  # publishes 127.0.0.1:5000 (docker-compose, infrastructure/docker/env/dev.compose-
+  # fragment.yml), so this ephemeral instance's health check would silently poll DEV's real,
+  # unrelated server instead of its own (see "Boot dgfy-api" step's own comment for the full
+  # story). 15000 is well clear of every deployed environment's port map: DEV uses
+  # 5000/8081-8083, STAGE uses 6000/9081-9083 (infrastructure/docker/env/*.compose-fragment.yml).
+  PREFLIGHT_API_PORT: 15000
 
 jobs:
   sweep:
@@ -269,11 +275,42 @@ jobs:
           BILLING_FUNNEL_AUDIT_ENABLED: "false"
           SCHEMA_INDEX_AUDIT_ENABLED: "false"
         run: |
+          # #1284: PREFLIGHT_API_PORT (5000) collided with this same runner host's own
+          # PERSISTENT DEV deployment of dgfy-api, which docker-compose also publishes on
+          # 127.0.0.1:5000 (-> container port 5100, infrastructure/docker/env/dev.compose-
+          # fragment.yml). This ephemeral `node src/server.js` fails EADDRINUSE against an
+          # already-bound port and exits almost immediately; the health-check loop then
+          # unknowingly polls the *real* DEV instance instead (indistinguishable by a bare
+          # `curl .../health` 200), which has no idea about the fixture tenant this run just
+          # created -- producing a 404 TENANT_TOKEN_INVALID on every mint-preflight-token.js
+          # call downstream, on a completely unrelated database. Confirmed live via temporary
+          # diagnostics: the responding server's own health payload reported `uptime: "635225s"`
+          # (~7.3 days) -- a live deployment, not anything this job spawned -- and no matching
+          # `node src/server.js` process was visible to this job's `ps` at all (the real bind
+          # owner is a Docker container in a different PID namespace, invisible to a bare host
+          # `pkill`/`ps`, which is why an earlier attempt at this fix that only tried to kill a
+          # stale *process* on the port never actually touched it).
+          #
+          # The real fix is a dedicated port nothing else on this host will ever bind to --
+          # picked well clear of every deployed environment's own port map (DEV 5000/8081-8083,
+          # STAGE 6000/9081-9083, per infrastructure/docker/env/*.compose-fragment.yml) --
+          # rather than trying to detect or evict whatever else happens to be squatting on 5000.
+          # See PREFLIGHT_API_PORT in this workflow's job-level `env:` above.
           nohup node src/server.js > /tmp/dgfy-api-preflight.log 2>&1 &
-          echo $! > /tmp/dgfy-api-preflight.pid
+          api_pid=$!
+          echo "$api_pid" > /tmp/dgfy-api-preflight.pid
           for _ in $(seq 1 12); do
+            # Confirm THIS run's own process is still alive before trusting a 200 from curl --
+            # a dedicated port means there should be nothing else to false-positive against, but
+            # this also catches OUR OWN process dying mid-startup (e.g. a real crash) instead of
+            # silently continuing to poll a port nothing is listening on anymore.
+            if ! kill -0 "$api_pid" 2>/dev/null; then
+              echo "::error::dgfy-api process (pid $api_pid) exited during startup"
+              cat /tmp/dgfy-api-preflight.log
+              exit 1
+            fi
             if curl -fsS "http://127.0.0.1:${PREFLIGHT_API_PORT}/api/v1/health" > /dev/null 2>&1; then
-              echo "dgfy-api is healthy"
+              echo "dgfy-api is healthy (pid $api_pid)"
               exit 0
             fi
             sleep 5

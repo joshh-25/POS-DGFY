@@ -11,8 +11,8 @@ verification_evidence: npm run build:pos; npm run build:skupervisor; npm run bui
 rollback_note: No schema or API change -- the four tenant_locations timing columns and their validation already shipped under #1218. Reverting this PR only removes the POS-side editing UI and the IMS/POS shared validation-helper refactor; existing tenant data and IMS's own editing path are unaffected.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-31T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1246-POS-DELIVERY-TIMING-SETTINGS
+preflight_run_at: 2026-09-01T01:05:32.408Z
+preflight_request_ref: PREFLIGHT-33457125207-2026-08-31-POS-DELIVERY-TIMING-SETTINGS
 ---
 
 # POS delivery-timing settings editing (#1246)
