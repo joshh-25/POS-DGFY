@@ -145,8 +145,33 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
             }
 
             const feeDelta = round4(newDeliveryFee - previousDeliveryFee);
-            const newTotalAmount = Math.max(0, round4(previousTotalAmount + feeDelta));
-            const newBalanceDue = Math.max(0, round4(newTotalAmount - previousAmountPaid));
+            const newTotalAmount = round4(previousTotalAmount + feeDelta);
+            if (newTotalAmount < 0) {
+                // Only reachable with already-corrupt data (total_amount < delivery_fee) -- clamping
+                // that to zero would silently launder corruption into a wrong-but-plausible total.
+                // Fail loudly instead.
+                throw new DomainError(
+                    DomainErrorCode.INTERNAL_ERROR,
+                    'Delivery fee override would produce a negative order total',
+                    {
+                        statusCode: 500,
+                        details: { reason_code: 'DELIVERY_FEE_OVERRIDE_NEGATIVE_TOTAL' }
+                    }
+                );
+            }
+            // The guard above restricts this whole path to payment_status === 'unpaid', and
+            // getTransactionById/posUseCases.js's own writers only ever leave balance_due at 0 for an
+            // unpaid order (see the RF-1 finding on PR #1336) -- so re-deriving balance_due from
+            // previousAmountPaid on an unpaid order was flipping it from 0 to the full new total. The
+            // COD collection path (posUseCases.js buildCollectCashOnlineOrderUseCase) never clears
+            // balance_due, so that non-zero value then fails assertDeliveryCompletionReadiness's
+            // zero-balance gate forever (posUseCases.js:1511, DELIVERY_BALANCE_DUE_OUTSTANDING) and
+            // risks collecting the balance a second time from a customer who already paid COD in cash.
+            // Only recompute from previousAmountPaid when a balance was already outstanding; otherwise
+            // preserve the 0 an unpaid order must have.
+            const newBalanceDue = previousBalanceDue > 0
+                ? Math.max(0, round4(newTotalAmount - previousAmountPaid))
+                : previousBalanceDue;
 
             const updated = await posRepository.updateTransactionLifecycle(normalizedTransactionId, {
                 delivery_fee: newDeliveryFee,
@@ -160,6 +185,10 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
                     { statusCode: 500 }
                 );
             }
+            // Re-read with the full include (lines/item, etc.) for the response only -- `updated`
+            // above comes from a bare findByPk with no include, same shape gap RF-4 on PR #1336
+            // flagged between this branch and the no-op branch's toSerializable(existing).
+            const refreshed = await posRepository.getTransactionById(normalizedTransactionId, { transaction });
 
             // Sibling audit path, not #234's workflow_mode_change_log (settings-only, no
             // transaction_id column -- verified before implementing, see PR description) and not
@@ -173,6 +202,14 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
                 entity_id: normalizedTransactionId,
                 action: 'UPDATE',
                 event_type: 'pos_delivery_fee_overridden',
+                // location_id mirrors cashRefundUseCases.js's sibling money-mutation audit row.
+                // terminal_id/shift_id are genuinely unavailable here -- this route is a
+                // permissioned back-office edit, not routed through requirePairedTerminal (see the
+                // comment on overrideDeliveryFee in posHandlers.js) -- so they're written explicitly
+                // as null rather than omitted.
+                terminal_id: null,
+                shift_id: null,
+                location_id: existing.location_id ?? null,
                 reason,
                 changes: {
                     event: 'pos_delivery_fee_overridden',
@@ -190,7 +227,7 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
 
             await transaction.commit();
             return ok({
-                transaction: updated,
+                transaction: toSerializable(refreshed) || updated,
                 delivery_fee_override: {
                     previous_delivery_fee: previousDeliveryFee,
                     new_delivery_fee: newDeliveryFee,

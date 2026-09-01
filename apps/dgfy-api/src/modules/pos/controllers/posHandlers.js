@@ -1266,17 +1266,20 @@ export const voidTransaction = async (req, res, next) => {
     }
 };
 
-// Phase 238 (#1330). Not routed through posMutationUser/requirePairedTerminal -- this is a
-// permissioned order-level edit (same class of guard as PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
-// not a terminal cash-handling action, so it works the same whether staff act from a paired POS
-// terminal or a back-office screen. req.user is populated by the authenticate middleware for both.
+// Phase 238 (#1330). Not routed through requirePairedTerminal -- this is a permissioned
+// order-level edit (same class of guard as PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), not a
+// terminal cash-handling action, so it works the same whether staff act from a paired POS
+// terminal or a back-office screen. Still resolve via posMutationUser(req) rather than req.user
+// directly (RF-6, PR #1336 review): it degrades to req.user on a back-office call, but on a POS
+// terminal after an operator takeover it attributes the audit row to the actual operator
+// (req.posActingUser) instead of the session account.
 export const overrideDeliveryFee = async (req, res, next) => {
     try {
         const payload = req.validatedData || req.body || {};
         const result = await overrideDeliveryFeeUseCase({
             posTransactionId: req.validatedParams?.id || req.params.id,
             payload,
-            user: req.user
+            user: posMutationUser(req)
         });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
