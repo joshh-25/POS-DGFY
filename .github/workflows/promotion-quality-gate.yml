@@ -188,8 +188,8 @@ on:
         # one default routes exactly the prod promotion leg, nothing else. This anchor
         # covers both workflow_call and workflow_dispatch (below) -- it's one YAML
         # anchor, don't duplicate the flip at *runner_labels_input.
-        # default: '["ubuntu-latest"]'
-        default: '["sieitz-lg"]'
+        # default: '["sieitz-lg"]'
+        default: '["ubuntu-latest"]'
   workflow_dispatch:
     inputs: *runner_labels_input
 
@@ -290,8 +290,8 @@ jobs:
     # exactly the prod promotion leg, by construction, no if:/matrix conditional
     # needed or wanted. salvage-api-evidence below MUST always carry this job's same
     # active class -- see that job's own comment for why.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 45
     outputs:
       # #1066 RF-1: the *real* per-step outcome, read from steps.<id>.outcome (survives
@@ -620,8 +620,8 @@ jobs:
     # (ubuntu-latest) is the intended class for this job too. See gate/
     # dgfy-api-quality's comments above for the release/* -> main-leg-only
     # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -744,8 +744,8 @@ jobs:
     # (ubuntu-latest) is the intended class for this job too. See gate/
     # dgfy-api-quality's comments above for the release/* -> main-leg-only
     # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -837,8 +837,8 @@ jobs:
     # (ubuntu-latest) is the intended class for this job too. See gate/
     # dgfy-api-quality's comments above for the release/* -> main-leg-only
     # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -902,8 +902,8 @@ jobs:
     # (ubuntu-latest) is the intended class for this job too. See gate/
     # dgfy-api-quality's comments above for the release/* -> main-leg-only
     # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1017,8 +1017,8 @@ jobs:
     # (ubuntu-latest) is the intended class for this job too. See gate/
     # dgfy-api-quality's comments above for the release/* -> main-leg-only
     # reasoning (F-3) -- same logic applies here.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1378,8 +1378,8 @@ jobs:
     # the first step below, which fires only when this job lands on a hosted runner
     # and says so explicitly, rather than degrading silently the way the old
     # if-no-files-found: warn path did.
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 5
     permissions:
       contents: read

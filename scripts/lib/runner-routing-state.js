@@ -11,7 +11,7 @@
 // deploy-main.yml/promotion-quality-gate.yml together -- check-runner-routing.js's Assertion 6
 // fails CI otherwise, by design. An emergency fallback flip must edit both, and must say so loudly
 // in its own failure message (see check-runner-routing.js's Assertion 6 message).
-const EXPECTED_ACTIVE_CLASS = 'self-hosted';
+const EXPECTED_ACTIVE_CLASS = 'hosted';
 
 /**
  * Derives the routing state actually present in the two PROD-facing workflow files' text, reusing
@@ -30,7 +30,7 @@ const EXPECTED_ACTIVE_CLASS = 'self-hosted';
 function readActiveRouting({ deployMainText, qualityGateText }) {
   // Required here, not at module top-level, to avoid a require cycle: check-runner-routing.js
   // does not (and must not) depend back on this file.
-  const { extractJobBlocks, findActiveSites, isHosted, ANCHOR_ALLOWLIST } = require('../check-runner-routing');
+  const { checkFile, isHosted, ANCHOR_ALLOWLIST, extractInputDefaultSite } = require('../check-runner-routing');
 
   const filesText = {
     'deploy-main.yml': deployMainText,
@@ -40,23 +40,25 @@ function readActiveRouting({ deployMainText, qualityGateText }) {
   const seenClasses = new Set();
 
   for (const [file, text] of Object.entries(filesText)) {
-    const blocks = extractJobBlocks(text);
+    // Reuses checkFile's own jobClasses resolution (not a re-derivation) so a job that delegates
+    // to the file's runner_labels_json workflow_dispatch input (Phase 234 Wave 3, F-5) resolves to
+    // that input's own default class here too, instead of being misread as self-hosted just
+    // because its own `runner_labels_json: ${{ inputs.runner_labels_json }}` line carries no
+    // hosted-image literal of its own.
+    const { jobClasses } = checkFile(file, text);
     const allowlist = ANCHOR_ALLOWLIST[file] || new Set();
-    for (const [jobName, { block }] of blocks) {
+    for (const [jobName, isJobHosted] of jobClasses) {
       if (allowlist.has(jobName)) continue;
-      const sites = findActiveSites(block);
-      if (sites.length !== 1) continue; // malformed-site cases are check-runner-routing.js's job to report
-      seenClasses.add(isHosted(sites[0].line) ? 'hosted' : 'self-hosted');
+      seenClasses.add(isJobHosted ? 'hosted' : 'self-hosted');
     }
   }
 
-  // The runner_labels_json input `default:` site (promotion-quality-gate.yml's shared
-  // workflow_call/workflow_dispatch anchor) sits outside any job block, so extractJobBlocks/
-  // findActiveSites cannot see it -- matched directly, mirroring
-  // check-runner-routing.js's own checkInputDefaultSite.
-  const anchorMatch = qualityGateText.match(/runner_labels_json:\n(?:[^\n]*\n)*?( {8}default: .*)\n/);
-  if (anchorMatch) {
-    seenClasses.add(isHosted(anchorMatch[1]) ? 'hosted' : 'self-hosted');
+  // Each file's own runner_labels_json input `default:` site sits outside any job block, so the
+  // per-job scan above cannot see it -- matched directly here, mirroring check-runner-routing.js's
+  // own checkInputDefaultSite (both files now carry this site as of Phase 234 Wave 3).
+  for (const text of [deployMainText, qualityGateText]) {
+    const site = extractInputDefaultSite(text);
+    if (site) seenClasses.add(isHosted(site.activeLine) ? 'hosted' : 'self-hosted');
   }
 
   if (seenClasses.size === 0) return EXPECTED_ACTIVE_CLASS;
