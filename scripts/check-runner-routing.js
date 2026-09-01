@@ -44,6 +44,17 @@ const ANCHOR_ALLOWLIST = {
 // workspace path directly -- that only exists on the same box under self-hosted. The two jobs'
 // active class must always match, in either file (there's currently one instance, but the
 // invariant is not "this one instance", it's the relationship, so it's expressed generically).
+//
+// Phase 234 Wave 0 (#1375): salvage-api-evidence's own working steps are now additionally gated
+// at the step level on `runner.environment == 'self-hosted'` (a step-level context this job-level
+// `runs-on:`/`if:` pairing check cannot see and does not need to -- the job still always carries
+// both classes' commented/active lines, kept in lockstep with dgfy-api-quality's by this same
+// invariant, exactly as before). That per-step gating is what makes a hosted run of this job loud
+// (an explicit ::warning:: + step summary) instead of silently degrading to a no-op the way
+// if-no-files-found: warn alone did -- see the job's own header comment in the workflow file for
+// the full resolution. Nothing about the co-location invariant itself changed; this comment exists
+// only so a reader of this file doesn't have to go looking for why that per-step gating doesn't
+// also need an assertion here.
 const CO_LOCATION_PAIRS = [
   { file: 'promotion-quality-gate.yml', primary: 'dgfy-api-quality', dependent: 'salvage-api-evidence' }
 ];
