@@ -189,7 +189,8 @@ describe('buildPreviewVoucherEligibilityUseCase', () => {
         const result = await preview({ code: '', context: CONTEXT, lines: LINES });
         expect(result).toEqual({
             applied: false, voucherId: null, code: null, title: null, badge: null,
-            benefitClass: null, percentOffBps: null, discountCentavos: 0, lineAllocations: []
+            // #1331 (Phase 240): benefitTarget added alongside benefitClass, additive.
+            benefitClass: null, benefitTarget: null, percentOffBps: null, discountCentavos: 0, lineAllocations: []
         });
     });
 
@@ -632,5 +633,97 @@ describe('buildRedeemVoucherUseCase', () => {
                 VoucherReasonCode.VOUCHER_QUANTITY_LIMIT_REACHED
             );
         });
+    });
+});
+
+// #1331 (Phase 240, epic #1321 decision 9): the free_delivery -> 'amount_off' translation at
+// resolveEligibleBenefit's calculateVoucherBenefit call site (voucherRedemptionUseCases.js).
+// voucherBenefitPolicy.js itself carries no 'free_delivery' arm -- deliberately unchanged by this
+// phase, see its own header -- so this is the one place that translation is actually exercised.
+describe('free_delivery benefit translation (#1331, Phase 240)', () => {
+    const makeDeliveryVoucher = (overrides = {}) => makeVoucher({
+        code: 'FREEDEL',
+        benefit_class: 'free_delivery',
+        benefit_target: 'delivery',
+        percent_off_bps: null,
+        amount_off_centavos: null,
+        delivery_amount_off_centavos: null,
+        ...overrides
+    });
+
+    const DELIVERY_CONTEXT = { ...CONTEXT, deliveryFeeCentavos: 10000 };
+
+    it('a NULL delivery_amount_off_centavos waives the whole fee', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeDeliveryVoucher()] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+        const result = await redeem({
+            code: 'FREEDEL', context: DELIVERY_CONTEXT, lines: LINES, idempotencyKey: 'k-del-whole', transaction: FAKE_TRANSACTION
+        });
+        expect(result.applied).toBe(true);
+        expect(result.discountCentavos).toBe(10000);
+        expect(result.benefitTarget).toBe('delivery');
+        expect(result.benefitClass).toBe('free_delivery');
+        // lineAllocations is all-zero by construction (Direction A, voucherBenefitPolicy.js header)
+        // -- a delivery-targeted benefit never touches a per-line discount.
+        expect(result.lineAllocations.every((line) => line.discountCentavos === 0)).toBe(true);
+    });
+
+    it('a positive delivery_amount_off_centavos caps the waiver (a partial waiver)', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeDeliveryVoucher({ delivery_amount_off_centavos: 5000 })] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+        const result = await redeem({
+            code: 'FREEDEL', context: DELIVERY_CONTEXT, lines: LINES, idempotencyKey: 'k-del-partial', transaction: FAKE_TRANSACTION
+        });
+        expect(result.discountCentavos).toBe(5000);
+    });
+
+    it('a delivery_amount_off_centavos exceeding the fee clamps at the fee, never negative', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeDeliveryVoucher({ delivery_amount_off_centavos: 20000 })] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+        const result = await redeem({
+            code: 'FREEDEL', context: DELIVERY_CONTEXT, lines: LINES, idempotencyKey: 'k-del-clamp', transaction: FAKE_TRANSACTION
+        });
+        expect(result.discountCentavos).toBe(10000);
+    });
+
+    it('fails closed with VOUCHER_BENEFIT_TARGET_MISMATCH when no deliveryFeeCentavos base is supplied', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeDeliveryVoucher()] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+        await expectVoucherError(
+            redeem({
+                // CONTEXT has no deliveryFeeCentavos -- matches a delivery voucher submitted via the
+                // ITEM voucher field (storeUseCases.js's voucherContext never carries one). Phase 239's
+                // own INVALID_DELIVERY_FEE_CENTAVOS is remapped to VOUCHER_BENEFIT_TARGET_MISMATCH at
+                // this exact call site (Phase 240 plan §5.4) -- it can only fire when a
+                // benefit_target: 'delivery' voucher reaches a call site supplying no fee base, which
+                // is always the axis-mismatch condition, never a genuine config problem.
+                code: 'FREEDEL', context: CONTEXT, lines: LINES, idempotencyKey: 'k-del-nofee', transaction: FAKE_TRANSACTION
+            }),
+            VoucherReasonCode.VOUCHER_BENEFIT_TARGET_MISMATCH
+        );
+    });
+
+    it('the ledger snapshot records benefit_target and delivery_amount_off_centavos', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeDeliveryVoucher({ delivery_amount_off_centavos: 5000 })] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+        await redeem({
+            code: 'FREEDEL', context: DELIVERY_CONTEXT, lines: LINES, idempotencyKey: 'k-del-snapshot', transaction: FAKE_TRANSACTION
+        });
+        const [redemption] = repository.__state.redemptions;
+        expect(redemption.benefit_config_snapshot).toMatchObject({
+            benefit_class: 'free_delivery',
+            benefit_target: 'delivery',
+            delivery_amount_off_centavos: 5000
+        });
+    });
+
+    it('preview (no transaction) resolves the same way, with no reservation', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeDeliveryVoucher()] });
+        const preview = buildPreviewVoucherEligibilityUseCase({ repository });
+        const result = await preview({ code: 'FREEDEL', context: DELIVERY_CONTEXT, lines: LINES });
+        expect(result.applied).toBe(true);
+        expect(result.discountCentavos).toBe(10000);
+        expect(result.benefitTarget).toBe('delivery');
+        expect(repository.__state.redemptions).toHaveLength(0);
     });
 });
