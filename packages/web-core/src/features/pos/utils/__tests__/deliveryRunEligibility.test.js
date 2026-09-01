@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   RUN_ASSIGN_INELIGIBLE_REASONS,
+  getActiveRunMembership,
   getEligibleRunTargets,
   getRunAssignEligibility
 } from '../deliveryRunEligibility.js';
@@ -132,5 +133,54 @@ describe('getEligibleRunTargets', () => {
   it('returns an empty list for a non-array input', () => {
     expect(getEligibleRunTargets(null, { locationId: 10 })).toEqual([]);
     expect(getEligibleRunTargets(undefined, { locationId: 10 })).toEqual([]);
+  });
+});
+
+// Phase 229 (#1291). Mirrors RUN_DISPATCH_BLOCKED_STATUSES: a run is "active" (still owns the
+// out_for_delivery transition) unless it is completed or cancelled -- and cancelling a run does
+// NOT clear its members' delivery_run_id, so the status check is load-bearing, not defensive.
+describe('getActiveRunMembership', () => {
+  const buildOrderWithRun = (runStatus, overrides = {}) => ({
+    pos_transaction_id: 9001,
+    order_method: 'delivery',
+    deliveryJob: {
+      delivery_run_id: 5,
+      deliveryRun: runStatus === undefined ? undefined : { delivery_run_id: 5, label: 'Run A', status: runStatus }
+    },
+    ...overrides
+  });
+
+  it('is not in an active run when there is no deliveryJob at all', () => {
+    const result = getActiveRunMembership({ pos_transaction_id: 1 });
+    expect(result).toEqual({ inActiveRun: false, runId: null, runLabel: null, runStatus: null });
+  });
+
+  it('is not in an active run when delivery_run_id is null', () => {
+    const result = getActiveRunMembership({ deliveryJob: { delivery_run_id: null } });
+    expect(result.inActiveRun).toBe(false);
+    expect(result.runId).toBeNull();
+  });
+
+  it.each(['draft', 'scheduled', 'dispatched'])('is in an active run when the run status is %s', (status) => {
+    const result = getActiveRunMembership(buildOrderWithRun(status));
+    expect(result.inActiveRun).toBe(true);
+    expect(result.runId).toBe(5);
+    expect(result.runLabel).toBe('Run A');
+    expect(result.runStatus).toBe(status);
+  });
+
+  it.each(['completed', 'cancelled'])('is NOT in an active run when the run status is %s', (status) => {
+    const result = getActiveRunMembership(buildOrderWithRun(status));
+    expect(result.inActiveRun).toBe(false);
+  });
+
+  it('fails closed (treats as active) when delivery_run_id is set but the deliveryRun record is missing', () => {
+    const result = getActiveRunMembership({
+      deliveryJob: { delivery_run_id: 5, deliveryRun: null }
+    });
+    expect(result.inActiveRun).toBe(true);
+    expect(result.runId).toBe(5);
+    expect(result.runLabel).toBeNull();
+    expect(result.runStatus).toBeNull();
   });
 });
