@@ -196,12 +196,22 @@ export const finalizePaidCommerceSession = async ({
       refundable: plainSession.downpayment_refundable
     } : null;
 
+    // Phase 237 (#1329, epic #1321, Wave 0 decision #2): the whole delivery-fee breakdown pinned at
+    // payment-session creation (storeUseCases.js's buildStoreCheckoutPaymentSessionUseCase). A
+    // server-internal sibling argument, never a payload field -- same precedent as capturedPayment
+    // above. resolveCheckoutContext validates its shape/version itself and falls through to a fresh
+    // resolution on anything malformed; passed through here verbatim, whatever it is (including
+    // null/undefined for a pre-Phase-237 session, which resolves exactly as it did before this
+    // phase shipped).
+    const pinnedDeliveryBreakdown = plainSession.delivery_fee_breakdown ?? null;
+
     const result = await dbStore.run(context, () => storeCheckoutUseCase({
       tenantId: tenant.id,
       payload: checkoutPayload,
       storeCustomer: verifiedStoreCustomer,
       allowExpiredGuestCheckoutProof: true,
-      capturedPayment
+      capturedPayment,
+      pinnedDeliveryBreakdown
     }));
 
     if (!result.success) {

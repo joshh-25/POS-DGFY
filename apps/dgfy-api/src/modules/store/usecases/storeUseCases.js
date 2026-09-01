@@ -36,10 +36,17 @@ import {
     resolveVoucherDisplayPricesUseCase,
     VoucherReasonCode
 } from '../../vouchers/index.js';
-// Phase 233 (#1324, epic #1321): fee-mode config schema, fixed-only behavior. resolveStoreDeliveryFee
-// below starts consuming this but still returns today's flat store_delivery_fee value regardless of
-// the resolved mode -- no behavior change yet. See deliveryPricing/domain/deliveryFeeConfig.js.
-import { resolveDeliveryFeeConfig, roadDistanceProvider as defaultRoadDistanceProvider } from '../../deliveryPricing/index.js';
+// Phase 233 (#1324, epic #1321): fee-mode config schema. Phase 237 (#1329) wires the calculated-mode
+// formula and fail-open-to-fixed branching into resolveStoreDeliveryFee below -- see
+// deliveryPricing/domain/deliveryFeeConfig.js and deliveryFeePolicy.js.
+import {
+    resolveDeliveryFeeConfig,
+    roadDistanceProvider as defaultRoadDistanceProvider,
+    computeCalculatedDeliveryFeeCentavos,
+    DeliveryFeePolicyError,
+    DELIVERY_FEE_CALC_VERSION,
+    DELIVERY_FEE_MODES
+} from '../../deliveryPricing/index.js';
 import {
     generateStoreCancelProof,
     generateStoreClaimToken,
@@ -534,26 +541,137 @@ const resolveDeliveryRadiusFlag = ({ orderMethod, location, deliveryLatitude, de
     return distanceKm > radiusKm;
 };
 
-const resolveStoreDeliveryFee = (settings = {}, orderMethod) => {
-    if (orderMethod !== 'delivery') return 0;
-
-    // Phase 233 (#1324): start consuming the fee-mode config. Deliberately unused beyond this --
-    // every mode still resolves to today's flat store_delivery_fee value below. Calculated/free
-    // fee computation (and branching on feeConfig.mode) is #237's job, not this phase's.
-    // locationOverride stays hardwired null per epic #1321 decision 2 until a later phase resolves
-    // a real per-location override.
-    resolveDeliveryFeeConfig({
-        tenantSettings: {
-            store_delivery_fee_mode: settings?.store_delivery_fee_mode?.value,
-            store_delivery_fee_calc: settings?.store_delivery_fee_calc?.value
-        },
-        locationOverride: null
-    });
-
+// Phase 236 (#1328): the parsed flat store_delivery_fee value, extracted to its own helper so
+// resolveStoreDeliveryFee can reuse it as the fixed-mode price AND as the fallback-mode price for
+// calculated tenants (ADR 0078 Decision 2 [binding]) without duplicating the parse/guard logic.
+// Byte-identical to the guard the pre-Phase-237 resolveStoreDeliveryFee applied inline.
+const parseFixedDeliveryFee = (settings = {}) => {
     const rawFee = settings?.store_delivery_fee?.value;
     const parsed = Number(rawFee);
     if (!Number.isFinite(parsed) || parsed < 0) return 0;
     return round4(parsed);
+};
+
+// Phase 237 (#1329, epic #1321). Resolves the storefront delivery fee as a full breakdown object,
+// not a bare scalar -- see the Phase 237 plan §2 for the exact field-by-field contract. `async`
+// even though this function performs no `await` itself: the ticket mandates it (future-proofs #240
+// waiver lookup and a real locationOverride source with no second signature break), and every call
+// site below awaits it -- a forgotten `await` would coerce a Promise through round4() into NaN,
+// which the fixed-mode byte-identity regression tests (deliveryFeeModeConfig.checkoutFallback.unit
+// .test.js, storeCheckoutRoadDistanceCapture.unit.test.js) would catch immediately.
+//
+// distanceMeters/distanceSource are PASSED IN, never fetched here -- this function stays I/O-free
+// and unit-testable standalone; resolveCheckoutContext (the only caller) remains the sole thing
+// that talks to roadDistanceProvider, preserving ADR 0078 Decision 4's single-choke-point property.
+const resolveStoreDeliveryFee = async ({
+    settings = {},
+    orderMethod,
+    distanceMeters = null,
+    distanceSource = 'none',
+    // Hardwired null per ADR 0078 Decision 6 [binding] until a later phase resolves a real
+    // per-location override (#1346 tracks the known wholesale-replace divergence -- zero live
+    // impact today since this stays null; this phase must not be the first caller to pass non-null).
+    locationOverride = null
+} = {}) => {
+    if (orderMethod !== 'delivery') {
+        return Object.freeze({
+            mode: 'fixed',
+            baseFee: 0,
+            waiverAmount: 0,
+            overrideAmount: null,
+            finalFee: 0,
+            distanceMeters: null,
+            distanceSource: 'none',
+            fallbackApplied: false,
+            outOfRange: false,
+            calcVersion: DELIVERY_FEE_CALC_VERSION
+        });
+    }
+
+    const feeConfig = resolveDeliveryFeeConfig({
+        tenantSettings: {
+            store_delivery_fee_mode: settings?.store_delivery_fee_mode?.value,
+            store_delivery_fee_calc: settings?.store_delivery_fee_calc?.value
+        },
+        locationOverride
+    });
+    const fixedFee = parseFixedDeliveryFee(settings);
+
+    let baseFee = 0;
+    let fallbackApplied = false;
+    let outOfRange = false;
+
+    if (feeConfig.mode === 'free') {
+        baseFee = 0;
+    } else if (feeConfig.mode === 'fixed') {
+        baseFee = fixedFee;
+    } else {
+        // mode === 'calculated'
+        const distanceUsable = distanceSource === 'road'
+            && Number.isFinite(distanceMeters)
+            && distanceMeters >= 0;
+
+        if (feeConfig.calc === null || !distanceUsable) {
+            // ADR 0078 Decision 2 [binding]: absent/malformed calc config, OR the road-distance
+            // provider didn't resolve a usable distance (down, timeout, non-2xx, unmapped area,
+            // non-delivery, missing/unparseable coordinates -- roadDistanceProvider already
+            // collapses all of these to source 'unavailable', which resolveCheckoutContext already
+            // maps to distanceSource 'fallback'). Never invents/estimates/interpolates a distance.
+            baseFee = fixedFee;
+            fallbackApplied = true;
+        } else {
+            let calcResult;
+            try {
+                calcResult = computeCalculatedDeliveryFeeCentavos({
+                    distanceMeters,
+                    config: feeConfig.calc
+                });
+            } catch (error) {
+                // Belt-and-suspenders: 3a/3b above make this unreachable in principle (normalizeCalcBlob
+                // and this module's own validateConfig enforce the same invariants), but the pure
+                // policy module THROWS by design (see deliveryFeePolicy.js), and a throw escaping this
+                // choke point would violate Decision 2's "never blocks checkout on a provider/config
+                // failure." Fail open to fixed, same as every other branch here.
+                if (!(error instanceof DeliveryFeePolicyError)) throw error;
+                logger.warn('[DeliveryFee] computeCalculatedDeliveryFeeCentavos threw; falling back to fixed rate', {
+                    code: error.code,
+                    message: error.message
+                });
+                baseFee = fixedFee;
+                fallbackApplied = true;
+                calcResult = null;
+            }
+
+            if (calcResult) {
+                if (calcResult.outOfRange) {
+                    // NOT a fallback -- ADR 0078 Decision 2 explicitly separates "out of range" from
+                    // "unknown distance." The hard block is enforced one layer up, in
+                    // resolveCheckoutContext (see enforceDeliveryRange).
+                    baseFee = 0;
+                    outOfRange = true;
+                } else {
+                    baseFee = centavosToPeso(calcResult.feeCentavos);
+                }
+            }
+        }
+    }
+
+    const waiverAmount = 0; // Hardcoded this phase -- #240 (free_delivery voucher benefit) populates it.
+    const overrideAmount = null; // Hardcoded this phase -- #238 overrides the PERSISTED column post-hoc, not resolve-time.
+    const finalFee = overrideAmount !== null ? overrideAmount : Math.max(0, round4(baseFee - waiverAmount));
+
+    return Object.freeze({
+        mode: feeConfig.mode,
+        baseFee,
+        waiverAmount,
+        overrideAmount,
+        finalFee,
+        distanceMeters: distanceSource === 'road' ? distanceMeters : null,
+        distanceSource,
+        fallbackApplied,
+        outOfRange,
+        calcVersion: DELIVERY_FEE_CALC_VERSION
+    });
 };
 
 const resolveEstimatedWaitMinutes = ({ settings = {}, location = null }) => {
@@ -1548,6 +1666,33 @@ const buildVoucherDiscountRecord = (voucherApplication) => ({
     })
 });
 
+// Phase 237 (#1329, epic #1321, Wave 0 decision #2 / D2): advisory-only quoted-fee pin window.
+// 60 minutes -- >= the PayMongo QRPh intent window (no legitimately-paid session is ever flagged),
+// short enough that a genuinely stuck/redelivered webhook is visible in logs. ADVISORY ONLY: never
+// used to invalidate the pin, only to log a warning past this age. A hard expiry would produce a
+// paid-but-unfinalizable order (money already captured, no order can be written) or force a silent
+// re-price to a different number than the customer paid -- both strictly worse than honoring a
+// slightly-stale pin, and this repo has no rollback mechanism (#495 open) to lean on if either
+// happened. Do not turn this into a hard-invalidation TTL without first building a reconciliation
+// path for "re-resolved fee != captured amount" -- see the Phase 237 plan §7.3.
+const DELIVERY_QUOTE_PIN_ADVISORY_TTL_MS = 60 * 60 * 1000;
+
+// Validates a pin read back from commerce_payment_sessions.delivery_fee_breakdown (JSON from the
+// DB -- could be null, truncated, or written by an older deploy). Deliberately narrow: only the
+// three invariants that would otherwise corrupt persistence or indicate a formula version drift.
+// Any failure here means "fall through to normal resolution," never a thrown error -- pinning must
+// never be able to block a checkout that would otherwise succeed.
+const isValidPinnedDeliveryBreakdown = (pin) => {
+    if (!pin || typeof pin !== 'object' || Array.isArray(pin)) return false;
+    if (!DELIVERY_FEE_MODES.includes(pin.mode)) return false;
+    const finalFee = Number(pin.finalFee);
+    if (!Number.isFinite(finalFee) || finalFee < 0) return false;
+    // A calcVersion mismatch means a formula change shipped between pin and finalize -- re-resolving
+    // is more correct than honoring a fee priced under a since-superseded formula.
+    if (pin.calcVersion !== DELIVERY_FEE_CALC_VERSION) return false;
+    return true;
+};
+
 const resolveCheckoutContext = async ({
     storeRepository,
     payload,
@@ -1584,7 +1729,22 @@ const resolveCheckoutContext = async ({
     // Phase 236 (#1328, epic #1321): injected the same way downpaymentSettingsRepository is, so
     // tests can supply a fake without touching the real routeCalculator/GraphHopper integration.
     // Defaults to the real singleton for every existing caller.
-    roadDistanceProvider = defaultRoadDistanceProvider
+    roadDistanceProvider = defaultRoadDistanceProvider,
+    // Phase 237 (#1329, epic #1321, ADR 0078 Decision 2 [binding]): mirrors requireCheckoutContact's
+    // own DI shape exactly (#746). `true` for every order-placing caller (checkout, payment
+    // session) -- an out-of-range delivery address hard-blocks the order. `false` ONLY for the cart
+    // quote (buildStoreCartQuoteUseCase), which must never throw -- it returns the blocked state as
+    // additive response fields instead (delivery_out_of_range / delivery_distance_meters) so a
+    // shopper can still see their cart total. See resolveStoreDeliveryFee's `outOfRange` field.
+    enforceDeliveryRange = true,
+    // Phase 237 (#1329, epic #1321, Wave 0 decision #2): server-internal sibling argument, never a
+    // payload field -- same precedent as capturedPayment (Phase 141, #822). Passed ONLY by
+    // finalizePaidCommerceSession.js on a webhook replay, carrying the whole frozen breakdown
+    // object captured at payment-session creation. When present and shape-valid, resolveCheckoutContext
+    // skips resolveStoreDeliveryFee entirely and uses this verbatim -- this is what keeps the
+    // finalized order's persisted fee identical to the amount PayMongo actually captured, even if
+    // settings or GraphHopper state changed between session creation and webhook finalization.
+    pinnedDeliveryBreakdown = null
 }) => {
     const normalized = buildNormalizedCheckoutRequest(payload, storeCustomer);
     const orderMethod = normalized.order_method || 'delivery';
@@ -1662,8 +1822,18 @@ const resolveCheckoutContext = async ({
     // near the end of this function.
     const deliveryOriginLat = Number(location?.latitude);
     const deliveryOriginLng = Number(location?.longitude);
-    const deliveryDestLat = Number(normalized.delivery_latitude);
-    const deliveryDestLng = Number(normalized.delivery_longitude);
+    // Phase 237 (#1329): FIXED a pre-existing correctness gap here -- normalized.delivery_latitude/
+    // longitude are already toNumberOrNull()'d (a finite number or null; see
+    // buildNormalizedCheckoutRequest above). Re-wrapping a `null` in `Number(...)` silently produces
+    // `0`, which IS finite -- so the isFinite guard below could never actually detect "no
+    // coordinates" for a delivery order; it always fired the provider with fabricated (0, 0)
+    // coordinates instead. Harmless while this capture was observation-only (Phase 236), but Phase
+    // 237 makes distanceSource feed calculated-mode fee pricing, so a delivery order with genuinely
+    // missing coordinates must resolve distanceSource: 'none' (RM-> fallback to the fixed rate), not
+    // silently query the provider with (0, 0). Fixed by checking finiteness on the already-normalized
+    // value directly, without the redundant re-coercion.
+    const deliveryDestLat = normalized.delivery_latitude;
+    const deliveryDestLng = normalized.delivery_longitude;
     const roadDistancePromise = (
         orderMethod === 'delivery'
         && Number.isFinite(deliveryOriginLat) && Number.isFinite(deliveryOriginLng)
@@ -1883,7 +2053,136 @@ const resolveCheckoutContext = async ({
         }
     }
 
-    const deliveryFee = resolveStoreDeliveryFee(settings, orderMethod);
+    // Phase 236 (#1328): reconcile the adapter's own {distanceMeters, source: 'road'|'unavailable'}
+    // vocabulary with the persisted road|fallback|none enum -- done ONLY here, never inside the
+    // adapter itself (roadDistanceProvider has no notion of orderMethod or the fallback/none split).
+    //
+    // Phase 237 (#1329): MOVED UP from its original position (after the fee computation) to
+    // immediately BEFORE it -- calculated mode requires the resolved distance before it can price.
+    // Pure relocation, no logic change: the fire point at roadDistancePromise's own declaration
+    // above is unchanged, and everything between that fire point and here (item lookup, promo
+    // resolution, voucher resolution) was already-concurrent I/O, so this move costs no latency.
+    let deliveryDistanceMeters = null;
+    let deliveryDistanceSource = 'none';
+    if (roadDistancePromise) {
+        // Phase 237 (#1329): the distance await now sits directly upstream of fee pricing (not just
+        // an observation-only capture, as it was under Phase 236), so this await is defensively
+        // guarded too -- roadDistanceProvider is documented to never reject (routeCalculator's own
+        // ApplicationResult contract, plus the adapter's own belt-and-suspenders try/catch), but ADR
+        // 0078 Decision 2 [binding]'s "never blocks checkout on a provider failure" means this choke
+        // point must not trust that contract blindly. A rejection is treated identically to an
+        // 'unavailable' resolution.
+        let roadDistanceResult;
+        try {
+            roadDistanceResult = await roadDistancePromise;
+        } catch (error) {
+            logger.warn('[DeliveryFee] roadDistanceProvider rejected unexpectedly; treating as unavailable', {
+                message: error?.message || null
+            });
+            roadDistanceResult = { distanceMeters: null, source: 'unavailable' };
+        }
+        if (roadDistanceResult.source === 'road') {
+            deliveryDistanceMeters = roadDistanceResult.distanceMeters;
+            deliveryDistanceSource = 'road';
+        } else {
+            deliveryDistanceMeters = null;
+            deliveryDistanceSource = 'fallback';
+        }
+    }
+
+    // Phase 237 (#1329, Wave 0 decision #2 / D2): a webhook-replay finalization pins the whole
+    // breakdown captured at payment-session creation, so the persisted order reflects EXACTLY the
+    // amount PayMongo actually captured, not a fresh (possibly different) re-resolution. Advisory
+    // TTL only -- see the module-level comment on DELIVERY_QUOTE_PIN_ADVISORY_TTL_MS: this NEVER
+    // hard-invalidates the pin, because the money is already captured and this repo has no rollback
+    // mechanism (#495 open). A shape/version-invalid pin falls through to normal resolution.
+    let delivery = null;
+    if (pinnedDeliveryBreakdown !== null && isValidPinnedDeliveryBreakdown(pinnedDeliveryBreakdown)) {
+        const pinnedAtMs = Date.parse(pinnedDeliveryBreakdown.pinned_at);
+        const pinAgeMs = Number.isFinite(pinnedAtMs) ? (Date.now() - pinnedAtMs) : null;
+        if (pinAgeMs === null || pinAgeMs > DELIVERY_QUOTE_PIN_ADVISORY_TTL_MS) {
+            logger.warn('[DeliveryFee] Quoted-fee pin past the advisory TTL (or has no parseable pinned_at) -- honoring it anyway, never hard-invalidated', {
+                pin_age_ms: pinAgeMs,
+                mode: pinnedDeliveryBreakdown.mode,
+                final_fee: pinnedDeliveryBreakdown.finalFee
+            });
+        }
+        delivery = Object.freeze({
+            mode: pinnedDeliveryBreakdown.mode,
+            baseFee: pinnedDeliveryBreakdown.baseFee,
+            waiverAmount: pinnedDeliveryBreakdown.waiverAmount,
+            overrideAmount: pinnedDeliveryBreakdown.overrideAmount,
+            finalFee: pinnedDeliveryBreakdown.finalFee,
+            distanceMeters: pinnedDeliveryBreakdown.distanceMeters,
+            distanceSource: pinnedDeliveryBreakdown.distanceSource,
+            fallbackApplied: pinnedDeliveryBreakdown.fallbackApplied,
+            outOfRange: pinnedDeliveryBreakdown.outOfRange,
+            calcVersion: pinnedDeliveryBreakdown.calcVersion
+        });
+    } else {
+        if (pinnedDeliveryBreakdown !== null) {
+            // Shape-invalid, or a calcVersion mismatch (a formula change shipped between pin and
+            // finalize -- re-resolving is more correct than honoring a pin priced under an old
+            // formula). Re-resolve exactly as if no pin had been passed at all.
+            logger.warn('[DeliveryFee] pinnedDeliveryBreakdown failed shape/version validation -- re-resolving instead of honoring it', {
+                pin_mode: pinnedDeliveryBreakdown?.mode ?? null,
+                pin_calc_version: pinnedDeliveryBreakdown?.calcVersion ?? null,
+                expected_calc_version: DELIVERY_FEE_CALC_VERSION
+            });
+        }
+        delivery = await resolveStoreDeliveryFee({
+            settings,
+            orderMethod,
+            distanceMeters: deliveryDistanceMeters,
+            distanceSource: deliveryDistanceSource,
+            locationOverride: null
+        });
+
+        // Risk #1 (Phase 237 plan §13): the road-distance provider's timeout is unmeasured, and a
+        // calculated-mode fallback is otherwise invisible to the customer -- they just see the
+        // fixed rate. Logged only on a FRESH resolution (never on a pin reuse, which would just be
+        // re-logging an already-known historical event from session creation), so the rollout can
+        // be measured rather than assumed.
+        if (delivery.fallbackApplied) {
+            logger.warn('[DeliveryFee] Calculated-mode fallback applied', {
+                tenant_id: tenantId || currentTenantAccessContext().tenantId || null,
+                location_id: normalized.location_id || null
+            });
+        }
+    }
+
+    // ADR 0078 Decision 2 [binding]: exceeding a known max distance is a deliberate hard block at
+    // self-service checkout. Thrown here, before totalAmount is computed, so no total is ever built
+    // from an out-of-range fee -- mirrors every other unshippable-order condition in this function
+    // (assertCheckoutLocationOperationalReadiness, ensureRequiredCheckoutContact, the voucher slot
+    // guard above), all of which already throw DomainError rather than return a status. D6: gated on
+    // enforceDeliveryRange so the cart-quote preview (buildStoreCartQuoteUseCase) never throws --
+    // see that use case's additive delivery_out_of_range/delivery_distance_meters response fields.
+    if (enforceDeliveryRange && delivery.outOfRange) {
+        // Read straight from the raw setting rather than threading feeConfig.calc out of
+        // resolveStoreDeliveryFee: the pinned-replay branch above never resolves a fresh feeConfig
+        // at all, so this detail-only value is looked up independently, the same raw source
+        // resolveStoreDeliveryFee itself reads from.
+        const rawMaxDistanceKm = Number(settings?.store_delivery_fee_calc?.value?.max_distance_km);
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'This delivery address is outside the store’s maximum delivery distance.',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'DELIVERY_DISTANCE_OUT_OF_RANGE',
+                    distance_meters: delivery.distanceMeters,
+                    max_distance_km: Number.isFinite(rawMaxDistanceKm) ? rawMaxDistanceKm : null
+                }
+            }
+        );
+    }
+
+    // Kept as a scalar alongside the new `delivery` breakdown object (purely additive) -- every
+    // existing read site (cart-quote response, checkout persistence/response, payment-session
+    // persistence) keeps reading `resolved.deliveryFee` unchanged, which is what keeps this diff's
+    // four money-adjacent call sites untouched (Phase 237 plan §4.1).
+    const deliveryFee = delivery.finalFee;
     const serviceFeeAmount = revenueSharingEnabled
         ? 0
         : computeDgfyConvenienceFee(prepared.subtotalAmount);
@@ -1920,22 +2219,6 @@ const resolveCheckoutContext = async ({
         deliveryLongitude: normalized.delivery_longitude
     });
 
-    // Phase 236 (#1328): reconcile the adapter's own {distanceMeters, source: 'road'|'unavailable'}
-    // vocabulary with the persisted road|fallback|none enum -- done ONLY here, never inside the
-    // adapter itself (roadDistanceProvider has no notion of orderMethod or the fallback/none split).
-    let deliveryDistanceMeters = null;
-    let deliveryDistanceSource = 'none';
-    if (roadDistancePromise) {
-        const roadDistanceResult = await roadDistancePromise;
-        if (roadDistanceResult.source === 'road') {
-            deliveryDistanceMeters = roadDistanceResult.distanceMeters;
-            deliveryDistanceSource = 'road';
-        } else {
-            deliveryDistanceMeters = null;
-            deliveryDistanceSource = 'fallback';
-        }
-    }
-
     return {
         normalized,
         settings,
@@ -1948,6 +2231,10 @@ const resolveCheckoutContext = async ({
         promoApplication,
         voucherApplication,
         deliveryFee,
+        // Phase 237 (#1329): the full resolved breakdown, additive alongside the deliveryFee scalar
+        // above (which stays === delivery.finalFee). See resolveStoreDeliveryFee's own doc comment
+        // for the field-by-field contract.
+        delivery,
         serviceFeeAmount,
         serviceFeeLabel,
         totalAmount,
@@ -2925,7 +3212,12 @@ export const buildStoreCartQuoteUseCase = ({
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
                 // #746: this is a preview -- see resolveCheckoutContext's own comment on the option.
-                requireCheckoutContact: false
+                requireCheckoutContact: false,
+                // Phase 237 (#1329, ADR 0078 Decision 2 [binding], D6): a cart quote must never
+                // throw on an out-of-range address -- the shopper still needs to see their cart
+                // total. The blocked state surfaces as delivery_out_of_range/delivery_distance_meters
+                // below instead; the two order-placing use cases keep the default `true`.
+                enforceDeliveryRange: false
             });
             return ok({
                 subtotal_amount: resolved.prepared.subtotalAmount,
@@ -2936,6 +3228,14 @@ export const buildStoreCartQuoteUseCase = ({
                 service_fee_amount: resolved.serviceFeeAmount,
                 service_fee_label: resolved.serviceFeeLabel,
                 delivery_fee: resolved.deliveryFee,
+                // Phase 237 (#1329, D6): additive. `delivery_out_of_range` mirrors
+                // resolved.delivery.outOfRange; `delivery_distance_meters` mirrors
+                // resolved.delivery.distanceMeters (populated only when distanceSource === 'road').
+                // Never gates anything client-side by itself -- checkout/payment-session are the
+                // actual enforcement points -- but lets the storefront disable submit / show the
+                // out-of-range affordance before the shopper reaches checkout.
+                delivery_out_of_range: resolved.delivery.outOfRange,
+                delivery_distance_meters: resolved.delivery.distanceMeters,
                 total_amount: resolved.totalAmount,
                 // Phase 140 (#821, ADR 0069/0070): server-authoritative downpayment split.
                 // downpayment_amount/balance_due_amount/downpayment_refundable are null when
@@ -3060,7 +3360,9 @@ export const buildStoreCheckoutUseCase = ({
     // field -- passed ONLY by finalizePaidCommerceSession.js after the webhook has confirmed real
     // money was captured. storeHandlers.js (the direct HTTP path) never passes it, so it is
     // unreachable from any client request, which is what keeps this guard server-authoritative.
-    return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false, capturedPayment = null }) => {
+    // Phase 237 (#1329): pinnedDeliveryBreakdown is the same shape of sibling argument -- see
+    // resolveCheckoutContext's own doc comment on the param.
+    return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false, capturedPayment = null, pinnedDeliveryBreakdown = null }) => {
         if (!isPlainObject(payload)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -3113,7 +3415,8 @@ export const buildStoreCheckoutUseCase = ({
                 tenantId: normalizedTenantId,
                 revenueSharingEnabled,
                 downpaymentSettingsRepository,
-                roadDistanceProvider
+                roadDistanceProvider,
+                pinnedDeliveryBreakdown
             });
             const { normalized } = resolved;
 
@@ -3305,6 +3608,17 @@ export const buildStoreCheckoutUseCase = ({
                     // delivery_fee/total_amount above.
                     delivery_distance_meters: resolved.deliveryDistanceMeters,
                     delivery_distance_source: resolved.deliveryDistanceSource,
+                    // Phase 237 (#1329, epic #1321): money-provenance columns, additive siblings to
+                    // delivery_fee above. `delivery_fee_base - delivery_fee_waiver === delivery_fee`
+                    // reconciles whenever delivery_fee_override is null (§9.1's three-entry-point
+                    // consistency test asserts this). fallbackApplied/outOfRange are deliberately NOT
+                    // persisted -- fully derivable from these five columns plus
+                    // delivery_distance_source, see the Phase 237 ADR 0012 amendment.
+                    delivery_fee_mode: resolved.delivery.mode,
+                    delivery_fee_base: resolved.delivery.baseFee,
+                    delivery_fee_waiver: resolved.delivery.waiverAmount,
+                    delivery_fee_override: resolved.delivery.overrideAmount,
+                    delivery_fee_calc_version: resolved.delivery.calcVersion,
                     accepted_by: null,
                     accepted_at: null
                 },
@@ -3851,7 +4165,13 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
     requireCommercePaymentConfig = requireCommerceQrphConfig,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
-    downpaymentSettingsRepository
+    downpaymentSettingsRepository,
+    // Phase 237 (#1329): same injection Phase 236 already gave buildStoreCartQuoteUseCase and
+    // buildStoreCheckoutUseCase, extended here so the out-of-range hard block (ADR 0078 Decision 2
+    // [binding]) is testable at this entry point too, without depending on the real GraphHopper
+    // singleton. Has its own default in resolveCheckoutContext, so omitting this (every pre-Phase-237
+    // caller) still exercises the real singleton, unchanged.
+    roadDistanceProvider
 }) => {
     return async ({ payload, storeCustomer = null, trustedReturnUrl = null }) => {
         try {
@@ -4010,7 +4330,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 storeRepository,
                 payload: normalizedPayload,
                 storeCustomer,
-                downpaymentSettingsRepository
+                downpaymentSettingsRepository,
+                roadDistanceProvider
             });
 
             // Phase 141 (#822, ADR 0069 clause 1b [binding] / ADR 0070 clause 7 [binding]): fail
@@ -4151,6 +4472,16 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 checkout_payload: normalizedPayload,
                 subtotal_amount: resolved.prepared.subtotalAmount,
                 delivery_fee: resolved.deliveryFee,
+                // Phase 237 (#1329, epic #1321, Wave 0 decision #2): pins the WHOLE resolved
+                // breakdown, not just distance+fee -- a partial pin would let the persisted audit
+                // row become internally inconsistent with what the customer actually paid. Read back
+                // by finalizePaidCommerceSession.js on webhook finalization (resolved.deliveryFee
+                // above is already delivery.finalFee, so "store the same finalFee" holds by
+                // construction -- asserted, not assumed, by the three-entry-point consistency test).
+                delivery_fee_breakdown: {
+                    ...resolved.delivery,
+                    pinned_at: new Date().toISOString()
+                },
                 service_fee_amount: resolved.serviceFeeAmount,
                 total_amount: capturedAmountPeso,
                 currency: 'PHP',
