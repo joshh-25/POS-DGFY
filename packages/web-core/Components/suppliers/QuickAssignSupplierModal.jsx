@@ -112,7 +112,7 @@ export default function QuickAssignSupplierModal({
             Assign to Existing Supplier
           </DialogTitle>
           <DialogDescription>
-            Link "{item.name}" to one of your suppliers
+            Link &quot;{item.name}&quot; to one of your suppliers
           </DialogDescription>
         </DialogHeader>
 

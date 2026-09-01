@@ -1,0 +1,74 @@
+# Reverse proxy routing SKUPERVISOR_DOMAIN / POS_DOMAIN / STOREFRONT_DOMAIN
+# (+STOREFRONT_ALT_DOMAIN) to `dgfy-api`/`dgfy-ims`/`dgfy-pos`/
+# `dgfy-storefront` by Host header, plus TLS renewal. Stock nginx image,
+# not custom-built -- nginx.conf.template is bind-mounted and rendered via
+# the official image's built-in envsubst entrypoint step using the
+# environment vars below. See nginx/nginx.conf.template and
+# nginx/init-letsencrypt.sh (one-time HTTPS bootstrap, run once manually
+# after the first `docker compose up -d` on a fresh server).
+#
+# This file is the GENERIC, multi-environment template -- these 11 domain
+# vars are still `${VAR}`-interpolated from .env here (DEV/QA/staging need
+# per-environment values and haven't had a secrets split). PROD's own
+# hand-maintained file bakes these as literals instead, closing #401's
+# compose half -- see infrastructure/docker/env/prod.sops-cutover
+# -fragment.yml's EDIT 4 for PROD's actual layout (#1236).
+#
+# Pulled into the main project via docker-compose.yml's `include:` --
+# always run `docker compose` from that file's directory, not this one
+# directly.
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    environment:
+      SKUPERVISOR_DOMAIN: ${SKUPERVISOR_DOMAIN}
+      POS_DOMAIN: ${POS_DOMAIN}
+      STOREFRONT_DOMAIN: ${STOREFRONT_DOMAIN}
+      STOREFRONT_ALT_DOMAIN: ${STOREFRONT_ALT_DOMAIN:-}
+      DGFY_API_DOMAIN: ${DGFY_API_DOMAIN:-_}
+      CERT_DOMAIN: ${CERT_DOMAIN}
+      # PROD domain group -- added 2026-08-23 (#329/#401) so this file matches the
+      # live server, which has carried these since the 2026-07-20 dgfy.ph cutover
+      # (see infrastructure/docker/env/prod.compose-fragment.yml, captured from the
+      # server, and docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md's now
+      # -resolved drift finding). Required by nginx.conf.template's PRODUCTION
+      # server blocks AND by the beta group's redirect targets.
+      SKUPERVISOR_DOMAIN_PROD: ${SKUPERVISOR_DOMAIN_PROD}
+      POS_DOMAIN_PROD: ${POS_DOMAIN_PROD}
+      STOREFRONT_DOMAIN_PROD: ${STOREFRONT_DOMAIN_PROD}
+      STOREFRONT_ALT_DOMAIN_PROD: ${STOREFRONT_ALT_DOMAIN_PROD:-}
+      CERT_DOMAIN_PROD: ${CERT_DOMAIN_PROD}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./data/nginx/custom-storefronts:/etc/nginx/custom-storefronts:ro
+      - ./data/certbot/conf:/etc/letsencrypt:ro
+      - ./data/certbot/www:/var/www/certbot:ro
+    depends_on:
+      dgfy-api:
+        condition: service_healthy
+      dgfy-ims:
+        condition: service_healthy
+      dgfy-pos:
+        condition: service_healthy
+      dgfy-storefront:
+        condition: service_healthy
+    networks: [dgfy_internal]
+
+  # Renews the Let's Encrypt certificate automatically (only actually
+  # renews within 30 days of expiry, so roughly every ~60 days). nginx
+  # must be reloaded after a renewal to pick up the new cert -- this is
+  # NOT automated (would require giving this container Docker socket
+  # access); see nginx/init-letsencrypt.sh's closing note.
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    entrypoint: >
+      sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;"
+    networks: [dgfy_internal]

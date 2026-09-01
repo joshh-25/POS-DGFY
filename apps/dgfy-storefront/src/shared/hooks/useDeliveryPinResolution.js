@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { buildPinnedDeliveryAddress, formatReverseGeocodedAddress } from '../../features/locations/utils/pinnedDeliveryAddress.js';
+import { buildPinnedDeliveryAddress, formatReverseGeocodedAddress, resolveDeliveryAddress } from '../../features/locations/utils/pinnedDeliveryAddress.js';
 import { trimAddressCountrySuffix } from '../model/storefrontCatalogModel.js';
 
 /**
@@ -64,10 +64,7 @@ export function useDeliveryPinResolution({
   const activeServiceLocationSummary = useMemo(() => (
     trimAddressCountrySuffix(
       deliveryLocationDisplayAddress
-      || resolvedDeliveryAddress
-      || customerAddress
-      || buildPinnedDeliveryAddress(customerPin)
-      || ''
+      || resolveDeliveryAddress({ customerAddress, resolvedDeliveryAddress, customerPin })
     )
   ), [customerAddress, customerPin, deliveryLocationDisplayAddress, resolvedDeliveryAddress]);
 

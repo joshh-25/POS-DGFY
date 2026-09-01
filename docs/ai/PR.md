@@ -20,8 +20,16 @@ must include the two headers the `changes` job in `.github/workflows/shared-chan
 - `## Testing Evidence` — how the change was tested
 
 Fill in whichever other template sections apply to the change (Architecture Impact,
-Compliance Evidence, Batch Inventory, etc.) — leave inapplicable ones as unchecked
+Compliance Evidence, Rollout And Safety, etc.) — leave inapplicable ones as unchecked
 boxes rather than deleting them.
+
+### Promotion PR body requirement
+
+A PR whose base branch is `staging` or `main` must include the template's `## Promotion Summary`
+table filled in — one row per item it bundles, each citing its source issue and/or PR, per the
+`Area | Change | Source` shape PR #510 and PR #545 already used by author habit before this was a
+rule (#554). Not required on an ordinary `develop`-based PR — leave the section out or mark it N/A
+there.
 
 ### Verified AI/model attribution
 

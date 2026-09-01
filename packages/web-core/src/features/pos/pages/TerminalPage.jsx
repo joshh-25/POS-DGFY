@@ -1,5 +1,6 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { isManualDeliveryJob } from '../components/orderFulfillmentUi.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   closeTerminalShift,
@@ -26,10 +27,14 @@ import {
   collectCashPickupOrder,
   collectCashDeliveryOrder,
   recordOrderBalancePayment,
+  uploadOrderBalancePaymentProof,
+  fetchOrderBalancePaymentProof,
   assignDeliveryPersonnel,
+  fetchActiveDeliveryPersonnel,
   updateDeliveryJobStatus,
   updateOnlineOrderStatus,
-  claimOnlineOrderReceiptAutoPrint
+  claimOnlineOrderReceiptAutoPrint,
+  updateOnlineOrderDeliveryAddress
 } from '../services/posService';
 import {
   login as loginWithCredentials,
@@ -644,12 +649,67 @@ export default function TerminalPage() {
     accessState: 'idle',
     errorMessage: ''
   });
-  const deliveryPersonnelState = {
+  // Phase 205 (#1080): lazily fetched -- and only once the incoming-orders queue actually
+  // renders a manual delivery job -- rather than on every terminal mount, since this is a
+  // Premium-gated request on a pane most operators never open.
+  const [deliveryPersonnelState, setDeliveryPersonnelState] = useState({
     loading: false,
+    loaded: false,
     personnel: [],
     accessState: 'not_required',
     errorMessage: ''
-  };
+  });
+
+  const deliveryPersonnelFetchStartedRef = useRef(false);
+  const ensureDeliveryPersonnelLoaded = useCallback(async () => {
+    if (deliveryPersonnelFetchStartedRef.current) return;
+    deliveryPersonnelFetchStartedRef.current = true;
+    setDeliveryPersonnelState((current) => ({ ...current, loading: true, accessState: 'loading' }));
+    try {
+      const payload = await fetchActiveDeliveryPersonnel();
+      setDeliveryPersonnelState({
+        loading: false,
+        loaded: true,
+        personnel: Array.isArray(payload?.delivery_personnel) ? payload.delivery_personnel : [],
+        accessState: 'allowed',
+        errorMessage: ''
+      });
+    } catch (error) {
+      const isForbidden = error?.response?.status === 403;
+      setDeliveryPersonnelState({
+        loading: false,
+        loaded: true,
+        personnel: [],
+        // A 403 degrades to free-text rather than surfacing as an error -- the picker is an
+        // optional enhancement, never a requirement (ADR 0034's 2026-08-12 amendment).
+        accessState: isForbidden ? 'forbidden' : 'error',
+        errorMessage: isForbidden ? '' : (error?.response?.data?.message || 'Failed to load delivery personnel.')
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Phase 205 (#1080) RF-3: DeliveryPersonnelManagementPanel already re-fetches and reports the
+  // full registry after every create/update/activation-toggle via onDeliveryPersonnelChanged --
+  // forward that straight into the picker's own state so an admin edit is reflected without a
+  // reload, instead of leaving the one-shot ensureDeliveryPersonnelLoaded() fetch stale.
+  const handleDeliveryPersonnelChanged = useCallback((personnelRows) => {
+    deliveryPersonnelFetchStartedRef.current = true;
+    setDeliveryPersonnelState({
+      loading: false,
+      loaded: true,
+      personnel: Array.isArray(personnelRows) ? personnelRows : [],
+      accessState: 'allowed',
+      errorMessage: ''
+    });
+  }, []);
+
+  useEffect(() => {
+    const orders = incomingOrdersState.orders;
+    if (!Array.isArray(orders) || orders.length === 0) return;
+    const hasManualDeliveryJob = orders.some((order) => isManualDeliveryJob(order?.deliveryJob || {}));
+    if (hasManualDeliveryJob) ensureDeliveryPersonnelLoaded();
+  }, [incomingOrdersState.orders, ensureDeliveryPersonnelLoaded]);
   const [adminLocationMonitorState, setAdminLocationMonitorState] = useState({
     loading: false,
     orders: [],
@@ -670,6 +730,12 @@ export default function TerminalPage() {
   const [balanceSettlementReference, setBalanceSettlementReference] = useState('');
   const [balanceSettlementConfirmed, setBalanceSettlementConfirmed] = useState(false);
   const [balanceSettlementSaving, setBalanceSettlementSaving] = useState(false);
+  // Phase 204 (#965): proof-of-payment capture state, reset alongside the rest of the dialog's
+  // state in handleOpenBalanceSettlement below so a previous order's file/error never carries
+  // over into a new settlement.
+  const [balanceProofFile, setBalanceProofFile] = useState(null);
+  const [balanceProofUploading, setBalanceProofUploading] = useState(false);
+  const [balanceProofError, setBalanceProofError] = useState('');
   const [receiptRequestId, setReceiptRequestId] = useState(null);
   const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);
   const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
@@ -5487,15 +5553,17 @@ export default function TerminalPage() {
     }
   };
 
-  const handleAssignDeliveryPersonnel = async (posTransactionId, deliveryPersonnelName) => {
+  const handleAssignDeliveryPersonnel = async (posTransactionId, { id: deliveryPersonnelId, name: deliveryPersonnelName } = {}) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before assigning delivery personnel.');
       return false;
     }
 
     const normalizedId = Number.parseInt(posTransactionId, 10);
+    const normalizedPersonnelId = Number.parseInt(deliveryPersonnelId, 10);
+    const hasPersonnelId = Number.isInteger(normalizedPersonnelId) && normalizedPersonnelId > 0;
     const normalizedName = String(deliveryPersonnelName || '').trim();
-    if (!Number.isInteger(normalizedId) || normalizedId <= 0 || !normalizedName) {
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0 || (!hasPersonnelId && !normalizedName)) {
       toast.error('Enter a delivery personnel name before assigning the order.');
       return false;
     }
@@ -5503,8 +5571,12 @@ export default function TerminalPage() {
     const actionKey = `delivery-assignment:${normalizedId}`;
     setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: actionKey }));
     try {
+      // Exactly one of these two is sent -- the server schema is `.or(...).oxor(...)` and
+      // 422s if both are present (Phase 205, #1080).
       await assignDeliveryPersonnel(normalizedId, {
-        delivery_personnel_name: normalizedName,
+        ...(hasPersonnelId
+          ? { delivery_personnel_id: normalizedPersonnelId }
+          : { delivery_personnel_name: normalizedName }),
         idempotency_key: createIdempotencyKey('pos-delivery-assignment')
       });
       toast.success('Delivery personnel assigned.');
@@ -5515,6 +5587,47 @@ export default function TerminalPage() {
         toast.error('The delivery assignment was not saved because the server connection was lost. Reconnect and try again.');
       } else {
         toast.error(error?.response?.data?.message || 'Failed to assign delivery personnel.');
+      }
+      return false;
+    } finally {
+      setIncomingOrderActionState((prev) => {
+        const next = { ...prev };
+        delete next[normalizedId];
+        return next;
+      });
+    }
+  };
+
+  // Phase 210 (#1179). Staff-only post-placement delivery address/pin edit. Same shape as
+  // handleAssignDeliveryPersonnel above: online guard -> id parse -> idempotency key -> call ->
+  // refresh -> toast, with the same retryable-error branch.
+  const handleUpdateOnlineOrderDeliveryAddress = async (posTransactionId, payload = {}) => {
+    if (!isOnline) {
+      toast.error('Reconnect to the internet before editing a delivery address.');
+      return false;
+    }
+
+    const normalizedId = Number.parseInt(posTransactionId, 10);
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
+      toast.error('Invalid order reference.');
+      return false;
+    }
+
+    const actionKey = `delivery-address-edit:${normalizedId}`;
+    setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: actionKey }));
+    try {
+      await updateOnlineOrderDeliveryAddress(normalizedId, {
+        ...payload,
+        idempotency_key: createIdempotencyKey('pos-order-address')
+      });
+      toast.success('Delivery address updated.');
+      await refreshIncomingOrders({ silent: true });
+      return true;
+    } catch (error) {
+      if (isRetryableTerminalOperationError(error)) {
+        toast.error('The delivery address was not saved because the server connection was lost. Reconnect and try again.');
+      } else {
+        toast.error(error?.response?.data?.message || 'Failed to update the delivery address.');
       }
       return false;
     } finally {
@@ -5587,6 +5700,9 @@ export default function TerminalPage() {
     setBalanceSettlementCashInput(order?.balance_due == null ? '' : String(order.balance_due));
     setBalanceSettlementReference('');
     setBalanceSettlementConfirmed(false);
+    setBalanceProofFile(null);
+    setBalanceProofUploading(false);
+    setBalanceProofError('');
   };
 
   const handleSettleBalance = async () => {
@@ -5616,7 +5732,7 @@ export default function TerminalPage() {
     setBalanceSettlementSaving(true);
     try {
       const reference = String(balanceSettlementReference || '').trim();
-      await recordOrderBalancePayment(orderId, {
+      const settlement = await recordOrderBalancePayment(orderId, {
         terminal_id: terminalId,
         payment_method: balanceSettlementMethod,
         ...(isCashSettlement
@@ -5625,6 +5741,23 @@ export default function TerminalPage() {
         ...(reference ? { payment_reference: reference } : {}),
         idempotency_key: createIdempotencyKey('pos-order-balance')
       });
+      // Phase 204 (#965): sequenced strictly AFTER the settlement resolves, and only if staff
+      // chose to attach a file. The balance is already settled and correct without it -- a
+      // proof-upload failure is a warning toast, never a thrown error and never a rollback, so it
+      // cannot threaten the settlement's own idempotent replay (posUseCases.js hashPayload).
+      const settledPaymentId = settlement?.settlement?.pos_order_payment_id;
+      if (balanceProofFile && settledPaymentId) {
+        setBalanceProofUploading(true);
+        try {
+          await uploadOrderBalancePaymentProof(orderId, settledPaymentId, balanceProofFile, { terminal_id: terminalId });
+        } catch (proofError) {
+          const message = proofError?.response?.data?.message || 'Balance recorded, but the proof photo could not be uploaded.';
+          setBalanceProofError(message);
+          toast.message(message);
+        } finally {
+          setBalanceProofUploading(false);
+        }
+      }
       try {
         await printOnlineOrderReceiptById(orderId, { automatic: true });
       } catch (printError) {
@@ -5638,6 +5771,34 @@ export default function TerminalPage() {
     } finally {
       setBalanceSettlementSaving(false);
     }
+  };
+
+  // Phase 204 (#965): the "View proof" affordance -- the smallest place the settled payment is
+  // already displayed (the incoming-orders queue card), not a full evidence-browser UI. The POS
+  // app authenticates with a Bearer header, not a cookie, so a plain <img src> would 401; this
+  // fetches the blob and hands the viewer an object URL, revoked on close.
+  const [balanceProofViewerUrl, setBalanceProofViewerUrl] = useState(null);
+  const [balanceProofViewerLoading, setBalanceProofViewerLoading] = useState(false);
+  const handleViewBalancePaymentProof = async (order) => {
+    const orderId = Number.parseInt(order?.pos_transaction_id, 10);
+    const paymentId = Number.parseInt(order?.balance_payment_id, 10);
+    if (!Number.isInteger(orderId) || !Number.isInteger(paymentId)) {
+      toast.error('No proof of payment is available for this order.');
+      return;
+    }
+    setBalanceProofViewerLoading(true);
+    try {
+      const url = await fetchOrderBalancePaymentProof(orderId, paymentId);
+      setBalanceProofViewerUrl(url);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to load the proof of payment for this order.');
+    } finally {
+      setBalanceProofViewerLoading(false);
+    }
+  };
+  const handleCloseBalancePaymentProofViewer = () => {
+    if (balanceProofViewerUrl) URL.revokeObjectURL(balanceProofViewerUrl);
+    setBalanceProofViewerUrl(null);
   };
 
   const handleOpenIncomingOrderReceipt = async (posTransactionId, {
@@ -6265,7 +6426,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || balanceSettlementOrder || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -6280,6 +6441,11 @@ function PosRestorationLoadingScreen() {
               balanceSettlementOrder,
               balanceSettlementReference,
               balanceSettlementSaving,
+              balanceProofFile,
+              balanceProofUploading,
+              balanceProofError,
+              balanceProofViewerUrl,
+              balanceProofViewerLoading,
               canAdminBypassShiftPrompt,
               canOpenShift,
               canSubmitOpenShift,
@@ -6355,6 +6521,8 @@ function PosRestorationLoadingScreen() {
               setBalanceSettlementMethod,
               setBalanceSettlementOrder,
               setBalanceSettlementReference,
+              setBalanceProofFile,
+              handleCloseBalancePaymentProofViewer,
               setCashCollectionOrder,
               setCashReceivedInput,
               setCashierResumeForm,
@@ -6524,9 +6692,13 @@ function PosRestorationLoadingScreen() {
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
           handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
+          handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
           deliveryPersonnelState={deliveryPersonnelState}
+          onDeliveryPersonnelChanged={handleDeliveryPersonnelChanged}
+          ensureDeliveryPersonnelLoaded={ensureDeliveryPersonnelLoaded}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenBalanceSettlement={handleOpenBalanceSettlement}
+          handleViewBalancePaymentProof={handleViewBalancePaymentProof}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}

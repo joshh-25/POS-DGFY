@@ -8,16 +8,21 @@ import {
     getAffiliateSettings,
     inviteAffiliate,
     listAffiliateCashouts,
+    listAffiliateEnrollmentStatusEvents,
     listAffiliateInvites,
     listAffiliates,
     markAffiliateCashoutPaid,
     provisionAffiliate,
+    reactivateAffiliateEnrollment,
     rejectAffiliateCashout,
     updateAffiliateEnrollment,
     updateAffiliateSettings,
     listAffiliatePriceRules,
     upsertAffiliatePriceRule,
-    deactivateAffiliatePriceRule
+    deactivateAffiliatePriceRule,
+    listAffiliateCategoryRates,
+    upsertAffiliateCategoryRate,
+    deactivateAffiliateCategoryRate
 } from '../modules/dgfy/controllers/dgfyAffiliateHandlers.js';
 
 const router = express.Router();
@@ -70,11 +75,28 @@ router.patch(
     checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATES),
     updateAffiliateEnrollment
 );
+// #1191 (Phase 207) - the only path that may perform a `suspended|revoked -> active` transition.
+// The PATCH above explicitly rejects `status: 'active'`; this endpoint is where the
+// max_affiliate_slots cap check (#1177, Phase 198) actually runs.
+router.post(
+    '/affiliates/:enrollment_id/reactivate',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATES),
+    reactivateAffiliateEnrollment
+);
 router.get(
     '/affiliates/:enrollment_id/qr',
     authenticate,
     checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
     getAffiliateQrPayload
+);
+// #1202 (Phase 214) - status-transition history (J7). Read permission, matching /qr above - not
+// MANAGE_AFFILIATES. Merchant-only surface; no affiliate-facing equivalent exists (J2).
+router.get(
+    '/affiliates/:enrollment_id/status-events',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
+    listAffiliateEnrollmentStatusEvents
 );
 // Phase 1 affiliate pricing rule engine (see
 // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). Selling-price rule only -
@@ -96,6 +118,26 @@ router.delete(
     authenticate,
     checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATE_SETTINGS),
     deactivateAffiliatePriceRule
+);
+// #448 (Phase 209) - the category tier of the commission rate ladder. Inserted immediately after
+// the price-rules block, same authenticate + checkPermission pairs.
+router.get(
+    '/category-rates',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
+    listAffiliateCategoryRates
+);
+router.put(
+    '/category-rates',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATE_SETTINGS),
+    upsertAffiliateCategoryRate
+);
+router.delete(
+    '/category-rates/:category_rate_id',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATE_SETTINGS),
+    deactivateAffiliateCategoryRate
 );
 router.get(
     '/cashouts',

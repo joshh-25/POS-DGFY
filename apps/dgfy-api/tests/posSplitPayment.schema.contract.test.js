@@ -48,12 +48,15 @@ describe('split payment schema contract', () => {
             'cancelled',
             'reversed'
         ]);
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085).
         expect(defaultDb.PosPaymentAllocation.rawAttributes.payment_method.values).toEqual([
             'cash',
             'gcash',
             'maya',
             'card',
-            'bank_transfer'
+            'bank_transfer',
+            'cheque'
         ]);
         expect(defaultDb.PosPaymentAllocation.rawAttributes.cash_tendered.allowNull).toBe(true);
         expect(defaultDb.PosPaymentAllocation.rawAttributes.change_amount.allowNull).toBe(true);

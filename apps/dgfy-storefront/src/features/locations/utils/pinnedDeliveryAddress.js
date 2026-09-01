@@ -9,6 +9,32 @@ export function isGeneratedPinnedDeliveryAddress(value = '') {
   return /^Pinned map location\s*\(/i.test(String(value || '').trim());
 }
 
+/**
+ * #1219: an explicit customer edit outranks anything the map produced.
+ * `customerAddress` wins when it is non-empty AND is not itself the
+ * auto-generated "Pinned map location (lat, lng)" fallback -- otherwise the
+ * reverse-geocoded value, then the raw pin coordinates, then ''.
+ * Before this existed the chain was `resolved || customer || pin`, which
+ * discarded every edit made after a pin was geocoded.
+ */
+export function resolveDeliveryAddress({
+  customerAddress = '',
+  resolvedDeliveryAddress = '',
+  customerPin = null
+} = {}) {
+  const typed = String(customerAddress || '').trim();
+  if (typed && !isGeneratedPinnedDeliveryAddress(typed)) return typed;
+  const geocoded = String(resolvedDeliveryAddress || '').trim();
+  if (geocoded) return geocoded;
+  return buildPinnedDeliveryAddress(customerPin) || '';
+}
+
+export function hasExplicitDeliveryAddressEdit(customerAddress = '', comparedTo = '') {
+  const typed = String(customerAddress || '').trim();
+  if (!typed || isGeneratedPinnedDeliveryAddress(typed)) return false;
+  return typed !== String(comparedTo || '').trim();
+}
+
 export function normalizeCoordinatePair({ latitude, longitude } = {}) {
   if (latitude == null || longitude == null || latitude === '' || longitude === '') return null;
   const parsedLatitude = Number(latitude);

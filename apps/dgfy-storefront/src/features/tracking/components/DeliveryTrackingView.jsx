@@ -29,6 +29,15 @@ const getTimelineIndex = (status) => {
     case 'placed': return 0;
     case 'confirmed': return 1;
     case 'preparing': return 2;
+    // Phase 211 (#1180). This component's own `steps` array (below) has no dedicated "Packed"
+    // label -- unlike retailTrackingAdapter.js/RetailTrackingActiveView.jsx, which do render one --
+    // and this component currently has no render site anywhere in the app (confirmed: no import
+    // outside its own file). Rather than invent a step here or let an unhandled status fall to
+    // `default: return 0` (which would visually REWIND the timeline to "placed" -- a real
+    // regression), `packed` is mapped to the same index as its predecessor `preparing`: an order
+    // that is packed but not yet out for delivery is accurately still "at the preparing step" from
+    // this timeline's point of view.
+    case 'packed': return 2;
     case 'ready':
     case 'out_for_delivery': return 3;
     case 'completed':

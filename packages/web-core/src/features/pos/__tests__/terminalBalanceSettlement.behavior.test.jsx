@@ -141,10 +141,10 @@ describe('POS balance settlement action (Phase 148, #825)', () => {
     expect(screen.getByRole('button', { name: /record payment/i }).disabled).toBe(false);
   });
 
-  it('offers every merchant-owned method ADR 0063 clause 4 authorizes', () => {
+  it('offers every merchant-owned method ADR 0063 clause 4 (as scoped-superseded by ADR 0077) authorizes', () => {
     renderDialog();
 
-    ['Cash', 'GCash', 'Maya', 'Card terminal', 'Bank transfer'].forEach((label) => {
+    ['Cash', 'GCash', 'Maya', 'Card terminal', 'Bank transfer', 'Cheque'].forEach((label) => {
       expect(screen.getByLabelText(label)).toBeTruthy();
     });
   });
@@ -155,7 +155,38 @@ describe('POS balance settlement action (Phase 148, #825)', () => {
     // the copy must not let staff believe otherwise.
     renderDialog({ method: 'gcash' });
 
+    // Phase 204 (#965) added a second "...not proof that DGFY verified the payment" note (the
+    // proof-capture field, alongside this one for the reference field), so the loose regex below
+    // now matches two elements and throws -- only surfaced once this suite was actually executed,
+    // not just syntax-checked (PR #1210's RF-2). Match this note's exact text instead.
     expect(screen.getByText(/not verified by DGFY/i)).toBeTruthy();
-    expect(screen.getByText(/not proof that DGFY verified the payment/i)).toBeTruthy();
+    expect(screen.getByText('An audit aid only. It is not proof that DGFY verified the payment.')).toBeTruthy();
+  });
+
+  // Phase 202 (#1085): ADR 0077 scoped-supersedes ADR 0063 clause 4 to add `cheque` as a sixth
+  // balance-settlement method. Cheque falls on the existing non-cash branch by construction --
+  // these pin its method-aware copy, not a new code path.
+  it('shows a cheque-number label and presented-not-cleared copy when cheque is selected', () => {
+    renderDialog({ method: 'cheque' });
+
+    expect(screen.getByLabelText(/cheque number/i)).toBeTruthy();
+    expect(screen.getByText(/presented bearing this number/i)).toBeTruthy();
+    expect(screen.getByText(/not that it will clear/i)).toBeTruthy();
+  });
+
+  it('fails closed on cheque until the store attests it received the cheque', () => {
+    const { unmount } = renderDialog({ method: 'cheque', confirmed: false });
+    expect(screen.getByRole('button', { name: /record payment/i }).disabled).toBe(true);
+    unmount();
+
+    renderDialog({ method: 'cheque', confirmed: true });
+    expect(screen.getByRole('button', { name: /record payment/i }).disabled).toBe(false);
+  });
+
+  it('states the cheque attestation copy as receiving a cheque, not an account transfer', () => {
+    renderDialog({ method: 'cheque' });
+
+    expect(screen.getByText(/received a cheque for/i)).toBeTruthy();
+    expect(screen.getByText(/not confirmation that the cheque has cleared/i)).toBeTruthy();
   });
 });

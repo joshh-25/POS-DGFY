@@ -16,6 +16,7 @@ import { resolveMovementLocation } from '../../inventory/index.js';
 import {
     accrueEarnedForInStoreSale,
     resolveActiveAffiliateEnrollment,
+    resolveActiveAffiliateEnrollmentById,
     reverseAffiliateCommissionForOrder,
     settleAffiliateCommissionForOrder
 } from '../../dgfy/utils/affiliateCommissionAccrual.js';
@@ -82,11 +83,12 @@ const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
 const FISCAL_DOCUMENT_TEMPLATE_VERSION = 'rmo-24-2023-prep-v1';
 const ORDER_METHODS = POS_ORDER_METHODS;
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
-const ONLINE_ORDER_SOURCE = 'online_store';
+export const ONLINE_ORDER_SOURCE = 'online_store';
 const ONLINE_FULFILLMENT_STATUSES = [
     'placed',
     'confirmed',
     'preparing',
+    'packed',
     'ready_for_pickup',
     'out_for_delivery',
     'completed',
@@ -95,14 +97,28 @@ const ONLINE_FULFILLMENT_STATUSES = [
 ];
 const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
     placed: ['confirmed', 'rejected'],
-    confirmed: ['preparing'],
-    preparing: ['ready_for_pickup', 'out_for_delivery'],
+    // Phase 210 (#1179). A merchant who has already accepted an order can still discover it is
+    // out-of-route and must be able to reject it with a reason. A store-initiated reject ALWAYS
+    // refunds (commerceOrderLifecycleUseCase.js:109-113, Phase 144/#824) -- widening this edge
+    // does not widen forfeiture.
+    confirmed: ['preparing', 'rejected'],
+    preparing: ['packed', 'ready_for_pickup', 'out_for_delivery'],
+    // Phase 211 (#1180). ADDITIVE and optional: `preparing` keeps both original onward edges, and
+    // `packed` offers exactly the same two. F&B gains no mandatory step; an order that never
+    // enters `packed` behaves identically to before this phase.
+    packed: ['ready_for_pickup', 'out_for_delivery'],
     ready_for_pickup: ['completed'],
     out_for_delivery: ['completed'],
     completed: [],
     cancelled: [],
     rejected: []
 });
+// Phase 210 (#1179). Pat's confirmed decision: a staff delivery-address/pin edit is restricted to
+// pre-dispatch statuses only. `out_for_delivery` is deliberately EXCLUDED -- once a delivery job has
+// been dispatched the driver already holds the original address, so a silent server-side edit could
+// diverge from what is physically in the driver's hand. Rejected the same way as a terminal state,
+// with the same 409.
+const DELIVERY_ADDRESS_EDITABLE_STATUSES = Object.freeze(['placed', 'confirmed', 'preparing']);
 const DELIVERY_JOB_STATUS_VALUES = Object.freeze([
     'pending_dispatch',
     'assigned',
@@ -131,16 +147,20 @@ const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
 const PERMISSION_SWITCH_LOCATION = 'pos:switch_location';
 const POS_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 const POS_CATALOG_BULK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+// Phase 204 (#965): mirrors uploadConfig.js's PAYMENT_PROOF_SOURCE_MAX_BYTES -- kept as a local
+// constant here rather than an import, matching this file's own convention for the catalog-image
+// limit above.
+const BALANCE_PROOF_SOURCE_MAX_BYTES = 15 * 1024 * 1024;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
 const SPECIAL_DISCOUNT_BENEFICIARY_TYPES = new Set(['senior', 'pwd', 'national_athlete']);
 const RECEIPT_CONTRACT_VERSION = '2026.04.08';
-const OPERATION_REPLAY_STATUS = Object.freeze({
+export const OPERATION_REPLAY_STATUS = Object.freeze({
     PROCESSED: 'processed',
     BLOCKED: 'blocked'
 });
-const POS_OPERATION_KEYS = Object.freeze({
+export const POS_OPERATION_KEYS = Object.freeze({
     SHIFT_OPEN: 'terminal.shift_open',
     SHIFT_SWITCH: 'terminal.shift_switch_location',
     CASH_EVENT: 'terminal.cash_event',
@@ -151,18 +171,35 @@ const POS_OPERATION_KEYS = Object.freeze({
     DELIVERY_CASH_COLLECTION: 'terminal.delivery_cash_collection',
     DELIVERY_JOB_ASSIGNMENT: 'terminal.delivery_job_assignment',
     DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update',
-    ORDER_BALANCE_SETTLEMENT: 'terminal.order_balance_settlement'
+    ORDER_BALANCE_SETTLEMENT: 'terminal.order_balance_settlement',
+    ORDER_DELIVERY_ADDRESS_UPDATE: 'terminal.order_delivery_address_update',
+    // Phase 225 (#1273/#1081): delivery run membership/personnel mutations. Distinct operation
+    // keys from DELIVERY_JOB_ASSIGNMENT because these are batch/run-scoped idempotency fingerprints,
+    // not per-job ones.
+    DELIVERY_RUN_MEMBERSHIP: 'terminal.delivery_run_membership',
+    DELIVERY_RUN_PERSONNEL: 'terminal.delivery_run_personnel',
+    // Phase 228 (#1273/#1271): run-scoped, not per-order -- hashed on { delivery_run_id } only, so
+    // a legitimate retry with a different (e.g. one member removed) member set still replays
+    // correctly. See buildDispatchDeliveryRunUseCase's own idempotency comment for the full
+    // two-layer design (durable replay + per-member ALREADY_DISPATCHED skip).
+    DELIVERY_RUN_DISPATCH: 'terminal.delivery_run_dispatch'
 });
 
 // Phase 148 (#825): the methods staff may record a downpayment order's remaining balance with.
-// This is ADR 0063 clause 4 [binding]'s V1 set verbatim -- cash plus the four store-owned digital
+// This was ADR 0063 clause 4 [binding]'s V1 set verbatim -- cash plus the four store-owned digital
 // tenders it classifies as `merchant_owned`. #825's own scope line named only "cash + gcash"; that
 // reads as an example rather than an exhaustive list, since clause 5 (what an attestation must
 // persist) and clause 6 (explicit confirmation) already govern all four identically and nothing
 // per-method has to be invented. `card` here is a store-owned card terminal, never PayMongo card --
 // no balance leg ever touches a provider (ADR 0069 clause 2 [binding], carried forward verbatim by
 // ADR 0070; ADR 0063 clause 12 [binding]).
-const BALANCE_SETTLEMENT_METHODS = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer']);
+//
+// Phase 202 (#1085) adds `cheque` as a sixth method. ADR 0063 clause 4 is `[binding]`, so widening
+// it took a scoped-supersession ADR rather than an amendment: ADR 0077 supersedes clause 4 only,
+// replacing the V1 five-tender enumeration with this six-tender set; every other clause of ADR 0063
+// is unaffected. Cheque is merchant-owned by construction (no branch added below), and its number
+// is `payment_reference` under this method -- no new column.
+const BALANCE_SETTLEMENT_METHODS = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque']);
 const BALANCE_SETTLEMENT_HANDOVER_STATUS_BY_METHOD = Object.freeze({
     pickup: 'ready_for_pickup',
     delivery: 'out_for_delivery'
@@ -227,7 +264,7 @@ const assertPosComplianceAllowed = async ({ operation, context = {}, settings = 
     return result.data.decision;
 };
 
-const parsePositiveInt = (value) => {
+export const parsePositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
     if (!Number.isInteger(normalized) || normalized <= 0) return null;
     return normalized;
@@ -408,7 +445,7 @@ const stableStringify = (value) => {
     return JSON.stringify(value);
 };
 
-const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
+export const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
 
 const settingString = (settings = {}, key) => String(settings?.[key]?.value ?? '').trim();
 
@@ -420,7 +457,7 @@ const settingBoolean = (settings = {}, key) => {
     return ['1', 'true', 'yes', 'on'].includes(normalized);
 };
 
-const normalizeOptionalIdempotencyKey = (value) => {
+export const normalizeOptionalIdempotencyKey = (value) => {
     const normalized = String(value || '').trim();
     return normalized.length >= 8 ? normalized : null;
 };
@@ -439,7 +476,7 @@ const buildOperationReplayConflictError = () => new DomainError(
     }
 );
 
-const serializeReplayFailure = (error) => ({
+export const serializeReplayFailure = (error) => ({
     message: error?.message || 'Operation blocked',
     error_code: error?.code || DomainErrorCode.VALIDATION_FAILED,
     status_code: Number.parseInt(error?.statusCode || 422, 10) || 422,
@@ -461,7 +498,7 @@ const buildReplayBlockedError = (payload = {}) => new DomainError(
     }
 );
 
-const findOperationReplayEntry = async ({
+export const findOperationReplayEntry = async ({
     posRepository,
     operationKey,
     idempotencyKey,
@@ -503,7 +540,7 @@ const findOperationReplayEntry = async ({
     };
 };
 
-const persistOperationReplay = async ({
+export const persistOperationReplay = async ({
     posRepository,
     operationKey,
     idempotencyKey,
@@ -567,7 +604,7 @@ const buildBusinessDateRange = (dateInput) => {
     };
 };
 
-const toSerializable = (value) => (
+export const toSerializable = (value) => (
     value && typeof value.toJSON === 'function'
         ? value.toJSON()
         : value
@@ -1251,7 +1288,7 @@ const resolvePosReadLocationScope = async ({
     };
 };
 
-const resolvePosOperationalLocationScope = async ({
+export const resolvePosOperationalLocationScope = async ({
     requestedLocationId = null,
     userId = null,
     transaction = null,
@@ -1348,12 +1385,16 @@ const enforceTerminalHomeLocationPolicy = ({
     return normalizedTargetLocationId;
 };
 
-const normalizeOnlineFulfillmentStatus = (value) => {
+// Phase 228 (#1273/#1271): exported (no behavior change) so
+// buildDispatchDeliveryRunUseCase (deliveryRunUseCases.js) can reuse the same per-order
+// fulfillment-status guard chain the per-order online-order status endpoint uses, rather than
+// forking a second copy of ONLINE_FULFILLMENT_TRANSITIONS.
+export const normalizeOnlineFulfillmentStatus = (value) => {
     const status = String(value || '').trim();
     return ONLINE_FULFILLMENT_STATUSES.includes(status) ? status : null;
 };
 
-const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod }) => {
+export const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod }) => {
     if (currentStatus === nextStatus) {
         return;
     }
@@ -1815,7 +1856,7 @@ export const buildGetPairedPosTerminalUseCase = ({
     };
 };
 
-const assertOpenShiftForPosMutation = async ({
+export const assertOpenShiftForPosMutation = async ({
     posRepository,
     cashierId,
     shiftId = null,
@@ -1890,7 +1931,9 @@ const assertOpenShiftForPosMutation = async ({
     return toSerializable(shift);
 };
 
-const buildOnlineOrderShiftAttributionPayload = ({ order = {}, activeShift = {} } = {}) => {
+// Phase 228 (#1273/#1271): exported (no behavior change) -- see normalizeOnlineFulfillmentStatus's
+// own comment above for why.
+export const buildOnlineOrderShiftAttributionPayload = ({ order = {}, activeShift = {} } = {}) => {
     const activeShiftId = parsePositiveInt(activeShift?.pos_terminal_shift_id);
     if (parsePositiveInt(order?.shift_id) || !activeShiftId) return {};
 
@@ -3407,6 +3450,11 @@ export const buildCheckoutPosUseCase = ({
                 preparedLines.push({
                     line_ref: String(line.line_ref || '').trim() || null,
                     item_id: item.item_id,
+                    // #448 (Phase 209) - snapshotted so post-commit affiliate accrual can resolve
+                    // a per-category commission rate without re-querying the item. Nullable:
+                    // an uncategorized item matches no category rate and falls to the tenant
+                    // default, which is correct, not an error.
+                    folder_id_snapshot: Number.isInteger(item.folder_id) ? item.folder_id : null,
                     item_name: item.name,
                     item_name_snapshot: item.name || null,
                     sku_snapshot: item.sku_code || null,
@@ -4372,13 +4420,51 @@ export const buildCheckoutPosUseCase = ({
             // the sale that already succeeded - mirrors recordDgfyOrderActivity's convention.
             if (affiliateEnrollment) {
                 try {
-                    await accrueEarnedForInStoreSale({
+                    // #1199 (Phase 220, decided 2026-08-31): re-verify the enrollment against the
+                    // database at commit time rather than trusting the pre-commit resolve above.
+                    // affiliateEnrollment is a snapshot taken before the transaction ran; a checkout
+                    // can span real work in between (inventory movements, discount approval, the
+                    // commit itself), and if the affiliate was revoked/suspended - or the tenant's
+                    // program disabled - inside that window, the cached object is stale. This is
+                    // the same by-id re-verify Phase 206 (#450 D2) already applies on the storefront
+                    // checkout path, extended to in-store. Plain, non-locking read on the default
+                    // connection - no lock, no FOR UPDATE, no transaction handle needed or wanted
+                    // here (accrual is already idempotent on (tenant_id, order_reference)).
+                    const verifiedEnrollment = await resolveActiveAffiliateEnrollmentById({
                         tenantId,
-                        enrollment: affiliateEnrollment,
-                        orderReference: String(posTransactionId),
-                        posTransactionId,
-                        commissionableBaseCentavos: Math.max(0, toCurrencyCents(subtotalAmount) - toCurrencyCents(discountAmount))
+                        enrollmentId: affiliateEnrollment.enrollment_id
                     });
+                    if (verifiedEnrollment) {
+                        await accrueEarnedForInStoreSale({
+                            tenantId,
+                            enrollment: verifiedEnrollment,
+                            orderReference: String(posTransactionId),
+                            posTransactionId,
+                            commissionableBaseCentavos: Math.max(0, toCurrencyCents(subtotalAmount) - toCurrencyCents(discountAmount)),
+                            // #448 (Phase 209): per-line weights ONLY - the commissionable base above is
+                            // unchanged and stays the single source of the total. line_subtotal here is
+                            // already discount-allocated (see the rewrite ~:3877) but its SUM is
+                            // netItemsTotal, which subtracts vat_removed on the governed senior/PWD
+                            // branch - so these are relative weights, never absolute bases.
+                            commissionLines: preparedLines.map((line) => ({
+                                folderId: line.folder_id_snapshot ?? null,
+                                weightCentavos: Math.max(0, toCurrencyCents(line.line_subtotal))
+                            }))
+                        });
+                    } else {
+                        // In-flight attribution drop (#1199 D2, mirroring #450 D2 on storefront):
+                        // the entry-time 422 gate (~:2984) already hard-rejects an unresolvable code
+                        // before any write, so on POS - unlike storefront - a null re-check here is
+                        // always the in-flight case, never an already-stale one. A bare else, not
+                        // else-if. The sale stands; only the commission is withheld. Logged (never
+                        // thrown) so the drop is attributable later - same non-blocking convention
+                        // as the catch block below.
+                        logger.warn('[PosUseCases] Affiliate attribution dropped: enrollment inactive at commit', {
+                            tenantId,
+                            posTransactionId,
+                            enrollment_id: affiliateEnrollment.enrollment_id
+                        });
+                    }
                 } catch (accrualError) {
                     logger.warn('[PosUseCases] Failed to accrue affiliate commission for in-store sale', {
                         tenantId,
@@ -8486,15 +8572,24 @@ export const buildListIncomingOnlineOrdersUseCase = ({
             const printStatuses = typeof posRepository?.getReceiptPrintStatuses === 'function'
                 ? await posRepository.getReceiptPrintStatuses(orders.map((order) => order?.pos_transaction_id))
                 : {};
+            // Phase 204 (#965): "View proof" affordance data for the queue card. Batched the same
+            // way as printStatuses above -- one query for the whole page, not N+1 per order.
+            const proofStatuses = typeof posRepository?.getBalancePaymentProofStatuses === 'function'
+                ? await posRepository.getBalancePaymentProofStatuses(orders.map((order) => order?.pos_transaction_id))
+                : {};
             return ok({
                 orders: orders.map((order) => {
                     const serialized = toSerializable(order);
                     const status = printStatuses?.[serialized?.pos_transaction_id];
+                    const proofStatus = proofStatuses?.[serialized?.pos_transaction_id];
                     return {
                         ...serialized,
                         receipt_print_status: status?.status || 'pending',
                         receipt_printed_at: status?.printed_at || null,
-                        receipt_print_failure_reason: status?.reason_code || null
+                        receipt_print_failure_reason: status?.reason_code || null,
+                        // Never proof_file_path itself -- a storage key is not a URL (section 5.4).
+                        has_payment_proof: proofStatus?.has_payment_proof === true,
+                        balance_payment_id: proofStatus?.pos_order_payment_id || null
                     };
                 })
             });
@@ -9160,6 +9255,193 @@ export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
     };
 };
 
+// Phase 204 (#965): attaches a proof-of-payment image to an already-recorded 'balance' ledger
+// row. Deliberately a SEPARATE route/use case from buildRecordOrderBalancePaymentUseCase above,
+// not a fold-in -- so hashPayload's replay fingerprint (POS_OPERATION_KEYS.ORDER_BALANCE_
+// SETTLEMENT) stays untouched by construction, and so a binary payload never has to travel
+// through JSON body validation. Attach-once: a second attempt on a payment that already has a
+// proof fails closed with 409 rather than silently replacing evidence (ADR 0063 clause 10
+// [binding]'s append-only posture, restated by the Amendments block this phase adds).
+export const buildAttachOrderBalancePaymentProofUseCase = ({ posRepository, proofStorage }) => {
+    return async ({ posTransactionId, paymentId, file, user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const normalizedPaymentId = parsePositiveInt(paymentId);
+        const cashierId = parsePositiveInt(user?.user_id);
+
+        const cleanupTempFile = async () => {
+            if (file?.path) {
+                try {
+                    await fs.unlink(file.path);
+                } catch {
+                    // ignore cleanup errors for temp uploads
+                }
+            }
+        };
+
+        if (!orderId || !normalizedPaymentId || !cashierId) {
+            await cleanupTempFile();
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A valid order, payment, and authenticated user are required.',
+                { statusCode: 422 }
+            ));
+        }
+        if (!file) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A proof image file is required.',
+                { statusCode: 422 }
+            ));
+        }
+
+        let transaction = null;
+        let storedProof = null;
+        try {
+            const fileValidation = await validateImageUploadFile({
+                file,
+                maxBytes: BALANCE_PROOF_SOURCE_MAX_BYTES
+            });
+            if (!fileValidation.ok) {
+                logger.warn('[PosUseCases] Rejected balance-payment proof upload due to file validation failure', {
+                    event_type: 'security_signal',
+                    signal_code: 'balance_payment_proof_upload_rejected',
+                    reason: fileValidation.reason,
+                    reported_mime: String(file?.mimetype || '').trim().toLowerCase() || null
+                });
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Only a valid image file may be attached as proof of payment.',
+                    { statusCode: 422, details: { reason_code: 'BALANCE_PROOF_IMAGE_REJECTED', reason: fileValidation.reason } }
+                );
+            }
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online order not found.', { statusCode: 404 });
+            }
+
+            // The ownership check: a payment_id from another order (or of any kind other than
+            // 'balance') simply does not resolve here -- stops a caller attaching evidence to
+            // another order's ledger row.
+            const paymentEntry = await posRepository.findOrderPaymentEntryById(normalizedPaymentId, { transaction, lock: true });
+            if (
+                !paymentEntry
+                || parsePositiveInt(paymentEntry.pos_transaction_id) !== orderId
+                || paymentEntry.kind !== 'balance'
+            ) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Balance payment not found for this order.', { statusCode: 404 });
+            }
+
+            if (paymentEntry.proof_file_path) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'A proof image has already been attached to this payment.',
+                    { statusCode: 409, details: { reason_code: 'BALANCE_PROOF_ALREADY_ATTACHED' } }
+                );
+            }
+
+            storedProof = await proofStorage.store({ orderId, tempPath: file.path });
+
+            const attachedAt = new Date();
+            const updated = await posRepository.updateOrderPaymentEntryProof(normalizedPaymentId, {
+                proof_file_path: storedProof.storage_key,
+                proof_mime_type: storedProof.mime_type,
+                proof_file_size_bytes: storedProof.size_bytes,
+                proof_sha256: storedProof.sha256,
+                proof_attached_at: attachedAt,
+                proof_attached_by: cashierId
+            }, { transaction });
+
+            // Never log the file bytes or a URL -- only the integrity fingerprint and size.
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'pos_transaction',
+                entity_id: orderId,
+                action: 'UPDATE',
+                changes: {
+                    event: 'order_balance_payment_proof_attached',
+                    pos_order_payment_id: normalizedPaymentId,
+                    mime_type: storedProof.mime_type,
+                    size_bytes: storedProof.size_bytes,
+                    sha256: storedProof.sha256,
+                    attached_at: attachedAt.toISOString()
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            await transaction.commit();
+            transaction = null;
+
+            return ok({
+                pos_order_payment_id: normalizedPaymentId,
+                has_payment_proof: true,
+                proof_mime_type: updated.proof_mime_type,
+                proof_file_size_bytes: updated.proof_file_size_bytes,
+                proof_attached_at: updated.proof_attached_at
+            });
+        } catch (error) {
+            // A rolled-back transaction must never orphan a PII file on disk.
+            if (transaction && !transaction.finished) await transaction.rollback();
+            if (storedProof) {
+                try {
+                    await proofStorage.remove(storedProof.storage_key);
+                } catch {
+                    // ignore cleanup errors for orphaned proof files
+                }
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to attach proof of payment for this balance settlement'));
+        } finally {
+            await cleanupTempFile();
+        }
+    };
+};
+
+// Phase 204 (#965): the authed-serving half. Tenant scoping is structural (dbStore, resolved by
+// tenantHandler before this ever runs) rather than a filter here -- see PHASE_204_PLAN.md
+// section 4. Returns 404, never 403, whether the row doesn't exist, belongs to another order, or
+// simply carries no proof -- the route must not leak which case it is.
+export const buildGetOrderBalancePaymentProofUseCase = ({ posRepository, proofStorage }) => {
+    return async ({ posTransactionId, paymentId } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const normalizedPaymentId = parsePositiveInt(paymentId);
+        if (!orderId || !normalizedPaymentId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A valid order and payment id are required.',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const paymentEntry = await posRepository.findOrderPaymentEntryById(normalizedPaymentId);
+            if (
+                !paymentEntry
+                || parsePositiveInt(paymentEntry.pos_transaction_id) !== orderId
+                || paymentEntry.kind !== 'balance'
+                || !paymentEntry.proof_file_path
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'No proof of payment is available for this balance settlement.',
+                    { statusCode: 404 }
+                );
+            }
+
+            return ok({
+                mime_type: paymentEntry.proof_mime_type,
+                size_bytes: paymentEntry.proof_file_size_bytes,
+                stream: proofStorage.createReadStream(paymentEntry.proof_file_path)
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to read the proof of payment for this balance settlement'));
+        }
+    };
+};
+
 export const buildListActiveDeliveryPersonnelUseCase = ({
     posRepository,
     resolveLocationScope = resolvePosReadLocationScope
@@ -9209,6 +9491,89 @@ export const buildListActiveDeliveryPersonnelUseCase = ({
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to list delivery personnel'));
         }
+    };
+};
+
+// Phase 225 (#1273/#1081): the write half of delivery-personnel assignment, extracted from
+// buildAssignDeliveryPersonnelUseCase below so the delivery-run write-through
+// (deliveryRunUseCases.js) can share it rather than authoring a second path that writes
+// delivery_personnel_id/_name/assigned_by/assigned_shift_id/assigned_at. This remains the ONLY
+// code in the repo that writes those fields. `advanceJobStatus: true` reproduces the original
+// per-order assignment endpoint's behavior byte-for-byte (job status advances to `assigned`);
+// `advanceJobStatus: false` is the run write-through path, which populates the assignment fields
+// while leaving delivery_jobs.status untouched (still `pending_dispatch`) -- see ADR 0034's
+// 2026-08-07 and 2026-08-31 amendments for why that split is governance-correct.
+export const applyDeliveryPersonnelAssignment = async ({
+    posRepository,
+    orderId,
+    deliveryJob,
+    personnel,
+    hasRegisteredPersonnel,
+    deliveryPersonnelName,
+    cashierId,
+    activeShift,
+    orderLocationId,
+    advanceJobStatus = false,
+    auditContext = {},
+    transaction
+}) => {
+    const hasThirdPartyPersonnel = !hasRegisteredPersonnel && Boolean(deliveryPersonnelName);
+    const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
+    const nextStatus = advanceJobStatus ? 'assigned' : currentStatus;
+    const assignedAt = new Date();
+
+    const updatedDeliveryJob = await posRepository.assignDeliveryPersonnelToJob(orderId, {
+        delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
+        delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
+        assigned_by: cashierId,
+        assigned_shift_id: activeShift.pos_terminal_shift_id,
+        assigned_at: assignedAt,
+        ...(advanceJobStatus ? { status: nextStatus } : {})
+    }, {
+        transaction,
+        lock: true
+    });
+    if (!updatedDeliveryJob) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'The delivery assignment could not be saved.',
+            {
+                statusCode: 409,
+                details: { reason_code: 'DELIVERY_ASSIGNMENT_UPDATE_FAILED' }
+            }
+        );
+    }
+
+    await posRepository.createAuditLog({
+        user_id: cashierId,
+        entity_type: 'delivery_job',
+        entity_id: parsePositiveInt(deliveryJob.delivery_job_id) || null,
+        action: 'UPDATE',
+        changes: {
+            event: 'delivery_personnel_assigned',
+            pos_transaction_id: orderId,
+            provider: deliveryJob.provider,
+            previous_status: currentStatus,
+            status: nextStatus,
+            previous_delivery_personnel_id: parsePositiveInt(deliveryJob.delivery_personnel_id) || null,
+            previous_delivery_personnel_name: String(deliveryJob.delivery_personnel_name || '').trim() || null,
+            delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
+            delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
+            assigned_by: cashierId,
+            assigned_shift_id: activeShift.pos_terminal_shift_id,
+            location_id: orderLocationId,
+            assigned_at: assignedAt.toISOString()
+        },
+        ip_address: auditContext.ipAddress || null,
+        user_agent: auditContext.userAgent || null
+    }, { transaction });
+
+    return {
+        updatedDeliveryJob,
+        assignedAt,
+        currentStatus,
+        nextStatus,
+        hasThirdPartyPersonnel
     };
 };
 
@@ -9406,53 +9771,25 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 };
             }
 
-            const assignedAt = new Date();
-            const nextStatus = 'assigned';
-            const updatedDeliveryJob = await posRepository.assignDeliveryPersonnelToJob(orderId, {
-                delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
-                delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
-                assigned_by: cashierId,
-                assigned_shift_id: activeShift.pos_terminal_shift_id,
-                assigned_at: assignedAt,
-                status: nextStatus
-            }, {
-                transaction,
-                lock: true
+            const {
+                updatedDeliveryJob,
+                assignedAt,
+                currentStatus: previousStatus,
+                nextStatus
+            } = await applyDeliveryPersonnelAssignment({
+                posRepository,
+                orderId,
+                deliveryJob,
+                personnel,
+                hasRegisteredPersonnel,
+                deliveryPersonnelName,
+                cashierId,
+                activeShift,
+                orderLocationId,
+                advanceJobStatus: true,
+                auditContext,
+                transaction
             });
-            if (!updatedDeliveryJob) {
-                throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    'The delivery assignment could not be saved.',
-                    {
-                        statusCode: 409,
-                        details: { reason_code: 'DELIVERY_ASSIGNMENT_UPDATE_FAILED' }
-                    }
-                );
-            }
-
-            await posRepository.createAuditLog({
-                user_id: cashierId,
-                entity_type: 'delivery_job',
-                entity_id: parsePositiveInt(deliveryJob.delivery_job_id) || null,
-                action: 'UPDATE',
-                changes: {
-                    event: 'delivery_personnel_assigned',
-                    pos_transaction_id: orderId,
-                    provider: deliveryJob.provider,
-                    previous_status: currentStatus,
-                    status: nextStatus,
-                    previous_delivery_personnel_id: parsePositiveInt(deliveryJob.delivery_personnel_id) || null,
-                    previous_delivery_personnel_name: String(deliveryJob.delivery_personnel_name || '').trim() || null,
-                    delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
-                    delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
-                    assigned_by: cashierId,
-                    assigned_shift_id: activeShift.pos_terminal_shift_id,
-                    location_id: orderLocationId,
-                    assigned_at: assignedAt.toISOString()
-                },
-                ip_address: auditContext.ipAddress || null,
-                user_agent: auditContext.userAgent || null
-            }, { transaction });
 
             const updatedOrder = {
                 ...order,
@@ -9468,7 +9805,7 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                     assigned_by: cashierId,
                     assigned_shift_id: activeShift.pos_terminal_shift_id,
                     assigned_at: assignedAt.toISOString(),
-                    outcome: currentStatus === nextStatus ? 'reassigned' : 'assigned'
+                    outcome: previousStatus === nextStatus ? 'reassigned' : 'assigned'
                 },
                 idempotency: {
                     key: idempotencyKey,
@@ -10034,9 +10371,31 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             if (!parsePositiveInt(existing.cashier_id)) {
                 updatePayload.cashier_id = actingUserId;
             }
+            // Phase 210 (#1179). Only the placed -> confirmed|rejected edge stamps accepted_by/at --
+            // a later confirmed -> rejected must NOT overwrite that pair, since it genuinely was
+            // accepted first. Leave this guard as-is; do not "fix" it to also fire on the reject edge.
             if (currentStatus === 'placed' && (targetStatus === 'confirmed' || targetStatus === 'rejected')) {
                 updatePayload.accepted_by = actingUserId;
                 updatePayload.accepted_at = mutationTimestamp;
+            }
+
+            if (targetStatus === 'rejected') {
+                updatePayload.rejection_reason = String(payload?.reason || '').trim().slice(0, 255) || null;
+                updatePayload.rejected_by = actingUserId;
+                updatePayload.rejected_at = mutationTimestamp;
+            }
+
+            // Phase 211 (#1180). Retail-only in the UI, additive in the state machine.
+            // PHASE_211_PLAN.md's own text assumed validateOnlineOrderTransition's
+            // currentStatus === nextStatus early-return would make a repeat packed -> packed PATCH
+            // a no-op here too -- investigated and found FALSE: that early-return only skips the
+            // allowed-transition check, it does not stop this block from running, so an
+            // unconditional `targetStatus === 'packed'` guard (matching the shape used for
+            // `rejected` above) WOULD restamp packed_at/packed_by on every repeat call. Guarded
+            // explicitly on `currentStatus !== targetStatus` instead -- confirmed by test.
+            if (currentStatus !== targetStatus && targetStatus === 'packed') {
+                updatePayload.packed_by = actingUserId;
+                updatePayload.packed_at = mutationTimestamp;
             }
 
             await posRepository.updateOrderById(normalizedTransactionId, updatePayload, {
@@ -10164,6 +10523,233 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 });
             }
             return fail(mapPosUseCaseError(error, 'Failed to update online order status'));
+        }
+    };
+};
+
+// Phase 210 (#1179). Staff-only post-placement delivery-address/pin edit. Pat's confirmed decision:
+// pre-dispatch only (DELIVERY_ADDRESS_EDITABLE_STATUSES) -- an order already out_for_delivery, or in
+// any terminal state, is rejected with a 409. No radius recomputation here: outside_radius_flag is
+// left at whatever it was set to at checkout -- re-enforcing the delivery radius on an address
+// change is #478's job, not this phase's; touching it here would silently change acceptance
+// behaviour for every existing order path.
+export const buildUpdateOnlineOrderDeliveryAddressUseCase = ({
+    posRepository,
+    activityRecorder = recordDgfyOrderActivity
+}) => {
+    return async ({ posTransactionId, payload, user }) => {
+        const normalizedTransactionId = parsePositiveInt(posTransactionId);
+        if (!normalizedTransactionId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'posTransactionId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        if (!isPlainObject(payload)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'payload must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const newAddress = String(payload?.delivery_address || '').trim();
+        if (!newAddress) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'delivery_address is required',
+                { statusCode: 422 }
+            ));
+        }
+        const hasLatitude = payload?.delivery_latitude !== undefined && payload?.delivery_latitude !== null;
+        const hasLongitude = payload?.delivery_longitude !== undefined && payload?.delivery_longitude !== null;
+        if (hasLatitude !== hasLongitude) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'delivery_latitude and delivery_longitude must be provided together',
+                { statusCode: 422 }
+            ));
+        }
+        const newLatitude = hasLatitude ? Number(payload.delivery_latitude) : null;
+        const newLongitude = hasLongitude ? Number(payload.delivery_longitude) : null;
+        const changeReason = String(payload?.change_reason || '').trim();
+        if (!changeReason) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'change_reason is required',
+                { statusCode: 422 }
+            ));
+        }
+
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const replayRequestHash = hashPayload({
+            pos_transaction_id: normalizedTransactionId,
+            delivery_address: newAddress,
+            delivery_latitude: newLatitude,
+            delivery_longitude: newLongitude,
+            change_reason: changeReason
+        });
+
+        const actingUserId = parsePositiveInt(user?.user_id);
+        if (!actingUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_DELIVERY_ADDRESS_UPDATE,
+                idempotencyKey,
+                requestHash: replayRequestHash
+            });
+            if (replay) {
+                return ok(replay);
+            }
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            const existing = await posRepository.getOrderByIdForLifecycle(normalizedTransactionId, {
+                transaction,
+                lock: true
+            });
+            if (!existing) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    `POS transaction not found: ${normalizedTransactionId}`,
+                    { statusCode: 404 }
+                );
+            }
+            if (existing.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Only online store orders can be updated through this endpoint',
+                    { statusCode: 409 }
+                );
+            }
+            if (existing.order_method !== 'delivery') {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Only delivery orders have a delivery address to edit',
+                    { statusCode: 422, details: { reason_code: 'ORDER_ADDRESS_EDIT_NOT_DELIVERY' } }
+                );
+            }
+            const currentStatus = normalizeOnlineFulfillmentStatus(existing.fulfillment_status);
+            if (!currentStatus || !DELIVERY_ADDRESS_EDITABLE_STATUSES.includes(currentStatus)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order can no longer have its delivery address edited',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'ORDER_ADDRESS_EDIT_TERMINAL_STATE',
+                            current_status: currentStatus,
+                            editable_statuses: DELIVERY_ADDRESS_EDITABLE_STATUSES
+                        }
+                    }
+                );
+            }
+
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId: actingUserId,
+                locationId: existing.location_id || null,
+                transaction,
+                lock: true
+            });
+            const mutationTimestamp = new Date();
+
+            await posRepository.createAddressChange({
+                posTransactionId: normalizedTransactionId,
+                previousAddress: existing.delivery_address || null,
+                previousLatitude: existing.delivery_latitude ?? null,
+                previousLongitude: existing.delivery_longitude ?? null,
+                newAddress,
+                newLatitude,
+                newLongitude,
+                changeReason,
+                changedBy: actingUserId,
+                changedByShiftId: parsePositiveInt(activeShift?.pos_terminal_shift_id) || null,
+                changedAt: mutationTimestamp
+            }, { transaction });
+
+            const updated = await posRepository.updateOrderById(normalizedTransactionId, {
+                delivery_address: newAddress,
+                delivery_latitude: newLatitude,
+                delivery_longitude: newLongitude
+                // outside_radius_flag is deliberately NOT recomputed here -- see #478.
+            }, { transaction, lock: true });
+
+            await transaction.commit();
+
+            const currentTenantId = dbStore.getStore()?.tenantId || null;
+            await activityRecorder({
+                tenantId: currentTenantId,
+                order: updated,
+                storeCustomer: updated?.storeCustomer || updated?.store_customer || null
+            }).catch((activityError) => {
+                logger.warn('Failed to sync DGFY order activity after POS delivery-address update', {
+                    pos_transaction_id: normalizedTransactionId,
+                    tracking_pin: updated?.tracking_pin || null,
+                    error: activityError?.message || activityError
+                });
+            });
+
+            const replayPayload = {
+                order: toSerializable(updated),
+                address_change: {
+                    previous_address: existing.delivery_address || null,
+                    previous_latitude: existing.delivery_latitude ?? null,
+                    previous_longitude: existing.delivery_longitude ?? null,
+                    new_address: newAddress,
+                    new_latitude: newLatitude,
+                    new_longitude: newLongitude,
+                    change_reason: changeReason,
+                    changed_by: actingUserId,
+                    changed_at: mutationTimestamp.toISOString()
+                },
+                idempotency: {
+                    key: idempotencyKey || null,
+                    request_fingerprint: replayRequestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_DELIVERY_ADDRESS_UPDATE,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload: replayPayload,
+                createdBy: actingUserId
+            });
+            return ok({
+                ...replayPayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            });
+        } catch (error) {
+            if (transaction && !transaction.finished) {
+                await transaction.rollback();
+            }
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.ORDER_DELIVERY_ADDRESS_UPDATE,
+                    idempotencyKey,
+                    requestHash: replayRequestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: actingUserId
+                });
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to update online order delivery address'));
         }
     };
 };

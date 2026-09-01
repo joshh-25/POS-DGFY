@@ -102,6 +102,18 @@ vi.mock('maplibre-gl', () => {
       resize: vi.fn(),
       remove: vi.fn(),
       getCanvas: vi.fn(() => ({ style: {} })),
+      // #475 RF-1: a real DOM node attached under the map's own container, not a
+      // detached stub -- StoresMap.jsx and DiscoveryHeroMapStage.jsx now portal
+      // their overlay controls (e.g. "Use current location") into whatever this
+      // returns via ReactDOM.createPortal, which needs an actual DOM node, and it
+      // has to be reachable from document.body for `screen.getByRole` etc. to see
+      // the portaled content the same way they'd see real MapLibre's canvas
+      // container (a real descendant of the map's mount point).
+      getCanvasContainer: vi.fn(() => {
+        const el = document.createElement('div');
+        options.container?.appendChild?.(el);
+        return el;
+      }),
       isStyleLoaded: vi.fn(() => true),
       addSource: vi.fn((id, source) => {
         sources.set(id, sourceApi(source));

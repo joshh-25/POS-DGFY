@@ -25,6 +25,14 @@ export const updateAffiliateEnrollment = async (enrollmentId, payload = {}) => {
     return response.data?.data?.enrollment || null;
 };
 
+// #1191 (Phase 207) - reactivation moved off PATCH /affiliates/:id onto its own endpoint, because
+// it is the only enrollment status change that consumes a max_affiliate_slots slot and so is the
+// only one that needs the server-side cap check. PATCH now 422s on `status: 'active'`.
+export const reactivateAffiliateEnrollment = async (enrollmentId) => {
+    const response = await api.post(`/affiliates/affiliates/${enrollmentId}/reactivate`);
+    return response.data?.data?.enrollment || null;
+};
+
 export const fetchAffiliateInvites = async (params = {}) => {
     const response = await api.get('/affiliates/invites', { params });
     return response.data?.data?.invites || [];
@@ -91,6 +99,7 @@ export default {
     fetchAffiliates,
     provisionAffiliate,
     updateAffiliateEnrollment,
+    reactivateAffiliateEnrollment,
     fetchAffiliateInvites,
     inviteAffiliate,
     cancelAffiliateInvite,

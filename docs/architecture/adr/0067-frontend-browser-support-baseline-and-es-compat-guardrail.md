@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: pos
 date: 2026-08-18
-last_reviewed: 2026-08-25
+last_reviewed: 2026-08-29
 review_by: 2027-02-18
 applies_to: architecture_decision
 topic: frontend_browser_support_baseline_and_es_compat_guardrail
@@ -240,3 +240,39 @@ sentence:
 
 Tracked as an open gap via issue #918, same as before — this amendment updates the *description* of
 the gap, not its status.
+
+### 2026-08-29 — `packages/web-core`'s gap is closed; `[default]` clause 5's exclusion list shrinks by one
+
+Issue #918's fix adds `packages/web-core/.eslintrc.json` — the same `env`/`extends`/`plugins`/
+`rules` block as the three apps' configs, with `parserOptions.ecmaVersion` raised to `2022` (the
+three apps stay at `12`/ES2021) purely to parse a pre-existing top-level `await` in one test file;
+that bump is local to web-core's own config and does not relax Layer 3's `no-restricted-syntax`
+deny list or touch the three apps' configs. Per ADR 0071 Decision 4 `[binding]`, `packages/web-core`
+still gets no `lint` script and no `devDependencies` of its own — coverage runs from
+`apps/dgfy-ims`'s already-installed ESLint via `--resolve-plugins-relative-to`, the same pattern
+web-core's test suite already used, wired into `frontend-ims-quality`'s job in
+`promotion-quality-gate.yml` (advisory, same as every other step in that job per #1063).
+
+- **Layer 3 now enforces on all three apps plus `packages/web-core`** — the shared trunk all three
+  apps actually ship is reachable by a CI-run ESLint invocation for the first time since the split.
+- **The 3 `react-hooks/rules-of-hooks` violations are fixed**: `Components/ai/ActionResultCard.jsx`
+  (a `React.useState` pair called after an early `if (!result) return null;`) and
+  `Components/jo/JODetailsModal.jsx` (a `useEffect` called after an early `if (!jo) return null;`) —
+  both fixed by moving the guard clause below every hook call, not by removing the guard.
+- **10 `react/no-unescaped-entities` errors fixed** (quote/apostrophe escaping, mechanical) and the
+  one parsing error (top-level `await`) fixed via the `ecmaVersion` bump above.
+- **10 findings explicitly deferred, not silently dropped** — all `react-hooks` diagnostics from the
+  same `7.0.1` `recommended` preset clause 5 already names as newly-enforced-elsewhere: 6
+  `set-state-in-effect`, 2 `refs` (a shadcn/radix `Components/ui/dropdown-menu.jsx` primitive), 1
+  `set-state-in-render`-adjacent "Cannot create components during render" (a dynamic-icon-component
+  pattern also used by `ActionResultCard.jsx` itself — the compiler can't statically prove
+  `getCategoryIcon(item)`'s return value is stable across renders), and 1 "Compilation Skipped"
+  optimization-only notice (`POSSetupStep.jsx`, a `useMemo` dependency-narrowing mismatch, not a
+  runtime error). Each would need a behavior-verified fix, not a mechanical one — deferred to a
+  follow-up rather than risked in the same PR that first turns coverage on.
+- **The `eslint-plugin-react-hooks` `7.0.1` pin (previous amendment) is unchanged** — re-evaluating
+  it against the ~25 additional diagnostics `7.1.1` surfaces stays deferred, now trackable against
+  real web-core coverage instead of a diagnostic-only sweep.
+
+Clause 5's own list ("POS, storefront, and `packages/web-core` itself currently have no ESLint
+config of their own") is now fully superseded, not just partially as the prior amendment left it.

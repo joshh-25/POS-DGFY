@@ -67,17 +67,15 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
   // Use hook unconditionally, handle null joId internally or let hook handle it
   const { jobOrder: detailedJO, loading } = useJobOrderById(open ? jo?.jo_id : null);
 
-  if (!jo) return null;
-
   const displayJO = detailedJO || jo;
   const getDisplayUom = (uom) => toUomAbbreviation(uom, 'u');
-  const status = statusConfig[displayJO.status] || statusConfig.draft;
+  const status = statusConfig[displayJO?.status] || statusConfig.draft;
   const StatusIcon = status.icon;
 
   // Determine ingredients list (normalize structure)
   // detailedJO.ingredients -> Sequelize models with 'item' and 'batch'
   // jo.ingredients_consumed -> Transformed objects
-  const ingredients = displayJO.ingredients_consumed || displayJO.ingredients || [];
+  const ingredients = displayJO?.ingredients_consumed || displayJO?.ingredients || [];
 
   const hasInsufficientStock = ingredients.some(ing => {
     // For 'ingredients' (Sequelize), we might need to calculate stock_after if not provided
@@ -133,6 +131,9 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
     });
     setCompleteDialogOpen(false);
   };
+
+  // Guarded after all hooks so hook order never depends on `jo` (react-hooks/rules-of-hooks, #918).
+  if (!jo) return null;
 
   return (
     <>

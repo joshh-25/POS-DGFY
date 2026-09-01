@@ -62,6 +62,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
             'placed',
             'confirmed',
             'preparing',
+            'packed',
             'ready_for_pickup',
             'out_for_delivery',
             'completed',
@@ -146,8 +147,37 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.DATE,
         allowNull: true
     },
+    // Phase 210 (#1179). Separate from accepted_by/accepted_at because a reject can now happen
+    // after an accept (confirmed -> rejected) -- the two events have different actors and times.
+    rejection_reason: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    rejected_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    rejected_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    // Phase 211 (#1180). Retail-only "packed" fulfillment step: two nullable, additive columns
+    // attributing the event. No Sequelize association (mirrors rejected_by/rejected_at, which
+    // also has none).
+    packed_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    packed_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
     payment_type: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay'),
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085). Split-tender allocations copy their method onto this column
+        // (splitPaymentUseCases.js), so it has to widen alongside pos_order_payments and
+        // pos_payment_allocations or a cheque split allocation fails at the write.
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque'),
         allowNull: false,
         defaultValue: 'cash'
     },

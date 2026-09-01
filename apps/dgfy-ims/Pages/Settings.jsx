@@ -76,6 +76,7 @@ import {
   serializeStorefrontBusinessHours
 } from '../../../packages/web-core/src/features/settings/storefrontBusinessHours.js';
 import StorefrontBusinessHoursScheduler from '../../../packages/web-core/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
+import { evaluateFulfillmentLeadTime } from '../../../packages/web-core/src/features/settings/fulfillmentLeadTime.js';
 import resolveAssetUrl from '../../../packages/web-core/src/utils/assetUrl.js';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../../../packages/web-core/src/utils/phoneNumber.js';
 import { generateReadablePassword, isPasswordLongEnough } from '../../../packages/web-core/src/utils/passwordPolicy.js';
@@ -481,7 +482,11 @@ const createDefaultLocationForm = () => ({
   allow_out_of_stock_sales: false,
   supports_delivery: true,
   supports_pickup: true,
-  supports_dine_in: true
+  supports_dine_in: true,
+  scheduling_enabled: true,
+  immediate_fulfillment_enabled: true,
+  fulfillment_lead_time_min_days: '',
+  fulfillment_lead_time_max_days: ''
 });
 
 const sanitizeDiscountProfile = (profile) => ({
@@ -1530,7 +1535,11 @@ export default function Settings() {
       allow_out_of_stock_sales: location?.allow_out_of_stock_sales === true,
       supports_delivery: location?.supports_delivery !== false,
       supports_pickup: location?.supports_pickup !== false,
-      supports_dine_in: location?.supports_dine_in !== false
+      supports_dine_in: location?.supports_dine_in !== false,
+      scheduling_enabled: location?.scheduling_enabled !== false,
+      immediate_fulfillment_enabled: location?.immediate_fulfillment_enabled !== false,
+      fulfillment_lead_time_min_days: location?.fulfillment_lead_time_min_days == null ? '' : String(location.fulfillment_lead_time_min_days),
+      fulfillment_lead_time_max_days: location?.fulfillment_lead_time_max_days == null ? '' : String(location.fulfillment_lead_time_max_days)
     });
   };
 
@@ -1548,7 +1557,11 @@ export default function Settings() {
       allow_out_of_stock_sales: locationForm.allow_out_of_stock_sales === true,
       supports_delivery: locationForm.supports_delivery !== false,
       supports_pickup: locationForm.supports_pickup !== false,
-      supports_dine_in: locationForm.supports_dine_in !== false
+      supports_dine_in: locationForm.supports_dine_in !== false,
+      scheduling_enabled: locationForm.scheduling_enabled !== false,
+      immediate_fulfillment_enabled: locationForm.immediate_fulfillment_enabled !== false,
+      fulfillment_lead_time_min_days: locationForm.fulfillment_lead_time_min_days === '' ? null : Number(locationForm.fulfillment_lead_time_min_days),
+      fulfillment_lead_time_max_days: locationForm.fulfillment_lead_time_max_days === '' ? null : Number(locationForm.fulfillment_lead_time_max_days)
     };
     if (editingLocationId && locationForm.location_version) {
       payload.last_known_updated_at = locationForm.location_version;
@@ -1569,6 +1582,14 @@ export default function Settings() {
       && payload.longitude <= 127;
     if (!hasUsablePhilippinesPin) {
       toast.error('Please pin the location on the map.');
+      return;
+    }
+    if (leadTimeRequiredMissing) {
+      toast.error('A minimum and maximum lead time are required while immediate fulfillment is off. Buyers need something concrete to expect.');
+      return;
+    }
+    if (leadTimeRangeInverted) {
+      toast.error('Maximum days must be greater than or equal to minimum days.');
       return;
     }
 
@@ -2375,6 +2396,11 @@ export default function Settings() {
   // handled by the server's previous-state exemption) are both left alone.
   const lastFulfillmentMethodLocked = effectiveCustomerAccessMode === 'transaction'
     && locationForm.supports_delivery !== locationForm.supports_pickup;
+  // #1218/#1246: mirrors tenantLocationUseCases.js's assertFulfillmentLeadTimeValid via the
+  // shared evaluateFulfillmentLeadTime helper (also used by POS's own copy of this form) rather
+  // than each app hand-rolling the rule. The server 422s either way -- this exists so the
+  // merchant is told before the round trip, not instead of it.
+  const { requiredMissing: leadTimeRequiredMissing, rangeInverted: leadTimeRangeInverted } = evaluateFulfillmentLeadTime(locationForm);
   const customerAccessLimitation = effectiveCustomerAccessMode !== requestedCustomerAccessMode
     ? (settings.customerAccessLimitationReason || `Requested mode is capped at ${maxCustomerAccessMode} mode.`)
     : 'No platform or registration-stage cap is reducing the requested mode.';
@@ -3038,6 +3064,79 @@ export default function Settings() {
                     />
                   </div>
                 </div>
+                <div className="space-y-2 md:col-span-2">
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <div>
+                      <Label>Allow Scheduled Orders</Label>
+                      <p className="text-xs text-slate-500">Let buyers choose a delivery or pickup date and time</p>
+                    </div>
+                    <Switch
+                      checked={locationForm.scheduling_enabled === true}
+                      onCheckedChange={(v) => handleLocationFormChange('scheduling_enabled', v)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <div>
+                      <Label>Allow Immediate Fulfillment</Label>
+                      <p className="text-xs text-slate-500">Show the NOW option and an immediate-fulfillment promise at checkout</p>
+                    </div>
+                    <Switch
+                      checked={locationForm.immediate_fulfillment_enabled === true}
+                      onCheckedChange={(v) => handleLocationFormChange('immediate_fulfillment_enabled', v)}
+                    />
+                  </div>
+                </div>
+                {locationForm.immediate_fulfillment_enabled === false && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Fulfillment Lead Time (days)</Label>
+                    <p className="text-xs text-slate-500">
+                      Shown to buyers in place of the NOW promise. Required while immediate fulfillment is off.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="365"
+                        placeholder="Minimum days"
+                        value={locationForm.fulfillment_lead_time_min_days}
+                        onChange={(e) => handleLocationFormChange('fulfillment_lead_time_min_days', e.target.value)}
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        max="365"
+                        placeholder="Maximum days"
+                        value={locationForm.fulfillment_lead_time_max_days}
+                        onChange={(e) => handleLocationFormChange('fulfillment_lead_time_max_days', e.target.value)}
+                      />
+                    </div>
+                    {leadTimeRequiredMissing && (
+                      <p className="text-xs text-amber-700">
+                        A minimum and maximum lead time are required while immediate fulfillment is off. Buyers need
+                        something concrete to expect.
+                      </p>
+                    )}
+                    {leadTimeRangeInverted && (
+                      <p className="text-xs text-amber-700">Maximum days must be greater than or equal to minimum days.</p>
+                    )}
+                    {/*
+                      #1218: duplicates the exact copy rule owned by
+                      apps/dgfy-storefront/src/shared/model/storefrontOrderTimingPolicy.js's
+                      formatLeadTimeRangePhrase -- IMS and the storefront are separate apps with
+                      no shared module path for this string, so the source of truth is named here
+                      rather than silently re-derived.
+                    */}
+                    {locationForm.fulfillment_lead_time_min_days !== '' && locationForm.fulfillment_lead_time_max_days !== '' && !leadTimeRangeInverted && (
+                      <p className="text-xs text-slate-600">
+                        Buyer preview: {Number(locationForm.fulfillment_lead_time_min_days) === Number(locationForm.fulfillment_lead_time_max_days)
+                          ? `within ${locationForm.fulfillment_lead_time_min_days} ${Number(locationForm.fulfillment_lead_time_min_days) === 1 ? 'day' : 'days'}`
+                          : `in ${locationForm.fulfillment_lead_time_min_days}-${locationForm.fulfillment_lead_time_max_days} days`}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
               )}
 

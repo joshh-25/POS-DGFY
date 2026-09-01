@@ -128,7 +128,7 @@ describe('POS downpayment balance settlement', () => {
         });
     });
 
-    it.each(['gcash', 'maya', 'card', 'bank_transfer'])(
+    it.each(['gcash', 'maya', 'card', 'bank_transfer', 'cheque'])(
         'settles an attested merchant-owned %s balance for the exact amount',
         async (method) => {
             const repository = buildRepository();
@@ -165,6 +165,40 @@ describe('POS downpayment balance settlement', () => {
             expect(repository.ledger[0].paymentProvider).not.toBe('paymongo');
         }
     );
+
+    it('persists the cheque number to both the ledger row and the audit log (Phase 202, #1085)', async () => {
+        // ADR 0077 scoped-supersedes ADR 0063 clause 4 to add `cheque` as a sixth balance-
+        // settlement method. The cheque number is `payment_reference` under this method -- no new
+        // column -- and must reach both the immutable ledger row and the audit log, same as every
+        // other merchant-owned method's reference.
+        const repository = buildRepository();
+        const useCase = buildRecordOrderBalancePaymentUseCase({ posRepository: repository });
+
+        const result = await run(() => useCase({
+            posTransactionId: 77,
+            payload: {
+                terminal_id: 'COUNTER-01',
+                payment_method: 'cheque',
+                amount: 800,
+                manual_payment_received: true,
+                payment_reference: 'CHQ-000123',
+                idempotency_key: 'balance-cheque-001'
+            },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(repository.ledger[0]).toMatchObject({
+            paymentMethod: 'cheque',
+            paymentProvider: 'merchant_owned',
+            providerEventId: null,
+            paymentReference: 'CHQ-000123'
+        });
+        expect(repository.audit[0].changes).toMatchObject({
+            payment_method: 'cheque',
+            payment_reference: 'CHQ-000123'
+        });
+    });
 
     it('fails closed when a merchant-owned method arrives without an explicit confirmation', async () => {
         const repository = buildRepository();

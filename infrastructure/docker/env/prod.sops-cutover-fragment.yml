@@ -20,11 +20,21 @@
 # =============================================================================
 #
 #   A -- secret, SOPS-encrypted (23) -- see EDIT 1-3 below
-#   B -- non-secret, literal in this fragment (75) -- see EDIT 1-3 below
-#   C -- mutable / CI-injected, stays a shell var (2): IMAGE_TAG, SENTRY_RELEASE
+#   B -- non-secret, literal in this fragment (86: 75 in dgfy-api via EDIT 1-3,
+#     +11 nginx domain vars via EDIT 4, added #1236)
+#   C -- mutable / CI-injected, stays a shell var: IMAGE_TAG, SENTRY_RELEASE, plus
+#     the 5 other SENTRY_* passthroughs already on dgfy-api's own `${VAR:-default}`
+#     lines (EDIT 3) -- undercounted as "(2)" in the version of this line written
+#     2026-08-28; corrected here, not a new decision
 #   dropped (2): duplicate MENU_IMPORT_BATCH_ENABLED line; FRONTEND_PROD_IMAGE_TAG
 #     (vestigial since the 2026-08-25 frontend-split restart -- confirm gone from
 #     the live .env before applying this fragment, don't assume)
+#
+# With EDIT 4 applied, .env has zero remaining consumers on PROD -- see the
+# rewritten ".env delta" section below (added #1236, supersedes the
+# 2026-08-28 "should hold at most IMAGE_TAG" language: bucket C already
+# resolves from shell-exported CI vars or its own compose-file default,
+# never from .env).
 #
 # All 14 BASE_REQUIRED_KEYS (productionEnvValidation.cjs:8-23) resolve to A or B
 # below -- see prod.env-var-classification.md's "Boot-required" section for the
@@ -297,13 +307,77 @@
 # unresolved, the safe default is bucket A: one extra encrypted line costs
 # nothing; a wrongly-public value reproduces #239.
 #
-# `dgfy-ims`, `dgfy-pos`, `dgfy-storefront`, `nginx`, `certbot`, and the
-# top-level `networks:` block are UNCHANGED by this fragment -- none of them
-# carry secrets, and none of the three frontend services take any config at
-# all (confirmed: no `environment:` block on any of them in the repo's own
-# docker-compose.yml). nginx's *_PROD domain vars stay exactly as they are
-# on the server today; #401 (its own separate drift-reconciliation change)
-# covers nginx, not this fragment.
+# `dgfy-ims`, `dgfy-pos`, `dgfy-storefront` and the top-level `networks:`
+# block are UNCHANGED by this fragment -- none of them carry secrets, and
+# none of the three frontend services take any config at all (confirmed: no
+# `environment:` block on any of them in the repo's own docker-compose.yml).
+# `nginx` and `certbot` WERE unchanged by this fragment as originally
+# written (2026-08-28) -- see EDIT 4 below (added #1236) for nginx's domain
+# vars, which closes out that gap.
+#
+# =============================================================================
+# EDIT 4 -- nginx: bucket-B domain vars as literals, closing #401's compose
+# half. Added #1236, after EDIT 1-3 above had already shipped and gone live
+# (2026-08-28) leaving this as the one remaining .env consumer.
+# =============================================================================
+#
+# Values are the same non-secret domains already visible in EDIT 3's
+# dgfy-api block above (APP_URL, CORS_ORIGIN, STOREFRONT_PUBLIC_ORIGIN,
+# etc.) and in the live server's docker-compose.yml -- re-derived here as
+# nginx's own bare-hostname vars, not re-read from .env, since dgfy-api's
+# literals are already the source of truth for what these domains are.
+#
+#   nginx:
+#     image: nginx:1.27-alpine
+#     restart: unless-stopped
+#     environment:
+#       SKUPERVISOR_DOMAIN: "skupervisor.beta.dgfy.ph"
+#       POS_DOMAIN: "pos.beta.dgfy.ph"
+#       STOREFRONT_DOMAIN: "beta.dgfy.ph"
+#       STOREFRONT_ALT_DOMAIN: "bar.space.com.ph"
+#       DGFY_API_DOMAIN: "api.dgfy.ph"
+#       CERT_DOMAIN: "beta.dgfy.ph"
+#       SKUPERVISOR_DOMAIN_PROD: "skupervisor.dgfy.ph"
+#       POS_DOMAIN_PROD: "pos.dgfy.ph"
+#       STOREFRONT_DOMAIN_PROD: "dgfy.ph"
+#       STOREFRONT_ALT_DOMAIN_PROD: ""
+#       CERT_DOMAIN_PROD: "dgfy.ph"
+#     ports:
+#       - "80:80"
+#       - "443:443"
+#     volumes:
+#       - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+#       - ./data/nginx/custom-storefronts:/etc/nginx/custom-storefronts:ro
+#       - ./data/certbot/conf:/etc/letsencrypt:ro
+#       - ./data/certbot/www:/var/www/certbot:ro
+#     depends_on:
+#       dgfy-api: {condition: service_healthy}
+#       dgfy-ims: {condition: service_healthy}
+#       dgfy-pos: {condition: service_healthy}
+#       dgfy-storefront: {condition: service_healthy}
+#     networks: [dgfy_internal]
+#
+# Re-verify these 11 values against the live server's own nginx `${VAR}`
+# resolution (`docker compose config` on the server, not this repo) before
+# applying -- don't assume they've stayed identical to what EDIT 3 baked
+# into dgfy-api on 2026-08-28; a domain change since then would need this
+# section re-derived, the same discipline EDIT 3's own incident note above
+# already established for dgfy-api's literals.
+#
+# =============================================================================
+# File split (#1236) -- mirrors this repo's infrastructure/docker/ layout
+# =============================================================================
+#
+# Once EDIT 1-4 are all applied, PROD's hand-maintained file set should
+# mirror the repo's own 5-file split (docker-compose.yml entry file +
+# .migration.yml + .api.yml + .frontend.yml + .proxy.yml -- see #1236's PR)
+# rather than staying one monolithic file forever. Not required for EDIT 4
+# to take effect on its own -- nginx's domains can be literal-ized inside a
+# single file just as well -- but doing the split at the same time avoids a
+# second full-stack edit pass later. Node-for-node, the four EDIT blocks
+# above land in docker-compose.api.yml (EDIT 2/3) and docker-compose.proxy
+# .yml (EDIT 4); mysql (EDIT 1) stays in the entry file, matching the repo
+# layout.
 #
 # =============================================================================
 # MySQL port -- separate line item, not bundled into this cutover (#402)
@@ -323,14 +397,31 @@
 # .env delta (prod only)
 # =============================================================================
 #
-# Before this fragment is applied, /opt/dgfy-platform/.env has already been
-# split per docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md Phase 2 -- the 23
-# secret vars in bucket A above are REMOVED from .env (they now live
-# encrypted in secrets/*.env), FRONTEND_PROD_IMAGE_TAG and the 3 dead Brevo
-# vars are removed, and the duplicate MENU_IMPORT_BATCH_ENABLED line is
-# collapsed to one. After the bucket-B literals above are baked into this
-# compose file, .env should hold at most IMAGE_TAG (bucket C, and arguably
-# droppable since PROD already runs the ${IMAGE_TAG:-latest} default).
+# SUPERSEDED (#1236) -- when this section was first written (2026-08-28),
+# only EDIT 1-3 existed and nginx's 11 domain vars still needed .env, so the
+# best available end state was ".env should hold at most IMAGE_TAG". With
+# EDIT 4 above, that's no longer true: bucket C (IMAGE_TAG, every SENTRY_*
+# var) already has `${VAR:-default}` fallbacks in the compose file itself
+# and is already shell-exported per-deploy by publish-platform.yml
+# (SENTRY_RELEASE) or left at its default (everything else) -- neither
+# needs a value to exist in .env at all. Once EDIT 4 is live, .env has ZERO
+# remaining consumers on PROD. The corrected end state: **retire .env from
+# the working tree**, not trim it -- but move it, don't delete it (Pat's
+# call, #1236): #1155 already established the move-never-delete convention
+# for this exact directory (its own _archive/ and rollback/ folders), and
+# nothing about retiring .env's *function* requires destroying the file.
+#
+# The delta itself, run once EDIT 1-4 are all live and verified (this was
+# never fully executed after the 2026-08-28 cutover -- .env still held all
+# ~100 original names, including inert plaintext copies of every bucket-A
+# secret, as of #1236's audit):
+#
+#   cd /opt/dgfy-platform
+#   docker compose config >/dev/null   # confirm nothing still resolves from .env
+#   mkdir -p _archive/2026-MM-DD/env-retired-DO-NOT-USE   # date this is actually run
+#   mv .env _archive/2026-MM-DD/env-retired-DO-NOT-USE/.env
+#   chmod 600 _archive/2026-MM-DD/env-retired-DO-NOT-USE/.env
+#   git add -A && git commit -m "chore(ops): retire .env (moved, not deleted), closes #1236 Phase B"
 #
 # --- Data/file move (run BEFORE `docker compose up`, while dgfy-api and
 #     dgfy-migration-runner are the only services being touched -- do NOT

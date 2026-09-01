@@ -19,15 +19,22 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // continue-on-error at all, whether invoked automatically (a real promotion
 // PR), manually (workflow_dispatch), or via a workflow_call caller.
 //
-// 2026-08-26 (#1063), temporary: two deliberate relaxations now exist, checked by
-// checkStagingLegSkipShape below rather than the old blanket forbid:
-//   - every quality job's `if:` must additionally exclude the staging leg
-//     (`&& needs.gate.outputs.is_staging_leg != 'true'`) -- skipped entirely there.
-//   - every quality job must carry `continue-on-error: true` -- advisory (never blocking) on
-//     every leg it does run on (release/*->main, and any workflow_dispatch/workflow_call).
-// Net effect, stated plainly: no leg currently has a blocking run of this workflow. This keeps
-// the #1003-class guard intact in spirit (a job missing either piece, or carrying some other
-// `if`/`continue-on-error` form, still fails this check) -- it does not mean "anything goes."
+// 2026-08-26 (#1063), temporary: a deliberate relaxation now exists, checked by
+// checkStagingLegSkipShape below rather than the old blanket forbid: every quality job must carry
+// `continue-on-error: true` -- advisory (never blocking) on every leg it runs on. Net effect,
+// stated plainly: no leg currently has a blocking run of this workflow. This keeps the #1003-class
+// guard intact in spirit (a job missing this, or carrying some other `continue-on-error` form,
+// still fails this check) -- it does not mean "anything goes."
+//
+// 2026-08-29 (#1124/#1165): the staging-leg *skip* half of the original relaxation (every quality
+// job's `if:` additionally excluding `to-staging/*->staging` entirely) was retired for a few days --
+// that leg ran every job too, advisory-only, same as every other leg.
+//
+// 2026-08-31 (#1253): reverted, Pat's call -- the develop->staging leg is meant to be the quick
+// soak/QA leg, not the one that runs quality checks; that's `staging->main`'s job. Back to skipping
+// every quality job entirely on the staging leg. checkStagingLegSkipShape's own comment has the
+// full "why" and the current sanctioned `if:` shape; not restated here.
+//
 // Revert `checkStagingLegSkipShape` to the original blanket forbid once #1063 closes.
 //
 // 2026-08-26 (#1066 follow-up): the job-level `continue-on-error: true` above turned out to be
@@ -90,7 +97,20 @@ const REQUIRED_QUALITY_MARKERS = [
   'npx playwright install --with-deps chromium',
   'npm run test:e2e:fnb-contract',
   'fnb-playwright-contract-',
-  'git diff --check'
+  'git diff --check',
+  // #1124/#1165: the reporter must stay Node-based (actions/github-script), never shell out to a
+  // binary this repo has already confirmed is absent from these self-hosted runners (`gh`, see
+  // checkForbiddenReporterShellout below for the full story).
+  'actions/github-script@v7',
+  // #1124: the step-summary channel that makes the test-matrix step's own result visible even if a
+  // *later* step kills the job -- must not be silently dropped from the matrix step's `run:`.
+  'node scripts/summarize-backend-test-matrix.js',
+  // #1124: pins the matrix script's own evidence directory to the same SHA the artifact upload's
+  // `path:` uses -- previously these only coincided by construction, not by a shared value.
+  'RELEASE_TARGET_SHA: ${{ github.sha }}',
+  // #1124: promotion evidence now retained 30 days (was 5) -- purely additive, no prior marker
+  // asserted the old value, so this only guards against silently reverting the extension.
+  'retention-days: 30'
 ];
 
 /**
@@ -196,10 +216,20 @@ function checkRunnerCacheConsistency(prChecksText) {
   return problems;
 }
 
-// #1063 (2026-08-26), temporary: every quality job must carry exactly these two lines --
-// skipped entirely on the staging soak leg, unconditionally advisory everywhere it does run.
-const SANCTIONED_SKIP_STAGING_IF =
-  "if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'";
+// #1063 (2026-08-26), temporary: every quality job must carry exactly these two lines -- skipped
+// entirely on the develop->staging soak leg, unconditionally advisory everywhere else it runs.
+//
+// 2026-08-29 (#1124/#1165): the staging-leg *skip* half of this was retired for a few days -- the
+// `to-staging/*->staging` soak leg skipped every quality job entirely (`&&
+// needs.gate.outputs.is_staging_leg != 'true'`), producing zero signal on 25 of the last 30
+// workflow runs, so it was made to run every job advisory-only instead, same as `release/*->main`.
+//
+// 2026-08-31 (#1253), Pat's call: reverted. The `develop->staging` leg was never meant to carry
+// this gate at all -- it's the quick soak/QA leg, deliberately contrasted with `staging->main`
+// (and default `develop->main`) where quality checks belong before shipping to production. Back to
+// skipping entirely on the staging leg, accepting the zero-signal trade-off #1124/#1165 tried to
+// avoid -- that leg optimizes for speed, not signal.
+const SANCTIONED_SKIP_STAGING_IF = "if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'";
 const SANCTIONED_CONTINUE_ON_ERROR = 'continue-on-error: true';
 
 // The six jobs promotion-quality-gate.yml actually gates -- kept as its own list (rather than
@@ -221,7 +251,15 @@ const QUALITY_JOB_NAMES = [
 // this list is checkStepLevelAdvisory's own job set, a superset of QUALITY_JOB_NAMES, kept
 // separate rather than folding `gate` into the shared list and having to special-case it out of
 // checkStagingLegSkipShape instead.
-const ADVISORY_JOB_NAMES = [...QUALITY_JOB_NAMES, 'gate'];
+// #1124/#1165: `salvage-api-evidence` joins this list, not QUALITY_JOB_NAMES/
+// checkStagingLegSkipShape -- same reasoning as `gate` above. Its `if:` legitimately differs (it
+// additionally gates on `needs.dgfy-api-quality.result != 'success'`, which none of the six
+// quality jobs' `if:` shapes do), and it has no STEP_OUTCOMES/record_outcomes chain of its own for
+// checkAdvisoryFailureReportingShape to trace -- it isn't part of the real_failures reporting
+// pipeline, it salvages evidence for a job that's already in it. It still needs the step-level
+// continue-on-error guarantee checkStepLevelAdvisory enforces, which is the only thing this list
+// is for.
+const ADVISORY_JOB_NAMES = [...QUALITY_JOB_NAMES, 'gate', 'salvage-api-evidence'];
 
 // A step deliberately excluded from a job's own STEP_OUTCOMES/real_failures reporting -- teardown
 // only, `|| true`-guarded so it can't meaningfully report `failure`, and reporting it would risk
@@ -357,8 +395,10 @@ function checkStepLevelAdvisory(qualityWorkflowText) {
  *      mapping and a stale/renamed one);
  *   4. report-advisory-failures' `needs:` includes the job, its `env:` references
  *      `needs.<job>.outputs.real_failures` exactly once, and the job name appears in an
- *      `add_if_present` call (read into an env var but never actually surfaced is its own silent
- *      loss, distinct from never being read at all);
+ *      `addIfPresent(...)` call (read into an env var but never actually surfaced is its own silent
+ *      loss, distinct from never being read at all -- form updated 2026-08-29 #1124 when the
+ *      reporter moved from a shell `add_if_present` call to this JS one, see that check-site's own
+ *      comment);
  *   5. report-advisory-failures' own step still carries `continue-on-error: true` (RF-2b) -- a
  *      `gh` hiccup there must never itself become a new blocking check.
  *
@@ -510,34 +550,123 @@ function checkAdvisoryFailureReportingShape(qualityWorkflowText) {
         );
       }
 
-      // #1066 RF-5: the prior version only checked that SOME `add_if_present "<job>" ...` call
-      // existed, not that its second argument is the SAME env var this job's real_failures output
-      // was assigned to above. A swapped or misspelled variable there -- e.g. reading
-      // dgfy-api-quality's failures into DGFY_API_FAILURES but passing $POS_FAILURES into
-      // add_if_present "dgfy-api-quality" -- reported no problem before this fix, and would be
-      // materially worse at runtime than a merely-missing entry: the reporter script runs under
-      // `set -uo pipefail`, so referencing an unset/misspelled variable name aborts the whole
-      // reporter step, silently dropping every other job's real failures for that run too, not
-      // just this one job's.
+      // #1066 RF-5, form updated 2026-08-29 (#1124/#1165) when the reporter moved from a shell
+      // `add_if_present "<job>" "$VAR"` call to a JS `addIfPresent('<job>', process.env.VAR, ...)`
+      // call (actions/github-script@v7 replacing the `gh` shell-out -- see that job's own comment).
+      // Same invariant as before: the prior version only checked that SOME call for this job
+      // existed, not that its argument is the SAME env var this job's real_failures output was
+      // assigned to above. A swapped or misspelled variable there -- e.g. reading dgfy-api-quality's
+      // failures into DGFY_API_FAILURES but passing process.env.POS_FAILURES into
+      // addIfPresent('dgfy-api-quality', ...) -- reported no problem before this fix. This check is
+      // now MORE important than the RF-5 comment it replaces used to argue, not less: the old shell
+      // form ran under `set -uo pipefail`, so a swapped/misspelled var name aborted the whole
+      // reporter step loudly (dropping every job's failures, but visibly); the new JS form has no
+      // such abort -- a typo'd `process.env.TYPO` is simply `undefined`, and the entry is dropped
+      // with zero signal at all. A stale "why this matters" rationale is exactly how the original
+      // `gh`-not-installed bug survived undetected -- fixing the code without also fixing the
+      // reasoning here would reproduce that pattern.
       const addIfPresentMatch = reporterBlock.match(
-        new RegExp(`add_if_present\\s+"${name}"\\s+"\\$(\\w+)"`)
+        new RegExp(`addIfPresent\\(\\s*'${name}'\\s*,\\s*process\\.env\\.(\\w+)\\s*[,)]`)
       );
       if (!addIfPresentMatch) {
         problems.push(
-          `promotion-quality-gate.yml: "${REPORTER_JOB_NAME}" has no \`add_if_present "${name}" ...\` ` +
+          `promotion-quality-gate.yml: "${REPORTER_JOB_NAME}" has no \`addIfPresent('${name}', ...)\` ` +
           `call -- "${name}"'s failures would be read into an env var but never actually reported.`
         );
       } else if (envVarMatch && addIfPresentMatch[1] !== envVarMatch[1]) {
         problems.push(
-          `promotion-quality-gate.yml: "${REPORTER_JOB_NAME}"'s \`add_if_present "${name}" ` +
-          `"$${addIfPresentMatch[1]}"\` does not match the env var needs.${name}.outputs.real_failures ` +
-          `is actually assigned to ("$${envVarMatch[1]}") -- a swapped or misspelled variable here ` +
-          'silently drops (or aborts reporting) this job\'s real failures instead of surfacing them.'
+          `promotion-quality-gate.yml: "${REPORTER_JOB_NAME}"'s \`addIfPresent('${name}', ` +
+          `process.env.${addIfPresentMatch[1]}, ...)\` does not match the env var ` +
+          `needs.${name}.outputs.real_failures is actually assigned to (${envVarMatch[1]}) -- a ` +
+          'swapped or misspelled variable here silently drops this job\'s real failures instead of ' +
+          'surfacing them.'
         );
       }
     }
   }
 
+  return problems;
+}
+
+/**
+ * #1124/#1165: the regression guard that would have caught the original bug -- `gh` is not
+ * installed on these self-hosted runners (`gh: command not found`, exit 127, confirmed live), and
+ * `report-advisory-failures`' shell-out to it failed 100% silently under `set -uo pipefail` (no
+ * `-e`) for as long as that job existed. Fixed by moving the reporter to `actions/github-script@v7`
+ * (see that job's own comment); this check is what stops a future edit from reintroducing a `gh`
+ * shell command there without anyone noticing until the next silent-failure investigation. Scoped
+ * to the reporter job's own block, not the whole file -- a `gh` reference inside a comment
+ * elsewhere (e.g. this file's header, which cites `gh api .../actions/runners` as evidence) is not
+ * itself a problem.
+ *
+ * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
+ * @returns {string[]} human-readable problems found; empty when the reporter shells out to no `gh` command
+ */
+function checkReporterHasNoShellBinaryDependency(qualityWorkflowText) {
+  const problems = [];
+  const reporterMatch = qualityWorkflowText.match(
+    new RegExp(`\\n  ${REPORTER_JOB_NAME}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+  );
+  if (!reporterMatch) {
+    // Already reported by checkAdvisoryFailureReportingShape above -- don't double-report.
+    return problems;
+  }
+  if (/\bgh\s+(issue|api|pr|run|workflow)\b/.test(reporterMatch[1])) {
+    problems.push(
+      `promotion-quality-gate.yml: "${REPORTER_JOB_NAME}" shells out to a \`gh\` subcommand -- ` +
+      '`gh` is not installed on these self-hosted runners (confirmed live, exit 127) and this is ' +
+      'exactly the bug #1124/#1165 fixed by moving to actions/github-script@v7; do not reintroduce it.'
+    );
+  }
+  return problems;
+}
+
+// 2026-08-31 (#1253, pr-reviewer RF-1/RF-2/RF-4 on PR #1257): the six-quality-job revert alone
+// wasn't the full #1124/#1165 item 4 undo -- two more jobs also lost the `is_staging_leg`
+// exclusion in that same commit and needed it restored too: `report-advisory-failures` (has
+// nothing to report when every job it depends on was itself skipped) and `salvage-api-evidence`
+// (added by that same commit, never carried the exclusion, and without it burns a runner slot
+// "salvaging" evidence for a dgfy-api-quality run that never happened). Neither job shares the six
+// quality jobs' exact `if:` shape (both carry `always()` and other clauses SANCTIONED_SKIP_STAGING_IF
+// doesn't), so this is a substring check against each job's own `if:` line rather than an exact-match
+// reuse of checkStagingLegSkipShape -- RF-4's own point was that an exact-shape check on the wrong
+// job set is precisely why RF-1 slipped through unnoticed in both the original change and the first
+// revert attempt.
+const STAGING_LEG_RESPECTING_JOBS = [REPORTER_JOB_NAME, 'salvage-api-evidence'];
+
+/**
+ * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
+ * @returns {string[]} human-readable problems found; empty when both jobs' `if:` excludes the staging leg
+ */
+function checkReportingJobsRespectStagingLeg(qualityWorkflowText) {
+  const problems = [];
+  for (const name of STAGING_LEG_RESPECTING_JOBS) {
+    const blockMatch = qualityWorkflowText.match(
+      new RegExp(`\\n  ${name}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+    );
+    if (!blockMatch) {
+      problems.push(
+        `promotion-quality-gate.yml: could not find the "${name}:" job block -- was it renamed or ` +
+        'restructured? checkReportingJobsRespectStagingLeg needs updating to match.'
+      );
+      continue;
+    }
+    const ifLines = blockMatch[1].match(/^ {4}if:.*$/gm) || [];
+    if (ifLines.length !== 1) {
+      problems.push(
+        `promotion-quality-gate.yml: "${name}" must have exactly one job-level \`if:\` line ` +
+        `(found: ${ifLines.length}) -- checkReportingJobsRespectStagingLeg needs updating to match.`
+      );
+      continue;
+    }
+    if (!ifLines[0].includes("needs.gate.outputs.is_staging_leg != 'true'")) {
+      problems.push(
+        `promotion-quality-gate.yml: "${name}"'s \`if:\` (${ifLines[0].trim()}) does not exclude ` +
+        "the staging leg (`needs.gate.outputs.is_staging_leg != 'true'`) -- #1253 requires this job " +
+        'to also be skipped entirely on the develop->staging soak leg, not just the six quality jobs.'
+      );
+    }
+  }
   return problems;
 }
 
@@ -549,7 +678,9 @@ function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWor
     ...checkRunnerCacheConsistency(prChecksText),
     ...checkStagingLegSkipShape(qualityWorkflowText),
     ...checkStepLevelAdvisory(qualityWorkflowText),
-    ...checkAdvisoryFailureReportingShape(qualityWorkflowText)
+    ...checkAdvisoryFailureReportingShape(qualityWorkflowText),
+    ...checkReporterHasNoShellBinaryDependency(qualityWorkflowText),
+    ...checkReportingJobsRespectStagingLeg(qualityWorkflowText)
   ];
 
   return missing;
@@ -570,7 +701,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log('[pr-quality-workflow] OK. Promotion quality gate contains all required gates, matches the sanctioned #1063 shape (skipped on the staging leg, advisory everywhere it runs -- including gate itself and, since #1066 RF-2, the container-start steps that replaced services:), and the id->STEP_OUTCOMES->real_failures->report-advisory-failures reporting chain is intact end to end.');
+  console.log('[pr-quality-workflow] OK. Promotion quality gate contains all required gates, matches the sanctioned #1063 shape (skipped entirely on the develop->staging soak leg per #1253, advisory on every other leg it runs -- including gate itself and, since #1066 RF-2, the container-start steps that replaced services:), the reporter has no `gh` shell dependency, and the id->STEP_OUTCOMES->real_failures->report-advisory-failures reporting chain is intact end to end.');
 }
 
 if (require.main === module) {
@@ -584,6 +715,9 @@ module.exports = {
   checkStagingLegSkipShape,
   checkStepLevelAdvisory,
   checkAdvisoryFailureReportingShape,
+  checkReporterHasNoShellBinaryDependency,
+  checkReportingJobsRespectStagingLeg,
+  STAGING_LEG_RESPECTING_JOBS,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,
   QUALITY_JOB_NAMES,

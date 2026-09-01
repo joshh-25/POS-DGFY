@@ -9,7 +9,8 @@ export const CUSTOMER_ACCESS_SETTING_KEYS = Object.freeze([
     'inventory_display_mode',
     'inventory_low_stock_display_threshold',
     'tenant_onboarding_progress',
-    'storefront_guest_checkout_enabled'
+    'storefront_guest_checkout_enabled',
+    'storefront_cash_payment_enabled'
 ]);
 
 export const DEFAULT_CUSTOMER_ACCESS_MODE = 'catalog';
@@ -21,6 +22,13 @@ export const DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD = 5;
 // behavior. Only newly-provisioned tenants get a real seeded row, per
 // resolveDefaultGuestCheckoutEnabledForWorkflowMode below.
 export const DEFAULT_GUEST_CHECKOUT_ENABLED = true;
+
+// #626 (Phase 203): fail-open default -- a tenant with no seeded row (every tenant that existed
+// before this setting shipped) resolves to cash still accepted, so this deploy changes no live
+// storefront's behavior. No vertical-specific default here (unlike guest checkout below): the
+// card-only motivation is Surebiz-specific and gated on #477, so a tenant flips its own toggle
+// once card is actually live rather than this default doing it for them.
+export const DEFAULT_CASH_PAYMENT_ENABLED = true;
 
 // #622 (Pat, 2026-08-18): guest checkout defaults to enabled on FnB, disabled (DGFY account
 // required) on Retail -- a conservative default for Retail. Named map, not an inline ternary, so
@@ -101,6 +109,14 @@ export const normalizeInventoryDisplayMode = (value, fallback = DEFAULT_INVENTOR
 };
 
 export const normalizeGuestCheckoutEnabled = (value, fallback = DEFAULT_GUEST_CHECKOUT_ENABLED) => {
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value ?? '').trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    return fallback;
+};
+
+export const normalizeCashPaymentEnabled = (value, fallback = DEFAULT_CASH_PAYMENT_ENABLED) => {
     if (typeof value === 'boolean') return value;
     const normalized = String(value ?? '').trim().toLowerCase();
     if (normalized === 'true') return true;
@@ -237,12 +253,17 @@ export const resolveAccessPolicyFromSettings = (settings = {}, options = {}) => 
         settings?.storefront_guest_checkout_enabled?.value
             ?? settings?.storefront_guest_checkout_enabled
     );
+    const cashPaymentEnabled = normalizeCashPaymentEnabled(
+        settings?.storefront_cash_payment_enabled?.value
+            ?? settings?.storefront_cash_payment_enabled
+    );
 
     return {
         ...resolved,
         inventory_display_mode: inventoryDisplayMode,
         inventory_low_stock_display_threshold: lowStockThreshold,
-        guest_checkout_enabled: guestCheckoutEnabled
+        guest_checkout_enabled: guestCheckoutEnabled,
+        cash_payment_enabled: cashPaymentEnabled
     };
 };
 

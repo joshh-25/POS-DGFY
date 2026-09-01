@@ -2750,6 +2750,11 @@ Payment handoff policy (current contract):
   - non-cash (`gcash`, `maya`, `card`, `bank_transfer`) -> `external`
 - When BSP OPS controls are incomplete, internal non-cash flows are denied with reason-coded compliance errors; external handoff remains allowed.
 
+Affiliate attribution (current contract, #1239 / Phase 222):
+- Optional request field: `affiliate_code` (string, up to 40 characters, `''`/`null` both mean "no attribution").
+- In-store affiliate attribution only — it has no effect on price, VAT, discount, or receipt content.
+- An unresolvable code (unknown, revoked, or the affiliate program disabled for the tenant) rejects the checkout: `422` with `reason_code: AFFILIATE_CODE_INVALID`, no transaction created.
+
 **Permission**: `pos:transact`
 **Plan Gate**: Premium (`requirePremium`)
 
@@ -3127,7 +3132,70 @@ List active delivery personnel available to the authenticated POS location.
 **Response Notes**
 1. Returns active personnel assigned to the requested location plus global personnel with no location assignment.
 2. Inactive personnel and personnel outside the authorized location are excluded.
-3. Registry creation, editing, activation, and deactivation are not part of this POS endpoint.
+3. Registry creation, editing, activation, and deactivation are handled by the three admin
+   endpoints below, not by this read-only cashier endpoint.
+
+### GET /pos/delivery-personnel/registry
+List all delivery personnel registry rows for administrator/settings management, including
+inactive rows by default.
+
+**Permission**: `pos:employees:manage`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `include_inactive` | boolean | Defaults to `true`; set `false` to return active rows only |
+
+**Response Notes**
+1. Unlike `GET /pos/delivery-personnel` above, this endpoint is not location-scoped and is not
+   filtered to active-only by default -- it is the admin/settings registry view, not the
+   cashier-facing assignment lookup.
+
+### POST /pos/delivery-personnel
+Create a delivery personnel registry row.
+
+**Permission**: `pos:employees:manage`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "display_name": "Juan Dela Cruz",
+  "phone": "09170000000",
+  "location_id": 12,
+  "notes": "Prefers morning shift",
+  "is_active": true
+}
+```
+
+**Response Notes**
+1. `display_name` is required (2-255 chars); every other field is optional.
+2. `location_id`, when provided, must reference an active tenant location or the request fails
+   with `422 VALIDATION_FAILED`.
+3. A case-insensitive duplicate `display_name` among active rows in the same location scope fails
+   with `409 CONFLICT` -- this is a soft guard, not a unique database constraint, since two riders
+   may legitimately share a name.
+4. Writes an `AuditLog` row (`entity_type: 'delivery_personnel'`, `action: 'CREATE'`).
+
+### PATCH /pos/delivery-personnel/:deliveryPersonnelId
+Update a delivery personnel registry row, or deactivate it.
+
+**Permission**: `pos:employees:manage`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+Any subset of `display_name`, `phone`, `location_id`, `notes`, `is_active` (at least one field
+required).
+
+**Response Notes**
+1. `is_active: false` **is** the deactivation operation -- there is no separate delete or
+   deactivate route, and no hard delete exists anywhere in this surface.
+   `delivery_jobs.delivery_personnel_id` is `ON DELETE RESTRICT`; an in-flight or historic
+   assignment keeps displaying the deactivated rider's name and is never orphaned.
+2. A deactivated rider can no longer be newly assigned (`GET /pos/delivery-personnel` and the
+   assignment picker only offer active rows), but existing assignments are untouched.
+3. Writes an `AuditLog` row (`entity_type: 'delivery_personnel'`, `action: 'UPDATE'`).
 
 ### PATCH /pos/orders/:id/delivery-job/assignment
 Assign or reassign a registered delivery person or an unregistered third-party courier name before pickup begins.
@@ -4333,6 +4401,13 @@ clause 14 (2026-08-22 amendment).
    - `GET /admin/tenants/:id/pos-metadata` returns current platform-controlled software identity, current receipt metadata, and any pending receipt metadata review.
    - `PATCH /admin/tenants/:id/pos-metadata` accepts either `software_settings` or `pending_action` (`approve` or `reject`) plus a required `reason` of at least 3 characters.
    - `GET /admin/tenants/:id/pos-metadata/audit-logs?limit=10` returns `tenant_admin_audit_logs` rows with `action = pos_metadata_update`.
+6a. Platform-admin affiliate-slot-cap operations (#1190, Phase 213). Delegable to any `admin.tenants`
+   holder, same authorization plane as capabilities/pos-metadata above — not a self-serve
+   merchant-facing surface (the tenant-facing `PUT /affiliates/settings` cannot write
+   `max_affiliate_slots`):
+   - `GET /admin/tenants/:id/affiliate-slots` returns `{ tenant_id, tenant_name, max_affiliate_slots, slots_used, program_enabled, over_cap }`.
+   - `PATCH /admin/tenants/:id/affiliate-slots` accepts `max_affiliate_slots` (integer, `1..100`) and a required `reason` of 3–500 characters. Lowering the cap below current consumption is allowed — existing enrollments and pending invites are grandfathered and never suspended, revoked, or otherwise mutated by this write; the response's `over_cap` flag reports whether the new value lands below `slots_used`.
+   - `GET /admin/tenants/:id/affiliate-slots/audit-logs?limit=10` returns `tenant_admin_audit_logs` rows with `action = affiliate_slots_update`.
 7. Tenant POS operating settings remain tenant-editable when allowed by normal settings/compliance policy:
    - `pos_discount_profiles` (JSON array of `{name, percentage, active}`)
    - `pos_order_method_fees` (deprecated; retained for historical read compatibility only)

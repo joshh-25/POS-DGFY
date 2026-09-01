@@ -72,6 +72,7 @@ const REQUIRED_METHODS = [
     'listOnlineOrderHistory',
     'getOrderByIdForLifecycle',
     'updateOrderById',
+    'createAddressChange',
     'updateDeliveryJobByOrderId',
     'listActiveDeliveryPersonnel',
     'findActiveDeliveryPersonnelById',

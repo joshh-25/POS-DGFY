@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import maplibregl from 'maplibre-gl';
 // Issue #282, Phase E: colocated with the library import instead of a
 // blanket StorefrontApp.jsx-level import -- this file is now only reached
@@ -56,7 +57,12 @@ export function StoresMap({
   onSelectCluster = null,
   viewportPolicy = 'auto',
   viewportSignal = '',
-  focusSelectedKey = false
+  focusSelectedKey = false,
+  // #475 RF-1: fires with map.getCanvasContainer() once the map exists, so a caller
+  // (e.g. DiscoveryHeroMapStage) can portal its own overlay chips/buttons into it.
+  // See the route-chip comment below for why this DOM node specifically matters --
+  // it's the only element MapLibre's TouchZoomRotateHandler actually listens on.
+  onCanvasContainerReady = null
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
@@ -75,6 +81,13 @@ export function StoresMap({
   const [mapUnavailable, setMapUnavailable] = useState(false);
   const [mapStyleReady, setMapStyleReady] = useState(false);
   const [containerResizeTick, setContainerResizeTick] = useState(0);
+  // #475 RF-1: see DeliveryPinMap.jsx's identical comment -- MapLibre's touch
+  // handlers only ever accept a touch whose original target is a DOM descendant
+  // of map.getCanvasContainer(). The route chip below is portaled into this node
+  // instead of being rendered as a plain sibling so a pinch that starts on it
+  // reaches the map's own zoom handler.
+  const [canvasContainerEl, setCanvasContainerEl] = useState(null);
+  const onCanvasContainerReadyRef = useRef(onCanvasContainerReady);
 
   // Some callers (e.g. the storefront's Contact & Location card) mount this
   // component as part of the hero's initial page load, where cover/profile images
@@ -144,6 +157,10 @@ export function StoresMap({
   }, [onSelectCluster]);
 
   useEffect(() => {
+    onCanvasContainerReadyRef.current = onCanvasContainerReady;
+  }, [onCanvasContainerReady]);
+
+  useEffect(() => {
     if (!ref.current || mapRef.current) return;
     let map;
     try {
@@ -167,6 +184,9 @@ export function StoresMap({
       return undefined;
     }
     mapRef.current = map;
+    const canvasContainer = map.getCanvasContainer?.() || null;
+    setCanvasContainerEl(canvasContainer);
+    onCanvasContainerReadyRef.current?.(canvasContainer);
 
     map.on('error', (e) => console.error('[MapLibre error]', e));
     map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
@@ -198,6 +218,8 @@ export function StoresMap({
       map.remove();
       mapRef.current = null;
       setMapStyleReady(false);
+      setCanvasContainerEl(null);
+      onCanvasContainerReadyRef.current?.(null);
     };
   }, [scheduleMapResize]);
 
@@ -682,12 +704,13 @@ export function StoresMap({
   return (
     <div style={{ position: 'relative', height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden' }}>
       <div ref={ref} style={{ height: '100%' }} />
-      {showRouteChip && (
-        <div style={{ position: 'absolute', left: 12, bottom: 12, display: 'flex', alignItems: 'center', gap: 6, background: '#fff', borderRadius: 999, padding: '6px 14px', boxShadow: '0 2px 10px rgba(15,23,42,0.16)', fontSize: 12, fontWeight: 800, color: '#0f172a' }}>
+      {showRouteChip && canvasContainerEl && createPortal(
+        <div style={{ position: 'absolute', left: 12, bottom: 12, display: 'flex', alignItems: 'center', gap: 6, background: '#fff', borderRadius: 999, padding: '6px 14px', boxShadow: '0 2px 10px rgba(15,23,42,0.16)', fontSize: 12, fontWeight: 800, color: '#0f172a', touchAction: 'none' }}>
           {routeLoading
             ? 'Calculating route…'
             : `${routeDistanceKm.toFixed(1)} km · ${routeDurationMinutes} min drive`}
-        </div>
+        </div>,
+        canvasContainerEl
       )}
     </div>
   );

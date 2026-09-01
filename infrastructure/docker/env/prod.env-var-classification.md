@@ -31,6 +31,13 @@ at the bottom instead of silently dropped.
 
 **Result: 314 vars `dgfy-api` can read in its production runtime path** (325 total matches minus 11 CI/test/script-only names). `dgfy-migration-runner` reads 7, unchanged from Appendix A and confirmed correct.
 
+**Scope note (#1236):** this file's method (`grep`-ing `process.env.*` reads) only ever
+covers the two Node services above. `nginx`'s domain vars are never `process.env` reads —
+they're Compose-level `${VAR}` template substitution, consumed by `envsubst` at container
+start. Their classification/literal-baking lives in
+`infrastructure/docker/env/prod.sops-cutover-fragment.yml`'s EDIT 4, not here — don't expect
+this file to account for them.
+
 ## ⚠️ Still open — cannot be closed from code alone
 
 This file establishes *what the app can read*. It does **not** establish *which of the

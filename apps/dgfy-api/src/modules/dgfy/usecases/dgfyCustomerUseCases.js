@@ -887,11 +887,20 @@ export const buildManageDgfyCustomerAddressesUseCases = ({ repository = dgfyCust
             if (!addressLine) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'address_line is required.', { statusCode: 422 });
             }
+            // #1219: caps copied deliberately from `storeAddressCreateSchema`
+            // (validators/storeValidator.js) so the two customer-address surfaces don't diverge.
+            if (addressLine.length > 4000) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'address_line must be at most 4000 characters.', { statusCode: 422 });
+            }
+            const label = String(body.label || 'Address').trim() || 'Address';
+            if (label.length > 100) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'label must be at most 100 characters.', { statusCode: 422 });
+            }
             const latitude = parseOptionalCoordinate(body.latitude, { min: -90, max: 90, field: 'latitude' });
             const longitude = parseOptionalCoordinate(body.longitude, { min: -180, max: 180, field: 'longitude' });
             ensureCoordinatePair(latitude, longitude);
             const address = await repository.createAddress(dgfyAccount.id, {
-                label: String(body.label || 'Address').trim() || 'Address',
+                label,
                 address_line: addressLine,
                 latitude,
                 longitude,
@@ -906,10 +915,17 @@ export const buildManageDgfyCustomerAddressesUseCases = ({ repository = dgfyCust
         try {
             const dgfyAccount = ensureAccount(account);
             const updates = {};
-            if (body.label !== undefined) updates.label = String(body.label || 'Address').trim() || 'Address';
+            if (body.label !== undefined) {
+                const label = String(body.label || 'Address').trim() || 'Address';
+                if (label.length > 100) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'label must be at most 100 characters.', { statusCode: 422 });
+                updates.label = label;
+            }
             if (body.address_line !== undefined) {
                 const addressLine = String(body.address_line || '').trim();
                 if (!addressLine) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'address_line cannot be blank.', { statusCode: 422 });
+                // #1219: caps copied deliberately from `storeAddressCreateSchema`
+                // (validators/storeValidator.js) so the two customer-address surfaces don't diverge.
+                if (addressLine.length > 4000) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'address_line must be at most 4000 characters.', { statusCode: 422 });
                 updates.address_line = addressLine;
             }
             const nextLatitude = body.latitude !== undefined ? parseOptionalCoordinate(body.latitude, { min: -90, max: 90, field: 'latitude' }) : undefined;

@@ -798,7 +798,9 @@ const buildPostCloseVoidWhere = ({
     return where;
 };
 
-const buildTransactionInclude = () => ([
+// Exported (in addition to its internal use below) so tests can assert on the include descriptor
+// directly -- e.g. the deliveryJob attributes array -- without needing a real DB connection.
+export const buildTransactionInclude = () => ([
     {
         model: dbStore.get('PosTransactionLine'),
         as: 'lines',
@@ -842,6 +844,7 @@ const buildTransactionInclude = () => ([
         required: false,
         attributes: [
             'delivery_job_id',
+            'delivery_run_id',
             'provider',
             'provider_delivery_id',
             'status',
@@ -875,6 +878,12 @@ const buildTransactionInclude = () => ([
                 as: 'assignedShift',
                 required: false,
                 attributes: ['pos_terminal_shift_id', 'terminal_id', 'location_id', 'cashier_id', 'status', 'opened_at']
+            },
+            {
+                model: dbStore.get('DeliveryRun'),
+                as: 'deliveryRun',
+                required: false,
+                attributes: ['delivery_run_id', 'label', 'status']
             }
         ]
     },
@@ -938,6 +947,25 @@ const buildTransactionInclude = () => ([
             'cash_variance_amount',
             'opened_at',
             'closed_at'
+        ]
+    },
+    {
+        // Phase 210 (#1179). Most-recent-first, capped -- an order card only needs recent history,
+        // not the full audit trail. `separate: true` is required for `limit` to apply per-parent
+        // rather than globally across the whole result set.
+        model: dbStore.get('PosOrderAddressChange'),
+        as: 'addressChanges',
+        required: false,
+        separate: true,
+        limit: 5,
+        order: [['changed_at', 'DESC']],
+        include: [
+            {
+                model: dbStore.get('User'),
+                as: 'changedByUser',
+                required: false,
+                attributes: ['user_id', 'username', 'email']
+            }
         ]
     }
 ]);
@@ -5602,7 +5630,7 @@ export const posRepository = {
         const where = {
             order_source: 'online_store',
             fulfillment_status: {
-                [Op.in]: ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']
+                [Op.in]: ['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'out_for_delivery']
             }
         };
         if (locationId) {
@@ -5692,6 +5720,38 @@ export const posRepository = {
         return toPlain(row);
     },
 
+    // Phase 210 (#1179). One append-only row per staff delivery-address/pin edit -- see
+    // PosOrderAddressChange.js for why this is a dedicated table rather than a column pair.
+    async createAddressChange({
+        posTransactionId,
+        previousAddress = null,
+        previousLatitude = null,
+        previousLongitude = null,
+        newAddress,
+        newLatitude = null,
+        newLongitude = null,
+        changeReason,
+        changedBy = null,
+        changedByShiftId = null,
+        changedAt
+    }, options = {}) {
+        const PosOrderAddressChange = dbStore.get('PosOrderAddressChange');
+        const row = await PosOrderAddressChange.create({
+            pos_transaction_id: posTransactionId,
+            previous_address: previousAddress,
+            previous_latitude: previousLatitude,
+            previous_longitude: previousLongitude,
+            new_address: newAddress,
+            new_latitude: newLatitude,
+            new_longitude: newLongitude,
+            change_reason: changeReason,
+            changed_by: changedBy,
+            changed_by_shift_id: changedByShiftId,
+            changed_at: changedAt
+        }, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
     // Phase 148 (#825): the POS side of the `pos_order_payments` ledger. Phase 141 (#822) writes
     // row 1 (`kind: 'downpayment'`) from storeRepository.createOrderPaymentEntry on the storefront
     // checkout path; this is row 2 (`kind: 'balance'`), written when staff record the remaining
@@ -5746,6 +5806,65 @@ export const posRepository = {
             transaction: options.transaction
         });
         return toPlain(row);
+    },
+
+    // Phase 204 (#965): looks up one ledger row by its own primary key, for the proof-attach and
+    // proof-serve routes' ownership check (caller-supplied payment_id must actually belong to the
+    // order in the URL). Mirrors getCashDrawerEventById's findByPk-plus-lock shape above.
+    async findOrderPaymentEntryById(posOrderPaymentId, options = {}) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const normalizedId = toPositiveInt(posOrderPaymentId);
+        if (!normalizedId) return null;
+
+        const row = await PosOrderPayment.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async updateOrderPaymentEntryProof(posOrderPaymentId, payload = {}, options = {}) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const normalizedId = toPositiveInt(posOrderPaymentId);
+        if (!normalizedId) return null;
+
+        const row = await PosOrderPayment.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    // Phase 204 (#965): batch lookup for the incoming-orders queue card's "View proof" affordance
+    // -- mirrors getReceiptPrintStatuses' shape (one query per list render, not N+1 per order).
+    // Never returns `proof_file_path` itself; only the derived boolean and the ledger row id a
+    // caller needs to hit the authed GET route.
+    async getBalancePaymentProofStatuses(posTransactionIds = []) {
+        const PosOrderPayment = dbStore.get('PosOrderPayment');
+        const normalizedIds = Array.from(new Set((Array.isArray(posTransactionIds) ? posTransactionIds : [])
+            .map(toPositiveInt)
+            .filter(Boolean)));
+        if (!PosOrderPayment || normalizedIds.length === 0) return {};
+
+        const rows = await PosOrderPayment.findAll({
+            where: {
+                pos_transaction_id: { [Op.in]: normalizedIds },
+                kind: 'balance'
+            },
+            attributes: ['pos_transaction_id', 'pos_order_payment_id', 'proof_file_path']
+        });
+        const statuses = {};
+        rows.forEach((row) => {
+            const id = toPositiveInt(row.pos_transaction_id);
+            if (!id) return;
+            statuses[id] = {
+                pos_order_payment_id: row.pos_order_payment_id,
+                has_payment_proof: row.proof_file_path != null
+            };
+        });
+        return statuses;
     },
 
     async updateDeliveryJobByOrderId(orderId, payload = {}, options = {}) {

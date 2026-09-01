@@ -112,6 +112,49 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/auth/me', dgfyCookieConfig);
   });
 
+  it('deduplicates concurrent affiliate invite preview reads for the same token', async () => {
+    apiGet.mockResolvedValueOnce({ data: { data: { valid: true, business_name: 'Acme Store' } } });
+
+    const service = await import('../dgfyAuthService.js');
+    const [first, second] = await Promise.all([
+      service.fetchAffiliateInvitePreview('token-abc'),
+      service.fetchAffiliateInvitePreview('token-abc')
+    ]);
+
+    expect(apiGet).toHaveBeenCalledTimes(1);
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/affiliate/invites/token-abc', dgfyCookieConfig);
+    expect(first).toEqual({ valid: true, business_name: 'Acme Store' });
+    expect(second).toEqual(first);
+  });
+
+  it('never coalesces affiliate invite preview reads for different tokens', async () => {
+    apiGet
+      .mockResolvedValueOnce({ data: { data: { valid: true, business_name: 'Store A' } } })
+      .mockResolvedValueOnce({ data: { data: { valid: true, business_name: 'Store B' } } });
+
+    const service = await import('../dgfyAuthService.js');
+    await Promise.all([
+      service.fetchAffiliateInvitePreview('token-a'),
+      service.fetchAffiliateInvitePreview('token-b')
+    ]);
+
+    expect(apiGet).toHaveBeenCalledTimes(2);
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/affiliate/invites/token-a', dgfyCookieConfig);
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/affiliate/invites/token-b', dgfyCookieConfig);
+  });
+
+  it('fires a fresh affiliate invite preview request after the first one settles', async () => {
+    apiGet
+      .mockResolvedValueOnce({ data: { data: { valid: true, business_name: 'Acme Store' } } })
+      .mockResolvedValueOnce({ data: { data: { valid: false, expired: true } } });
+
+    const service = await import('../dgfyAuthService.js');
+    await service.fetchAffiliateInvitePreview('token-abc');
+    await service.fetchAffiliateInvitePreview('token-abc');
+
+    expect(apiGet).toHaveBeenCalledTimes(2);
+  });
+
   it('suppresses duplicate global tenant error toasts for DGFY login submissions', async () => {
     apiPost.mockResolvedValueOnce({
       data: {

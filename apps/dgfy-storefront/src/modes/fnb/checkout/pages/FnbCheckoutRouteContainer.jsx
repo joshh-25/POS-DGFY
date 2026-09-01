@@ -10,6 +10,7 @@ import {
   X
 } from 'lucide-react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
+import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
@@ -48,6 +49,8 @@ import {
   isStorefrontOnlinePaymentType
 } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
 import { FnbCheckoutRouteMount } from './FnbCheckoutRouteMount.jsx';
+import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the inline F&B order/checkout
@@ -76,6 +79,7 @@ export function FnbCheckoutRouteContainer({
   checkoutLoading,
   checkoutResult,
   checkoutTab,
+  customerAddress,
   customerEmail,
   customerName,
   customerPhone,
@@ -89,6 +93,7 @@ export function FnbCheckoutRouteContainer({
   fnbCheckoutContentPadding,
   fnbCustomerStepComplete,
   fnbFulfillmentStepComplete,
+  orderTimingPolicy,
   fulfillmentOptions,
   fnbMobileSummaryItemCountLabel,
   fnbOrderBrand,
@@ -192,6 +197,12 @@ export function FnbCheckoutRouteContainer({
   const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totalsForDisplay });
   // #963: see RetailOrderPaymentStep.jsx for the rationale -- same gate, same shared helper.
   const fnbBillingEmailRequired = requiresBillingEmail({ paymentType: fnbPaymentType, customerEmail });
+  const resolvedFnbOrderTimingPolicy = orderTimingPolicy || resolveOrderTimingPolicy();
+  const fnbSectionNumbers = buildCheckoutSectionNumbers({
+    showOrderMethodSelector: resolveFulfillmentSelectorPresentation(fulfillmentOptions).showSelector,
+    showTimingStep: resolvedFnbOrderTimingPolicy.showTimingStep,
+    isDeliveryOrder
+  });
   return (
   <FnbCheckoutRouteMount
       isActive={isFnbOrderSubpage && isFnbMode && checkoutTab !== 'track'}
@@ -258,11 +269,12 @@ export function FnbCheckoutRouteContainer({
                 setFnbScheduledFor(nextValue);
               }}
               orderMethod={orderMethod}
+              orderTimingPolicy={orderTimingPolicy}
               scheduleHoursLabel={formatStorefrontHoursLabel(selectedStore?.storefront_hours, selectedStore?.storefront_hours_status?.display || '')}
             />                      {isDeliveryOrder && (
               <div style={{ display: 'grid', gap: 16 }}>
                 <div style={{ display: 'grid', gap: 4 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>3. Where should we deliver your order?</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{fnbSectionNumbers.address}. Where should we deliver your order?</div>
                   <div style={{ fontSize: isFnbOrderResponsiveFlow ? 13 : 12, fontWeight: isFnbOrderResponsiveFlow ? 400 : 600, color: '#64748b', textTransform: isFnbOrderResponsiveFlow ? 'none' : 'uppercase', letterSpacing: isFnbOrderResponsiveFlow ? 'normal' : '0.04em', lineHeight: 1.5, fontFamily: servicesBodyFont }}>
                     {isFnbOrderResponsiveFlow ? 'Select or pin your location on the map.' : 'Saved locations'}
                   </div>
@@ -440,9 +452,14 @@ export function FnbCheckoutRouteContainer({
                               <MapPin size={13} />
                             </span>
                           ) : null}
-                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', fontWeight: 600 }}>
-                            {deliveryLocationDisplayAddress || 'Pinned delivery address will appear here.'}
-                          </span>
+                          <input
+                            type="text"
+                            value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+                            onChange={(event) => setCustomerAddress(event.target.value)}
+                            placeholder="Pinned delivery address will appear here."
+                            aria-label="Delivery address"
+                            style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, fontSize: 13, color: 'inherit', minHeight: 38, fontFamily: servicesBodyFont }}
+                          />
                         </div>
                         <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isFnbOrderResponsiveFlow ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,78,141,0.15)' : 'none', fontFamily: servicesBodyFont }}>
                           {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}
@@ -550,7 +567,7 @@ export function FnbCheckoutRouteContainer({
                   />
             </FnbCheckoutExpandedMapModal>
             <div style={{ display: 'grid', gap: 12 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{isDeliveryOrder ? '4.' : '3.'} Anything else we should know?</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{fnbSectionNumbers.notes}. Anything else we should know?</div>
               <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
                 Special Instructions (optional)
                 <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value.slice(0, 250))} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ minHeight: 96, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical', boxSizing: 'border-box' }} />

@@ -5,6 +5,7 @@ import { RetailTrackingDrawerTotals } from './RetailTrackingDrawerTotals.jsx';
 import { RetailTrackingDrawerCardHeader } from './RetailTrackingDrawerCardHeader.jsx';
 import {
   deriveRetailTrackingDrawerItems,
+  deriveRetailTrackingDrawerRejectionNotice,
   deriveRetailTrackingDrawerTotals,
   formatRetailTrackingDrawerDate,
   resolveRetailTrackingDrawerStatus
@@ -12,6 +13,7 @@ import {
 
 export function RetailTrackingDrawerCard({ entry, entryPin, expanded, onToggle, onViewOrder, selectedStore, withAssetOrigin, money }) {
   const status = resolveRetailTrackingDrawerStatus(String(entry.status_label || entry.status || '').trim());
+  const rejectionNotice = deriveRetailTrackingDrawerRejectionNotice(entry);
   const storeName = entry.store_name || selectedStore?.tenant_name || 'Storefront';
   const logoSource = entry.store_logo || selectedStore?.storefront_profile_image_url;
   const items = deriveRetailTrackingDrawerItems(entry);
@@ -33,6 +35,9 @@ export function RetailTrackingDrawerCard({ entry, entryPin, expanded, onToggle, 
       {expanded && (
         <div style={{ borderTop: '1px solid #e8f0f8' }}>
           <div style={{ padding: '0 16px 16px' }}>
+            {rejectionNotice && (
+              <p style={{ margin: '12px 0 0', fontSize: 12.5, fontWeight: 600, color: '#b91c1c' }}>{rejectionNotice}</p>
+            )}
             <RetailTrackingDrawerOrderLines entryPin={entryPin} items={items} money={money} withAssetOrigin={withAssetOrigin} />
             <RetailTrackingDrawerTotals {...totals} />
           </div>

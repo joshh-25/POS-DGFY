@@ -1,12 +1,16 @@
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Maximize, MapPin, Navigation, Plus, ShoppingBag, Truck, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
+import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { RetailOrderExpandedMapModal } from './RetailOrderExpandedMapModal.jsx';
 import { RetailOrderSavedAddressesModal } from './RetailOrderSavedAddressesModal.jsx';
 import { ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
 import { getUnavailableFulfillmentMessage } from '../../../../shared/model/storefrontFulfillmentOptions.js';
+import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { FulfillmentMethodNotice } from '../../../../shared/components/checkout/FulfillmentMethodNotice.jsx';
+import { buildLeadTimeExpectationMessage, resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_DARK = '#1a4586';
@@ -41,6 +45,7 @@ export const RETAIL_ORDER_METHOD_OPTIONS = ORDER_METHOD_OPTIONS.filter(
  */
 export function RetailOrderFulfillmentStep({
   canAddPinnedLocation = false,
+  customerAddress = '',
   customerPin = null,
   deliveryLocationAction = 'saved',
   deliveryLocationDisplayAddress = '',
@@ -52,6 +57,7 @@ export function RetailOrderFulfillmentStep({
   onCloseExpandedMap,
   onCloseMobileAddressModal,
   onContinue,
+  onCustomerAddressChange = () => {},
   onOpenExpandedMap,
   onOpenMobileAddressList,
   onOrderMethodChange,
@@ -73,11 +79,19 @@ export function RetailOrderFulfillmentStep({
   servicesDisplayFont,
   showExpandedDeliveryMap = false,
   showMobileAddressModal = false,
-  specialInstructions = ''
+  specialInstructions = '',
+  orderTimingPolicy = resolveOrderTimingPolicy()
 }) {
   const [unavailableMessage, setUnavailableMessage] = useState('');
   const isDeliveryOrder = orderMethod === 'delivery';
+  const resolvedOrderMethodOptions = orderMethodOptions || RETAIL_ORDER_METHOD_OPTIONS;
+  // #1217: nothing to choose when the location supports exactly one method -- the chooser and
+  // its question are replaced by a statement, and the sections below renumber accordingly.
+  const { showSelector: showOrderMethodSelector, notice: orderMethodNotice, soleOption: soleOrderMethod } =
+    resolveFulfillmentSelectorPresentation(resolvedOrderMethodOptions);
   const activeAddress = deliverySavedLocations.find((location) => String(location.id) === String(selectedSavedLocationId)) || null;
+  const { showSchedule, showImmediate, showTimingChooser, showTimingStep } = orderTimingPolicy;
+  const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep, isDeliveryOrder });
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16 }}>
@@ -85,10 +99,11 @@ export function RetailOrderFulfillmentStep({
       <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Choose how and when the customer will receive the order, then add optional notes.</div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, alignItems: 'start' }}>
+        {showOrderMethodSelector ? (
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
-            {(orderMethodOptions || RETAIL_ORDER_METHOD_OPTIONS).map((option) => {
+            {resolvedOrderMethodOptions.map((option) => {
               const isAvailable = option.available !== false;
               return (
               <SelectableOptionCard
@@ -126,10 +141,18 @@ export function RetailOrderFulfillmentStep({
           </div>
           {unavailableMessage ? <div role="alert" style={{ color: '#9f1239', fontSize: 13, fontWeight: 600 }}>{unavailableMessage}</div> : null}
         </div>
+        ) : (
+          <FulfillmentMethodNotice
+            accentColor={RETAIL_ACCENT}
+            message={orderMethodNotice}
+            variant={soleOrderMethod ? 'info' : 'warning'}
+          />
+        )}
 
         <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>2. When would you like your order?</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
+          {showTimingStep ? <>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.timing}. When would you like your order?</div>
+          {showTimingChooser ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
             <SelectableOptionCard
               onClick={() => onScheduleModeChange('asap')}
               label="NOW"
@@ -172,8 +195,18 @@ export function RetailOrderFulfillmentStep({
               iconBoxSize={isMobileViewport ? 34 : 40}
               iconSize={isMobileViewport ? 18 : 20}
             />
-          </div>
-          {scheduleMode === 'asap' ? (
+          </div> : null}
+          {showSchedule && !showImmediate ? <>
+            <FulfillmentMethodNotice accentColor={RETAIL_ACCENT} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" />
+            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>Scheduled date and time<input type="datetime-local" value={scheduledFor} onChange={(event) => onScheduledForChange(event.target.value)} style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 12, padding: '12px 14px', background: '#f8fafc', color: '#1e293b', fontSize: 14, fontWeight: 600, boxSizing: 'border-box' }} /></label>
+          </> : null}
+          {showImmediate && !showSchedule ? (
+            <div style={{ borderRadius: 6, border: '1px solid #d1fae5', background: '#f0fdf4', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Clock3 size={11} color="#16a34a" style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#166534', lineHeight: 1.3 }}>{isDeliveryOrder ? 'Your order will be delivered NOW. You\'ll see the estimated time at checkout.' : 'Your order will be prepared NOW. You\'ll see the estimated time at checkout.'}</span>
+            </div>
+          ) : null}
+          {showTimingChooser ? (scheduleMode === 'asap' ? (
             <div style={{ borderRadius: 6, border: '1px solid #d1fae5', background: '#f0fdf4', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Clock3 size={11} color="#16a34a" style={{ flexShrink: 0 }} />
               <span style={{ fontSize: 11, fontWeight: 600, color: '#166534', lineHeight: 1.3 }}>{isDeliveryOrder ? 'Your order will be delivered NOW. You\'ll see the estimated time at checkout.' : 'Your order will be prepared NOW. You\'ll see the estimated time at checkout.'}</span>
@@ -204,14 +237,14 @@ export function RetailOrderFulfillmentStep({
                 />
               </div>
             </label>
-          )}
+          )) : null}</> : <FulfillmentMethodNotice accentColor={RETAIL_ACCENT} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
         </div>
       </div>
 
       {isDeliveryOrder && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>3. Where should we deliver your order?</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.address}. Where should we deliver your order?</div>
             <div style={{ fontSize: 12, color: '#64748b', textTransform: isMobileViewport ? 'none' : 'uppercase', letterSpacing: isMobileViewport ? 'normal' : '0.04em' }}>
               {isMobileViewport ? 'Select or pin your location on the map.' : 'Saved locations'}
             </div>
@@ -338,9 +371,14 @@ export function RetailOrderFulfillmentStep({
                       <MapPin size={13} />
                     </span>
                   ) : null}
-                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', fontWeight: 600 }}>
-                    {deliveryLocationDisplayAddress || 'Pinned delivery address will appear here.'}
-                  </span>
+                  <input
+                    type="text"
+                    value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+                    onChange={(event) => onCustomerAddressChange(event.target.value)}
+                    placeholder="Pinned delivery address will appear here."
+                    aria-label="Delivery address"
+                    style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, fontSize: 13, color: 'inherit', minHeight: 38 }}
+                  />
                 </div>
                 <button type="button" onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${RETAIL_ACCENT}`, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,69,134,.15)' : 'none' }}>
                   {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}
@@ -411,7 +449,7 @@ export function RetailOrderFulfillmentStep({
       )}
 
       <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{isDeliveryOrder ? '4.' : '3.'} Anything else we should know?</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.notes}. Anything else we should know?</div>
         <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
           Special instructions (optional)
           <textarea

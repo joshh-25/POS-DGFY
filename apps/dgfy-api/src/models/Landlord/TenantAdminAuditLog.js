@@ -24,7 +24,8 @@ export default (sequelize) => {
                 'admin_create_tenant',
                 'admin_create_account_and_tenant',
                 'admin_assign_owner',
-                'admin_force_assign_owner'
+                'admin_force_assign_owner',
+                'affiliate_slots_update'
             ),
             allowNull: false
         },

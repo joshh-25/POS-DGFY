@@ -40,6 +40,7 @@ const CUSTOMER_ACCESS_MODE_SETTING_KEY = 'customer_access_mode';
 const INVENTORY_DISPLAY_MODE_SETTING_KEY = 'inventory_display_mode';
 const INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_SETTING_KEY = 'inventory_low_stock_display_threshold';
 const GUEST_CHECKOUT_ENABLED_SETTING_KEY = 'storefront_guest_checkout_enabled';
+const CASH_PAYMENT_ENABLED_SETTING_KEY = 'storefront_cash_payment_enabled';
 
 const parsePositiveId = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -342,6 +343,18 @@ const seedDefaultCustomerAccessSettings = async (tenantSequelize, workflowMode =
             value: resolveDefaultGuestCheckoutEnabledForWorkflowMode(workflowMode),
             dataType: 'boolean',
             description: 'Allows customers to check out or book without a DGFY account'
+        },
+        {
+            // #626 (Phase 203): unlike guest checkout above, no vertical-specific default -- the
+            // card-only motivation is Surebiz-specific and gated on #477, so seeding Retail
+            // cash-off here would break every other Retail tenant. Every vertical seeds `true`;
+            // a Surebiz tenant flips its own toggle once card is actually live. NOT
+            // overwriteExisting, same rationale as guest checkout -- a re-run of provisioning must
+            // never stomp a merchant's own toggle choice.
+            key: CASH_PAYMENT_ENABLED_SETTING_KEY,
+            value: true,
+            dataType: 'boolean',
+            description: 'Allows customers to pay cash on delivery/pickup at checkout'
         }
     ];
 
@@ -510,20 +523,11 @@ export const provisionTenant = async (options) => {
             // This database was just created. Create the declared model graph
             // without running Sequelize's destructive schema-diff algorithm.
             await tenantSequelize.sync();
-            const { repairItemFolderCategoryLifecycleSchema } = await import('../../scripts/sync-tenant-schemas.js');
-            await repairItemFolderCategoryLifecycleSchema(tenantSequelize, dbName);
-            // Sequelize sync cannot express the generated active-state columns used by the
-            // cashier attendance/operator-session uniqueness contract. Apply the idempotent
-            // Phase 157 migration immediately after the model graph is created so a brand-new
-            // tenant has the same constraints as an existing tenant repaired by migrations.
-            const { default: cashierAttendanceMigration } = await import(
-                '../../../dgfy-migration-runner/migrations/20260824000001-create-pos-cashier-attendance-operator-sessions.cjs'
-            );
-            await cashierAttendanceMigration.up(tenantSequelize.getQueryInterface(), Sequelize);
-            const { default: attendanceIdempotencyMigration } = await import(
-                '../../../dgfy-migration-runner/migrations/20260824000002-add-pos-attendance-idempotency.cjs'
-            );
-            await attendanceIdempotencyMigration.up(tenantSequelize.getQueryInterface(), Sequelize);
+            // #1071/#1124: routed through one seam (schema repairs + the Phase 157 tenant-bootstrap
+            // migrations) instead of importing the repair function and two migration files
+            // separately by literal path here -- see tenantSchemaBootstrap.js's own comment for why.
+            const { applyPostSyncTenantSchema } = await import('./tenantSchemaBootstrap.js');
+            await applyPostSyncTenantSchema(tenantSequelize, Sequelize, { dbName });
             logger.info(`[Provisioning] Schema synced successfully`);
 
             // 4. Seed Admin User

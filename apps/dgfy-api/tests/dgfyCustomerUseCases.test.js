@@ -270,6 +270,107 @@ describe('dgfyCustomerUseCases', () => {
         expect(repository.updateAddress).not.toHaveBeenCalled();
     });
 
+    // #1219: `address_line` on a `TEXT` column had no length cap -- low severity before this
+    // phase turned it into free-typed customer input. Caps copied from `storeAddressCreateSchema`.
+    it('rejects an address_line over 4000 characters on create', async () => {
+        const repository = {
+            createAddress: jest.fn()
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.create({
+            account,
+            body: { address_line: 'a'.repeat(4001) }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(repository.createAddress).not.toHaveBeenCalled();
+    });
+
+    it('accepts an address_line at exactly the 4000-character boundary on create', async () => {
+        const repository = {
+            createAddress: jest.fn().mockImplementation((accountId, payload) => Promise.resolve({
+                address_id: 11,
+                dgfy_account_id: accountId,
+                ...payload
+            }))
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.create({
+            account,
+            body: { address_line: 'a'.repeat(4000) }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.createAddress).toHaveBeenCalled();
+    });
+
+    it('rejects a label over 100 characters on create', async () => {
+        const repository = {
+            createAddress: jest.fn()
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.create({
+            account,
+            body: { address_line: 'Somewhere', label: 'a'.repeat(101) }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(repository.createAddress).not.toHaveBeenCalled();
+    });
+
+    it('rejects an address_line over 4000 characters on update', async () => {
+        const repository = {
+            getAddress: jest.fn().mockResolvedValue({
+                address_id: 10,
+                dgfy_account_id: account.id,
+                address_line: 'Old address',
+                latitude: null,
+                longitude: null
+            }),
+            updateAddress: jest.fn()
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.update({
+            account,
+            addressId: 10,
+            body: { address_line: 'a'.repeat(4001) }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(repository.updateAddress).not.toHaveBeenCalled();
+    });
+
+    it('rejects a label over 100 characters on update', async () => {
+        const repository = {
+            getAddress: jest.fn().mockResolvedValue({
+                address_id: 10,
+                dgfy_account_id: account.id,
+                address_line: 'Old address',
+                latitude: null,
+                longitude: null
+            }),
+            updateAddress: jest.fn()
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.update({
+            account,
+            addressId: 10,
+            body: { label: 'a'.repeat(101) }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(repository.updateAddress).not.toHaveBeenCalled();
+    });
+
     it('requires an account-linked purchased item before accepting a review', async () => {
         const repository = {
             listActivitiesForAccount: jest.fn().mockResolvedValue({

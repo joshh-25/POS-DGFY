@@ -54,6 +54,16 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'DgfyAffiliateCashout',
     'DgfyAffiliateInvite',
     'DgfyAffiliatePriceRule',
+    // #1233: landlord-only (Phase 209, #448), has an FK to landlord `tenants` -- omitted here
+    // since its introduction, confirmed live (#1163 spike, 2026-08-31) to actively break
+    // provisionTenant()'s tenantSequelize.sync() for every fresh tenant (ER_FK_CANNOT_OPEN_PARENT:
+    // the FK ends up declared inside the tenant DB, which has no `tenants` table of its own), not
+    // merely a latent-risk hygiene finding as #1233 originally scoped it.
+    'DgfyAffiliateCategoryRate',
+    // #1202 (Phase 214) - landlord-only, by-value enrollment_id/tenant_id, no FK (see
+    // DgfyAffiliateEnrollmentStatusEvent.js). Added here from the start so this new model does not
+    // repeat the DgfyAffiliateCategoryRate omission flagged above/in #448's own hygiene finding.
+    'DgfyAffiliateEnrollmentStatusEvent',
     'TenantAffiliateSettings',
     'TenantComplianceArtifact',
     'TenantCompliancePeripheral',

@@ -8,11 +8,21 @@ import {
     AFFILIATE_SETTLEMENT_POLICIES,
     validateAffiliatePriceRule
 } from '../../shared/utils/affiliatePricingPolicy.js';
+// #449 (Phase 208) - resolveEarningsCap is the same pair-resolution ladder the accrual util uses,
+// reused here so the read surface (buildListAffiliatesUseCase) reports exactly what accrual sees.
+import { resolveEarningsCap } from '../utils/affiliateCommissionAccrual.js';
 
 const MAX_RATE_BPS = 10000; // 100.00%
 const MIN_ATTRIBUTION_WINDOW_DAYS = 1;
 const MAX_ATTRIBUTION_WINDOW_DAYS = 365;
 const ENROLLMENT_STATUS_VALUES = new Set(['active', 'suspended', 'revoked']);
+// #450 (Phase 199) - statuses that record a revocation-audit stamp when actually transitioned
+// into (see buildUpdateAffiliateEnrollmentUseCase, D2).
+const REVOCATION_STAMP_STATUSES = new Set(['revoked', 'suspended']);
+// #1191 (Phase 207) - the only statuses a reactivation may transition OUT of. 'pending' is a real
+// reachable enum value on DgfyAffiliateEnrollment (the model's own default) but has never been
+// activated, so promoting it is an activation, not a reactivation - out of scope for this endpoint.
+const REACTIVATABLE_STATUSES = new Set(['suspended', 'revoked']);
 const PAYOUT_METHOD_TYPES = new Set(['bank', 'gcash', 'maya']);
 const COMMISSION_TYPE_VALUES = new Set(AFFILIATE_COMMISSION_RULE_TYPES);
 const SETTLEMENT_POLICY_VALUES = new Set(AFFILIATE_SETTLEMENT_POLICIES);
@@ -20,6 +30,11 @@ const PRICE_RULE_TYPE_VALUES = new Set(AFFILIATE_SELLING_PRICE_RULE_TYPES);
 // Sentinel meaning "applies to all" for enrollment_id/item_id - see
 // backend/migrations/20260729000003-add-affiliate-price-rules.cjs.
 const PRICE_RULE_SCOPE_ALL = 0;
+
+// #448 (Phase 209) - a SEPARATE named constant from PRICE_RULE_SCOPE_ALL (see
+// dgfyAffiliateRepository.js's own comment on this) so the two tables' sentinels can diverge later
+// without a silent coupling.
+const CATEGORY_RATE_SCOPE_ALL = 0;
 
 const mapError = (error, fallbackMessage) => {
     if (error instanceof DomainError) return error;
@@ -69,6 +84,40 @@ const parseOptionalPositiveInt = (value, { field, min = 0, max = Number.MAX_SAFE
         throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `${field} must be an integer between ${min} and ${max}.`, { statusCode: 422 });
     }
     return parsed;
+};
+
+// #449 (Phase 208) - shared parsing for the two cap fields, used by both the tenant-settings and
+// per-enrollment update use cases. `undefined` leaves the field untouched (PATCH semantics);
+// `null`/`''` clears it. parseOptionalPositiveInt has no `null` branch of its own, so the explicit
+// clear must be handled before delegating to it.
+const parseCapCentavosField = (value, field) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    return parseOptionalPositiveInt(value, { field, min: 0 });
+};
+
+const parseCapActiveUntilField = (value, field = 'earnings_cap_active_until') => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `${field} must be a valid ISO 8601 date-time.`, { statusCode: 422 });
+    }
+    return parsed;
+};
+
+// #449 (Phase 208), §2.3 - an end date with nothing to attach to is a no-op that looks like it
+// worked. `resultingCap`/`resultingActiveUntil` are the MERGED (current row + this update's
+// changes) values, never the update payload alone - a PATCH that only touches the date must still
+// be checked against whatever cap is already on the row.
+const assertCapDateHasCap = (resultingCap, resultingActiveUntil) => {
+    if (resultingActiveUntil !== null && resultingActiveUntil !== undefined && (resultingCap === null || resultingCap === undefined)) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'earnings_cap_active_until cannot be set without max_lifetime_earnings_centavos.',
+            { statusCode: 422, details: { reason_code: 'EARNINGS_CAP_DATE_WITHOUT_CAP' } }
+        );
+    }
 };
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -127,12 +176,19 @@ const validatePayoutMethodPayload = (body = {}, { requireAllFields = false } = {
     return updates;
 };
 
-const buildAffiliateShareUrl = ({ slug, shortCode }) => {
+// Exported (not just internal) so affiliateShareCodeResolve.unit.test.js can pin the emitted
+// /s/{short_code} shape directly, the same way this module already exports hashAffiliateShareCode
+// for its own unit coverage.
+export const buildAffiliateShareUrl = ({ shortCode }) => {
     const origin = String(process.env.STOREFRONT_PUBLIC_ORIGIN || '').trim().replace(/\/+$/, '');
-    if (!slug) return { path: null, url: null };
-    // "/s/" is the short storefront-alias route (see storefrontRouting.js on the store
-    // app) that resolves either the canonical or affiliate slug to a store.
-    const path = `/s/${encodeURIComponent(String(slug).trim().toLowerCase())}?p=${encodeURIComponent(shortCode)}`;
+    const code = String(shortCode || '').trim().toUpperCase();
+    if (!code) return { path: null, url: null };
+    // #452 (Phase 212): the short code IS the path segment now -- "/s/{short_code}" resolves to
+    // the affiliate+store pair server-side via GET /affiliate/s/:short_code. The store slug is no
+    // longer carried in the share URL (it was never load-bearing for resolution), and "?p=" is
+    // retired entirely, both from emission and from the storefront's read path (#452 E1 decision,
+    // 2026-08-30: no back-compat shim -- ?p= links are not meaningfully in circulation yet).
+    const path = `/s/${encodeURIComponent(code)}`;
     return { path, url: origin ? `${origin}${path}` : null };
 };
 
@@ -168,6 +224,14 @@ export const buildUpdateAffiliateSettingsUseCase = ({ repository = dgfyAffiliate
             }
             if (body.auto_approve_enrollment !== undefined) updates.auto_approve_enrollment = body.auto_approve_enrollment === true;
 
+            // #449 (Phase 208) - tenant-wide default lifetime earnings cap.
+            if (body.max_lifetime_earnings_centavos !== undefined) {
+                updates.max_lifetime_earnings_centavos = parseCapCentavosField(body.max_lifetime_earnings_centavos, 'max_lifetime_earnings_centavos');
+            }
+            if (body.earnings_cap_active_until !== undefined) {
+                updates.earnings_cap_active_until = parseCapActiveUntilField(body.earnings_cap_active_until);
+            }
+
             // Phase 1 affiliate pricing rule engine (see
             // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md).
             if (body.commission_type !== undefined) {
@@ -196,6 +260,24 @@ export const buildUpdateAffiliateSettingsUseCase = ({ repository = dgfyAffiliate
                 updates.commission_base_mode = commissionBaseMode;
             }
 
+            // #448 (Phase 209) - gates the per-category commission rate lookup entirely. A merchant
+            // may configure category rate rows first and flip this after (validation on the rows
+            // themselves does not require it) - that is the natural order.
+            if (body.category_rates_enabled !== undefined) updates.category_rates_enabled = body.category_rates_enabled === true;
+
+            // #449 (Phase 208), §2.3 - only fetch/check when this PATCH actually touches either
+            // cap field; every other settings PATCH pays no extra read.
+            if (updates.max_lifetime_earnings_centavos !== undefined || updates.earnings_cap_active_until !== undefined) {
+                const current = await repository.getSettings(tenant);
+                const resultingCap = updates.max_lifetime_earnings_centavos !== undefined
+                    ? updates.max_lifetime_earnings_centavos
+                    : (current?.max_lifetime_earnings_centavos ?? null);
+                const resultingActiveUntil = updates.earnings_cap_active_until !== undefined
+                    ? updates.earnings_cap_active_until
+                    : (current?.earnings_cap_active_until ?? null);
+                assertCapDateHasCap(resultingCap, resultingActiveUntil);
+            }
+
             const settings = await repository.upsertSettings(tenant, updates);
             return ok({ settings });
         } catch (error) {
@@ -208,12 +290,40 @@ export const buildListAffiliatesUseCase = ({ repository = dgfyAffiliateRepositor
     async ({ tenantId }) => {
         try {
             const tenant = ensureTenantId(tenantId);
-            const enrollments = await repository.listEnrollmentsForTenant(tenant);
-            const withEarnings = await Promise.all(enrollments.map(async (enrollment) => ({
-                ...enrollment,
-                earnings: await repository.getEarningsSummary(enrollment.dgfy_account_id, tenant)
-            })));
-            return ok({ affiliates: withEarnings });
+            const [enrollments, slotsMax, slotsUsed, settings] = await Promise.all([
+                repository.listEnrollmentsForTenant(tenant),
+                repository.getMaxAffiliateSlots(tenant),
+                repository.countConsumedSlots(tenant),
+                // #449 (Phase 208) - fetched once here, not per row, and passed into
+                // resolveEarningsCap per enrollment below.
+                repository.getSettings(tenant)
+            ]);
+            const withEarnings = await Promise.all(enrollments.map(async (enrollment) => {
+                // #449 (Phase 208), §6 - read-only cap surface, mirroring Phase 198's
+                // slots_used/slots_max: raising the cap is never a field this response writes.
+                const cap = resolveEarningsCap(enrollment, settings);
+                const lifetimeEarnedCentavos = cap
+                    ? await repository.sumLifetimeCommissionCentavos(tenant, enrollment.enrollment_id)
+                    : null;
+                const earningsCap = {
+                    cap_centavos: cap ? cap.capCentavos : null,
+                    cap_source: cap ? cap.source : null,
+                    active_until: cap ? cap.activeUntil : null,
+                    expired: cap ? cap.expired : false,
+                    lifetime_earned_centavos: lifetimeEarnedCentavos,
+                    remaining_before_cap: (cap && !cap.expired)
+                        ? Math.max(0, cap.capCentavos - lifetimeEarnedCentavos)
+                        : null
+                };
+                return {
+                    ...enrollment,
+                    earnings: await repository.getEarningsSummary(enrollment.dgfy_account_id, tenant),
+                    earnings_cap: earningsCap
+                };
+            }));
+            // Read-only (#1177, #447 D5) - raising the cap is a manual/out-of-band admin action,
+            // never a field this response accepts a write for.
+            return ok({ affiliates: withEarnings, slots_used: slotsUsed, slots_max: slotsMax });
         } catch (error) {
             return fail(mapError(error, 'Failed to list affiliates'));
         }
@@ -221,7 +331,7 @@ export const buildListAffiliatesUseCase = ({ repository = dgfyAffiliateRepositor
 );
 
 export const buildProvisionAffiliateUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
-    async ({ tenantId, body = {} }) => {
+    async ({ tenantId, body = {}, actorUserId = null, actorUsername = null }) => {
         try {
             const tenant = ensureTenantId(tenantId);
             const rateBps = parseOptionalRateBps(body.commission_rate_bps, { field: 'commission_rate_bps' });
@@ -258,7 +368,9 @@ export const buildProvisionAffiliateUseCase = ({ repository = dgfyAffiliateRepos
                 status: 'active',
                 source: 'admin_provisioned',
                 invitedEmail: account.email,
-                activatedAt: new Date()
+                activatedAt: new Date(),
+                actorUserId,
+                actorUsername
             });
             return ok({ enrollment });
         } catch (error) {
@@ -431,7 +543,7 @@ export const buildAcceptAffiliateInviteUseCase = ({ repository = dgfyAffiliateRe
 );
 
 export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
-    async ({ tenantId, enrollmentId, body = {} }) => {
+    async ({ tenantId, enrollmentId, body = {}, revokedBy = null, revokedByUsername = null }) => {
         try {
             const tenant = ensureTenantId(tenantId);
             const updates = {};
@@ -442,6 +554,18 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
                 const status = String(body.status || '').trim();
                 if (!ENROLLMENT_STATUS_VALUES.has(status)) {
                     throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `status must be one of: ${[...ENROLLMENT_STATUS_VALUES].join(', ')}.`, { statusCode: 422 });
+                }
+                // #1191 (Phase 207) - the generic PATCH loses the `suspended|revoked -> active`
+                // transition entirely (Pat's call, 2026-08-30). Reactivation is the only status
+                // change that CONSUMES a slot, and #1177/Phase 198's cap enforcement needs a
+                // lock-first transaction this bare-update path does not have. One enforcement
+                // path, no drift risk between two.
+                if (status === 'active') {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        "status: 'active' is no longer accepted here. Use POST /api/v1/affiliates/affiliates/:enrollment_id/reactivate to reactivate a suspended or revoked affiliate.",
+                        { statusCode: 422, details: { reason_code: 'AFFILIATE_REACTIVATION_MOVED', endpoint: 'POST /api/v1/affiliates/affiliates/:enrollment_id/reactivate' } }
+                    );
                 }
                 updates.status = status;
             }
@@ -456,17 +580,181 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
                     updates.commission_type = commissionType;
                 }
             }
+            // #449 (Phase 208) - per-enrollment cap override. NULL means "inherit the tenant
+            // default", not "clear" - there is no separate clear semantic here (§2.4).
+            if (body.max_lifetime_earnings_centavos !== undefined) {
+                updates.max_lifetime_earnings_centavos = parseCapCentavosField(body.max_lifetime_earnings_centavos, 'max_lifetime_earnings_centavos');
+            }
+            if (body.earnings_cap_active_until !== undefined) {
+                updates.earnings_cap_active_until = parseCapActiveUntilField(body.earnings_cap_active_until);
+            }
+            // #450 (Phase 199) - parsed into a local, not into `updates` directly, so a
+            // reason-only body still hits the emptiness guard below (D8).
+            const revocationReason = body.revocation_reason ? String(body.revocation_reason).trim().slice(0, 500) : null;
+
             if (Object.keys(updates).length === 0) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'No updatable fields were provided.', { statusCode: 422 });
             }
 
-            const enrollment = await repository.updateEnrollment(tenant, enrollmentId, updates);
+            // #449 (Phase 208), §2.3 - fetched once, reused by both the revocation-stamp branch
+            // below and the cap-date guard, rather than issuing a second read for the same row.
+            let previous = null;
+            const needsPreviousForCapCheck = updates.max_lifetime_earnings_centavos !== undefined
+                || updates.earnings_cap_active_until !== undefined;
+            if ((updates.status !== undefined && REVOCATION_STAMP_STATUSES.has(updates.status)) || needsPreviousForCapCheck) {
+                previous = await repository.findEnrollmentById(tenant, enrollmentId);
+                if (!previous) {
+                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+                }
+            }
+
+            if (needsPreviousForCapCheck) {
+                const resultingCap = updates.max_lifetime_earnings_centavos !== undefined
+                    ? updates.max_lifetime_earnings_centavos
+                    : (previous.max_lifetime_earnings_centavos ?? null);
+                const resultingActiveUntil = updates.earnings_cap_active_until !== undefined
+                    ? updates.earnings_cap_active_until
+                    : (previous.earnings_cap_active_until ?? null);
+                assertCapDateHasCap(resultingCap, resultingActiveUntil);
+            }
+
+            // #450 (Phase 199, D1/D2) - only fires when the PATCH is actually moving `status`
+            // into 'revoked'/'suspended' from a different prior status; an idempotent re-PATCH
+            // of the same status does not re-stamp (preserves the original revoked_at).
+            let stamped = false;
+            if (updates.status !== undefined && REVOCATION_STAMP_STATUSES.has(updates.status)) {
+                if (previous.status !== updates.status) {
+                    updates.revoked_at = new Date();
+                    updates.revoked_by = revokedBy ?? null;
+                    updates.revocation_reason = revocationReason; // D6 - always all three together
+                    stamped = true;
+                }
+            }
+
+            // #450 (Phase 199, D7) - reject rather than silently drop a reason that can't attach
+            // to a stamp (status: 'active', no status at all, or an idempotent re-PATCH).
+            if (body.revocation_reason !== undefined && !stamped) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, "revocation_reason is only accepted on a transition into 'revoked' or 'suspended'.", { statusCode: 422 });
+            }
+
+            // #1202 (Phase 214) - actorUsername threaded to the repository so the status-events
+            // row it may write carries a renderable name (F4), independent of whether this PATCH
+            // actually triggers a stamp (the repository itself decides whether to write an event).
+            const enrollment = await repository.updateEnrollment(tenant, enrollmentId, updates, {
+                actorUserId: revokedBy,
+                actorUsername: revokedByUsername
+            });
             if (!enrollment) {
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
             }
             return ok({ enrollment });
         } catch (error) {
             return fail(mapError(error, 'Failed to update affiliate enrollment'));
+        }
+    }
+);
+
+// #1191 (Phase 207) - the ONLY path that may perform a `suspended|revoked -> active` transition.
+// The generic PATCH (buildUpdateAffiliateEnrollmentUseCase above) explicitly rejects
+// `status: 'active'` so there is exactly one enforcement path and no drift risk between two.
+//
+// Why this needs its own endpoint at all: reactivation is the only enrollment status change that
+// CONSUMES a slot (countConsumedSlots counts `active` enrollments only), so it is the only one that
+// needs the #1177/Phase 198 cap check. Demotions to `suspended`/`revoked` only ever FREE a slot and
+// stay on the generic PATCH, unchanged.
+export const buildReactivateAffiliateEnrollmentUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, enrollmentId, reactivatedBy = null, reactivatedByUsername = null, reason = undefined }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            // #1202 (Phase 214) J4, per PR #1232 review RF-3 - optional, ≤500 chars, additive: an
+            // omitted/empty reason stays null, exactly as before this field existed, so no
+            // existing caller of this endpoint breaks.
+            const reactivationReason = reason ? String(reason).trim().slice(0, 500) : null;
+
+            const existing = await repository.findEnrollmentById(tenant, enrollmentId);
+            if (!existing) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+            }
+            if (existing.status === 'active') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This affiliate is already active.',
+                    { statusCode: 409, details: { reason_code: 'AFFILIATE_ALREADY_ACTIVE', status: existing.status } }
+                );
+            }
+            if (!REACTIVATABLE_STATUSES.has(existing.status)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    `Only a suspended or revoked affiliate can be reactivated (this one is ${existing.status}).`,
+                    { statusCode: 409, details: { reason_code: 'AFFILIATE_NOT_REACTIVATABLE', status: existing.status } }
+                );
+            }
+
+            // #450 Phase 199, restated here so it doesn't read as an oversight: reactivation does
+            // NOT clear revoked_at/revoked_by/revocation_reason. They are an audit trail of the most
+            // recent revocation, not a live-status mirror - `status` is the sole authority on
+            // whether this affiliate is currently active. It also does NOT touch `activated_at`,
+            // which is the ORIGINAL enrollment date and is rendered to the affiliate as
+            // "Enrolled <date>" (dgfy-storefront customer-dashboard AffiliateSection.jsx).
+            //
+            // #1202 (Phase 214) - `reactivatedBy` finally gets used. Phase 207 threaded it through
+            // the controller and use case and deliberately left it unpersisted (there was no
+            // `reactivated_by` column and adding one is explicitly rejected - see PHASE_214_PLAN.md
+            // §3, "Do not add reactivated_at/reactivated_by columns"). Phase 214 is that follow-up:
+            // it is now passed to the repository, which records it on the new status-events row
+            // instead of a dedicated column.
+            const enrollment = await repository.reactivateEnrollment(tenant, enrollmentId, {
+                actorUserId: reactivatedBy,
+                actorUsername: reactivatedByUsername,
+                reason: reactivationReason
+            });
+            if (!enrollment) {
+                // Deleted between the read above and the transactional re-read inside the
+                // repository - vanishingly rare, but do not return a null enrollment as success.
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+            }
+            return ok({ enrollment });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to reactivate affiliate enrollment'));
+        }
+    }
+);
+
+// #1202 (Phase 214, J7) - dedicated read endpoint, mirroring Phase 213's own
+// GET /:id/affiliate-slots/audit-logs sibling rather than inlining an unbounded history array into
+// GET /affiliates. No affiliate-facing surface (J2) - merchant-only visibility, see
+// PHASE_214_PLAN.md §4.5.
+export const buildListAffiliateEnrollmentStatusEventsUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, enrollmentId, limit = 25 }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            // findEnrollmentById first - the tenant-isolation boundary. Do NOT query events by
+            // enrollment_id alone; a 404 here is what stops one tenant reading another's history
+            // (test #12, PHASE_214_PLAN.md §6).
+            const enrollment = await repository.findEnrollmentById(tenant, enrollmentId);
+            if (!enrollment) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+            }
+            const statusEvents = await repository.listStatusEventsForEnrollment(tenant, enrollmentId, { limit });
+            return ok({
+                status_events: statusEvents.map((event) => ({
+                    status_event_id: event.status_event_id,
+                    enrollment_id: event.enrollment_id,
+                    from_status: event.from_status,
+                    to_status: event.to_status,
+                    event_type: event.event_type,
+                    actor_type: event.actor_type,
+                    actor_user_id: event.actor_user_id,
+                    actor_username: event.actor_username,
+                    actor_dgfy_account_id: event.actor_dgfy_account_id,
+                    reason: event.reason,
+                    source: event.source,
+                    created_at: event.created_at
+                })),
+                enrollment_id: Number(enrollmentId)
+            });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to load affiliate enrollment status events'));
         }
     }
 );
@@ -575,6 +863,94 @@ export const buildDeactivateAffiliatePriceRuleUseCase = ({ repository = dgfyAffi
     }
 );
 
+// --- Affiliate category rates (#448, Phase 209) - the category tier of the commission rate
+// ladder. Mirrors the price-rule endpoints above one-for-one; see affiliateCommissionAccrual.js
+// for how these rows are actually resolved at accrual time. ---
+
+export const buildListAffiliateCategoryRatesUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const categoryRates = await repository.listCategoryRatesForTenant(tenant);
+            return ok({ category_rates: categoryRates });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to list affiliate category rates'));
+        }
+    }
+);
+
+// Creates or updates the single category rate at a given scope (tenant template when
+// enrollment_id is omitted/0, or a specific affiliate's override). See A6 below for the
+// shadowed-by-override guard, and A4 for why folder_id = 0 is rejected rather than treated as an
+// "all categories" sentinel.
+export const buildUpsertAffiliateCategoryRateUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, body = {} }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const enrollmentId = parseOptionalPositiveInt(body.enrollment_id, { field: 'enrollment_id', min: 0 }) ?? CATEGORY_RATE_SCOPE_ALL;
+
+            // A4: folder_id is required and must be a real item_folders.folder_id - there is no
+            // "all categories" sentinel (that concept already exists as default_rate_bps).
+            const folderId = parseOptionalPositiveInt(body.folder_id, { field: 'folder_id', min: 1 });
+            if (folderId === undefined || folderId === null) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    "folder_id must be a real item_folders.folder_id; there is no 'all categories' sentinel — set default_rate_bps instead.",
+                    { statusCode: 422, details: { reason_code: 'AFFILIATE_CATEGORY_RATE_FOLDER_ID_REQUIRED' } }
+                );
+            }
+
+            const rateBps = parseRequiredRateBps(body.rate_bps, { field: 'rate_bps' });
+            const active = body.active !== undefined ? body.active === true : true;
+
+            if (enrollmentId !== CATEGORY_RATE_SCOPE_ALL) {
+                const enrollment = await repository.findEnrollmentById(tenant, enrollmentId);
+                if (!enrollment) {
+                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+                }
+                // A6: an enrollment-scoped category rate on an affiliate who ALSO has
+                // commission_rate_bps set is dead config - the enrollment override wins outright
+                // and this row would never fire. Reject rather than let a merchant configure
+                // something that silently never applies (fail-closed, matching this repo's
+                // existing habit - see ADR 0066's [binding] fail-closed clause).
+                if (Number.isInteger(enrollment.commission_rate_bps)) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'This affiliate has a commission_rate_bps override set, which always wins over a category rate. Clear this affiliate\'s commission_rate_bps first.',
+                        { statusCode: 422, details: { reason_code: 'AFFILIATE_CATEGORY_RATE_SHADOWED_BY_OVERRIDE' } }
+                    );
+                }
+            }
+
+            const categoryRate = await repository.upsertCategoryRate({
+                tenantId: tenant,
+                enrollmentId,
+                folderId,
+                rateBps,
+                active
+            });
+            return ok({ category_rate: categoryRate });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to save affiliate category rate'));
+        }
+    }
+);
+
+export const buildDeactivateAffiliateCategoryRateUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, categoryRateId }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const categoryRate = await repository.deactivateCategoryRate(tenant, categoryRateId);
+            if (!categoryRate) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate category rate not found.', { statusCode: 404 });
+            }
+            return ok({ category_rate: categoryRate });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to deactivate affiliate category rate'));
+        }
+    }
+);
+
 export const buildGetAffiliateQrPayloadUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
     async ({ tenantId, enrollmentId }) => {
         try {
@@ -584,10 +960,14 @@ export const buildGetAffiliateQrPayloadUseCase = ({ repository = dgfyAffiliateRe
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
             }
             const slug = await repository.getStorefrontAffiliateSlug(tenant);
-            const { path, url } = buildAffiliateShareUrl({ slug, shortCode: enrollment.short_code });
+            const { path, url } = buildAffiliateShareUrl({ shortCode: enrollment.short_code });
             return ok({
                 short_code: enrollment.short_code,
-                param: 'p',
+                // #452 (Phase 212): "param: 'p'" is retired -- the short code is now the path
+                // segment itself, not a query param. Replaced with share_kind so a consumer can
+                // still tell what shape the link is without re-parsing the URL. Verified by grep
+                // (AffiliatesWorkspacePanel.jsx) that no current consumer reads the old "param" key.
+                share_kind: 'path',
                 slug,
                 path,
                 url
@@ -609,7 +989,7 @@ export const buildListMyAffiliateEnrollmentsUseCase = ({ repository = dgfyAffili
             // "share this to earn" QR/link without a second round trip per enrollment.
             const enrichedEnrollments = await Promise.all(enrollments.map(async (enrollment) => {
                 const slug = await repository.getStorefrontAffiliateSlug(enrollment.tenant_id);
-                const { path, url } = buildAffiliateShareUrl({ slug, shortCode: enrollment.short_code });
+                const { path, url } = buildAffiliateShareUrl({ shortCode: enrollment.short_code });
                 return { ...enrollment, store_slug: slug, share_path: path, share_url: url };
             }));
             return ok({ enrollments: enrichedEnrollments });
@@ -753,6 +1133,9 @@ export const buildRequestAffiliateCashoutUseCase = ({ repository = dgfyAffiliate
             if (!enrollment) {
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'You are not enrolled as an affiliate for this store.', { statusCode: 404 });
             }
+            if (enrollment.status !== 'active') {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Your affiliate enrollment is not active, so you cannot request a cashout.', { statusCode: 409 });
+            }
 
             const payoutMethods = await repository.listPayoutMethods(dgfyAccount.id);
             const requestedMethodId = body.payout_method_id !== undefined ? parsePositiveInt(body.payout_method_id) : null;
@@ -838,6 +1221,7 @@ export const buildApproveAffiliateCashoutUseCase = ({ repository = dgfyAffiliate
             const { cashout, reason } = await repository.approveCashout(cashoutId, { tenantId: tenant, approvedByUserId });
             if (!cashout) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Cashout request not found.', { statusCode: 404 });
             if (reason === 'invalid_status') throw new DomainError(DomainErrorCode.CONFLICT, 'Only a requested cashout can be approved.', { statusCode: 409 });
+            if (reason === 'enrollment_inactive') throw new DomainError(DomainErrorCode.CONFLICT, 'This affiliate\'s enrollment is not active, so their cashout cannot be approved.', { statusCode: 409 });
             return ok({ cashout });
         } catch (error) {
             return fail(mapError(error, 'Failed to approve cashout request'));
@@ -856,6 +1240,7 @@ export const buildMarkAffiliateCashoutPaidUseCase = ({ repository = dgfyAffiliat
             const { cashout, reason } = await repository.markCashoutPaid(cashoutId, { tenantId: tenant, externalPaymentRef });
             if (!cashout) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Cashout request not found.', { statusCode: 404 });
             if (reason === 'invalid_status') throw new DomainError(DomainErrorCode.CONFLICT, 'Only an approved cashout can be marked as paid.', { statusCode: 409 });
+            if (reason === 'enrollment_inactive') throw new DomainError(DomainErrorCode.CONFLICT, 'This affiliate\'s enrollment is not active, so their cashout cannot be marked as paid.', { statusCode: 409 });
             return ok({ cashout });
         } catch (error) {
             return fail(mapError(error, 'Failed to mark cashout as paid'));
@@ -928,12 +1313,51 @@ export const buildCaptureAffiliateAttributionUseCase = ({ repository = dgfyAffil
     }
 );
 
+// Public, unauthenticated resolver for /s/{short_code} share links (#452, Phase 212). Given a
+// short code with no tenant/slug context (the whole point of the new URL shape -- the store slug
+// is no longer carried in the link), returns the store slug the storefront should boot, and
+// nothing else. Every miss returns the SAME shape (resolved: false), never a 4xx -- this endpoint
+// is a page-load dependency for an anonymous visitor and must not be usable to distinguish "code
+// doesn't exist" from "code exists but store/program is unavailable" via status code alone (ADR
+// 0036 Decision 7's anti-enumeration posture, qualified per the ADR amendment landed alongside
+// this use case -- see the dated Amendments block).
+export const buildResolveAffiliateShareCodeUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ shortCode }) => {
+        try {
+            const code = String(shortCode || '').trim();
+            if (!code) {
+                return ok({ resolved: false });
+            }
+
+            const enrollment = await repository.findActiveEnrollmentByShortCode(code);
+            if (!enrollment) {
+                return ok({ resolved: false });
+            }
+
+            const settings = await repository.getSettings(enrollment.tenant_id);
+            if (!settings?.program_enabled) {
+                return ok({ resolved: false });
+            }
+
+            const slug = await repository.getStorefrontAffiliateSlug(enrollment.tenant_id);
+            if (!slug) {
+                return ok({ resolved: false });
+            }
+
+            return ok({ resolved: true, store_slug: slug, short_code: enrollment.short_code });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to resolve affiliate share code'));
+        }
+    }
+);
+
 export default {
     buildGetAffiliateSettingsUseCase,
     buildUpdateAffiliateSettingsUseCase,
     buildListAffiliatesUseCase,
     buildProvisionAffiliateUseCase,
     buildUpdateAffiliateEnrollmentUseCase,
+    buildReactivateAffiliateEnrollmentUseCase,
     buildGetAffiliateQrPayloadUseCase,
     buildListMyAffiliateEnrollmentsUseCase,
     buildEnrollSelfServeAffiliateUseCase,
@@ -946,5 +1370,6 @@ export default {
     buildApproveAffiliateCashoutUseCase,
     buildMarkAffiliateCashoutPaidUseCase,
     buildRejectAffiliateCashoutUseCase,
-    buildCaptureAffiliateAttributionUseCase
+    buildCaptureAffiliateAttributionUseCase,
+    buildResolveAffiliateShareCodeUseCase
 };

@@ -67,6 +67,9 @@ const serializeSession = (session = {}, refunds = []) => ({
   idempotency_key: session.idempotency_key,
   total_amount: session.total_amount,
   total_amount_centavos: session.total_amount_centavos,
+  currency: session.currency,
+  qr_code_image_url: session.qr_code_image_url,
+  expires_at: session.expires_at,
   service_fee_amount: session.service_fee_amount,
   platform_fee_centavos: session.platform_fee_centavos,
   tenant_transfer_merchant_id: session.tenant_transfer_merchant_id,
@@ -940,6 +943,90 @@ export const buildReconcileCommercePaymentSessionUseCase = ({
         provider_status: providerPayment.providerStatus,
         provider_payment_id: providerPayment.paymentId
       }
+    });
+  } catch (error) {
+    return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message));
+  }
+};
+
+// #1268: admin-authenticated mirror of `buildConfirmStoreCheckoutSandboxPaymentUseCase`
+// (apps/dgfy-api/src/modules/store/usecases/storeUseCases.js). Deliberately duplicates that use
+// case's status/expiry/amount validation rather than sharing it, so the storefront use case (and
+// its loopback-gated route) stays completely untouched, per the issue's own non-goals. This is a
+// second, independent entry point into the same already-safe `confirmSandboxQrphPayment` call —
+// not a proxy to the loopback route.
+export const buildConfirmCommercePaymentSessionSandboxUseCase = ({
+  commercePaymentRepository,
+  paymongoService
+}) => async ({ paymentSessionId, actor = 'paymongo_admin_sandbox_confirmation' }) => {
+  try {
+    if (process.env.PAYMONGO_MODE !== 'test') {
+      throw new DomainError(
+        DomainErrorCode.RESOURCE_NOT_FOUND,
+        'Sandbox payment confirmation is not available.',
+        { statusCode: 404 }
+      );
+    }
+
+    const reference = normalizeReference(paymentSessionId);
+    const session = await commercePaymentRepository.findSessionByPublicReference(reference);
+    if (!session) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+
+    const refunds = await commercePaymentRepository.listRefundsBySession(session.session_id);
+
+    if (session.status === 'finalized') {
+      return ok({
+        confirmation_requested: false,
+        idempotent_replay: true,
+        payment_session: serializeSession(session, refunds)
+      });
+    }
+    if (session.status !== 'awaiting_payment') {
+      throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        `Payment session cannot be confirmed while ${String(session.status || 'unknown').replaceAll('_', ' ')}.`,
+        { statusCode: 409 }
+      );
+    }
+    if (!session.provider_payment_intent_id) {
+      throw new DomainError(DomainErrorCode.CONFLICT, 'Payment session has no PayMongo payment intent.', { statusCode: 409 });
+    }
+    if (session.expires_at && new Date(session.expires_at).getTime() <= Date.now()) {
+      throw new DomainError(DomainErrorCode.CONFLICT, 'The PayMongo QR Ph payment has expired.', { statusCode: 409 });
+    }
+
+    const providerResult = await paymongoService.confirmSandboxQrphPayment({
+      paymentIntentId: session.provider_payment_intent_id,
+      expectedAmount: session.total_amount_centavos,
+      expectedCurrency: session.currency || 'PHP'
+    });
+    const providerAttributes = providerResult.paymentIntent?.attributes || {};
+    if (
+      Number(providerAttributes.amount) !== Number(session.total_amount_centavos)
+      || String(providerAttributes.currency || '').toUpperCase() !== String(session.currency || 'PHP').toUpperCase()
+    ) {
+      throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        'PayMongo sandbox payment amount or currency does not match this checkout.',
+        { statusCode: 409 }
+      );
+    }
+
+    await writePaymentAudit({
+      commercePaymentRepository,
+      entityId: session.session_id,
+      action: 'UPDATE',
+      actor,
+      changes: {
+        event: 'commerce_payment_sandbox_confirmation_requested',
+        payment_session_id: reference
+      }
+    });
+
+    return ok({
+      confirmation_requested: true,
+      idempotent_replay: false,
+      payment_session: serializeSession(session, refunds)
     });
   } catch (error) {
     return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message));

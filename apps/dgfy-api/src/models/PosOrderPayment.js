@@ -31,7 +31,10 @@ const PosOrderPayment = sequelize.define('PosOrderPayment', {
         allowNull: false
     },
     payment_method: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay'),
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085). Settle Balance is this column's own writer (posUseCases.js
+        // BALANCE_SETTLEMENT_METHODS).
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque'),
         allowNull: false
     },
     idempotency_key: {
@@ -65,6 +68,37 @@ const PosOrderPayment = sequelize.define('PosOrderPayment', {
     },
     confirmed_at: {
         type: DataTypes.DATE,
+        allowNull: true
+    },
+    // Phase 204 (#965): an optional, attach-once proof-of-payment image for a merchant-owned
+    // 'balance' settlement. Never serialize `proof_file_path` to a client -- it is a storage key,
+    // not a URL (posPaymentProofStorage.js); `has_payment_proof` is the derived boolean clients
+    // see instead. ADR 0063 Amendments (2026-08-31): an audit aid only, never independent
+    // verification -- clause 5 [binding] is unweakened.
+    proof_file_path: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    proof_mime_type: {
+        type: DataTypes.STRING(60),
+        allowNull: true
+    },
+    proof_file_size_bytes: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    proof_sha256: {
+        type: DataTypes.CHAR(64),
+        allowNull: true
+    },
+    proof_attached_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    proof_attached_by: {
+        // Staff attribution for the attach action. FK -> users(user_id) ON DELETE SET NULL,
+        // matching `recorded_by` above.
+        type: DataTypes.INTEGER,
         allowNull: true
     }
 }, {
