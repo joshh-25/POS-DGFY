@@ -43,7 +43,7 @@ Sequencing note, stated plainly rather than smoothed over: Phase 233 (#1324) alr
 #1337) and shipped `store_delivery_fee_mode` / `store_delivery_fee_calc` plus
 `modules/deliveryPricing/` ahead of this ADR. This document ratifies the shipped placement and key
 naming rather than proposing them cold, and it names one point where the shipped code diverges from
-the decision actually recorded (see Decision 5).
+the decision actually recorded (see Decision 6).
 
 This ADR governs fee modes and their resolution inputs only. The waiver axis (#1321 decision 9,
 which will be carved out against ADR 0066 Decision 8's single governed-discount slot), the totals
