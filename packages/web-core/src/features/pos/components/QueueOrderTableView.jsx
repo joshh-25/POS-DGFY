@@ -16,7 +16,7 @@ import {
 } from '../utils/incomingQueueOrderFormatting.js';
 import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActions.js';
 
-// Phase 229 (#1288). The Active Queue's table view mode. Receives the same
+// Phase 230 (#1288). The Active Queue's table view mode. Receives the same
 // sortedIncomingOrders array and the same handler props IncomingQueueWorkspace already threads to
 // the card `.map()` -- no new prop surface. See plan-1288-queue-view-mode.md's "Table columns"
 // mapping for the per-field rationale, including what is deliberately omitted from this view

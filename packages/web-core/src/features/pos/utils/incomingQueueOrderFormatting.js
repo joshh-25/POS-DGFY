@@ -1,4 +1,4 @@
-// Phase 229 (#1288). Extracted, behavior-preserving, from module-scope helpers that used to live
+// Phase 230 (#1288). Extracted, behavior-preserving, from module-scope helpers that used to live
 // only inside TerminalOperationsPanels.jsx. Both the existing card view and the new
 // QueueOrderTableView.jsx need these -- pulling them into their own file (rather than exporting
 // them from TerminalOperationsPanels.jsx, which itself imports QueueOrderTableView.jsx to render

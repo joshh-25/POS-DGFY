@@ -16,7 +16,7 @@ import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
 import QueueRunAssignBar from './QueueRunAssignBar.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
-import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
+import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
 import {
   formatOrderDateTime,
   formatOrderAmount,
@@ -368,7 +368,7 @@ function IncomingQueueWorkspace({
 }) {
   const [orderSort, setOrderSort] = React.useState('newest');
   const [activeView, setActiveView] = React.useState('active');
-  // Phase 229 (#1288): Active Queue view-mode toggle (card/table). Initialized lazily from
+  // Phase 230 (#1288): Active Queue view-mode toggle (card/table). Initialized lazily from
   // per-terminal localStorage (React.useState's function form runs the read exactly once, on
   // mount) so a returning operator's last choice sticks; card view stays the default whenever no
   // stored preference exists or the stored value fails normalization.
@@ -754,7 +754,7 @@ function IncomingQueueWorkspace({
               ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
               : '';
 
-            // Phase 229 (#1288): the ~150-line per-order button-eligibility construction that used
+            // Phase 230 (#1288): the ~150-line per-order button-eligibility construction that used
             // to live inline here now lives in incomingQueueOrderActions.js, shared verbatim with
             // QueueOrderTableView.jsx's Actions column so the two view modes can never drift on
             // which actions an order gets.

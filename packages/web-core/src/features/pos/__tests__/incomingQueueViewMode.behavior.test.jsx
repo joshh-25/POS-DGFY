@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-// Phase 229 (#1288). Covers the Active Queue view-mode toggle (card/table): the toggle switches
+// Phase 230 (#1288). Covers the Active Queue view-mode toggle (card/table): the toggle switches
 // render branch, the preference persists across remount via per-terminal localStorage, it defaults
 // to 'card' when unset/invalid, selectedOrderIds selection survives a toggle, QueueRunAssignBar's
 // bulk-submit still works with table view active, the table renders every mapped column for a

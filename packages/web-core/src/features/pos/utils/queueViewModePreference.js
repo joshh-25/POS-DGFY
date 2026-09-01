@@ -1,6 +1,6 @@
 import { safeLocalStorageGet, safeLocalStorageSet } from './posTerminalStorage.js';
 
-// Phase 229 (#1288). Per-terminal/per-browser Active Queue view-mode preference (card vs table),
+// Phase 230 (#1288). Per-terminal/per-browser Active Queue view-mode preference (card vs table),
 // same posture as every other POS UI preference in this file's sibling
 // (posTextSizePreference.js's shape, but routed through safeLocalStorageGet/safeLocalStorageSet
 // -- posTerminalStorage.js's quota-exceeded recovery helpers -- rather than raw

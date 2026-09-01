@@ -11,8 +11,9 @@ import {
   isManualDeliveryJob,
   hasCompleteDeliveryAssignment
 } from '../components/orderFulfillmentUi.js';
+import { getActiveRunMembership } from './deliveryRunEligibility.js';
 
-// Phase 229 (#1288). Extracted, behavior-preserving, from the ~150-line `buttons` array that used
+// Phase 230 (#1288). Extracted, behavior-preserving, from the ~150-line `buttons` array that used
 // to be built inline inside IncomingQueueWorkspace's per-order .map() in
 // TerminalOperationsPanels.jsx (lines 768-926 as of the extraction). Card view and the new
 // QueueOrderTableView.jsx both call this one function so the eligibility/predicate logic for which
@@ -84,6 +85,11 @@ export function buildIncomingQueueOrderActions(order = {}, {
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
+  // Phase 229 (#1291): once an order is a member of an active (not completed/cancelled) delivery
+  // run, the run's own Dispatch action is the sole path to out_for_delivery -- the per-order
+  // control is withheld here, with an explanatory tooltip, rather than hidden. Also a pure
+  // function of `order` alone, moved in the same way as the two predicates above.
+  const activeRunMembership = getActiveRunMembership(order);
 
   const buttons = [];
 
@@ -162,6 +168,15 @@ export function buildIncomingQueueOrderActions(order = {}, {
   }
 
   nextActions.forEach((status) => {
+    // Scoped to `out_for_delivery` only: gating the whole nextActions array would also disable
+    // `packed`, deadlocking the run's own DELIVERY_RUN_UNPACKED_MEMBERS dispatch precondition
+    // (#1272).
+    const gatedByActiveRun = status === 'out_for_delivery' && activeRunMembership.inActiveRun;
+    const runGateReason = gatedByActiveRun
+      ? (activeRunMembership.runLabel
+        ? `This order is in delivery run "${activeRunMembership.runLabel}". Dispatch it from the Delivery Runs tab.`
+        : 'This order is in a delivery run. Dispatch it from the Delivery Runs tab.')
+      : null;
     buttons.push(
       React.createElement(
         Button,
@@ -170,7 +185,9 @@ export function buildIncomingQueueOrderActions(order = {}, {
           type: 'button',
           size: 'sm',
           variant: status === 'rejected' ? 'destructive' : 'outline',
-          disabled: Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order)),
+          disabled: Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order)) || gatedByActiveRun,
+          title: runGateReason || undefined,
+          'aria-label': runGateReason || undefined,
           onClick: () => {
             if (status === 'rejected') {
               onRequestRejection(Number(order.pos_transaction_id));

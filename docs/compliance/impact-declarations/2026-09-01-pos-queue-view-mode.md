@@ -15,7 +15,7 @@ preflight_run_at: 2026-09-01T00:00:00Z
 preflight_request_ref: NOT-EXECUTED-1288-QUEUE-VIEW-MODE
 ---
 
-# POS Active Queue view-mode toggle: card and table (Phase 229, #1288)
+# POS Active Queue view-mode toggle: card and table (Phase 230, #1288)
 
 ## Compliance Impact Classification
 

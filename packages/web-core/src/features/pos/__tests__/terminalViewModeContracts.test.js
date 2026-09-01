@@ -12,7 +12,7 @@ const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/Term
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const terminalOperationsPanelsPath = path.resolve(__dirname, '../components/TerminalOperationsPanels.jsx');
-// Phase 229 (#1288) extracted the incoming-queue per-order action-button construction out of
+// Phase 230 (#1288) extracted the incoming-queue per-order action-button construction out of
 // TerminalOperationsPanels.jsx into this shared, behavior-preserving pure function (reused by the
 // new table view mode too) -- concatenated into terminalOperationsPanelsContent below, same
 // pattern terminalPageContent already uses for its own multi-file join, so the source-content

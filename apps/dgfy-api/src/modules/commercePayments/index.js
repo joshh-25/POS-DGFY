@@ -4,6 +4,7 @@ import { raiseOperationalAlert } from '../../services/operationalAlertService.js
 import { commercePaymentRepository } from './repositories/commercePaymentRepository.js';
 import { buildHandlePayMongoCommerceWebhookUseCase } from './usecases/handlePayMongoCommerceWebhookUseCase.js';
 import {
+  buildConfirmCommercePaymentSessionSandboxUseCase,
   buildCreateCommercePaymentRefundUseCase,
   buildCreateTenantPayMongoChildAccountUseCase,
   buildGetCommercePaymentSessionUseCase,
@@ -43,6 +44,11 @@ export const retryCommercePaymentFinalizationUseCase = buildRetryCommercePayment
 });
 
 export const reconcileCommercePaymentSessionUseCase = buildReconcileCommercePaymentSessionUseCase({
+  commercePaymentRepository,
+  paymongoService
+});
+
+export const confirmCommercePaymentSessionSandboxUseCase = buildConfirmCommercePaymentSessionSandboxUseCase({
   commercePaymentRepository,
   paymongoService
 });
