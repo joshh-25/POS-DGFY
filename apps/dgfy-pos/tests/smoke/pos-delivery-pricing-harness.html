@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>POS Delivery Pricing rendered-QA harness</title>
+  </head>
+  <body>
+    <!--
+      #1341/PR #1342 (RF-1): a dedicated, isolated rendered-check entry for
+      PosDeliveryPricingSettingsCard.jsx, mounted with real settingsService network calls
+      intercepted by scripts/smoke-pos-delivery-pricing-ui.js -- not part of the shipped app
+      build (no rollupOptions.input entry references it), only reachable in `vite dev`/`vite
+      preview` the same way apps/dgfy-storefront's own delivery-map smoke harness reuses a real
+      app route. See that script's header comment for the pattern this follows.
+    -->
+    <div id="root"></div>
+    <script type="module" src="./pos-delivery-pricing-harness.jsx"></script>
+  </body>
+</html>
