@@ -168,3 +168,19 @@ snapshots while preventing inactive or stale modifier state from leaking into
 new edits. Store and F&B use-case tests verify the accepted modifier payloads;
 the change does not alter payment totals outside the existing authoritative
 checkout calculation and introduces no schema change.
+
+### Shared POS terminal and receipt behavior
+
+The shared POS client corrections align receipt wording and payment breakdowns,
+remove cashier-facing shift totals that belong only in Z readings, preserve
+online-order receipt printing, enforce edit-without-delete catalog behavior,
+restore terminal resume state, and run split-payment hardware follow-up from
+the canonical completed transaction. A positive cash allocation requests one
+drawer pulse with the automatic receipt print; non-cash splits and reprints do
+not request a drawer pulse. Hardware failure remains a post-commit warning and
+never retries or reverses the financial transaction.
+
+Component, contract, hook, and receipt-renderer tests cover the affected paths,
+including mixed GCash/cash and non-cash-only split payments. No client display
+state becomes authoritative for totals, permissions, payment status, or drawer
+audit scope.

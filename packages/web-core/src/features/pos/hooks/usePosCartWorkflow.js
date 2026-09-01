@@ -327,7 +327,10 @@ export const usePosCartWorkflow = ({
                         unit: line.unit_of_measure || ''
                     });
                 }
-                if (safeQty <= 0) return null;
+                // Quantity controls may never remove a cart line. Keep the
+                // current line intact at zero; explicit removal belongs to
+                // removeCartLine (the trash action) only.
+                if (safeQty <= 0) return line;
                 return { ...line, quantity: safeQty };
             })
             .filter(Boolean);

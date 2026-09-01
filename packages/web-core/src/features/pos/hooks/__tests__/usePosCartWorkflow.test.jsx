@@ -58,7 +58,7 @@ describe('usePosCartWorkflow', () => {
         expect(result.current.cart[0].quantity).toBe(5);
     });
 
-    it('supports decimal manual quantity and removes a line at zero', () => {
+    it('supports decimal manual quantity without deleting the line at zero', () => {
         const { result } = renderCart({
             catalog: [{ ...retailItem, unit_of_measure: 'kg', current_stock: 20 }]
         });
@@ -68,7 +68,27 @@ describe('usePosCartWorkflow', () => {
         act(() => result.current.commitManualCartQuantity({ ...retailItem, unit_of_measure: 'kg' }));
         expect(result.current.cart[0].quantity).toBe(1.25);
 
+        act(() => result.current.setQuantityInputValue('0'));
+        act(() => result.current.commitManualCartQuantity({ ...retailItem, unit_of_measure: 'kg' }));
+        expect(result.current.cart).toHaveLength(1);
+        expect(result.current.cart[0].quantity).toBe(1.25);
+
         act(() => result.current.updateCartQuantity(result.current.cart[0].line_key, 0));
+        expect(result.current.cart).toHaveLength(1);
+        expect(result.current.cart[0].quantity).toBe(1.25);
+    });
+
+    it('keeps an item at quantity one until the trash action removes it', () => {
+        const { result } = renderCart();
+
+        act(() => result.current.addToCart(retailItem));
+        const lineKey = result.current.cart[0].line_key;
+
+        act(() => result.current.updateCartQuantity(lineKey, 0));
+        expect(result.current.cart).toHaveLength(1);
+        expect(result.current.cart[0].quantity).toBe(1);
+
+        act(() => result.current.removeCartLine(lineKey));
         expect(result.current.cart).toEqual([]);
     });
 

@@ -12,7 +12,7 @@ export const getModifierGroupMin = (group = {}) => {
     const through = group?.FnbItemModifierGroup || group?.fnbItemModifierGroup || {};
     const required = through.is_required_override == null ? group?.required === true : through.is_required_override === true;
     const min = Number.parseInt(group?.min_select || 0, 10) || 0;
-    return required ? Math.max(1, min) : min;
+    return required ? Math.max(1, min) : 0;
 };
 
 export const buildDefaultLineModifiers = (item = {}) => getFnbModifierGroups(item).flatMap((group) => {

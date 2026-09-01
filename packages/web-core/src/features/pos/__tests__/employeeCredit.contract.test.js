@@ -126,6 +126,15 @@ describe('Employee Credit POS contract', () => {
     expect(settingsWorkspaceContent).toContain('onEmployeesChanged');
   });
 
+  it('offers a guarded full-repayment action without replacing manual repayment', () => {
+    expect(employeeCreditPanelContent).toContain('Repay all');
+    expect(employeeCreditPanelContent).toContain('repayAllConfirmOpen');
+    expect(employeeCreditPanelContent).toContain('repay_all: true');
+    expect(employeeCreditPanelContent).toContain('expected_version: repayAllTarget.expectedVersion');
+    expect(employeeCreditPanelContent).toContain('The account must still have the same balance when you confirm.');
+    expect(employeeCreditPanelContent).toContain('Record repayment');
+  });
+
   it('prints non-cash credit evidence and an employee signature line', () => {
     expect(receiptContent).toContain("transaction.payment_type === 'employee_credit'");
     expect(receiptContent).toContain('employee_credit_employee_name_snapshot');

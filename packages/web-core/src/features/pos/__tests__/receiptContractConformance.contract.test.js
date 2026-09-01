@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe('RCPT-01 receipt contract conformance fixtures', () => {
-  it('renders required non-fiscal banner and DGFY footer', () => {
+  it('renders the non-fiscal label and revised DGFY footer without duplicate notices', () => {
     renderReceipt({
       transaction: buildTransaction(),
       businessSettings: {
@@ -59,9 +59,10 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       }
     });
 
-    expect(screen.getByText('NON-FISCAL SLIP')).toBeTruthy();
-    expect(screen.getByText('NOT A FISCAL RECEIPT')).toBeTruthy();
-    expect(screen.getByText('Non-fiscal document')).toBeTruthy();
+    expect(screen.queryByText('NON-FISCAL SLIP')).toBeNull();
+    expect(screen.queryByText('NOT A FISCAL RECEIPT')).toBeNull();
+    expect(screen.queryByText('Non-fiscal document')).toBeNull();
+    expect(screen.queryByText('NON-FISCAL RECEIPT')).toBeNull();
     expect(screen.getByText('Powered by DGFY POS')).toBeTruthy();
     expect(screen.queryByText(/TIN\/Branch:/i)).toBeNull();
     expect(screen.queryByText('SOLD TO:')).toBeNull();
@@ -69,7 +70,7 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(screen.queryByText(/SC\/PWD\/NAAC\/MOV\/Solo Parent ID No\./i)).toBeNull();
     expect(screen.queryByText(/^Signature:/i)).toBeNull();
     expect(screen.getByText('Estimated Tax')).toBeTruthy();
-    expect(screen.getByText('This document is not an official tax receipt.')).toBeTruthy();
+    expect(screen.getByText('This document is not an official receipt.')).toBeTruthy();
   });
 
   it('renders the company icon when a storefront profile image is configured', () => {
@@ -129,11 +130,11 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       businessSettings: { pos_business_name: 'Compliance Test Store' }
     });
 
-    expect(screen.getByText('NON-FISCAL SLIP')).toBeTruthy();
+    expect(screen.queryByText('NON-FISCAL SLIP')).toBeNull();
     expect(screen.queryByText('VAT INVOICE')).toBeNull();
   });
 
-  it('renders explicit training/test banner when context is training_test', () => {
+  it('keeps the training/test document label without the removed notice banner', () => {
     renderReceipt({
       transaction: buildTransaction({
         special_instructions: JSON.stringify({
@@ -152,8 +153,8 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
       }
     });
 
-    expect(screen.getByText('NOT A FISCAL RECEIPT')).toBeTruthy();
-    expect(screen.getByText('Training/Test mode only')).toBeTruthy();
+    expect(screen.queryByText('NOT A FISCAL RECEIPT')).toBeNull();
+    expect(screen.queryByText('Training/Test mode only')).toBeNull();
     expect(screen.getByText('Powered by DGFY POS')).toBeTruthy();
   });
 

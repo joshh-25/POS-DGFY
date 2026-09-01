@@ -114,9 +114,17 @@ describe('regular POS Setup cashier management contract', () => {
     expect(terminalPageSource).toContain('setSettingsAccessPinVerified(true);');
     expect(terminalPageSource).toContain('commitViewModeSelection(nextMode);');
     expect(terminalPageSource).toContain('await hydrateTerminalMeta({ suppressGlobalErrors: true });');
+    expect(terminalPageSource).toContain('const refreshedMeta = await hydrateTerminalMeta({ suppressGlobalErrors: true });');
+    expect(terminalPageSource).toContain('pinEnabled = refreshedMeta?.settingsAccessPinEnabled === true;');
     expect(sidebarSource).toContain("onClick={() => onSelectViewMode('reports')}");
     expect(sidebarSource).toContain("onClick={() => onSelectViewMode('items')}");
     expect(sidebarSource).toContain("disabled={locked || onboardingRestricted || !canViewPos}");
     expect(sidebarSource).toContain('Daily totals, popular items, and transactions');
+  });
+
+  it('allows cashier item editing while always hiding item deletion', () => {
+    expect(terminalPageSource).toContain("const canEditItems = isCashierRole || hasPermission('items:edit');");
+    expect(terminalPageSource).toContain("const canDeleteItems = !isCashierRole && hasPermission('items:delete');");
+    expect(workspaceSource).toContain('{canDeleteItems && (');
   });
 });
