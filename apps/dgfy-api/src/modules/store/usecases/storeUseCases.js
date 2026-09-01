@@ -330,7 +330,17 @@ const CHECKOUT_SETTING_KEYS = Object.freeze([
 ]);
 const STORE_HAS_NO_LOCATION_KEY = 'store_has_no_location';
 
+// #1377 review, RF-3: `Number(null) === 0` and `Number('') === 0` are both finite, so a bare
+// `Number(value)` coercion silently turned an explicit JSON `null` (or an empty string) coordinate
+// into a fabricated `0`, not `null` -- indistinguishable downstream from a genuine (0, 0) coordinate.
+// A delivery order with `delivery_latitude: null` (a realistic client shape -- e.g. a browser
+// geolocation permission denial serialized as `null`) could therefore still pass the
+// `Number.isFinite(deliveryDestLat)` provider-call guard below and price calculated mode off a
+// garbage coordinate instead of correctly falling back to fixed. Explicit null/undefined/empty
+// string all normalize to `null` (absent) before any numeric coercion is attempted.
 const toNumberOrNull = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
 };
@@ -1678,18 +1688,56 @@ const buildVoucherDiscountRecord = (voucherApplication) => ({
 const DELIVERY_QUOTE_PIN_ADVISORY_TTL_MS = 60 * 60 * 1000;
 
 // Validates a pin read back from commerce_payment_sessions.delivery_fee_breakdown (JSON from the
-// DB -- could be null, truncated, or written by an older deploy). Deliberately narrow: only the
-// three invariants that would otherwise corrupt persistence or indicate a formula version drift.
+// DB -- could be null, truncated, or written by an older deploy). Full shape validation: every
+// field the caller copies verbatim into the persisted order (see the `delivery = Object.freeze({...})`
+// assignment below) is checked here, not just the three top-level invariants -- a partially-valid
+// pin (right mode/finalFee/calcVersion, garbage everywhere else) would otherwise corrupt the
+// money/provenance breakdown on webhook finalization (#1377 review, RF-2).
 // Any failure here means "fall through to normal resolution," never a thrown error -- pinning must
 // never be able to block a checkout that would otherwise succeed.
+const PINNED_DISTANCE_SOURCES = Object.freeze(['road', 'fallback', 'none']);
+
+const isFiniteNonNegativeNumber = (value) => Number.isFinite(value) && value >= 0;
+
 const isValidPinnedDeliveryBreakdown = (pin) => {
     if (!pin || typeof pin !== 'object' || Array.isArray(pin)) return false;
     if (!DELIVERY_FEE_MODES.includes(pin.mode)) return false;
+
     const finalFee = Number(pin.finalFee);
     if (!Number.isFinite(finalFee) || finalFee < 0) return false;
+
     // A calcVersion mismatch means a formula change shipped between pin and finalize -- re-resolving
     // is more correct than honoring a fee priced under a since-superseded formula.
     if (pin.calcVersion !== DELIVERY_FEE_CALC_VERSION) return false;
+
+    // baseFee/waiverAmount: always finite, nonnegative money values -- never null/absent in a
+    // genuinely-produced breakdown (resolveStoreDeliveryFee always sets both to a number).
+    if (!isFiniteNonNegativeNumber(Number(pin.baseFee))) return false;
+    if (!isFiniteNonNegativeNumber(Number(pin.waiverAmount))) return false;
+
+    // overrideAmount: null (the overwhelming common case this phase -- #238 hasn't shipped yet) or a
+    // finite nonnegative number. Anything else (a string, a negative number, NaN) is malformed.
+    if (pin.overrideAmount !== null && !isFiniteNonNegativeNumber(Number(pin.overrideAmount))) return false;
+
+    // distanceSource: closed enum, no coercion -- an unrecognized value is unconditionally malformed.
+    if (!PINNED_DISTANCE_SOURCES.includes(pin.distanceSource)) return false;
+
+    // distanceMeters: null (mirrors distanceSource !== 'road', see resolveStoreDeliveryFee's own
+    // `distanceSource === 'road' ? distanceMeters : null`) or a finite nonnegative number.
+    if (pin.distanceMeters !== null && !isFiniteNonNegativeNumber(Number(pin.distanceMeters))) return false;
+
+    // fallbackApplied/outOfRange: real booleans, not merely truthy -- a stray string/number here
+    // would otherwise be copied verbatim into the persisted breakdown.
+    if (typeof pin.fallbackApplied !== 'boolean') return false;
+    if (typeof pin.outOfRange !== 'boolean') return false;
+
+    // pinned_at: must be a string that actually parses -- the advisory-TTL check downstream
+    // (Date.parse(pinnedDeliveryBreakdown.pinned_at)) already tolerates an unparseable value by
+    // logging and honoring the pin anyway, but a missing/non-string pinned_at means this was never a
+    // real pin from the write site (which always sets `new Date().toISOString()`) -- treat it as
+    // shape-invalid rather than silently persisting a garbage timestamp.
+    if (typeof pin.pinned_at !== 'string' || !Number.isFinite(Date.parse(pin.pinned_at))) return false;
+
     return true;
 };
 
@@ -1824,14 +1872,17 @@ const resolveCheckoutContext = async ({
     const deliveryOriginLng = Number(location?.longitude);
     // Phase 237 (#1329): FIXED a pre-existing correctness gap here -- normalized.delivery_latitude/
     // longitude are already toNumberOrNull()'d (a finite number or null; see
-    // buildNormalizedCheckoutRequest above). Re-wrapping a `null` in `Number(...)` silently produces
-    // `0`, which IS finite -- so the isFinite guard below could never actually detect "no
-    // coordinates" for a delivery order; it always fired the provider with fabricated (0, 0)
-    // coordinates instead. Harmless while this capture was observation-only (Phase 236), but Phase
-    // 237 makes distanceSource feed calculated-mode fee pricing, so a delivery order with genuinely
-    // missing coordinates must resolve distanceSource: 'none' (RM-> fallback to the fixed rate), not
-    // silently query the provider with (0, 0). Fixed by checking finiteness on the already-normalized
-    // value directly, without the redundant re-coercion.
+    // buildNormalizedCheckoutRequest above), so this guard deliberately checks finiteness on the
+    // already-normalized value directly rather than re-wrapping it in a redundant `Number(...)`.
+    // Harmless while this capture was observation-only (Phase 236), but Phase 237 makes
+    // distanceSource feed calculated-mode fee pricing, so a delivery order with genuinely missing
+    // coordinates must resolve distanceSource: 'none' (-> fallback to the fixed rate), not silently
+    // query the provider with a fabricated coordinate.
+    // #1377 review, RF-3: this guard alone was still insufficient -- toNumberOrNull() itself
+    // normalized an explicit `null` (and empty-string) coordinate to `0`, which IS finite, so a
+    // payload with `delivery_latitude: null` still passed this check with a fabricated (0, 0). Fixed
+    // at the source (toNumberOrNull, above) rather than here, so every caller of
+    // buildNormalizedCheckoutRequest benefits, not just this one guard.
     const deliveryDestLat = normalized.delivery_latitude;
     const deliveryDestLng = normalized.delivery_longitude;
     const roadDistancePromise = (
