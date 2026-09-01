@@ -231,6 +231,29 @@ describe('storefront F&B modifier checkout contract', () => {
     expect(result.error.message).toContain('requires at least 1 option');
   });
 
+  it('allows an empty selection when the group is not required, even with a stale minimum', async () => {
+    const optionalLegacyBurger = {
+      ...burgerItem,
+      fnbModifierGroups: [{
+        ...burgerItem.fnbModifierGroups[0],
+        required: false,
+        min_select: 1,
+        max_select: 1
+      }]
+    };
+    const result = await buildCartQuoteUseCase(buildRepository([optionalLegacyBurger]))({
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1, line_modifiers: [] }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it('enforces required conditional groups only when the parent option is selected', async () => {
     const conditionalBurger = { ...burgerItem, fnbModifierGroups: [burgerItem.fnbModifierGroups[0], {
       modifier_group_id: 6, name: 'Sauce', required: true, min_select: 1, max_select: 1,

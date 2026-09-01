@@ -273,7 +273,7 @@ const resolveCheckLineModifiers = async ({ fnbRepository, itemId, modifiers, opt
     const assignment = assignments.find((entry) => toPositiveInt(entry?.modifier_group_id) === groupId);
     const through = assignment?.FnbItemModifierGroup || assignment?.fnbItemModifierGroup || assignment || {};
     const required = through.is_required_override == null ? group.required === true : through.is_required_override === true;
-    const minSelect = required ? Math.max(1, toNonNegativeInt(group.min_select, 0)) : toNonNegativeInt(group.min_select, 0);
+    const minSelect = required ? Math.max(1, toNonNegativeInt(group.min_select, 0)) : 0;
     const maxSelect = Math.max(1, toPositiveInt(group.max_select, 1));
     if (selected.length < minSelect || selected.length > maxSelect) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Modifier group "${group.display_name || group.name}" requires ${minSelect}-${maxSelect} selections`, { statusCode: 422 });
@@ -428,14 +428,16 @@ export const buildListModifierGroupsUseCase = ({ fnbRepository }) => async ({ qu
 
 export const buildCreateModifierGroupUseCase = ({ fnbRepository }) => async ({ payload = {} } = {}) => {
   try {
+    const required = normalizeBoolean(payload.required, false);
+    const requestedMinSelect = toNonNegativeInt(payload.min_select, 0);
     const groupPayload = {
       name: trim(payload.name, 120),
       display_name: trim(payload.display_name || payload.name, 120) || null,
       group_kind: payload.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier',
       parent_modifier_option_id: toPositiveInt(payload.parent_modifier_option_id),
-      min_select: toNonNegativeInt(payload.min_select, 0),
+      min_select: requestedMinSelect,
       max_select: Math.max(1, toPositiveInt(payload.max_select, 1)),
-      required: normalizeBoolean(payload.required, false),
+      required,
       is_active: payload.is_active !== false,
       visible_in_pos: payload.visible_in_pos !== false,
       visible_in_storefront: payload.visible_in_storefront !== false,
@@ -465,7 +467,7 @@ export const buildCreateModifierGroupUseCase = ({ fnbRepository }) => async ({ p
     })).filter((option) => option.name);
 
     const defaultCount = optionPayloads.filter((option) => option.is_default).length;
-    const effectiveMinSelect = groupPayload.required ? Math.max(1, groupPayload.min_select) : groupPayload.min_select;
+    const effectiveMinSelect = groupPayload.required ? Math.max(1, groupPayload.min_select) : 0;
     if (defaultCount > groupPayload.max_select) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Default modifier options cannot exceed max_select', { statusCode: 422 });
     }
@@ -515,13 +517,14 @@ export const buildCreateModifierGroupUseCase = ({ fnbRepository }) => async ({ p
 export const buildUpdateModifierGroupUseCase = ({ fnbRepository }) => async ({ modifierGroupId, payload = {} } = {}) => {
   try {
     const groupId = toPositiveInt(modifierGroupId);
+    const required = payload.required === true;
     const minSelect = toNonNegativeInt(payload.min_select, 0);
     const maxSelect = Math.max(1, toPositiveInt(payload.max_select, 1));
     const groupKind = payload.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier';
     const parentModifierOptionId = toPositiveInt(payload.parent_modifier_option_id);
     if (!groupId || !trim(payload.name, 120)) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Modifier group and name are required', { statusCode: 422 });
     if (minSelect > maxSelect) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'min_select cannot exceed max_select', { statusCode: 422 });
-    if (groupKind === 'combo_choice' && (payload.required !== true || minSelect < 1)) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Combo choice groups must be required and select at least one option', { statusCode: 422 });
+    if (groupKind === 'combo_choice' && (!required || minSelect < 1)) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Combo choice groups must be required and select at least one option', { statusCode: 422 });
     const options = (payload.options || []).map((option, index) => ({
       modifier_option_id: toPositiveInt(option.modifier_option_id),
       name: trim(option.name, 120),
@@ -536,9 +539,9 @@ export const buildUpdateModifierGroupUseCase = ({ fnbRepository }) => async ({ m
       sort_order: toNonNegativeInt(option.sort_order, index),
       location_availability: option.location_availability || []
     })).filter((option) => option.name);
-    const effectiveMinSelect = payload.required === true ? Math.max(1, minSelect) : minSelect;
+    const effectiveMinSelect = required ? Math.max(1, minSelect) : 0;
     if (options.filter((option) => option.is_default && option.is_active).length > maxSelect) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Default modifier options cannot exceed max_select', { statusCode: 422 });
-    if (payload.required === true && effectiveMinSelect > options.filter((option) => option.is_active).length) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Required modifier group does not have enough active options', { statusCode: 422 });
+    if (required && effectiveMinSelect > options.filter((option) => option.is_active).length) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Required modifier group does not have enough active options', { statusCode: 422 });
     const linkedIds = [...new Set(options.map((option) => option.sku_item_id).filter(Boolean))];
     const locationIds = [...new Set([...(payload.location_availability || []), ...options.flatMap((option) => option.location_availability)].map((row) => toPositiveInt(row.location_id)).filter(Boolean))];
     const updated = await withTransaction(fnbRepository, async (transaction) => {
@@ -559,7 +562,7 @@ export const buildUpdateModifierGroupUseCase = ({ fnbRepository }) => async ({ m
         });
       }
       return fnbRepository.updateModifierGroup(groupId, {
-        group: { name: trim(payload.name, 120), display_name: trim(payload.display_name || payload.name, 120), group_kind: groupKind, parent_modifier_option_id: parentModifierOptionId, min_select: effectiveMinSelect, max_select: maxSelect, required: payload.required === true, is_active: payload.is_active !== false, visible_in_pos: payload.visible_in_pos !== false, visible_in_storefront: payload.visible_in_storefront !== false, sort_order: toNonNegativeInt(payload.sort_order, 0) },
+        group: { name: trim(payload.name, 120), display_name: trim(payload.display_name || payload.name, 120), group_kind: groupKind, parent_modifier_option_id: parentModifierOptionId, min_select: effectiveMinSelect, max_select: maxSelect, required, is_active: payload.is_active !== false, visible_in_pos: payload.visible_in_pos !== false, visible_in_storefront: payload.visible_in_storefront !== false, sort_order: toNonNegativeInt(payload.sort_order, 0) },
         options,
         location_availability: payload.location_availability || []
       }, { transaction });

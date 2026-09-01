@@ -757,9 +757,9 @@ const resolveStorefrontLineModifiers = ({ item, line, locationId }) => {
         }
         const count = Number(selectedCounts.get(group.modifier_group_id) || 0);
         const required = group.assignment.is_required_override == null
-            ? group.required === true || Number(group.min_select || 0) > 0
+            ? group.required === true
             : group.assignment.is_required_override === true;
-        const minSelect = required ? Math.max(1, Number(group.min_select || 0)) : Number(group.min_select || 0);
+        const minSelect = required ? Math.max(1, Number(group.min_select || 0)) : 0;
         const maxSelect = Number(group.max_select || 0);
         if (minSelect > 0 && count < minSelect) {
             throw new DomainError(
@@ -1078,40 +1078,50 @@ const serializeStorefrontNutrition = (value) => (
         : null
 );
 
+const getStorefrontModifierSelectionConfig = (group) => {
+    const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
+    const required = through.is_required_override == null
+        ? group.required === true
+        : through.is_required_override === true;
+    const minSelect = Number(group.min_select || 0);
+    return {
+        required,
+        min_select: required ? Math.max(1, minSelect) : 0
+    };
+};
+
 const serializeStorefrontModifierGroups = (value, locationId = null) => (
     Array.isArray(value)
         ? value
             .filter((group) => group?.is_active !== false
                 && group?.visible_in_storefront !== false
                 && findStorefrontModifierLocationOverride(group, locationId)?.is_available !== false)
-            .map((group) => ({
-                modifier_group_id: group.modifier_group_id,
-                name: group.name,
-                display_name: group.display_name || group.name,
-                group_kind: group.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier',
-                parent_modifier_option_id: Number(group.parent_modifier_option_id) || null,
-                min_select: Number(group.min_select || 0),
-                max_select: Number(group.max_select || 1),
-                required: (() => {
-                    const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
-                    return through.is_required_override == null
-                        ? group.required === true || Number(group.min_select || 0) > 0
-                        : through.is_required_override === true;
-                })(),
-                options: (Array.isArray(group.options) ? group.options : [])
-                    .filter((option) => option?.is_active !== false
-                        && option?.visible_in_storefront !== false
-                        && option?.is_sold_out !== true
-                        && findStorefrontModifierLocationOverride(option, locationId)?.is_available !== false
-                        && findStorefrontModifierLocationOverride(option, locationId)?.is_sold_out !== true)
-                    .map((option) => ({
-                        modifier_option_id: option.modifier_option_id,
-                        name: option.name,
-                        price_delta: round4(option.price_delta),
-                        is_default: option.is_default === true,
-                        allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null
-                    }))
-            }))
+            .map((group) => {
+                const selectionConfig = getStorefrontModifierSelectionConfig(group);
+                return {
+                    modifier_group_id: group.modifier_group_id,
+                    name: group.name,
+                    display_name: group.display_name || group.name,
+                    group_kind: group.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier',
+                    parent_modifier_option_id: Number(group.parent_modifier_option_id) || null,
+                    min_select: selectionConfig.min_select,
+                    max_select: Number(group.max_select || 1),
+                    required: selectionConfig.required,
+                    options: (Array.isArray(group.options) ? group.options : [])
+                        .filter((option) => option?.is_active !== false
+                            && option?.visible_in_storefront !== false
+                            && option?.is_sold_out !== true
+                            && findStorefrontModifierLocationOverride(option, locationId)?.is_available !== false
+                            && findStorefrontModifierLocationOverride(option, locationId)?.is_sold_out !== true)
+                        .map((option) => ({
+                            modifier_option_id: option.modifier_option_id,
+                            name: option.name,
+                            price_delta: round4(option.price_delta),
+                            is_default: option.is_default === true,
+                            allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null
+                        }))
+                };
+            })
             .filter((group) => group.options.length > 0)
         : []
 );

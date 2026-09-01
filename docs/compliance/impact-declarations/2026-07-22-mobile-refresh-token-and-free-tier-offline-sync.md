@@ -160,3 +160,11 @@ settings access continues to require the configured branch PIN. Permission
 matrix, cashier POS permission, and mobile settings-bootstrap tests cover the
 server-authoritative enforcement; no credential or PIN value is logged or
 added to a client-owned authorization decision.
+
+### F&B modifier preservation
+
+F&B modifier corrections retain server-side validation and persisted order
+snapshots while preventing inactive or stale modifier state from leaking into
+new edits. Store and F&B use-case tests verify the accepted modifier payloads;
+the change does not alter payment totals outside the existing authoritative
+checkout calculation and introduces no schema change.
