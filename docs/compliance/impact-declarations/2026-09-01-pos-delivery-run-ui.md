@@ -11,8 +11,8 @@ verification_evidence: npm run build:pos -- real Vite build, OK,npm run build:sk
 rollback_note: No schema or backend change in this phase -- Phase 224 (PR #1275) and Phase 225 (PR #1276) already shipped the schema and the 7-route API this UI consumes. This phase is frontend-only (packages/web-core/src/features/pos/), so rollback is a plain code revert with no migration or API-contract change to reason about. The new tab is additive and retail-gated; reverting it removes the tab and its 5 new files with no effect on the F&B workflow or the existing per-order delivery-assignment UI, which this phase does not modify.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1273-PHASE-226-DELIVERY-RUN-UI
+preflight_run_at: 2026-09-01T01:05:32.411Z
+preflight_request_ref: PREFLIGHT-33457125207-2026-09-01-POS-DELIVERY-RUN-UI
 ---
 
 # POS Delivery Run management UI (Phase 226, #1273/#1270)

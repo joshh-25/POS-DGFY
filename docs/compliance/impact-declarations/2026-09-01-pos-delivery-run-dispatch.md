@@ -11,8 +11,8 @@ verification_evidence: node --check on every changed apps/dgfy-api .js file -- O
 rollback_note: One new backend route (POST /pos/delivery-runs/:deliveryRunId/dispatch) plus one new use case, handler, validator schema, and repository-free write-through against already-existing repository methods (no new migration, delivery_runs.status's `dispatched` enum value already existed since Phase 224). Rollback is a plain code revert of this PR's commits: removing the route/handler/use-case/validator removes the dispatch capability entirely; the run/personnel/membership endpoints from Phases 225-227 are untouched and continue to function. Frontend rollback similarly removes the Dispatch button, summary panel, and per-row badges, leaving the Phase 226/227 UI intact. The RF-1 amendment below (per-member write savepoint) is additionally revertible on its own: reverting just that hunk restores the prior bare-write fan-out with no other behavior change.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1273-PHASE-228-DISPATCH-RUN
+preflight_run_at: 2026-09-01T01:05:32.411Z
+preflight_request_ref: PREFLIGHT-33457125207-2026-09-01-POS-DELIVERY-RUN-DISPATCH
 ---
 
 # POS Delivery Run dispatch (Phase 228, #1273/#1271) -- final phase of the build track
