@@ -71,12 +71,14 @@ import {
     validateUpdateOnlineOrderStatus,
     validateUpdateOnlineOrderDeliveryAddress,
     validatePosDeviceReceiptPrint,
+    validateOnlineOrderReceiptAutoPrintClaim,
     validatePosDeviceShiftSummaryPrint,
     validatePosDeviceZReadingPrint,
     validatePosDeviceDrawerOpen,
     validatePosDrawerAuthorization,
     validateFiscalPrintEvent,
     validateVoidPosTransaction,
+    validateOverrideDeliveryFee,
     validateCashRefundPosTransaction,
     validateExternalRefundPosTransaction,
     validateProviderRefundPosTransaction,
@@ -248,12 +250,17 @@ router.get('/reports/overview', checkPermission(PERMISSIONS.POS.actions.VIEW_POS
 router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsExportQuery, posController.exportReports);
 router.get('/device/status', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getDeviceStatus);
 router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosDeviceReceiptPrint, posController.printReceipt);
+router.post('/device/online-order-receipt-claim', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validateOnlineOrderReceiptAutoPrintClaim, posController.claimOnlineOrderReceiptAutoPrint);
 router.post('/terminal/shifts/:id/print-summary', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), validateShiftIdParam, validatePosDeviceShiftSummaryPrint, posController.printShiftSummary);
 router.post('/z-reading/:date/print', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateZReadingDateParam, validatePosDeviceZReadingPrint, posController.printZReading);
 router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validatePosDeviceDrawerOpen, posController.requireActiveOperatorForMutation, posController.openDeviceDrawer);
 router.post('/device/authorize-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, posDrawerAuthorizationLimiter, validatePosDrawerAuthorization, posController.requireActiveOperatorForMutation, posController.authorizeDeviceDrawer);
 router.post('/transactions/:id/fiscal-print-events', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosTransactionIdParam, validateFiscalPrintEvent, posController.recordFiscalPrintEvent);
 router.post('/transactions/:id/void', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateVoidPosTransaction, posController.requireActiveOperatorForMutation, posController.voidTransaction);
+// Phase 238 (#1330): not gated on a paired terminal/active shift, unlike void/refund above --
+// same class of guard as PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS (a permissioned order-level
+// edit, not a terminal cash-handling action), so it works from a back-office screen too.
+router.patch('/transactions/:id/delivery-fee', checkPermission(PERMISSIONS.POS.actions.OVERRIDE_DELIVERY_FEE), validatePosTransactionIdParam, validateOverrideDeliveryFee, posController.overrideDeliveryFee);
 router.post('/transactions/:id/cash-refund', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCashRefundPosTransaction, posController.requireActiveOperatorForMutation, posController.cashRefundTransaction);
 router.post('/transactions/:id/external-refund', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateExternalRefundPosTransaction, posController.requireActiveOperatorForMutation, posController.externalRefundTransaction);
 router.post('/transactions/:id/provider-refund', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateProviderRefundPosTransaction, posController.requireActiveOperatorForMutation, posController.providerRefundTransaction);

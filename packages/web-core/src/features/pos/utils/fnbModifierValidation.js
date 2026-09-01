@@ -25,7 +25,7 @@ export const getFnbModifierGroupMinimum = (group) => {
     : through.is_required_override === true;
   return required
     ? Math.max(1, Number(group.min_select || 0))
-    : Number(group.min_select || 0);
+    : 0;
 };
 
 export const validateFnbModifierSelections = (

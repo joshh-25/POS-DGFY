@@ -14,6 +14,7 @@ import {
     getPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase,
     voidPosTransactionUseCase,
+    overrideDeliveryFeeUseCase,
     cashRefundPosTransactionUseCase,
     externalRefundPosTransactionUseCase,
     providerRefundPosTransactionUseCase,
@@ -60,6 +61,7 @@ import {
     updateOnlineOrderStatusUseCase,
     updateOnlineOrderDeliveryAddressUseCase,
     getPosDeviceStatusUseCase,
+    claimOnlineOrderReceiptAutoPrintUseCase,
     printPosReceiptUseCase,
     printPosShiftSummaryUseCase,
     printPosZReadingUseCase,
@@ -1265,6 +1267,38 @@ export const voidTransaction = async (req, res, next) => {
     }
 };
 
+// Phase 238 (#1330). Not routed through requirePairedTerminal -- this is a permissioned
+// order-level edit (same class of guard as PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), not a
+// terminal cash-handling action, so it works the same whether staff act from a paired POS
+// terminal or a back-office screen. Still resolve via posMutationUser(req) rather than req.user
+// directly (RF-6, PR #1336 review): it degrades to req.user on a back-office call, but on a POS
+// terminal after an operator takeover it attributes the audit row to the actual operator
+// (req.posActingUser) instead of the session account.
+export const overrideDeliveryFee = async (req, res, next) => {
+    try {
+        const payload = req.validatedData || req.body || {};
+        const result = await overrideDeliveryFeeUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload,
+            user: posMutationUser(req)
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: result.data?.delivery_fee_override?.no_op
+                    ? 'POS delivery fee unchanged'
+                    : 'POS delivery fee overridden',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const cashRefundTransaction = async (req, res, next) => {
     try {
         const actingUser = posMutationUser(req);
@@ -2258,6 +2292,27 @@ export const printReceipt = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'POS receipt print request sent',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const claimOnlineOrderReceiptAutoPrint = async (req, res, next) => {
+    try {
+        const result = await claimOnlineOrderReceiptAutoPrintUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

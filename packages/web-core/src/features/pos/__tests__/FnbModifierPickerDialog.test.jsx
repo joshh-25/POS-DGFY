@@ -33,6 +33,28 @@ describe('F&B POS modifier selection contract', () => {
     }], [], 4)).toBe('');
   });
 
+  it('treats an unrequired group as optional even when a stale minimum remains', () => {
+    expect(validateFnbModifierSelections([{
+      ...groups[0],
+      required: false,
+      min_select: 1,
+      max_select: 5
+    }], [])).toBe('');
+    expect(validateFnbModifierSelections([{
+      ...groups[0],
+      required: true,
+      min_select: 1,
+      max_select: 5
+    }], [])).toContain('Size requires 1');
+    expect(validateFnbModifierSelections([{
+      ...groups[0],
+      required: true,
+      min_select: 1,
+      max_select: 5,
+      FnbItemModifierGroup: { is_required_override: false }
+    }], [])).toBe('');
+  });
+
   it('starts a fresh picker session when the active POS line changes', () => {
     cleanup();
     const pickerGroups = [{

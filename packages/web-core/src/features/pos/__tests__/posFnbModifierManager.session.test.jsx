@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import PosFnbModifierManager from '../components/PosFnbModifierManager.jsx';
 
 afterEach(() => cleanup());
@@ -42,5 +42,36 @@ describe('POS F&B modifier manager edit sessions', () => {
     const optionsList = screen.getByTestId('fnb-modifier-options-list');
     expect(optionsList.className).toContain('max-h-96');
     expect(optionsList.className).toContain('overflow-y-auto');
+  });
+
+  it('saves add-on groups as optional when Required is turned off', async () => {
+    const onCreate = vi.fn().mockResolvedValue();
+    render(<PosFnbModifierManager groups={[]} items={[]} locations={[]} onCreate={onCreate} />);
+
+    fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Extras' } });
+    fireEvent.change(screen.getByLabelText('Option 1 name'), { target: { value: 'Cheese' } });
+    const required = screen.getByRole('checkbox', { name: 'Required' });
+    const minimum = screen.getByLabelText('Minimum selections');
+
+    expect(required.checked).toBe(false);
+    expect(minimum.value).toBe('0');
+    expect(minimum.disabled).toBe(true);
+
+    fireEvent.click(required);
+    expect(minimum.value).toBe('1');
+    expect(minimum.disabled).toBe(false);
+    fireEvent.change(minimum, { target: { value: '2' } });
+    fireEvent.click(required);
+
+    expect(minimum.value).toBe('0');
+    expect(minimum.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Create group' }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    expect(onCreate.mock.calls[0][0]).toEqual(expect.objectContaining({
+      min_select: 0,
+      max_select: 1,
+      required: false
+    }));
   });
 });

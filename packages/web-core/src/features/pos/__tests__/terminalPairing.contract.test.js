@@ -99,6 +99,17 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain('terminal_id: sanitizeTerminalId(activeTerminalId) || undefined');
   });
 
+  it('installs the verified cashier session before completing resume without re-locking', () => {
+    const resumeStart = terminalPageSource.indexOf('const handleCashierResumeSubmit = async (event) => {');
+    const resumeEnd = terminalPageSource.indexOf('const handleCashierTakeoverSubmit = async (event) => {', resumeStart);
+    const resumeFlow = terminalPageSource.slice(resumeStart, resumeEnd);
+
+    expect(resumeFlow).toContain('activateDgfyTenantSession(posSession, { emitAuthEvent: false });');
+    expect(resumeFlow).toContain('setTerminalUser(cashierUser);');
+    expect(resumeFlow).toContain('preserveShiftContext: preservedShiftContext');
+    expect(resumeFlow.indexOf('activateDgfyTenantSession(posSession')).toBeLessThan(resumeFlow.indexOf('await completeTerminalUnlock(terminalId'));
+  });
+
   it('keeps a successful cashier close in a secure post-shift Day Close handoff while preserving admin navigation', () => {
     const closeShiftStart = terminalPageSource.indexOf('const handleConfirmCloseShift = async () => {');
     const closeShiftEnd = terminalPageSource.indexOf('const dismissStockAlertSummary', closeShiftStart);

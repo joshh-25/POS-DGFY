@@ -126,11 +126,11 @@ git rev-list --count origin/staging..origin/main
 # everything, same as the old components=all)
 gh workflow run deploy.yml -f deploy=true --ref develop   # or staging
 
-# BETA/PROD — ask Pat first, every time
+# PROD — ask Pat first, every time
 gh workflow run deploy-main.yml -f deploy=true --ref main
 
 # Verify health after either dispatch — read-only, unattended
-gh workflow run verify-deployment.yml -f environment=<DEV|STAGING|BETA|PROD> -f poll_minutes=5
+gh workflow run verify-deployment.yml -f environment=<DEV|STAGING|PROD> -f poll_minutes=5
 gh run list --workflow=verify-deployment.yml -L1 --json databaseId,status
 gh run view <id> --json conclusion
 ```

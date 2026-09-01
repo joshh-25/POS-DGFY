@@ -86,20 +86,6 @@ const resolveDocumentType = ({ transaction, receiptContract }) => {
     return 'non_fiscal_slip';
 };
 
-const resolveDocumentContext = ({ transaction, receiptContract, documentType }) => {
-    const contractContext = String(receiptContract?.document_context || '').trim().toLowerCase();
-    if (['fiscal', 'non_fiscal', 'training_test'].includes(contractContext)) {
-        return contractContext;
-    }
-
-    const persistedContext = String(transaction?.document_context || '').trim().toLowerCase();
-    if (['fiscal', 'non_fiscal', 'training_test'].includes(persistedContext)) {
-        return persistedContext;
-    }
-
-    return documentType === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal';
-};
-
 const isStatutorySeniorPwdDiscount = (governedDiscount) => {
     const discountType = String(governedDiscount?.discount_type || '').trim().toLowerCase();
     return discountType === 'senior' || discountType === 'pwd';
@@ -115,12 +101,10 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
     const paymentBreakdown = parsePaymentBreakdown(transaction.payment_breakdown)
         .filter((entry) => Number(entry?.amount || 0) > 0);
     const documentType = resolveDocumentType({ transaction, receiptContract });
-    const documentContext = resolveDocumentContext({ transaction, receiptContract, documentType });
     const isFiscal = documentType === 'fiscal_invoice';
-    const isTrainingContext = documentContext === 'training_test';
     const taxpayerType = String(businessSettings.pos_taxpayer_type || '').trim().toLowerCase();
     const isVatRegistered = !taxpayerType.includes('non');
-    const documentLabel = isFiscal ? (isVatRegistered ? 'VAT INVOICE' : 'NON-VAT INVOICE') : 'NON-FISCAL SLIP';
+    const documentLabel = isFiscal ? (isVatRegistered ? 'VAT INVOICE' : 'NON-VAT INVOICE') : '';
     const restaurantServiceChargeAmount = Number(transaction.restaurant_service_charge_amount || 0);
     const governedDiscount = transaction.discount && typeof transaction.discount === 'object' ? transaction.discount : null;
     const showSeniorPwdReceiptFields = isStatutorySeniorPwdDiscount(governedDiscount);
@@ -157,13 +141,7 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                 {businessSettings.pos_address && (
                     <p className="text-[9px] leading-snug text-slate-600 print:text-[8px]">{businessSettings.pos_address}</p>
                 )}
-                <h3 className="mt-1.5 text-[12px] font-bold tracking-wide text-slate-950 print:mt-1 print:text-[11px]">{documentLabel}</h3>
-                {!isFiscal && (
-                    <div className={`mt-1 rounded border px-1.5 py-0.5 text-[9px] uppercase leading-tight tracking-wide print:px-1 print:py-0.5 print:text-[8px] ${isTrainingContext ? 'border-red-300 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                        <p className="font-semibold">NOT A FISCAL RECEIPT</p>
-                        <p>{isTrainingContext ? 'Training/Test mode only' : 'Non-fiscal document'}</p>
-                    </div>
-                )}
+                {documentLabel && <h3 className="mt-1.5 text-[12px] font-bold tracking-wide text-slate-950 print:mt-1 print:text-[11px]">{documentLabel}</h3>}
                 {isFiscal && (
                     <div className="mt-1 space-y-0.5 text-[9px] leading-tight text-slate-700 print:text-[8px]">
                         {businessSettings.pos_tin_branch && <p>{isVatRegistered ? 'VAT REG TIN' : 'NON-VAT REG TIN'}: {businessSettings.pos_tin_branch}</p>}
@@ -343,8 +321,8 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                 )}
             </div>
             <div className="mt-2 border-t border-dashed border-slate-300 pt-2 text-center text-[9px] leading-snug text-slate-600 print:mt-1.5 print:pt-1.5 print:text-[8px]">
-                <p className="font-bold">{isFiscal ? 'FISCAL RECEIPT' : 'NON-FISCAL RECEIPT'}</p>
-                <p>{isFiscal ? 'Includes tax breakdown and fiscal identifiers.' : 'This document is not an official tax receipt.'}</p>
+                {isFiscal && <p className="font-bold">FISCAL RECEIPT</p>}
+                <p>{isFiscal ? 'Includes tax breakdown and fiscal identifiers.' : 'This document is not an official receipt.'}</p>
             </div>
             <div className="mt-2 space-y-0.5 border-t border-dashed border-slate-300 pt-2 text-center text-[9px] leading-snug text-slate-500 print:mt-1.5 print:pt-1.5 print:text-[8px]">
                 {businessSettings.pos_receipt_footer_message && (

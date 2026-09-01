@@ -88,11 +88,13 @@ import {
     buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
 import { buildCashRefundPosTransactionUseCase } from './usecases/cashRefundUseCases.js';
+import { buildOverrideDeliveryFeeUseCase } from './usecases/deliveryFeeOverrideUseCases.js';
 import { buildExternalRefundPosTransactionUseCase } from './usecases/externalRefundUseCases.js';
 import { buildProviderRefundPosTransactionUseCase } from './usecases/providerRefundUseCases.js';
 import { buildSplitAllocationReversalUseCase } from './usecases/splitAllocationReversalUseCases.js';
 import {
     buildGetPosDeviceStatusUseCase,
+    buildClaimOnlineOrderReceiptAutoPrintUseCase,
     buildPrintPosReceiptUseCase,
     buildPrintPosShiftSummaryUseCase,
     buildPrintPosZReadingUseCase,
@@ -106,6 +108,7 @@ import {
     buildGetMobilePosTransactionCheckpointUseCase,
     buildSyncMobilePosCheckoutsUseCase,
     buildSyncMobilePosVoidsUseCase,
+    buildSyncMobilePosRefundsUseCase,
     buildSyncMobilePosOrderActionsUseCase,
     buildSyncMobilePosItemsUseCase,
     buildSyncMobilePosShiftsUseCase,
@@ -228,6 +231,7 @@ export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     employeeCreditService
 });
 export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
+export const overrideDeliveryFeeUseCase = buildOverrideDeliveryFeeUseCase({ posRepository });
 export const externalRefundPosTransactionUseCase = buildExternalRefundPosTransactionUseCase({ posRepository });
 export const providerRefundPosTransactionUseCase = buildProviderRefundPosTransactionUseCase({
     posRepository,
@@ -337,6 +341,9 @@ export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({
     posRepository,
     deviceDriver: posDeviceDriver
 });
+export const claimOnlineOrderReceiptAutoPrintUseCase = buildClaimOnlineOrderReceiptAutoPrintUseCase({
+    posRepository
+});
 export const printPosReceiptUseCase = buildPrintPosReceiptUseCase({
     posRepository,
     deviceDriver: posDeviceDriver
@@ -426,6 +433,12 @@ export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseC
 export const getMobilePosTransactionCheckpointUseCase = buildGetMobilePosTransactionCheckpointUseCase({ listPosTransactionsUseCase });
 export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase, posRepository });
 export const syncMobilePosVoidsUseCase = buildSyncMobilePosVoidsUseCase({ voidPosTransactionUseCase });
+export const syncMobilePosRefundsUseCase = buildSyncMobilePosRefundsUseCase({
+    cashRefundPosTransactionUseCase,
+    externalRefundPosTransactionUseCase,
+    providerRefundPosTransactionUseCase,
+    splitAllocationReversalUseCase
+});
 export const syncMobilePosOrderActionsUseCase = buildSyncMobilePosOrderActionsUseCase({
     updateOnlineOrderStatusUseCase,
     collectCashPickupOrderUseCase

@@ -459,6 +459,139 @@ describe('Employee Credit service', () => {
     expect(repository.createAuditLog).toHaveBeenCalledTimes(1);
   });
 
+  it('repays the current outstanding balance in full with an idempotent ledger entry', async () => {
+    const account = await buildAccount({ outstanding_balance: 125, version: 2 });
+    const repository = buildRepository({ account });
+    const useCase = buildRecordEmployeeCreditRepaymentUseCase({ repository });
+    const request = {
+      accountId: 7,
+      actorUserId: 12,
+      payload: {
+        repay_all: true,
+        expected_version: 2,
+        reason: 'Final payroll repayment',
+        idempotency_key: 'employee-credit-repay-all-001'
+      }
+    };
+
+    const first = await runWithTenantTransaction(() => useCase(request));
+    const replay = await runWithTenantTransaction(() => useCase(request));
+
+    expect(first.result.success).toBe(true);
+    expect(first.result.data).toMatchObject({
+      account: { account_id: 7, outstanding_balance: 0, version: 3 },
+      ledger_entry: {
+        entry_type: 'repayment',
+        amount: -125,
+        balance_before: 125,
+        balance_after: 0,
+        metadata: {
+          repayment_mode: 'all'
+        }
+      },
+      idempotent_replay: false
+    });
+    expect(replay.result.success).toBe(true);
+    expect(replay.result.data).toMatchObject({
+      ledger_entry: {
+        entry_type: 'repayment',
+        amount: -125,
+        balance_before: 125,
+        balance_after: 0
+      },
+      idempotent_replay: true
+    });
+    expect(repository.auditEntries[0]).toMatchObject({
+      changes: {
+        action: 'repayment',
+        amount: 125,
+        outstanding_before: 125,
+        outstanding_after: 0,
+        repayment_mode: 'all'
+      }
+    });
+  });
+
+  it('rejects Repay All when the account changed after confirmation', async () => {
+    const account = await buildAccount({ outstanding_balance: 125, version: 3 });
+    const repository = buildRepository({ account });
+    const useCase = buildRecordEmployeeCreditRepaymentUseCase({ repository });
+
+    const { result } = await runWithTenantTransaction(() => useCase({
+      accountId: 7,
+      actorUserId: 12,
+      payload: {
+        repay_all: true,
+        expected_version: 2,
+        reason: 'Final payroll repayment',
+        idempotency_key: 'employee-credit-repay-all-stale-001'
+      }
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatchObject({
+      code: 'CONFLICT',
+      statusCode: 409,
+      message: 'Employee Credit balance changed. Refresh and confirm the current balance again.'
+    });
+    expect(account.outstanding_balance).toBe(125);
+    expect(repository.updateAccount).not.toHaveBeenCalled();
+    expect(repository.createLedgerEntry).not.toHaveBeenCalled();
+    expect(repository.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('rejects Repay All when there is no outstanding balance', async () => {
+    const account = await buildAccount({ outstanding_balance: 0, version: 4 });
+    const repository = buildRepository({ account });
+    const useCase = buildRecordEmployeeCreditRepaymentUseCase({ repository });
+
+    const { result } = await runWithTenantTransaction(() => useCase({
+      accountId: 7,
+      actorUserId: 12,
+      payload: {
+        repay_all: true,
+        expected_version: 4,
+        reason: 'No balance confirmation',
+        idempotency_key: 'employee-credit-repay-all-zero-001'
+      }
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatchObject({
+      code: 'CONFLICT',
+      statusCode: 409,
+      message: 'Employee Credit account has no outstanding balance'
+    });
+    expect(repository.updateAccount).not.toHaveBeenCalled();
+    expect(repository.createLedgerEntry).not.toHaveBeenCalled();
+  });
+
+  it('rejects repayment requests that mix partial and full repayment modes', async () => {
+    const account = await buildAccount({ outstanding_balance: 125, version: 2 });
+    const repository = buildRepository({ account });
+    const useCase = buildRecordEmployeeCreditRepaymentUseCase({ repository });
+
+    const { result } = await runWithTenantTransaction(() => useCase({
+      accountId: 7,
+      actorUserId: 12,
+      payload: {
+        amount: 125,
+        repay_all: true,
+        expected_version: 2,
+        reason: 'Invalid mixed repayment',
+        idempotency_key: 'employee-credit-repay-all-mixed-001'
+      }
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      statusCode: 422,
+      message: 'Provide either a repayment amount or repay_all'
+    });
+    expect(repository.findAccountById).not.toHaveBeenCalled();
+  });
+
   it('records a reasoned outstanding correction without changing the legacy funded balance', async () => {
     const account = await buildAccount({ balance: 500, outstanding_balance: 85, version: 3 });
     const repository = buildRepository({ account });

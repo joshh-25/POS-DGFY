@@ -12,6 +12,7 @@ let buildGetMobilePosDevicePolicyUseCase;
 let buildGetMobilePosTransactionCheckpointUseCase;
 let buildSyncMobilePosCheckoutsUseCase;
 let buildSyncMobilePosVoidsUseCase;
+let buildSyncMobilePosRefundsUseCase;
 let buildSyncMobilePosOrderActionsUseCase;
 
 beforeAll(async () => {
@@ -20,6 +21,7 @@ beforeAll(async () => {
         buildGetMobilePosTransactionCheckpointUseCase,
         buildSyncMobilePosCheckoutsUseCase,
         buildSyncMobilePosVoidsUseCase,
+        buildSyncMobilePosRefundsUseCase,
         buildSyncMobilePosOrderActionsUseCase
     } = await import('../src/modules/pos/usecases/mobilePosUseCases.js'));
 });
@@ -168,6 +170,47 @@ describe('mobile POS financial sync contracts', () => {
         expect(voidPosTransactionUseCase).toHaveBeenNthCalledWith(1, expect.objectContaining({
             trustedMobileReplay: true,
             user: { user_id: 7 }
+        }));
+    });
+
+    it('replays offline refund workflows independently through existing refund authorities', async () => {
+        const cashRefundPosTransactionUseCase = jest.fn().mockResolvedValue({
+            success: true,
+            data: {
+                transaction: { pos_transaction_id: 31, payment_status: 'refunded', updated_at: '2026-09-01T02:00:00.000Z' },
+                idempotent_replay: false
+            }
+        });
+        const externalRefundPosTransactionUseCase = jest.fn();
+        const providerRefundPosTransactionUseCase = jest.fn();
+        const splitAllocationReversalUseCase = jest.fn();
+        const useCase = buildSyncMobilePosRefundsUseCase({
+            cashRefundPosTransactionUseCase,
+            externalRefundPosTransactionUseCase,
+            providerRefundPosTransactionUseCase,
+            splitAllocationReversalUseCase
+        });
+        const request = {
+            workflow: 'cash',
+            transaction_id: 31,
+            expected_status: 'voided',
+            expected_payment_status: 'paid',
+            expected_server_version: '2026-09-01T01:00:00.000Z'
+        };
+        const result = await useCase({
+            payload: { device_id: 'device-1', entries: [{ local_operation_id: 'refund-31', payload: request }] },
+            user: { user_id: 7, permissions: ['pos:cash_drawer_adjust'] }
+        });
+
+        expect(result.data.results[0]).toMatchObject({
+            local_operation_id: 'refund-31',
+            status: 'accepted',
+            server_transaction_id: 31,
+            payment_status: 'refunded'
+        });
+        expect(cashRefundPosTransactionUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            posTransactionId: 31,
+            payload: expect.objectContaining(request)
         }));
     });
 

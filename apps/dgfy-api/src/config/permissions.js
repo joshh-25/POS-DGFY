@@ -64,6 +64,7 @@ export const PERMISSIONS = {
             TRANSACT_POS: "pos:transact",   // Execute POS checkout transactions
             AUTHORIZE_DISCOUNTS: "pos:discount_authorize", // Authorize POS discounts with an individual PIN
             PRICE_OVERRIDE_POS: "pos:price_override", // Override line-item sale price during checkout
+            OVERRIDE_DELIVERY_FEE: "pos:delivery_fee_override", // Override an order's delivery fee while payment is unsettled (Phase 238, #1330)
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust", // Record cash in/out and shift cash adjustments
             CLOSE_SHIFT_POS: "pos:shift_close", // Close the cashier's current terminal shift
             CLOSE_DAY_POS: "pos:close_day", // Close active terminal shift and generate day-end reconciliation
@@ -274,6 +275,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     ],
     cashier: [
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
+        PERMISSIONS.INVENTORY.actions.EDIT_ITEMS,
         PERMISSIONS.POS.actions.VIEW_POS,
         PERMISSIONS.POS.actions.TRANSACT_POS,
         PERMISSIONS.POS.actions.VIEW_ATTENDANCE,

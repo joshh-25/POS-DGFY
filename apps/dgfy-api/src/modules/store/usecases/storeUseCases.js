@@ -36,6 +36,10 @@ import {
     resolveVoucherDisplayPricesUseCase,
     VoucherReasonCode
 } from '../../vouchers/index.js';
+// Phase 233 (#1324, epic #1321): fee-mode config schema, fixed-only behavior. resolveStoreDeliveryFee
+// below starts consuming this but still returns today's flat store_delivery_fee value regardless of
+// the resolved mode -- no behavior change yet. See deliveryPricing/domain/deliveryFeeConfig.js.
+import { resolveDeliveryFeeConfig } from '../../deliveryPricing/index.js';
 import {
     generateStoreCancelProof,
     generateStoreClaimToken,
@@ -307,6 +311,10 @@ const mapSettings = (rows = []) => {
 };
 const CHECKOUT_SETTING_KEYS = Object.freeze([
     'store_delivery_fee',
+    // Phase 233 (#1324): read allowlist for the new fee-mode config keys -- consumed below by
+    // resolveStoreDeliveryFee via deliveryPricing's resolveDeliveryFeeConfig, no behavior change yet.
+    'store_delivery_fee_mode',
+    'store_delivery_fee_calc',
     'pos_wait_time_minutes',
     'storefront_promo',
     'storefront_promos',
@@ -528,6 +536,20 @@ const resolveDeliveryRadiusFlag = ({ orderMethod, location, deliveryLatitude, de
 
 const resolveStoreDeliveryFee = (settings = {}, orderMethod) => {
     if (orderMethod !== 'delivery') return 0;
+
+    // Phase 233 (#1324): start consuming the fee-mode config. Deliberately unused beyond this --
+    // every mode still resolves to today's flat store_delivery_fee value below. Calculated/free
+    // fee computation (and branching on feeConfig.mode) is #237's job, not this phase's.
+    // locationOverride stays hardwired null per epic #1321 decision 2 until a later phase resolves
+    // a real per-location override.
+    resolveDeliveryFeeConfig({
+        tenantSettings: {
+            store_delivery_fee_mode: settings?.store_delivery_fee_mode?.value,
+            store_delivery_fee_calc: settings?.store_delivery_fee_calc?.value
+        },
+        locationOverride: null
+    });
+
     const rawFee = settings?.store_delivery_fee?.value;
     const parsed = Number(rawFee);
     if (!Number.isFinite(parsed) || parsed < 0) return 0;
@@ -777,9 +799,9 @@ const resolveStorefrontLineModifiers = ({ item, line, locationId }) => {
         }
         const count = Number(selectedCounts.get(group.modifier_group_id) || 0);
         const required = group.assignment.is_required_override == null
-            ? group.required === true || Number(group.min_select || 0) > 0
+            ? group.required === true
             : group.assignment.is_required_override === true;
-        const minSelect = required ? Math.max(1, Number(group.min_select || 0)) : Number(group.min_select || 0);
+        const minSelect = required ? Math.max(1, Number(group.min_select || 0)) : 0;
         const maxSelect = Number(group.max_select || 0);
         if (minSelect > 0 && count < minSelect) {
             throw new DomainError(
@@ -1105,40 +1127,50 @@ const serializeStorefrontNutrition = (value) => (
         : null
 );
 
+const getStorefrontModifierSelectionConfig = (group) => {
+    const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
+    const required = through.is_required_override == null
+        ? group.required === true
+        : through.is_required_override === true;
+    const minSelect = Number(group.min_select || 0);
+    return {
+        required,
+        min_select: required ? Math.max(1, minSelect) : 0
+    };
+};
+
 const serializeStorefrontModifierGroups = (value, locationId = null) => (
     Array.isArray(value)
         ? value
             .filter((group) => group?.is_active !== false
                 && group?.visible_in_storefront !== false
                 && findStorefrontModifierLocationOverride(group, locationId)?.is_available !== false)
-            .map((group) => ({
-                modifier_group_id: group.modifier_group_id,
-                name: group.name,
-                display_name: group.display_name || group.name,
-                group_kind: group.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier',
-                parent_modifier_option_id: Number(group.parent_modifier_option_id) || null,
-                min_select: Number(group.min_select || 0),
-                max_select: Number(group.max_select || 1),
-                required: (() => {
-                    const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
-                    return through.is_required_override == null
-                        ? group.required === true || Number(group.min_select || 0) > 0
-                        : through.is_required_override === true;
-                })(),
-                options: (Array.isArray(group.options) ? group.options : [])
-                    .filter((option) => option?.is_active !== false
-                        && option?.visible_in_storefront !== false
-                        && option?.is_sold_out !== true
-                        && findStorefrontModifierLocationOverride(option, locationId)?.is_available !== false
-                        && findStorefrontModifierLocationOverride(option, locationId)?.is_sold_out !== true)
-                    .map((option) => ({
-                        modifier_option_id: option.modifier_option_id,
-                        name: option.name,
-                        price_delta: round4(option.price_delta),
-                        is_default: option.is_default === true,
-                        allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null
-                    }))
-            }))
+            .map((group) => {
+                const selectionConfig = getStorefrontModifierSelectionConfig(group);
+                return {
+                    modifier_group_id: group.modifier_group_id,
+                    name: group.name,
+                    display_name: group.display_name || group.name,
+                    group_kind: group.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier',
+                    parent_modifier_option_id: Number(group.parent_modifier_option_id) || null,
+                    min_select: selectionConfig.min_select,
+                    max_select: Number(group.max_select || 1),
+                    required: selectionConfig.required,
+                    options: (Array.isArray(group.options) ? group.options : [])
+                        .filter((option) => option?.is_active !== false
+                            && option?.visible_in_storefront !== false
+                            && option?.is_sold_out !== true
+                            && findStorefrontModifierLocationOverride(option, locationId)?.is_available !== false
+                            && findStorefrontModifierLocationOverride(option, locationId)?.is_sold_out !== true)
+                        .map((option) => ({
+                            modifier_option_id: option.modifier_option_id,
+                            name: option.name,
+                            price_delta: round4(option.price_delta),
+                            is_default: option.is_default === true,
+                            allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null
+                        }))
+                };
+            })
             .filter((group) => group.options.length > 0)
         : []
 );

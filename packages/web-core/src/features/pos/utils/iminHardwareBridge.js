@@ -302,14 +302,6 @@ const resolveReceiptLogoSource = (businessSettings = {}) => {
     return isNativeFetchableLogoSource(resolved) ? resolved : '';
 };
 
-const resolveDocumentLabel = (transaction, receiptContract) => {
-    const contractType = String(receiptContract?.document_type || '').toLowerCase();
-    const transactionType = String(transaction?.document_type || '').toLowerCase();
-    const documentType = contractType || transactionType;
-    if (documentType === 'fiscal_invoice') return 'FISCAL INVOICE';
-    return 'NON-FISCAL SLIP';
-};
-
 const resolveDocumentType = (transaction, receiptContract) => {
     const contractType = String(receiptContract?.document_type || '').toLowerCase();
     if (contractType === 'fiscal_invoice' || contractType === 'non_fiscal_slip') return contractType;
@@ -318,16 +310,6 @@ const resolveDocumentType = (transaction, receiptContract) => {
     if (transactionType === 'fiscal_invoice' || transactionType === 'non_fiscal_slip') return transactionType;
 
     return 'non_fiscal_slip';
-};
-
-const resolveDocumentContext = (transaction, receiptContract, documentType) => {
-    const contractContext = String(receiptContract?.document_context || '').trim().toLowerCase();
-    if (['fiscal', 'non_fiscal', 'training_test'].includes(contractContext)) return contractContext;
-
-    const transactionContext = String(transaction?.document_context || '').trim().toLowerCase();
-    if (['fiscal', 'non_fiscal', 'training_test'].includes(transactionContext)) return transactionContext;
-
-    return documentType === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal';
 };
 
 const isStatutorySeniorPwdDiscount = (discount) => {
@@ -401,7 +383,6 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         ? new Date(transaction.created_at).toLocaleString()
         : new Date().toLocaleString();
     const documentType = resolveDocumentType(transaction, receiptContract);
-    const documentContext = resolveDocumentContext(transaction, receiptContract, documentType);
     const isFiscal = documentType === 'fiscal_invoice';
     const restaurantServiceChargeAmount = Number(transaction?.restaurant_service_charge_amount || 0);
     const governedDiscount = transaction?.discount && typeof transaction.discount === 'object' ? transaction.discount : null;
@@ -441,16 +422,9 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         pushCenteredWrapped(receiptRows, `Serial: ${businessSettings.pos_software_serial_number}`);
     }
 
-    receiptRows.push(
-        line(),
-        center(isFiscal ? (vatRegistered ? 'VAT INVOICE' : 'NON-VAT INVOICE') : resolveDocumentLabel(transaction, receiptContract)),
-    );
-
-    if (!isFiscal) {
-        receiptRows.push(
-            center('NOT A FISCAL RECEIPT'),
-            center(documentContext === 'training_test' ? 'Training/Test mode only' : 'Non-fiscal document')
-        );
+    receiptRows.push(line());
+    if (isFiscal) {
+        receiptRows.push(center(vatRegistered ? 'VAT INVOICE' : 'NON-VAT INVOICE'));
     }
 
     if (isFiscal) {
@@ -585,11 +559,15 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
             'Signature: __________________________'
         );
     }
-    receiptRows.push(
-        line(),
-        center(isFiscal ? 'FISCAL RECEIPT' : 'NON-FISCAL RECEIPT'),
-        center(isFiscal ? 'Includes tax breakdown and fiscal identifiers.' : 'This document is not an official tax receipt.')
-    );
+    receiptRows.push(line());
+    if (isFiscal) {
+        receiptRows.push(
+            center('FISCAL RECEIPT'),
+            center('Includes tax breakdown and fiscal identifiers.')
+        );
+    } else {
+        receiptRows.push(center('This document is not an official receipt.'));
+    }
 
     if (businessSettings.pos_receipt_footer_message) {
         pushCenteredWrapped(receiptRows, businessSettings.pos_receipt_footer_message);
@@ -689,16 +667,6 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
         `Business date: ${safeText(shift.business_date)}`,
         `Terminal: ${safeText(shift.terminal_id)}`,
         `Shift: ${safeText(shift.pos_terminal_shift_id)}`,
-        line(),
-        pair('Transactions', sales.transaction_count || 0),
-        pair('Subtotal', formatShiftSummaryValue(sales.subtotal_amount)),
-        pair('Discounts', formatShiftSummaryValue(sales.discount_amount)),
-        pair('VAT', formatShiftSummaryValue(sales.vat_amount)),
-        pair('Total sales', formatShiftSummaryValue(sales.total_amount)),
-        pair(`POS voids (${sales.void_transaction_count || 0})`, formatShiftSummaryValue(sales.void_amount)),
-        ...(Number(sales.post_close_void_transaction_count || 0) > 0
-            ? [pair(`Post-close voids (${sales.post_close_void_transaction_count})`, formatShiftSummaryValue(sales.post_close_void_amount))]
-            : []),
         line(),
         center('PAYMENT BREAKDOWN')
     ];
