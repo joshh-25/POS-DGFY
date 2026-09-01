@@ -1,13 +1,19 @@
 import React from 'react';
 import { toast } from 'sonner';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
-import { MapPinned, RefreshCcw, Receipt, ShoppingBag, Columns, Search, Truck } from 'lucide-react';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
   FULFILLMENT_STATUS_LABELS,
-  PAYMENT_TYPE_LABELS
+  ORDER_METHOD_LABELS,
+  PAYMENT_TYPE_LABELS,
+  DELIVERY_JOB_STATUS_LABELS,
+  isManualDeliveryJob
 } from './orderFulfillmentUi.js';
+import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
+import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
+import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
 import DeliveryRunDropPanel from './DeliveryRunDropPanel.jsx';
 import QueueRunAssignBar from './QueueRunAssignBar.jsx';
@@ -20,8 +26,13 @@ import {
   formatOrderDateTime,
   formatOrderAmount,
   humanizeOrderStatus,
-  resolveOrderDownpaymentSplit
-} from '../utils/orderListFormatting.js';
+  resolveOrderDownpaymentSplit,
+  resolveBalanceCollectionLabel,
+  parseDeliveryCoords
+} from '../utils/incomingQueueOrderFormatting.js';
+import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActions.js';
+import { readQueueViewModePreference, writeQueueViewModePreference, QUEUE_VIEW_MODES } from '../utils/queueViewModePreference.js';
+import QueueOrderTableView from './QueueOrderTableView.jsx';
 // Phase 211 (#1180)'s own precedent for this gate: orderFulfillmentUi.js:56 reuses this exact
 // normalizeWorkflowMode(...) === 'retail' pattern rather than the WORKFLOW_PAGE_CAPABILITIES nav
 // gate -- the delivery-runs tab is an in-page view over a mode-agnostic API (ADR 0034), not a
@@ -402,6 +413,14 @@ function IncomingQueueWorkspace({
 }) {
   const [orderSort, setOrderSort] = React.useState('newest');
   const [activeView, setActiveView] = React.useState('active');
+  // Phase 230 (#1288): Active Queue view-mode toggle (card/table). Initialized lazily from
+  // per-terminal localStorage (React.useState's function form runs the read exactly once, on
+  // mount) so a returning operator's last choice sticks; card view stays the default whenever no
+  // stored preference exists or the stored value fails normalization.
+  const [viewMode, setViewMode] = React.useState(() => readQueueViewModePreference());
+  const handleViewModeChange = (nextMode) => {
+    setViewMode(writeQueueViewModePreference(nextMode));
+  };
   const [deliveryRunCount, setDeliveryRunCount] = React.useState(null);
   const isRetailMode = normalizeWorkflowMode(workflowMode) === 'retail';
   const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
@@ -870,6 +889,34 @@ function IncomingQueueWorkspace({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="group"
+            aria-label="Active Queue view mode"
+            className="flex h-10 items-center rounded-lg border border-slate-200 bg-white p-0.5"
+          >
+            <button
+              type="button"
+              aria-pressed={viewMode === QUEUE_VIEW_MODES.CARD}
+              onClick={() => handleViewModeChange(QUEUE_VIEW_MODES.CARD)}
+              className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold transition ${viewMode === QUEUE_VIEW_MODES.CARD
+                ? 'bg-[#1A4E8D] text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+              Card
+            </button>
+            <button
+              type="button"
+              aria-pressed={viewMode === QUEUE_VIEW_MODES.TABLE}
+              onClick={() => handleViewModeChange(QUEUE_VIEW_MODES.TABLE)}
+              className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold transition ${viewMode === QUEUE_VIEW_MODES.TABLE
+                ? 'bg-[#1A4E8D] text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Table2 className="h-4 w-4" />
+              Table
+            </button>
+          </div>
           <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
             Sort
             <select
@@ -902,34 +949,320 @@ function IncomingQueueWorkspace({
 
       {queueAccessNotice ? (
         queueAccessNotice
-      ) : (
-        <IncomingQueueOrderList
+      ) : incomingOrders.length === 0 ? (
+        <div className="grid min-h-[11rem] grid-cols-1 items-center gap-5 rounded-lg border border-slate-200 bg-white px-5 py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+          <div className="flex justify-center md:border-r md:border-slate-200">
+            <div className="relative grid h-32 w-40 place-items-end">
+              <div className="absolute inset-x-4 bottom-1 h-3 rounded-full bg-blue-100/70 blur-sm" />
+              <div className="relative h-16 w-28 rounded-b-lg rounded-t-xl border-2 border-blue-300 bg-blue-50 shadow-inner">
+                <div className="absolute -top-4 left-8 h-5 w-12 rounded-b-lg border-x-2 border-b-2 border-blue-300 bg-white" />
+                <div className="absolute -top-12 left-11 h-10 w-8 rounded-md border border-blue-200 bg-white shadow-sm">
+                  <span className="mx-auto mt-2 block h-1 w-4 rounded bg-blue-200" />
+                  <span className="mx-auto mt-2 block h-1 w-5 rounded bg-blue-100" />
+                  <span className="mx-auto mt-2 block h-1 w-3 rounded bg-blue-100" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <p className="text-xl font-black tracking-tight text-[#0F172A]">No online orders in active queue.</p>
+            <div className="mt-3 flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-3 text-sm leading-5 text-[#334155]">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
+                <Info className="h-4 w-4" />
+              </span>
+              <p>
+                Completed paid sales move to Sales History. Rejected, cancelled, or unpaid online orders move to Order History.
+                <br />
+                Incoming Queue shows active fulfillment statuses only.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : viewMode === QUEUE_VIEW_MODES.TABLE ? (
+        <QueueOrderTableView
           orders={sortedIncomingOrders}
           isRetailMode={isRetailMode}
           selectedOrderIds={selectedOrderIds}
-          onToggleSelection={toggleOrderSelection}
-          incomingOrderActionState={incomingOrderActionState}
-          workflowMode={workflowMode}
+          toggleOrderSelection={toggleOrderSelection}
+          bulkAssignSubmitting={bulkAssignSubmitting}
           canTransactPos={canTransactPos}
           canViewPos={canViewPos}
           locked={locked}
           isOnline={isOnline}
           hasActiveShift={hasActiveShift}
-          bulkAssignSubmitting={bulkAssignSubmitting}
+          incomingOrderActionState={incomingOrderActionState}
+          incomingReceiptOpeningId={incomingReceiptOpeningId}
+          workflowMode={workflowMode}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenBalanceSettlement={handleOpenBalanceSettlement}
           handleViewBalancePaymentProof={handleViewBalancePaymentProof}
           handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
-          onRequestReject={setPendingRejectionOrderId}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
-          incomingReceiptOpeningId={incomingReceiptOpeningId}
-          deliveryPersonnelState={deliveryPersonnelState}
-          handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
-          handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
-          columns="auto"
-          draggable={false}
+          onRequestRejection={setPendingRejectionOrderId}
         />
+      ) : (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {sortedIncomingOrders.map((order) => {
+            const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
+            const deliveryCoords = parseDeliveryCoords(order);
+            const deliveryJob = order.deliveryJob || null;
+            const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
+            const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
+            const mapLink = deliveryCoords
+              ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
+              : '';
+
+            // Phase 230 (#1288): the ~150-line per-order button-eligibility construction that used
+            // to live inline here now lives in incomingQueueOrderActions.js, shared verbatim with
+            // QueueOrderTableView.jsx's Actions column so the two view modes can never drift on
+            // which actions an order gets.
+            const buttons = buildIncomingQueueOrderActions(order, {
+              actionLoading,
+              workflowMode,
+              canTransactPos,
+              canViewPos,
+              locked,
+              isOnline,
+              hasActiveShift,
+              incomingReceiptOpeningId,
+              handleOpenCashCollection,
+              handleOpenBalanceSettlement,
+              handleViewBalancePaymentProof,
+              handleDeliveryJobStatusChange,
+              handleIncomingOrderStatusChange,
+              handleOpenIncomingOrderReceipt,
+              onRequestRejection: setPendingRejectionOrderId
+            });
+
+            const bulkAssignEligibility = getRunAssignEligibility(order, {});
+            const orderId = Number(order.pos_transaction_id);
+
+            return (
+              <div key={`incoming-workspace-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-4 xl:p-5 shadow-sm shadow-slate-200/70 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      {isRetailMode ? (
+                        <QueueOrderSelectCheckbox
+                          orderId={orderId}
+                          checked={selectedOrderIds.has(orderId)}
+                          eligible={bulkAssignEligibility.eligible}
+                          reason={bulkAssignEligibility.reason}
+                          disabled={!canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting}
+                          onToggle={toggleOrderSelection}
+                        />
+                      ) : null}
+                      <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
+                    </div>
+                    <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
+                      {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
+                    {/* Left Column */}
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <Tag className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">PIN</span>
+                          <span className="text-xs font-semibold text-slate-900 break-all flex-1">{order.tracking_pin || '-'}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <User className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Cashier</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{cashierName}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <User className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Customer</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{order.customer_name || 'Guest Buyer'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <Wallet className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Payment</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type || '-'}</span>
+                        </div>
+                      </div>
+
+                      <div className={`flex items-center gap-3 py-1.5 ${order.payment_collected_at ? 'border-b border-slate-100' : ''}`}>
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <Receipt className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Payment Status</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.payment_status || 'unpaid').replace(/_/g, ' ')}</span>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const split = resolveOrderDownpaymentSplit(order);
+                        if (!split) return null;
+                        return (
+                          <>
+                            <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100/80">
+                                <Wallet className="h-4 w-4" />
+                              </div>
+                              <div className="flex items-center flex-1 min-w-0">
+                                <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Downpayment</span>
+                                <span className="text-xs font-semibold text-emerald-700 break-words flex-1 tabular-nums">
+                                  {formatOrderAmount(split.amountPaid)} <span className="font-medium text-slate-500">paid online</span>
+                                </span>
+                              </div>
+                            </div>
+                            <div className={`flex items-center gap-3 py-1.5 ${order.payment_collected_at ? 'border-b border-slate-100' : ''}`}>
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 border border-amber-100/80">
+                                <Receipt className="h-4 w-4" />
+                              </div>
+                              <div className="flex items-center flex-1 min-w-0">
+                                <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Balance due</span>
+                                <span className="text-xs font-black text-amber-700 break-words flex-1 tabular-nums">
+                                  {formatOrderAmount(split.balanceDue)} <span className="font-medium text-slate-500">{resolveBalanceCollectionLabel(order.order_method)}</span>
+                                </span>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
+
+                      {order.payment_collected_at && (
+                        <div className="flex items-center gap-3 py-1.5">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                            <User className="h-4 w-4" />
+                          </div>
+                          <div className="flex items-center flex-1 min-w-0">
+                            <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Collected by</span>
+                            <span className="text-xs font-semibold text-slate-900 break-words flex-1">{order.paymentCollectedByUser?.username || 'Cashier'} · {formatOrderDateTime(order.payment_collected_at)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <ShoppingBag className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Mode</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <Calendar className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Order Time</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatOrderDateTime(order.created_at)}</span>
+                        </div>
+                      </div>
+
+                      {order.order_method === 'delivery' && (
+                        <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                            <Truck className="h-4 w-4" />
+                          </div>
+                          <div className="flex items-center flex-1 min-w-0">
+                            <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Delivery</span>
+                            <span className="text-xs font-semibold text-slate-900 break-words flex-1">{deliveryJob?.provider || 'Manual'} · {DELIVERY_JOB_STATUS_LABELS[deliveryJob?.status] || deliveryJob?.status || 'Pending Dispatch'}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {order.order_method === 'delivery' && manualDeliveryJob && (
+                        <DeliveryAssignmentControl
+                          orderId={order.pos_transaction_id}
+                          deliveryJob={deliveryJob}
+                          canAssignOrder={order.fulfillment_status === 'out_for_delivery'}
+                          deliveryPersonnelState={deliveryPersonnelState}
+                          actionLoading={actionLoading}
+                          canTransactPos={canTransactPos}
+                          locked={locked}
+                          isOnline={isOnline}
+                          hasActiveShift={hasActiveShift}
+                          onAssign={handleAssignDeliveryPersonnel}
+                        />
+                      )}
+
+                      <div className="flex items-center gap-3 py-1.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <MapPin className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Address</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.delivery_address || '').trim() || 'Address not provided'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {deliveryCoords && (
+                    <div className="mt-3">
+                      <a
+                        href={mapLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold text-[#1A4E8D] underline hover:text-blue-800"
+                      >
+                        Open pin in map
+                      </a>
+                    </div>
+                  )}
+
+                  <DeliveryAddressEditControl
+                    orderId={order.pos_transaction_id}
+                    order={order}
+                    addressChanges={order.addressChanges}
+                    actionLoading={actionLoading}
+                    canTransactPos={canTransactPos}
+                    locked={locked}
+                    isOnline={isOnline}
+                    hasActiveShift={hasActiveShift}
+                    onSave={handleUpdateOnlineOrderDeliveryAddress}
+                  />
+                </div>
+
+                <div>
+                  <div className="mt-4 pt-3 border-t border-slate-200 grid grid-cols-2 gap-2">
+                    {buttons.map((button, index) => {
+                      const isLast = index === buttons.length - 1;
+                      const isOdd = buttons.length % 2 !== 0;
+                      return React.cloneElement(button, {
+                        key: button.key || `btn-${index}`,
+                        className: `w-full ${button.props.className || ''} ${isLast && isOdd ? 'col-span-2' : ''}`
+                      });
+                    })}
+                  </div>
+                  {!canTransactPos && (
+                    <p className="mt-2 text-[11px] text-slate-500">You need POS transact permission to update order statuses.</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
       <ConfirmActionDialog
         open={pendingRejectionOrderId !== null}

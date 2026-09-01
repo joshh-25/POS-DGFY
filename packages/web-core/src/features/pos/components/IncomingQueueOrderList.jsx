@@ -27,7 +27,7 @@ import {
   parseDeliveryCoords,
   resolveOrderDownpaymentSplit,
   resolveBalanceCollectionLabel
-} from '../utils/orderListFormatting.js';
+} from '../utils/incomingQueueOrderFormatting.js';
 
 // Phase 229 (#1289), §2.7. Pure extraction of the Active Queue's order-card grid out of
 // TerminalOperationsPanels.jsx's IncomingQueueWorkspace, so #1288 (view-mode toggle) and #1290

@@ -15165,7 +15165,127 @@ Builds on Phase 227's `deliveryRunEligibility.js` module and Phase 228's dispatc
   phase).
 - `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-member-fulfillment-gate.md`.
 
-## Phase 230 - Active Queue + Delivery Run split view with drag-and-drop assignment (#1289)
+## Phase 230 - Active Queue: View-Mode Toggle (Card / Table) (#1288)
+
+### Initiative and release
+
+Standalone POS UI phase, not part of the #1273 Delivery Runs track (which closed at Phase 228).
+Reuses that track's own Active Queue precedent (`IncomingQueueWorkspace`, `selectedOrderIds`,
+`QueueOrderSelectCheckbox`, `QueueRunAssignBar`) without depending on any of its endpoints.
+Confirmed at implementation time (this entry) that neither #1290 (delivery-run filter) nor #1291
+(disable per-order "Out for Delivery" in a run) had an open PR yet, so Phase 229 was still the
+correct next-eligible number per the continuous phase ledger at authoring time. #1291 (fix/1291,
+PR #1302) merged into `develop` first and took Phase 229 there; this entry was renumbered to
+Phase 230 during the post-approval rebase of this PR, per the reviewer's Merge-safety comment.
+
+### Objective and scope
+
+Give POS/Skupervisor staff a table-view alternative to the Active Queue's card grid, for scanning
+many incoming online orders at a glance. Card view stays the default and is never removed; the
+chosen mode persists per-terminal.
+
+**In scope:** a segmented Card/Table toggle in the queue's existing control bar; a new
+`QueueOrderTableView.jsx` mapping every card field to a column or an explicit,
+presentation-only omission (the "Collected by" derived detail, and the interactive
+`DeliveryAssignmentControl`/`DeliveryAddressEditControl` widgets -- both stay reachable via card
+view only); per-terminal localStorage persistence (`pos_queue_view_mode_v1`, default `'card'`);
+a behavior-preserving extraction of the per-order action-button construction and the small
+order-formatting helpers out of `TerminalOperationsPanels.jsx` so card and table share one code
+path instead of two.
+
+**Out of scope, unchanged:** zero backend change (no new route, no new field, no migration);
+integrating #1290's delivery-run filter (not yet landed -- see "Forward-compat" below); any change
+to selection/bulk-assign logic itself (Phase 227's `selectedOrderIds` state and its derivation are
+untouched, only the render branch that consumes them changes).
+
+### Design decisions
+
+1. **Toggle placement.** A two-option segmented control (`Card`/`Table`, icon + label) in the
+   control bar, to the left of the Sort select -- the queue's existing per-view control surface.
+   Deliberately not on `OrderWorkspaceTabs` (Active/History/Runs is a different axis; table view
+   has no meaning for History or Runs, which use their own components).
+2. **Table columns.** Every card field is mapped to a column or an explicit omission -- full
+   mapping in `plan-1288-queue-view-mode.md`'s "Table columns" table. Every omission is
+   presentation-only: the data/actions stay one click away via card view.
+3. **Persistence.** New `utils/queueViewModePreference.js`, mirroring `posTextSizePreference.js`'s
+   shape but routed through `safeLocalStorageGet`/`safeLocalStorageSet`
+   (`posTerminalStorage.js`) for the existing quota-exceeded recovery behavior. Storage key
+   `pos_queue_view_mode_v1` added to `RECOVERABLE_PREFERENCE_PREFIXES` (one-line change) so a
+   quota-cleanup pass can evict it like the other recoverable UI prefs already listed there.
+   Per-terminal/per-browser, not per-user or tenant-wide -- same posture as every other existing
+   POS UI preference in that file.
+4. **Forward-compat with #1290 (delivery-run filter, not yet built).** Not integrated this phase.
+   A future run-filter would narrow `sortedIncomingOrders` before either render branch sees it --
+   no structural rework needed once it lands.
+5. **Two small extractions, to avoid duplicating logic across two render paths (not requested by
+   the issue itself, but necessary to keep card and table from drifting):**
+   - `utils/incomingQueueOrderActions.js` -- the ~150-line per-order action-button eligibility
+     construction, extracted verbatim (behavior-preserving, confirmed by the full re-run test
+     suite) from `TerminalOperationsPanels.jsx`'s card `.map()`. Written with `React.createElement`
+     rather than JSX, since this repo's Vite/esbuild config does not enable the JSX loader for
+     plain `.js` files.
+   - `utils/incomingQueueOrderFormatting.js` -- the small pure formatting/derivation helpers
+     (`formatOrderDateTime`, `formatOrderAmount`, `resolveOrderDownpaymentSplit`,
+     `resolveBalanceCollectionLabel`, `parseDeliveryCoords`, `humanizeOrderStatus`), moved
+     verbatim out of `TerminalOperationsPanels.jsx` so `QueueOrderTableView.jsx` does not need to
+     import from the component file that itself imports it (a circular-import trap this split
+     avoids).
+
+### Status
+
+`completed` for the toggle/table-view surface; the live acceptance walk (toggle view modes
+against a deployed tenant, confirm the table renders live order data and every action button
+behaves identically to card view) was **not** run -- no deployed tenant database reachable in this
+environment. All Vitest coverage passes against fixture order objects and mocked services; the
+live walk is outstanding acceptance evidence, not omitted, same posture as every prior phase in
+this repo's recent history (224-228).
+
+### Dependencies
+
+None on #1273's own endpoints -- reuses `IncomingQueueWorkspace`'s existing props and Phase 227's
+selection state as-is, adds no new backend dependency. Designed not to conflict with #1290
+(delivery-run filter) landing later.
+
+### Acceptance and validation evidence
+
+- [x] `npm run build:pos` -- real Vite build, OK.
+- [x] `npm run build:skupervisor` -- also required (a `packages/web-core` change), OK.
+- [x] New `packages/web-core/src/features/pos/__tests__/incomingQueueViewMode.behavior.test.jsx`
+  -- actually executed (Vitest via `apps/dgfy-ims`), 8/8 passing: default-to-card, toggle switches
+  render branch and back, persistence across remount, default-on-invalid-stored-value, selection
+  survives a toggle plus a real `QueueRunAssignBar` bulk-assign submit with table view active,
+  every mapped column renders for a fixture order (incl. the downpayment-split Balance column and
+  the delivery Address/Delivery columns), the two omitted interactive widgets are absent without
+  throwing, and a non-delivery order renders without a crash.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+  `deliveryRunBulkAssign.behavior.test.jsx`, `deliveryRunDispatch.behavior.test.jsx`,
+  `orderFulfillmentUi.test.js` -- re-run after this phase's changes, no regressions.
+- [x] `packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js` -- updated
+  (its source-content assertions now also read the extracted `incomingQueueOrderActions.js` file,
+  concatenated the same way `terminalPageContent` already joins multiple files) and re-run, 61/61
+  passing.
+- [x] Full `packages/web-core/src/features/pos/__tests__/` suite -- actually executed (Vitest via
+  `apps/dgfy-ims`), 134 files / 789 tests, all passing, zero regressions from this phase's two
+  extractions.
+- [x] `npm run check:architecture` -- OK (51 modules/530 files, 92 controller files -- zero
+  backend change in this phase, confirming the floor).
+- [x] `npm run check:adr` -- OK (84 ADRs).
+- [x] `npm run lint:docs` -- OK (29 governed docs).
+- [x] `npm run check:compliance` -- confirmed to fail first (8 sensitive files, no declaration),
+  pass once it was added.
+- [ ] Live acceptance walk (deployed tenant) -- **not run**, no deployed tenant database reachable
+  in this environment. Named as outstanding rather than omitted, same posture as every prior phase.
+
+### Links
+
+- Tracking issue: #1288.
+- `packages/web-core/src/features/pos/components/TerminalOperationsPanels.jsx`,
+  `components/QueueOrderTableView.jsx`, `utils/incomingQueueOrderActions.js`,
+  `utils/incomingQueueOrderFormatting.js`, `utils/queueViewModePreference.js`,
+  `utils/posTerminalStorage.js`.
+- `docs/compliance/impact-declarations/2026-09-01-pos-queue-view-mode.md`.
+
+## Phase 231 - Active Queue + Delivery Run split view with drag-and-drop assignment (#1289)
 
 ### Initiative and release
 
@@ -15198,12 +15318,12 @@ acceptance evidence, not omitted, same posture as every prior phase in this trac
 
 Builds on Phase 226's tab-list pattern, Phase 227's eligibility/idempotency/selection patterns
 and `QueueRunAssignBar.jsx`, and Phase 225's `addDeliveryRunMembers` API -- reuses all three
-unmodified beyond the one additive `handleBulkAssignSubmit` parameter. Independent of #1288
-(view-mode toggle) and #1290 (run filter), neither of which had a merged PR as of this phase's
-implementation (both open, unmerged, re-checked at commit time) -- `IncomingQueueOrderList.jsx`
-(§2.7's extraction) is the shared seam either was expected to need regardless of landing order.
-Rebased onto develop after Phase 229 (#1291) merged first -- see "Rebase note" below for the
-conflict resolution this required.
+unmodified beyond the one additive `handleBulkAssignSubmit` parameter. Independent of Phase 230
+(#1288, view-mode toggle) and #1290 (run filter), neither of which had a merged PR as of this
+phase's implementation (both open, unmerged, re-checked at commit time) --
+`IncomingQueueOrderList.jsx` (§2.7's extraction) is the shared seam either was expected to need
+regardless of landing order. Rebased onto develop twice, after Phase 229 (#1291) and then Phase
+230 (#1288) each merged first -- see "Rebase note" below for the conflict resolution this required.
 
 ### Acceptance and validation evidence
 
@@ -15231,14 +15351,17 @@ conflict resolution this required.
   pre-existing raw-source-string contract test with several assertions whose target content moved
   into `IncomingQueueOrderList.jsx` by the extraction; updated to read that file where the content
   actually now lives (no assertion's meaning changed) and re-run, all passing.
-- [x] New `packages/web-core/src/features/pos/__tests__/incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`
-  -- re-run unmodified post-rebase against the extracted `IncomingQueueOrderList.jsx`, confirming
-  Phase 229's (#1291) run-member fulfillment gate survived the extraction in both the tab view and
-  the new split view; 5/5 passing.
-- [x] Full `apps/dgfy-ims` Vitest suite re-run in full post-rebase: all passing, no regressions.
+- [x] `packages/web-core/src/features/pos/__tests__/incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`
+  -- extended with two split-view cases during this rebase (PR #1305 re-review RF-7), confirming
+  Phase 229's (#1291) run-member fulfillment gate survived the `IncomingQueueOrderList.jsx`
+  extraction in both the tab view and the new split view; 8/8 passing.
+- [x] Full `apps/dgfy-ims` Vitest suite re-run in full post-rebase: 315 files / 1985 tests passing,
+  no regressions.
 - [x] `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs` -- all OK.
-- [x] `npm run check:compliance` -- confirmed to fail without the declaration (9 sensitive files),
-  pass once it was added.
+- [x] `npm run check:compliance` -- confirmed to fail without the declaration (9/10 sensitive
+  files across the two rebases), pass once it was added; re-verified in CI mode
+  (`GITHUB_BASE_REF=develop`) against the final merge commit, correctly scoped to this branch's
+  own diff.
 - [ ] Live acceptance walk (deployed tenant) -- **not run**, no deployed tenant database reachable
   in this environment. Named as outstanding rather than omitted, same posture as every prior phase
   in the #1273 track this phase builds on.
@@ -15246,23 +15369,48 @@ conflict resolution this required.
 ### Rebase note (#1305 re-review RF-5 through RF-8)
 
 Phase 229 was claimed by both this initiative and #1291's fulfillment-gate fix; #1291 (PR #1302)
-merged into `develop` first and keeps 229. This entry was renumbered from 229 to 230 accordingly
-(re-confirmed 230 was still the next-free number immediately before the final push). The rebase
-onto `origin/develop` produced real conflicts in this file and in `TerminalOperationsPanels.jsx` --
-resolved by keeping #1291's run-member fulfillment gate (`getActiveRunMembership`,
-`gatedByActiveRun`/`runGateReason` on the `out_for_delivery` button) intact and porting it into
-`IncomingQueueOrderList.jsx`, the file this phase's own §2.7 extraction had cut *before* #1291's
-gate existed on `develop`. Verified explicitly in both the existing tab view and this phase's new
-split view via `incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`.
+merged into `develop` first and took 229. This entry was renumbered to 230 accordingly during the
+first rebase pass, but before that push landed, #1288 (PR #1304, the view-mode toggle) also merged
+into `develop` and took 230. Renumbered a second time to 231 -- the next-free number re-confirmed
+against `develop` immediately before the final push, with neither #1290 nor any other open PR
+claiming it at that time.
+
+The rebase onto `origin/develop` was two passes, of increasing scope:
+
+1. **First pass (#1291 only).** Real conflicts in this file and in `TerminalOperationsPanels.jsx`,
+   resolved by keeping #1291's run-member fulfillment gate (`getActiveRunMembership`,
+   `gatedByActiveRun`/`runGateReason` on the `out_for_delivery` button) intact and porting it into
+   `IncomingQueueOrderList.jsx`, the file this phase's own §2.7 extraction had cut *before* #1291's
+   gate existed on `develop`.
+2. **Second pass (#1288, discovered only after the first pass's re-check found #1288 had also
+   merged).** Not mechanical -- #1288 did its own overlapping extraction of the same order-card
+   rendering (a shared `utils/incomingQueueOrderActions.js` action-builder plus a new table-view
+   toggle, keeping the card JSX inline in `TerminalOperationsPanels.jsx`), while this phase had
+   extracted the same JSX into a standalone `IncomingQueueOrderList.jsx` component. Reconciled by
+   letting #1288's now-canonical structure win for the tab view (its inline card block, using its
+   own `buildIncomingQueueOrderActions`, which #1288's own rebase had already ported #1291's gate
+   into) and keeping `IncomingQueueOrderList.jsx` only for this phase's new split view, which still
+   needs its own draggable card component. Consolidated the resulting duplicate formatting-helpers
+   file onto #1288's `utils/incomingQueueOrderFormatting.js`, deleting this phase's own
+   `utils/orderListFormatting.js`. Restored three component imports
+   (`DeliveryAssignmentControl`, `DeliveryAddressEditControl`, `QueueOrderSelectCheckbox`) that
+   this phase's extraction had dropped as unused, but which the reinstated inline tab-view block
+   still needs.
+
+Verified explicitly, after both passes, that #1291's gate is present and working in **both** the
+tab view (via #1288's `buildIncomingQueueOrderActions`) and this phase's split view (via the ported
+gate in `IncomingQueueOrderList.jsx`) through `incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`'s
+two describe blocks.
 
 ### Links
 
 - Tracking issue: #1289. Out-of-scope finding filed separately: #1300 (terminal lock/cart-draft
   cross-tab sync gap, not part of this phase's scope).
 - `packages/web-core/src/features/pos/components/DeliveryRunDropPanel.jsx` (new),
-  `components/IncomingQueueOrderList.jsx` (new, extraction; also carries Phase 229's (#1291)
-  run-member fulfillment gate, ported in during this rebase),
-  `utils/queueRunDropAssignment.js` (new), `utils/orderListFormatting.js` (new, extraction),
+  `components/IncomingQueueOrderList.jsx` (new, extraction; used by the split view only after the
+  second rebase pass; also carries Phase 229's (#1291) run-member fulfillment gate, ported in
+  during this rebase),
+  `utils/queueRunDropAssignment.js` (new),
   `components/TerminalOperationsPanels.jsx` (modified), `components/DeliveryRunMembersList.jsx`
   (modified, new `readOnly` prop).
 - `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (cited, not amended -- no new
@@ -15271,4 +15419,4 @@ split view via `incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`.
 
 ### Next eligible phase
 
-231.
+232.
