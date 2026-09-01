@@ -222,7 +222,7 @@ export const dgfyAffiliateRepository = {
         if (consumedSlots >= maxSlots) {
             throw new DomainError(
                 DomainErrorCode.CONFLICT,
-                `This store has reached its affiliate slot limit (${maxSlots}). Raise max_affiliate_slots or free up a slot before adding another affiliate.`,
+                'Affiliate limit reached. Remove an affiliate or contact DGFY to add another.',
                 {
                     statusCode: 409,
                     details: {

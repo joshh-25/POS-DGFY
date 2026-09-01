@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   acceptAffiliateInvite,
   fetchAffiliateInvitePreview,
+  fetchDgfyMe,
   getStoredDgfyToken
 } from '../../../../../packages/web-core/src/services/dgfyAuthService.js';
 
@@ -12,6 +13,7 @@ import {
 // return_to back to this page; once signed in they click Accept to create the enrollment.
 export default function StorefrontAffiliateAcceptPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const token = String(searchParams.get('token') || '').trim();
 
@@ -21,11 +23,22 @@ export default function StorefrontAffiliateAcceptPage() {
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState('');
 
-  const isAuthenticated = useMemo(() => Boolean(String(getStoredDgfyToken() || '').trim()), []);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDgfyMe(getStoredDgfyToken())
+      .then(() => { if (!cancelled) setIsAuthenticated(true); })
+      .catch(() => { if (!cancelled) setIsAuthenticated(false); })
+      .finally(() => { if (!cancelled) setSessionChecked(true); });
+    return () => { cancelled = true; };
+  }, []);
+
   const loginHref = useMemo(() => {
-    const returnTo = `/affiliate/accept?token=${encodeURIComponent(token)}`;
+    const returnTo = `${location.pathname}${location.search}`;
     return `/login?return_to=${encodeURIComponent(returnTo)}`;
-  }, [token]);
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (!token) {
@@ -42,6 +55,7 @@ export default function StorefrontAffiliateAcceptPage() {
   }, [token]);
 
   const handleAccept = async () => {
+    if (accepting) return;
     setAccepting(true);
     try {
       await acceptAffiliateInvite(token);
@@ -65,7 +79,7 @@ export default function StorefrontAffiliateAcceptPage() {
           Affiliate invitation
         </h1>
 
-        {loading ? (
+        {loading || !sessionChecked ? (
           <p className="mt-4 text-sm text-slate-500">Loading your invitation…</p>
         ) : accepted ? (
           <div className="mt-4 space-y-4">

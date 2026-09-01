@@ -873,6 +873,12 @@ export const buildTransactionInclude = () => ([
                 as: 'assignedShift',
                 required: false,
                 attributes: ['pos_terminal_shift_id', 'terminal_id', 'location_id', 'cashier_id', 'status', 'opened_at']
+            },
+            {
+                model: dbStore.get('DeliveryRun'),
+                as: 'deliveryRun',
+                required: false,
+                attributes: ['delivery_run_id', 'label', 'status']
             }
         ]
     },
