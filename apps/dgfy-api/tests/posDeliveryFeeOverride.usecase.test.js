@@ -26,7 +26,10 @@ const buildFixture = ({ transactionOverrides = {} } = {}) => {
             subtotal_amount: 500,
             total_amount: 580,
             amount_paid: 0,
-            balance_due: 580,
+            // A real unpaid order always has balance_due: 0 (see deliveryFeeOverrideUseCases.js's
+            // RF-1 comment on PR #1336) -- 580 here was an impossible fixture that hid the bug the
+            // "leaves balance_due at 0" regression test below now covers.
+            balance_due: 0,
             cashier_id: 12,
             location_id: 3,
             ...transactionOverrides
@@ -61,7 +64,7 @@ const runInTenantContext = (sequelize, callback) => dbStore.run({
 }, callback);
 
 describe('POS staff delivery-fee override use case (Phase 238, #1330)', () => {
-    it('overrides the fee while unpaid, recomputes total/balance, and writes an audit_logs row', async () => {
+    it('overrides the fee while unpaid, recomputes total, leaves balance_due at 0, and writes an audit_logs row', async () => {
         const fixture = buildFixture();
         const useCase = buildOverrideDeliveryFeeUseCase({ posRepository: fixture.posRepository });
 
@@ -74,14 +77,14 @@ describe('POS staff delivery-fee override use case (Phase 238, #1330)', () => {
         expect(result.success).toBe(true);
         expect(result.data.transaction.delivery_fee).toBe(150);
         expect(result.data.transaction.total_amount).toBe(650);
-        expect(result.data.transaction.balance_due).toBe(650);
+        expect(result.data.transaction.balance_due).toBe(0);
         expect(result.data.delivery_fee_override).toEqual(expect.objectContaining({
             previous_delivery_fee: 80,
             new_delivery_fee: 150,
             previous_total_amount: 580,
             new_total_amount: 650,
-            previous_balance_due: 580,
-            new_balance_due: 650,
+            previous_balance_due: 0,
+            new_balance_due: 0,
             no_op: false
         }));
         expect(fixture.state.auditLogs).toHaveLength(1);
@@ -91,6 +94,9 @@ describe('POS staff delivery-fee override use case (Phase 238, #1330)', () => {
             entity_id: 501,
             action: 'UPDATE',
             event_type: 'pos_delivery_fee_overridden',
+            terminal_id: null,
+            shift_id: null,
+            location_id: 3,
             reason: 'Rider surcharge for flooded route'
         }));
         expect(fixture.state.auditLogs[0].changes).toEqual(expect.objectContaining({
@@ -98,6 +104,28 @@ describe('POS staff delivery-fee override use case (Phase 238, #1330)', () => {
             new_delivery_fee: 150,
             payment_status_at_override: 'unpaid'
         }));
+    });
+
+    // RF-1/RF-2 regression (PR #1336 review): a real unpaid COD order always has balance_due: 0,
+    // and no code path ever clears it after collection -- a naive "recompute from amount_paid"
+    // would flip it to the full new total and permanently brick delivery completion
+    // (posUseCases.js:1511, DELIVERY_BALANCE_DUE_OUTSTANDING) while risking a double charge.
+    it('leaves balance_due at 0 on a real unpaid COD order after an override', async () => {
+        const fixture = buildFixture();
+        const useCase = buildOverrideDeliveryFeeUseCase({ posRepository: fixture.posRepository });
+
+        const result = await runInTenantContext(fixture.sequelize, () => useCase({
+            posTransactionId: 501,
+            payload: { delivery_fee: 200, reason: 'COD order, rider surcharge' },
+            user: { user_id: 44 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(fixture.state.transaction.payment_status).toBe('unpaid');
+        expect(fixture.state.transaction.amount_paid).toBe(0);
+        expect(result.data.transaction.delivery_fee).toBe(200);
+        expect(result.data.transaction.total_amount).toBe(700);
+        expect(result.data.transaction.balance_due).toBe(0);
     });
 
     it('handles a fee decrease and floors balance_due at zero', async () => {
