@@ -15058,3 +15058,89 @@ patterns. Independent of Phase 227's bulk-add flow otherwise.
 ### Next eligible phase
 
 229.
+
+## Phase 229 - Active Queue + Delivery Run split view with drag-and-drop assignment (#1289)
+
+### Initiative and release
+
+In-app split view for the POS terminal's Incoming Online Queue: a 4th "Queue + Run" tab that shows
+the Active Queue and a narrow delivery-run drop panel side by side, with drag-and-drop as an
+additive path onto Phase 227's existing checkbox + `QueueRunAssignBar` bulk-add flow. Independent
+of the #1273 track (Phases 224-228, closed) -- reuses that track's API/UI surfaces without
+modifying any of them beyond one additive parameter. Two-tab alternative investigated and
+explicitly rejected (plan §0-§1): drag-and-drop cannot cross a tab/window boundary, and the
+packaged Electron POS surface is single-window (`webContents.setWindowOpenHandler` denies a second
+window), so a two-tab workaround structurally cannot deliver the drag half of #1289.
+
+### Objective and scope
+
+Build the split view + drag-to-assign in-app, per the plan's §2 design decisions and §3 file
+inventory. Zero `apps/dgfy-api` changes -- frontend-only, reusing the existing
+`addDeliveryRunMembers` write path Phase 227 already calls. Out of scope, filed separately as
+issue #1300 by the conducting session (not re-filed or folded in here): the POS terminal
+lock/cart-draft cross-tab synchronization gap found during the two-tab investigation (plan §1.3).
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Builds on Phase 226's tab-list pattern, Phase 227's eligibility/idempotency/selection patterns
+and `QueueRunAssignBar.jsx`, and Phase 225's `addDeliveryRunMembers` API -- reuses all three
+unmodified beyond the one additive `handleBulkAssignSubmit` parameter. Independent of #1288
+(view-mode toggle) and #1290 (run filter), neither of which had a merged PR as of this phase's
+implementation (both open, unmerged, re-checked at commit time) -- `IncomingQueueOrderList.jsx`
+(§2.7's extraction) is the shared seam either was expected to need regardless of landing order.
+
+### Acceptance and validation evidence
+
+- [x] `npm run build:pos` -- real Vite build, OK.
+- [x] `npm run build:skupervisor` -- also required (a `packages/web-core` change; `apps/dgfy-ims`
+  lazily imports the same `TerminalPage.jsx` tree via `packages/web-core`), OK.
+- [x] No `package.json` touched (`@dnd-kit/core`/`@dnd-kit/utilities` already present in all three
+  frontend apps) -- no lockfile step needed.
+- [x] New `packages/web-core/src/features/pos/utils/__tests__/queueRunDropAssignment.test.js` --
+  actually executed (Vitest via `apps/dgfy-ims`), 9/9 passing: single-card drag vs. whole-selection
+  multi-drag, an ineligible card dropped from a multi-drag selection, `null` on an ineligible
+  single drag / no picked target run / an unresolvable drag id, and numeric never-index ids sorted
+  ascending.
+- [x] New `packages/web-core/src/features/pos/__tests__/deliveryRunSplitViewDnd.behavior.test.jsx`
+  -- actually executed (Vitest via `apps/dgfy-ims`, `@dnd-kit/core` mocked per the plan's own risk
+  table), 8/8 passing: the split tab's retail + >=1280px gate, the mode-flip reset, `onDragEnd`
+  calling `addDeliveryRunMembers` once with the expected ids and idempotency key, key
+  retention/regeneration on the drag path, no call on an invalid drop target, drag disablement
+  under `locked`, and the checkbox + `QueueRunAssignBar` path still working inside the split panel.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryRunBulkAssign.behavior.test.jsx`,
+  `__tests__/deliveryRunsWorkspace.behavior.test.jsx` -- re-run unmodified against the
+  `IncomingQueueOrderList.jsx` extraction and the changed `handleBulkAssignSubmit` signature, no
+  regressions (per §2.7's own "must pass unmodified" requirement).
+- [x] `packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js` -- a
+  pre-existing raw-source-string contract test with several assertions whose target content moved
+  into `IncomingQueueOrderList.jsx` by the extraction; updated to read that file where the content
+  actually now lives (no assertion's meaning changed) and re-run, all passing.
+- [x] Full `apps/dgfy-ims` Vitest suite re-run in full: 314 test files, 1966 tests, all passing, no
+  regressions.
+- [x] `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs` -- all OK.
+- [x] `npm run check:compliance` -- confirmed to fail without the declaration (9 sensitive files),
+  pass once it was added.
+- [ ] Live acceptance walk (deployed tenant) -- **not run**, no deployed tenant database reachable
+  in this environment. Named as outstanding rather than omitted, same posture as every prior phase
+  in the #1273 track this phase builds on.
+
+### Links
+
+- Tracking issue: #1289. Out-of-scope finding filed separately: #1300 (terminal lock/cart-draft
+  cross-tab sync gap, not part of this phase's scope).
+- `packages/web-core/src/features/pos/components/DeliveryRunDropPanel.jsx` (new),
+  `components/IncomingQueueOrderList.jsx` (new, extraction),
+  `utils/queueRunDropAssignment.js` (new), `utils/orderListFormatting.js` (new, extraction),
+  `components/TerminalOperationsPanels.jsx` (modified), `components/DeliveryRunMembersList.jsx`
+  (modified, new `readOnly` prop).
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (cited, not amended -- no new
+  write path, see the compliance declaration's Compliance Impact Classification section).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-split-view-dnd.md`.
+
+### Next eligible phase
+
+230.
