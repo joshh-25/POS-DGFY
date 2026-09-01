@@ -16298,7 +16298,7 @@ flagged explicitly per the plan, not silently smuggled in.
 ### Status
 
 `in_progress`. All code, tests, and docs implemented and self-verified (below). PR open against
-`develop`; not yet reviewed or merged.
+`develop` (PR #1395); not yet reviewed or merged.
 
 ### Dependencies
 
@@ -16382,7 +16382,7 @@ beyond what this skill already owns.
 
 ### Links
 
-- Tracking issue: #1390. Epic: #1321. Refs ADR 0066's 2026-09-02 (this phase's) amendment.
+- Tracking issue: #1390. Epic: #1321. PR: #1395. Refs ADR 0066's 2026-09-02 (this phase's) amendment.
 - New: `apps/dgfy-migration-runner/migrations/20260904000002-backfill-voucher-redemption-transaction-link.cjs`,
   `apps/dgfy-api/tests/storeCancelVoucherReversal.unit.test.js`,
   `apps/dgfy-api/tests/backfillRedemptionTransactionLink.migration.test.js`,
