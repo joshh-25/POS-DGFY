@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-17
-last_reviewed: 2026-08-25
+last_reviewed: 2026-09-02
 review_by: 2027-02-17
 applies_to: vouchers, storefront, pos, commerce_payments, backend
 topic: voucher_sale_time_price_resolution
@@ -85,6 +85,7 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
    blocks only fixed-price against statutory: the existing single-slot contract blocks every benefit
    class, including percent-off. Recorded as an inherited constraint rather than a new policy;
    multi-discount POS is a separate epic. Revisit: #605. `[default]`
+   Scoped to the item axis by the 2026-09-02 amendment below.
 
 9. **Eligibility conditions are first-class indexable columns, never JSON.** A condition that must
    appear in a `WHERE` clause — redemption count, peso budget, unit quantity, date window,
@@ -355,6 +356,43 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
   that already-merged behavior and is landed alongside the remaining #695 work (freezing the last
   live legacy promo authoring surface).
 
+### 2026-09-02 — The single governed-discount slot is an item-axis rule (Phase 240, #1331)
+
+- Clause amended: **Decision 8** (`[default]` tier). Its scope is narrowed — no invariant is
+  weakened and no binding clause changes.
+- Change: Decision 8 read as though "one governed discount per transaction" covered every discount
+  an order can carry. It does not, and epic #1321 decision 9 makes that explicit: **a delivery-fee
+  waiver is a second, independent axis.** A customer may hold 10% off items *and* free delivery on
+  the same order. Decision 8 is hereby scoped to the **item axis** only:
+  1. **The single slot governs item-axis discounts exclusively** — statutory, employee, promo,
+     manual, and any voucher with `benefit_target: 'items'`. Those still contend for one
+     `pos_transaction_discounts` row and still reject with `VOUCHER_DISCOUNT_SLOT_OCCUPIED`.
+     Unchanged in every respect.
+  2. **A delivery-fee waiver never occupies that slot, and never blocks or is blocked by it.** A
+     voucher with `benefit_target: 'delivery'` resolves against the delivery fee, persists to
+     `pos_transactions.delivery_fee_waiver` / `delivery_fee_waiver_voucher_id` /
+     `delivery_fee_waiver_label_snapshot`, and writes **no** `pos_transaction_discounts` row.
+     `UNIQUE (transaction_id)` is therefore untouched — the waiver is excluded from that table by
+     construction (a separate write path and a field-disjoint resolved shape,
+     `storeUseCases.js`), not by a convention a future edit could quietly break.
+  3. **At most one voucher per axis.** Two item vouchers remain impossible; two delivery vouchers
+     are equally impossible. This amendment permits exactly one *additional* application, on a
+     different axis — it is not a general stacking policy, and #782 (voucher-to-voucher stacking
+     within an axis) stays open and unaffected.
+  4. **POS is unchanged.** POS has no delivery-fee resolution path (epic #1321 Wave 0 decision #6
+     scopes the waiver to storefront checkout), and a delivery-targeted voucher typed at a terminal
+     fails closed in the domain layer — `calculateVoucherBenefit` throws
+     `INVALID_DELIVERY_FEE_CENTAVOS` when no fee base is supplied. Decision 8's POS wording
+     therefore still describes POS behaviour exactly.
+- Reason: the epic's decision 9 requires the two axes to be independent, and Decision 8 as written
+  would have made a free-delivery voucher illegal alongside any item discount — the opposite of the
+  intended product behaviour. Recorded as a scope narrowing rather than a new decision because the
+  invariant Decision 8 actually protects (one row in `pos_transaction_discounts`) is preserved
+  exactly.
+- Related: ADR 0078 (fee modes; its Related section anticipated this amendment), epic #1321
+  decision 9, ADR 0012's 2026-09-02 amendment (the totals term this waiver reduces).
+- PR: Phase 240 (#1331).
+
 ## Decision (continued)
 
 12. **A voucher redemption fails closed when it would sell an eligible, discounted line below that
@@ -377,4 +415,8 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
    amendment's below-cost enforcement gap; #696 — the per-item pricelist amendment above; #584 —
    the `fixed_price` benefit class this extends; #569 — B2B deferral, not reversed by #696
    (#454 decision 2 is the carve-out); #661 — the storefront voucher redemption PR both #667 and
-   #668 are follow-ups to; #668 — the QRPh payment-then-redemption race amendment above
+   #668 are follow-ups to; #668 — the QRPh payment-then-redemption race amendment above; #1321 —
+   Customer delivery pricing epic; #1331 — the item/delivery axis split, 2026-09-02 amendment above
+6. [ADR 0078](0078-customer-delivery-fee-modes.md) — customer delivery fee modes
+   (fixed/calculated/free) and the `finalFee = max(0, baseFee - waiverAmount)` formula the
+   2026-09-02 amendment's waiver reduces; its own Related section anticipated this amendment

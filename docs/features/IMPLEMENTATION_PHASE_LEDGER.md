@@ -15905,3 +15905,186 @@ phase built, not an action this phase's own implementation session took).
 ### Next eligible phase
 
 240 -- noting the 238 ledger gap above for whoever claims it next.
+
+## Phase 240 - free_delivery voucher benefit class, code-entered (#1331, epic #1321)
+
+### Initiative and release
+
+Epic #1321 (Customer delivery pricing), decision 9. Depends on Phase 237 (#1329, PR #1377 + #1384,
+merged -- the delivery-fee breakdown `resolveStoreDeliveryFee`/`resolveCheckoutContext` wiring this
+phase's waiver folds into) and Phase 239 (epic #1321's own numbering; ADR 0066's Decision 8
+2026-08-19 amendment's `benefit_target`-shaped call-site contract this phase fulfils --
+`voucherBenefitPolicy.js`'s own header names this exact phase as the intended caller). Number
+claimed per Phase 239's ledger entry above ("Next eligible phase: 240").
+
+### Objective and scope
+
+Adds `free_delivery` as a fourth voucher `benefit_class`, code-entered only (no auto-apply --
+that's #1332/Phase 241). Two orthogonal new columns on `vouchers` (`benefit_target`
+`items`|`delivery`, `delivery_amount_off_centavos`), reusing Phase 237's existing
+`pos_transactions.delivery_fee_waiver` amount column and adding two new provenance columns
+(`delivery_fee_waiver_voucher_id`, `delivery_fee_waiver_label_snapshot`) rather than a duplicate
+amount column (a correction to the ticket's own literal text, plan §0.2). A SECOND, independent
+code-entry payload field (`delivery_voucher_code`) was added -- also a correction to the ticket's
+literal text (plan §0.1): the acceptance criterion ("a 10%-off item voucher and a typed
+free-delivery code both apply to the same order") is unreachable without it, since the storefront
+checkout payload previously carried exactly one voucher-code field.
+
+`free_delivery`'s benefit math is NOT a new arm in `voucherBenefitPolicy.js` (deliberately -- that
+module's own header documents exactly three benefit classes plus the items/delivery target axis,
+unchanged by this phase). It is translated to the module's existing `amount_off` math at the single
+call site in `voucherRedemptionUseCases.js`'s `resolveEligibleBenefit` -- `NULL` (waive the whole
+fee) maps to a large sentinel so the module's own `Math.min(amount, benefitBaseCentavos)` clamp does
+the "whole fee" job with no new code path. Discovered live, not anticipated by the plan's own file
+inventory (plan §11 omitted this translation as a distinct piece of work) -- see "Deviations from
+the plan" below.
+
+ADR 0066 Decision 8 (`[default]`) amended (2026-09-02, appended at the end of the ADR's own
+`## Amendments` section, in the file's real forward-chronological order -- see "Deviations from the
+plan" below): the single governed-discount slot is scoped to the item axis only; a delivery-fee
+waiver never occupies `pos_transaction_discounts` and never blocks or is blocked by an item-axis
+discount. Enforced structurally, not by convention, via four independent mechanisms (plan §3): a
+separate write path (`header` vs. `discount` arguments to `createOnlineTransactionWithLines`), a
+field-disjoint resolved shape (`DEFAULT_DELIVERY_WAIVER_APPLICATION`, deliberately carrying none of
+`buildVoucherDiscountRecord`'s five destructured keys), Phase 239's own mutual-exclusion on
+`lineAllocations` for a `benefitTarget: 'delivery'` resolution, and a `VOUCHER_REDEMPTION_UNRECORDED`
+defensive guard.
+
+Two new fail-closed axis-mismatch guards (`VOUCHER_BENEFIT_TARGET_MISMATCH`, new reason code): a
+delivery-targeted voucher submitted via `voucher_code`, and an item-targeted voucher submitted via
+`delivery_voucher_code`. The first direction required a fix beyond the plan's own text (see
+"Deviations from the plan").
+
+Out of scope, per the plan and stated in the PR body for `pm` to action: (a) waiver-reversal-on-
+cancellation (plan §10 -- the reversal primitive exists and is voucher-kind-agnostic, but nothing
+calls it for ANY voucher kind today; a code-entered delivery voucher's need is identical to a
+code-entered item voucher's pre-existing gap, so this is a separate, cross-voucher-kind ticket, not
+bundled here); (b) storefront/POS UI surfaces (plan §8 -- ~15 files across 3 mode families, plus a
+second code-entry input box; #240 makes the waiver available on every API response a UI would read
+from and builds no UI, mirroring #1382's own precedent for Phase 237's breakdown columns).
+
+### Status
+
+`in_progress`. All non-migration code, tests, and docs are implemented and self-verified (below).
+The migration (`20260904000001-add-delivery-voucher-benefit.cjs`) is drafted, syntax-checked, and
+covered by a passing unit-test suite, but held UNCOMMITTED pending explicit confirmation per
+`.agents/skills/implement/SKILL.md`'s checkpoint policy (an `ENUM MODIFY` on a tenant-fanned-out
+table is the checkpoint-policy row-1 trigger, in its strictly harder ordinal-shifting sub-case) --
+see the coordinator handoff for the exact file content held for confirmation. Not yet committed,
+pushed, or opened as a PR.
+
+### Dependencies
+
+Phase 237 (#1329) -- `resolveStoreDeliveryFee`/`resolveCheckoutContext`'s delivery-fee breakdown,
+`pos_transactions.delivery_fee_waiver`, the pinned-breakdown replay path this phase's waiver
+resolution must respect (plan §5.5). Phase 239 (epic #1321 numbering) --
+`voucherBenefitPolicy.js`'s `benefitTarget`/`deliveryFeeCentavos` axis, built anticipating this
+exact call-site change. ADR 0066 Decision 8 (2026-08-19 amendment) -- the single-slot rule this
+phase narrows in scope, not weakens.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `.js`/`.cjs` file -- OK.
+- [x] `npm run lint:docs` (chains `check:adr`) -- OK, 29 governed docs / 85 ADRs validated.
+- [x] Full targeted regression + new-test run, `apps/dgfy-api` (`node --experimental-vm-modules
+  .../jest.js --runInBand`, 13 suites): 297/297 passing --
+  `voucherRedemptionUseCases.usecases.test.js` (32, extended with 6 free_delivery-translation cases),
+  `voucherValidator.test.js` (unchanged, 100% pass), `voucherUseCases.usecases.test.js` (unchanged,
+  100% pass), `addDeliveryVoucherBenefit.migration.test.js` (new, 13, incl. the sync-tenant-schemas
+  DDL-drift guard and the CREATE TABLE enum-widening guard), `storeCheckoutDownpaymentResolution`,
+  `storeCheckoutDeliveryFeeThreeEntryPointConsistency`, `deliveryFeeModeConfig.checkoutFallback`,
+  `storeCheckoutVoucherPromoStacking`, `storeCheckoutDeliveryFeePin`,
+  `storeCheckoutCalculatedDeliveryFee`, `storeCheckoutAffiliatePricing`,
+  `posVoucherDiscountCalculator` (all byte-identity regressions, unmodified, 100% pass),
+  `storeCheckoutDeliveryWaiverDualAxis.unit.test.js` (new, 12 -- the headline acceptance case plus
+  11 supporting cases from plan §9).
+- [ ] `npm run check:compliance` -- not yet run against the full, final diff (migration held
+  uncommitted); the declaration itself is drafted (see the compliance impact-declaration file, this
+  commit set).
+- [ ] `npm run check:architecture` -- pending the final diff for the same reason.
+
+### Deviations from the plan -- surfaced explicitly, not silently absorbed
+
+1. **`voucherBenefitPolicy.js` call-site translation was a real, necessary addition the plan's own
+   file inventory (§11) omitted.** The plan is explicit that the module gets no new benefit-class
+   arm, but its file list never states where `free_delivery` maps onto the module's existing
+   `amount_off` math -- without this, `calculateVoucherBenefit` throws `UNKNOWN_BENEFIT_CLASS` for
+   every `free_delivery` voucher and the feature cannot function at all. Implemented at the single
+   call site the plan's own §5.2 already flags for editing (`voucherRedemptionUseCases.js`), so the
+   file list is unchanged; the additional logic within that file is the actual gap closed.
+2. **`VOUCHER_BENEFIT_TARGET_MISMATCH` needed a second enforcement point the plan's §5.4 text did
+   not fully specify.** The plan's own "symmetric guard" (checked in `storeUseCases.js` after a
+   voucher resolves) is unreachable for a delivery-targeted voucher entered via `voucher_code`,
+   because `calculateVoucherBenefit` throws `INVALID_DELIVERY_FEE_CENTAVOS` (caught and remapped to
+   the generic `VOUCHER_BENEFIT_CONFIG_INVALID`) before ever returning to that guard. Fixed at the
+   domain-adjacent catch site in `voucherRedemptionUseCases.js`: `INVALID_DELIVERY_FEE_CENTAVOS` is
+   remapped to `VOUCHER_BENEFIT_TARGET_MISMATCH` specifically, since that `VoucherBenefitError` code
+   can only ever fire for exactly this axis-mismatch condition (a `benefit_target: 'delivery'`
+   voucher resolved through a call site supplying no fee base -- today, exclusively the item-voucher
+   path). The `storeUseCases.js`-level guards are kept as defensive belt-and-braces, not removed.
+3. **ADR 0066's `## Amendments` section is forward-chronological (oldest first), not
+   reverse-chronological-at-top as the plan's §6 assumed.** Confirmed by reading the file's actual
+   dated headers (2026-08-18, 2026-08-18, 2026-08-19, 2026-08-19, 2026-08-20, 2026-08-25, in that
+   order). The 2026-09-02 amendment is appended at the END of the section (after the 2026-08-25
+   entry, before the file's own `## Decision (continued)` block) to match the file's real
+   established convention, rather than at the top per the plan's incorrect assumption about it.
+   Content of the amendment itself is otherwise the plan's exact given text.
+4. **`buildBenefitConfigSnapshot` (`voucherRedemptionUseCases.js`) was extended with
+   `benefit_target`/`delivery_amount_off_centavos`, contrary to the plan's §4 claim that "no code
+   change needed, it snapshots the whole benefit config today."** That claim doesn't hold on
+   inspection -- the function is a hand-picked field list (`benefit_class`, `percent_off_bps`,
+   `amount_off_centavos`, `fixed_unit_price_centavos`, `max_discount_centavos`), not a full snapshot,
+   and it omitted these two fields entirely. Added them for parity with every sibling class's own
+   amount field already being captured, and because plan §10 itself says the future
+   reversal-on-cancellation ticket needs exactly this kind of provenance.
+5. **`FUNDING_AND_DISCOUNT_STACKING.md`'s "One voucher per order" claim (outside plan §7's exact
+   edit list) was also corrected**, since this phase's own diff falsifies it (storefront now carries
+   two code-entry fields, one per axis) -- left uncorrected would have shipped a doc contradicting
+   the very diff that merged alongside it.
+
+None of these are judgment-call reversals of anything the plan actually decided -- each is either a
+gap the plan's own text didn't cover, or a factual correction against the plan's own stated
+assumption about existing file contents, surfaced here rather than silently absorbed into the diff.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired: migration checkpoint (row 1), held.** `20260904000001-add-delivery-voucher-benefit.cjs`
+is a new file under `apps/dgfy-migration-runner/migrations/` performing an `ENUM MODIFY` on the
+tenant-fanned-out `vouchers` table -- ordinal-shifting and NOT cleanly reversible once any delivery
+voucher is authored (`down()` throws rather than truncating such rows, matching
+`20260830000003-add-cheque-payment-method.cjs`'s own precedent). Per the coordinator's explicit
+instruction for this phase, held uncommitted pending confirmation rather than proceeding past this
+row on the standing "skip routine checkpoints" preference.
+
+**Fired: compliance declaration (row 2, informational).** `major` / `payments,pos,terminal`, per
+plan §12's mechanical floor (`COMPLIANCE_SENSITIVE_RULES[1]` on `modules/vouchers/`,
+`COMPLIANCE_SENSITIVE_RULES[2]` on `modules/store/`). Declaration drafted; `check:compliance` not
+yet run against the final diff (migration held).
+
+**Not fired:** no deploy dispatch, no SSH, no force-push/branch deletion, no board-transition
+scope beyond what this skill already owns (board Status set at branch time and PR-open time, per
+the skill's own "Board transitions" section).
+
+### Links
+
+- Tracking issue: #1331. Epic: #1321. Refs ADR 0066's 2026-09-02 amendment, ADR 0078, ADR 0012's
+  2026-09-02 amendment (the totals term this waiver reduces).
+- New: `apps/dgfy-migration-runner/migrations/20260904000001-add-delivery-voucher-benefit.cjs`
+  (held uncommitted -- see Status), `apps/dgfy-api/tests/addDeliveryVoucherBenefit.migration.test.js`,
+  `apps/dgfy-api/tests/storeCheckoutDeliveryWaiverDualAxis.unit.test.js`,
+  `docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md`.
+- Modified: `apps/dgfy-api/src/models/Voucher.js`, `PosTransaction.js`,
+  `src/validators/voucherValidator.js`, `src/validators/storeValidator.js`,
+  `src/modules/vouchers/usecases/voucherUseCases.js`,
+  `src/modules/vouchers/usecases/voucherRedemptionUseCases.js`,
+  `src/modules/vouchers/domain/voucherErrors.js`,
+  `src/modules/store/usecases/storeUseCases.js`, `scripts/sync-tenant-schemas.js`,
+  `src/modules/deliveryPricing/README.md`,
+  `apps/dgfy-api/tests/voucherRedemptionUseCases.usecases.test.js`,
+  `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md`,
+  `docs/features/FUNDING_AND_DISCOUNT_STACKING.md`.
+
+### Next eligible phase
+
+241 (#1332, auto-applied delivery campaigns -- also where Wave 0 decision #5's cancellation-reversal
+work lands, per plan §10).

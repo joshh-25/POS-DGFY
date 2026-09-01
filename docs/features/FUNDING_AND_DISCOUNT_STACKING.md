@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product_engineering
-last_reviewed: 2026-08-24
+last_reviewed: 2026-09-02
 applies_to: platform_funding_fees_discounts_stacking
 topic: platform_funding_and_discount_stacking
 ---
@@ -217,9 +217,9 @@ flowchart TD
     Aff -->|"No"| Sub["Subtotal = catalog prices"]
     AffRule --> Sub2["Subtotal = affiliate-adjusted prices"]
 
-    Sub --> Code{"Code entered?"}
+    Sub --> Code{"Item code entered?<br/>(promo_code / voucher_code)"}
     Sub2 --> Code
-    Code -->|"None"| Total["Total = subtotal + delivery + fee"]
+    Code -->|"None"| ItemTotal["Item discount = 0"]
     Code -->|"Promo code"| PromoApply["Apply promo discount — NO cap"]
     Code -->|"Voucher code"| VClass{"Voucher benefit class"}
 
@@ -228,14 +228,30 @@ flowchart TD
     FixedCheck -->|"Yes"| Refused["Checkout BLOCKED —<br/>VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT"]
     FixedCheck -->|"No"| VApply
 
-    PromoApply --> Total
-    VApply --> Total
+    PromoApply --> ItemTotal
+    VApply --> ItemTotal
+
+    Sub --> DelCode{"delivery_voucher_code entered?<br/>— a SEPARATE field, never<br/>slot-guarded against the item code above"}
+    Sub2 --> DelCode
+    DelCode -->|"None"| DelTotal["Delivery waiver = 0"]
+    DelCode -->|"free_delivery voucher"| DelApply["Waive delivery fee<br/>(up to delivery_amount_off_centavos,<br/>or the whole fee when null)"]
+    DelApply --> DelTotal
+
+    ItemTotal --> Total["Total = subtotal − item discount<br/>+ (delivery − waiver, floored at ₱0) + fee"]
+    DelTotal --> Total
 ```
+
+Both lanes above resolve **independently** — an item-axis code and a delivery-axis code can both
+apply to the same order (ADR 0066 Decision 8's 2026-09-02 amendment, Phase 240 / #1331). Only the
+item lane has a single-slot guard; the delivery lane has none to guard against, since it is the only
+thing that can ever occupy it.
 
 | Combination | Storefront (online) | POS (in-store) | How it's enforced |
 |---|---|---|---|
-| Voucher + a second voucher | ❌ blocked | ❌ blocked | Only one voucher code can be entered on an order at all — the system has no way to hold two |
-| Voucher + a promo code | ❌ blocked | ❌ blocked | Explicit either/or check; applying one blocks the other |
+| Item voucher + a second item voucher | ❌ blocked | ❌ blocked | Only one code can be entered in the item-voucher field — the system has no way to hold two on that axis |
+| Item voucher + a free-delivery voucher | ✅ **allowed** | n/a (POS has no delivery-fee resolution path) | Two independent axes, not one governed slot — the delivery waiver never occupies the item-discount slot (ADR 0066 Decision 8 as amended 2026-09-02, Phase 240 / #1331) |
+| Free-delivery voucher + a promo code | ✅ **allowed** | n/a | The promo occupies the item axis; the item-axis slot guard fires only for the item voucher field, never for `delivery_voucher_code` |
+| Voucher + a promo code | ❌ blocked | ❌ blocked | Explicit either/or check on the item axis; applying one blocks the other |
 | Voucher (% off or ₱ off) + affiliate pricing | ✅ **allowed** | n/a (affiliate pricing is online-only) | They compose: affiliate sets the item's price first, then the voucher discounts the resulting total |
 | Voucher (fixed price) + affiliate pricing | ❌ **refused outright**, checkout blocked | n/a | Both would be claiming the right to set the final price — the system refuses rather than guessing |
 | Voucher + PWD/Senior Citizen discount | n/a (statutory not available online — see below) | ❌ blocked | POS allows only one "governed" discount per sale, and a voucher and a statutory discount both compete for that one slot |
@@ -286,7 +302,7 @@ a code defect this audit surfaced (filed as its own issue, not fixed as part of 
 | #814 | Should the 1% convenience fee be configurable? | No — hardcoded in two places today |
 | #872 | Who funds the affiliate program — the business or DGFY? | Not resolved in this doc's scope |
 | #605 | Should a fixed-price voucher be allowed with a statutory discount? | Currently blocked by the single-discount-slot rule (§3), same as any other combination |
-| #782 | Should voucher-to-voucher stacking (e.g. a free-delivery voucher category) ever be allowed? | Currently impossible — one voucher per order (§3) |
+| #782 | Should voucher-to-voucher stacking (e.g. a free-delivery voucher category) ever be allowed? | Partially resolved. Cross-axis stacking (one item voucher + one delivery voucher) shipped in Phase 240 (#1331). Same-axis stacking (two item vouchers, or two delivery vouchers) remains impossible; #782 now scopes to that narrower question |
 
 **Code defects surfaced by this audit — each filed as its own issue, not fixed here:**
 
@@ -445,9 +461,12 @@ const totalAmount = round4(
 );
 ```
 Step order: affiliate price rule rewrites each line's unit price → subtotal formed → promo *or*
-voucher discount (never both) → `+ delivery fee` (not discounted) → `+ convenience fee`, computed on
-the pre-discount subtotal (not discounted) → total. VAT is derived separately, from pre-discount line
-subtotals.
+voucher discount on the item axis (never both) → `+ delivery fee (base − any free-delivery voucher
+waiver, floored at ₱0)` → `+ convenience fee`, computed on the pre-discount subtotal (not discounted)
+→ total. VAT is derived separately, from pre-discount line subtotals. The delivery-fee term's formula
+is ADR 0078's `finalFee = max(0, baseFee − waiverAmount)`, persisted as `delivery_fee_base` /
+`delivery_fee_waiver` / `delivery_fee` (Phase 240, #1331) — an independent, second discount axis from
+the promo/voucher term two steps earlier, not a further reduction of it.
 
 **POS** — `posUseCases.js`, roughly lines 3020-3475. Step order: subtotal → per-item discounts
 reduce each line's base → one governed (order-level) discount (promo, voucher, senior, pwd,
@@ -468,7 +487,7 @@ flowchart TD
         SF1["Affiliate price rule rewrites<br/>each line's unit price (if active)"] --> SF2["Subtotal formed"]
         SF2 --> SF3["VAT derived from<br/>PRE-discount line subtotals"]
         SF2 --> SF4["Promo OR voucher discount<br/>(never both)"]
-        SF4 --> SF5["+ delivery fee (not discounted)"]
+        SF4 --> SF5["+ delivery fee (base − any free-delivery<br/>voucher waiver, floored at ₱0)"]
         SF5 --> SF6["+ convenience fee, on the<br/>PRE-discount subtotal (not discounted)"]
         SF6 --> SF7["= Total"]
     end
@@ -496,7 +515,9 @@ lineSubtotalCentavos: Math.round(quantity * baseUnitPriceCentavos)
 ...
 const eligibleSubtotalCentavos = eligibleLines.reduce((sum, line) => sum + line.lineSubtotalCentavos, 0);
 ```
-Delivery and service fees are never in this base.
+Delivery and service fees are never in this base. A `benefit_target: 'delivery'` voucher inverts
+this: the delivery fee is its **entire** base and the item subtotal plays no part
+(`voucherBenefitPolicy.js`'s `benefitBaseCentavos`).
 
 `percent_off` (`:140`): `Math.round((eligibleSubtotalCentavos * bps) / 10000)`.
 `amount_off` (`:155`): `Math.min(amount, eligibleSubtotalCentavos)`.
@@ -516,9 +537,12 @@ has **no cap at all**.
 `max_redemptions`, `max_total_discount_centavos`, and `max_benefit_quantity` together; zero affected
 rows maps to the specific exhaustion reason.
 
-**One voucher per order — structural, not a runtime check.** The checkout payload carries a single
-scalar `voucher_code` field everywhere (storefront, POS, split-payment), never an array. There is no
-"second voucher rejected" error message because a second code has nowhere to be attached.
+**One voucher per axis — structural, not a runtime check.** The checkout payload carries a single
+scalar `voucher_code` field for the item axis everywhere (storefront, POS, split-payment), never an
+array — there is no "second voucher rejected" error message because a second item-axis code has
+nowhere to be attached. Storefront checkout (only) additionally carries one, separate
+`delivery_voucher_code` scalar for the delivery-fee axis (Phase 240, #1331) — same structural
+one-per-field property, on its own axis; see §3's stacking matrix.
 
 **Voucher vs. promo** — a clean either/or, never summed:
 `storeUseCases.js:3065-3073` persists a single discount slot on the order header, commented
@@ -690,6 +714,10 @@ persisted as DGFY's actual revenue.
 - [ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md) — the
   Regime B ledger and settlement contract
 - [ADR 0066](../architecture/adr/0066-voucher-sale-time-price-resolution.md) — voucher resolution,
-  the single-discount-slot rule, and the fixed-price/affiliate refusal
+  the single-discount-slot rule, and the fixed-price/affiliate refusal, and its 2026-09-02 amendment
+  scoping the single-slot rule to the item axis
+- [ADR 0078](../architecture/adr/0078-customer-delivery-fee-modes.md) — customer delivery fee modes
+  (fixed/calculated/free) and the `finalFee = max(0, baseFee − waiverAmount)` formula this doc's §7/§8
+  now describe
 - Open policy decisions: #817, #814, #872, #605, #782
 - Code defects filed from this audit: #937, #938, #939, #940, #941, #942, #943

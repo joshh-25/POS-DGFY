@@ -24,6 +24,13 @@ real, priced breakdown rather than always returning the flat `store_delivery_fee
 - Calculated/free-mode fee computation wired into `resolveStoreDeliveryFee`'s async rewrite, the
   ADR 0078 Decision 2 out-of-range hard block, and quoted-fee pinning across a webhook-replay
   finalization (#1329, Phase 237).
+- The `free_delivery` voucher benefit class, code-entered (#1331, Phase 240). `voucher_kind:
+  'delivery_campaign'` / `benefit_class: 'free_delivery'` / `benefit_target: 'delivery'`
+  (`Voucher.js`) resolves against `resolveCheckoutContext`'s `delivery.baseFee`, a SECOND,
+  independent code-entry field (`delivery_voucher_code`) from the item-voucher slot -- ADR 0066
+  Decision 8's 2026-09-02 amendment. `resolveStoreDeliveryFee`'s own `waiverAmount` field stays
+  hardcoded `0` (it is I/O-free by design, see its own header) -- the resolved waiver is folded in
+  one layer up, by `resolveCheckoutContext` itself, after this function returns.
 
 ## What's not here yet
 
@@ -33,8 +40,8 @@ Per #1321's Definition of Done, later phases add:
   POST-HOC override of the persisted `pos_transactions.delivery_fee` column
   (`modules/pos/usecases/deliveryFeeOverrideUseCases.js`) -- it is not a resolve-time input to this
   module and Phase 237 does not read it.
-- The `free_delivery` voucher benefit class (#240) and auto-apply campaign selector (#241/#242) --
-  will populate `resolveStoreDeliveryFee`'s `waiverAmount` field, hardcoded `0` as of Phase 237.
+- Auto-apply campaign selector (#241/#242) -- Phase 240 (#1331) is code-entered only; the storefront
+  automatically picking a `free_delivery` campaign with no code typed is out of scope for it.
 - A resolved (non-null) `locationOverride` source -- `domain/deliveryFeeConfig.js`'s resolver
   already accepts one (Wave 0a decision #1: wholesale replacement, not a field merge), but no call
   site produces one yet (#1346 tracks a known wholesale-replace divergence from ADR 0078 Decision 6
