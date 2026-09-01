@@ -95,6 +95,14 @@ jobs:
   # 2026-08-25 a dispatch with no --ref silently ran against the repo's
   # *default* branch (`develop`), and PROD ran unreviewed, unpromoted code
   # for ~30 minutes before anyone noticed via head_sha inspection.
+  # Phase 233 (#1365) anchor exception, deliberate, not an omission: this job
+  # stays self-hosted permanently, with no commented hosted alternate. It is a
+  # ~1-minute control-plane job (routing it hosted buys nothing and costs
+  # minutes), and it is the always-available anchor the Phase 233 Wave 2
+  # in-workflow runner preflight hooks into -- a preflight that itself ran on
+  # the class it is checking would be a chicken-and-egg (if hosted is
+  # unavailable, a hosted preflight job never starts). See
+  # docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's Phase 233 entry.
   guard-branch:
     runs-on: ['sieitz-runner']  # #923: generic, either box
     timeout-minutes: 1
@@ -124,8 +132,10 @@ jobs:
     with:
       environment: PROD
       image_tags: "latest"
-      # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # runner_labels_json: '["ubuntu-latest"]'
       runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
     permissions:
@@ -140,7 +150,10 @@ jobs:
     with:
       environment: PROD
       image_tags: "latest"
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # runner_labels_json: '["ubuntu-latest"]'
       runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
     permissions:
@@ -184,7 +197,10 @@ jobs:
       app: dgfy-ims
       environment: PROD
       image_tags: "latest"
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # runner_labels_json: '["ubuntu-latest"]'
       runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
     permissions:
@@ -199,7 +215,10 @@ jobs:
       app: dgfy-pos
       environment: PROD
       image_tags: "latest"
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # runner_labels_json: '["ubuntu-latest"]'
       runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
     permissions:
@@ -214,7 +233,10 @@ jobs:
       app: dgfy-storefront
       environment: PROD
       image_tags: "latest"
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # runner_labels_json: '["ubuntu-latest"]'
       runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
     permissions:
@@ -243,7 +265,15 @@ jobs:
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: PROD
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      # No vpn_required change needed here: this job SSHes to secrets.SSH_TARGET
+      # (PROD, public-internet Linode), not the DEV/STAGING LAN, so
+      # publish-platform.yml's vpn_required default (false, L52) already applies to
+      # both classes. A future hosted job added to this workflow that targets
+      # DEV/STAGING would need vpn_required: true -- don't inherit this silence.
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # runner_labels_json: '["ubuntu-latest"]'
       runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
     secrets: inherit
     permissions:
