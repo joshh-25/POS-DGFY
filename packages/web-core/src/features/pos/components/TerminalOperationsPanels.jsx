@@ -23,7 +23,7 @@ import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
 import QueueRunAssignBar from './QueueRunAssignBar.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
-import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
+import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
 // Phase 211 (#1180)'s own precedent for this gate: orderFulfillmentUi.js:56 reuses this exact
 // normalizeWorkflowMode(...) === 'retail' pattern rather than the WORKFLOW_PAGE_CAPABILITIES nav
 // gate -- the delivery-runs tab is an in-page view over a mode-agnostic API (ADR 0034), not a
@@ -758,6 +758,7 @@ function IncomingQueueWorkspace({
               );
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
+            const activeRunMembership = getActiveRunMembership(order);
             const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
             const hasDeliveryAssignment = hasCompleteDeliveryAssignment(deliveryJob || {});
             const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
@@ -849,13 +850,27 @@ function IncomingQueueWorkspace({
                   return null;
                 }
               };
+              // Phase 229 (#1291): once an order is a member of an active (not
+              // completed/cancelled) delivery run, the run's own Dispatch action is the sole
+              // path to out_for_delivery -- the per-order control is withheld here, with an
+              // explanatory tooltip, rather than hidden. Scoped to `out_for_delivery` only:
+              // gating the whole nextActions array would also disable `packed`, deadlocking the
+              // run's own DELIVERY_RUN_UNPACKED_MEMBERS dispatch precondition (#1272).
+              const gatedByActiveRun = status === 'out_for_delivery' && activeRunMembership.inActiveRun;
+              const runGateReason = gatedByActiveRun
+                ? (activeRunMembership.runLabel
+                  ? `This order is in delivery run "${activeRunMembership.runLabel}". Dispatch it from the Delivery Runs tab.`
+                  : 'This order is in a delivery run. Dispatch it from the Delivery Runs tab.')
+                : null;
               buttons.push(
                 <Button
                   key={`incoming-workspace-action-${order.pos_transaction_id}-${status}`}
                   type="button"
                   size="sm"
                   variant={status === 'rejected' ? 'destructive' : 'outline'}
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order))}
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order)) || gatedByActiveRun}
+                  title={runGateReason || undefined}
+                  aria-label={runGateReason || undefined}
                   onClick={() => {
                     if (status === 'rejected') {
                       setPendingRejectionOrderId(Number(order.pos_transaction_id));
