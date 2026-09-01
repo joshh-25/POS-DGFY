@@ -186,6 +186,23 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         defaultValue: 1
     },
+    // #1331 (Phase 240, epic #1321 decision 9). Provenance for delivery_fee_waiver above: which
+    // voucher waived it, and what it was called at the time. Both nullable-with-NULL-default --
+    // the overwhelming majority of orders have no waiver, and NULL (no waiver) must stay
+    // distinguishable from a ₱0 waiver on a free-mode tenant. ON DELETE SET NULL (declared on the
+    // migration's FK, mirrored here via `references`) rather than RESTRICT: an order's fiscal
+    // record must survive a voucher being purged; the label snapshot preserves the human-readable
+    // trace regardless, same reasoning discount_label_snapshot already embodies.
+    delivery_fee_waiver_voucher_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'vouchers', key: 'voucher_id' },
+        onDelete: 'SET NULL'
+    },
+    delivery_fee_waiver_label_snapshot: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
     accepted_by: {
         type: DataTypes.INTEGER,
         allowNull: true

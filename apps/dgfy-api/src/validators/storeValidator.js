@@ -46,6 +46,11 @@ const storeQuoteSchema = Joi.object({
     // Storefront voucher redemption (Phase 105, #455). Symmetric to promo_code, but max(64) to
     // match vouchers.code's column width -- see src/models/Voucher.js.
     voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional(),
+    // #1331 (Phase 240, epic #1321 decision 9): a SECOND, independent code-entry field for the
+    // delivery-fee axis -- never slot-guarded against voucher_code above (ADR 0066 Decision 8's
+    // 2026-09-02 amendment). Declared once here so storeCheckoutSchema and the payment-session
+    // schema (both `.keys()`-extend this schema below) inherit it automatically.
+    delivery_voucher_code: Joi.string().trim().uppercase().max(64).allow('', null).optional(),
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),
     customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
     customer_email: Joi.string().email().trim().lowercase().max(255).allow('', null).optional(),
