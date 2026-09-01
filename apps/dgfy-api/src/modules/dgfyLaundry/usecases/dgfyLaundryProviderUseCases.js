@@ -133,9 +133,12 @@ export const buildDgfyLaundryProviderUseCases = ({ repository }) => ({
         };
     },
 
-    async getIntent({ id }) {
+    async getIntent({ id, expectedIntentType = null }) {
         const row = await repository.findIntent(id);
         if (!row) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'DGLaundry intent not found.', { statusCode: 404 });
+        if (expectedIntentType && row.intent_type !== expectedIntentType) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'DGLaundry intent not found.', { statusCode: 404 });
+        }
         const payload = parseJson(row.payload);
         return {
             intentId: row.id,

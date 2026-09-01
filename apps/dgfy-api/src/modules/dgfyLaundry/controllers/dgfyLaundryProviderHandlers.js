@@ -45,12 +45,16 @@ export const createLaundryStaffInvitationIntent = (req, res, next) => run(
     next
 );
 
-export const getLaundryIntent = (req, res, next) => run(
+const getLaundryIntentByType = (expectedIntentType) => (req, res, next) => run(
     dgfyLaundryProviderUseCases.getIntent,
-    { id: req.params.intentId },
+    { id: req.params.intentId, expectedIntentType },
     res,
     next
 );
+
+export const getLaundryRegistrationIntent = getLaundryIntentByType('registration');
+export const getLaundryLocationIntent = getLaundryIntentByType('location');
+export const getLaundryStaffInvitationIntent = getLaundryIntentByType('staff_invitation');
 
 export const createLaundryMapping = (req, res, next) => run(
     dgfyLaundryProviderUseCases.createMapping,

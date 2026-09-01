@@ -47,4 +47,13 @@ describe('DGLaundry provider foundation use cases', () => {
         await expect(useCases.createIntent({ intentType: 'registration', dgfyAccount: account, body: { idempotency_key: 'registration-1', company_name: 'A' } })).resolves.toMatchObject({ intentId: 'intent-1', status: 'pending' });
         await expect(useCases.createIntent({ intentType: 'registration', dgfyAccount: account, body: {} })).rejects.toMatchObject({ statusCode: 400 });
     });
+
+    it('does not return an intent through a route for a different intent type', async () => {
+        const useCases = buildDgfyLaundryProviderUseCases({ repository: makeRepository() });
+
+        await expect(useCases.getIntent({ id: 'intent-1', expectedIntentType: 'location' }))
+            .rejects.toMatchObject({ statusCode: 404 });
+        await expect(useCases.getIntent({ id: 'intent-1', expectedIntentType: 'registration' }))
+            .resolves.toMatchObject({ intentId: 'intent-1', intentType: 'registration' });
+    });
 });
