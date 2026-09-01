@@ -278,6 +278,36 @@ API-only state). Multi-select "add to run" from the Active Queue is Phase 227's 
 members shows an honest empty state ("No orders in this run yet. Add orders from the Active
 Queue.") rather than implying bulk-add already exists.
 
+### Active Queue delivery-run filter (Phase 229, #1290)
+
+The Active Queue's header controls row (next to `Sort`) carries a `Delivery run` filter --
+`All orders` (default) / `Unassigned (no run)` / one option per visible run -- that narrows the
+already-fetched order list client-side by `deliveryJob.delivery_run_id`. Zero backend change:
+Phase 227 already added that field to every queue order.
+
+**Deliberately not built on the same eligibility list the assign-to-run picker uses.** That list
+(`getEligibleRunTargets`) excludes dispatched/completed/cancelled runs because it answers "which
+run can I add *more* orders to." A dispatched run's members are still sitting in the Active Queue as
+`out_for_delivery` orders -- exactly what an operator most wants to filter to -- so the filter's own
+option list (`getQueueRunFilterOptions`) keeps `dispatched` runs and only excludes
+`completed`/`cancelled`.
+
+**Client-side, not a server param**, because the Active Queue has no pagination to begin with
+(F-1, unchanged since Phase 227) -- the whole list is already in the browser, so a client filter is
+exact. If the Active Queue ever gains server-side pagination, this filter becomes wrong (it would
+filter one page rather than the whole run); the migration path is a `delivery_run_id` query param
+switched in later, not built preemptively here.
+
+**A filter-hidden selection is never silently submitted.** The bulk "add to run" selection's
+eligible/drift derivation, and the target picker's own `orders` prop, all operate on the *filtered*
+list, not the full one -- an order selected before the filter was applied is neither auto-submitted
+nor auto-dropped while hidden; a hint names how many selections are currently hidden, and clearing
+the filter restores them.
+
+Retail-mode gated identically to the tab above, and cleared by the same mode-flip reset effect. The
+filter and the assign-to-run picker now share one `GET /pos/delivery-runs` fetch
+(`useDeliveryRunOptions`) so the two views can never disagree about which runs exist.
+
 ## Permissions and ownership
 
 - `pos:view` may read delivery status and assignment details.
