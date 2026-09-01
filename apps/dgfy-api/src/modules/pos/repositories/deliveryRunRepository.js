@@ -125,7 +125,14 @@ export const deliveryRunRepository = {
                     include: [{
                         model: PosTransaction,
                         as: 'transaction',
-                        attributes: ['pos_transaction_id', 'invoice_number', 'customer_name', 'delivery_address', 'fulfillment_status']
+                        // order_source/order_method/location_id: required by
+                        // buildDispatchDeliveryRunUseCase's fan-out (deliveryRunUseCases.js) to
+                        // classify each member -- without them here, Sequelize never hydrates
+                        // those fields, so `order.order_source !== ONLINE_ORDER_SOURCE` is always
+                        // true (undefined !== 'online_store') and every dispatch call fails every
+                        // member with DELIVERY_ORDER_REQUIRED, regardless of the order's real
+                        // classification. Found live-testing Phase 228 (#1273) against a real DB.
+                        attributes: ['pos_transaction_id', 'invoice_number', 'customer_name', 'delivery_address', 'fulfillment_status', 'order_source', 'order_method', 'location_id']
                     }]
                 }
             ],
