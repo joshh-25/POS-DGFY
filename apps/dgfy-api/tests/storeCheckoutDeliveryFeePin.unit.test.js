@@ -255,6 +255,35 @@ describe('resolveCheckoutContext pinnedDeliveryBreakdown -- the mechanism itself
         expect(result.data.totals.delivery_fee).toBe(97);
     });
 
+    test('a stringified numeric finalFee is rejected, not silently coerced (#1377 post-merge audit, RF-2)', async () => {
+        // Number("150") is finite and >= 0, so a finiteness-only check (Number(pin.finalFee), then
+        // Number.isFinite) would accept this pin and copy the *string* "150" verbatim into the
+        // persisted breakdown -- wrong-typed provenance data, and a fee that never went through
+        // fresh resolution. The fresh resolution at 5400m calculated-mode prices at ₱97, a
+        // different value, so a wrongly-accepted pin is detectable: its fee (150) would diverge
+        // from what fresh resolution actually produces (97).
+        const roadDistanceProvider = fakeRoadDistanceProvider({ distanceMeters: 5400, source: 'road' });
+        const { useCase, createOnlineTransactionWithLines } = buildCheckoutFixture({
+            settingsRows: calculatedModeSettingsRows(),
+            roadDistanceProvider
+        });
+        const stringifiedFeePin = { ...VALID_PIN_AT_5400M, finalFee: '150' };
+
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            payload: withGuestProof(deliveryPayload()),
+            pinnedDeliveryBreakdown: stringifiedFeePin
+        });
+
+        expect(result.success).toBe(true);
+        // Falls through to fresh resolution (₱97) -- never the stringified pin's "150".
+        expect(result.data.totals.delivery_fee).toBe(97);
+        expect(result.data.totals.delivery_fee).not.toBe(150);
+        const persistedHeader = createOnlineTransactionWithLines.mock.calls[0][0].header;
+        expect(persistedHeader.delivery_fee).toBe(97);
+        expect(typeof persistedHeader.delivery_fee).toBe('number');
+    });
+
     test('overrideAmount: 0 (a real override to zero, not "no override") is honored, not treated as invalid', async () => {
         // Guards against a subtle falsy-coercion bug (e.g. `if (!pin.overrideAmount)`) that would
         // treat a legitimate zero override the same as `null` (no override) and reject/ignore it.
