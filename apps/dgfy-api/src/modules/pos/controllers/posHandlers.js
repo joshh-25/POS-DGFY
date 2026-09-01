@@ -14,6 +14,7 @@ import {
     getPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase,
     voidPosTransactionUseCase,
+    overrideDeliveryFeeUseCase,
     cashRefundPosTransactionUseCase,
     externalRefundPosTransactionUseCase,
     providerRefundPosTransactionUseCase,
@@ -1256,6 +1257,35 @@ export const voidTransaction = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'POS transaction voided',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Phase 238 (#1330). Not routed through posMutationUser/requirePairedTerminal -- this is a
+// permissioned order-level edit (same class of guard as PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
+// not a terminal cash-handling action, so it works the same whether staff act from a paired POS
+// terminal or a back-office screen. req.user is populated by the authenticate middleware for both.
+export const overrideDeliveryFee = async (req, res, next) => {
+    try {
+        const payload = req.validatedData || req.body || {};
+        const result = await overrideDeliveryFeeUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: result.data?.delivery_fee_override?.no_op
+                    ? 'POS delivery fee unchanged'
+                    : 'POS delivery fee overridden',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
