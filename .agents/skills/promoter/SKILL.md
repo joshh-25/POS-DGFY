@@ -83,6 +83,24 @@ none of this — including `gate:release:local` — runs on the `develop → sta
 `references/promotion-runbook.md`'s "Optional: a `staging` soak first" section and stops at
 `pr-checks.yml`'s build checks; don't reach for this section's gates there.
 
+**Ordering — only one real dependency (#1359).** These three gates read top-to-bottom below, but
+they are not a serial pipeline, and reading them as one wastes wall-clock on every promotion — caught
+live on the 2026-09-01/02 `staging → main` run (#1359), where `gate:release:local` was started and
+`release/<label>` sat uncut for its full ~25 minutes before anyone noticed the two didn't need to
+wait on each other. Only the **compliance preflight sweep** is a real precondition on cutting the
+branch — no `NOT-EXECUTED-*` declaration may reach `main`, so confirm it's clear first. Once it is,
+**cut `release/<label>` and open its PR into `main` immediately** — do not wait on
+`gate:release:local` or the production tenant-schema report first. Those two have no dependency on
+each other, on the compliance sweep, or on the branch cut/PR-open step: run them **concurrently**
+with cutting the branch and opening the PR (background the local gate, dispatch the tenant-schema
+report workflow, and move straight on to `git switch -c release/$LABEL`), not serially before it. The
+PR's own remote checks (`promotion-quality-gate.yml`, `pr-checks.yml`) run regardless of local gate
+timing, and the local gate's result is posted as a PR comment once it finishes, same as today.
+**Only the merge into `main` waits on all three** — see `AGENTS.md`'s Merge Safety section and the
+checkpoint table below; this reordering changes nothing about what gates the merge itself, only when
+the branch/PR mechanics happen relative to the other two gates. `references/promotion-runbook.md`
+shows the concurrent command sequence.
+
 **Compliance preflight sweep — verify, don't dispatch (changed #1163/#1248, 2026-08-31).** The
 sweep (`compliance-preflight-sweep.yml`) is no longer a promotion-time step this role runs — it
 auto-triggers whenever a declaration lands on `develop` and, once every result in a run passes,
@@ -115,8 +133,10 @@ sweep itself is what clears them now, continuously, not a step this role dispatc
 per promotion; #1007's expedited override (below) remains the one case a `NOT-EXECUTED-*`
 declaration may legitimately still reach `main`, logged and authorized, not silent.
 
-**`gate:release:local`.** Run `npm run gate:release:local` against the exact target SHA — **invoke
-it, do not rebuild it** (the policy says this outright). ~25 minutes on a full run, needs local
+**`gate:release:local`** — run this concurrently with cutting `release/<label>` and opening its PR
+into `main` (see "Ordering" above), never serially before them. Run `npm run gate:release:local`
+against the exact target SHA — **invoke it, do not rebuild it** (the policy says this outright).
+~25 minutes on a full run, needs local
 MySQL/Redis; exit code `2` means at least one of 19 gates failed — report which, don't merge past
 it. Gate 19 (`release.verdict.contract`) auto-passes as "Skipped" whenever no `release_verdict.json`
 exists for the target SHA — the normal case — so a green #19 is not evidence of anything; don't cite
@@ -127,7 +147,9 @@ it as verification, nor the other two gates the artifact itself flags
 only**; a partial run is for iterating on one gate locally, never for citing as promotion evidence.
 
 **Production tenant-schema report — never skippable, under any circumstance including #1007's
-override.** Dispatch `tenant-schema-report.yml` (#1017) with `environment: PROD` and confirm
+override.** Run this concurrently with cutting `release/<label>` and opening its PR too (see
+"Ordering" above) — it has no dependency on the branch cut either. Dispatch
+`tenant-schema-report.yml` (#1017) with `environment: PROD` and confirm
 `failed_tenant_count: 0` — this is the one control the #860/#639-class crash-loop risk depends on,
 and it must run against **production** tenant databases specifically, not staging's — the
 2026-07-28 outage happened because schema drift was checked against the wrong environment.
