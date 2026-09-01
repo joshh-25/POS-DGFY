@@ -638,6 +638,7 @@ const toPlainEntry = (row) => {
     supports_pickup: plain.supports_pickup !== false,
     supports_dine_in: plain.supports_dine_in !== false,
     store_delivery_fee: toNumber(plain.store_delivery_fee, 0),
+    delivery_fee_mode: plain.delivery_fee_mode || 'fixed',
     catalog_count: toNumber(plain.catalog_count, 0),
     storefront_cover_image_url: coverImageUrl,
     // Issue #282, Phase D: exposes the AVIF/WebP/srcSet variants that

@@ -342,6 +342,36 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     expect(result.storefront_vouchers).toEqual([]);
   });
 
+  // Phase 242 (#1333, epic #1321): store_delivery_fee is now a FROM-price, ambiguous without
+  // delivery_fee_mode alongside it -- assert the pair travels together through the response mapper
+  // for each of the three modes.
+  it.each([
+    ['calculated', 39],
+    ['free', 0],
+    ['fixed', 50]
+  ])('carries the (%s, %d) store_delivery_fee/delivery_fee_mode pair through from a materialized row', async (mode, fee) => {
+    const repository = await loadRepository();
+    findOneMock.mockResolvedValue({
+      ...makeEntry({ tenant_id: `tenant-mode-${mode}`, tenant_name: `Mode ${mode}`, slug: `mode-${mode}-store` }),
+      store_delivery_fee: fee,
+      delivery_fee_mode: mode
+    });
+
+    const result = await repository.getStorefrontBySlug(`mode-${mode}-store`);
+    expect(result.store_delivery_fee).toBe(fee);
+    expect(result.delivery_fee_mode).toBe(mode);
+  });
+
+  it('defaults delivery_fee_mode to fixed for a legacy row written before this phase (no delivery_fee_mode column value)', async () => {
+    const repository = await loadRepository();
+    const legacyEntry = makeEntry({ tenant_id: 'tenant-legacy', tenant_name: 'Legacy', slug: 'legacy-store' });
+    delete legacyEntry.delivery_fee_mode;
+    findOneMock.mockResolvedValue(legacyEntry);
+
+    const result = await repository.getStorefrontBySlug('legacy-store');
+    expect(result.delivery_fee_mode).toBe('fixed');
+  });
+
   it('uses structured tenant storefront hours for materialized profile rows', async () => {
     const repository = await loadRepository();
     const structuredHours = {
