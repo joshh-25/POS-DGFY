@@ -12,8 +12,8 @@ verification_evidence: focused rateLimiter.behavior.test.js including successful
 rollback_note: Revert mobilePosFreeSyncRoundLimiter routing and restore mobilePosFreeSyncLimiter mounts; revert mobilePosReplayGuard wiring while retaining immutable mutation IDs. No migration or stored business data needs rollback.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-29T19:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-MOBILE-SYNC-ROUND-20260829
+preflight_run_at: 2026-09-01T15:54:38.586Z
+preflight_request_ref: PREFLIGHT-33527562501-2026-07-22-MOBILE-REFRESH-TOKEN-AND-FREE-TIER-OFFLINE-SYNC
 ---
 
 # Mobile Refresh Token Support and Free-Tier Offline-Sync Access
