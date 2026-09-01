@@ -209,10 +209,16 @@ beforeEach(() => {
     mockDgfyAffiliateEnrollmentStatusEvent._seed([]);
 });
 
+// #1177: customer-facing cap message, asserted verbatim so a copy edit is caught here rather than
+// only by a snapshot/E2E test elsewhere. Every other field (code/statusCode/reason_code) stays the
+// substantive check; this is the one place the exact wording is pinned.
+const AFFILIATE_SLOT_CAP_MESSAGE = 'Affiliate limit reached. Remove an affiliate or contact DGFY to add another.';
+
 const expectSlotCapRejection = async (promise) => {
     await expect(promise).rejects.toMatchObject({
         code: 'CONFLICT',
         statusCode: 409,
+        message: AFFILIATE_SLOT_CAP_MESSAGE,
         details: expect.objectContaining({ reason_code: 'AFFILIATE_SLOT_CAP_REACHED' })
     });
 };
