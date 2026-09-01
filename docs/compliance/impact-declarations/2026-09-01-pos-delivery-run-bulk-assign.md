@@ -11,8 +11,8 @@ verification_evidence: node --check apps/dgfy-api/src/modules/pos/repositories/p
 rollback_note: One additive/nullable/read-only backend line (apps/dgfy-api/src/modules/pos/repositories/posRepository.js -- delivery_run_id added to an existing SELECT attribute whitelist, no schema/migration change) plus new frontend-only files under packages/web-core/src/features/pos/ and one one-line frontend bugfix drive-by. Rollback is a plain code revert: removing the backend attribute stops the field being returned (existing consumers that don't reference it are unaffected); removing the new toolbar/checkbox/eligibility files removes the bulk-select UI entirely, leaving the per-order Delivery Runs tab UI (Phase 226) and the per-order delivery-assignment UI untouched, since neither is modified by this phase beyond the one-line F-3 fix.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1273-PHASE-227-BULK-ADD-TO-RUN
+preflight_run_at: 2026-09-01T01:05:32.411Z
+preflight_request_ref: PREFLIGHT-33457125207-2026-09-01-POS-DELIVERY-RUN-BULK-ASSIGN
 ---
 
 # POS Delivery Run bulk "add to run" from the Active Queue (Phase 227, #1273/#1270)
