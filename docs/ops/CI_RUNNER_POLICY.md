@@ -62,7 +62,15 @@ Per #1363's epic table, the default policy going forward:
 | PR checks, ordinary pushes to `develop` | Self-hosted (`sieitz-runner`/`sieitz-lg` per existing size split) | Frequent; conserve hosted minutes; #923's measured size-routing stays in force |
 | `develop` → `staging` promotion, staging deploy | Self-hosted | Normal release cadence; preserve current cost model |
 | `develop`/`staging` → production promotion, production deploy | GitHub-hosted (`ubuntu-latest`) | Infrequent; predictable clean environment; faster pacing |
+| **Hotfix to `main`** (`incident-responder`'s monitor loop or `/hotfix` manual entry) | **GitHub-hosted** | Same `deploy-main.yml`/production-deploy path as an ordinary promotion — a hotfix is still "anything that deploys to prod," so it gets the same isolation/predictability rationale, if anything more so given it's already running under incident pressure. No separate routing decision needed: it rides the same job, the same runner class, because it dispatches the same workflow |
 | Emergency/fallback | Explicit alternate strategy per the switch below | Never a silent, undocumented flip |
+
+**Why prod specifically, stated once:** blast radius (a self-hosted-box failure competes with the
+live DEV+STAGING traffic that box also serves — not a risk a hosted runner carries at all),
+predictability (clean ephemeral image every run, no local state/cache drift, no leftover deploy-key
+exposure since `vm-sieitzstaging` is persistent rather than ephemeral), and frequency (prod pushes
+are infrequent enough that the hosted-minutes cost stays small — the opposite of PR/develop traffic,
+which is exactly why that stays self-hosted).
 
 ### Job-by-job inventory and capability requirements
 
