@@ -25,7 +25,7 @@ export default (sequelize) => sequelize.define('CommercePaymentSession', {
     defaultValue: 'paymongo'
   },
   target_type: {
-    type: DataTypes.ENUM('store_checkout', 'service_booking'),
+    type: DataTypes.ENUM('store_checkout', 'service_booking', 'dglaundry_booking'),
     allowNull: false,
     defaultValue: 'store_checkout'
   },

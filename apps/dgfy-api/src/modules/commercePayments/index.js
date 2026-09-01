@@ -19,6 +19,8 @@ import {
 import { buildGetPayMongoSandboxCertificationUseCase } from './usecases/paymongoSandboxCertificationUseCase.js';
 import { buildHandleCommerceOrderLifecycleUseCase } from './usecases/commerceOrderLifecycleUseCase.js';
 import { recordTenantRevenueOrderFulfillmentUseCase } from '../tenantRevenue/index.js';
+import { buildCreateDglaundryBookingPaymentSessionUseCase } from './usecases/createDglaundryBookingPaymentSessionUseCase.js';
+import { dglaundryPartnerClient } from '../dgfyLaundryOrders/services/dglaundryPartnerClient.js';
 
 export const handlePayMongoCommerceWebhookUseCase = buildHandlePayMongoCommerceWebhookUseCase({
   commercePaymentRepository,
@@ -85,6 +87,12 @@ export const listTenantPaymentAccountsUseCase = buildListTenantPaymentAccountsUs
 export const getPayMongoSandboxCertificationUseCase = buildGetPayMongoSandboxCertificationUseCase({
   paymongoService,
   commercePaymentRepository
+});
+
+export const createDglaundryBookingPaymentSessionUseCase = buildCreateDglaundryBookingPaymentSessionUseCase({
+  commercePaymentRepository,
+  paymongoService,
+  partnerClient: dglaundryPartnerClient
 });
 
 export { commercePaymentRepository };

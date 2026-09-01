@@ -3,6 +3,7 @@ import dbStore from '../../../utils/dbStore.js';
 import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import { storeCheckoutUseCase } from '../../store/index.js';
+import { submitPaidDglaundryBooking } from './finalizeDglaundryBookingSession.js';
 
 const toPlain = (value) => (value?.get ? value.get({ plain: true }) : value);
 const getAttributes = (resource = {}) => resource?.attributes || resource || {};
@@ -129,6 +130,16 @@ export const finalizePaidCommerceSession = async ({
   }
 
   try {
+    if (plainSession.target_type === 'dglaundry_booking') {
+      const finalized = await submitPaidDglaundryBooking({
+        session: plainSession,
+        resource,
+        providerEventId,
+        commercePaymentRepository
+      });
+      if (finalized) return finalized;
+      throw new DomainError(DomainErrorCode.INTERNAL_ERROR, 'DGLaundry booking session could not be finalized.', { statusCode: 500 });
+    }
     const tenant = await commercePaymentRepository.findTenantById(plainSession.tenant_id);
     if (!tenant) {
       throw new DomainError(DomainErrorCode.TENANT_NOT_FOUND, 'Tenant not found for paid commerce session', { statusCode: 404 });

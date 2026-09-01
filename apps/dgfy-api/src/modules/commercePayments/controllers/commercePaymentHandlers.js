@@ -1,5 +1,6 @@
 import {
   confirmCommercePaymentSessionSandboxUseCase,
+  createDglaundryBookingPaymentSessionUseCase,
   createCommercePaymentRefundUseCase,
   createTenantPayMongoChildAccountUseCase,
   getCommercePaymentSessionUseCase,
@@ -45,6 +46,22 @@ export const handlePayMongoWebhook = async (req, res, next) => {
     return sendResult(res, result);
   } catch (error) {
     next(error);
+  }
+};
+
+export const createDglaundryBookingPaymentSession = async (req, res, next) => {
+  try {
+    const result = await createDglaundryBookingPaymentSessionUseCase({
+      // Tenant context is resolved by the host middleware; never trust a
+      // client-supplied tenant_id for payment ownership.
+      payload: {
+        ...(req.validatedBody || req.body || {}),
+        tenant_id: req.tenant?.id || null
+      }
+    });
+    return sendResult(res, result, 201);
+  } catch (error) {
+    return next(error);
   }
 };
 

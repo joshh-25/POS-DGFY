@@ -59,7 +59,7 @@ const listPaymentSessionsQuerySchema = Joi.object({
     }),
     Joi.array().items(Joi.string().valid(...REPORT_STATUSES))
   ).optional(),
-  target_type: Joi.string().valid('store_checkout', 'service_booking').optional(),
+  target_type: Joi.string().valid('store_checkout', 'service_booking', 'dglaundry_booking').optional(),
   limit: Joi.number().integer().min(1).max(250).default(100),
   offset: Joi.number().integer().min(0).default(0)
 });
