@@ -46,7 +46,11 @@ export default function DeliveryRunMembersList({
   savingKey = '',
   dispatchResult = null,
   onRemoveMember = async () => false,
-  onMoveMember = async () => false
+  onMoveMember = async () => false,
+  // Phase 229 (#1289), §2.5: the split view's DeliveryRunDropPanel reuses this list read-only --
+  // full run management (remove/move) stays on the Delivery Runs tab. Defaults to false so every
+  // existing caller (DeliveryRunsWorkspacePanel.jsx) is unaffected.
+  readOnly = false
 }) {
   const [pendingRemoveId, setPendingRemoveId] = React.useState(null);
   const [pendingMove, setPendingMove] = React.useState(null); // { posTransactionId, targetRunId }
@@ -87,45 +91,50 @@ export default function DeliveryRunMembersList({
             savingKey={savingKey}
             moveTargets={moveTargets}
             dispatchOutcome={dispatchOutcomeByOrderId.get(rowKey) || null}
+            readOnly={readOnly}
             onRequestRemove={() => setPendingRemoveId(rowKey)}
             onRequestMove={(targetRunId) => setPendingMove({ posTransactionId: rowKey, targetRunId })}
           />
         );
       })}
 
-      <ConfirmActionDialog
-        open={pendingRemoveId !== null}
-        onOpenChange={(open) => { if (!open) setPendingRemoveId(null); }}
-        title="Remove order from this run?"
-        description="The order's delivery job stays open but is no longer part of this run."
-        confirmLabel="Remove"
-        cancelLabel="Keep in run"
-        variant="destructive"
-        onConfirm={async () => {
-          const succeeded = await onRemoveMember(pendingRemoveId);
-          if (succeeded !== false) setPendingRemoveId(null);
-          return succeeded;
-        }}
-      />
+      {readOnly ? null : (
+        <>
+          <ConfirmActionDialog
+            open={pendingRemoveId !== null}
+            onOpenChange={(open) => { if (!open) setPendingRemoveId(null); }}
+            title="Remove order from this run?"
+            description="The order's delivery job stays open but is no longer part of this run."
+            confirmLabel="Remove"
+            cancelLabel="Keep in run"
+            variant="destructive"
+            onConfirm={async () => {
+              const succeeded = await onRemoveMember(pendingRemoveId);
+              if (succeeded !== false) setPendingRemoveId(null);
+              return succeeded;
+            }}
+          />
 
-      <ConfirmActionDialog
-        open={pendingMove !== null}
-        onOpenChange={(open) => { if (!open) setPendingMove(null); }}
-        title="Move order to another run?"
-        description="Moving is two separate steps: this order is removed from the current run, then added to the target run. If the second step fails, the order is left in no run and must be re-added from the target run."
-        confirmLabel="Move order"
-        cancelLabel="Cancel"
-        onConfirm={async () => {
-          const succeeded = await onMoveMember(pendingMove?.posTransactionId, pendingMove?.targetRunId);
-          if (succeeded !== false) setPendingMove(null);
-          return succeeded;
-        }}
-      />
+          <ConfirmActionDialog
+            open={pendingMove !== null}
+            onOpenChange={(open) => { if (!open) setPendingMove(null); }}
+            title="Move order to another run?"
+            description="Moving is two separate steps: this order is removed from the current run, then added to the target run. If the second step fails, the order is left in no run and must be re-added from the target run."
+            confirmLabel="Move order"
+            cancelLabel="Cancel"
+            onConfirm={async () => {
+              const succeeded = await onMoveMember(pendingMove?.posTransactionId, pendingMove?.targetRunId);
+              if (succeeded !== false) setPendingMove(null);
+              return succeeded;
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }
 
-function MemberRow({ member, order, disabled, savingKey, moveTargets, dispatchOutcome, onRequestRemove, onRequestMove }) {
+function MemberRow({ member, order, disabled, savingKey, moveTargets, dispatchOutcome, readOnly, onRequestRemove, onRequestMove }) {
   const [targetRunId, setTargetRunId] = React.useState('');
   const removeKey = `delivery-run-member-remove:${member.pos_transaction_id}`;
   const moveKey = `delivery-run-member-move:${member.pos_transaction_id}`;
@@ -157,35 +166,37 @@ function MemberRow({ member, order, disabled, savingKey, moveTargets, dispatchOu
           {member.delivery_personnel_name ? ` · ${member.delivery_personnel_name}` : ''}
         </p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {moveTargets.length > 0 ? (
-          <>
-            <select
-              value={targetRunId}
-              onChange={(event) => setTargetRunId(event.target.value)}
-              disabled={disabled || rowBusy}
-              className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700"
-            >
-              <option value="">Move to...</option>
-              {moveTargets.map((candidate) => (
-                <option key={candidate.delivery_run_id} value={candidate.delivery_run_id}>{candidate.label}</option>
-              ))}
-            </select>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={disabled || rowBusy || !targetRunId}
-              onClick={() => onRequestMove(Number(targetRunId))}
-            >
-              <ArrowRightLeft className="mr-1 h-3.5 w-3.5" /> Move
-            </Button>
-          </>
-        ) : null}
-        <Button type="button" variant="outline" size="sm" disabled={disabled || rowBusy} onClick={onRequestRemove}>
-          <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove
-        </Button>
-      </div>
+      {readOnly ? null : (
+        <div className="flex flex-wrap items-center gap-2">
+          {moveTargets.length > 0 ? (
+            <>
+              <select
+                value={targetRunId}
+                onChange={(event) => setTargetRunId(event.target.value)}
+                disabled={disabled || rowBusy}
+                className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700"
+              >
+                <option value="">Move to...</option>
+                {moveTargets.map((candidate) => (
+                  <option key={candidate.delivery_run_id} value={candidate.delivery_run_id}>{candidate.label}</option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={disabled || rowBusy || !targetRunId}
+                onClick={() => onRequestMove(Number(targetRunId))}
+              >
+                <ArrowRightLeft className="mr-1 h-3.5 w-3.5" /> Move
+              </Button>
+            </>
+          ) : null}
+          <Button type="button" variant="outline" size="sm" disabled={disabled || rowBusy} onClick={onRequestRemove}>
+            <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

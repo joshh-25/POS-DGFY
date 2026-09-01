@@ -44,4 +44,21 @@ describe('posRepository buildTransactionInclude contract', () => {
         expect(Array.isArray(deliveryJobInclude.include)).toBe(true);
         expect(deliveryJobInclude.include.length).toBeGreaterThan(0);
     });
+
+    // Phase 229 (#1291). The frontend's run-membership gate needs the run's own `status` (a
+    // cancelled run does not clear its members' delivery_run_id) -- a nested include on the
+    // deliveryJob include's existing `deliveryRun` association, additive only.
+    it('nests a deliveryRun include with status inside the deliveryJob include', () => {
+        const include = buildTransactionInclude();
+        const deliveryJobInclude = include.find((entry) => entry.as === 'deliveryJob');
+        const deliveryRunInclude = deliveryJobInclude.include.find((entry) => entry.as === 'deliveryRun');
+
+        expect(deliveryRunInclude).toBeTruthy();
+        expect(deliveryRunInclude.model).toEqual({ name: 'DeliveryRun' });
+        expect(deliveryRunInclude.required).toBe(false);
+        expect(Array.isArray(deliveryRunInclude.attributes)).toBe(true);
+        expect(deliveryRunInclude.attributes).toContain('status');
+        expect(deliveryRunInclude.attributes).toContain('delivery_run_id');
+        expect(deliveryRunInclude.attributes).toContain('label');
+    });
 });

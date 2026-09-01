@@ -1,4 +1,5 @@
 import {
+  confirmCommercePaymentSessionSandboxUseCase,
   createCommercePaymentRefundUseCase,
   createTenantPayMongoChildAccountUseCase,
   getCommercePaymentSessionUseCase,
@@ -103,6 +104,18 @@ export const reconcilePaymentSession = async (req, res, next) => {
       actor: req.admin?.username || req.user?.email || req.user?.username || 'paymongo_admin_reconciliation'
     });
     return sendResult(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const confirmPaymentSessionSandbox = async (req, res, next) => {
+  try {
+    const result = await confirmCommercePaymentSessionSandboxUseCase({
+      paymentSessionId: (req.validatedParams || req.params).payment_session_id,
+      actor: req.admin?.username || req.user?.email || req.user?.username || 'paymongo_admin_sandbox_confirmation'
+    });
+    return sendResult(res, result, 202);
   } catch (error) {
     next(error);
   }

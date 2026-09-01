@@ -1,7 +1,9 @@
 const RECOVERABLE_PREFERENCE_PREFIXES = [
   'pos_terminal_last_view_v1:',
   'posTerminalSidebarCollapsed',
-  'pos_online_order_sound_enabled_v1'
+  'pos_online_order_sound_enabled_v1',
+  // Phase 230 (#1288): Active Queue view-mode toggle (card/table).
+  'pos_queue_view_mode_v1'
 ];
 
 const getLocalStorage = () => {

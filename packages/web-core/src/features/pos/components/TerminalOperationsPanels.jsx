@@ -1,6 +1,7 @@
 import React from 'react';
 import { toast } from 'sonner';
-import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Search, Package } from 'lucide-react';
+import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
@@ -8,22 +9,33 @@ import {
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
   DELIVERY_JOB_STATUS_LABELS,
-  hasCompleteDeliveryAssignment,
-  isManualDeliveryJob,
-  isCompletionPaymentPending,
-  getDeliveryJobActionLabel,
-  getFulfillmentActionLabel,
-  getIncomingOrderUtilityActions,
-  getNextDeliveryJobStatus,
-  getNextStatusActions
+  isManualDeliveryJob
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
-import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
-import QueueRunAssignBar from './QueueRunAssignBar.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
+import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
+import DeliveryRunDropPanel from './DeliveryRunDropPanel.jsx';
+import QueueRunAssignBar from './QueueRunAssignBar.jsx';
+import QueueRunFilterControl from './QueueRunFilterControl.jsx';
+import IncomingQueueOrderList from './IncomingQueueOrderList.jsx';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
-import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
+import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
+import { resolveRunDropAssignment } from '../utils/queueRunDropAssignment.js';
+import { IMIN_TABLET_MAX_WIDTH_PX } from '../utils/posTabletViewport.js';
+import { QUEUE_RUN_FILTER_ALL, QUEUE_RUN_FILTER_UNASSIGNED, filterOrdersByRun, getQueueRunFilterOptions } from '../utils/deliveryRunQueueFilter.js';
+import useDeliveryRunOptions from '../hooks/useDeliveryRunOptions.js';
+import {
+  formatOrderDateTime,
+  formatOrderAmount,
+  humanizeOrderStatus,
+  resolveOrderDownpaymentSplit,
+  resolveBalanceCollectionLabel,
+  parseDeliveryCoords
+} from '../utils/incomingQueueOrderFormatting.js';
+import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActions.js';
+import { readQueueViewModePreference, writeQueueViewModePreference, QUEUE_VIEW_MODES } from '../utils/queueViewModePreference.js';
+import QueueOrderTableView from './QueueOrderTableView.jsx';
 // Phase 211 (#1180)'s own precedent for this gate: orderFulfillmentUi.js:56 reuses this exact
 // normalizeWorkflowMode(...) === 'retail' pattern rather than the WORKFLOW_PAGE_CAPABILITIES nav
 // gate -- the delivery-runs tab is an in-page view over a mode-agnostic API (ADR 0034), not a
@@ -32,25 +44,34 @@ import { normalizeWorkflowMode } from '../../settings/workflowMode.js';
 
 const createIdempotencyKey = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
 
-const parseDeliveryCoords = (order = {}) => {
-  if (
-    order?.delivery_latitude === null
-    || order?.delivery_latitude === undefined
-    || order?.delivery_latitude === ''
-    || order?.delivery_longitude === null
-    || order?.delivery_longitude === undefined
-    || order?.delivery_longitude === ''
-  ) {
-    return null;
-  }
-  const lat = Number(order?.delivery_latitude);
-  const lng = Number(order?.delivery_longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return {
-    latitude: lat,
-    longitude: lng
-  };
-};
+// Phase 229 (#1289), §2.6. Split-tab viewport gate as a CSS media query, matching the primary POS
+// hardware constraint the plan documents against `posTabletViewport.js` (Falcon 1 @ 1280 landscape)
+// without reimplementing that util -- it answers a different question (is this a POS tablet at
+// all) than this gate does (is there *physically enough width* for two panels side by side).
+const SPLIT_VIEW_MEDIA_QUERY = `(min-width: ${IMIN_TABLET_MAX_WIDTH_PX}px)`;
+
+function useSplitViewportEligible() {
+  const [isEligible, setIsEligible] = React.useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia(SPLIT_VIEW_MEDIA_QUERY).matches;
+  });
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mediaQueryList = window.matchMedia(SPLIT_VIEW_MEDIA_QUERY);
+    const handleChange = (event) => setIsEligible(event.matches);
+    setIsEligible(mediaQueryList.matches);
+    if (typeof mediaQueryList.addEventListener === 'function') {
+      mediaQueryList.addEventListener('change', handleChange);
+      return () => mediaQueryList.removeEventListener('change', handleChange);
+    }
+    // Legacy Safari fallback -- addListener/removeListener predate addEventListener on MediaQueryList.
+    mediaQueryList.addListener(handleChange);
+    return () => mediaQueryList.removeListener(handleChange);
+  }, []);
+
+  return isEligible;
+}
 
 function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
   const isIncomingQueue = title === 'Incoming Online Queue';
@@ -77,40 +98,7 @@ function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
   );
 }
 
-const formatOrderDateTime = (value) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return '-';
-  return date.toLocaleString();
-};
-
-const formatOrderAmount = (value) => {
-  const amount = Number(value || 0);
-  return `PHP ${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
-};
-
-const humanizeOrderStatus = (value) => String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
-
-// Phase 144 (#824): a downpayment order is persisted as COD (payment_type forced to 'cash' by
-// Phase 141, because the balance IS collected in person) with payment_status 'partially_paid'.
-// Until now the card rendered exactly those two facts and nothing else, so staff handing over
-// goods could not see how much cash to collect. amount_paid/balance_due are already on the wire
-// from listIncomingOnlineOrders -- this only reads them.
-const resolveOrderDownpaymentSplit = (order) => {
-  const amountPaid = Number(order?.amount_paid || 0);
-  const balanceDue = Number(order?.balance_due || 0);
-  if (order?.payment_status !== 'partially_paid' || !(amountPaid > 0)) return null;
-  return { amountPaid, balanceDue };
-};
-
-// Balance is always collected in person -- ADR 0069 clause 2 [binding], carried forward by ADR
-// 0070. Mirrors the storefront's own resolveDownpaymentBalanceLabel so both surfaces word it the
-// same way.
-const resolveBalanceCollectionLabel = (orderMethod) => (
-  orderMethod === 'delivery' ? 'Collect on delivery' : 'Collect at pickup'
-);
-
-function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDeliveryRuns = false, runCount = null }) {
+function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDeliveryRuns = false, runCount = null, showSplitView = false }) {
   const tabs = [
     {
       key: 'active',
@@ -133,6 +121,17 @@ function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, s
       label: 'Delivery Runs',
       count: runCount,
       icon: Truck
+    });
+  }
+  // Phase 229 (#1289), §2.4: a 4th view, not a replacement of the tabbed arrangement -- gated by
+  // the caller on retail mode AND viewport width (§2.6), same "caller decides, this just renders"
+  // contract as showDeliveryRuns above.
+  if (showSplitView) {
+    tabs.push({
+      key: 'split',
+      label: 'Queue + Run',
+      count: null,
+      icon: Columns
     });
   }
 
@@ -417,6 +416,14 @@ function IncomingQueueWorkspace({
 }) {
   const [orderSort, setOrderSort] = React.useState('newest');
   const [activeView, setActiveView] = React.useState('active');
+  // Phase 230 (#1288): Active Queue view-mode toggle (card/table). Initialized lazily from
+  // per-terminal localStorage (React.useState's function form runs the read exactly once, on
+  // mount) so a returning operator's last choice sticks; card view stays the default whenever no
+  // stored preference exists or the stored value fails normalization.
+  const [viewMode, setViewMode] = React.useState(() => readQueueViewModePreference());
+  const handleViewModeChange = (nextMode) => {
+    setViewMode(writeQueueViewModePreference(nextMode));
+  };
   const [deliveryRunCount, setDeliveryRunCount] = React.useState(null);
   const isRetailMode = normalizeWorkflowMode(workflowMode) === 'retail';
   const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
@@ -431,6 +438,51 @@ function IncomingQueueWorkspace({
     return Number(left?.pos_transaction_id || 0) - Number(right?.pos_transaction_id || 0);
   });
 
+  // Phase 231 (#1290): the Active Queue's client-side delivery-run view filter. Purely a view
+  // concern over the already-fetched list -- see deliveryRunQueueFilter.js for why this is NOT
+  // built on getEligibleRunTargets. Shares one fetch of GET /pos/delivery-runs with
+  // QueueRunAssignBar's target picker via useDeliveryRunOptions, so the two can never disagree
+  // about which runs exist.
+  const [runFilter, setRunFilter] = React.useState(QUEUE_RUN_FILTER_ALL);
+  const { runs: deliveryRuns, loading: deliveryRunsLoading, errorMessage: deliveryRunsError } = useDeliveryRunOptions(queueLocationScopeId, { enabled: isRetailMode });
+  const runFilterOptions = React.useMemo(
+    () => getQueueRunFilterOptions(deliveryRuns, { locationId: queueLocationScopeId }).map((run) => ({
+      ...run,
+      queueCount: filterOrdersByRun(sortedIncomingOrders, run.delivery_run_id).length
+    })),
+    [deliveryRuns, queueLocationScopeId, sortedIncomingOrders]
+  );
+  const visibleIncomingOrders = filterOrdersByRun(sortedIncomingOrders, runFilter);
+  // Maps id -> label from the same already-loaded runs list the filter itself uses (F-3, the
+  // Phase 227 declaration's own pattern) -- deliberately the unfiltered deliveryRuns list, not
+  // runFilterOptions, so a card still shows a real label for a run outside the filter's own scope
+  // (a different location, or completed) rather than always falling back to "Run #<id>".
+  const runLabelById = React.useMemo(() => {
+    const map = new Map();
+    (Array.isArray(deliveryRuns) ? deliveryRuns : []).forEach((run) => {
+      if (run?.delivery_run_id !== undefined && run?.delivery_run_id !== null) {
+        map.set(String(run.delivery_run_id), run.label);
+      }
+    });
+    return map;
+  }, [deliveryRuns]);
+
+  // A previously chosen filter run can drop out of runFilterOptions between fetches (it got
+  // dispatched-elsewhere-then-completed, or the location scope changed) -- never leave the
+  // filter pointed at a run that's no longer offered. Mirrors QueueRunAssignBar's own
+  // targetRunId reset effect.
+  React.useEffect(() => {
+    if (runFilter === QUEUE_RUN_FILTER_ALL || runFilter === QUEUE_RUN_FILTER_UNASSIGNED) return;
+    if (runFilterOptions.some((run) => String(run.delivery_run_id) === String(runFilter))) return;
+    setRunFilter(QUEUE_RUN_FILTER_ALL);
+  }, [runFilterOptions, runFilter]);
+
+  // Reset the filter whenever the location scope changes -- a run id chosen at one location has
+  // no meaning at another.
+  React.useEffect(() => {
+    setRunFilter(QUEUE_RUN_FILTER_ALL);
+  }, [queueLocationScopeId]);
+
   // Phase 227 (#1273): bulk "add to run" selection for the Active Queue. A Set<Number> of
   // pos_transaction_id, NEVER an index -- sortedIncomingOrders is re-sorted every render (the
   // sort direction is itself a piece of UI state), so an index-based selection would silently
@@ -442,15 +494,51 @@ function IncomingQueueWorkspace({
   const [bulkAssignSubmitting, setBulkAssignSubmitting] = React.useState(false);
   const activeShiftLocationId = shiftState?.shift?.location_id ?? null;
 
-  // Deliberately NOT pruned against sortedIncomingOrders on every poll tick -- a transient poll
-  // error can return `orders: []` and would otherwise wipe the whole selection. Eligibility is
-  // instead re-derived live below (selectedEligibleOrders) so a genuinely stale id just stops
-  // counting toward the selection rather than being silently dropped from the Set.
-  const selectedEligibleOrders = sortedIncomingOrders.filter(
+  // Phase 229 (#1289), §2.4/§2.6: the split view's own viewport gate + drag state. Sensors are
+  // built once per mount, ItemsPage.jsx precedent (§2.3) -- PointerSensor with an activation
+  // distance so a plain click still fires onClick instead of starting a drag, TouchSensor for
+  // tablets.
+  const isSplitViewportEligible = useSplitViewportEligible();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+  );
+  const [activeDragOrderId, setActiveDragOrderId] = React.useState(null);
+  // §2.9: bumped after every successful handleBulkAssignSubmit (drag- or checkbox-driven) so
+  // DeliveryRunDropPanel's own picked-run detail refetches when its shown run may have just
+  // gained members.
+  const [runDropRefreshTick, setRunDropRefreshTick] = React.useState(0);
+
+  // Phase 231 (#1290) correctness crux: re-derived against visibleIncomingOrders (the FILTERED
+  // list), not sortedIncomingOrders. Without this, an order selected before the run filter was
+  // applied would still be eligible-and-submitted by handleBulkAssignSubmit while invisible on
+  // screen -- a filter-hidden selection would get silently submitted.
+  //
+  // Deliberately NOT pruned against the order list on every poll tick or filter change -- a
+  // transient poll error can return `orders: []`, and clearing the filter must restore the
+  // selection rather than have silently destroyed it. Eligibility/visibility is instead
+  // re-derived live here so a genuinely stale or filtered-out id just stops counting toward the
+  // selection rather than being dropped from the Set. (handleSelectAllEligible below is a narrow
+  // exception -- "Select all eligible" replaces the whole Set, so it does discard any
+  // filter-hidden selection; that has always been select-all's behavior, not new here.)
+  const selectedEligibleOrders = visibleIncomingOrders.filter(
     (order) => selectedOrderIds.has(Number(order?.pos_transaction_id))
       && getRunAssignEligibility(order, {}).eligible
   );
-  const selectedDriftCount = Math.max(0, selectedOrderIds.size - selectedEligibleOrders.length);
+  const visibleSelectedCount = visibleIncomingOrders.filter(
+    (order) => selectedOrderIds.has(Number(order?.pos_transaction_id))
+  ).length;
+  // Recomputed against the visible list only -- selectedOrderIds.size would count every
+  // filter-hidden selection as "ineligible drift" and show a wrong, alarming number.
+  const selectedDriftCount = Math.max(0, visibleSelectedCount - selectedEligibleOrders.length);
+  // Ids that are selected AND present in the full (unfiltered) list, but not in the currently
+  // visible (filtered) list -- these will silently NOT be submitted by the bulk-add unless the
+  // operator is told so.
+  const selectedHiddenCount = sortedIncomingOrders.filter((order) => {
+    const orderId = Number(order?.pos_transaction_id);
+    if (!selectedOrderIds.has(orderId)) return false;
+    return !visibleIncomingOrders.some((visible) => Number(visible?.pos_transaction_id) === orderId);
+  }).length;
 
   const toggleOrderSelection = (orderId, checked) => {
     setSelectedOrderIds((current) => {
@@ -473,7 +561,12 @@ function IncomingQueueWorkspace({
   // different selection is a new logical submit and gets a fresh key).
   const bulkAssignSubmitRef = React.useRef({ key: null, signature: null });
 
-  const handleBulkAssignSubmit = async (targetRunId) => {
+  // Phase 229 (#1289), §2.9: `explicitOrderIds` lets a drag (single unselected card, or the whole
+  // checkbox selection when the dragged card is part of it) supply its own id set instead of the
+  // closure's `selectedEligibleOrders` -- everything else (idempotency signature, the 409 recovery
+  // loop, refreshIncomingOrders()) is reused verbatim. QueueRunAssignBar's own call site passes
+  // just one argument, so `explicitOrderIds` defaults to null and this is fully backward-compatible.
+  const handleBulkAssignSubmit = async (targetRunId, explicitOrderIds = null) => {
     if (!isOnline) {
       toast.error('Reconnect before adding orders to a run.');
       return false;
@@ -482,9 +575,17 @@ function IncomingQueueWorkspace({
       toast.error('Open a shift before adding orders to a run.');
       return false;
     }
-    const sortedSelectedIds = selectedEligibleOrders
-      .map((order) => Number(order.pos_transaction_id))
-      .sort((left, right) => left - right);
+    const sortedSelectedIds = Array.isArray(explicitOrderIds)
+      ? explicitOrderIds
+        .map((id) => Number(id))
+        .filter((id) => {
+          const order = sortedIncomingOrders.find((candidate) => Number(candidate?.pos_transaction_id) === id);
+          return Boolean(order) && getRunAssignEligibility(order, {}).eligible;
+        })
+        .sort((left, right) => left - right)
+      : selectedEligibleOrders
+        .map((order) => Number(order.pos_transaction_id))
+        .sort((left, right) => left - right);
     if (sortedSelectedIds.length === 0) {
       toast.error('Select at least one eligible order first.');
       return false;
@@ -514,6 +615,7 @@ function IncomingQueueWorkspace({
         sortedSelectedIds.forEach((id) => next.delete(id));
         return next;
       });
+      setRunDropRefreshTick((tick) => tick + 1);
       await refreshIncomingOrders?.();
       return true;
     } catch (error) {
@@ -543,6 +645,31 @@ function IncomingQueueWorkspace({
       setBulkAssignSubmitting(false);
     }
   };
+
+  // Phase 229 (#1289), §2.8-2.10: the split view's DndContext handlers. The multi-drag-vs-single
+  // decision itself lives in the pure `resolveRunDropAssignment` util (testable without a real
+  // pointer drag); these handlers just wire dnd-kit's events to it and to the existing
+  // handleBulkAssignSubmit. `active.id`/`over.id` are always the numeric pos_transaction_id /
+  // delivery_run_id -- never an index (§2.10).
+  const handleQueueDragStart = (event) => {
+    setActiveDragOrderId(Number(event?.active?.id));
+  };
+
+  const handleQueueDragEnd = async (event) => {
+    setActiveDragOrderId(null);
+    // Phase 231 (#1290): resolved against visibleIncomingOrders (the run-filtered list), not
+    // sortedIncomingOrders -- the split view only ever renders/drags visible cards (below), and a
+    // stale drag id from before a filter change must not resolve against a now-hidden order.
+    const assignment = resolveRunDropAssignment({
+      activeOrderId: event?.active?.id,
+      overRunId: event?.over?.id,
+      selectedOrderIds,
+      orders: visibleIncomingOrders
+    });
+    if (!assignment) return;
+    await handleBulkAssignSubmit(assignment.targetRunId, assignment.orderIds);
+  };
+
   // Phase 144 (#824): the reject dialog renders outside the per-order .map, so it only ever held
   // an id. Resolving the order back out of the list lets the copy state the ACTUAL amount at
   // stake instead of the old unconditional "DGFY will request a full refund", which on a
@@ -554,6 +681,40 @@ function IncomingQueueWorkspace({
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hasActiveShift = Boolean(shiftState?.shift);
+
+  // Phase 232 review RF-2 (#1305): the access/error/shift_required/loading ladder used to live only
+  // inline in the default (tab) branch below, so the split branch skipped it entirely and rendered
+  // a failed poll as an indistinguishable "no orders" empty state with no recovery. Extracted so
+  // both branches share the exact same ladder and can never drift apart again.
+  const queueAccessNotice = (() => {
+    if (!canViewPos || incomingOrdersAccessState === 'forbidden') {
+      return (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          {incomingOrdersErrorMessage || 'You need POS view permission to access incoming online orders.'}
+        </p>
+      );
+    }
+    if (incomingOrdersAccessState === 'error') {
+      return (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {incomingOrdersErrorMessage || 'Failed to load incoming online orders. Try refreshing.'}
+        </p>
+      );
+    }
+    if (incomingOrdersAccessState === 'shift_required') {
+      return (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {incomingOrdersErrorMessage || 'Open a shift to view orders for this branch.'}
+        </p>
+      );
+    }
+    if (incomingOrdersState?.loading && incomingOrders.length === 0) {
+      return (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading incoming orders...</p>
+      );
+    }
+    return null;
+  })();
   const selectedLocationName = !queueLocationScopeId
     ? 'Not selected'
     : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
@@ -568,10 +729,19 @@ function IncomingQueueWorkspace({
   // braces alongside the isRetailMode guard on the render branch itself below.
   // Phase 227: a bulk-add selection is a retail-only concept -- clear it here too so it never
   // survives a flip into F&B mode.
+  // Phase 229 (#1289), §2.4/§2.6: 'split' is gated the same way as 'runs' (retail-only), plus its
+  // own viewport gate -- a stale activeView === 'split' must never render the panel once the
+  // window narrows below the split threshold either (e.g. a POS window resize).
+  // Phase 231 (#1290): the run filter is retail-only too (D-3) -- clear it on the same mode-flip
+  // so it never survives into F&B mode either.
   React.useEffect(() => {
-    if (activeView === 'runs' && !isRetailMode) setActiveView('active');
-    if (!isRetailMode) setSelectedOrderIds(new Set());
-  }, [activeView, isRetailMode]);
+    if ((activeView === 'runs' || activeView === 'split') && !isRetailMode) setActiveView('active');
+    if (activeView === 'split' && !isSplitViewportEligible) setActiveView('active');
+    if (!isRetailMode) {
+      setSelectedOrderIds(new Set());
+      setRunFilter(QUEUE_RUN_FILTER_ALL);
+    }
+  }, [activeView, isRetailMode, isSplitViewportEligible]);
 
   if (activeView === 'history') {
     return (
@@ -583,6 +753,7 @@ function IncomingQueueWorkspace({
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
           showDeliveryRuns={isRetailMode}
           runCount={deliveryRunCount}
+          showSplitView={isRetailMode && isSplitViewportEligible}
         />
         <OnlineOrderHistoryPanel
           canViewPos={canViewPos}
@@ -607,6 +778,7 @@ function IncomingQueueWorkspace({
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
           showDeliveryRuns={isRetailMode}
           runCount={deliveryRunCount}
+          showSplitView={isRetailMode && isSplitViewportEligible}
         />
         <DeliveryRunsWorkspacePanel
           canViewPos={canViewPos}
@@ -623,6 +795,143 @@ function IncomingQueueWorkspace({
     );
   }
 
+  // Phase 229 (#1289), §2.4-2.9: the 4th "Queue + Run" view -- gated on both retail mode and the
+  // >=1280px viewport (the reset effect above already guards against a stale activeView here, this
+  // is belt + braces on the render branch itself, matching the 'runs' branch's own pattern).
+  if (activeView === 'split' && isRetailMode && isSplitViewportEligible) {
+    const dragDisabled = !canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting;
+    const activeDragOrder = activeDragOrderId !== null
+      ? visibleIncomingOrders.find((order) => Number(order?.pos_transaction_id) === activeDragOrderId)
+      : null;
+    const activeDragIsMultiDrag = activeDragOrderId !== null
+      && selectedOrderIds.has(activeDragOrderId)
+      && selectedOrderIds.size > 1;
+
+    return (
+      <div id={sectionId} className="space-y-4">
+        <OrderWorkspaceTabs
+          activeView={activeView}
+          onChange={setActiveView}
+          activeCount={incomingOrders.length}
+          historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDeliveryRuns={isRetailMode}
+          runCount={deliveryRunCount}
+          showSplitView={isRetailMode && isSplitViewportEligible}
+        />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            onClick={() => refreshIncomingOrders?.()}
+            disabled={incomingOrdersState?.loading || locked || !isOnline || !hasActiveShift}
+            className="h-10 rounded-lg !bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            {incomingOrdersState?.loading ? 'Refreshing...' : 'Refresh Queue'}
+          </Button>
+        </div>
+        <DndContext sensors={sensors} onDragStart={handleQueueDragStart} onDragEnd={handleQueueDragEnd}>
+          <QueueRunAssignBar
+            orders={visibleIncomingOrders}
+            selectedCount={visibleSelectedCount}
+            selectedEligibleCount={selectedEligibleOrders.length}
+            driftCount={selectedDriftCount}
+            hiddenCount={selectedHiddenCount}
+            activeShiftLocationId={activeShiftLocationId}
+            runs={deliveryRuns}
+            runsLoading={deliveryRunsLoading}
+            runsError={deliveryRunsError}
+            disabled={dragDisabled}
+            submitting={bulkAssignSubmitting}
+            onSelectAllEligible={handleSelectAllEligible}
+            onClearSelection={handleClearSelection}
+            onSubmit={handleBulkAssignSubmit}
+          />
+          {!isOnline ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Incoming orders are read-only while offline. Reconnect before refreshing, collecting payment, printing, or changing fulfillment status.
+            </p>
+          ) : null}
+          {queueAccessNotice ? (
+            queueAccessNotice
+          ) : (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
+              <div className="min-w-0 max-h-[70vh] overflow-y-auto pr-1">
+                <IncomingQueueOrderList
+                  orders={visibleIncomingOrders}
+                  isRetailMode={isRetailMode}
+                  selectedOrderIds={selectedOrderIds}
+                  onToggleSelection={toggleOrderSelection}
+                  incomingOrderActionState={incomingOrderActionState}
+                  workflowMode={workflowMode}
+                  canTransactPos={canTransactPos}
+                  canViewPos={canViewPos}
+                  locked={locked}
+                  isOnline={isOnline}
+                  hasActiveShift={hasActiveShift}
+                  bulkAssignSubmitting={bulkAssignSubmitting}
+                  handleOpenCashCollection={handleOpenCashCollection}
+                  handleOpenBalanceSettlement={handleOpenBalanceSettlement}
+                  handleViewBalancePaymentProof={handleViewBalancePaymentProof}
+                  handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
+                  handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+                  onRequestReject={setPendingRejectionOrderId}
+                  handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
+                  incomingReceiptOpeningId={incomingReceiptOpeningId}
+                  deliveryPersonnelState={deliveryPersonnelState}
+                  handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
+                  handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
+                  columns={1}
+                  draggable
+                />
+              </div>
+              <DeliveryRunDropPanel
+                activeShiftLocationId={activeShiftLocationId}
+                queueLocationScopeId={queueLocationScopeId}
+                disabled={dragDisabled}
+                refreshSignal={runDropRefreshTick}
+              />
+            </div>
+          )}
+          <DragOverlay>
+            {activeDragOrderId !== null ? (
+              <div className="rounded-lg border border-[#1A4E8D] bg-white px-3 py-2 text-xs font-bold text-[#1A4E8D] shadow-lg">
+                {activeDragIsMultiDrag
+                  ? `${selectedEligibleOrders.length} order${selectedEligibleOrders.length === 1 ? '' : 's'}`
+                  : (activeDragOrder?.invoice_number || `Order #${activeDragOrderId}`)}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+        <ConfirmActionDialog
+          open={pendingRejectionOrderId !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingRejectionOrderId(null);
+          }}
+          title="Reject and refund this order?"
+          description={pendingRejectionSplit
+            ? `The order will be rejected. DGFY will request a refund of the ${formatOrderAmount(pendingRejectionSplit.amountPaid)} downpayment collected online, and keep the transaction out of tenant settlement. The ${formatOrderAmount(pendingRejectionSplit.balanceDue)} balance was never charged.`
+            : 'The order will be rejected. If PayMongo already collected payment, DGFY will request a full refund and keep the transaction out of tenant settlement.'}
+          confirmLabel="Reject and request refund"
+          cancelLabel="Keep order"
+          variant="destructive"
+          reasonLabel="Rejection reason"
+          reasonPlaceholder="Explain why this paid order is being rejected."
+          reasonRequired
+          reasonMinLength={3}
+          onConfirm={async (reason) => {
+            const succeeded = await handleIncomingOrderStatusChange?.(
+              pendingRejectionOrderId,
+              'rejected',
+              reason
+            );
+            if (succeeded !== false) setPendingRejectionOrderId(null);
+            return succeeded;
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div id={sectionId} className="space-y-4">
       <OrderWorkspaceTabs
@@ -632,15 +941,19 @@ function IncomingQueueWorkspace({
         historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
         showDeliveryRuns={isRetailMode}
         runCount={deliveryRunCount}
+        showSplitView={isRetailMode && isSplitViewportEligible}
       />
       {isRetailMode ? (
         <QueueRunAssignBar
-          orders={sortedIncomingOrders}
-          selectedCount={selectedOrderIds.size}
+          orders={visibleIncomingOrders}
+          selectedCount={visibleSelectedCount}
           selectedEligibleCount={selectedEligibleOrders.length}
           driftCount={selectedDriftCount}
+          hiddenCount={selectedHiddenCount}
           activeShiftLocationId={activeShiftLocationId}
-          queueLocationScopeId={queueLocationScopeId}
+          runs={deliveryRuns}
+          runsLoading={deliveryRunsLoading}
+          runsError={deliveryRunsError}
           disabled={!canTransactPos || locked || !isOnline || !hasActiveShift}
           submitting={bulkAssignSubmitting}
           onSelectAllEligible={handleSelectAllEligible}
@@ -659,6 +972,46 @@ function IncomingQueueWorkspace({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isRetailMode ? (
+            <QueueRunFilterControl
+              value={runFilter}
+              onChange={setRunFilter}
+              options={runFilterOptions}
+              loading={deliveryRunsLoading}
+              errorMessage={deliveryRunsError}
+              visibleCount={visibleIncomingOrders.length}
+              totalCount={sortedIncomingOrders.length}
+              disabled={locked}
+            />
+          ) : null}
+          <div
+            role="group"
+            aria-label="Active Queue view mode"
+            className="flex h-10 items-center rounded-lg border border-slate-200 bg-white p-0.5"
+          >
+            <button
+              type="button"
+              aria-pressed={viewMode === QUEUE_VIEW_MODES.CARD}
+              onClick={() => handleViewModeChange(QUEUE_VIEW_MODES.CARD)}
+              className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold transition ${viewMode === QUEUE_VIEW_MODES.CARD
+                ? 'bg-[#1A4E8D] text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+              Card
+            </button>
+            <button
+              type="button"
+              aria-pressed={viewMode === QUEUE_VIEW_MODES.TABLE}
+              onClick={() => handleViewModeChange(QUEUE_VIEW_MODES.TABLE)}
+              className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold transition ${viewMode === QUEUE_VIEW_MODES.TABLE
+                ? 'bg-[#1A4E8D] text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Table2 className="h-4 w-4" />
+              Table
+            </button>
+          </div>
           <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
             Sort
             <select
@@ -689,20 +1042,8 @@ function IncomingQueueWorkspace({
         </p>
       ) : null}
 
-      {!canViewPos || incomingOrdersAccessState === 'forbidden' ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          {incomingOrdersErrorMessage || 'You need POS view permission to access incoming online orders.'}
-        </p>
-      ) : incomingOrdersAccessState === 'error' ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {incomingOrdersErrorMessage || 'Failed to load incoming online orders. Try refreshing.'}
-        </p>
-      ) : incomingOrdersAccessState === 'shift_required' ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {incomingOrdersErrorMessage || 'Open a shift to view orders for this branch.'}
-        </p>
-      ) : incomingOrdersState?.loading && incomingOrders.length === 0 ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading incoming orders...</p>
+      {queueAccessNotice ? (
+        queueAccessNotice
       ) : incomingOrders.length === 0 ? (
         <div className="grid min-h-[11rem] grid-cols-1 items-center gap-5 rounded-lg border border-slate-200 bg-white px-5 py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
           <div className="flex justify-center md:border-r md:border-slate-200">
@@ -732,197 +1073,79 @@ function IncomingQueueWorkspace({
             </div>
           </div>
         </div>
+      ) : visibleIncomingOrders.length === 0 ? (
+        // Phase 231 (#1290): a distinct filtered-empty state -- never the illustrated "no online
+        // orders" branch above, which would misleadingly read as a data outage rather than "your
+        // filter matched nothing." Applies regardless of view mode (card or table).
+        <div className="rounded-lg border border-slate-200 bg-white px-5 py-6 text-center">
+          <p className="text-sm font-semibold text-slate-700">
+            {runFilter === QUEUE_RUN_FILTER_UNASSIGNED
+              ? 'No unassigned orders are in the active queue.'
+              : 'No orders in this run are in the active queue.'}
+          </p>
+          <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setRunFilter(QUEUE_RUN_FILTER_ALL)}>
+            Show all orders
+          </Button>
+        </div>
+      ) : viewMode === QUEUE_VIEW_MODES.TABLE ? (
+        // Phase 231 (#1290): orders={visibleIncomingOrders}, not sortedIncomingOrders -- the
+        // table view must respect the run filter exactly like the card view below, or switching
+        // to Table would silently bypass it.
+        <QueueOrderTableView
+          orders={visibleIncomingOrders}
+          isRetailMode={isRetailMode}
+          selectedOrderIds={selectedOrderIds}
+          toggleOrderSelection={toggleOrderSelection}
+          bulkAssignSubmitting={bulkAssignSubmitting}
+          canTransactPos={canTransactPos}
+          canViewPos={canViewPos}
+          locked={locked}
+          isOnline={isOnline}
+          hasActiveShift={hasActiveShift}
+          incomingOrderActionState={incomingOrderActionState}
+          incomingReceiptOpeningId={incomingReceiptOpeningId}
+          workflowMode={workflowMode}
+          handleOpenCashCollection={handleOpenCashCollection}
+          handleOpenBalanceSettlement={handleOpenBalanceSettlement}
+          handleViewBalancePaymentProof={handleViewBalancePaymentProof}
+          handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
+          handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+          handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
+          onRequestRejection={setPendingRejectionOrderId}
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {sortedIncomingOrders.map((order) => {
+          {visibleIncomingOrders.map((order) => {
             const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
-            const nextActions = getNextStatusActions(order, workflowMode);
-            const nextDeliveryJobStatus = getNextDeliveryJobStatus(order);
-            const utilityActions = getIncomingOrderUtilityActions(order);
-            const canCollectCash = order.payment_type === 'cash'
-              && order.payment_status === 'unpaid'
-              && (
-                (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
-                || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
-              );
-            // Phase 148 (#825): the balance-settlement twin of canCollectCash. Deliberately a
-            // separate predicate on a disjoint payment_status -- collect-cash owns 'unpaid', this
-            // owns 'partially_paid', so the two buttons can never both appear on one card and the
-            // live COD path's own condition is untouched.
-            const orderBalanceDue = Number(order.balance_due || 0);
-            const canSettleBalance = order.payment_status === 'partially_paid'
-              && orderBalanceDue > 0
-              && (
-                (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
-                || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
-              );
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
             const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
-            const hasDeliveryAssignment = hasCompleteDeliveryAssignment(deliveryJob || {});
             const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
             const mapLink = deliveryCoords
               ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
               : '';
 
-            const buttons = [];
-            if (canCollectCash) {
-              buttons.push(
-                <Button
-                  key="collect_cash"
-                  type="button"
-                  size="sm"
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
-                  onClick={() => handleOpenCashCollection?.(order)}
-                >
-                  <Wallet className="mr-2 h-4 w-4 shrink-0" />
-                  {order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'}
-                </Button>
-              );
-            }
-            if (canSettleBalance) {
-              buttons.push(
-                <Button
-                  key="settle_balance"
-                  type="button"
-                  size="sm"
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
-                  onClick={() => handleOpenBalanceSettlement?.(order)}
-                >
-                  <Wallet className="mr-2 h-4 w-4 shrink-0" />
-                  Settle Balance
-                </Button>
-              );
-            }
-            // Phase 204 (#965): "View proof" -- the smallest place the settled payment is already
-            // displayed, not a full evidence-browser UI. Independent of canSettleBalance: the
-            // balance may already be settled (payment_status moved off 'partially_paid') while the
-            // order is still visible in this queue during fulfillment.
-            if (order.has_payment_proof) {
-              buttons.push(
-                <Button
-                  key="view_payment_proof"
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleViewBalancePaymentProof?.(order)}
-                >
-                  <Receipt className="mr-2 h-4 w-4 shrink-0" />
-                  View Proof
-                </Button>
-              );
-            }
-            if (nextDeliveryJobStatus && nextDeliveryJobStatus !== 'assigned' && manualDeliveryJob && hasDeliveryAssignment) {
-              const deliveryJobActionKey = `delivery-job:${nextDeliveryJobStatus}`;
-              buttons.push(
-                <Button
-                  key={deliveryJobActionKey}
-                  type="button"
-                  size="sm"
-                  variant={nextDeliveryJobStatus === 'delivered' ? 'default' : 'outline'}
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
-                  onClick={() => handleDeliveryJobStatusChange?.(order.pos_transaction_id, nextDeliveryJobStatus)}
-                >
-                  <Truck className="mr-2 h-4 w-4 shrink-0" />
-                  {actionLoading === deliveryJobActionKey ? 'Saving...' : getDeliveryJobActionLabel(nextDeliveryJobStatus)}
-                </Button>
-              );
-            }
-            nextActions.forEach((status) => {
-              const getStatusIcon = (statusName) => {
-                switch (statusName) {
-                case 'confirmed':
-                  return <Check className="mr-2 h-4 w-4 shrink-0" />;
-                case 'rejected':
-                  return <Ban className="mr-2 h-4 w-4 shrink-0" />;
-                case 'preparing':
-                  return <Clipboard className="mr-2 h-4 w-4 shrink-0" />;
-                case 'packed':
-                  return <Package className="mr-2 h-4 w-4 shrink-0" />;
-                case 'ready_for_pickup':
-                  return <ShoppingBag className="mr-2 h-4 w-4 shrink-0" />;
-                case 'out_for_delivery':
-                  return <Truck className="mr-2 h-4 w-4 shrink-0" />;
-                case 'completed':
-                  return <Check className="mr-2 h-4 w-4 shrink-0" />;
-                default:
-                  return null;
-                }
-              };
-              buttons.push(
-                <Button
-                  key={`incoming-workspace-action-${order.pos_transaction_id}-${status}`}
-                  type="button"
-                  size="sm"
-                  variant={status === 'rejected' ? 'destructive' : 'outline'}
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order))}
-                  onClick={() => {
-                    if (status === 'rejected') {
-                      setPendingRejectionOrderId(Number(order.pos_transaction_id));
-                      return;
-                    }
-                    handleIncomingOrderStatusChange?.(order.pos_transaction_id, status);
-                  }}
-                >
-                  {actionLoading === status ? null : getStatusIcon(status)}
-                  {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}
-                </Button>
-              );
+            // Phase 230 (#1288): the ~150-line per-order button-eligibility construction that used
+            // to live inline here now lives in incomingQueueOrderActions.js, shared verbatim with
+            // QueueOrderTableView.jsx's Actions column so the two view modes can never drift on
+            // which actions an order gets.
+            const buttons = buildIncomingQueueOrderActions(order, {
+              actionLoading,
+              workflowMode,
+              canTransactPos,
+              canViewPos,
+              locked,
+              isOnline,
+              hasActiveShift,
+              incomingReceiptOpeningId,
+              handleOpenCashCollection,
+              handleOpenBalanceSettlement,
+              handleViewBalancePaymentProof,
+              handleDeliveryJobStatusChange,
+              handleIncomingOrderStatusChange,
+              handleOpenIncomingOrderReceipt,
+              onRequestRejection: setPendingRejectionOrderId
             });
-            if (utilityActions.includes('print_receipt')) {
-              buttons.push(
-                <Button
-                  key="print_receipt"
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
-                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, {
-                    printMode: true,
-                    retryPrint: order.receipt_print_status === 'failed'
-                  })}
-                >
-                  <Printer className="mr-2 h-4 w-4 shrink-0" />
-                  {incomingReceiptOpeningId === Number(order.pos_transaction_id)
-                    ? 'Printing...'
-                    : order.receipt_print_status === 'failed'
-                      ? 'Retry Print'
-                    : order.receipt_print_status === 'printed'
-                        ? 'Reprint Receipt'
-                        : 'Print Receipt'}
-                </Button>
-              );
-            }
-            if (utilityActions.includes('print_order')) {
-              buttons.push(
-                <Button
-                  key="print_order"
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
-                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printOrder: true })}
-                >
-                  <Printer className="mr-2 h-4 w-4 shrink-0" />
-                  {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Printing...' : 'Print Order'}
-                </Button>
-              );
-            }
-            if (utilityActions.includes('open_order')) {
-              buttons.push(
-                <Button
-                  key="open_order"
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
-                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: false })}
-                >
-                  <ExternalLink className="mr-2 h-4 w-4 shrink-0" />
-                  {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open Order'}
-                </Button>
-              );
-            }
 
             const bulkAssignEligibility = getRunAssignEligibility(order, {});
             const orderId = Number(order.pos_transaction_id);
@@ -944,9 +1167,16 @@ function IncomingQueueWorkspace({
                       ) : null}
                       <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
                     </div>
-                    <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
-                      {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {isRetailMode && deliveryJob?.delivery_run_id ? (
+                        <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-extrabold text-slate-600">
+                          Run: {runLabelById.get(String(deliveryJob.delivery_run_id)) || `#${deliveryJob.delivery_run_id}`}
+                        </span>
+                      ) : null}
+                      <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
+                        {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
