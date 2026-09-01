@@ -15699,15 +15699,22 @@ ticket via `pm` (D4); both new migrations are a Worker checkpoint (D5).
 
 ### Status
 
-`in_progress`. All backend code, the ADR 0012 amendment, the compliance declaration, and full test
-coverage are complete and self-verified (see below). **The two new migrations, the matching
-`sync-tenant-schemas.js` entries, and the `PosTransaction.js`/`CommercePaymentSession.js` model
-field additions are held pending explicit Worker-checkpoint approval per D5/`.agents/skills/implement/SKILL.md`
--- drafted, self-verified, but not yet committed.** PR #1377 is open (`Refs #1329`) carrying
-everything else. `pr-reviewer`'s first pass `BLOCK`ed on three findings (merge conflict against
-`develop`, incomplete pin-shape validation, an explicit-`null`-coordinate gap); addressed in a
-2026-09-02 fixup pass -- see the compliance declaration's own dated Amendments section for the
-fix-by-fix detail, not restated here. This entry will be updated once D5's migration approval lands.
+`in_progress` -- merged to `develop`, deployed verification still the open acceptance gate (per this
+ledger's own rule that a phase is marked `completed` only once its acceptance gates and required
+validation pass; that gate is deployed verification, not yet run). PR #1377 merged to `develop`
+as commit `4932cda4f600fe93774666cf961e069fb5f6f741` (`Refs #1329`, not `Closes` -- see below for
+why). All backend code, the ADR 0012 amendment, and the compliance declaration are in `develop`.
+**The two new migrations, the matching `sync-tenant-schemas.js` entries, and the
+`PosTransaction.js`/`CommercePaymentSession.js` model field additions are no longer held pending --
+D5's Worker-checkpoint approval landed and the batch was committed as
+`4ceca26ae93ee72b9a2070de9c192d793c6eafe4`, an ancestor of the PR #1377 merge commit.**
+`pr-reviewer`'s first pass `BLOCK`ed on three findings (merge conflict against `develop`, incomplete
+pin-shape validation, an explicit-`null`-coordinate gap); addressed in a 2026-09-02 fixup pass -- see
+the compliance declaration's own dated Amendments section for the fix-by-fix detail, not restated
+here. Because the code is merged but not yet verified against a deployed environment, issue #1329
+stays open (board Status `For QA`) rather than auto-closing -- the same `Refs`-not-`Closes` reasoning
+already used for the PR linkage above; deployed verification (Verifier/QA role) is the remaining gap
+before this phase can be marked fully done.
 
 ### Dependencies
 

@@ -109,12 +109,12 @@ customer-visible storefront price actually changes based on tenant configuration
   above). `apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js`:
   reads and passes through the pin. `apps/dgfy-api/src/models/PosTransaction.js` and
   `apps/dgfy-api/src/models/Landlord/CommercePaymentSession.js`: new fields matching the new
-  columns (held pending, see Changed Files below). `apps/dgfy-api/src/modules/deliveryPricing/`
+  columns (committed as `4ceca26ae`, see Changed Files below). `apps/dgfy-api/src/modules/deliveryPricing/`
   (`index.js`, `domain/deliveryFeePolicy.js`): additive exports only, no logic change to the pure
   policy module itself.
 - Not compliance-sensitive by the guardrail's own rule set, named anyway for completeness:
-  `apps/dgfy-api/scripts/sync-tenant-schemas.js` (the tenant-schema self-repair entries, held
-  pending alongside the migrations) and the two new migration files themselves.
+  `apps/dgfy-api/scripts/sync-tenant-schemas.js` (the tenant-schema self-repair entries, committed
+  alongside the migrations as `4ceca26ae`) and the two new migration files themselves.
 
 ## Compliance Preconditions
 
@@ -215,17 +215,27 @@ customer-visible storefront price actually changes based on tenant configuration
 - `docs/architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md`
 - `apps/dgfy-api/tests/storeCheckoutRoadDistanceCapture.unit.test.js` (2026-09-02 amendment, RF-4:
   explicit-fixed-mode fixture variant added -- previously listed above as unmodified, no longer is)
+- `apps/dgfy-migration-runner/migrations/20260903000001-add-delivery-fee-breakdown.cjs` (new,
+  committed as `4ceca26ae`)
+- `apps/dgfy-migration-runner/migrations/20260903000002-add-payment-session-delivery-breakdown.cjs`
+  (new, committed as `4ceca26ae`)
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js` (committed as `4ceca26ae`)
+- `apps/dgfy-api/src/models/PosTransaction.js` (committed as `4ceca26ae`)
+- `apps/dgfy-api/src/models/Landlord/CommercePaymentSession.js` (committed as `4ceca26ae`)
 
-Note: the two new migrations
+Note (updated 2026-09-02, post-merge audit RF-5): the two new migrations
 (`apps/dgfy-migration-runner/migrations/20260903000001-add-delivery-fee-breakdown.cjs`,
 `apps/dgfy-migration-runner/migrations/20260903000002-add-payment-session-delivery-breakdown.cjs`),
 the matching `apps/dgfy-api/scripts/sync-tenant-schemas.js` entries, and the
-`PosTransaction.js`/`Landlord/CommercePaymentSession.js` model field additions are a Worker
+`PosTransaction.js`/`Landlord/CommercePaymentSession.js` model field additions were a Worker
 checkpoint per `.agents/skills/implement/SKILL.md` (this phase is the epic's risk gate, materially
-larger than Phase 236's two observation-only columns) and, as of this declaration, are held pending
-explicit approval -- not yet committed. This declaration will be amended (or the PR updated with
-those files under the same declaration) once that approval lands; see the PR body for the current
-status. This mirrors the exact posture Phase 236's own declaration took for its migration.
+larger than Phase 236's two observation-only columns). That checkpoint was approved via the D5
+checkpoint gate and the batch was committed as `4ceca26ae93ee72b9a2070de9c192d793c6eafe4`
+("feat(db): add delivery-fee breakdown columns") -- an ancestor of PR #1377's own merge commit
+(`4932cda4f600fe93774666cf961e069fb5f6f741`), i.e. it landed on `develop` before that PR merged, not
+after. The five files are no longer held pending; they are listed in Changed Files below. This
+mirrors the exact posture Phase 236's own declaration took for its migration, now resolved the same
+way.
 
 ## Amendments
 
