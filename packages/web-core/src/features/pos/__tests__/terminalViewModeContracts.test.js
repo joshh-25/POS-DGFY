@@ -695,10 +695,15 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain("const [orderSort, setOrderSort] = React.useState('newest');");
     expect(terminalOperationsPanelsContent).toContain('aria-label="Sort incoming orders"');
     expect(terminalOperationsPanelsContent).toContain('<option value="oldest">Oldest first</option>');
-    // Phase 229 (#1289), §2.7: the sort itself (and passing its result down) stays in
-    // TerminalOperationsPanels.jsx; the render of that sorted list (including its own
-    // empty-state branch) moved into IncomingQueueOrderList.jsx's pure extraction.
-    expect(terminalOperationsPanelsContent).toContain('orders={sortedIncomingOrders}');
+    // Phase 231 (#1290): the tab view's grid maps over visibleIncomingOrders (the run-filtered
+    // view of sortedIncomingOrders), not sortedIncomingOrders directly -- sortedIncomingOrders
+    // itself is still the sort's own output, feeding the filter rather than the render.
+    expect(terminalOperationsPanelsContent).toContain('{visibleIncomingOrders.map((order) => {');
+    expect(terminalOperationsPanelsContent).toContain('incomingOrders.length === 0 ? (');
+    // Phase 232 (#1289), §2.7: the split view's own render of the (also now run-filtered) list --
+    // including its own empty-state branch -- lives in IncomingQueueOrderList.jsx's pure
+    // extraction; see terminalOperationsPanelsContent above for the tab view's own render.
+    expect(terminalOperationsPanelsContent).toContain('orders={visibleIncomingOrders}');
     expect(incomingQueueOrderListContent).toContain('orders.length === 0');
   });
 

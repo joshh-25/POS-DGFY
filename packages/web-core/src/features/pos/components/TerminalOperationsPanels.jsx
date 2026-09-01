@@ -17,11 +17,14 @@ import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
 import DeliveryRunDropPanel from './DeliveryRunDropPanel.jsx';
 import QueueRunAssignBar from './QueueRunAssignBar.jsx';
+import QueueRunFilterControl from './QueueRunFilterControl.jsx';
 import IncomingQueueOrderList from './IncomingQueueOrderList.jsx';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
 import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
 import { resolveRunDropAssignment } from '../utils/queueRunDropAssignment.js';
 import { IMIN_TABLET_MAX_WIDTH_PX } from '../utils/posTabletViewport.js';
+import { QUEUE_RUN_FILTER_ALL, QUEUE_RUN_FILTER_UNASSIGNED, filterOrdersByRun, getQueueRunFilterOptions } from '../utils/deliveryRunQueueFilter.js';
+import useDeliveryRunOptions from '../hooks/useDeliveryRunOptions.js';
 import {
   formatOrderDateTime,
   formatOrderAmount,
@@ -435,6 +438,51 @@ function IncomingQueueWorkspace({
     return Number(left?.pos_transaction_id || 0) - Number(right?.pos_transaction_id || 0);
   });
 
+  // Phase 231 (#1290): the Active Queue's client-side delivery-run view filter. Purely a view
+  // concern over the already-fetched list -- see deliveryRunQueueFilter.js for why this is NOT
+  // built on getEligibleRunTargets. Shares one fetch of GET /pos/delivery-runs with
+  // QueueRunAssignBar's target picker via useDeliveryRunOptions, so the two can never disagree
+  // about which runs exist.
+  const [runFilter, setRunFilter] = React.useState(QUEUE_RUN_FILTER_ALL);
+  const { runs: deliveryRuns, loading: deliveryRunsLoading, errorMessage: deliveryRunsError } = useDeliveryRunOptions(queueLocationScopeId, { enabled: isRetailMode });
+  const runFilterOptions = React.useMemo(
+    () => getQueueRunFilterOptions(deliveryRuns, { locationId: queueLocationScopeId }).map((run) => ({
+      ...run,
+      queueCount: filterOrdersByRun(sortedIncomingOrders, run.delivery_run_id).length
+    })),
+    [deliveryRuns, queueLocationScopeId, sortedIncomingOrders]
+  );
+  const visibleIncomingOrders = filterOrdersByRun(sortedIncomingOrders, runFilter);
+  // Maps id -> label from the same already-loaded runs list the filter itself uses (F-3, the
+  // Phase 227 declaration's own pattern) -- deliberately the unfiltered deliveryRuns list, not
+  // runFilterOptions, so a card still shows a real label for a run outside the filter's own scope
+  // (a different location, or completed) rather than always falling back to "Run #<id>".
+  const runLabelById = React.useMemo(() => {
+    const map = new Map();
+    (Array.isArray(deliveryRuns) ? deliveryRuns : []).forEach((run) => {
+      if (run?.delivery_run_id !== undefined && run?.delivery_run_id !== null) {
+        map.set(String(run.delivery_run_id), run.label);
+      }
+    });
+    return map;
+  }, [deliveryRuns]);
+
+  // A previously chosen filter run can drop out of runFilterOptions between fetches (it got
+  // dispatched-elsewhere-then-completed, or the location scope changed) -- never leave the
+  // filter pointed at a run that's no longer offered. Mirrors QueueRunAssignBar's own
+  // targetRunId reset effect.
+  React.useEffect(() => {
+    if (runFilter === QUEUE_RUN_FILTER_ALL || runFilter === QUEUE_RUN_FILTER_UNASSIGNED) return;
+    if (runFilterOptions.some((run) => String(run.delivery_run_id) === String(runFilter))) return;
+    setRunFilter(QUEUE_RUN_FILTER_ALL);
+  }, [runFilterOptions, runFilter]);
+
+  // Reset the filter whenever the location scope changes -- a run id chosen at one location has
+  // no meaning at another.
+  React.useEffect(() => {
+    setRunFilter(QUEUE_RUN_FILTER_ALL);
+  }, [queueLocationScopeId]);
+
   // Phase 227 (#1273): bulk "add to run" selection for the Active Queue. A Set<Number> of
   // pos_transaction_id, NEVER an index -- sortedIncomingOrders is re-sorted every render (the
   // sort direction is itself a piece of UI state), so an index-based selection would silently
@@ -461,15 +509,36 @@ function IncomingQueueWorkspace({
   // gained members.
   const [runDropRefreshTick, setRunDropRefreshTick] = React.useState(0);
 
-  // Deliberately NOT pruned against sortedIncomingOrders on every poll tick -- a transient poll
-  // error can return `orders: []` and would otherwise wipe the whole selection. Eligibility is
-  // instead re-derived live below (selectedEligibleOrders) so a genuinely stale id just stops
-  // counting toward the selection rather than being silently dropped from the Set.
-  const selectedEligibleOrders = sortedIncomingOrders.filter(
+  // Phase 231 (#1290) correctness crux: re-derived against visibleIncomingOrders (the FILTERED
+  // list), not sortedIncomingOrders. Without this, an order selected before the run filter was
+  // applied would still be eligible-and-submitted by handleBulkAssignSubmit while invisible on
+  // screen -- a filter-hidden selection would get silently submitted.
+  //
+  // Deliberately NOT pruned against the order list on every poll tick or filter change -- a
+  // transient poll error can return `orders: []`, and clearing the filter must restore the
+  // selection rather than have silently destroyed it. Eligibility/visibility is instead
+  // re-derived live here so a genuinely stale or filtered-out id just stops counting toward the
+  // selection rather than being dropped from the Set. (handleSelectAllEligible below is a narrow
+  // exception -- "Select all eligible" replaces the whole Set, so it does discard any
+  // filter-hidden selection; that has always been select-all's behavior, not new here.)
+  const selectedEligibleOrders = visibleIncomingOrders.filter(
     (order) => selectedOrderIds.has(Number(order?.pos_transaction_id))
       && getRunAssignEligibility(order, {}).eligible
   );
-  const selectedDriftCount = Math.max(0, selectedOrderIds.size - selectedEligibleOrders.length);
+  const visibleSelectedCount = visibleIncomingOrders.filter(
+    (order) => selectedOrderIds.has(Number(order?.pos_transaction_id))
+  ).length;
+  // Recomputed against the visible list only -- selectedOrderIds.size would count every
+  // filter-hidden selection as "ineligible drift" and show a wrong, alarming number.
+  const selectedDriftCount = Math.max(0, visibleSelectedCount - selectedEligibleOrders.length);
+  // Ids that are selected AND present in the full (unfiltered) list, but not in the currently
+  // visible (filtered) list -- these will silently NOT be submitted by the bulk-add unless the
+  // operator is told so.
+  const selectedHiddenCount = sortedIncomingOrders.filter((order) => {
+    const orderId = Number(order?.pos_transaction_id);
+    if (!selectedOrderIds.has(orderId)) return false;
+    return !visibleIncomingOrders.some((visible) => Number(visible?.pos_transaction_id) === orderId);
+  }).length;
 
   const toggleOrderSelection = (orderId, checked) => {
     setSelectedOrderIds((current) => {
@@ -588,11 +657,14 @@ function IncomingQueueWorkspace({
 
   const handleQueueDragEnd = async (event) => {
     setActiveDragOrderId(null);
+    // Phase 231 (#1290): resolved against visibleIncomingOrders (the run-filtered list), not
+    // sortedIncomingOrders -- the split view only ever renders/drags visible cards (below), and a
+    // stale drag id from before a filter change must not resolve against a now-hidden order.
     const assignment = resolveRunDropAssignment({
       activeOrderId: event?.active?.id,
       overRunId: event?.over?.id,
       selectedOrderIds,
-      orders: sortedIncomingOrders
+      orders: visibleIncomingOrders
     });
     if (!assignment) return;
     await handleBulkAssignSubmit(assignment.targetRunId, assignment.orderIds);
@@ -610,7 +682,7 @@ function IncomingQueueWorkspace({
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hasActiveShift = Boolean(shiftState?.shift);
 
-  // Phase 230 review RF-2 (#1305): the access/error/shift_required/loading ladder used to live only
+  // Phase 232 review RF-2 (#1305): the access/error/shift_required/loading ladder used to live only
   // inline in the default (tab) branch below, so the split branch skipped it entirely and rendered
   // a failed poll as an indistinguishable "no orders" empty state with no recovery. Extracted so
   // both branches share the exact same ladder and can never drift apart again.
@@ -660,10 +732,15 @@ function IncomingQueueWorkspace({
   // Phase 229 (#1289), §2.4/§2.6: 'split' is gated the same way as 'runs' (retail-only), plus its
   // own viewport gate -- a stale activeView === 'split' must never render the panel once the
   // window narrows below the split threshold either (e.g. a POS window resize).
+  // Phase 231 (#1290): the run filter is retail-only too (D-3) -- clear it on the same mode-flip
+  // so it never survives into F&B mode either.
   React.useEffect(() => {
     if ((activeView === 'runs' || activeView === 'split') && !isRetailMode) setActiveView('active');
     if (activeView === 'split' && !isSplitViewportEligible) setActiveView('active');
-    if (!isRetailMode) setSelectedOrderIds(new Set());
+    if (!isRetailMode) {
+      setSelectedOrderIds(new Set());
+      setRunFilter(QUEUE_RUN_FILTER_ALL);
+    }
   }, [activeView, isRetailMode, isSplitViewportEligible]);
 
   if (activeView === 'history') {
@@ -724,7 +801,7 @@ function IncomingQueueWorkspace({
   if (activeView === 'split' && isRetailMode && isSplitViewportEligible) {
     const dragDisabled = !canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting;
     const activeDragOrder = activeDragOrderId !== null
-      ? sortedIncomingOrders.find((order) => Number(order?.pos_transaction_id) === activeDragOrderId)
+      ? visibleIncomingOrders.find((order) => Number(order?.pos_transaction_id) === activeDragOrderId)
       : null;
     const activeDragIsMultiDrag = activeDragOrderId !== null
       && selectedOrderIds.has(activeDragOrderId)
@@ -754,12 +831,15 @@ function IncomingQueueWorkspace({
         </div>
         <DndContext sensors={sensors} onDragStart={handleQueueDragStart} onDragEnd={handleQueueDragEnd}>
           <QueueRunAssignBar
-            orders={sortedIncomingOrders}
-            selectedCount={selectedOrderIds.size}
+            orders={visibleIncomingOrders}
+            selectedCount={visibleSelectedCount}
             selectedEligibleCount={selectedEligibleOrders.length}
             driftCount={selectedDriftCount}
+            hiddenCount={selectedHiddenCount}
             activeShiftLocationId={activeShiftLocationId}
-            queueLocationScopeId={queueLocationScopeId}
+            runs={deliveryRuns}
+            runsLoading={deliveryRunsLoading}
+            runsError={deliveryRunsError}
             disabled={dragDisabled}
             submitting={bulkAssignSubmitting}
             onSelectAllEligible={handleSelectAllEligible}
@@ -777,7 +857,7 @@ function IncomingQueueWorkspace({
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
               <div className="min-w-0 max-h-[70vh] overflow-y-auto pr-1">
                 <IncomingQueueOrderList
-                  orders={sortedIncomingOrders}
+                  orders={visibleIncomingOrders}
                   isRetailMode={isRetailMode}
                   selectedOrderIds={selectedOrderIds}
                   onToggleSelection={toggleOrderSelection}
@@ -865,12 +945,15 @@ function IncomingQueueWorkspace({
       />
       {isRetailMode ? (
         <QueueRunAssignBar
-          orders={sortedIncomingOrders}
-          selectedCount={selectedOrderIds.size}
+          orders={visibleIncomingOrders}
+          selectedCount={visibleSelectedCount}
           selectedEligibleCount={selectedEligibleOrders.length}
           driftCount={selectedDriftCount}
+          hiddenCount={selectedHiddenCount}
           activeShiftLocationId={activeShiftLocationId}
-          queueLocationScopeId={queueLocationScopeId}
+          runs={deliveryRuns}
+          runsLoading={deliveryRunsLoading}
+          runsError={deliveryRunsError}
           disabled={!canTransactPos || locked || !isOnline || !hasActiveShift}
           submitting={bulkAssignSubmitting}
           onSelectAllEligible={handleSelectAllEligible}
@@ -889,6 +972,18 @@ function IncomingQueueWorkspace({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isRetailMode ? (
+            <QueueRunFilterControl
+              value={runFilter}
+              onChange={setRunFilter}
+              options={runFilterOptions}
+              loading={deliveryRunsLoading}
+              errorMessage={deliveryRunsError}
+              visibleCount={visibleIncomingOrders.length}
+              totalCount={sortedIncomingOrders.length}
+              disabled={locked}
+            />
+          ) : null}
           <div
             role="group"
             aria-label="Active Queue view mode"
@@ -978,9 +1073,26 @@ function IncomingQueueWorkspace({
             </div>
           </div>
         </div>
+      ) : visibleIncomingOrders.length === 0 ? (
+        // Phase 231 (#1290): a distinct filtered-empty state -- never the illustrated "no online
+        // orders" branch above, which would misleadingly read as a data outage rather than "your
+        // filter matched nothing." Applies regardless of view mode (card or table).
+        <div className="rounded-lg border border-slate-200 bg-white px-5 py-6 text-center">
+          <p className="text-sm font-semibold text-slate-700">
+            {runFilter === QUEUE_RUN_FILTER_UNASSIGNED
+              ? 'No unassigned orders are in the active queue.'
+              : 'No orders in this run are in the active queue.'}
+          </p>
+          <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setRunFilter(QUEUE_RUN_FILTER_ALL)}>
+            Show all orders
+          </Button>
+        </div>
       ) : viewMode === QUEUE_VIEW_MODES.TABLE ? (
+        // Phase 231 (#1290): orders={visibleIncomingOrders}, not sortedIncomingOrders -- the
+        // table view must respect the run filter exactly like the card view below, or switching
+        // to Table would silently bypass it.
         <QueueOrderTableView
-          orders={sortedIncomingOrders}
+          orders={visibleIncomingOrders}
           isRetailMode={isRetailMode}
           selectedOrderIds={selectedOrderIds}
           toggleOrderSelection={toggleOrderSelection}
@@ -1003,7 +1115,7 @@ function IncomingQueueWorkspace({
         />
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {sortedIncomingOrders.map((order) => {
+          {visibleIncomingOrders.map((order) => {
             const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
@@ -1055,9 +1167,16 @@ function IncomingQueueWorkspace({
                       ) : null}
                       <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
                     </div>
-                    <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
-                      {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {isRetailMode && deliveryJob?.delivery_run_id ? (
+                        <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-extrabold text-slate-600">
+                          Run: {runLabelById.get(String(deliveryJob.delivery_run_id)) || `#${deliveryJob.delivery_run_id}`}
+                        </span>
+                      ) : null}
+                      <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
+                        {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
