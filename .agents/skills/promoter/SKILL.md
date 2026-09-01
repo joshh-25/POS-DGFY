@@ -157,6 +157,21 @@ Dispatching this workflow is read-only (`--mode report` only, no write path exis
 at all — see its own header comment), so it needs no checkpoint, same as dispatching
 `verify-deployment.yml`.
 
+**Runner-routing preflight (Phase 233, #1365, H1) — run immediately before the `deploy-main.yml`
+dispatch ask, not before cutting `release/<label>`.** Unlike the two gates above, this is not a
+pre-`main`-merge gate at all — it's the one place the answer can still change which class the
+`deploy-main.yml` dispatch actually uses. Run `npm run preflight:runner -- --target-sha <the merged
+main SHA>` and read the result: exit `0` means the currently-active class (self-hosted, as of Phase
+233 — no live flip has happened yet) is confirmed available, proceed with the dispatch ask as
+normal; exit `3` means a documented flip is required — read the reported file:line pairs in
+`deploy-main.yml`, comment/uncomment them per `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`'s flip
+procedure (never automatically — this script never flips a routing value itself), log the flip in
+the promotion PR, and only then proceed; exit `1` means the result is indeterminate or an error —
+report it plainly, same as any other check state this file already treats as unresolved rather than
+silently passable. Read-only (`gh api` GETs + one `curl`; the `--canary` dispatch path is opt-in
+and self-cancelling) — no new checkpoint, no new authority, same classification as
+`tenant-schema-report.yml`/`verify-deployment.yml` above.
+
 ## Expedited `develop → main` override (#1007)
 
 A second, narrow, phrase-gated exception to "never merge `main`" — parallel to, and independent of,
@@ -181,6 +196,7 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 | Dispatching `deploy.yml` for environment `DEV` or `STAGING` | Unattended — proceed. Pat's 2026-08-16 call: this leg of "review, merge, and deploy" runs end to end without a per-dispatch ask, matching #543's "Promoter cuts/promotes staging (unattended)" framing |
 | Dispatching `verify-deployment.yml` (any environment) | Unattended — every remote command it runs is read-only |
 | Dispatching `tenant-schema-report.yml` (any environment, including PROD) | Unattended — read-only, `--mode report` only, no write path exists |
+| Running `npm run preflight:runner` (Phase 233, #1365, H1) before the `deploy-main.yml` dispatch ask | Unattended — read-only (`gh api`/`curl`, self-cancelling `--canary` if used). An exit-`3` "flip required" result still requires logging the flip in the promotion PR before acting on it — that's a documentation step, not a new ask |
 | Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched; auto-merges only when every result already passed a real policy evaluation, same reasoning as `verify-deployment.yml`'s read-only classification |
 | Dispatching `deploy-main.yml` (PROD deploy) | Ask, every time — no standing pre-authorization, matching `implement`'s existing deploy-dispatch tier |
 | Merging a `release/<label>` PR into `main` | **Never**, no exception — restate this rule explicitly whenever the boundary is hit, don't just silently stop. **Two** narrow, phrase-gated exceptions exist, neither a standing pre-authorization: `incident-responder`'s own override for an actively open production incident (`.agents/skills/incident-responder/SKILL.md` — belongs to that role, invoked there, not here), and this role's own #1007 expedited override (below) for Pat's business-urgency call, invoked here |
