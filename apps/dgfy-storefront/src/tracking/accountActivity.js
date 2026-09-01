@@ -17,6 +17,7 @@ export const EMPTY_ACCOUNT_PANEL = Object.freeze({
   loyalty: null,
   businessCompanies: [],
   businessStepUp: { verified: false },
+  affiliateAccessStatus: 'unknown',
   affiliateEnrollments: [],
   affiliateEarnings: null,
   affiliateEarningsByStore: [],

@@ -15,6 +15,7 @@ export function buildCustomerDashboardRouteBindings({
   accountPayoutActionId,
   accountCashoutActionId,
   handleLoadAccountPanel,
+  handleGetCustomerOrderDetails,
   handleTrackCustomerReference,
   handleMarkNotificationRead,
   handleMarkAllNotificationsRead,
@@ -66,6 +67,7 @@ export function buildCustomerDashboardRouteBindings({
     },
     actions: {
       handleLoadAccountPanel,
+      handleGetCustomerOrderDetails,
       handleTrackCustomerReference,
       handleMarkNotificationRead,
       handleMarkAllNotificationsRead,

@@ -43,11 +43,13 @@ export function useCustomerDashboardRouteModel({
 
   const customerDashboardActions = useMemo(() => ({
     onRefresh: actions.handleLoadAccountPanel,
+    onGetOrderDetails: actions.handleGetCustomerOrderDetails,
     onTrackReference: actions.handleTrackCustomerReference,
     onMarkNotificationRead: actions.handleMarkNotificationRead,
     onMarkAllNotificationsRead: actions.handleMarkAllNotificationsRead,
     onSignOut: actions.handleStorefrontSignOut,
     onHelp: () => toast.info('Help center is not connected yet.'),
+    onFeedback: () => undefined,
     onRegisterBusiness: actions.openBusinessRegistrationFlow,
     onRequestBusinessStepUp: actions.requestDgfyBusinessSecurityCode,
     onAcceptCompanyInvitation: actions.handleAcceptDgfyCompanyInvitation,
@@ -79,6 +81,7 @@ export function useCustomerDashboardRouteModel({
     actions.handleDeleteAccountAddress,
     actions.handleDeletePayoutMethod,
     actions.handleLeaveDgfyCompany,
+    actions.handleGetCustomerOrderDetails,
     actions.handleLoadAccountPanel,
     actions.handleMarkAllNotificationsRead,
     actions.handleMarkNotificationRead,

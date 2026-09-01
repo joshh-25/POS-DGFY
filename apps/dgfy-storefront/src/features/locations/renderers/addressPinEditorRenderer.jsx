@@ -62,17 +62,17 @@ export function createAddressPinEditorRenderer(ctx) {
     );
 
     return (
-      <>
+      <div style={{ display: 'grid', gap: isMobileViewport ? 10 : 12 }}>
         <div style={{ display: 'grid', gap: isMobileViewport ? 8 : 10, border: '1px solid #dbe5ee', borderRadius: 12, background: '#f8fafc', padding: isMobileViewport ? 8 : 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0 }}>
-              <strong>Location Pin</strong>
-              {!isMobileViewport && <div style={{ fontSize: 12, color: '#64748b' }}>Pin your exact location on the map. The selected address will fill in below.</div>}
+              <strong style={{ fontSize: 13 }}>Pin location</strong>
+              {!isMobileViewport && <div style={{ fontSize: 12, color: '#64748b' }}>Adjust the pin if the address needs a more precise location.</div>}
             </div>
             {showDefaultAddressNote && (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, borderRadius: 10, padding: '7px 11px', background: '#afe8f4', color: '#1a4e8d', fontSize: 11, fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
-                <CheckCircle2 size={14} style={{ flexShrink: 0 }} />
-                This will be set as your default address automatically.
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 999, padding: '6px 9px', background: '#ecfdf3', color: '#15803d', fontSize: 11, fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                <CheckCircle2 size={13} style={{ flexShrink: 0 }} />
+                Saved as default
               </div>
             )}
           </div>
@@ -80,16 +80,16 @@ export function createAddressPinEditorRenderer(ctx) {
             pin={pin}
             onPinChange={(nextPin) => applyAccountAddressPin({ pin: nextPin, onChange, mode })}
             disabled={isBusy}
-            height={isMobileViewport ? 'clamp(220px, 34svh, 320px)' : 'clamp(300px, 48vh, 460px)'}
+            height={isMobileViewport ? 'clamp(220px, 40svh, 320px)' : 'clamp(260px, 38vh, 380px)'}
             highlighted={Boolean(storedPin)}
             pinInstruction="Drag to pin location"
             showAttributionControl={false}
             overlayControls={renderOverlayControls()}
           />
-          {typeof renderFormRow === 'function' ? renderFormRow({ isExpanded: false }) : null}
-          {errorMessage ? <div style={{ fontSize: 12, color: '#b91c1c' }}>{errorMessage}</div> : null}
+          {errorMessage ? <div role="alert" style={{ fontSize: 12, lineHeight: 1.4, color: '#b91c1c' }}>{errorMessage}</div> : null}
         </div>
-      </>
+        {typeof renderFormRow === 'function' ? renderFormRow({ isExpanded: false }) : null}
+      </div>
     );
   };
 }
