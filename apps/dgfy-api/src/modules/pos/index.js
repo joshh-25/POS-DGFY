@@ -149,6 +149,17 @@ import { resolvePosCashierAttendanceFeature, requirePosCashierAttendanceFeature 
 import { assertPosAttendanceLifecyclePermission } from './services/posAttendancePermissionPolicy.js';
 import posOperatorAuthorityService from './services/posOperatorAuthorityService.js';
 import { createPosOperatorAuthorityUseCases } from './usecases/posOperatorAuthorityUseCases.js';
+import { deliveryRunRepository } from './repositories/deliveryRunRepository.js';
+import {
+    buildCreateDeliveryRunUseCase,
+    buildListDeliveryRunsUseCase,
+    buildGetDeliveryRunUseCase,
+    buildUpdateDeliveryRunUseCase,
+    buildSetDeliveryRunPersonnelUseCase,
+    buildAddDeliveryRunMembersUseCase,
+    buildRemoveDeliveryRunMemberUseCase,
+    buildDispatchDeliveryRunUseCase
+} from './usecases/deliveryRunUseCases.js';
 
 const posCashierAttendanceRepository = createPosCashierAttendanceRepository();
 const posCashierLifecycleUseCases = createPosCashierLifecycleUseCases({
@@ -296,6 +307,14 @@ export const getOrderBalancePaymentProofUseCase = buildGetOrderBalancePaymentPro
 });
 export const assignDeliveryPersonnelUseCase = buildAssignDeliveryPersonnelUseCase({ posRepository });
 export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCase({ posRepository });
+export const createDeliveryRunUseCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository });
+export const listDeliveryRunsUseCase = buildListDeliveryRunsUseCase({ deliveryRunRepository });
+export const getDeliveryRunUseCase = buildGetDeliveryRunUseCase({ deliveryRunRepository });
+export const updateDeliveryRunUseCase = buildUpdateDeliveryRunUseCase({ deliveryRunRepository });
+export const setDeliveryRunPersonnelUseCase = buildSetDeliveryRunPersonnelUseCase({ posRepository, deliveryRunRepository });
+export const addDeliveryRunMembersUseCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
+export const removeDeliveryRunMemberUseCase = buildRemoveDeliveryRunMemberUseCase({ posRepository, deliveryRunRepository });
+export const dispatchDeliveryRunUseCase = buildDispatchDeliveryRunUseCase({ posRepository, deliveryRunRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,

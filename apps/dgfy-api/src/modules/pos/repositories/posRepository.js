@@ -793,7 +793,9 @@ const buildPostCloseVoidWhere = ({
     return where;
 };
 
-const buildTransactionInclude = () => ([
+// Exported (in addition to its internal use below) so tests can assert on the include descriptor
+// directly -- e.g. the deliveryJob attributes array -- without needing a real DB connection.
+export const buildTransactionInclude = () => ([
     {
         model: dbStore.get('PosTransactionLine'),
         as: 'lines',
@@ -837,6 +839,7 @@ const buildTransactionInclude = () => ([
         required: false,
         attributes: [
             'delivery_job_id',
+            'delivery_run_id',
             'provider',
             'provider_delivery_id',
             'status',

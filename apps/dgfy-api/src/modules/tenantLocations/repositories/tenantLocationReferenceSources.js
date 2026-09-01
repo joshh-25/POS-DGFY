@@ -18,6 +18,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'deliveryRuns',
+        label: 'delivery runs',
+        modelName: 'DeliveryRun',
+        association: 'DeliveryRun.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'itemLocationStocks',
         label: 'item location stock rows',
         modelName: 'ItemLocationStock',

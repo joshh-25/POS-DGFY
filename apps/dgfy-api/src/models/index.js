@@ -42,6 +42,8 @@ import PosOrderAddressChange from './PosOrderAddressChange.js';
 import PosMerchantTenderReconciliation from './PosMerchantTenderReconciliation.js';
 import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
+import DeliveryRun from './DeliveryRun.js';
+import DeliveryRunPersonnel from './DeliveryRunPersonnel.js';
 import PosTransactionLine from './PosTransactionLine.js';
 import PosDiscountRule from './PosDiscountRule.js';
 import PosTransactionDiscount from './PosTransactionDiscount.js';
@@ -694,6 +696,21 @@ DeliveryPersonnel.hasMany(DeliveryJob, { foreignKey: 'delivery_personnel_id', as
 DeliveryPersonnel.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 DeliveryPersonnel.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser' });
 DeliveryPersonnel.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser' });
+DeliveryRun.hasMany(DeliveryJob, { foreignKey: 'delivery_run_id', as: 'deliveryJobs' });
+DeliveryJob.belongsTo(DeliveryRun, { foreignKey: 'delivery_run_id', as: 'deliveryRun', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+DeliveryRun.hasMany(DeliveryRunPersonnel, { foreignKey: 'delivery_run_id', as: 'personnel' });
+// onDelete: 'RESTRICT', not CASCADE -- delivery_run_id is the base column of
+// DeliveryRunPersonnel's accountable_run_id STORED generated column; see the migration
+// (20260901000005-create-delivery-runs.cjs) for the #1166 InnoDB collision this avoids. Declared
+// explicitly here too, not left to default, because provisionTenant()'s sequelize.sync() path
+// materializes an undeclared association FK as CASCADE/CASCADE rather than the migration's own
+// RESTRICT/RESTRICT -- the same sync()-vs-migration mismatch #1166 already documents.
+DeliveryRunPersonnel.belongsTo(DeliveryRun, { foreignKey: 'delivery_run_id', as: 'run', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+DeliveryRunPersonnel.belongsTo(DeliveryPersonnel, { foreignKey: 'delivery_personnel_id', as: 'deliveryPersonnel', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+DeliveryPersonnel.hasMany(DeliveryRunPersonnel, { foreignKey: 'delivery_personnel_id', as: 'runMemberships' });
+DeliveryRun.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+DeliveryRun.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+DeliveryRun.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 PosTransaction.hasMany(PosFiscalEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalEvents' });
 PosTransaction.hasMany(PosFiscalPrintEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalPrintEvents' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
@@ -1121,6 +1138,8 @@ const db = {
   PosMerchantTenderReconciliation,
   DeliveryJob,
   DeliveryPersonnel,
+  DeliveryRun,
+  DeliveryRunPersonnel,
   PosTransactionLine,
   PosDiscountRule,
   PosTransactionDiscount,

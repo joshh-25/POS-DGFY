@@ -14458,3 +14458,603 @@ replaced) and #980/ADR 0074 (the `develop → main` default promotion path this 
 ### Next eligible phase
 
 224.
+
+## Phase 224 - Delivery Runs: ADR 0034 Amendment + Run Schema (#1273/#1269/#1081)
+
+### Initiative and release
+
+Delivery Runs build track, no parent epic beyond #1273 (Phase 224) tracking #1081 (schema) and
+#1269 (ADR gate). Decision rationale: #1079's decision comment.
+
+### Objective and scope
+
+Lay the schema and ADR foundation for grouping many `delivery_jobs` rows into one manually-run
+delivery run with an accountable person and optional crew, ahead of the Phase 225 use case that
+will actually wire assignment/dispatch through it.
+
+**Scope:**
+- New migration `20260901000005-create-delivery-runs.cjs`: `delivery_runs`
+  (`label`, `scheduled_date`, `status` enum `draft/scheduled/dispatched/completed/cancelled`,
+  `location_id`, `notes`, `created_by`, `updated_by`) and `delivery_run_personnel`
+  (`delivery_run_id`, `delivery_personnel_id` or free-text `delivery_personnel_name`,
+  `is_accountable`, `created_by`, `updated_by`, plus a STORED generated `accountable_run_id`
+  column + unique index enforcing at most one accountable row per run). Adds a nullable
+  `delivery_jobs.delivery_run_id` FK + `idx_delivery_jobs_run_status` index.
+  `delivery_jobs.pos_transaction_id` stays UNIQUE, untouched.
+- New models `DeliveryRun.js`, `DeliveryRunPersonnel.js` (the latter deliberately does not declare
+  `accountable_run_id`, matching the `PosTerminalShift.active_terminal_id` precedent); edits to
+  `DeliveryJob.js` and `models/index.js` for the new associations. Both new models are
+  tenant-scoped, not added to `NON_TENANT_MODEL_EXPORTS`.
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`: `REQUIRED_TENANT_SCHEMA_TABLES` entries for both
+  new tables, a `REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_jobs.delivery_run_id` entry, a
+  `REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs.idx_delivery_jobs_run_status` entry, and
+  `TENANT_SCHEMA_CAPABILITY_VERSION` bumped `2026-09-01.3` → `2026-09-01.4`.
+  `runtimeSchemaAuditService.js` deliberately left unextended, matching the two most recent
+  new-table phases (`inventory_reservations`, `pos_order_payments`) — an unconditional preflight
+  entry for a table not yet migrated on every tenant would reproduce the #860/#639 crash-loop
+  class.
+- ADR 0034 dated `## Amendments` block (2026-08-31) answering all seven of #1269's checkboxes, plus
+  `last_reviewed` bump and a fix to the ADR's own Validation block's four stale `npm --prefix
+  backend` commands (no `backend/` directory exists — apps layout migration, #365).
+
+**Real-MySQL correction found during implementation, not in the original plan:** the plan's
+`delivery_run_personnel.delivery_run_id` FK was specified `ON DELETE CASCADE`. That column is also
+the base column of the `accountable_run_id` STORED generated column, and #1166's own investigation
+(`20260824000001-create-pos-cashier-attendance-operator-sessions.cjs`) established live against
+MySQL 8.0.46 that InnoDB unconditionally rejects a CASCADE or SET NULL FK action on a column that
+is also a generated column's base column, regardless of when the FK is added. Changed to
+`ON DELETE RESTRICT` in the migration, the tenant-schema registry, and the model association
+(declared explicitly there too, to avoid `provisionTenant()`'s `sequelize.sync()` path
+materializing an undeclared association FK as CASCADE/CASCADE, the same sync()-vs-migration
+mismatch #1166 documents). Net effect: a run with member personnel rows must have those rows
+deleted or reparented before the run itself can be deleted — an application-layer step Phase 225's
+use case owns.
+
+**Out of scope, unchanged:** courier API integration, live tracking, rider-facing logins, provider
+dispatch, route optimization, fleet tracking, and the actual run→job assignment write-through
+use case (Phase 225).
+
+### Status
+
+`in_progress` — code, migration, registry, and ADR/ledger docs are complete and self-verified
+without local MySQL/tenant DBs in this worktree (unavailable in this environment); the DB-backed
+verification steps (migrate up/down idempotency, `SHOW CREATE TABLE` diff, the accountable
+unique-constraint negative test, `check:tenant-schema`) are the outstanding acceptance evidence,
+not yet run against a real database from this session.
+
+### Dependencies
+
+None blocking. Builds on ADR 0034's 2026-08-07/2026-08-08/2026-08-12 amendments (POS manual
+delivery lifecycle, the assignment contract, and third-party courier names) and on the delivery
+schema #1081 tracks. Phase 225 (the assignment/dispatch use case) depends on this phase.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `.js`/`.cjs` file.
+- [x] `npm run check:adr` / `npm run lint:docs` — ADR front matter and tier hygiene, ledger format.
+- [x] `npm run check:architecture` — guardrails + controller boundaries.
+- [x] `npm --prefix apps/dgfy-api run check:tenant-schema-coverage` — confirms every new
+  table/column/index has a registry entry.
+- [x] `npm run check:compliance` — no declaration required; confirmed empirically, no rule in
+  `COMPLIANCE_SENSITIVE_RULES` matches `apps/dgfy-api/src/models/`, `apps/dgfy-api/scripts/`,
+  `apps/dgfy-migration-runner/migrations/`, or `docs/`.
+- [ ] Migration up/down against local MySQL, `SHOW CREATE TABLE` diffed against the registry
+  strings, the accountable unique-constraint negative test, and
+  `npm --prefix apps/dgfy-api run check:tenant-schema` — **not run**: no local MySQL/tenant DB
+  reachable in this worktree. Named as outstanding rather than omitted.
+
+### Links
+
+- Tracking issues: #1273 (Phase 224), #1269 (ADR gate, closed by this PR), #1081 (schema, continues
+  into Phase 225).
+- `apps/dgfy-migration-runner/migrations/20260901000005-create-delivery-runs.cjs`,
+  `apps/dgfy-api/src/models/DeliveryRun.js`, `apps/dgfy-api/src/models/DeliveryRunPersonnel.js`,
+  `apps/dgfy-api/src/models/DeliveryJob.js`, `apps/dgfy-api/src/models/index.js`,
+  `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md`, dated `## Amendments` block,
+  2026-08-31.
+
+### Next eligible phase
+
+225.
+
+## Phase 225 - Delivery Run API + Accountable Write-Through (#1273/#1081)
+
+### Initiative and release
+
+Delivery Runs build track, continuing #1273 (track) and #1081 (schema/API scope). Builds on
+Phase 224's schema. Decision rationale: #1079's decision comment plus this phase's own resolution
+of the "assignment requires `out_for_delivery`" gap (see below).
+
+### Objective and scope
+
+Wire the actual run → job assignment write-through: CRUD for `delivery_runs`, whole-roster
+personnel management, bulk member add, and single-member removal, with the accountable person's
+assignment fields written through to each member `delivery_jobs` row at add-time — without
+advancing job status pre-dispatch (that stays Phase 228's job) and without touching the existing
+per-order assignment endpoint's behavior.
+
+**The one real design decision:** `buildAssignDeliveryPersonnelUseCase` (and
+`buildUpdateDeliveryJobStatusUseCase`) hard-require the order to be `out_for_delivery` before
+writing an assignment — but a run is populated *before* dispatch. Naive reuse would 409 every time.
+Resolved by extracting the write half of the per-order use case
+(`applyDeliveryPersonnelAssignment`, in `posUseCases.js`) into a shared, exported helper taking an
+`advanceJobStatus` flag: `true` reproduces the existing endpoint byte-for-byte; `false` is the run
+write-through, which populates the assignment fields while leaving `delivery_jobs.status` at
+`pending_dispatch`. No new ADR amendment was required — Phase 224's 2026-08-31 amendment already
+authorized writing the assignment fields through from the run, and ADR 0034's 2026-08-07 amendment
+(job status only advances while `out_for_delivery`) stays literally intact because status is never
+touched pre-dispatch.
+
+**Scope:**
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js` — extracts
+  `applyDeliveryPersonnelAssignment` (exported), refactors `buildAssignDeliveryPersonnelUseCase` to
+  call it with `advanceJobStatus: true`; adds `DELIVERY_RUN_MEMBERSHIP`/`DELIVERY_RUN_PERSONNEL` to
+  `POS_OPERATION_KEYS`; exports several previously module-private helpers so the sibling use-case
+  file can reuse them without duplicating logic.
+- New `apps/dgfy-api/src/modules/pos/repositories/deliveryRunRepository.js` — module-local data
+  access for `delivery_runs`/`delivery_run_personnel` plus `delivery_jobs` membership helpers.
+  Deliberately not appended to `posRepository.js`, keeping `posRepository.contract.js` untouched.
+- New `apps/dgfy-api/src/modules/pos/usecases/deliveryRunUseCases.js` — 7 use cases: create, list,
+  get, update a run; replace its personnel roster (whole-roster `PUT`, not incremental — the STORED
+  generated `accountable_run_id` column's unique index would reject an incremental edit's transient
+  two-accountable/zero-accountable states); bulk-add members (validates the whole batch atomically:
+  online delivery order, manual provider, `pending_dispatch`, single-location match, not already in
+  a different run — deliberately not checking `fulfillment_status`, so F&B orders that never reach
+  `packed` are not excluded); remove a single member with conditional-clear removal semantics
+  (clears the assignment only when the job is still `pending_dispatch` and its personnel identity
+  still matches the run's accountable person; otherwise leaves it untouched with
+  `assignment_cleared: false` and a reason code).
+- New `apps/dgfy-api/src/modules/pos/controllers/deliveryRunHandlers.js` (transport-only) and
+  `apps/dgfy-api/src/modules/pos/serializers/deliveryRunSerializer.js`.
+- `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/routes/pos.js` (7 routes under
+  `/api/pos/delivery-runs`, `pos:transact`/`pos:view`, no new permission constant),
+  `apps/dgfy-api/src/validators/posValidator.js` (7 new Joi validators).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-api.md` — `major`, surfaces
+  `pos,terminal`.
+
+**Out of scope, unchanged:** whole-run dispatch (#1271/Phase 228, including the run-level unpacked-
+order gate, #1272), any POS UI (#1270/Phases 226-227), run-level COD cash totals (#838), route
+optimization/fleet tracking.
+
+### Status
+
+`completed` for the API surface; the DB-backed live acceptance walk proving #1273's three Phase-225
+acceptance criteria against a real tenant database was **not** run — no local MySQL/Redis reachable
+in this environment. All unit-level use-case/validator/route tests pass against an in-memory fake
+repository; the live walk is outstanding acceptance evidence, not omitted.
+
+### Dependencies
+
+Builds on Phase 224's schema (`delivery_runs`, `delivery_run_personnel`,
+`delivery_jobs.delivery_run_id`) and on ADR 0034's 2026-08-07/2026-08-08/2026-08-12/2026-08-31
+amendments. Phase 228 (whole-run dispatch, #1271) and Phases 226-227 (POS UI, #1270) depend on this
+phase.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on all 8 changed/new `.js` files.
+- [x] `npm run check:architecture` (guardrails + controller boundaries) — OK, zero new allowlist
+  entries.
+- [x] `npm run check:adr` / `npm run lint:docs` — OK.
+- [x] `npm run check:compliance` — confirmed to fail without the declaration (7 sensitive files),
+  pass once it was added.
+- [x] Regression suites unchanged and green: `posDeliveryAssignment.usecase.test.js`,
+  `posDeliveryJobStatus.usecase.test.js`, `posDeliveryCompletionGuard.usecase.test.js`,
+  `posValidator.deliveryAssignment.test.js`, `rbacRouteCoverage.contract.test.js` (all 7 new routes
+  carry `checkPermission`, no exemption needed). `posHandlers.transport.test.js` fails on this
+  branch, but confirmed pre-existing on `origin/develop` before this phase's changes (git-stash
+  comparison), not a regression introduced here.
+- [x] New suites, all passing: `deliveryRun.usecase.test.js`, `deliveryRunWriteThrough.usecase.test.js`
+  (covers every case #1273's Phase 225 acceptance criteria imply: add-with-no-accountable,
+  non-manual job, cross-location mismatch, `preparing`-status success, status-untouched
+  write-through, idempotent replay, free-text courier write-through, and all three removal
+  branches), `posValidator.deliveryRun.test.js`, `deliveryRunRoutes.transport.test.js`.
+- [ ] Live acceptance walk (local MySQL/Redis) — **not run**, no local MySQL/Redis reachable in
+  this environment. Named as outstanding rather than omitted, same posture as Phase 224.
+
+### Links
+
+- Tracking issues: #1273 (Phase 225, this entry), #1081 (schema/API scope, continues into
+  Phase 228's dispatch), #1079 (decision comment), #1272 (run-level dispatch gate, Phase 228).
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/deliveryRunRepository.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/deliveryRunUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/deliveryRunHandlers.js`,
+  `apps/dgfy-api/src/modules/pos/serializers/deliveryRunSerializer.js`,
+  `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/routes/pos.js`,
+  `apps/dgfy-api/src/validators/posValidator.js`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (no new amendment this phase — see
+  Objective and scope above for why).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-api.md`.
+- `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (updated alongside this entry).
+
+### Next eligible phase
+
+226.
+
+## Phase 226 - Delivery Runs: Run Management UI (#1273/#1270)
+
+### Initiative and release
+
+Delivery Runs build track, continuing #1273 (track) and #1270 (POS UI scope, Phases 226-227).
+Builds on Phase 225's API.
+
+### Objective and scope
+
+Add the retail-only "Delivery Runs" tab to the POS terminal's incoming-order workspace: create/edit
+a run, manage its whole-roster personnel (exactly one accountable), and view/remove/move its member
+orders. No bulk multi-select from the Active Queue (Phase 227) and no dispatch UI (Phase 228) —
+this phase is the run-management surface only, over Phase 225's already-shipped 7-route API.
+
+**Where this lives, settled by inspection:** `apps/dgfy-pos/src/` contains only `main.jsx` and
+`README.md` — the whole POS app lives in `packages/web-core`, which
+`apps/dgfy-ims/src/main.jsx:127` also lazily imports for its own `/terminal` route. All new code
+therefore lives in `packages/web-core/src/features/pos/`, none in `apps/dgfy-pos/`, and both apps'
+builds are required (see Acceptance evidence below).
+
+**The retail gate:** reuses `normalizeWorkflowMode(workflowMode) === 'retail'` verbatim from
+`orderFulfillmentUi.js:56`'s existing precedent, not `WORKFLOW_PAGE_CAPABILITIES`/
+`isWorkflowPageVisible` — the run API itself is mode-agnostic by design (ADR 0034's 2026-08-31
+amendment: "membership is keyed on `delivery_jobs`, never on `packed`"), so a route-level capability
+gate would misrepresent the backend. A `React.useEffect` resets the tab back to `'active'` if
+`WORKFLOW_MODE_CHANGED_EVENT` flips the mode off retail while the runs tab is open.
+
+**Scope:**
+- New `packages/web-core/src/features/pos/services/deliveryRunService.js` — thin wrappers over all
+  7 of Phase 225's routes, mirroring `deliveryPersonnelService.js`'s shape.
+- New `components/DeliveryRunsWorkspacePanel.jsx` — the tab body (master/detail, panel-local state
+  and fetches, modeled on `DeliveryPersonnelManagementPanel.jsx`); `DeliveryRunFormDialog.jsx`
+  (create/edit, `status` edit-only and limited to `draft`/`scheduled`/`cancelled`);
+  `DeliveryRunPersonnelEditor.jsx` (whole-roster editor, a radio group makes "exactly one
+  accountable" structural, reuses `DeliveryAssignmentControl.jsx`'s datalist + name-match pattern
+  for the registry-vs-free-text XOR); `DeliveryRunMembersList.jsx` (remove + move-to-another-run).
+- Modified `components/TerminalOperationsPanels.jsx` (third retail-gated tab + mode-flip reset
+  effect), `components/TerminalOperationsWorkspace.jsx` and `components/TerminalPageLayout.jsx` /
+  `pages/TerminalPage.jsx` (thread the existing `ensureDeliveryPersonnelLoaded` callback down
+  rather than forking a second independent fetch — reuses `TerminalPage.jsx`'s single-flight fetch
+  ref and the state Phase 205 RF-3's `handleDeliveryPersonnelChanged` already keeps live).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-ui.md` — `major`, surfaces
+  `pos,terminal`.
+
+**"Move to another run" is DELETE-then-ADD, not atomic** — there is no server-side move verb
+(`POST .../members` 409s `DELIVERY_JOB_ALREADY_IN_RUN` for a job already in a different run). If the
+ADD leg fails after the DELETE leg succeeds, the order is left in no run. Mitigated (not
+eliminated): the confirm dialog states the two-step nature up front, and on ADD failure a
+persistent (non-auto-dismissing) error toast plus an automatic refresh of both runs lets the
+operator retry the add from the target run. A transactional server-side move verb is a candidate
+follow-up, not filed as part of this phase.
+
+**Out of scope, unchanged:** bulk multi-select "Add to run" from the Active Queue (#1270/Phase 227
+— this phase leaves it the exact seams it needs, all in `deliveryRunService.js` and none private to
+the panel), whole-run dispatch and the run-level unpacked-order gate (#1271/#1272/Phase 228),
+run-level COD cash totals (#838), surfacing `delivery_run_id` on an Active-Queue order (named in
+Phase 225's own declaration as Phase 227's first backend task).
+
+### Status
+
+`completed` for the UI surface; the live acceptance walk (create → set personnel → add a real order
+→ list → remove → move against a deployed tenant) was **not** run — no deployed tenant database
+reachable in this environment. All Vitest behavior coverage passes against mocked service calls;
+the live walk is outstanding acceptance evidence, not omitted, same posture as Phases 224/225.
+
+### Dependencies
+
+Builds on Phase 225's 7-route delivery-run API and ADR 0034's 2026-08-31 amendment. Phase 227
+(bulk multi-select) depends on the seams this phase leaves in `deliveryRunService.js`; Phase 228
+(dispatch) is independent of this phase's UI.
+
+### Acceptance and validation evidence
+
+- [x] `npm run build:pos` — real Vite build, OK.
+- [x] `npm run build:skupervisor` — also required (`apps/dgfy-ims` lazily imports the same
+  `TerminalPage.jsx` tree via `packages/web-core`), OK.
+- [x] New `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx` —
+  actually executed (Vitest, run from `apps/dgfy-ims` per its `vite.config.js`'s
+  `packages/web-core` test `include` entry — **not** from `apps/dgfy-pos`, a correction against
+  this phase's own planning doc, which named the wrong app), 6/6 passing: retail-only tab
+  visibility, mode-flip fallback, create sends the typed label + scheduled date, roster save sends
+  exactly one `is_accountable: true` row with the registry/free-text XOR, members list renders
+  `order.invoice_number`/`customer_name`, remove/move calls `removeDeliveryRunMember` then
+  `addDeliveryRunMembers` in that order.
+- [x] `npm run check:architecture` — OK, trivially green (`apps/dgfy-api`-scoped; this phase
+  touches no backend file).
+- [x] `npm run lint:docs` — OK.
+- [x] `npm run check:compliance` — confirmed to fail without the declaration (10 sensitive files),
+  pass once it was added.
+- [ ] Live acceptance walk (deployed tenant) — **not run**, no deployed tenant database reachable
+  in this environment. Named as outstanding rather than omitted, same posture as Phases 224/225.
+
+### Links
+
+- Tracking issues: #1273 (track), #1270 (POS UI scope, Phases 226-227).
+- `packages/web-core/src/features/pos/services/deliveryRunService.js`,
+  `packages/web-core/src/features/pos/components/DeliveryRunsWorkspacePanel.jsx`,
+  `DeliveryRunFormDialog.jsx`, `DeliveryRunPersonnelEditor.jsx`, `DeliveryRunMembersList.jsx`,
+  `TerminalOperationsPanels.jsx`, `TerminalOperationsWorkspace.jsx`, `TerminalPageLayout.jsx`,
+  `pages/TerminalPage.jsx`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (no new amendment this phase).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-ui.md`.
+- `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (updated alongside this entry).
+
+### Next eligible phase
+
+227.
+
+## Phase 227 - Delivery Runs: Bulk Add to Run from the Active Queue (#1273/#1270)
+
+### Initiative and release
+
+Delivery Runs build track, continuing #1273 (track) and #1270 (POS UI scope, Phases 226-227).
+Builds on Phase 226's run-management UI and Phase 225's API.
+
+### Objective and scope
+
+Let staff bulk-select several eligible delivery orders in the Active Queue and add them all to one
+delivery run in a single request, instead of adding orders to a run one at a time via the Delivery
+Runs tab's own member-add flow (out of this phase's scope — that flow, and the run detail view
+itself, are unchanged).
+
+**Three source-verified findings shaped the design** (re-verified against `origin/develop` at
+merge-base `82ee4eccb` before implementation):
+
+- **F-1.** The Active Queue (`IncomingQueueWorkspace` in `TerminalOperationsPanels.jsx` — the
+  plan's own working name for this component, "OnlineOrderWorkspace," does not exist in this
+  codebase) already renders its whole order list in one grid with no pagination/offset. The
+  "don't force page-by-page selection" acceptance criterion is already structurally met, so this
+  phase builds a sticky selection toolbar + select-all-eligible rather than any pagination work.
+- **F-2.** `POST /pos/delivery-runs/:id/members` is confirmed all-or-nothing, not best-effort — it
+  throws on the first per-order problem in the whole batch and writes nothing (`skipped` only ever
+  carries already-in-this-run idempotent no-ops). Chunking the request and changing the backend
+  contract were both deliberately rejected (chunking would make an atomic failure
+  partially-applied; a backend contract change is Pat's own call, tracked alongside
+  #1271/Phase 228's dispatch-model decision, not built here). Instead: a client-side eligibility
+  pre-filter makes an invalid batch unconstructable, plus a named-order 409 recovery loop for the
+  unavoidable client-read-vs-server-lock race window.
+- **F-3.** `error_code` in a delivery-run error response is the DomainErrorCode (`'CONFLICT'`), not
+  the per-condition reason — that lives under `errors.reason_code`/`errors.pos_transaction_id`.
+  Phase 226's `DeliveryRunsWorkspacePanel.jsx` compared against the wrong field
+  (`errorCode === 'DELIVERY_RUN_LOCKED'`, which could never fire); fixed as a one-line drive-by and
+  used correctly in every new code path this phase adds.
+
+**Scope:**
+- `apps/dgfy-api/src/modules/pos/repositories/posRepository.js` — `buildTransactionInclude()`'s
+  `deliveryJob` include now also selects `delivery_run_id` (additive/nullable/read-only, no schema
+  change), so the frontend can read run-membership without a second round trip. Also exports
+  `buildTransactionInclude` (previously private) for the new contract test below.
+- New `packages/web-core/src/features/pos/utils/deliveryRunEligibility.js` — two pure functions,
+  `getRunAssignEligibility` (mirrors `buildAddDeliveryRunMembersUseCase`'s Step 4 rejection order
+  exactly: delivery order → manual job → pending_dispatch → no existing `delivery_run_id` →
+  location match) and `getEligibleRunTargets` (excludes locked/no-exact-one-accountable/
+  wrong-location runs from the target-run picker — the location filter is new for this phase and
+  makes `DELIVERY_RUN_LOCATION_MISMATCH` unreachable by construction).
+- New `components/QueueRunAssignBar.jsx` (sticky toolbar: target-run picker, select-all-eligible,
+  clear selection, "N selected" readout, ineligible-drift hint, submit button — owns its own
+  `fetchDeliveryRuns` call and picker state) and `components/QueueOrderSelectCheckbox.jsx`
+  (per-card checkbox with a disabled-reason `title`/`aria-label`).
+- Modified `components/TerminalOperationsPanels.jsx` — `IncomingQueueWorkspace` gains a
+  `Set<Number>` selection of `pos_transaction_id` (never an index — the list is re-sorted every
+  render), the batched-submit handler (idempotency key retained across a retry of the identical
+  batch, regenerated on a genuinely different selection or target run, matching Phase 226's
+  RF-1/RF-4 pattern), and renders the new toolbar/checkbox components. The selection Set is
+  deliberately not pruned against the polled order list on every tick (a transient poll error
+  returning `orders: []` would otherwise wipe it); eligibility is re-derived live instead, driving
+  an ineligible-drift hint. The existing mode-flip reset effect (Phase 226) now also clears this
+  selection.
+- Modified `components/DeliveryRunsWorkspacePanel.jsx` — F-3's one-line fix only.
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-bulk-assign.md` — `major`,
+  surfaces `pos,terminal`; a new declaration, not an amendment (Phase 226's rollback_note states
+  "no backend change," which this phase's one backend line would make false if amended in place).
+
+**Out of scope, unchanged:** whole-run dispatch and the run-level unpacked-order gate
+(#1271/#1272/Phase 228), run-level COD cash totals (#838), making `POST .../members` best-effort
+or chunked (F-2, Pat's own call — flagged in the PR for visibility, not blocking).
+
+### Status
+
+`completed` for the bulk-select surface; the live acceptance walk (bulk-select several Active Queue
+orders → add to a run → confirm both surfaces reflect it → trigger a real 409 race) was **not**
+run — no deployed tenant database reachable in this environment. All Vitest/Jest coverage passes
+against mocked service calls and a DB-free structural contract test; the live walk is outstanding
+acceptance evidence, not omitted, same posture as every prior phase in this track.
+
+### Dependencies
+
+Builds on Phase 226's run-management UI and Phase 225's 7-route delivery-run API. Independent of
+Phase 228 (dispatch).
+
+### Acceptance and validation evidence
+
+- [x] `node --check apps/dgfy-api/src/modules/pos/repositories/posRepository.js` — OK.
+- [x] `npm run build:pos` — real Vite build, OK.
+- [x] `npm run build:skupervisor` — also required (`apps/dgfy-ims` lazily imports the same
+  `TerminalPage.jsx` tree via `packages/web-core`), OK.
+- [x] New `packages/web-core/src/features/pos/utils/__tests__/deliveryRunEligibility.test.js` —
+  actually executed (Vitest via `apps/dgfy-ims`), 17/17 passing.
+- [x] New `packages/web-core/src/features/pos/__tests__/deliveryRunBulkAssign.behavior.test.jsx` —
+  actually executed, 12/12 passing: retail gate, select-all-eligible skips ineligible orders,
+  selection survives a re-ordered poll and a transient `orders: []` error-path poll, the
+  ineligible-drift hint, the picker's three exclusion rules, one batched
+  `addDeliveryRunMembers` call, idempotency-key retention/regeneration, the 409 recovery loop
+  (named deselect + persistent toast + retry offered), reading `{ added, skipped }` on success.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx` —
+  re-run, 12/12 passing; one RF-3 test's mock updated to key off `location_id` rather than raw call
+  count, since `QueueRunAssignBar` is now a second, independent `fetchDeliveryRuns` caller.
+- [x] New `apps/dgfy-api/tests/posRepository.transactionInclude.contract.test.js` — actually
+  executed (Jest, no DB connection), 2/2 passing.
+- [x] `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs` — all OK.
+- [x] `npm run check:compliance` — confirmed to fail without the declaration (9 sensitive files),
+  pass once it was added.
+- [ ] Live acceptance walk (deployed tenant) — **not run**, no deployed tenant database reachable
+  in this environment. Named as outstanding rather than omitted, same posture as every prior phase.
+
+### Links
+
+- Tracking issues: #1273 (track), #1270 (POS UI scope, Phases 226-227).
+- `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `packages/web-core/src/features/pos/utils/deliveryRunEligibility.js`,
+  `components/QueueRunAssignBar.jsx`, `components/QueueOrderSelectCheckbox.jsx`,
+  `components/TerminalOperationsPanels.jsx`, `components/DeliveryRunsWorkspacePanel.jsx`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (no new amendment this phase).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-bulk-assign.md`.
+
+### Next eligible phase
+
+228.
+
+## Phase 228 - Delivery Runs: Whole-Run Dispatch (#1273/#1271) — FINAL PHASE OF THE #1273 TRACK
+
+### Initiative and release
+
+Delivery Runs build track, completing #1273 (track), #1271 (dispatch scope), and #1272 (the
+retail-only packing precondition). Builds on Phase 225's API, Phase 226's run-management UI, and
+Phase 227's bulk add-to-run flow. **This is the final phase of the #1273 build track** — the PR
+uses `Refs #1273`, not `Closes #1273`; closing the tracking issues (#1273/#1271/#1272) is a
+coordinator/PM decision, not made by this phase or this entry.
+
+### Objective and scope
+
+Let staff dispatch every eligible member of a delivery run in one request — advancing each order's
+`fulfillment_status -> out_for_delivery` and its `delivery_jobs.status pending_dispatch ->
+assigned` — instead of the per-order status-update flow Phase 210 already exposes.
+
+**Source-verified findings re-confirmed against `origin/develop` at merge-base `c065a0d91`
+(the Phase 227 merge commit) before implementation** — see F-1 through F-7 in
+`docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-dispatch.md`'s own "Source-verified
+findings" section rather than restating them here; summary: the real per-order guard chain for
+`-> out_for_delivery` does not include the money-route-only terminal middlewares; the transition
+guards were module-private and are now exported (zero behavior change) for reuse; Phase 225
+deliberately left member jobs at `pending_dispatch` for this phase to advance; the run-mutation
+locked-status set and the member-removal no-run-status-guard both hold unchanged; no migration was
+needed (`delivery_runs.status`'s `dispatched` value already existed since Phase 224); the
+workflow-mode read and every repository method needed already existed.
+
+**Design decisions implemented exactly as specified (D-1 through D-6)**:
+
+- **D-1.** One endpoint, `POST /pos/delivery-runs/:deliveryRunId/dispatch`, body is just an
+  idempotency key. The 200 response carries three buckets — `dispatched`/`skipped`/`failed` —
+  deliberately not the two-bucket `{added,skipped}` shape Phase 227's membership endpoint uses,
+  because best-effort dispatch has a genuine third outcome (should have gone, didn't) two buckets
+  can't express.
+- **D-2 (#1272).** A run-level, retail-only, pre-fan-out packing gate: if any member's order
+  `fulfillment_status` is earlier than `packed`, the whole call 409s
+  (`DELIVERY_RUN_UNPACKED_MEMBERS`, naming every offender) and writes nothing.
+  `ONLINE_FULFILLMENT_TRANSITIONS` is untouched by this gate — F&B skips it entirely by
+  construction. A cancelled/rejected member is not part of this gate; it is an ordinary per-order
+  fan-out failure instead.
+- **D-3.** The run flips to `dispatched` on **at least one** success, never "all"; zero successes
+  leaves run status untouched and still returns 200 (the per-order report IS the result, never a
+  409). `dispatched` is deliberately the one status this endpoint does not treat as locked — a
+  code comment on the dedicated `RUN_DISPATCH_BLOCKED_STATUSES` constant explains why, so a future
+  reader does not "fix" it into the shared locked-status constants every other run mutation still
+  uses correctly.
+- **D-4.** Two-layer idempotency: a durable `POS_OPERATION_KEYS.DELIVERY_RUN_DISPATCH` replay
+  hashed on `{ delivery_run_id }` only (not the member list, so a retry with a changed member set
+  still replays), plus an in-fan-out `ALREADY_DISPATCHED` skip that fires regardless of idempotency
+  key and still advances a straggler job to `assigned` if it was left behind.
+- **D-5.** The exact reason-code taxonomy specified, applied in the specified guard order.
+- **D-6.** `MOBILE_ORDER_VERSION_CONFLICT` deliberately not implemented here — it only fires on
+  client-supplied expected-version fields with no run-dispatch analogue.
+
+**Scope:**
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js` — exports
+  `normalizeOnlineFulfillmentStatus`/`validateOnlineOrderTransition`/
+  `buildOnlineOrderShiftAttributionPayload` (exports only); adds
+  `POS_OPERATION_KEYS.DELIVERY_RUN_DISPATCH`.
+- `apps/dgfy-api/src/modules/pos/usecases/deliveryRunUseCases.js` — new
+  `buildDispatchDeliveryRunUseCase`: one outer transaction, the run-level preconditions above in
+  order, one open-shift check for the whole run, the read-before-write per-order fan-out, the D-3
+  status flip, one run-scoped + N per-member audit rows, the two-layer idempotency, and a
+  post-commit best-effort `recordDgfyOrderActivity` call per dispatched order (wrapped so a
+  failure never fails the already-committed dispatch).
+- `apps/dgfy-api/src/modules/pos/controllers/deliveryRunHandlers.js`,
+  `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/routes/pos.js`,
+  `apps/dgfy-api/src/validators/posValidator.js` — wiring: new `dispatchDeliveryRun`
+  handler/export, new route (`checkPermission(TRANSACT_POS)` + `validateDeliveryRunIdParam` +
+  `validateDeliveryRunDispatch`), new schema.
+- New `packages/web-core/src/features/pos/components/DeliveryRunDispatchSummary.jsx` (persistent
+  three-bucket result panel — deliberately not a toast, Phase 227's own residual-risk note flags
+  this same limit) and `utils/deliveryRunDispatchReasons.js` (pure reason_code -> operator message
+  map).
+- Modified `components/DeliveryRunsWorkspacePanel.jsx` (Dispatch/Re-dispatch button +
+  `ConfirmActionDialog`, the client-side packing pre-flight backstop, idempotency-key retention
+  keyed on `${runId}:dispatch:${sortedMemberIds}`) and `components/DeliveryRunMembersList.jsx`
+  (per-row outcome badge from the last dispatch result); `services/deliveryRunService.js` gains
+  `dispatchDeliveryRun()`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` — new 2026-09-01 amendment (the
+  `dispatched` lifecycle, its best-effort contract, and the packing precondition restated as
+  compatible with the 2026-08-31 amendment's additive-by-design promise).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-dispatch.md` — `major`,
+  surfaces `pos,terminal`; a new declaration, per this repo's one-declaration-per-phase precedent.
+
+**Out of scope, unchanged:** run advancing to `completed` (#908's territory), rollback of a
+dispatched order from this endpoint, run-level COD cash totals (#838).
+
+### Status
+
+`completed` for the dispatch surface; the live acceptance walk (dispatch a real run against a
+deployed tenant database, confirm order/job status transitions and the audit trail) was **not**
+run — no deployed tenant database reachable in this environment. All Jest/Vitest coverage passes
+against an in-memory fake repository and mocked services; the live walk is outstanding acceptance
+evidence, not omitted, same posture as every prior phase in this track (224-227).
+
+### Dependencies
+
+Builds on Phase 225's API, Phase 226's run-management UI, and Phase 227's eligibility/idempotency
+patterns. Independent of Phase 227's bulk-add flow otherwise.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `apps/dgfy-api` `.js` file — OK.
+- [x] `npm run build:pos` — real Vite build, OK.
+- [x] `npm run build:skupervisor` — also required (a `packages/web-core` change), OK.
+- [x] New `apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js` — actually executed (Jest),
+  16/16 passing: every run-level precondition (404/locked/no-accountable/empty), the packing gate
+  firing in retail and skipped in F&B (with the unpacked list named), a mixed multi-member fan-out
+  covering every taxonomy row in one call, the run status flip on >=1 success and its absence on
+  zero, a dispatched run accepting re-dispatch with `ALREADY_DISPATCHED` skips and no double-write,
+  the job advancing `pending_dispatch -> assigned` per success, and both replay outcomes
+  (processed/blocked).
+- [x] `apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js` — extended for the dispatch
+  handler and the 8-route registration assertion; all passing.
+- [x] `apps/dgfy-api/tests/posValidator.deliveryRun.test.js` — extended for the dispatch schema;
+  all passing.
+- [x] `apps/dgfy-api/tests/deliveryRun.usecase.test.js`,
+  `apps/dgfy-api/tests/deliveryRunWriteThrough.usecase.test.js` — re-run after the shared test
+  harness (`testHelpers/deliveryRunTestHarness.js`) gained `updateDeliveryJobByOrderId` and
+  dispatch-assignment fields on `addOrder`; no regressions.
+- [x] New `packages/web-core/src/features/pos/utils/__tests__/deliveryRunDispatchReasons.test.js`
+  — actually executed (Vitest via `apps/dgfy-ims`), 4/4 passing.
+- [x] New `packages/web-core/src/features/pos/__tests__/deliveryRunDispatch.behavior.test.jsx` —
+  actually executed, 11/11 passing: button gating per condition (no shift, no accountable, zero
+  members, completed/cancelled status, unpacked members), the unpacked pre-flight notice naming
+  the order, confirm-then-submit (no call before confirmation), idempotency-key retention on retry,
+  the three-bucket summary panel rendering all three groups, the `DELIVERY_RUN_UNPACKED_MEMBERS`
+  409 naming the offending order, and the "Re-dispatch run" label on an already-dispatched run.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+  `__tests__/deliveryRunBulkAssign.behavior.test.jsx` — re-run after this phase's changes
+  (both mock files extended with `dispatchDeliveryRun`/`toast.warning`), no regressions.
+- [x] `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs` — all OK.
+- [x] `npm run check:compliance` — confirmed to fail without the declaration (14 sensitive files),
+  pass once it was added.
+- [ ] Live acceptance walk (deployed tenant) — **not run**, no deployed tenant database reachable
+  in this environment. Named as outstanding rather than omitted, same posture as every prior phase.
+
+### Links
+
+- Tracking issues: #1273 (track, final phase), #1271 (dispatch scope), #1272 (packing
+  precondition).
+- `apps/dgfy-api/src/modules/pos/usecases/deliveryRunUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/deliveryRunHandlers.js`,
+  `apps/dgfy-api/src/routes/pos.js`, `apps/dgfy-api/src/validators/posValidator.js`,
+  `packages/web-core/src/features/pos/services/deliveryRunService.js`,
+  `components/DeliveryRunDispatchSummary.jsx`, `components/DeliveryRunsWorkspacePanel.jsx`,
+  `components/DeliveryRunMembersList.jsx`, `utils/deliveryRunDispatchReasons.js`.
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (2026-09-01 amendment, this
+  phase).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-dispatch.md`.
+
+### Next eligible phase
+
+229.

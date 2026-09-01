@@ -76,6 +76,7 @@ import {
   serializeStorefrontBusinessHours
 } from '../../../packages/web-core/src/features/settings/storefrontBusinessHours.js';
 import StorefrontBusinessHoursScheduler from '../../../packages/web-core/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
+import { evaluateFulfillmentLeadTime } from '../../../packages/web-core/src/features/settings/fulfillmentLeadTime.js';
 import resolveAssetUrl from '../../../packages/web-core/src/utils/assetUrl.js';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../../../packages/web-core/src/utils/phoneNumber.js';
 import { generateReadablePassword, isPasswordLongEnough } from '../../../packages/web-core/src/utils/passwordPolicy.js';
@@ -2395,14 +2396,11 @@ export default function Settings() {
   // handled by the server's previous-state exemption) are both left alone.
   const lastFulfillmentMethodLocked = effectiveCustomerAccessMode === 'transaction'
     && locationForm.supports_delivery !== locationForm.supports_pickup;
-  // #1218: mirrors tenantLocationUseCases.js's assertFulfillmentLeadTimeValid. The server 422s
-  // either way -- this exists so the merchant is told before the round trip, not instead of it.
-  const leadTimeMinRaw = locationForm.fulfillment_lead_time_min_days;
-  const leadTimeMaxRaw = locationForm.fulfillment_lead_time_max_days;
-  const leadTimeRequiredMissing = locationForm.immediate_fulfillment_enabled === false
-    && (leadTimeMinRaw === '' || leadTimeMaxRaw === '');
-  const leadTimeRangeInverted = leadTimeMinRaw !== '' && leadTimeMaxRaw !== ''
-    && Number(leadTimeMaxRaw) < Number(leadTimeMinRaw);
+  // #1218/#1246: mirrors tenantLocationUseCases.js's assertFulfillmentLeadTimeValid via the
+  // shared evaluateFulfillmentLeadTime helper (also used by POS's own copy of this form) rather
+  // than each app hand-rolling the rule. The server 422s either way -- this exists so the
+  // merchant is told before the round trip, not instead of it.
+  const { requiredMissing: leadTimeRequiredMissing, rangeInverted: leadTimeRangeInverted } = evaluateFulfillmentLeadTime(locationForm);
   const customerAccessLimitation = effectiveCustomerAccessMode !== requestedCustomerAccessMode
     ? (settings.customerAccessLimitationReason || `Requested mode is capped at ${maxCustomerAccessMode} mode.`)
     : 'No platform or registration-stage cap is reducing the requested mode.';
