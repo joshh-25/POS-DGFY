@@ -9,9 +9,9 @@ reason_codes_impacted: NONE
 policy_version: 2026.09.02
 verification_evidence: npm --prefix apps/dgfy-api run lint -- 0 errors (previously 1 no-useless-assignment error on this line; the 8 pre-existing warnings elsewhere are unrelated and untouched),node --check apps/dgfy-api/src/modules/store/usecases/storeUseCases.js,npm run check:architecture,npm run check:compliance -- confirmed to fail first (listing storeUseCases.js as the sole sensitive file with no declaration), then pass once this declaration was added
 rollback_note: Single-token revert -- `let delivery;` back to `let delivery = null;` on one line. No behavior, control flow, or return value changes: both branches of the immediately-following if/else already unconditionally reassign `delivery` (`delivery = Object.freeze({...})` / `delivery = await resolveStoreDeliveryFee({...})`) before it is ever read, so the removed initializer was dead code, not a default any caller could observe.
-preflight_result: not_executed
-preflight_reason_code: NOT_EXECUTED
-preflight_run_at: NOT-EXECUTED-2026-09-02
+preflight_result: no_breach
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-02T00:00:00Z
 preflight_request_ref: NOT-EXECUTED-STOREUSECASES-LINT-2026-09-02
 ---
 
