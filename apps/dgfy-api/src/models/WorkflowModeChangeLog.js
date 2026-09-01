@@ -7,7 +7,9 @@ import sequelize from '../config/database.js';
 // change to ops_workflow_mode / ops_enabled_capabilities - written by
 // applyWorkflowModeAuditLog whenever a settings write changes any of them.
 // Phase 16 adds the disabled_capabilities pair alongside the pre-existing
-// enabled_capabilities pair.
+// enabled_capabilities pair. Phase 234 (issue #1327) adds the
+// store_delivery_fee_mode/store_delivery_fee_calc pairs so delivery-pricing
+// settings changes get the same audit trail as a workflow-mode switch.
 const WorkflowModeChangeLog = sequelize.define('WorkflowModeChangeLog', {
     workflow_mode_change_log_id: {
         type: DataTypes.INTEGER,
@@ -43,6 +45,22 @@ const WorkflowModeChangeLog = sequelize.define('WorkflowModeChangeLog', {
         allowNull: true
     },
     to_disabled_capabilities: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    from_store_delivery_fee_mode: {
+        type: DataTypes.STRING(64),
+        allowNull: true
+    },
+    to_store_delivery_fee_mode: {
+        type: DataTypes.STRING(64),
+        allowNull: true
+    },
+    from_store_delivery_fee_calc: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    to_store_delivery_fee_calc: {
         type: DataTypes.JSON,
         allowNull: true
     }

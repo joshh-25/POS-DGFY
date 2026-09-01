@@ -39,7 +39,7 @@ import {
     STORE_PROFILE_READ_SETTING_KEY,
     normalizeStoreProfileReadFlag
 } from '../../shared/constants/storeProfile.js';
-import { applyWorkflowModeAuditLog } from './workflowModeAuditLog.js';
+import { applyWorkflowModeAuditLog, resolveWorkflowModeAuditBeforeValues } from './workflowModeAuditLog.js';
 import logger from '../../../config/logger.js';
 import {
     POS_RECEIPT_METADATA_PENDING_SETTING_KEY,
@@ -407,25 +407,20 @@ export const buildUpdateSettingByKeyUseCase = ({
                 settingsData: { [key]: normalizedValue }
             });
 
-            let workflowModeAuditBeforeValues = null;
+            // Phase 234 (#1327): fetched unconditionally, but cheap for the
+            // common case - resolveWorkflowModeAuditBeforeValues only hits
+            // the DB when `key` is one of the setting keys this audit log
+            // actually tracks, same as updateSettingsUseCase.js's own
+            // unconditional call.
+            const workflowModeAuditBeforeValues = await resolveWorkflowModeAuditBeforeValues({
+                settingsRepository,
+                settingsData: { [key]: normalizedValue }
+            });
             if (
                 key === WORKFLOW_MODE_SETTING_KEY
                 || key === ENABLED_CAPABILITIES_SETTING_KEY
                 || key === DISABLED_CAPABILITIES_SETTING_KEY
             ) {
-                workflowModeAuditBeforeValues = typeof settingsRepository?.getSettingsByKeys === 'function'
-                    ? await settingsRepository.getSettingsByKeys([
-                        WORKFLOW_MODE_SETTING_KEY,
-                        ENABLED_CAPABILITIES_SETTING_KEY,
-                        DISABLED_CAPABILITIES_SETTING_KEY
-                    ])
-                        .then((current) => ({
-                            [WORKFLOW_MODE_SETTING_KEY]: current?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? null,
-                            [ENABLED_CAPABILITIES_SETTING_KEY]: current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? null,
-                            [DISABLED_CAPABILITIES_SETTING_KEY]: current?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value ?? null
-                        }))
-                    : {};
-
                 const patchedSettingsData = await applyStoreProfileShadowWrite({
                     settingsRepository,
                     settingsData: { [key]: normalizedValue }
@@ -442,18 +437,16 @@ export const buildUpdateSettingByKeyUseCase = ({
                 omittedPaths: omittedStorefrontGalleryPaths,
                 storefrontAssetStorage
             });
-            if (workflowModeAuditBeforeValues) {
-                try {
-                    await applyWorkflowModeAuditLog({
-                        settingsData: { [key]: normalizedValue },
-                        beforeValues: workflowModeAuditBeforeValues,
-                        actorUser
-                    });
-                } catch (error) {
-                    logger.warn('[WorkflowModeAudit] failed to record workflow mode change log', {
-                        error: error?.message
-                    });
-                }
+            try {
+                await applyWorkflowModeAuditLog({
+                    settingsData: { [key]: normalizedValue },
+                    beforeValues: workflowModeAuditBeforeValues,
+                    actorUser
+                });
+            } catch (error) {
+                logger.warn('[WorkflowModeAudit] failed to record workflow mode change log', {
+                    error: error?.message
+                });
             }
             return ok(sanitizeSingleSettingForRead({ key, setting: updatedSetting }));
         } catch (error) {
