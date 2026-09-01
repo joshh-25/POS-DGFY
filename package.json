@@ -44,6 +44,8 @@
     "check:agent-surfaces": "node scripts/check-agent-surfaces.js",
     "check:pr-quality-workflow": "node scripts/check-pr-quality-workflow.js",
     "test:pr-quality-workflow": "node --test scripts/check-pr-quality-workflow.test.js",
+    "check:runner-routing": "node scripts/check-runner-routing.js",
+    "test:runner-routing": "node --test scripts/check-runner-routing.test.js",
     "test:compat-seams": "node --test scripts/check-compat-seams.test.js",
     "test:conduct-model-slot": "node --test scripts/conduct-model-slot.test.js",
     "test:conduct-cleanup-policy": "node --test scripts/conduct-cleanup-policy.test.js",
