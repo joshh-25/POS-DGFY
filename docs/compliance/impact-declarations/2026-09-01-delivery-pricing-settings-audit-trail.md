@@ -11,8 +11,8 @@ verification_evidence: node --check on every changed apps/dgfy-api .js file and 
 rollback_note: Revert this commit. Additive-only -- the four new workflow_mode_change_log columns are nullable with no backfill, and the new migration's down() drops them cleanly if reverted. No existing settings-write behavior changes: the audit log write happens after the underlying setting write already succeeded, and a logging failure is caught and warned, never surfaced to the caller (unchanged from the existing ops_workflow_mode/capabilities behavior this extends).
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1327-DELIVERY-PRICING-SETTINGS-AUDIT-TRAIL
+preflight_run_at: 2026-09-01T15:00:53.193Z
+preflight_request_ref: PREFLIGHT-33522670635-2026-09-01-DELIVERY-PRICING-SETTINGS-AUDIT-TRAIL
 ---
 
 # Delivery-pricing settings audit trail (#1327, Phase 234)

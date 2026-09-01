@@ -12,8 +12,8 @@ verification_evidence: node --check on every changed apps/dgfy-api file (8 files
 rollback_note: Revert this PR's diff. No migration, no schema change -- the mutation writes only to pre-existing pos_transactions columns (delivery_fee, total_amount, balance_due) and the pre-existing audit_logs table via the pre-existing posRepository.createAuditLog path. Reverting removes the new PATCH /api/v1/pos/transactions/:id/delivery-fee route, the new OVERRIDE_DELIVERY_FEE permission, and its 5 mode-role-preset grants; no persisted row references any new column or table, so no backfill or data migration is needed on rollback.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1330-2026-09-01-STAFF-DELIVERY-FEE-OVERRIDE
+preflight_run_at: 2026-09-01T15:00:53.194Z
+preflight_request_ref: PREFLIGHT-33522670635-2026-09-01-STAFF-DELIVERY-FEE-OVERRIDE
 ---
 
 # Staff delivery-fee override, unsettled payment only (Phase 238, #1330)

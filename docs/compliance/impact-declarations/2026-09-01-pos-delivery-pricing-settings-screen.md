@@ -11,8 +11,8 @@ verification_evidence: packages/web-core/src/features/settings/__tests__/deliver
 rollback_note: No backend change, no new endpoint, no schema/migration change -- reads and writes the exact same store_delivery_fee/store_delivery_fee_mode/store_delivery_fee_calc EAV settings keys Phase 233 (#1324) already validates and Phase 234 (#1327) already audits. Adds one new POS tab (frontend-only, hidden behind settings:edit) and one new standalone card component plus one new shared pure helper module; both are additive and unreferenced by any other surface. Reverting this commit set removes the new POS tab/card/shared-helper files and the small SETTINGS_TABS/render-switch edit in TerminalOperationsWorkspace.jsx; IMS's own Settings.jsx (the pre-existing entry point) is completely untouched, so delivery pricing stays configurable from IMS regardless.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1341-POS-DELIVERY-PRICING-SETTINGS-SCREEN
+preflight_run_at: 2026-09-01T15:00:53.194Z
+preflight_request_ref: PREFLIGHT-33522670635-2026-09-01-POS-DELIVERY-PRICING-SETTINGS-SCREEN
 ---
 
 # POS-side Delivery Pricing settings screen (Phase 233b, #1341)
