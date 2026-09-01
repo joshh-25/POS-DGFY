@@ -12,6 +12,11 @@ const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/Term
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const terminalOperationsPanelsPath = path.resolve(__dirname, '../components/TerminalOperationsPanels.jsx');
+// Phase 231 (#1289), §2.7: the split view's order-card grid (payment status, print actions, the
+// empty-queue lifecycle copy) lives in this pure extraction, used only by the split view now that
+// Phase 230 (#1288, below) reverted the tab view's own card rendering back to inline. A handful of
+// this file's assertions target that content directly and read this file for it.
+const incomingQueueOrderListPath = path.resolve(__dirname, '../components/IncomingQueueOrderList.jsx');
 // Phase 230 (#1288) extracted the incoming-queue per-order action-button construction out of
 // TerminalOperationsPanels.jsx into this shared, behavior-preserving pure function (reused by the
 // new table view mode too) -- concatenated into terminalOperationsPanelsContent below, same
@@ -45,6 +50,7 @@ describe('POS terminal view-mode contracts', () => {
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
   let terminalOperationsPanelsContent = '';
+  let incomingQueueOrderListContent = '';
   let posTenantSetupModalContent = '';
   let posReportsAnalyticsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
@@ -74,6 +80,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalOperationsPanelsContent = [terminalOperationsPanelsPath, incomingQueueOrderActionsPath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
+    incomingQueueOrderListContent = fs.readFileSync(incomingQueueOrderListPath, 'utf8');
     posTenantSetupModalContent = fs.readFileSync(posTenantSetupModalPath, 'utf8');
     posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
     posCheckoutTerminalContent = [posCheckoutTerminalPath, posCheckoutTerminalViewPath, posDiscountWorkspacePath]
@@ -572,13 +579,14 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps receipt print state out of online-order detail panels', () => {
-    for (const source of [terminalOperationsPanelsContent, terminalSidebarPanelContent]) {
+    for (const source of [terminalOperationsPanelsContent, incomingQueueOrderListContent, terminalSidebarPanelContent]) {
       expect(source).not.toContain('Not printed');
       expect(source).not.toContain('Print failed');
       expect(source).not.toContain('Receipt: <span');
     }
-    expect(terminalOperationsPanelsContent).toContain('Payment Status');
-    expect(terminalOperationsPanelsContent).toContain('Print Receipt');
+    // Phase 229 (#1289), §2.7: this content moved into IncomingQueueOrderList.jsx's pure extraction.
+    expect(incomingQueueOrderListContent).toContain('Payment Status');
+    expect(incomingQueueOrderListContent).toContain('Print Receipt');
     expect(terminalSidebarPanelContent).toContain('Payment:');
     expect(terminalSidebarPanelContent).toContain('Print Receipt');
   });
@@ -594,7 +602,9 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain('Active Queue');
     expect(terminalOperationsPanelsContent).toContain('Order History');
     expect(terminalOperationsPanelsContent).toContain('Rejected, cancelled, and unpaid online orders');
-    expect(terminalOperationsPanelsContent).toContain('Completed paid sales move to Sales History.');
+    // Phase 229 (#1289), §2.7: the empty-queue lifecycle copy moved into
+    // IncomingQueueOrderList.jsx's pure extraction.
+    expect(incomingQueueOrderListContent).toContain('Completed paid sales move to Sales History.');
     expect(terminalOperationsPanelsContent).toContain('Previous order history page');
     expect(terminalOperationsPanelsContent).toContain('Next order history page');
     expect(terminalOperationsPanelsContent).toContain("if (activeView !== 'history') return;");
@@ -616,9 +626,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('posHardware.printOrderTicket({');
     expect(terminalPageContent).toContain('printOrder = false');
     expect(terminalPageContent).toContain('await printOnlineOrderKitchenTicket(detail);');
-    expect(terminalOperationsPanelsContent).toContain("utilityActions.includes('print_receipt')");
-    expect(terminalOperationsPanelsContent).toContain("{ printOrder: true }");
-    expect(terminalOperationsPanelsContent).toContain("'Print Order'");
+    // Phase 229 (#1289), §2.7: moved into IncomingQueueOrderList.jsx's pure extraction.
+    expect(incomingQueueOrderListContent).toContain("utilityActions.includes('print_receipt')");
+    expect(incomingQueueOrderListContent).toContain("{ printOrder: true }");
+    expect(incomingQueueOrderListContent).toContain("'Print Order'");
     expect(terminalSidebarPanelContent).toContain("utilityActions.includes('print_receipt')");
     expect(terminalSidebarPanelContent).toContain("{ printOrder: true }");
     expect(terminalSidebarPanelContent).toContain("'Print Order'");
@@ -627,10 +638,11 @@ describe('POS terminal view-mode contracts', () => {
   it('guards incoming queue receipt action with opening lock and lifecycle guidance copy', () => {
     expect(terminalPageContent).toContain('const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);');
     expect(terminalPageContent).toContain('if (incomingReceiptOpeningId !== null) return;');
-    expect(terminalOperationsPanelsContent).toContain('Opening...');
-    expect(terminalOperationsPanelsContent).toContain('Retry Print');
-    expect(terminalOperationsPanelsContent).toContain('Print Receipt');
-    expect(terminalOperationsPanelsContent).toContain('Reprint Receipt');
+    // Phase 229 (#1289), §2.7: moved into IncomingQueueOrderList.jsx's pure extraction.
+    expect(incomingQueueOrderListContent).toContain('Opening...');
+    expect(incomingQueueOrderListContent).toContain('Retry Print');
+    expect(incomingQueueOrderListContent).toContain('Print Receipt');
+    expect(incomingQueueOrderListContent).toContain('Reprint Receipt');
     expect(terminalPageContent).toContain('retryPrint = false');
     expect(terminalSidebarPanelContent).toContain('Completed or cancelled online orders move to History/Receipt Preview.');
   });
@@ -683,11 +695,16 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain("const [orderSort, setOrderSort] = React.useState('newest');");
     expect(terminalOperationsPanelsContent).toContain('aria-label="Sort incoming orders"');
     expect(terminalOperationsPanelsContent).toContain('<option value="oldest">Oldest first</option>');
-    // Phase 231 (#1290): the grid now maps over visibleIncomingOrders (the run-filtered view of
-    // sortedIncomingOrders), not sortedIncomingOrders directly -- sortedIncomingOrders itself is
-    // still the sort's own output, feeding the filter rather than the render.
+    // Phase 231 (#1290): the tab view's grid maps over visibleIncomingOrders (the run-filtered
+    // view of sortedIncomingOrders), not sortedIncomingOrders directly -- sortedIncomingOrders
+    // itself is still the sort's own output, feeding the filter rather than the render.
     expect(terminalOperationsPanelsContent).toContain('{visibleIncomingOrders.map((order) => {');
     expect(terminalOperationsPanelsContent).toContain('incomingOrders.length === 0 ? (');
+    // Phase 232 (#1289), §2.7: the split view's own render of the (also now run-filtered) list --
+    // including its own empty-state branch -- lives in IncomingQueueOrderList.jsx's pure
+    // extraction; see terminalOperationsPanelsContent above for the tab view's own render.
+    expect(terminalOperationsPanelsContent).toContain('orders={visibleIncomingOrders}');
+    expect(incomingQueueOrderListContent).toContain('orders.length === 0');
   });
 
   it('keeps completed receipt history out of the active queue', () => {

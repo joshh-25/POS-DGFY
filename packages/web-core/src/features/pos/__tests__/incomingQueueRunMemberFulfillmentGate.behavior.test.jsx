@@ -5,6 +5,11 @@
 // completed or been cancelled, scoped to `out_for_delivery` only (never `packed`, which would
 // deadlock Phase 228's DELIVERY_RUN_UNPACKED_MEMBERS dispatch precondition), and re-enabled once
 // the run is cancelled (no dead end).
+//
+// PR #1305 re-review RF-7: this gate lives inside the exact order-card block Phase 230 (#1289)
+// extracted into IncomingQueueOrderList.jsx, shared by both the tab view (below) and the new
+// split ("Queue + Run") view -- the second describe block confirms the gate survived that
+// extraction in the split view too, not just the tab view.
 
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -30,6 +35,24 @@ vi.mock('sonner', () => ({
     warning: vi.fn()
   }
 }));
+
+// jsdom has no matchMedia -- default to "wide enough for split" (matches: true), same helper
+// deliveryRunSplitViewDnd.behavior.test.jsx uses for the split tab's >=1280px viewport gate.
+const installMatchMedia = (matches) => {
+  const listeners = new Set();
+  const mql = {
+    matches,
+    media: '',
+    addEventListener: (_type, handler) => listeners.add(handler),
+    removeEventListener: (_type, handler) => listeners.delete(handler),
+    dispatchChange: (nextMatches) => {
+      mql.matches = nextMatches;
+      listeners.forEach((handler) => handler({ matches: nextMatches }));
+    }
+  };
+  window.matchMedia = vi.fn().mockReturnValue(mql);
+  return mql;
+};
 
 const buildOrder = (overrides = {}) => ({
   pos_transaction_id: 9001,
@@ -95,6 +118,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  installMatchMedia(true);
   fetchDeliveryRuns.mockResolvedValue({ items: [], pagination: { total: 0, page: 1, limit: 100 } });
   fetchDeliveryRun.mockResolvedValue(null);
   addDeliveryRunMembers.mockResolvedValue({ added: [], skipped: [] });
@@ -180,5 +204,40 @@ describe('Run-member fulfillment gate', () => {
       { name: /delivery run "Morning Run".*Dispatch it from the Delivery Runs tab/i }
     );
     expect(button.disabled).toBe(true);
+  });
+});
+
+// PR #1305 re-review RF-7: the split ("Queue + Run") view renders the same
+// IncomingQueueOrderList/OrderCard extraction as the tab view above -- confirms the gate is
+// present there too, not just in the default tab view, after the rebase ported it into the
+// extracted file.
+describe('Run-member fulfillment gate (split view)', () => {
+  it('disables "Out for Delivery" with an explanatory tooltip for a packed order in a dispatched run, in the split view', async () => {
+    const order = withRun(buildOrder({ fulfillment_status: 'packed' }), 'dispatched');
+    render(<IncomingQueueWorkspace {...baseProps({
+      workflowMode: 'retail',
+      incomingOrdersState: { orders: [order], accessState: 'allowed', errorMessage: '' }
+    })} />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Queue \+ Run/i }));
+
+    const button = await screen.findByRole(
+      'button',
+      { name: /delivery run "Morning Run".*Dispatch it from the Delivery Runs tab/i }
+    );
+    expect(button.disabled).toBe(true);
+    expect(button.title).toMatch(/delivery run "Morning Run".*Dispatch it from the Delivery Runs tab/i);
+  });
+
+  it('enables "Out for Delivery" for a packed delivery order with no run, in the split view', async () => {
+    render(<IncomingQueueWorkspace {...baseProps({
+      workflowMode: 'retail',
+      incomingOrdersState: { orders: [buildOrder()], accessState: 'allowed', errorMessage: '' }
+    })} />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Queue \+ Run/i }));
+
+    const button = await screen.findByRole('button', { name: /Out for Delivery/i });
+    expect(button.disabled).toBe(false);
   });
 });

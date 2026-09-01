@@ -15412,6 +15412,150 @@ Phase 227/228's `GET /pos/delivery-runs` consumers (`DeliveryRunsWorkspacePanel.
 - `docs/compliance/impact-declarations/2026-09-01-pos-active-queue-delivery-run-filter.md`.
 - `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (new subsection, this phase).
 
+## Phase 232 - Active Queue + Delivery Run split view with drag-and-drop assignment (#1289)
+
+### Initiative and release
+
+In-app split view for the POS terminal's Incoming Online Queue: a 4th "Queue + Run" tab that shows
+the Active Queue and a narrow delivery-run drop panel side by side, with drag-and-drop as an
+additive path onto Phase 227's existing checkbox + `QueueRunAssignBar` bulk-add flow. Independent
+of the #1273 track (Phases 224-228, closed) -- reuses that track's API/UI surfaces without
+modifying any of them beyond one additive parameter. Two-tab alternative investigated and
+explicitly rejected (plan §0-§1): drag-and-drop cannot cross a tab/window boundary, and the
+packaged Electron POS surface is single-window (`webContents.setWindowOpenHandler` denies a second
+window), so a two-tab workaround structurally cannot deliver the drag half of #1289.
+
+### Objective and scope
+
+Build the split view + drag-to-assign in-app, per the plan's §2 design decisions and §3 file
+inventory. Zero `apps/dgfy-api` changes -- frontend-only, reusing the existing
+`addDeliveryRunMembers` write path Phase 227 already calls. Out of scope, filed separately as
+issue #1300 by the conducting session (not re-filed or folded in here): the POS terminal
+lock/cart-draft cross-tab synchronization gap found during the two-tab investigation (plan §1.3).
+
+### Status
+
+`completed` for the split-view/drag-to-assign surface; the live acceptance walk (deployed tenant --
+drag a real order onto a real run, confirm the same server-side add path Phase 227 already exercises)
+was **not** run -- no deployed tenant reachable in this environment. All Vitest coverage passes
+against mocked `@dnd-kit/core` and mocked `deliveryRunService`; the live walk is outstanding
+acceptance evidence, not omitted, same posture as every prior phase in this track (224-228).
+
+### Dependencies
+
+Builds on Phase 226's tab-list pattern, Phase 227's eligibility/idempotency/selection patterns
+and `QueueRunAssignBar.jsx`, and Phase 225's `addDeliveryRunMembers` API -- reuses all three
+unmodified beyond the one additive `handleBulkAssignSubmit` parameter. Rebased onto develop three
+times, after Phase 229 (#1291), Phase 230 (#1288), and Phase 231 (#1290) each merged first in turn
+-- see "Rebase note" below for the conflict resolution this required, including reconciling
+#1290's new run-filter state (`runFilter`/`visibleIncomingOrders`) into the split view.
+
+### Acceptance and validation evidence
+
+- [x] `npm run build:pos` -- real Vite build, OK.
+- [x] `npm run build:skupervisor` -- also required (a `packages/web-core` change; `apps/dgfy-ims`
+  lazily imports the same `TerminalPage.jsx` tree via `packages/web-core`), OK.
+- [x] No `package.json` touched (`@dnd-kit/core`/`@dnd-kit/utilities` already present in all three
+  frontend apps) -- no lockfile step needed.
+- [x] New `packages/web-core/src/features/pos/utils/__tests__/queueRunDropAssignment.test.js` --
+  actually executed (Vitest via `apps/dgfy-ims`), 9/9 passing: single-card drag vs. whole-selection
+  multi-drag, an ineligible card dropped from a multi-drag selection, `null` on an ineligible
+  single drag / no picked target run / an unresolvable drag id, and numeric never-index ids sorted
+  ascending.
+- [x] New `packages/web-core/src/features/pos/__tests__/deliveryRunSplitViewDnd.behavior.test.jsx`
+  -- actually executed (Vitest via `apps/dgfy-ims`, `@dnd-kit/core` mocked per the plan's own risk
+  table), 8/8 passing: the split tab's retail + >=1280px gate, the mode-flip reset, `onDragEnd`
+  calling `addDeliveryRunMembers` once with the expected ids and idempotency key, key
+  retention/regeneration on the drag path, no call on an invalid drop target, drag disablement
+  under `locked`, and the checkbox + `QueueRunAssignBar` path still working inside the split panel.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryRunBulkAssign.behavior.test.jsx`,
+  `__tests__/deliveryRunsWorkspace.behavior.test.jsx` -- re-run unmodified against the
+  `IncomingQueueOrderList.jsx` extraction and the changed `handleBulkAssignSubmit` signature, no
+  regressions (per §2.7's own "must pass unmodified" requirement).
+- [x] `packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js` -- a
+  pre-existing raw-source-string contract test with several assertions whose target content moved
+  into `IncomingQueueOrderList.jsx` by the extraction; updated to read that file where the content
+  actually now lives (no assertion's meaning changed) and re-run, all passing.
+- [x] `packages/web-core/src/features/pos/__tests__/incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`
+  -- extended with two split-view cases during this rebase (PR #1305 re-review RF-7), confirming
+  Phase 229's (#1291) run-member fulfillment gate survived the `IncomingQueueOrderList.jsx`
+  extraction in both the tab view and the new split view; 8/8 passing.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryRunQueueFilter.behavior.test.jsx` --
+  re-run unmodified post-rebase; the split view renders `visibleIncomingOrders` (Phase 231's/#1290's
+  filtered list) rather than the unfiltered `sortedIncomingOrders`, same as the tab view.
+- [x] Full `apps/dgfy-ims` Vitest suite re-run in full post-rebase -- all passing, no regressions.
+- [x] `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs` -- all OK.
+- [x] `npm run check:compliance` -- confirmed to fail without the declaration, pass once it was
+  added; re-verified in CI mode (`GITHUB_BASE_REF=develop`) against the final merge commit,
+  correctly scoped to this branch's own diff.
+- [ ] Live acceptance walk (deployed tenant) -- **not run**, no deployed tenant database reachable
+  in this environment. Named as outstanding rather than omitted, same posture as every prior phase
+  in the #1273 track this phase builds on.
+
+### Rebase note (#1305 re-review RF-5 through RF-8, three passes)
+
+Phase 229 was claimed by this initiative and #1291's fulfillment-gate fix; #1291 (PR #1302) merged
+first and took 229, renumbering this entry to 230. Before that push landed, #1288 (PR #1304, the
+view-mode toggle) also merged and took 230, renumbering this entry to 231. Before *that* push
+landed, #1290 (PR #1303, the delivery-run filter) also merged and took 231. Renumbered a third time
+to 232 -- the next-free number re-confirmed against `develop` immediately before the final push.
+
+Three rebase passes, of increasing scope:
+
+1. **First pass (#1291).** Real conflicts in this file and in `TerminalOperationsPanels.jsx`,
+   resolved by porting #1291's run-member fulfillment gate (`getActiveRunMembership`,
+   `gatedByActiveRun`/`runGateReason` on the `out_for_delivery` button) into
+   `IncomingQueueOrderList.jsx`, the file this phase's own §2.7 extraction had cut *before* #1291's
+   gate existed on `develop`.
+2. **Second pass (#1288).** Not mechanical -- #1288 did its own overlapping extraction of the same
+   order-card rendering (a shared `utils/incomingQueueOrderActions.js` action-builder plus a new
+   table-view toggle, keeping the card JSX inline in `TerminalOperationsPanels.jsx`), while this
+   phase had extracted the same JSX into a standalone `IncomingQueueOrderList.jsx` component.
+   Reconciled by letting #1288's now-canonical structure win for the tab view (its inline card
+   block, using its own `buildIncomingQueueOrderActions`, which #1288's own rebase had already
+   ported #1291's gate into) and keeping `IncomingQueueOrderList.jsx` only for this phase's split
+   view. Consolidated the resulting duplicate formatting-helpers file onto #1288's
+   `utils/incomingQueueOrderFormatting.js`, deleting this phase's own `utils/orderListFormatting.js`.
+   Restored three component imports (`DeliveryAssignmentControl`, `DeliveryAddressEditControl`,
+   `QueueOrderSelectCheckbox`) the extraction had dropped as unused, but which the reinstated
+   inline tab-view block still needs -- caught by a full test-suite run after the merge.
+3. **Third pass (#1290).** Additive, not structural, but not purely mechanical either -- #1290
+   added `runFilter` state and a `visibleIncomingOrders` derived list to `IncomingQueueWorkspace`,
+   re-deriving `selectedEligibleOrders`/`selectedDriftCount` against the filtered list rather than
+   the raw `sortedIncomingOrders`, and lifted `QueueRunAssignBar.jsx`'s own delivery-run fetch out
+   into a new shared `useDeliveryRunOptions` hook (`runs`/`runsLoading`/`runsError` now arrive as
+   props instead). The split view (built against `sortedIncomingOrders` and the bar's old
+   self-fetching shape, since neither the filter nor the hook existed yet) is switched to render
+   `visibleIncomingOrders` too (so a filtered-out order cannot be dropped onto a run from the split
+   panel while hidden from the tab view -- the same correctness property #1290's own ledger entry
+   names as its "correctness crux" for the tab view), and its own `QueueRunAssignBar` call site is
+   updated to pass the new `runs`/`runsLoading`/`runsError`/`hiddenCount` props (and
+   `selectedCount={visibleSelectedCount}`, matching the tab view) -- missed on the first resolution
+   pass and caught by `deliveryRunSplitViewDnd.behavior.test.jsx`'s "still submits via
+   QueueRunAssignBar unchanged" case failing (`runs` defaulting to `[]` left the target-run picker
+   permanently empty, so nothing was ever eligible to submit).
+
+Verified explicitly, after all three passes, that #1291's gate is present and working in **both**
+the tab view (via #1288's `buildIncomingQueueOrderActions`) and this phase's split view (via the
+gate ported into `IncomingQueueOrderList.jsx`) through
+`incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`'s two describe blocks, and that #1290's
+run filter narrows the split view's drop-eligible orders the same way it narrows the tab view's.
+
+### Links
+
+- Tracking issue: #1289. Out-of-scope finding filed separately: #1300 (terminal lock/cart-draft
+  cross-tab sync gap, not part of this phase's scope).
+- `packages/web-core/src/features/pos/components/DeliveryRunDropPanel.jsx` (new),
+  `components/IncomingQueueOrderList.jsx` (new, extraction; used by the split view only after the
+  second rebase pass; also carries Phase 229's (#1291) run-member fulfillment gate, ported in
+  during this rebase),
+  `utils/queueRunDropAssignment.js` (new),
+  `components/TerminalOperationsPanels.jsx` (modified), `components/DeliveryRunMembersList.jsx`
+  (modified, new `readOnly` prop).
+- `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (cited, not amended -- no new
+  write path, see the compliance declaration's Compliance Impact Classification section).
+- `docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-split-view-dnd.md`.
+
 ### Next eligible phase
 
-232.
+233.

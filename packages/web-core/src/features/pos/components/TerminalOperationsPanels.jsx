@@ -1,6 +1,7 @@
 import React from 'react';
 import { toast } from 'sonner';
-import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Truck, Search, Table2, LayoutGrid } from 'lucide-react';
+import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
@@ -12,12 +13,16 @@ import {
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
+import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
+import DeliveryRunDropPanel from './DeliveryRunDropPanel.jsx';
 import QueueRunAssignBar from './QueueRunAssignBar.jsx';
 import QueueRunFilterControl from './QueueRunFilterControl.jsx';
-import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
+import IncomingQueueOrderList from './IncomingQueueOrderList.jsx';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
 import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
+import { resolveRunDropAssignment } from '../utils/queueRunDropAssignment.js';
+import { IMIN_TABLET_MAX_WIDTH_PX } from '../utils/posTabletViewport.js';
 import { QUEUE_RUN_FILTER_ALL, QUEUE_RUN_FILTER_UNASSIGNED, filterOrdersByRun, getQueueRunFilterOptions } from '../utils/deliveryRunQueueFilter.js';
 import useDeliveryRunOptions from '../hooks/useDeliveryRunOptions.js';
 import {
@@ -38,6 +43,35 @@ import QueueOrderTableView from './QueueOrderTableView.jsx';
 import { normalizeWorkflowMode } from '../../settings/workflowMode.js';
 
 const createIdempotencyKey = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
+
+// Phase 229 (#1289), §2.6. Split-tab viewport gate as a CSS media query, matching the primary POS
+// hardware constraint the plan documents against `posTabletViewport.js` (Falcon 1 @ 1280 landscape)
+// without reimplementing that util -- it answers a different question (is this a POS tablet at
+// all) than this gate does (is there *physically enough width* for two panels side by side).
+const SPLIT_VIEW_MEDIA_QUERY = `(min-width: ${IMIN_TABLET_MAX_WIDTH_PX}px)`;
+
+function useSplitViewportEligible() {
+  const [isEligible, setIsEligible] = React.useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia(SPLIT_VIEW_MEDIA_QUERY).matches;
+  });
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mediaQueryList = window.matchMedia(SPLIT_VIEW_MEDIA_QUERY);
+    const handleChange = (event) => setIsEligible(event.matches);
+    setIsEligible(mediaQueryList.matches);
+    if (typeof mediaQueryList.addEventListener === 'function') {
+      mediaQueryList.addEventListener('change', handleChange);
+      return () => mediaQueryList.removeEventListener('change', handleChange);
+    }
+    // Legacy Safari fallback -- addListener/removeListener predate addEventListener on MediaQueryList.
+    mediaQueryList.addListener(handleChange);
+    return () => mediaQueryList.removeListener(handleChange);
+  }, []);
+
+  return isEligible;
+}
 
 function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
   const isIncomingQueue = title === 'Incoming Online Queue';
@@ -64,7 +98,7 @@ function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
   );
 }
 
-function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDeliveryRuns = false, runCount = null }) {
+function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDeliveryRuns = false, runCount = null, showSplitView = false }) {
   const tabs = [
     {
       key: 'active',
@@ -87,6 +121,17 @@ function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, s
       label: 'Delivery Runs',
       count: runCount,
       icon: Truck
+    });
+  }
+  // Phase 229 (#1289), §2.4: a 4th view, not a replacement of the tabbed arrangement -- gated by
+  // the caller on retail mode AND viewport width (§2.6), same "caller decides, this just renders"
+  // contract as showDeliveryRuns above.
+  if (showSplitView) {
+    tabs.push({
+      key: 'split',
+      label: 'Queue + Run',
+      count: null,
+      icon: Columns
     });
   }
 
@@ -449,6 +494,21 @@ function IncomingQueueWorkspace({
   const [bulkAssignSubmitting, setBulkAssignSubmitting] = React.useState(false);
   const activeShiftLocationId = shiftState?.shift?.location_id ?? null;
 
+  // Phase 229 (#1289), §2.4/§2.6: the split view's own viewport gate + drag state. Sensors are
+  // built once per mount, ItemsPage.jsx precedent (§2.3) -- PointerSensor with an activation
+  // distance so a plain click still fires onClick instead of starting a drag, TouchSensor for
+  // tablets.
+  const isSplitViewportEligible = useSplitViewportEligible();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+  );
+  const [activeDragOrderId, setActiveDragOrderId] = React.useState(null);
+  // §2.9: bumped after every successful handleBulkAssignSubmit (drag- or checkbox-driven) so
+  // DeliveryRunDropPanel's own picked-run detail refetches when its shown run may have just
+  // gained members.
+  const [runDropRefreshTick, setRunDropRefreshTick] = React.useState(0);
+
   // Phase 231 (#1290) correctness crux: re-derived against visibleIncomingOrders (the FILTERED
   // list), not sortedIncomingOrders. Without this, an order selected before the run filter was
   // applied would still be eligible-and-submitted by handleBulkAssignSubmit while invisible on
@@ -501,7 +561,12 @@ function IncomingQueueWorkspace({
   // different selection is a new logical submit and gets a fresh key).
   const bulkAssignSubmitRef = React.useRef({ key: null, signature: null });
 
-  const handleBulkAssignSubmit = async (targetRunId) => {
+  // Phase 229 (#1289), §2.9: `explicitOrderIds` lets a drag (single unselected card, or the whole
+  // checkbox selection when the dragged card is part of it) supply its own id set instead of the
+  // closure's `selectedEligibleOrders` -- everything else (idempotency signature, the 409 recovery
+  // loop, refreshIncomingOrders()) is reused verbatim. QueueRunAssignBar's own call site passes
+  // just one argument, so `explicitOrderIds` defaults to null and this is fully backward-compatible.
+  const handleBulkAssignSubmit = async (targetRunId, explicitOrderIds = null) => {
     if (!isOnline) {
       toast.error('Reconnect before adding orders to a run.');
       return false;
@@ -510,9 +575,17 @@ function IncomingQueueWorkspace({
       toast.error('Open a shift before adding orders to a run.');
       return false;
     }
-    const sortedSelectedIds = selectedEligibleOrders
-      .map((order) => Number(order.pos_transaction_id))
-      .sort((left, right) => left - right);
+    const sortedSelectedIds = Array.isArray(explicitOrderIds)
+      ? explicitOrderIds
+        .map((id) => Number(id))
+        .filter((id) => {
+          const order = sortedIncomingOrders.find((candidate) => Number(candidate?.pos_transaction_id) === id);
+          return Boolean(order) && getRunAssignEligibility(order, {}).eligible;
+        })
+        .sort((left, right) => left - right)
+      : selectedEligibleOrders
+        .map((order) => Number(order.pos_transaction_id))
+        .sort((left, right) => left - right);
     if (sortedSelectedIds.length === 0) {
       toast.error('Select at least one eligible order first.');
       return false;
@@ -542,6 +615,7 @@ function IncomingQueueWorkspace({
         sortedSelectedIds.forEach((id) => next.delete(id));
         return next;
       });
+      setRunDropRefreshTick((tick) => tick + 1);
       await refreshIncomingOrders?.();
       return true;
     } catch (error) {
@@ -571,6 +645,31 @@ function IncomingQueueWorkspace({
       setBulkAssignSubmitting(false);
     }
   };
+
+  // Phase 229 (#1289), §2.8-2.10: the split view's DndContext handlers. The multi-drag-vs-single
+  // decision itself lives in the pure `resolveRunDropAssignment` util (testable without a real
+  // pointer drag); these handlers just wire dnd-kit's events to it and to the existing
+  // handleBulkAssignSubmit. `active.id`/`over.id` are always the numeric pos_transaction_id /
+  // delivery_run_id -- never an index (§2.10).
+  const handleQueueDragStart = (event) => {
+    setActiveDragOrderId(Number(event?.active?.id));
+  };
+
+  const handleQueueDragEnd = async (event) => {
+    setActiveDragOrderId(null);
+    // Phase 231 (#1290): resolved against visibleIncomingOrders (the run-filtered list), not
+    // sortedIncomingOrders -- the split view only ever renders/drags visible cards (below), and a
+    // stale drag id from before a filter change must not resolve against a now-hidden order.
+    const assignment = resolveRunDropAssignment({
+      activeOrderId: event?.active?.id,
+      overRunId: event?.over?.id,
+      selectedOrderIds,
+      orders: visibleIncomingOrders
+    });
+    if (!assignment) return;
+    await handleBulkAssignSubmit(assignment.targetRunId, assignment.orderIds);
+  };
+
   // Phase 144 (#824): the reject dialog renders outside the per-order .map, so it only ever held
   // an id. Resolving the order back out of the list lets the copy state the ACTUAL amount at
   // stake instead of the old unconditional "DGFY will request a full refund", which on a
@@ -582,6 +681,40 @@ function IncomingQueueWorkspace({
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hasActiveShift = Boolean(shiftState?.shift);
+
+  // Phase 232 review RF-2 (#1305): the access/error/shift_required/loading ladder used to live only
+  // inline in the default (tab) branch below, so the split branch skipped it entirely and rendered
+  // a failed poll as an indistinguishable "no orders" empty state with no recovery. Extracted so
+  // both branches share the exact same ladder and can never drift apart again.
+  const queueAccessNotice = (() => {
+    if (!canViewPos || incomingOrdersAccessState === 'forbidden') {
+      return (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          {incomingOrdersErrorMessage || 'You need POS view permission to access incoming online orders.'}
+        </p>
+      );
+    }
+    if (incomingOrdersAccessState === 'error') {
+      return (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {incomingOrdersErrorMessage || 'Failed to load incoming online orders. Try refreshing.'}
+        </p>
+      );
+    }
+    if (incomingOrdersAccessState === 'shift_required') {
+      return (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {incomingOrdersErrorMessage || 'Open a shift to view orders for this branch.'}
+        </p>
+      );
+    }
+    if (incomingOrdersState?.loading && incomingOrders.length === 0) {
+      return (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading incoming orders...</p>
+      );
+    }
+    return null;
+  })();
   const selectedLocationName = !queueLocationScopeId
     ? 'Not selected'
     : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
@@ -596,15 +729,19 @@ function IncomingQueueWorkspace({
   // braces alongside the isRetailMode guard on the render branch itself below.
   // Phase 227: a bulk-add selection is a retail-only concept -- clear it here too so it never
   // survives a flip into F&B mode.
+  // Phase 229 (#1289), §2.4/§2.6: 'split' is gated the same way as 'runs' (retail-only), plus its
+  // own viewport gate -- a stale activeView === 'split' must never render the panel once the
+  // window narrows below the split threshold either (e.g. a POS window resize).
   // Phase 231 (#1290): the run filter is retail-only too (D-3) -- clear it on the same mode-flip
   // so it never survives into F&B mode either.
   React.useEffect(() => {
-    if (activeView === 'runs' && !isRetailMode) setActiveView('active');
+    if ((activeView === 'runs' || activeView === 'split') && !isRetailMode) setActiveView('active');
+    if (activeView === 'split' && !isSplitViewportEligible) setActiveView('active');
     if (!isRetailMode) {
       setSelectedOrderIds(new Set());
       setRunFilter(QUEUE_RUN_FILTER_ALL);
     }
-  }, [activeView, isRetailMode]);
+  }, [activeView, isRetailMode, isSplitViewportEligible]);
 
   if (activeView === 'history') {
     return (
@@ -616,6 +753,7 @@ function IncomingQueueWorkspace({
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
           showDeliveryRuns={isRetailMode}
           runCount={deliveryRunCount}
+          showSplitView={isRetailMode && isSplitViewportEligible}
         />
         <OnlineOrderHistoryPanel
           canViewPos={canViewPos}
@@ -640,6 +778,7 @@ function IncomingQueueWorkspace({
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
           showDeliveryRuns={isRetailMode}
           runCount={deliveryRunCount}
+          showSplitView={isRetailMode && isSplitViewportEligible}
         />
         <DeliveryRunsWorkspacePanel
           canViewPos={canViewPos}
@@ -656,6 +795,143 @@ function IncomingQueueWorkspace({
     );
   }
 
+  // Phase 229 (#1289), §2.4-2.9: the 4th "Queue + Run" view -- gated on both retail mode and the
+  // >=1280px viewport (the reset effect above already guards against a stale activeView here, this
+  // is belt + braces on the render branch itself, matching the 'runs' branch's own pattern).
+  if (activeView === 'split' && isRetailMode && isSplitViewportEligible) {
+    const dragDisabled = !canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting;
+    const activeDragOrder = activeDragOrderId !== null
+      ? visibleIncomingOrders.find((order) => Number(order?.pos_transaction_id) === activeDragOrderId)
+      : null;
+    const activeDragIsMultiDrag = activeDragOrderId !== null
+      && selectedOrderIds.has(activeDragOrderId)
+      && selectedOrderIds.size > 1;
+
+    return (
+      <div id={sectionId} className="space-y-4">
+        <OrderWorkspaceTabs
+          activeView={activeView}
+          onChange={setActiveView}
+          activeCount={incomingOrders.length}
+          historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDeliveryRuns={isRetailMode}
+          runCount={deliveryRunCount}
+          showSplitView={isRetailMode && isSplitViewportEligible}
+        />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            onClick={() => refreshIncomingOrders?.()}
+            disabled={incomingOrdersState?.loading || locked || !isOnline || !hasActiveShift}
+            className="h-10 rounded-lg !bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            {incomingOrdersState?.loading ? 'Refreshing...' : 'Refresh Queue'}
+          </Button>
+        </div>
+        <DndContext sensors={sensors} onDragStart={handleQueueDragStart} onDragEnd={handleQueueDragEnd}>
+          <QueueRunAssignBar
+            orders={visibleIncomingOrders}
+            selectedCount={visibleSelectedCount}
+            selectedEligibleCount={selectedEligibleOrders.length}
+            driftCount={selectedDriftCount}
+            hiddenCount={selectedHiddenCount}
+            activeShiftLocationId={activeShiftLocationId}
+            runs={deliveryRuns}
+            runsLoading={deliveryRunsLoading}
+            runsError={deliveryRunsError}
+            disabled={dragDisabled}
+            submitting={bulkAssignSubmitting}
+            onSelectAllEligible={handleSelectAllEligible}
+            onClearSelection={handleClearSelection}
+            onSubmit={handleBulkAssignSubmit}
+          />
+          {!isOnline ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Incoming orders are read-only while offline. Reconnect before refreshing, collecting payment, printing, or changing fulfillment status.
+            </p>
+          ) : null}
+          {queueAccessNotice ? (
+            queueAccessNotice
+          ) : (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
+              <div className="min-w-0 max-h-[70vh] overflow-y-auto pr-1">
+                <IncomingQueueOrderList
+                  orders={visibleIncomingOrders}
+                  isRetailMode={isRetailMode}
+                  selectedOrderIds={selectedOrderIds}
+                  onToggleSelection={toggleOrderSelection}
+                  incomingOrderActionState={incomingOrderActionState}
+                  workflowMode={workflowMode}
+                  canTransactPos={canTransactPos}
+                  canViewPos={canViewPos}
+                  locked={locked}
+                  isOnline={isOnline}
+                  hasActiveShift={hasActiveShift}
+                  bulkAssignSubmitting={bulkAssignSubmitting}
+                  handleOpenCashCollection={handleOpenCashCollection}
+                  handleOpenBalanceSettlement={handleOpenBalanceSettlement}
+                  handleViewBalancePaymentProof={handleViewBalancePaymentProof}
+                  handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
+                  handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+                  onRequestReject={setPendingRejectionOrderId}
+                  handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
+                  incomingReceiptOpeningId={incomingReceiptOpeningId}
+                  deliveryPersonnelState={deliveryPersonnelState}
+                  handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
+                  handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
+                  columns={1}
+                  draggable
+                />
+              </div>
+              <DeliveryRunDropPanel
+                activeShiftLocationId={activeShiftLocationId}
+                queueLocationScopeId={queueLocationScopeId}
+                disabled={dragDisabled}
+                refreshSignal={runDropRefreshTick}
+              />
+            </div>
+          )}
+          <DragOverlay>
+            {activeDragOrderId !== null ? (
+              <div className="rounded-lg border border-[#1A4E8D] bg-white px-3 py-2 text-xs font-bold text-[#1A4E8D] shadow-lg">
+                {activeDragIsMultiDrag
+                  ? `${selectedEligibleOrders.length} order${selectedEligibleOrders.length === 1 ? '' : 's'}`
+                  : (activeDragOrder?.invoice_number || `Order #${activeDragOrderId}`)}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+        <ConfirmActionDialog
+          open={pendingRejectionOrderId !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingRejectionOrderId(null);
+          }}
+          title="Reject and refund this order?"
+          description={pendingRejectionSplit
+            ? `The order will be rejected. DGFY will request a refund of the ${formatOrderAmount(pendingRejectionSplit.amountPaid)} downpayment collected online, and keep the transaction out of tenant settlement. The ${formatOrderAmount(pendingRejectionSplit.balanceDue)} balance was never charged.`
+            : 'The order will be rejected. If PayMongo already collected payment, DGFY will request a full refund and keep the transaction out of tenant settlement.'}
+          confirmLabel="Reject and request refund"
+          cancelLabel="Keep order"
+          variant="destructive"
+          reasonLabel="Rejection reason"
+          reasonPlaceholder="Explain why this paid order is being rejected."
+          reasonRequired
+          reasonMinLength={3}
+          onConfirm={async (reason) => {
+            const succeeded = await handleIncomingOrderStatusChange?.(
+              pendingRejectionOrderId,
+              'rejected',
+              reason
+            );
+            if (succeeded !== false) setPendingRejectionOrderId(null);
+            return succeeded;
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div id={sectionId} className="space-y-4">
       <OrderWorkspaceTabs
@@ -665,6 +941,7 @@ function IncomingQueueWorkspace({
         historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
         showDeliveryRuns={isRetailMode}
         runCount={deliveryRunCount}
+        showSplitView={isRetailMode && isSplitViewportEligible}
       />
       {isRetailMode ? (
         <QueueRunAssignBar
@@ -765,20 +1042,8 @@ function IncomingQueueWorkspace({
         </p>
       ) : null}
 
-      {!canViewPos || incomingOrdersAccessState === 'forbidden' ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          {incomingOrdersErrorMessage || 'You need POS view permission to access incoming online orders.'}
-        </p>
-      ) : incomingOrdersAccessState === 'error' ? (
-        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {incomingOrdersErrorMessage || 'Failed to load incoming online orders. Try refreshing.'}
-        </p>
-      ) : incomingOrdersAccessState === 'shift_required' ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {incomingOrdersErrorMessage || 'Open a shift to view orders for this branch.'}
-        </p>
-      ) : incomingOrdersState?.loading && incomingOrders.length === 0 ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading incoming orders...</p>
+      {queueAccessNotice ? (
+        queueAccessNotice
       ) : incomingOrders.length === 0 ? (
         <div className="grid min-h-[11rem] grid-cols-1 items-center gap-5 rounded-lg border border-slate-200 bg-white px-5 py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
           <div className="flex justify-center md:border-r md:border-slate-200">
