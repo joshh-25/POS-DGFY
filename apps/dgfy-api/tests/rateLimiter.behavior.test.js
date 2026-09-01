@@ -14,6 +14,7 @@ let storeTrackingReadLimiter;
 let storeGuestCheckoutOtpRequestLimiter;
 let storeGuestCheckoutOtpVerifyLimiter;
 let mobilePosFreeSyncLimiter;
+let mobilePosFreeSyncRoundLimiter;
 let itemOperationsLimiter;
 let logger;
 let defaultAuthRateLimitWindowMs;
@@ -53,6 +54,7 @@ beforeAll(async () => {
   storeGuestCheckoutOtpRequestLimiter = limiterModule.storeGuestCheckoutOtpRequestLimiter;
   storeGuestCheckoutOtpVerifyLimiter = limiterModule.storeGuestCheckoutOtpVerifyLimiter;
   mobilePosFreeSyncLimiter = limiterModule.mobilePosFreeSyncLimiter;
+  mobilePosFreeSyncRoundLimiter = limiterModule.mobilePosFreeSyncRoundLimiter;
   itemOperationsLimiter = limiterModule.itemOperationsLimiter;
 });
 
@@ -433,7 +435,7 @@ describe('Rate limiter behavior', () => {
         success: false,
         message: 'Free plan is limited to 2 syncs per day. Upgrade to Premium for unlimited sync.',
         limitScope: 'mobile_pos_free_sync',
-        limitKeyType: 'tenant',
+        limitKeyType: 'tenant_device',
         requiresUpgrade: true,
         retryAfterSeconds: expect.any(Number),
       }));
@@ -481,6 +483,65 @@ describe('Rate limiter behavior', () => {
 
       // Tenant B's budget is untouched by tenant A exhausting theirs.
       await request(app).post('/api/v1/mobile-pos/sync/checkouts').set('x-test-tenant', 'tenant-b').expect(200);
+    });
+
+    it('counts one successful multi-endpoint sync run once for one device', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-free-round', plan: 'free' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncRoundLimiter, (_req, res) => res.status(200).json({ ok: true }));
+      app.post('/api/v1/mobile-pos/sync/shifts', mobilePosFreeSyncRoundLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+      const body = { device_id: 'device-round-1', client_sync_run_id: 'run-1' };
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send(body).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/shifts').send(body).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ ...body, client_sync_run_id: 'run-2' }).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/shifts').send({ ...body, client_sync_run_id: 'run-2' }).expect(200);
+
+      await request(app)
+        .post('/api/v1/mobile-pos/sync/checkouts')
+        .send({ ...body, client_sync_run_id: 'run-3' })
+        .expect(429);
+    });
+
+    it('keeps the free sync-round budget independent per device', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-free-devices', plan: 'free' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncRoundLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+      for (const runId of ['run-1', 'run-2']) {
+        await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: runId }).expect(200);
+      }
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'run-3' }).expect(429);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-b', client_sync_run_id: 'run-1' }).expect(200);
+    });
+
+    it('keeps legacy clients on the per-request fallback when no run id is supplied', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-free-legacy', plan: 'free' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncRoundLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'legacy-device' }).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'legacy-device' }).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'legacy-device' }).expect(429);
+    });
+
+    it('does not spend a free sync-round slot on rejected work', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-free-rejections', plan: 'free' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncRoundLimiter, (req, res) => {
+        if (req.body.reject) return res.status(422).json({ success: false });
+        return res.status(200).json({ ok: true });
+      });
+
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'rejected-1', reject: true }).expect(422);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'rejected-2', reject: true }).expect(422);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'accepted-1' }).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'accepted-2' }).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'accepted-3' }).expect(429);
     });
   });
 });

@@ -67,6 +67,11 @@ const mobilePosFreeSyncWindowMs = parseInt(process.env.RATE_LIMIT_MOBILE_POS_FRE
 // clients in sync_policy/sync_limit_policy (mobilePosUseCases.js), so the
 // advertised and enforced caps can't drift apart.
 const mobilePosFreeSyncMaxRequests = parseInt(process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_MAX_REQUESTS) || MOBILE_SYNC_LIMIT_PER_DAY;
+// A full mobile drain can require several dependency-ordered endpoint calls.
+// The same client_sync_run_id may reuse one daily slot briefly, while a new
+// run still consumes the next slot. The ordinary POS limiter remains the
+// per-request abuse boundary inside this window.
+const mobilePosSyncRunReuseWindowMs = parseInt(process.env.RATE_LIMIT_MOBILE_POS_SYNC_RUN_REUSE_WINDOW_MS) || 15 * 60 * 1000;
 
 // Standard error response format
 const createRateLimitError = (message, metadata = {}) => ({
@@ -1386,22 +1391,39 @@ export const inventoryPushLimiter = rateLimit({
 // Free-tier cap for the offline-sync API (see dgfy-mobile
 // docs/architecture/SYNC-ARCHITECTURE.md, Channel A). Premium tenants skip
 // this limiter entirely (isPremiumActiveTenant) and sync in realtime; free
-// tenants get up to 2 pushes per rolling 24h window, tenant-keyed - the cap
-// is per business, matching the client's resolveSyncPolicy({ dailyCap: 2 }),
-// not per terminal/device. Only mount this on the write endpoints
+// tenants get up to 2 full sync rounds per rolling 24h window, keyed by
+// business + device. A round can span multiple endpoint calls carrying one
+// client_sync_run_id; mobilePosFreeSyncRoundLimiter below counts that round
+// once for a bounded 15-minute reuse window. Only mount it on write endpoints
 // (POST /mobile-pos/sync/*); GET /mobile-pos/bootstrap/* (Channel B,
 // reference/config) is opportunistic and uncapped for both tiers.
+const normalizeMobileSyncKeyPart = (value, maxLength) => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized || normalized.length > maxLength || !/^[A-Za-z0-9._:-]+$/.test(normalized)) return '';
+  return normalized;
+};
+
+const getMobileSyncIdentity = (req) => ({
+  tenantKey: String(req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant'),
+  deviceId: normalizeMobileSyncKeyPart(req.body?.device_id, 160) || 'unknown-device',
+  runId: normalizeMobileSyncKeyPart(req.body?.client_sync_run_id, 160),
+});
+
 export const mobilePosFreeSyncLimiter = rateLimit({
   windowMs: mobilePosFreeSyncWindowMs,
   max: mobilePosFreeSyncMaxRequests,
   message: createRateLimitError('Free plan is limited to 2 syncs per day. Upgrade to Premium for unlimited sync.', { requiresUpgrade: true }),
   standardHeaders: true,
   legacyHeaders: false,
+  // The product contract limits successful full syncs, not failed validation,
+  // authorization, or transient server attempts. express-rate-limit restores
+  // the slot after a non-success response when this is enabled.
+  skipFailedRequests: true,
   validate: { trustProxy: false },
   store: new DynamicStore('mobile_pos_free_sync'),
   keyGenerator: (req) => {
-    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
-    return `mobile_pos_free_sync:${tenantKey}`;
+    const { tenantKey, deviceId } = getMobileSyncIdentity(req);
+    return `mobile_pos_free_sync:${tenantKey}:${deviceId}`;
   },
   handler: (req, res, _next, options) => {
     const retryAfterSeconds = getRetryAfterSeconds(req, options);
@@ -1410,11 +1432,11 @@ export const mobilePosFreeSyncLimiter = rateLimit({
       {
         retryAfterSeconds,
         limitScope: 'mobile_pos_free_sync',
-        limitKeyType: 'tenant',
+        limitKeyType: 'tenant_device',
         requiresUpgrade: true
       }
     );
-    logRateLimitEvent(req, 'mobile_pos_free_sync', retryAfterSeconds, 'tenant');
+    logRateLimitEvent(req, 'mobile_pos_free_sync', retryAfterSeconds, 'tenant_device');
     res.set('Retry-After', String(retryAfterSeconds));
     res.status(429).json(body);
   },
@@ -1425,6 +1447,62 @@ export const mobilePosFreeSyncLimiter = rateLimit({
     return false;
   },
 });
+
+const mobileSyncRunMemory = new Map();
+const mobileSyncRunCacheKey = ({ tenantKey, deviceId, runId }) =>
+  `mobile_pos_sync_run:${tenantKey}:${deviceId}:${runId}`;
+
+const pruneMobileSyncRunMemory = (now = Date.now()) => {
+  for (const [key, expiresAt] of mobileSyncRunMemory.entries()) {
+    if (expiresAt <= now) mobileSyncRunMemory.delete(key);
+  }
+};
+
+const hasSeenMobileSyncRun = async (key) => {
+  const now = Date.now();
+  pruneMobileSyncRunMemory(now);
+  if ((mobileSyncRunMemory.get(key) || 0) > now) return true;
+  if (!isRedisConnected()) return false;
+  try {
+    return Boolean(await getRedisClient()?.sendCommand(['GET', key]));
+  } catch (error) {
+    logger.warn('[RateLimiter] Redis mobile sync-run lookup failed; using memory fallback', { error: error?.message });
+    return false;
+  }
+};
+
+const rememberMobileSyncRun = async (key) => {
+  mobileSyncRunMemory.set(key, Date.now() + mobilePosSyncRunReuseWindowMs);
+  if (!isRedisConnected()) return;
+  try {
+    await getRedisClient()?.sendCommand(['SET', key, '1', 'PX', String(mobilePosSyncRunReuseWindowMs)]);
+  } catch (error) {
+    logger.warn('[RateLimiter] Redis mobile sync-run write failed; using memory fallback', { error: error?.message });
+  }
+};
+
+// Backward compatible: clients without a valid run id still consume one slot
+// per request. New clients count the first successful request and may finish
+// the same dependency-ordered drain without spending another daily slot.
+export const mobilePosFreeSyncRoundLimiter = async (req, res, next) => {
+  if (isPremiumActiveTenant(req)) return next();
+  if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return next();
+
+  const identity = getMobileSyncIdentity(req);
+  if (!identity.runId) return mobilePosFreeSyncLimiter(req, res, next);
+  const runKey = mobileSyncRunCacheKey(identity);
+  if (await hasSeenMobileSyncRun(runKey)) return next();
+
+  return mobilePosFreeSyncLimiter(req, res, (error) => {
+    if (error) return next(error);
+    res.once('finish', () => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        void rememberMobileSyncRun(runKey);
+      }
+    });
+    return next();
+  });
+};
 
 export default {
   general: generalLimiter,
@@ -1445,5 +1523,6 @@ export default {
   routeCalculator: routeCalculatorLimiter,
   inventoryPush: inventoryPushLimiter,
   mobilePosFreeSync: mobilePosFreeSyncLimiter,
+  mobilePosFreeSyncRound: mobilePosFreeSyncRoundLimiter,
   itemOperations: itemOperationsLimiter,
 };

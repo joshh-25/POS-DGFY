@@ -135,3 +135,18 @@ Focused `mobilePosReplayGuard.test.js` coverage verifies that a persisted replay
 result is returned without repeating the payment mutation and that a mismatched
 operation type fails closed. The guard adds no payment field, provider claim,
 schema migration, or stored financial effect.
+
+## Update 2026-09-01: POS payment and device workflow hardening
+
+The local reconciliation batch also carries existing POS corrections for
+employee-credit repayment validation, refund/reversal scope, mobile financial
+sync replay, receipt-device audit payloads, payment breakdown normalization,
+and free-tier sync-round accounting. These changes preserve the existing
+transaction and allocation ownership boundaries: server use cases remain the
+only financial mutation authority, provider evidence is not inferred from the
+client, and hardware follow-up failure does not roll back a committed sale.
+
+Focused backend tests cover employee-credit repayment validation, mobile sync
+transport and financial replay, cash refund behavior, receipt-device payloads,
+payment breakdowns, and rate-limit restoration. No model or migration-runner
+file changes are included, so this update introduces no schema migration.

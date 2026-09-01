@@ -1,13 +1,14 @@
 import express from 'express';
 import * as mobilePosController from '../controllers/mobilePosController.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
-import { mobilePosFreeSyncLimiter, posLimiter } from '../middleware/rateLimiter.js';
+import { mobilePosFreeSyncRoundLimiter, posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import {
     validateMobilePosCatalogBootstrapQuery,
     validateMobilePosCheckoutSync,
     validateMobilePosTransactionCheckpointQuery,
     validateMobilePosVoidSync,
+    validateMobilePosRefundSync,
     validateMobilePosOrderActionSync,
     validateMobilePosItemSync,
     validateMobilePosShiftSync,
@@ -33,11 +34,16 @@ router.get('/bootstrap/device-policy', checkPermission(PERMISSIONS.POS.actions.V
 router.get('/sync/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateMobilePosTransactionCheckpointQuery, mobilePosController.getTransactionCheckpoint);
 
 // Sync (Channel A, ledger) is where the free-tier daily cap applies. All
-// four routes share the same limiter instance, so the 2/day budget is one
-// shared quota per business across a whole sync round, not per-endpoint.
-router.post('/sync/checkouts', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosCheckoutSync, mobilePosController.syncCheckouts);
-router.post('/sync/voids', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), validateMobilePosVoidSync, mobilePosController.syncVoids);
-router.post('/sync/order-actions', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosOrderActionSync, mobilePosController.syncOrderActions);
+// routes share a round-aware limiter. One stable client_sync_run_id can span
+// dependency-ordered endpoint calls without consuming the free device's two
+// daily full-sync slots more than once.
+router.post('/sync/checkouts', mobilePosFreeSyncRoundLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosCheckoutSync, mobilePosController.syncCheckouts);
+router.post('/sync/voids', mobilePosFreeSyncRoundLimiter, checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), validateMobilePosVoidSync, mobilePosController.syncVoids);
+// Refund permission depends on the workflow, so it is enforced per entry by
+// buildSyncMobilePosRefundsUseCase. Cash requires drawer-adjust authority;
+// external/provider require void authority; split accepts either.
+router.post('/sync/refunds', mobilePosFreeSyncRoundLimiter, validateMobilePosRefundSync, mobilePosController.syncRefunds);
+router.post('/sync/order-actions', mobilePosFreeSyncRoundLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosOrderActionSync, mobilePosController.syncOrderActions);
 
 // Item/catalog sync is NOT behind mobilePosFreeSyncLimiter - unlike the
 // transaction ledger above, item CRUD has never been plan-tier gated
@@ -49,8 +55,8 @@ router.post('/sync/order-actions', mobilePosFreeSyncLimiter, checkPermission(PER
 // is enforced per-entry inside buildSyncMobilePosItemsUseCase instead of
 // gating the whole route.
 router.post('/sync/items', validateMobilePosItemSync, mobilePosController.syncItems);
-router.post('/sync/shifts', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosShiftSync, mobilePosController.syncShifts);
-router.post('/sync/hardware-events', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosHardwareEventSync, mobilePosController.syncHardwareEvents);
-router.post('/sync/checkpoint', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosCheckpointAck, mobilePosController.acknowledgeCheckpoint);
+router.post('/sync/shifts', mobilePosFreeSyncRoundLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosShiftSync, mobilePosController.syncShifts);
+router.post('/sync/hardware-events', mobilePosFreeSyncRoundLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosHardwareEventSync, mobilePosController.syncHardwareEvents);
+router.post('/sync/checkpoint', mobilePosFreeSyncRoundLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosCheckpointAck, mobilePosController.acknowledgeCheckpoint);
 
 export default router;

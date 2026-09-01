@@ -124,20 +124,6 @@ export const buildShiftSummaryLines = (payload = {}, { width = 48 } = {}) => {
     shift.terminal_id ? `Terminal: ${shift.terminal_id}` : '',
     shift.pos_terminal_shift_id ? `Shift: ${shift.pos_terminal_shift_id}` : '',
     divider,
-    buildKeyValueLine('Transactions', String(sales.transaction_count || 0), normalizedWidth),
-    buildKeyValueLine('Subtotal', money(sales.subtotal_amount), normalizedWidth),
-    buildKeyValueLine('Discounts', money(sales.discount_amount), normalizedWidth),
-    buildKeyValueLine('VAT', money(sales.vat_amount), normalizedWidth),
-    buildKeyValueLine('Total sales', money(sales.total_amount), normalizedWidth),
-    buildKeyValueLine('POS voids', money(sales.void_amount), normalizedWidth),
-    ...(Number(sales.post_close_void_transaction_count || 0) > 0
-      ? [buildKeyValueLine(
-        `Post-close voids (${sales.post_close_void_transaction_count})`,
-        money(sales.post_close_void_amount),
-        normalizedWidth
-      )]
-      : []),
-    divider,
     'PAYMENT BREAKDOWN'
   ].filter(Boolean);
 

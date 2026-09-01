@@ -9,6 +9,7 @@ import {
 import { reconcileRefundedPaymentState } from '../../commercePayments/usecases/commercePaymentAdminUseCases.js';
 import { recordSucceededTenantRevenueRefundUseCase } from '../../tenantRevenue/index.js';
 import dbStore from '../../../utils/dbStore.js';
+import { assertMobilePosExpectedTransactionState } from '../domain/mobilePosReplayGuard.js';
 
 const PROVIDER = 'paymongo';
 const PAYMENT_REFERENCE_PATTERN = /^pay_[A-Za-z0-9]+$/;
@@ -509,6 +510,9 @@ export const buildProviderRefundPosTransactionUseCase = ({
                 }
                 if (existingByIdempotency.status === 'pending') replayPendingAdjustment = existingByIdempotency;
             }
+            if (!replayPendingAdjustment) {
+                assertMobilePosExpectedTransactionState({ transaction: existing, payload, operation: 'provider_refund' });
+            }
 
             const adjustments = await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedTransactionId, { transaction, lock: true });
             const providerAdjustments = getProviderAdjustment(adjustments);
@@ -565,6 +569,7 @@ export const buildProviderRefundPosTransactionUseCase = ({
             const prepareTransaction = await (dbStore.getStore()?.sequelize || dbStore.get('sequelize')).transaction();
             const locked = await posRepository.getTransactionById(normalizedTransactionId, { transaction: prepareTransaction, lock: true });
             if (!locked) throw providerRefundError(DomainErrorCode.RESOURCE_NOT_FOUND, 'POS transaction not found', 404);
+            assertMobilePosExpectedTransactionState({ transaction: locked, payload, operation: 'provider_refund' });
             const adjustment = await posRepository.createPosTransactionAdjustment({
                 adjustment_reference: `POS-PROVIDER-REFUND-${normalizedTransactionId}-${prepared.requestHash.slice(0, 8)}`.slice(0, 40),
                 pos_transaction_id: normalizedTransactionId,

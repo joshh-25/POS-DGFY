@@ -89,6 +89,7 @@ import { buildProviderRefundPosTransactionUseCase } from './usecases/providerRef
 import { buildSplitAllocationReversalUseCase } from './usecases/splitAllocationReversalUseCases.js';
 import {
     buildGetPosDeviceStatusUseCase,
+    buildClaimOnlineOrderReceiptAutoPrintUseCase,
     buildPrintPosReceiptUseCase,
     buildPrintPosShiftSummaryUseCase,
     buildPrintPosZReadingUseCase,
@@ -102,6 +103,7 @@ import {
     buildGetMobilePosTransactionCheckpointUseCase,
     buildSyncMobilePosCheckoutsUseCase,
     buildSyncMobilePosVoidsUseCase,
+    buildSyncMobilePosRefundsUseCase,
     buildSyncMobilePosOrderActionsUseCase,
     buildSyncMobilePosItemsUseCase,
     buildSyncMobilePosShiftsUseCase,
@@ -303,6 +305,9 @@ export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({
     posRepository,
     deviceDriver: posDeviceDriver
 });
+export const claimOnlineOrderReceiptAutoPrintUseCase = buildClaimOnlineOrderReceiptAutoPrintUseCase({
+    posRepository
+});
 export const printPosReceiptUseCase = buildPrintPosReceiptUseCase({
     posRepository,
     deviceDriver: posDeviceDriver
@@ -392,6 +397,12 @@ export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseC
 export const getMobilePosTransactionCheckpointUseCase = buildGetMobilePosTransactionCheckpointUseCase({ listPosTransactionsUseCase });
 export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase, posRepository });
 export const syncMobilePosVoidsUseCase = buildSyncMobilePosVoidsUseCase({ voidPosTransactionUseCase });
+export const syncMobilePosRefundsUseCase = buildSyncMobilePosRefundsUseCase({
+    cashRefundPosTransactionUseCase,
+    externalRefundPosTransactionUseCase,
+    providerRefundPosTransactionUseCase,
+    splitAllocationReversalUseCase
+});
 export const syncMobilePosOrderActionsUseCase = buildSyncMobilePosOrderActionsUseCase({
     updateOnlineOrderStatusUseCase,
     collectCashPickupOrderUseCase

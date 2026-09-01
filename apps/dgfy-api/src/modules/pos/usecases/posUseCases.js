@@ -2244,9 +2244,9 @@ const resolveFnbLineModifiers = ({ item, line, hasFnbCheckoutContext, locationId
         }
         const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
         const required = through.is_required_override == null
-            ? group.required === true || Number.parseInt(group.min_select || 0, 10) > 0
+            ? group.required === true
             : through.is_required_override === true;
-        const minSelect = required ? Math.max(1, Number.parseInt(group.min_select || 0, 10) || 0) : Number.parseInt(group.min_select || 0, 10) || 0;
+        const minSelect = required ? Math.max(1, Number.parseInt(group.min_select || 0, 10) || 0) : 0;
         const maxSelect = Math.max(1, Number.parseInt(group.max_select || 1, 10) || 1);
         const selectedOptionIds = requestedByGroup.get(groupId) || [];
         if (selectedOptionIds.length < minSelect || selectedOptionIds.length > maxSelect) {

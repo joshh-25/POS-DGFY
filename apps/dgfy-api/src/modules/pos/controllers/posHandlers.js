@@ -57,6 +57,7 @@ import {
     updateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase,
+    claimOnlineOrderReceiptAutoPrintUseCase,
     printPosReceiptUseCase,
     printPosShiftSummaryUseCase,
     printPosZReadingUseCase,
@@ -2167,6 +2168,27 @@ export const printReceipt = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'POS receipt print request sent',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const claimOnlineOrderReceiptAutoPrint = async (req, res, next) => {
+    try {
+        const result = await claimOnlineOrderReceiptAutoPrintUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
