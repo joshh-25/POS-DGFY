@@ -28,11 +28,20 @@ import { resolveVoucherPosRedemptionEnabled } from './voucherPosRedemptionSettin
 const normalizeCode = (value) => String(value ?? '').trim().toUpperCase();
 const toCentavos = (pesoAmount) => Math.round((Number(pesoAmount) || 0) * 100);
 
+// #1331: matches voucherValidator.js's own MAX_CENTAVOS -- comfortably above any real campaign
+// budget and comfortably below Number.MAX_SAFE_INTEGER. Used only as the "waive the whole fee"
+// sentinel below, never persisted.
+const MAX_CENTAVOS = 999999999999;
+
 const buildBenefitConfigSnapshot = (voucher) => ({
     benefit_class: voucher.benefit_class,
+    // #1331: orthogonal axis, captured alongside benefit_class for the same reason every other
+    // benefit-class amount already is -- a point-in-time record independent of later voucher edits.
+    benefit_target: voucher.benefit_target ?? 'items',
     percent_off_bps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
     amount_off_centavos: voucher.amount_off_centavos != null ? Number(voucher.amount_off_centavos) : null,
     fixed_unit_price_centavos: voucher.fixed_unit_price_centavos != null ? Number(voucher.fixed_unit_price_centavos) : null,
+    delivery_amount_off_centavos: voucher.delivery_amount_off_centavos != null ? Number(voucher.delivery_amount_off_centavos) : null,
     max_discount_centavos: voucher.max_discount_centavos != null ? Number(voucher.max_discount_centavos) : null
 });
 
@@ -142,12 +151,31 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
         );
     }
 
+    // #1331 (Phase 240): Phase 239's `voucherBenefitPolicy.js` is pure math over exactly three
+    // benefit classes plus the items/delivery target axis -- deliberately unchanged by this phase
+    // (its own header names this invariant explicitly). `free_delivery`'s semantics -- "waive up to
+    // delivery_amount_off_centavos of the benefit base, or the whole base when null" -- are
+    // byte-for-byte the module's existing 'amount_off' math (`Math.min(amount, benefitBaseCentavos)`),
+    // so a free_delivery voucher is translated to that class at this single call site rather than
+    // teaching the math module a fourth class it doesn't need. NULL ("waive the whole fee") maps to
+    // MAX_CENTAVOS so the existing clamp does the "whole fee" job with no new code path in that
+    // module. `benefitTarget`/`deliveryFeeCentavos` are the one-line call-site change
+    // `voucherBenefitPolicy.js`'s own header already specifies for this phase -- every existing
+    // caller passes neither, so behaviour for an 'items'-targeted voucher is byte-identical.
+    const benefitTarget = voucher.benefit_target ?? 'items';
+    const isDeliveryBenefit = voucher.benefit_class === 'free_delivery';
+    const resolvedAmountOffCentavos = isDeliveryBenefit
+        ? (voucher.delivery_amount_off_centavos != null ? Number(voucher.delivery_amount_off_centavos) : MAX_CENTAVOS)
+        : voucher.amount_off_centavos;
+
     let benefit;
     try {
         benefit = calculateVoucherBenefit({
-            benefitClass: voucher.benefit_class,
+            benefitClass: isDeliveryBenefit ? 'amount_off' : voucher.benefit_class,
+            benefitTarget,
+            deliveryFeeCentavos: context.deliveryFeeCentavos ?? null,
             percentOffBps: voucher.percent_off_bps,
-            amountOffCentavos: voucher.amount_off_centavos,
+            amountOffCentavos: resolvedAmountOffCentavos,
             fixedUnitPriceCentavos: voucher.fixed_unit_price_centavos,
             fixedUnitPriceByItemId,
             maxDiscountCentavos: voucher.max_discount_centavos,
@@ -155,7 +183,17 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
         });
     } catch (error) {
         if (error instanceof VoucherBenefitError) {
-            voucherError(error.message, VoucherReasonCode.VOUCHER_BENEFIT_CONFIG_INVALID, error.details);
+            // #1331 (Phase 240 plan §5.4): INVALID_DELIVERY_FEE_CENTAVOS can ONLY be thrown when a
+            // benefit_target: 'delivery' voucher is resolved through a call site that supplies no
+            // deliveryFeeCentavos -- today, exclusively storeUseCases.js's item-voucher path
+            // (voucherContext never carries one). It is therefore always the axis-mismatch case in
+            // disguise, never a genuine config problem with the voucher itself -- remapped to the
+            // precise reason code rather than the generic one, so a delivery voucher entered in the
+            // item field gets a clean, correctly-named 422 instead of a misleading one.
+            const reasonCode = error.code === 'INVALID_DELIVERY_FEE_CENTAVOS'
+                ? VoucherReasonCode.VOUCHER_BENEFIT_TARGET_MISMATCH
+                : VoucherReasonCode.VOUCHER_BENEFIT_CONFIG_INVALID;
+            voucherError(error.message, reasonCode, error.details);
         }
         throw error;
     }
@@ -179,8 +217,8 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
  * cart preview can show "voucher applies, -₱X" without touching the ledger.
  *
  * @returns {{applied: boolean, voucherId: number|null, code: string|null, title: string|null,
- *   badge: string|null, benefitClass: string|null, percentOffBps: number|null,
- *   discountCentavos: number, lineAllocations: Array<Object>}}
+ *   badge: string|null, benefitClass: string|null, benefitTarget: string|null,
+ *   percentOffBps: number|null, discountCentavos: number, lineAllocations: Array<Object>}}
  */
 export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async ({
     code,
@@ -191,7 +229,7 @@ export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async (
     if (!normalizedCode) {
         return {
             applied: false, voucherId: null, code: null, title: null, badge: null,
-            benefitClass: null, percentOffBps: null, discountCentavos: 0, lineAllocations: []
+            benefitClass: null, benefitTarget: null, percentOffBps: null, discountCentavos: 0, lineAllocations: []
         };
     }
 
@@ -207,6 +245,9 @@ export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async (
         title: voucher.title,
         badge: voucher.badge,
         benefitClass: voucher.benefit_class,
+        // #1331: surfaced so a caller (storeUseCases.js) can enforce which payload field a code was
+        // submitted in against what it actually resolves to (VOUCHER_BENEFIT_TARGET_MISMATCH).
+        benefitTarget: voucher.benefit_target ?? 'items',
         percentOffBps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
         discountCentavos: benefit.discountCentavos,
         lineAllocations: benefit.lineAllocations
@@ -228,8 +269,8 @@ export const buildPreviewVoucherEligibilityUseCase = ({ repository }) => async (
  *
  * @returns {{applied: boolean, idempotentReplay: boolean, redemptionId: number|null,
  *   voucherId: number|null, code: string|null, title: string|null, badge: string|null,
- *   benefitClass: string|null, percentOffBps: number|null, discountCentavos: number,
- *   lineAllocations: Array<Object>}}
+ *   benefitClass: string|null, benefitTarget: string|null, percentOffBps: number|null,
+ *   discountCentavos: number, lineAllocations: Array<Object>}}
  */
 export const buildRedeemVoucherUseCase = ({ repository }) => async ({
     code,
@@ -261,8 +302,8 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
     if (!normalizedCode) {
         return {
             applied: false, idempotentReplay: false, redemptionId: null, voucherId: null,
-            code: null, title: null, badge: null, benefitClass: null, percentOffBps: null,
-            discountCentavos: 0, lineAllocations: []
+            code: null, title: null, badge: null, benefitClass: null, benefitTarget: null,
+            percentOffBps: null, discountCentavos: 0, lineAllocations: []
         };
     }
 
@@ -314,6 +355,7 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
             title: voucher.title,
             badge: voucher.badge,
             benefitClass: voucher.benefit_class,
+            benefitTarget: voucher.benefit_target ?? 'items',
             percentOffBps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
             discountCentavos: existingDiscountCentavos,
             // #667 Phase 110: only trust this replay's freshly-recomputed allocations if they'd sum
@@ -419,6 +461,7 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
         title: voucher.title,
         badge: voucher.badge,
         benefitClass: voucher.benefit_class,
+        benefitTarget: voucher.benefit_target ?? 'items',
         percentOffBps: voucher.percent_off_bps != null ? Number(voucher.percent_off_bps) : null,
         discountCentavos: benefit.discountCentavos,
         // #667 Phase 110: the UNFILTERED allocation set (same length/order as the input `lines`),

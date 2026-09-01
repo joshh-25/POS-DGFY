@@ -40,9 +40,12 @@ const WRITABLE_VOUCHER_COLUMNS = Object.freeze([
     'badge',
     'validity_text',
     'benefit_class',
+    // #1331: orthogonal to benefit_class -- see Voucher.js's own comment.
+    'benefit_target',
     'percent_off_bps',
     'amount_off_centavos',
     'fixed_unit_price_centavos',
+    'delivery_amount_off_centavos',
     // #696: fixed_price carries EITHER fixed_unit_price_centavos above OR this, never both -- see
     // applyBenefitConfig. The update path writes every allowlisted column with `?? null`
     // (buildUpdateVoucherUseCase, below), so including it here is also what makes "detach the
@@ -72,7 +75,8 @@ const WRITABLE_VOUCHER_COLUMNS = Object.freeze([
 const BENEFIT_COLUMNS = Object.freeze({
     percent_off: 'percent_off_bps',
     amount_off: 'amount_off_centavos',
-    fixed_price: 'fixed_unit_price_centavos'
+    fixed_price: 'fixed_unit_price_centavos',
+    free_delivery: 'delivery_amount_off_centavos'
 });
 
 // MySQL returns BIGINT as a string. Normalizing here means the API answers with numbers and the
@@ -82,6 +86,7 @@ const NUMERIC_VOUCHER_COLUMNS = Object.freeze([
     'percent_off_bps',
     'amount_off_centavos',
     'fixed_unit_price_centavos',
+    'delivery_amount_off_centavos',
     'pricelist_id',
     'max_discount_centavos',
     'min_spend_centavos',
@@ -173,6 +178,44 @@ const applyBenefitConfig = (merged) => {
     // A percentage-of-subtotal cap on an already-absolute amount is meaningless; the schema allows it,
     // so this is where it is refused.
     if (benefitClass === 'amount_off') applied.max_discount_centavos = null;
+
+    // #1331: benefit_target and benefit_class are orthogonal axes (Voucher.js's own comment), but
+    // not every combination is meaningful. free_delivery always targets delivery -- forced here so
+    // a client cannot author a free_delivery voucher that resolves against the item subtotal. The
+    // reverse -- something other than free_delivery explicitly targeting delivery -- is fine for
+    // percent_off/amount_off (a future "50% off delivery" voucher is exactly what the axis
+    // separation exists to allow), but fixed_price has no sensible reading against a delivery fee
+    // (there is no "item" to fix a price on), so it is rejected here, fail-closed at authoring
+    // time -- mirroring the runtime guard voucherBenefitPolicy.js already has for
+    // deliveryFeeCentavos (INVALID_DELIVERY_FEE_CENTAVOS).
+    if (benefitClass === 'free_delivery') {
+        applied.benefit_target = 'delivery';
+    } else if (applied.benefit_target === 'delivery' && benefitClass === 'fixed_price') {
+        voucherError(
+            'fixed_price vouchers cannot target the delivery fee.',
+            VoucherReasonCode.VOUCHER_BENEFIT_CONFIG_INVALID,
+            { benefit_class: benefitClass, benefit_target: applied.benefit_target }
+        );
+    }
+
+    if (benefitClass === 'free_delivery') {
+        // NULL is a legitimate, common value here -- "waive the whole fee" -- unlike every sibling
+        // class, where the benefit amount is mandatory. A non-null amount must still be positive.
+        applied.pricelist_id = null;
+        const value = merged.delivery_amount_off_centavos;
+        if (value != null) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric) || numeric <= 0) {
+                voucherError(
+                    'free_delivery vouchers require a positive delivery_amount_off_centavos, or null to waive the whole fee.',
+                    VoucherReasonCode.VOUCHER_BENEFIT_CONFIG_INVALID,
+                    { benefit_class: benefitClass, delivery_amount_off_centavos: value }
+                );
+            }
+        }
+        applied.delivery_amount_off_centavos = value ?? null;
+        return applied;
+    }
 
     if (benefitClass !== 'fixed_price') {
         // pricelist_id is fixed_price-only; any other class carrying one is stale data from a prior

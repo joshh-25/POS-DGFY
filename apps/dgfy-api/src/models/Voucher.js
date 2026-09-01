@@ -25,8 +25,11 @@ const Voucher = sequelize.define('Voucher', {
     type: DataTypes.STRING(64),
     allowNull: false
   },
+  // #1331 (Phase 240): 'delivery_campaign' identifies a code whose benefit targets the delivery
+  // fee rather than items. Enum values are APPENDED LAST -- MySQL stores ENUM ordinals, and
+  // inserting a value mid-list silently reinterprets every existing row across every tenant DB.
   voucher_kind: {
-    type: DataTypes.ENUM('promo_code'),
+    type: DataTypes.ENUM('promo_code', 'delivery_campaign'),
     allowNull: false,
     defaultValue: 'promo_code'
   },
@@ -46,9 +49,20 @@ const Voucher = sequelize.define('Voucher', {
     type: DataTypes.STRING(255),
     allowNull: true
   },
+  // #1331: 'free_delivery' appended last, same ordinal-safety rule as voucher_kind above.
   benefit_class: {
-    type: DataTypes.ENUM('percent_off', 'amount_off', 'fixed_price'),
+    type: DataTypes.ENUM('percent_off', 'amount_off', 'fixed_price', 'free_delivery'),
     allowNull: false
+  },
+  // #1331: orthogonal to benefit_class -- Phase 239's voucherBenefitPolicy.js was built expecting
+  // this exact column. 'items' (default) keeps every existing voucher byte-identical; 'delivery'
+  // resolves the benefit against the delivery fee instead of the item subtotal. Not derived from
+  // benefit_class === 'free_delivery': a future percent_off-targeting-delivery voucher is a real,
+  // expressible combination this axis exists to allow.
+  benefit_target: {
+    type: DataTypes.ENUM('items', 'delivery'),
+    allowNull: false,
+    defaultValue: 'items'
   },
   percent_off_bps: {
     type: DataTypes.INTEGER,
@@ -59,6 +73,13 @@ const Voucher = sequelize.define('Voucher', {
     allowNull: true
   },
   fixed_unit_price_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
+  // #1331: the free_delivery benefit's own amount column, distinct from amount_off_centavos so
+  // "amount off items" and "amount off delivery" stay distinguishable in benefit_config_snapshot.
+  // NULL means "waive the whole fee"; a positive integer caps the waiver (a partial waiver).
+  delivery_amount_off_centavos: {
     type: DataTypes.BIGINT,
     allowNull: true
   },

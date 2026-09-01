@@ -292,6 +292,16 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         delivery_fee_calc_version: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_calc_version` SMALLINT UNSIGNED NOT NULL DEFAULT 1"
+        }),
+        // #1331 (Phase 240, epic #1321): two additive provenance columns, siblings to the five
+        // Phase 237 delivery-fee columns above. Kept in lockstep with migration
+        // 20260904000001-add-delivery-voucher-benefit.cjs -- DDL strings must stay string-identical
+        // (a drift test asserts this, addDeliveryVoucherBenefit.migration.test.js).
+        delivery_fee_waiver_voucher_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_waiver_voucher_id` INT NULL, ADD CONSTRAINT `fk_pos_transactions_delivery_fee_waiver_voucher` FOREIGN KEY (`delivery_fee_waiver_voucher_id`) REFERENCES `vouchers` (`voucher_id`) ON DELETE SET NULL"
+        }),
+        delivery_fee_waiver_label_snapshot: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_waiver_label_snapshot` VARCHAR(255) NULL"
         })
     }),
     employee_attendance_sessions: Object.freeze({
@@ -465,6 +475,21 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         is_publicly_listed: Object.freeze({
             sql: "ALTER TABLE `vouchers` ADD COLUMN `is_publicly_listed` TINYINT(1) NOT NULL DEFAULT 0"
+        }),
+        // #1331 (Phase 240, epic #1321 decision 9): two additive columns for the benefit-target axis
+        // and the free_delivery benefit class's own amount. Kept in lockstep with migration
+        // 20260904000001-add-delivery-voucher-benefit.cjs -- DDL strings must stay string-identical
+        // (addDeliveryVoucherBenefit.migration.test.js). This registry mechanism is column-presence
+        // based only -- it has NO repair path for the same migration's two ENUM value widenings
+        // (`voucher_kind`, `benefit_class`), the same limitation already documented above for
+        // `pos_transactions.fulfillment_status` (Phase 211). A pre-Phase-240 tenant restored from a
+        // snapshot self-repairs these two columns via this table, but not the widened enums --
+        // recorded in this phase's compliance declaration, not silently assumed covered.
+        benefit_target: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `benefit_target` ENUM('items','delivery') NOT NULL DEFAULT 'items'"
+        }),
+        delivery_amount_off_centavos: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `delivery_amount_off_centavos` BIGINT NULL DEFAULT NULL"
         })
     }),
     // Phase 204 (#965): six nullable, additive columns for an optional proof-of-payment image on
@@ -1382,19 +1407,32 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
     // 6.x, so a SET column cannot be expressed in the model layer that `sequelize.sync()` uses to
     // provision new tenants. NOT NULL with an explicit default is the property that matters -
     // "eligible everywhere" must not be producible by omission (#459).
+    //
+    // #1331 (Phase 240, epic #1321 decision 9): UNLIKE `pricelist_id`/`is_publicly_listed` below
+    // (deliberately left out of this CREATE TABLE, repaired via REQUIRED_TENANT_SCHEMA_COLUMNS
+    // instead), `voucher_kind`/`benefit_class`'s two ENUM value widenings ARE edited directly here.
+    // The column-repair mechanism is column-PRESENCE based only -- it has no repair path for an
+    // ENUM value widening on an already-present column (see the identical limitation already
+    // documented for `pos_transactions.fulfillment_status`, Phase 211). A tenant whose `vouchers`
+    // table gets created fresh from this string would otherwise silently keep the narrow enums
+    // forever -- column-repair would add `benefit_target`/`delivery_amount_off_centavos` fine, but
+    // never widen the two enums, so a free_delivery voucher would fail at write time with no
+    // schema-sync check ever catching it (Phase 240 plan §13.8).
     vouchers: Object.freeze({
         sql: "CREATE TABLE `vouchers` (\n"
             + "  `voucher_id` int NOT NULL AUTO_INCREMENT,\n"
             + "  `code` varchar(64) NOT NULL,\n"
-            + "  `voucher_kind` enum('promo_code') NOT NULL DEFAULT 'promo_code',\n"
+            + "  `voucher_kind` enum('promo_code','delivery_campaign') NOT NULL DEFAULT 'promo_code',\n"
             + "  `title` varchar(255) NOT NULL,\n"
             + "  `subtitle` varchar(255) DEFAULT NULL,\n"
             + "  `badge` varchar(80) DEFAULT NULL,\n"
             + "  `validity_text` varchar(255) DEFAULT NULL,\n"
-            + "  `benefit_class` enum('percent_off','amount_off','fixed_price') NOT NULL,\n"
+            + "  `benefit_class` enum('percent_off','amount_off','fixed_price','free_delivery') NOT NULL,\n"
+            + "  `benefit_target` enum('items','delivery') NOT NULL DEFAULT 'items',\n"
             + "  `percent_off_bps` int DEFAULT NULL,\n"
             + "  `amount_off_centavos` bigint DEFAULT NULL,\n"
             + "  `fixed_unit_price_centavos` bigint DEFAULT NULL,\n"
+            + "  `delivery_amount_off_centavos` bigint DEFAULT NULL,\n"
             + "  `max_discount_centavos` bigint DEFAULT NULL,\n"
             + "  `min_spend_centavos` bigint DEFAULT NULL,\n"
             + "  `min_quantity` int DEFAULT NULL,\n"
