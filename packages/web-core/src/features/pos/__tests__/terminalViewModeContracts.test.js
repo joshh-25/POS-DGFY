@@ -675,7 +675,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain("const [orderSort, setOrderSort] = React.useState('newest');");
     expect(terminalOperationsPanelsContent).toContain('aria-label="Sort incoming orders"');
     expect(terminalOperationsPanelsContent).toContain('<option value="oldest">Oldest first</option>');
-    // Phase 229 (#1290): the grid now maps over visibleIncomingOrders (the run-filtered view of
+    // Phase 230 (#1290): the grid now maps over visibleIncomingOrders (the run-filtered view of
     // sortedIncomingOrders), not sortedIncomingOrders directly -- sortedIncomingOrders itself is
     // still the sort's own output, feeding the filter rather than the render.
     expect(terminalOperationsPanelsContent).toContain('{visibleIncomingOrders.map((order) => {');

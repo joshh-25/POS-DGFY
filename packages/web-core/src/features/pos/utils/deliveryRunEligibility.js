@@ -103,3 +103,40 @@ export function getEligibleRunTargets(runs, { locationId = null } = {}) {
     return true;
   });
 }
+
+// Phase 229 (#1291). A run that is `completed`/`cancelled` no longer accepts dispatch
+// (RUN_DISPATCH_BLOCKED_STATUSES in deliveryRunUseCases.js), but cancelling a run does NOT clear
+// its members' `delivery_run_id` -- only the explicit remove-member use case does that. So
+// `delivery_run_id` truthy alone is not "still an active run member"; the run's own `status` has
+// to be checked too, or a cancelled run's members would be stranded with neither the per-order
+// action nor a working run dispatch.
+//
+// Deliberately a blocklist, not an allowlist, mirroring RUN_DISPATCH_BLOCKED_STATUSES exactly:
+// an unknown/missing `deliveryRun` alongside a truthy `delivery_run_id` (stale cached payload, a
+// future status value) is treated as still-active (fail-closed toward "use the run"). This is
+// safe because removing a member has no run-status guard at all (buildRemoveDeliveryRunMemberUseCase
+// checks only run-exists and member-exists), so an operator always has an escape hatch.
+export const RUN_INACTIVE_STATUSES = Object.freeze(['completed', 'cancelled']);
+
+/**
+ * Is this order currently a member of a run that hasn't completed or been cancelled?
+ * Returns `{ inActiveRun, runId, runLabel, runStatus }` -- never throws on a missing/malformed
+ * `deliveryJob`/`deliveryRun`.
+ */
+export function getActiveRunMembership(order) {
+  const deliveryJob = order?.deliveryJob || null;
+  const runId = deliveryJob?.delivery_run_id ?? null;
+
+  if (!runId) {
+    return { inActiveRun: false, runId: null, runLabel: null, runStatus: null };
+  }
+
+  const deliveryRun = deliveryJob?.deliveryRun || null;
+  const runStatus = deliveryRun ? String(deliveryRun.status || '').trim().toLowerCase() : null;
+  const runLabel = deliveryRun?.label ?? null;
+
+  // Fail-closed: an unknown or missing run record is treated as still active.
+  const inActiveRun = !runStatus || !RUN_INACTIVE_STATUSES.includes(runStatus);
+
+  return { inActiveRun, runId, runLabel, runStatus };
+}

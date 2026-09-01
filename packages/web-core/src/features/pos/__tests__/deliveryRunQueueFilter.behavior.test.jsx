@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-// Phase 229 (#1290). Covers the Active Queue's client-side delivery-run view filter: retail
+// Phase 230 (#1290). Covers the Active Queue's client-side delivery-run view filter: retail
 // gating, the filter narrowing the rendered grid, the tab badge staying unfiltered, the
 // selection/drift re-derivation against the FILTERED list (the correctness crux -- a filter-hidden
 // selection must never be silently submitted), the hidden-selection hint, the filter surviving a
@@ -344,7 +344,7 @@ describe('Filtered-empty state', () => {
 });
 
 describe('Run chip on order cards', () => {
-  it('renders the run label from the loaded runs list, falling back to Run #<id>', async () => {
+  it('renders the run label from the loaded runs list, falling back to #<id>', async () => {
     const inRun = buildOrder({ pos_transaction_id: 9001, deliveryJob: { provider: 'manual', status: 'pending_dispatch', delivery_run_id: 501 } });
     const unknownRun = buildOrder({ pos_transaction_id: 9002, deliveryJob: { provider: 'manual', status: 'pending_dispatch', delivery_run_id: 999 } });
     render(<IncomingQueueWorkspace {...baseProps({
@@ -353,7 +353,7 @@ describe('Run chip on order cards', () => {
 
     await waitFor(() => expect(fetchDeliveryRuns).toHaveBeenCalled());
     expect(await screen.findByText(/Run: Morning Run/i)).toBeTruthy();
-    expect(await screen.findByText(/Run: Run #999/i)).toBeTruthy();
+    expect(await screen.findByText(/Run: #999/i)).toBeTruthy();
   });
 });
 

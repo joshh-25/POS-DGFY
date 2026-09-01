@@ -278,7 +278,7 @@ API-only state). Multi-select "add to run" from the Active Queue is Phase 227's 
 members shows an honest empty state ("No orders in this run yet. Add orders from the Active
 Queue.") rather than implying bulk-add already exists.
 
-### Active Queue delivery-run filter (Phase 229, #1290)
+### Active Queue delivery-run filter (Phase 230, #1290)
 
 The Active Queue's header controls row (next to `Sort`) carries a `Delivery run` filter --
 `All orders` (default) / `Unassigned (no run)` / one option per visible run -- that narrows the

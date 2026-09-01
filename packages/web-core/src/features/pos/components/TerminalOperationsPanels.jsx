@@ -24,8 +24,8 @@ import QueueRunAssignBar from './QueueRunAssignBar.jsx';
 import QueueRunFilterControl from './QueueRunFilterControl.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
-import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
-import { QUEUE_RUN_FILTER_ALL, filterOrdersByRun, getQueueRunFilterOptions } from '../utils/deliveryRunQueueFilter.js';
+import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
+import { QUEUE_RUN_FILTER_ALL, QUEUE_RUN_FILTER_UNASSIGNED, filterOrdersByRun, getQueueRunFilterOptions } from '../utils/deliveryRunQueueFilter.js';
 import useDeliveryRunOptions from '../hooks/useDeliveryRunOptions.js';
 // Phase 211 (#1180)'s own precedent for this gate: orderFulfillmentUi.js:56 reuses this exact
 // normalizeWorkflowMode(...) === 'retail' pattern rather than the WORKFLOW_PAGE_CAPABILITIES nav
@@ -434,7 +434,7 @@ function IncomingQueueWorkspace({
     return Number(left?.pos_transaction_id || 0) - Number(right?.pos_transaction_id || 0);
   });
 
-  // Phase 229 (#1290): the Active Queue's client-side delivery-run view filter. Purely a view
+  // Phase 230 (#1290): the Active Queue's client-side delivery-run view filter. Purely a view
   // concern over the already-fetched list -- see deliveryRunQueueFilter.js for why this is NOT
   // built on getEligibleRunTargets. Shares one fetch of GET /pos/delivery-runs with
   // QueueRunAssignBar's target picker via useDeliveryRunOptions, so the two can never disagree
@@ -446,7 +446,6 @@ function IncomingQueueWorkspace({
       ...run,
       queueCount: filterOrdersByRun(sortedIncomingOrders, run.delivery_run_id).length
     })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [deliveryRuns, queueLocationScopeId, sortedIncomingOrders]
   );
   const visibleIncomingOrders = filterOrdersByRun(sortedIncomingOrders, runFilter);
@@ -469,7 +468,7 @@ function IncomingQueueWorkspace({
   // filter pointed at a run that's no longer offered. Mirrors QueueRunAssignBar's own
   // targetRunId reset effect.
   React.useEffect(() => {
-    if (runFilter === QUEUE_RUN_FILTER_ALL || runFilter === 'unassigned') return;
+    if (runFilter === QUEUE_RUN_FILTER_ALL || runFilter === QUEUE_RUN_FILTER_UNASSIGNED) return;
     if (runFilterOptions.some((run) => String(run.delivery_run_id) === String(runFilter))) return;
     setRunFilter(QUEUE_RUN_FILTER_ALL);
   }, [runFilterOptions, runFilter]);
@@ -491,7 +490,7 @@ function IncomingQueueWorkspace({
   const [bulkAssignSubmitting, setBulkAssignSubmitting] = React.useState(false);
   const activeShiftLocationId = shiftState?.shift?.location_id ?? null;
 
-  // Phase 229 (#1290) correctness crux: re-derived against visibleIncomingOrders (the FILTERED
+  // Phase 230 (#1290) correctness crux: re-derived against visibleIncomingOrders (the FILTERED
   // list), not sortedIncomingOrders. Without this, an order selected before the run filter was
   // applied would still be eligible-and-submitted by handleBulkAssignSubmit while invisible on
   // screen -- a filter-hidden selection would get silently submitted.
@@ -500,7 +499,9 @@ function IncomingQueueWorkspace({
   // transient poll error can return `orders: []`, and clearing the filter must restore the
   // selection rather than have silently destroyed it. Eligibility/visibility is instead
   // re-derived live here so a genuinely stale or filtered-out id just stops counting toward the
-  // selection rather than being dropped from the Set.
+  // selection rather than being dropped from the Set. (handleSelectAllEligible below is a narrow
+  // exception -- "Select all eligible" replaces the whole Set, so it does discard any
+  // filter-hidden selection; that has always been select-all's behavior, not new here.)
   const selectedEligibleOrders = visibleIncomingOrders.filter(
     (order) => selectedOrderIds.has(Number(order?.pos_transaction_id))
       && getRunAssignEligibility(order, {}).eligible
@@ -636,7 +637,7 @@ function IncomingQueueWorkspace({
   // braces alongside the isRetailMode guard on the render branch itself below.
   // Phase 227: a bulk-add selection is a retail-only concept -- clear it here too so it never
   // survives a flip into F&B mode.
-  // Phase 229 (#1290): the run filter is retail-only too (D-3) -- clear it on the same mode-flip
+  // Phase 230 (#1290): the run filter is retail-only too (D-3) -- clear it on the same mode-flip
   // so it never survives into F&B mode either.
   React.useEffect(() => {
     if (activeView === 'runs' && !isRetailMode) setActiveView('active');
@@ -821,11 +822,15 @@ function IncomingQueueWorkspace({
           </div>
         </div>
       ) : visibleIncomingOrders.length === 0 ? (
-        // Phase 229 (#1290): a distinct filtered-empty state -- never the illustrated "no online
+        // Phase 230 (#1290): a distinct filtered-empty state -- never the illustrated "no online
         // orders" branch above, which would misleadingly read as a data outage rather than "your
         // filter matched nothing."
         <div className="rounded-lg border border-slate-200 bg-white px-5 py-6 text-center">
-          <p className="text-sm font-semibold text-slate-700">No orders in this run are in the active queue.</p>
+          <p className="text-sm font-semibold text-slate-700">
+            {runFilter === QUEUE_RUN_FILTER_UNASSIGNED
+              ? 'No unassigned orders are in the active queue.'
+              : 'No orders in this run are in the active queue.'}
+          </p>
           <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setRunFilter(QUEUE_RUN_FILTER_ALL)}>
             Show all orders
           </Button>
@@ -856,6 +861,7 @@ function IncomingQueueWorkspace({
               );
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
+            const activeRunMembership = getActiveRunMembership(order);
             const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
             const hasDeliveryAssignment = hasCompleteDeliveryAssignment(deliveryJob || {});
             const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
@@ -947,13 +953,27 @@ function IncomingQueueWorkspace({
                   return null;
                 }
               };
+              // Phase 229 (#1291): once an order is a member of an active (not
+              // completed/cancelled) delivery run, the run's own Dispatch action is the sole
+              // path to out_for_delivery -- the per-order control is withheld here, with an
+              // explanatory tooltip, rather than hidden. Scoped to `out_for_delivery` only:
+              // gating the whole nextActions array would also disable `packed`, deadlocking the
+              // run's own DELIVERY_RUN_UNPACKED_MEMBERS dispatch precondition (#1272).
+              const gatedByActiveRun = status === 'out_for_delivery' && activeRunMembership.inActiveRun;
+              const runGateReason = gatedByActiveRun
+                ? (activeRunMembership.runLabel
+                  ? `This order is in delivery run "${activeRunMembership.runLabel}". Dispatch it from the Delivery Runs tab.`
+                  : 'This order is in a delivery run. Dispatch it from the Delivery Runs tab.')
+                : null;
               buttons.push(
                 <Button
                   key={`incoming-workspace-action-${order.pos_transaction_id}-${status}`}
                   type="button"
                   size="sm"
                   variant={status === 'rejected' ? 'destructive' : 'outline'}
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order))}
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order)) || gatedByActiveRun}
+                  title={runGateReason || undefined}
+                  aria-label={runGateReason || undefined}
                   onClick={() => {
                     if (status === 'rejected') {
                       setPendingRejectionOrderId(Number(order.pos_transaction_id));
@@ -1045,7 +1065,7 @@ function IncomingQueueWorkspace({
                     <div className="flex items-center gap-1.5">
                       {isRetailMode && deliveryJob?.delivery_run_id ? (
                         <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-extrabold text-slate-600">
-                          Run: {runLabelById.get(String(deliveryJob.delivery_run_id)) || `Run #${deliveryJob.delivery_run_id}`}
+                          Run: {runLabelById.get(String(deliveryJob.delivery_run_id)) || `#${deliveryJob.delivery_run_id}`}
                         </span>
                       ) : null}
                       <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
