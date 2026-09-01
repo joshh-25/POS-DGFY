@@ -615,6 +615,19 @@ export const reconcileCommercePaymentSession = async (paymentSessionId) => {
     return response.data;
 };
 
+// #1268: debug-only sandbox confirmation for PayMongo test-mode QR Ph payments, from the IMS
+// admin panel. The endpoint itself is fail-closed server-side (PAYMONGO_MODE=test check inside
+// the use case, plus paymongoService's own guard) — this client function adds no enforcement of
+// its own, it's just the transport.
+export const confirmCommercePaymentSessionSandbox = async (paymentSessionId) => {
+    const response = await adminApi.post(
+        `/commerce-payments/admin/payment-sessions/${paymentSessionId}/confirm-test`,
+        {},
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
 export const getTenantRevenueDashboard = async (params = {}) => {
     const response = await adminApi.get('/tenant-revenue/admin/dashboard', {
         ...requireAdminAuthConfig(),
