@@ -62,6 +62,23 @@ describe('Dialog focus management', () => {
     expect(document.activeElement).not.toBe(screen.getByRole('link', { name: 'Background navigation' }))
   })
 
+  it('portals the dialog outside transformed workspace wrappers', () => {
+    const { container } = render(
+      <div style={{ transform: 'translateX(0)' }}>
+        <Dialog open onOpenChange={() => {}}>
+          <DialogContent>
+            <DialogTitle>Repay Employee Credit in full?</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+
+    const root = document.querySelector('[data-dialog-root="true"]')
+    expect(root).not.toBeNull()
+    expect(root.parentElement).toBe(document.body)
+    expect(container.querySelector('[data-dialog-root="true"]')).toBeNull()
+  })
+
   it('allows a caller to replace the backdrop blur without removing the dark overlay', () => {
     render(<DialogOverlayHarness overlayClassName="backdrop-blur-none" />)
 

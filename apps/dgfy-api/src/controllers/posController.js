@@ -107,6 +107,7 @@ export {
     updateOnlineOrderDeliveryAddress,
     getDeviceStatus,
     printReceipt,
+    claimOnlineOrderReceiptAutoPrint,
     printShiftSummary,
     printZReading,
     authorizeDeviceDrawer,

@@ -5,6 +5,7 @@ import {
     getMobilePosTransactionCheckpointUseCase,
     syncMobilePosCheckoutsUseCase,
     syncMobilePosVoidsUseCase,
+    syncMobilePosRefundsUseCase,
     syncMobilePosOrderActionsUseCase,
     syncMobilePosItemsUseCase,
     syncMobilePosShiftsUseCase,
@@ -123,6 +124,22 @@ export const syncVoids = async (req, res, next) => {
     }
 };
 
+export const syncRefunds = async (req, res, next) => {
+    try {
+        const result = await syncMobilePosRefundsUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => buildSuccessPayload(result, 'Mobile POS refund sync processed'),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const syncOrderActions = async (req, res, next) => {
     try {
         const result = await syncMobilePosOrderActionsUseCase({
@@ -210,6 +227,8 @@ export default {
     getTransactionCheckpoint,
     syncCheckouts,
     syncVoids,
+    syncRefunds,
+    syncOrderActions,
     syncItems,
     syncShifts,
     syncHardwareEvents,

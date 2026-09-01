@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     cancelPosPaymentSession,
+    completePosPaymentSession,
     createPosCheckout,
     fetchPosCatalog
 } from '../../services/posService';
@@ -178,6 +179,7 @@ describe('usePosCheckoutWorkflow', () => {
         markTerminalOperationReplayed.mockResolvedValue(undefined);
         cancelPosPaymentSession.mockResolvedValue({});
         createPosCheckout.mockResolvedValue({ transaction });
+        completePosPaymentSession.mockResolvedValue({ transaction });
         fetchPosCatalog.mockResolvedValue([]);
     });
 
@@ -378,6 +380,72 @@ describe('usePosCheckoutWorkflow', () => {
         });
 
         await waitFor(() => expect(posToast.error).toHaveBeenCalledWith('Check the printer before retrying.'));
+        expect(posHardware.openDrawer).not.toHaveBeenCalled();
+    });
+
+    it('prints a completed split payment and opens the drawer when its breakdown includes cash', async () => {
+        const splitTransaction = {
+            ...transaction,
+            total_amount: 300,
+            payment_type: 'cash',
+            payment_breakdown: [
+                { payment_type: 'gcash', amount: 250 },
+                { payment_type: 'cash', amount: 50 }
+            ]
+        };
+        completePosPaymentSession.mockResolvedValueOnce({ transaction: splitTransaction });
+        const posHardware = {
+            supportsCapability: (capability) => capability === POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT,
+            printReceipt: vi.fn().mockResolvedValue({ success: true }),
+            openDrawer: vi.fn()
+        };
+        const { result } = renderCheckout({
+            posHardware,
+            splitPaymentSession: { pos_payment_session_id: 91, remaining_amount: 0 }
+        });
+
+        await act(async () => {
+            await result.current.handleCompletePreparedSplitPayment();
+        });
+
+        await waitFor(() => expect(posHardware.printReceipt).toHaveBeenCalledWith(expect.objectContaining({
+            transaction: splitTransaction,
+            openDrawerAfterPrint: true,
+            reason: 'split_checkout_auto_print'
+        })));
+        expect(posHardware.openDrawer).not.toHaveBeenCalled();
+    });
+
+    it('prints a non-cash split payment without opening the drawer', async () => {
+        const splitTransaction = {
+            ...transaction,
+            total_amount: 300,
+            payment_type: 'gcash',
+            payment_breakdown: JSON.stringify([
+                { payment_type: 'gcash', amount: 250 },
+                { payment_type: 'card', amount: 50 }
+            ])
+        };
+        completePosPaymentSession.mockResolvedValueOnce({ transaction: splitTransaction });
+        const posHardware = {
+            supportsCapability: (capability) => capability === POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT,
+            printReceipt: vi.fn().mockResolvedValue({ success: true }),
+            openDrawer: vi.fn()
+        };
+        const { result } = renderCheckout({
+            posHardware,
+            splitPaymentSession: { pos_payment_session_id: 92, remaining_amount: 0 }
+        });
+
+        await act(async () => {
+            await result.current.handleCompletePreparedSplitPayment();
+        });
+
+        await waitFor(() => expect(posHardware.printReceipt).toHaveBeenCalledWith(expect.objectContaining({
+            transaction: splitTransaction,
+            openDrawerAfterPrint: false,
+            reason: 'split_checkout_auto_print'
+        })));
         expect(posHardware.openDrawer).not.toHaveBeenCalled();
     });
 

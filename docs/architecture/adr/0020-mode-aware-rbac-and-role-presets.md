@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-06
-last_reviewed: 2026-08-21
+last_reviewed: 2026-09-01
 review_by: 2026-11-06
 applies_to: architecture_decision
 topic: mode_aware_rbac_and_role_presets
@@ -54,6 +54,17 @@ This decision follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUN
 ### 2026-08-21 — Production fallback is fail-closed
 
 Production now defaults `MODE_RBAC_GENERIC_FALLBACK_ENABLED` to `false`, and the production environment validator rejects an explicit truthy value. Non-production runtimes retain the compatibility default while tenant users are remapped. This amendment narrows the original compatibility default for hosted production without changing the mode-native permission contract.
+
+### 2026-09-01 — Cashier item-maintenance permission floor and ceiling
+
+The compatibility `cashier` role has a fixed POS catalog-maintenance contract: its effective
+permissions always include `items:edit` and always exclude `items:delete`. This floor and ceiling
+apply even when `users.permissions` contains an explicit per-user list. Tenant administrators may
+configure other cashier permissions, but they cannot turn the compatibility cashier role into a
+catalog-view-only role or grant item deletion through the explicit permission list. Assign a
+different role when a user must not edit items. Backend authorization remains authoritative; the
+POS client mirrors the same rule only to present consistent controls and is not the security
+boundary.
 
 ## Validation
 

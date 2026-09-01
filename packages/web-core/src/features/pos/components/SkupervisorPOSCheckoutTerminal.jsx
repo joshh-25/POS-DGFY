@@ -195,7 +195,7 @@ const getModifierGroupMin = (group = {}) => {
     const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
     const required = through.is_required_override == null ? group.required === true : through.is_required_override === true;
     const min = Number.parseInt(group.min_select || 0, 10) || 0;
-    return required ? Math.max(1, min) : min;
+    return required ? Math.max(1, min) : 0;
 };
 const getModifierGroupMax = (group = {}) => Math.max(1, Number.parseInt(group.max_select || 1, 10) || 1);
 const buildDefaultLineModifiers = (item = {}) => getFnbModifierGroups(item).flatMap((group) => {
@@ -1350,7 +1350,10 @@ export default function POSCheckoutTerminal({
                         unit: line.unit_of_measure || ''
                     });
                 }
-                if (safeQty <= 0) return null;
+                // Quantity controls may never remove a cart line. Keep the
+                // current line intact at zero; explicit removal belongs to
+                // removeCartLine (the trash action) only.
+                if (safeQty <= 0) return line;
                 return { ...line, quantity: safeQty };
             })
             .filter(Boolean));

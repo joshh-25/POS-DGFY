@@ -6,6 +6,7 @@ const mockGetMobilePosDevicePolicyUseCase = jest.fn();
 const mockSyncMobilePosCheckoutsUseCase = jest.fn();
 const mockGetMobilePosTransactionCheckpointUseCase = jest.fn();
 const mockSyncMobilePosVoidsUseCase = jest.fn();
+const mockSyncMobilePosRefundsUseCase = jest.fn();
 const mockSyncMobilePosOrderActionsUseCase = jest.fn();
 const mockSyncMobilePosItemsUseCase = jest.fn();
 const mockSyncMobilePosShiftsUseCase = jest.fn();
@@ -19,6 +20,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     syncMobilePosCheckoutsUseCase: mockSyncMobilePosCheckoutsUseCase,
     getMobilePosTransactionCheckpointUseCase: mockGetMobilePosTransactionCheckpointUseCase,
     syncMobilePosVoidsUseCase: mockSyncMobilePosVoidsUseCase,
+    syncMobilePosRefundsUseCase: mockSyncMobilePosRefundsUseCase,
     syncMobilePosOrderActionsUseCase: mockSyncMobilePosOrderActionsUseCase,
     syncMobilePosItemsUseCase: mockSyncMobilePosItemsUseCase,
     syncMobilePosShiftsUseCase: mockSyncMobilePosShiftsUseCase,

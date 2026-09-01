@@ -1,19 +1,19 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-07-22
-related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
+last_reviewed: 2026-08-29
+related_adr: docs/architecture/adr/0043-standalone-native-hardware-pos-runtime.md
 declaration_id: 2026-07-22-mobile-refresh-token-and-free-tier-offline-sync
 classification: regulatory
-surfaces: pos,terminal,settings,compliance
+surfaces: pos,terminal,settings,payments,compliance
 reason_codes_impacted: ALLOWED
-policy_version: 2026.07.22
-verification_evidence: cd backend && npm run check:architecture-guardrails,cd backend && npm run check:controller-boundaries,cd backend && npx eslint src,cd backend && node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/browserSessionCookies.test.js tests/dgfyTenantSession.transport.test.js tests/mobilePosHandlers.transport.test.js tests/requirePremium.middleware.test.js tests/authModuleExports.contract.test.js tests/rateLimiterStoreMode.test.js tests/rateLimiter.behavior.test.js,manual verification against a locally running instance (migrated MariaDB + Redis) of refresh-token issuance/rotation/reuse-rejection and the free-tier bootstrap/sync-cap behavior described below
-rollback_note: Revert routes/mobilePos.js to re-add router.use(requirePremium); revert middleware/rateLimiter.js (drop mobilePosFreeSyncLimiter and its export); revert middleware/auth.js and utils/tenantPlan.js (drop isPremiumActiveTenant extraction, restore the inline logic in requirePremium); revert utils/browserSessionCookies.js (drop isMobileClientRequest/getSubmittedRefreshToken) and the two call-site changes in modules/auth/controllers/authHandlers.js and modules/dgfy/controllers/dgfyAuthHandlers.js that use them; revert the MOBILE_SYNC_LIMIT_PER_DAY export in modules/pos/usecases/mobilePosUseCases.js back to a local const. No migration, no data shape change, no stored data to roll back.
+policy_version: 2026.08.29
+verification_evidence: focused rateLimiter.behavior.test.js including successful-round reuse per device and failed-request restoration,mobilePosReplayGuard.test.js payment mutation replay coverage,API architecture and compliance checks,existing mobile auth and sync contract suites
+rollback_note: Revert mobilePosFreeSyncRoundLimiter routing and restore mobilePosFreeSyncLimiter mounts; revert mobilePosReplayGuard wiring while retaining immutable mutation IDs. No migration or stored business data needs rollback.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-07-22T00:00:00Z
-preflight_request_ref: https://github.com/Sieitzz/dgfy-platform/pull/64
+preflight_run_at: 2026-08-29T19:00:00+08:00
+preflight_request_ref: NOT-EXECUTED-MOBILE-SYNC-ROUND-20260829
 ---
 
 # Mobile Refresh Token Support and Free-Tier Offline-Sync Access
@@ -51,13 +51,14 @@ are verified, signed, or how long they are valid for.
 
 `router.use(requirePremium)` is removed from `routes/mobilePos.js`.
 `GET /mobile-pos/bootstrap/{catalog,settings,device-policy}` (read-only) is
-now reachable by both tiers with no cap. `POST /mobile-pos/sync/*` (four
-write routes: checkouts, shifts, hardware-events, checkpoint) now carries a
-new `mobilePosFreeSyncLimiter` (Redis-backed via the existing `DynamicStore`
-rate-limiter infrastructure, tenant-keyed, shared across all four routes so
-the budget is per business per day, not per endpoint) capped at
+now reachable by both tiers with no cap. `POST /mobile-pos/sync/*` ledger
+routes carry a free-tier round limiter (Redis-backed via the existing
+`DynamicStore` infrastructure) capped at
 `MOBILE_SYNC_LIMIT_PER_DAY` (2, already advertised to clients in
-`sync_policy`/`sync_limit_policy` but never previously enforced). A tenant
+`sync_policy`/`sync_limit_policy` but never previously enforced). As amended
+on 2026-08-29, the limiter is keyed per tenant/device and treats a bounded,
+stable `client_sync_run_id` as one successful full round even when dependency
+replay crosses several endpoint calls. Failed requests restore the slot. A tenant
 on the `premium` plan with an active (or grace-period) subscription — the
 same predicate `requirePremium` already computed, extracted to
 `utils/tenantPlan.js#isPremiumActiveTenant` — bypasses the limiter entirely
@@ -78,7 +79,8 @@ rate limit premium tenants do not have.
    `requirePremium` does not remove or weaken role/permission enforcement.
 2. `authenticate` (JWT verification, tenant-status/subscription-inactive
    gating) is unchanged and still runs first on every `/mobile-pos/*` route.
-3. The free-tier sync cap is enforced server-side (Redis-backed), not only
+3. The free-tier sync cap is enforced server-side (Redis-backed with the
+   existing memory fallback), not only
    advertised to or trusted from the client — a modified client cannot
    bypass it by ignoring its own local `dailyCap`.
 4. `isPremiumActiveTenant` reproduces `requirePremium`'s exact
@@ -90,6 +92,15 @@ rate limit premium tenants do not have.
    session's refresh-token exposure (httpOnly-cookie-only) changes.
 6. No fiscal/BIR receipt fields, payment provider fields, or PII fields are
    added, removed, or reshaped by either change.
+7. A run ID never replaces mutation idempotency. Every ledger effect continues
+   to use its immutable mutation ID; run identity is used only for rate-limit
+   accounting and expires after a bounded reuse interval.
+8. Rejected validation, authorization, and server-error requests do not consume
+   one of the two successful-round slots.
+9. Mobile payment mutations retain their immutable mutation IDs and are checked
+   against the persisted replay result before any financial effect is repeated.
+   The sync-run identifier controls rate-limit accounting only and never replaces
+   checkout, refund, reversal, or drawer-event idempotency.
 
 ## Verification Evidence
 
@@ -100,8 +111,8 @@ module-boundary or controller/model-import violations were introduced.
 transport + behavior tests, run together and in isolation) cover: mobile
 vs. browser refresh-token body inclusion, cookie-priority-over-body
 ordering, `requirePremium`'s unchanged behavior post-refactor, and the new
-`mobilePosFreeSyncLimiter` (cap enforcement, shared budget across the four
-sync routes, premium bypass, per-tenant isolation). A full backend suite
+mobile sync limiter (cap enforcement, bounded run reuse, premium bypass, and
+tenant/device isolation). A full backend suite
 run before/after this change shows an identical set of pre-existing
 (environment-only, `ECONNREFUSED`/missing-app-dependency) failing suites —
 no new regressions. Manual verification against a real, locally running
@@ -110,5 +121,66 @@ instance of this backend (migrated MariaDB + Redis, no mocking) confirmed:
 `/auth/refresh-token` rotates it correctly; reusing the spent refresh token
 is rejected ("reused or revoked"); a `standard`-plan tenant reaches
 `/mobile-pos/bootstrap/settings` (403'd before this change); and
-`/mobile-pos/sync/checkouts` allows exactly 2 calls before the 3rd returns
+the original `/mobile-pos/sync/checkouts` path allowed exactly 2 requests before the 3rd returned
 `429` with `limitScope: "mobile_pos_free_sync"` and `requiresUpgrade: true`.
+
+The 2026-08-29 amendment adds focused behavior coverage proving that multiple
+successful endpoint calls with one run ID consume one slot, a third distinct
+run is rejected, different devices do not share the business allowance,
+legacy clients retain per-request accounting, and 4xx responses do not spend a
+successful-round slot. No production preflight was claimed for this local
+change; `preflight_request_ref` records that explicitly.
+
+Focused `mobilePosReplayGuard.test.js` coverage verifies that a persisted replay
+result is returned without repeating the payment mutation and that a mismatched
+operation type fails closed. The guard adds no payment field, provider claim,
+schema migration, or stored financial effect.
+
+## Update 2026-09-01: POS payment and device workflow hardening
+
+The local reconciliation batch also carries existing POS corrections for
+employee-credit repayment validation, refund/reversal scope, mobile financial
+sync replay, receipt-device audit payloads, payment breakdown normalization,
+and free-tier sync-round accounting. These changes preserve the existing
+transaction and allocation ownership boundaries: server use cases remain the
+only financial mutation authority, provider evidence is not inferred from the
+client, and hardware follow-up failure does not roll back a committed sale.
+
+Focused backend tests cover employee-credit repayment validation, mobile sync
+transport and financial replay, cash refund behavior, receipt-device payloads,
+payment breakdowns, and rate-limit restoration. No model or migration-runner
+file changes are included, so this update introduces no schema migration.
+
+### Cashier access and catalog mutation controls
+
+The same reconciliation preserves least-privilege behavior for cashier item
+maintenance and POS settings access. Cashiers may edit catalog items through
+the existing authorized path but cannot delete them, and non-master-admin
+settings access continues to require the configured branch PIN. Permission
+matrix, cashier POS permission, and mobile settings-bootstrap tests cover the
+server-authoritative enforcement; no credential or PIN value is logged or
+added to a client-owned authorization decision.
+
+### F&B modifier preservation
+
+F&B modifier corrections retain server-side validation and persisted order
+snapshots while preventing inactive or stale modifier state from leaking into
+new edits. Store and F&B use-case tests verify the accepted modifier payloads;
+the change does not alter payment totals outside the existing authoritative
+checkout calculation and introduces no schema change.
+
+### Shared POS terminal and receipt behavior
+
+The shared POS client corrections align receipt wording and payment breakdowns,
+remove cashier-facing shift totals that belong only in Z readings, preserve
+online-order receipt printing, enforce edit-without-delete catalog behavior,
+restore terminal resume state, and run split-payment hardware follow-up from
+the canonical completed transaction. A positive cash allocation requests one
+drawer pulse with the automatic receipt print; non-cash splits and reprints do
+not request a drawer pulse. Hardware failure remains a post-commit warning and
+never retries or reverses the financial transaction.
+
+Component, contract, hook, and receipt-renderer tests cover the affected paths,
+including mixed GCash/cash and non-cash-only split payments. No client display
+state becomes authoritative for totals, permissions, payment status, or drawer
+audit scope.

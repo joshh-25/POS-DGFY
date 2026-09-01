@@ -41,7 +41,6 @@ describe('close-report payment breakdown rendering', () => {
             expect(markup).toContain('Acme Corporation');
             expect(markup).toContain('acme-logo.png');
             expect(markup).toContain('Payment method breakdown');
-            expect(markup).toContain('POS voids (2)');
             expect(markup).toContain('Cash (2)');
             expect(markup).toContain('GCash (1)');
             expect(markup).toContain('Maya (0)');
@@ -49,10 +48,20 @@ describe('close-report payment breakdown rendering', () => {
             expect(markup).toContain('Employee Credit (1)');
             expect(markup).toContain('Other (1)');
         });
-        expect(shiftMarkup).toContain('Total sales (excluding opening cash)');
+        expect(shiftMarkup).not.toContain('Transactions');
+        expect(shiftMarkup).not.toContain('Subtotal');
+        expect(shiftMarkup).not.toContain('Discounts');
+        expect(shiftMarkup).not.toContain('VAT');
+        expect(shiftMarkup).not.toContain('Total sales (excluding opening cash)');
+        expect(shiftMarkup).not.toContain('POS voids');
         expect(shiftMarkup).toContain('Opening/petty cash');
         expect(shiftMarkup).toContain('Expected cash in drawer');
-        expect(shiftMarkup).toContain('Post-close voids (1)');
+        expect(zReadingMarkup).toContain('Transactions');
+        expect(zReadingMarkup).toContain('Subtotal');
+        expect(zReadingMarkup).toContain('Discounts');
+        expect(zReadingMarkup).toContain('VAT');
+        expect(zReadingMarkup).toContain('Total sales');
+        expect(zReadingMarkup).toContain('POS voids (2)');
     });
 
     it('uses the same method labels for iMin shift-summary and Z-reading text', () => {
@@ -64,11 +73,8 @@ describe('close-report payment breakdown rendering', () => {
             zReading: { z_reading: { summary: salesSummary } },
             businessSettings
         });
-        expect(shiftText).toContain('Post-close voids (1)');
-
         [shiftText, zReadingText].forEach((text) => {
             expect(text).toContain('Acme Corporation');
-            expect(text).toContain('POS voids (2)');
             expect(text).toContain('Cash (2)');
             expect(text).toContain('GCash (1)');
             expect(text).toContain('Maya (0)');
@@ -76,6 +82,18 @@ describe('close-report payment breakdown rendering', () => {
             expect(text).toContain('Employee Credit (1)');
             expect(text).toContain('Other (1)');
         });
+        expect(shiftText).not.toContain('Transactions');
+        expect(shiftText).not.toContain('Subtotal');
+        expect(shiftText).not.toContain('Discounts');
+        expect(shiftText).not.toContain('VAT');
+        expect(shiftText).not.toContain('Total sales');
+        expect(shiftText).not.toContain('POS voids');
+        expect(zReadingText).toContain('Transactions');
+        expect(zReadingText).toContain('Subtotal');
+        expect(zReadingText).toContain('Discounts');
+        expect(zReadingText).toContain('VAT');
+        expect(zReadingText).toContain('Total sales');
+        expect(zReadingText).toContain('POS voids (2)');
         expect(zReadingText).toContain('Provider refunds reconciled separately.');
     });
 

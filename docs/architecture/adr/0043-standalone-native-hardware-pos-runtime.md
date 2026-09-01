@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-19
-last_reviewed: 2026-08-04
+last_reviewed: 2026-08-29
 review_by: 2026-12-19
 applies_to: hardware_pos_android_imin_runtime
 topic: standalone_native_hardware_pos_runtime
@@ -97,7 +97,9 @@ Native hardware app flow must mirror the current web POS operator journey, but i
 1. Hardware POS writes local transaction and shift journals first.
 2. Hardware POS replays those journals through dedicated `/api/v1/mobile-pos/*` APIs.
 3. Backend remains the canonical authority after replay.
-4. Sync is manual in Phase 1 and limited to `2` successful full sync runs per device per local business day.
+4. Phase 1 begins with manual sync. The completed runtime also supports
+   policy-governed reconnect/foreground replay and paid realtime replay; free
+   devices remain limited to `2` successful full sync runs per day.
 5. Pending local transactions must remain visually distinct from fully synced transactions.
 
 ## Consequences
@@ -134,6 +136,21 @@ Native hardware app flow must mirror the current web POS operator journey, but i
 5. Keep the current Android wrapper as temporary fallback only during migration.
 
 ## Amendments
+
+### 2026-08-29 — One dependency drain is one successful sync round
+
+- Clause amended: Sync Strategy 4 and Guardrail 6 (`default`).
+- Change: one leased mobile outbox drain carries a stable
+  `client_sync_run_id` across its dependency waves and endpoint calls. The
+  backend enforces the free allowance per tenant/device and reuses the first
+  successful round slot for that ID during a bounded 15-minute window. Failed
+  validation, authorization, and server attempts do not spend a successful
+  slot. Immutable mutation IDs remain the exactly-once effect boundary.
+- Reason: a single offline work session can contain shift, checkout, void, and
+  order-action dependencies; counting each HTTP request as a full sync made the
+  advertised two-round device policy impossible to satisfy.
+- See: `docs/api/RATE_LIMITING.md` and mobile
+  `docs/architecture/SYNC-ARCHITECTURE.md`.
 
 ### 2026-08-04 — Web POS iMin path now audits its own hardware actions
 - Clause amended: Guardrail 7 / "Browser-only POS remains a rollback-safe

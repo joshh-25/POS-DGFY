@@ -498,11 +498,22 @@ export const buildRecordEmployeeCreditRepaymentUseCase = ({ repository }) => asy
   try {
     const normalizedAccountId = requirePositiveInt(accountId, 'accountId');
     const normalizedActorUserId = requirePositiveInt(actorUserId, 'actorUserId');
-    const amount = round4(payload.amount);
+    const repayAll = payload.repay_all === true;
+    const hasAmount = payload.amount !== undefined && payload.amount !== null;
+    if (repayAll === hasAmount) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Provide either a repayment amount or repay_all', { statusCode: 422 });
+    }
+    const requestedAmount = hasAmount ? round4(payload.amount) : null;
+    const expectedVersion = payload.expected_version === undefined || payload.expected_version === null
+      ? null
+      : Number(payload.expected_version);
     const reason = String(payload.reason || '').trim();
     const idempotencyKey = String(payload.idempotency_key || '').trim();
-    if (amount <= 0) {
+    if (hasAmount && (!Number.isFinite(requestedAmount) || requestedAmount <= 0)) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Repayment amount must be greater than zero', { statusCode: 422 });
+    }
+    if (repayAll && (!Number.isInteger(expectedVersion) || expectedVersion < 0)) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'expected_version is required for Repay All', { statusCode: 422 });
     }
     if (reason.length < 3) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'A reason is required for Employee Credit repayment', { statusCode: 422 });
@@ -520,6 +531,13 @@ export const buildRecordEmployeeCreditRepaymentUseCase = ({ repository }) => asy
       throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Employee Credit account was not found', { statusCode: 404 });
     }
     const outstandingBefore = round4(account.outstanding_balance);
+    if (repayAll && Number(account.version || 0) !== expectedVersion) {
+      throw new DomainError(DomainErrorCode.CONFLICT, 'Employee Credit balance changed. Refresh and confirm the current balance again.', { statusCode: 409 });
+    }
+    const amount = repayAll ? outstandingBefore : requestedAmount;
+    if (repayAll && amount <= 0) {
+      throw new DomainError(DomainErrorCode.CONFLICT, 'Employee Credit account has no outstanding balance', { statusCode: 409 });
+    }
     if (amount > outstandingBefore) {
       throw new DomainError(DomainErrorCode.CONFLICT, 'Repayment cannot exceed the outstanding balance', { statusCode: 409 });
     }
@@ -537,7 +555,10 @@ export const buildRecordEmployeeCreditRepaymentUseCase = ({ repository }) => asy
       actor_user_id: normalizedActorUserId,
       idempotency_key: idempotencyKey,
       reason,
-      metadata: { balance_basis: 'outstanding' }
+      metadata: {
+        balance_basis: 'outstanding',
+        repayment_mode: repayAll ? 'all' : 'partial'
+      }
     }, { transaction });
     await repository.createAuditLog({
       user_id: normalizedActorUserId,
@@ -549,7 +570,8 @@ export const buildRecordEmployeeCreditRepaymentUseCase = ({ repository }) => asy
         amount,
         outstanding_before: outstandingBefore,
         outstanding_after: outstandingAfter,
-        reason
+        reason,
+        repayment_mode: repayAll ? 'all' : 'partial'
       }
     }, { transaction });
     await transaction.commit();

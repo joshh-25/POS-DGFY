@@ -7,6 +7,7 @@ import {
     COMPLIANCE_OPERATION
 } from '../../compliance/index.js';
 import dbStore from '../../../utils/dbStore.js';
+import { assertMobilePosExpectedTransactionState } from '../domain/mobilePosReplayGuard.js';
 
 const MERCHANT_OWNED_DIGITAL_TENDERS = new Set(['gcash', 'maya', 'card', 'bank_transfer']);
 
@@ -234,6 +235,7 @@ export const buildExternalRefundPosTransactionUseCase = ({ posRepository }) => {
                     compliance_decision: null
                 });
             }
+            assertMobilePosExpectedTransactionState({ transaction: existing, payload, operation: 'external_refund' });
 
             const adjustments = typeof posRepository.listPosTransactionAdjustmentsForTransaction === 'function'
                 ? await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedTransactionId, { transaction, lock: true })

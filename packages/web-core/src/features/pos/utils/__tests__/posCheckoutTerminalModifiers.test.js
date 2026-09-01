@@ -29,6 +29,8 @@ describe('POS checkout terminal modifier utilities', () => {
             { modifier_group_id: 10, modifier_option_id: 100 }
         ]);
         expect(getModifierGroupMin({ required: false, min_select: 3, FnbItemModifierGroup: { is_required_override: true } })).toBe(3);
+        expect(getModifierGroupMin({ required: false, min_select: 3 })).toBe(0);
+        expect(getModifierGroupMin({ required: true, min_select: 3, FnbItemModifierGroup: { is_required_override: false } })).toBe(0);
     });
 
     it('creates validated snapshots, computes deltas, and ignores missing groups', () => {

@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-27
-last_reviewed: 2026-08-27
+last_reviewed: 2026-09-01
 review_by: 2027-02-27
 applies_to: mobile_pos, pos, discounts, receipts, voids, cash_drawer, sync
 topic: standalone_mobile_offline_financial_reconciliation
@@ -94,7 +94,7 @@ cashier device without allowing the client to invent a rate.
 ## Non-Goals
 
 - Offline employee credit, employee discount, promo, voucher, manual discount,
-  refunds, payment-provider capture, or fiscal BIR finalization.
+  payment-provider capture, or fiscal BIR finalization.
 - Treating a provisional native slip as an official fiscal receipt.
 - Replacing terminal pairing, cashier operator authority, or location scope.
 
@@ -108,6 +108,34 @@ cashier device without allowing the client to invent a rate.
    offline restart from the last committed cursor.
 6. Android staging UAT covers airplane-mode checkout, receipt/reprint, drawer,
    reconnect, conflict visibility, and shift-summary freshness before release.
+
+## Amendment (2026-09-01): Offline refund-request replay
+
+This amendment supersedes only the original refund non-goal. It does not make
+the device authoritative for provider money movement or final settlement.
+
+1. **Refund requests are append-only local financial intents.** `[binding]`
+   Cash, merchant-owned external, provider-owned, and split-allocation refund
+   requests persist with a stable idempotency key, reason, expected transaction
+   status/payment status/server version, shift identity, and workflow evidence
+   before the native UI reports them saved.
+2. **The server remains the execution authority.** `[binding]`
+   `POST /mobile-pos/sync/refunds` delegates each entry to the existing cash,
+   external, provider, or split refund use case. Provider ownership, refundable
+   amount, currency, allocation state, and final payment status are never
+   accepted from the client as authoritative facts.
+3. **Replay and concurrency are fail-closed.** `[binding]` Stable mutation keys
+   make retries idempotent. A status, payment-status, or `updated_at` mismatch
+   rejects only that batch entry with a durable conflict; it does not overwrite
+   newer server state or block unrelated entries.
+4. **Offline cash is a provisional projection.** `[binding]` The device may add
+   one pending `cash_out` event to the active local shift so expected drawer
+   cash remains operational offline. Server acknowledgement links it to the
+   authoritative drawer event. Permanent rejection removes only the
+   unconfirmed projection and retains the refund request audit record.
+5. **Local pending is not final success.** `[binding]` History may show
+   `refund_pending_sync`; only server acknowledgement may show `refunded` or
+   another authoritative settlement state.
 
 ## Approval Record
 

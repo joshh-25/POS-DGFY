@@ -64,6 +64,45 @@ describe('Food & Beverage mode use cases', () => {
     expect(repository.beginTransaction).not.toHaveBeenCalled();
   });
 
+  it('normalizes optional modifier groups to zero minimum selections', async () => {
+    const createRepository = buildTransactionalRepository({
+      createModifierGroup: jest.fn().mockResolvedValue({ modifier_group_id: 7 })
+    });
+    const createResult = await buildCreateModifierGroupUseCase({ fnbRepository: createRepository })({
+      payload: {
+        name: 'Extras',
+        required: false,
+        min_select: 1,
+        max_select: 1,
+        options: [{ name: 'Cheese' }]
+      }
+    });
+
+    expect(createResult.success).toBe(true);
+    expect(createRepository.createModifierGroup).toHaveBeenCalledWith(expect.objectContaining({
+      group: expect.objectContaining({ min_select: 0, required: false })
+    }), { transaction: createRepository.transaction });
+
+    const updateRepository = buildTransactionalRepository({
+      updateModifierGroup: jest.fn().mockResolvedValue({ modifier_group_id: 7 })
+    });
+    const updateResult = await buildUpdateModifierGroupUseCase({ fnbRepository: updateRepository })({
+      modifierGroupId: 7,
+      payload: {
+        name: 'Extras',
+        required: false,
+        min_select: 1,
+        max_select: 1,
+        options: [{ name: 'Cheese' }]
+      }
+    });
+
+    expect(updateResult.success).toBe(true);
+    expect(updateRepository.updateModifierGroup).toHaveBeenCalledWith(7, expect.objectContaining({
+      group: expect.objectContaining({ min_select: 0, required: false })
+    }), { transaction: updateRepository.transaction });
+  });
+
   it('updates modifier pricing, channel state, inventory links, and location availability transactionally', async () => {
     const repository = buildTransactionalRepository({
       findActiveItemsByIds: jest.fn().mockResolvedValue([{ item_id: 90 }]),

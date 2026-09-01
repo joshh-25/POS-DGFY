@@ -33,6 +33,7 @@ import {
   fetchActiveDeliveryPersonnel,
   updateDeliveryJobStatus,
   updateOnlineOrderStatus,
+  claimOnlineOrderReceiptAutoPrint,
   updateOnlineOrderDeliveryAddress
 } from '../services/posService';
 import {
@@ -999,8 +1000,8 @@ export default function TerminalPage() {
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);
-  const canEditItems = hasPermission('items:edit');
-  const canDeleteItems = hasPermission('items:delete');
+  const canEditItems = isCashierRole || hasPermission('items:edit');
+  const canDeleteItems = !isCashierRole && hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
 
   useEffect(() => {
@@ -1353,7 +1354,8 @@ export default function TerminalPage() {
       terminalMetaHydratedForSessionRef.current = true;
       return {
         registry: normalizedRegistry,
-        registryMode: normalizedRegistryMode
+        registryMode: normalizedRegistryMode,
+        settingsAccessPinEnabled: allSettings?.pos_settings_access_pin_enabled?.value === true
       };
     } catch {
       setTerminalRegistry([]);
@@ -1385,7 +1387,8 @@ export default function TerminalPage() {
       terminalMetaHydratedForSessionRef.current = true;
       return {
         registry: [],
-        registryMode: 'warn'
+        registryMode: 'warn',
+        settingsAccessPinEnabled: false
       };
     }
   }, [setupFlowActive]);
@@ -4069,8 +4072,23 @@ export default function TerminalPage() {
         location_id: cashierResumeContext.locationId,
         shift_id: cashierResumeContext.shiftId
       }, cashierRequestConfig);
+      const preservedShiftContext = cashierResumeContext?.shiftSnapshot || {
+        shift: shiftState?.shift || null,
+        shiftState: {
+          cashSummary: shiftState?.cashSummary || null,
+          salesSummary: shiftState?.salesSummary || null
+        },
+        todayDashboard: {
+          businessDate: todayDashboard?.businessDate || null,
+          salesSummary: todayDashboard?.salesSummary || null
+        },
+        locationId: cashierResumeContext.locationId
+      };
+      activateDgfyTenantSession(posSession, { emitAuthEvent: false });
+      setTerminalUser(cashierUser);
       await completeTerminalUnlock(terminalId, {
-        operatingLocationIdOverride: cashierResumeContext.locationId
+        operatingLocationIdOverride: cashierResumeContext.locationId,
+        preserveShiftContext: preservedShiftContext
       });
       toast.success('Cashier verified. Shift resumed.');
     } catch (error) {
@@ -4196,6 +4214,8 @@ export default function TerminalPage() {
           shift_id: shiftId
         }, cashierRequestConfig);
       }
+      activateDgfyTenantSession(posSession, { emitAuthEvent: false });
+      setTerminalUser(cashierUser);
       await completeTerminalUnlock(terminalId, {
         operatingLocationIdOverride: locationId,
         preserveShiftContext: preservedShiftContext
@@ -5335,10 +5355,24 @@ export default function TerminalPage() {
 
   const printOnlineOrderReceiptById = useCallback(async (posTransactionId, {
     transaction = null,
-    automatic = false
+    automatic = false,
+    requireAutomaticClaim = false,
+    reason = null
   } = {}) => {
     const normalizedId = Number.parseInt(posTransactionId, 10);
     if (!Number.isInteger(normalizedId) || normalizedId <= 0) return null;
+
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    if (requireAutomaticClaim) {
+      if (!terminalId) return { skipped: true, success: false };
+      const claim = await claimOnlineOrderReceiptAutoPrint({
+        transaction_id: normalizedId,
+        terminal_id: terminalId
+      });
+      if (!claim?.claimed) {
+        return { skipped: true, success: true, reasonCode: claim?.reason_code || null };
+      }
+    }
 
     let detail = transaction;
     if (!detail) {
@@ -5354,8 +5388,8 @@ export default function TerminalPage() {
       receiptContract: null,
       openDrawerAfterPrint: false,
       transactionId: normalizedId,
-      terminalId: sanitizeTerminalId(activeTerminalId) || undefined,
-      reason: automatic ? 'online_order_completion_receipt' : 'online_order_receipt',
+      terminalId: terminalId || undefined,
+      reason: reason || (automatic ? 'online_order_payment_receipt' : 'online_order_receipt'),
       idempotencyKey: createIdempotencyKey('pos-online-receipt')
     });
     if (!outcome?.success) {
@@ -5435,11 +5469,15 @@ export default function TerminalPage() {
     setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: nextStatus }));
     try {
       const response = await updateOnlineOrderStatus(normalizedId, payload);
-      if (nextStatus === 'completed') {
+      if (nextStatus === 'confirmed') {
         try {
-          await printOnlineOrderReceiptById(normalizedId, { automatic: true });
+          await printOnlineOrderReceiptById(normalizedId, {
+            automatic: true,
+            requireAutomaticClaim: true,
+            reason: 'online_order_acceptance_receipt'
+          });
         } catch (printError) {
-          toast.message(printError?.response?.data?.message || 'Order completed, but the online order receipt still needs printing.');
+          toast.message(printError?.response?.data?.message || 'Order accepted, but the prepaid customer receipt still needs printing.');
         }
       }
       const paymentLifecycle = response?.payment_lifecycle || response?.data?.payment_lifecycle || null;
@@ -5880,7 +5918,7 @@ export default function TerminalPage() {
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
   }, []);
 
-  const handleSelectViewMode = useCallback((nextMode) => {
+  const handleSelectViewMode = useCallback(async (nextMode) => {
     if (locked) {
       setMobileNavOpen(false);
       return;
@@ -5943,7 +5981,12 @@ export default function TerminalPage() {
       return;
     }
     if (isPinProtectedViewMode && !canAccessSettingsDirectly) {
-      if (!settingsAccessPinEnabled) {
+      let pinEnabled = settingsAccessPinEnabled;
+      if (!pinEnabled) {
+        const refreshedMeta = await hydrateTerminalMeta({ suppressGlobalErrors: true });
+        pinEnabled = refreshedMeta?.settingsAccessPinEnabled === true;
+      }
+      if (!pinEnabled) {
         toast.error('POS access PIN is not configured by the main branch admin.');
         setMobileNavOpen(false);
         return;
@@ -5977,6 +6020,7 @@ export default function TerminalPage() {
     canViewAudit,
     canViewPos,
     commitViewModeSelection,
+    hydrateTerminalMeta,
     posViewMode,
     isCashierRole,
     isOnline,

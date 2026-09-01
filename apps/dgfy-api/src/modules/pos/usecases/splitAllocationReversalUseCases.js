@@ -7,6 +7,7 @@ import {
     COMPLIANCE_OPERATION
 } from '../../compliance/index.js';
 import dbStore from '../../../utils/dbStore.js';
+import { assertMobilePosExpectedTransactionState } from '../domain/mobilePosReplayGuard.js';
 
 const PROVIDER = 'paymongo';
 const MERCHANT_OWNED_METHODS = new Set(['gcash', 'maya', 'card', 'bank_transfer']);
@@ -402,6 +403,11 @@ export const buildSplitAllocationReversalUseCase = ({ posRepository, providerRec
                     idempotent_replay: true
                 }, 'Split allocation reversal replayed');
             }
+            assertMobilePosExpectedTransactionState({
+                transaction: context.existing,
+                payload,
+                operation: 'split_allocation_reversal'
+            });
 
             const pendingExternal = totals.rows.find((row) => (
                 row.adjustment_type === 'external_refund'

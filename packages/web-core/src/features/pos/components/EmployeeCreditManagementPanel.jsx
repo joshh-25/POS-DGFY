@@ -22,6 +22,8 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
   const [loading, setLoading] = useState(true);
   const [activeAction, setActiveAction] = useState('');
   const [bulkEligibilityConfirmOpen, setBulkEligibilityConfirmOpen] = useState(false);
+  const [repayAllConfirmOpen, setRepayAllConfirmOpen] = useState(false);
+  const [repayAllTarget, setRepayAllTarget] = useState(null);
   const [form, setForm] = useState({
     isEligible: false,
     creditLimit: '',
@@ -36,6 +38,8 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
     [accounts, selectedEmployeeId]
   );
   const account = selectedEmployee?.employeeCreditAccount || null;
+  const outstandingBalance = Number(account?.outstanding_balance || 0);
+  const canRepayAll = Boolean(account?.account_id) && Number.isFinite(outstandingBalance) && outstandingBalance > 0;
 
   const hydrateForm = (employee) => {
     const current = employee?.employeeCreditAccount || null;
@@ -144,6 +148,49 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
     }
   };
 
+  const openRepayAllConfirmation = () => {
+    const expectedVersion = Number(account?.version);
+    if (!canRepayAll) {
+      toast.error('This Employee Credit account has no outstanding balance.');
+      return;
+    }
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+      toast.error('Refresh the Employee Credit account before repaying it in full.');
+      return;
+    }
+    setRepayAllTarget({
+      accountId: account.account_id,
+      employeeName: selectedEmployee?.full_name || 'this employee',
+      outstandingBalance,
+      expectedVersion
+    });
+    setRepayAllConfirmOpen(true);
+  };
+
+  const handleRepayAll = async (reason) => {
+    if (!repayAllTarget) return { success: false, message: 'Employee Credit account is no longer selected.' };
+    setActiveAction('repay-all');
+    try {
+      await recordEmployeeCreditRepayment(repayAllTarget.accountId, {
+        repay_all: true,
+        expected_version: repayAllTarget.expectedVersion,
+        reason,
+        idempotency_key: createIdempotencyKey()
+      });
+      toast.success('Employee Credit fully repaid.');
+      await loadAccounts();
+      return { success: true };
+    } catch (error) {
+      const message = error?.response?.data?.message || 'Failed to repay Employee Credit in full.';
+      if (error?.response?.status === 409) {
+        await loadAccounts();
+      }
+      return { success: false, message };
+    } finally {
+      setActiveAction('');
+    }
+  };
+
   const handleAdjustment = async () => {
     const amount = Number(form.adjustment);
     if (!account?.account_id) {
@@ -237,10 +284,16 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
               <Label>Repayment reason</Label>
               <Input value={form.repaymentReason} onChange={(event) => setForm((current) => ({ ...current, repaymentReason: event.target.value }))} disabled={busy || disabled} placeholder="Cash repayment, payroll deduction, or reference" />
             </div>
-            <Button type="button" onClick={handleRepayment} disabled={!account?.account_id || busy || disabled} className="bg-emerald-700 text-white hover:bg-emerald-800">
-              {activeAction === 'repayment' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Banknote className="mr-2 h-4 w-4" />}
-              Record repayment
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={handleRepayment} disabled={!account?.account_id || busy || disabled} className="bg-emerald-700 text-white hover:bg-emerald-800">
+                {activeAction === 'repayment' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Banknote className="mr-2 h-4 w-4" />}
+                Record repayment
+              </Button>
+              <Button type="button" variant="outline" onClick={openRepayAllConfirmation} disabled={!canRepayAll || busy || disabled}>
+                <Banknote className="mr-2 h-4 w-4" />
+                Repay all
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -281,6 +334,23 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
         description={`This will mark all ${accounts.length} active employee${accounts.length === 1 ? '' : 's'} eligible for Employee Credit. Existing credit limits and balances will not change. Inactive employees are not affected.`}
         confirmLabel="Enable active employees"
         onConfirm={handleEnableAllActive}
+      />
+      <ConfirmActionDialog
+        open={repayAllConfirmOpen}
+        onOpenChange={(open) => {
+          setRepayAllConfirmOpen(open);
+          if (!open) setRepayAllTarget(null);
+        }}
+        title="Repay Employee Credit in full?"
+        description={repayAllTarget
+          ? `This will record a full repayment of PHP ${money(repayAllTarget.outstandingBalance)} for ${repayAllTarget.employeeName}. The account must still have the same balance when you confirm.`
+          : 'This will record a full repayment for the selected Employee Credit account.'}
+        confirmLabel="Repay all"
+        reasonLabel="Repayment reason"
+        reasonPlaceholder="Cash repayment, payroll deduction, or reference"
+        reasonRequired
+        reasonMinLength={3}
+        onConfirm={handleRepayAll}
       />
     </section>
   );

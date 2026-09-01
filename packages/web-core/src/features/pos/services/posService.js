@@ -288,6 +288,14 @@ export const printPosReceipt = async (payload = {}, { silent = false, timeoutMs 
     }
 };
 
+export const claimOnlineOrderReceiptAutoPrint = async (payload = {}) => {
+    const response = await api.post('/pos/device/online-order-receipt-claim', payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id),
+        skipGlobalErrorToast: true
+    });
+    return response.data?.data;
+};
+
 export const printPosShiftSummary = async (shiftId, payload = {}, { silent = false, timeoutMs } = {}) => {
     try {
         const response = await api.post(`/pos/terminal/shifts/${shiftId}/print-summary`, payload, {

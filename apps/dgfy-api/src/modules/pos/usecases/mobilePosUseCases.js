@@ -41,6 +41,7 @@ const MOBILE_SETTINGS_KEYS = [
     'pos_terminal_registry_mode',
     'pos_terminal_registry',
     'pos_terminal_location_binding_enforced',
+    'pos_settings_access_pin_enabled',
     'pos_hardware_profile'
 ];
 
@@ -526,6 +527,117 @@ export const buildSyncMobilePosVoidsUseCase = ({ voidPosTransactionUseCase }) =>
     };
 };
 
+export const buildSyncMobilePosRefundsUseCase = ({
+    cashRefundPosTransactionUseCase,
+    externalRefundPosTransactionUseCase,
+    providerRefundPosTransactionUseCase,
+    splitAllocationReversalUseCase
+}) => {
+    const canReplayWorkflow = (user, workflow) => {
+        if (workflow === 'cash') {
+            return hasEffectivePermission(user, PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER);
+        }
+        if (workflow === 'split') {
+            return hasEffectivePermission(user, PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER)
+                || hasEffectivePermission(user, PERMISSIONS.POS.actions.VOID_POS_TRANSACTION);
+        }
+        return hasEffectivePermission(user, PERMISSIONS.POS.actions.VOID_POS_TRANSACTION);
+    };
+
+    return async ({ payload = {}, user }) => {
+        const entries = Array.isArray(payload.entries) ? payload.entries : [];
+        const results = [];
+        let acceptedEntries = 0;
+        let replayedEntries = 0;
+        let rejectedEntries = 0;
+
+        for (const entry of entries) {
+            const localOperationId = safeTrimmedText(entry?.local_operation_id, null);
+            const request = safeObject(entry?.payload);
+            const workflow = safeTrimmedText(request.workflow, null);
+            const transactionId = toPositiveInt(request.transaction_id);
+            const allocationId = toPositiveInt(request.allocation_id);
+
+            if (!transactionId || !['cash', 'external', 'provider', 'split'].includes(workflow)) {
+                rejectedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    workflow,
+                    status: 'rejected',
+                    error: toFailurePayload({ message: 'A supported workflow and transaction_id are required', statusCode: 422 })
+                });
+                continue;
+            }
+            if (!canReplayWorkflow(user, workflow)) {
+                rejectedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    workflow,
+                    status: 'rejected',
+                    error: toFailurePayload({ message: 'Access denied: insufficient refund permission', code: 'AUTHORIZATION_FAILED', statusCode: 403 })
+                });
+                continue;
+            }
+
+            let result;
+            if (workflow === 'cash') {
+                result = await cashRefundPosTransactionUseCase({ posTransactionId: transactionId, payload: request, user });
+            } else if (workflow === 'external') {
+                result = await externalRefundPosTransactionUseCase({ posTransactionId: transactionId, payload: request, user });
+            } else if (workflow === 'provider') {
+                result = await providerRefundPosTransactionUseCase({ posTransactionId: transactionId, payload: request, user });
+            } else if (!allocationId) {
+                result = fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'allocation_id is required for split refunds', { statusCode: 422 }));
+            } else {
+                result = await splitAllocationReversalUseCase({
+                    posTransactionId: transactionId,
+                    allocationId,
+                    payload: request,
+                    user
+                });
+            }
+
+            if (result.success) {
+                const replayed = result.data?.idempotent_replay === true;
+                if (replayed) replayedEntries += 1; else acceptedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    workflow,
+                    status: replayed ? 'replayed' : 'accepted',
+                    server_transaction_id: transactionId,
+                    server_version: result.data?.transaction?.updated_at || null,
+                    payment_status: result.data?.transaction?.payment_status || null,
+                    data: result.data
+                });
+            } else {
+                rejectedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    workflow,
+                    status: 'rejected',
+                    error: toFailurePayload(result.error)
+                });
+            }
+        }
+
+        return ok({
+            generated_at: new Date().toISOString(),
+            device_id: safeTrimmedText(payload.device_id, null),
+            client_sync_run_id: safeTrimmedText(payload.client_sync_run_id, null),
+            results,
+            summary: buildSyncSummary({
+                totalEntries: entries.length,
+                acceptedEntries,
+                replayedEntries,
+                rejectedEntries,
+                checkpointToken: acceptedEntries + replayedEntries > 0
+                    ? buildCheckpointToken({ scope: 'refunds', device_id: payload.device_id, run: payload.client_sync_run_id, acceptedEntries, replayedEntries })
+                    : null
+            })
+        });
+    };
+};
+
 export const buildSyncMobilePosOrderActionsUseCase = ({
     updateOnlineOrderStatusUseCase,
     collectCashPickupOrderUseCase
@@ -688,14 +800,24 @@ export const buildSyncMobilePosItemsUseCase = ({ createItemUseCase, updateItemUs
                             const [existing] = await itemRepository.findItemsBySkuCodes([itemData.sku_code]);
                             if (existing) {
                                 replayedEntries += 1;
-                                results.push({ local_transaction_id: localTransactionId, status: 'replayed', server_item_id: existing.item_id });
+                                results.push({
+                                    local_transaction_id: localTransactionId,
+                                    status: 'replayed',
+                                    server_item_id: existing.item_id,
+                                    ...(existing.updated_at ? { server_version: existing.updated_at } : {})
+                                });
                                 continue;
                             }
                         }
                         throw error;
                     }
                     acceptedEntries += 1;
-                    results.push({ local_transaction_id: localTransactionId, status: 'accepted', server_item_id: item.item_id });
+                    results.push({
+                        local_transaction_id: localTransactionId,
+                        status: 'accepted',
+                        server_item_id: item.item_id,
+                        ...(item.updated_at ? { server_version: item.updated_at } : {})
+                    });
                 } else if (op === 'update') {
                     const serverItemId = toPositiveInt(itemData.server_item_id);
                     if (!serverItemId) {
@@ -708,14 +830,25 @@ export const buildSyncMobilePosItemsUseCase = ({ createItemUseCase, updateItemUs
                         canManageCategories: resolveCanManageCategories(user)
                     });
                     acceptedEntries += 1;
-                    results.push({ local_transaction_id: localTransactionId, status: 'accepted', server_item_id: item.item_id });
+                    results.push({
+                        local_transaction_id: localTransactionId,
+                        status: 'accepted',
+                        server_item_id: item.item_id,
+                        ...(item.updated_at ? { server_version: item.updated_at } : {})
+                    });
                 } else {
                     const serverItemId = toPositiveInt(itemData.server_item_id);
                     if (!serverItemId) {
                         throw Object.assign(new Error('server_item_id is required for delete'), { statusCode: 422 });
                     }
                     try {
-                        await deleteItemUseCase({ itemId: serverItemId, userId: user?.user_id });
+                        await deleteItemUseCase({
+                            itemId: serverItemId,
+                            userId: user?.user_id,
+                            ...(itemData.expected_server_version
+                                ? { expectedServerVersion: itemData.expected_server_version }
+                                : {})
+                        });
                         acceptedEntries += 1;
                         results.push({ local_transaction_id: localTransactionId, status: 'accepted', server_item_id: serverItemId });
                     } catch (error) {

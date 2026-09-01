@@ -188,6 +188,7 @@ const BASE_POS_ITEM_ATTRIBUTES = [
     'item_id',
     'name',
     'sku_code',
+    'description',
     'category',
     'product_type',
     // mode_item_preset is required for isStockExemptServiceItem's
@@ -195,7 +196,9 @@ const BASE_POS_ITEM_ATTRIBUTES = [
     'mode_item_preset',
     'unit_of_measure',
     'current_stock',
+    'max_capacity',
     'min_threshold',
+    'purchase_allowance',
     'fifo_enabled',
     // Axis 4 tracking mode - required for resolveStockBearingDescriptor to see
     // the persisted mode instead of only the legacy fifo_enabled/category signals.
@@ -203,6 +206,8 @@ const BASE_POS_ITEM_ATTRIBUTES = [
     'tracking_toggle_available',
     'cost_per_unit',
     'default_sale_price',
+    'status',
+    'updated_at',
     // The POS item editor uses the catalog row to preselect its saved category.
     'folder_id',
     'product_folder'

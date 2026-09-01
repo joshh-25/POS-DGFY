@@ -8,6 +8,7 @@ import {
 } from '../../compliance/index.js';
 import dbStore from '../../../utils/dbStore.js';
 import { resolvePosVoidFinancialOutcome } from '../domain/posVoidFinancialOutcome.js';
+import { assertMobilePosExpectedTransactionState } from '../domain/mobilePosReplayGuard.js';
 
 const parsePositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
@@ -209,6 +210,7 @@ export const buildCashRefundPosTransactionUseCase = ({ posRepository }) => {
                     idempotent_replay: true
                 });
             }
+            assertMobilePosExpectedTransactionState({ transaction: existing, payload, operation: 'cash_refund' });
 
             const adjustments = typeof posRepository.listPosTransactionAdjustmentsForTransaction === 'function'
                 ? await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedTransactionId, { transaction, lock: true })

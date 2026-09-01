@@ -87,6 +87,29 @@ const activeFolderWhere = (where = {}) => ({
 
 const hasOwn = (obj, key) => Boolean(obj) && Object.prototype.hasOwnProperty.call(obj, key);
 
+const normalizeServerVersion = (value) => {
+    if (value == null || value === '') return null;
+    const parsed = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const assertExpectedItemServerVersion = (item, expectedServerVersion) => {
+    const expected = normalizeServerVersion(expectedServerVersion);
+    if (!expected) return;
+    const actual = normalizeServerVersion(item?.updated_at ?? item?.updatedAt);
+    if (actual === expected) return;
+
+    const error = new Error('The item changed on the server before the offline request was replayed');
+    error.code = 'CONFLICT';
+    error.statusCode = 409;
+    error.details = {
+        reason_code: 'MOBILE_ITEM_VERSION_CONFLICT',
+        expected_server_version: expected,
+        actual_server_version: actual
+    };
+    throw error;
+};
+
 const isMissingStorefrontCatalogOverrideTableError = (error) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
@@ -1565,6 +1588,10 @@ export const itemRepository = {
         const transaction = await sequelize.transaction();
 
         try {
+            const expectedServerVersion = itemData?.expected_server_version;
+            itemData = { ...(itemData || {}) };
+            delete itemData.expected_server_version;
+            delete itemData.server_item_id;
             const workflowMode = await getCurrentWorkflowMode();
             if (Object.prototype.hasOwnProperty.call(itemData || {}, 'sku_code')) {
                 itemData.sku_code = String(itemData.sku_code || '').trim();
@@ -1646,6 +1673,7 @@ export const itemRepository = {
             if (!item) {
                 throw notFoundError('Item not found');
             }
+            assertExpectedItemServerVersion(item, expectedServerVersion);
             const beforeSnapshot = { ...toPlain(item) };
 
             assertMsmePricingRequirements({
@@ -1996,7 +2024,7 @@ export const itemRepository = {
             throw error;
         }
     },
-    async deleteItem(itemId, userId) {
+    async deleteItem(itemId, userId, { expectedServerVersion = null } = {}) {
         const Item = dbStore.get('Item');
         const ProductComposition = dbStore.get('ProductComposition');
         const POLineItem = dbStore.get('POLineItem');
@@ -2066,23 +2094,29 @@ export const itemRepository = {
             throw error;
         }
 
-        const previousStatus = item.status;
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         await sequelize.transaction(async (transaction) => {
-            await item.update({
+            const lockedItem = await findVisibleItemById(Item, itemId, {
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!lockedItem) throw notFoundError('Item not found');
+            assertExpectedItemServerVersion(lockedItem, expectedServerVersion);
+            const previousStatus = lockedItem.status;
+            await lockedItem.update({
                 status: 'inactive',
                 deleted_by: userId,
                 deleted_at: new Date()
             }, { transaction });
             await auditInventoryEvent({
                 userId,
-                entityId: item.item_id,
+                entityId: lockedItem.item_id,
                 action: 'DELETE',
                 eventType: 'item_deleted',
                 changes: {
-                    item_id: item.item_id,
-                    item_name: item.name,
-                    sku_code: item.sku_code,
+                    item_id: lockedItem.item_id,
+                    item_name: lockedItem.name,
+                    sku_code: lockedItem.sku_code,
                     previous_status: previousStatus,
                     status: 'inactive'
                 },
