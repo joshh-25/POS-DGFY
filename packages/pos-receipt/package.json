@@ -1,6 +1,6 @@
 {
   "name": "@sieitzz/pos-receipt",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Dependency-free HTML and thermal POS receipt renderer.",
   "type": "module",
   "exports": {
