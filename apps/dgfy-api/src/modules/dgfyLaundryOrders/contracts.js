@@ -113,6 +113,20 @@ export const sanitizeOrderProjection = (data = {}) => ({
   } : null
 });
 
+export const sanitizeCustomerActivity = (data = {}) => ({
+  companyId: toTrimmed(data.companyId, 160),
+  locationId: toTrimmed(data.locationId, 160),
+  activityReference: toTrimmed(data.activityReference || data.localOrderId || data.externalOrderReference, 200),
+  activityKind: toTrimmed(data.activityKind || data.kind, 60) || 'guest_activity',
+  trackingReference: toTrimmed(data.externalTrackingReference || data.trackingReference, 200) || null,
+  summary: toTrimmed(data.summary || data.customerSafeSummary, 500) || null,
+  occurredAt: toTrimmed(data.occurredAt, 80) || null,
+  customerReference: data.customerReference && typeof data.customerReference === 'object' ? {
+    kind: ['dgfy_account', 'dgfy_guest'].includes(data.customerReference.kind) ? data.customerReference.kind : null,
+    reference: toTrimmed(data.customerReference.reference, 200) || null
+  } : null
+});
+
 export const validateEventEnvelope = (event) => {
   if (!event || typeof event !== 'object') throw new Error('DGLAUNDRY_EVENT_INVALID');
   const specversion = toTrimmed(event.specversion, 20);
@@ -138,4 +152,3 @@ export const createDgfyOrderEvent = ({ type, data, source = process.env.DGFY_EVE
 });
 
 export const requestHash = (payload) => crypto.createHash('sha256').update(JSON.stringify(payload ?? {})).digest('hex');
-

@@ -80,6 +80,20 @@ module.exports = {
       await queryInterface.addIndex('dgfy_dglaundry_order_projections', ['external_tracking_reference'], { name: 'idx_dglaundry_order_tracking' });
     }
 
+    if (!await tableExists(queryInterface, 'dgfy_dglaundry_customer_activity_projections')) {
+      await queryInterface.createTable('dgfy_dglaundry_customer_activity_projections', {
+        id: { type: Sequelize.UUID, primaryKey: true },
+        company_id: { type: Sequelize.STRING(160), allowNull: false },
+        location_id: { type: Sequelize.STRING(160), allowNull: false },
+        activity_reference: { type: Sequelize.STRING(200), allowNull: false },
+        version_number: { type: Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
+        payload: { type: Sequelize.JSON, allowNull: false },
+        created_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
+        updated_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') }
+      });
+      await queryInterface.addIndex('dgfy_dglaundry_customer_activity_projections', ['company_id', 'location_id', 'activity_reference'], { unique: true, name: 'uq_dglaundry_customer_activity' });
+    }
+
     if (!await tableExists(queryInterface, 'dgfy_dglaundry_order_idempotency')) {
       await queryInterface.createTable('dgfy_dglaundry_order_idempotency', {
         id: { type: Sequelize.UUID, primaryKey: true },
@@ -96,6 +110,7 @@ module.exports = {
   async down(queryInterface) {
     for (const table of [
       'dgfy_dglaundry_order_idempotency',
+      'dgfy_dglaundry_customer_activity_projections',
       'dgfy_dglaundry_order_projections',
       'dgfy_dglaundry_availability_projections',
       'dgfy_dglaundry_catalog_projections',

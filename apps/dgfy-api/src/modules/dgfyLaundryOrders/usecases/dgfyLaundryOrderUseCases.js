@@ -6,6 +6,7 @@ import {
   requestHash,
   sanitizeAvailability,
   sanitizeCatalog,
+  sanitizeCustomerActivity,
   sanitizeOrderProjection,
   toTrimmed,
   validateEventEnvelope
@@ -72,7 +73,7 @@ export const buildDgfyLaundryOrderUseCases = ({ repository, partnerClient }) => 
     const locationId = toTrimmed(data.locationId, 160) || null;
     if (companyId && typeof repository.findActiveMapping === 'function') {
       const mapping = await repository.findActiveMapping({ companyId, locationId });
-      if (!mapping && normalized.type !== DGLAUNDRY_EVENT_TYPES.CATALOG) {
+      if (!mapping) {
         throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'The provider event does not match an active company/location mapping.', { statusCode: 409 });
       }
     }
@@ -99,6 +100,16 @@ export const buildDgfyLaundryOrderUseCases = ({ repository, partnerClient }) => 
         const payload = sanitizeAvailability(data);
         if (!payload.companyId || !payload.locationId || !payload.availabilityVersion) fail('An availability publication requires companyId, locationId, and availabilityVersion.');
         const result = await repository.upsertAvailability({ companyId: payload.companyId, locationId: payload.locationId, version: availabilityVersion(normalized), payload });
+        await repository.updateEvent(normalized.id, { status: result.stale ? 'ignored' : 'applied' });
+        return { eventId: normalized.id, status: result.stale ? 'ignored' : 'applied', duplicate: false, stale: result.stale, projection: result.row };
+      }
+
+      if (normalized.type === DGLAUNDRY_EVENT_TYPES.COUNTER_ACTIVITY) {
+        const payload = sanitizeCustomerActivity(data);
+        if (!payload.companyId || !payload.locationId || !payload.activityReference) fail('A counter activity requires explicit companyId, locationId, and activityReference.');
+        const version = orderVersion(normalized) || 1;
+        if (typeof repository.upsertCustomerActivity !== 'function') fail('Customer activity projection persistence is unavailable.', 503, DomainErrorCode.SERVICE_UNAVAILABLE);
+        const result = await repository.upsertCustomerActivity({ companyId: payload.companyId, locationId: payload.locationId, activityReference: payload.activityReference, version, payload });
         await repository.updateEvent(normalized.id, { status: result.stale ? 'ignored' : 'applied' });
         return { eventId: normalized.id, status: result.stale ? 'ignored' : 'applied', duplicate: false, stale: result.stale, projection: result.row };
       }

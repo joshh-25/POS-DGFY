@@ -87,6 +87,16 @@ describe('DGFY DGLaundry storefront/order projections', () => {
     expect((await useCases.listDeadLetters({}))).toEqual(expect.arrayContaining([expect.objectContaining({ event_id: 'event-order-3' })]));
   });
 
+  it('materializes counter activity without inferring a DGFY account', async () => {
+    const repository = makeRepository();
+    repository.upsertCustomerActivity = jest.fn(async ({ payload }) => ({ row: { payload }, stale: false }));
+    const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient: {} });
+    const result = await useCases.ingestProviderEvent({ event: event('dglaundry.laundry_order.counter_registered.v1', { companyId: 'company-a', locationId: 'location-a', localOrderId: 'counter-1', customerReference: { kind: 'dgfy_guest', reference: 'guest-1' }, internalStaffId: 'must-not-persist' }, 'event-counter-1') });
+    expect(result.status).toBe('applied');
+    expect(result.projection.payload.customerReference).toEqual({ kind: 'dgfy_guest', reference: 'guest-1' });
+    expect(result.projection.payload.internalStaffId).toBeUndefined();
+  });
+
   it('forwards quotes and orders once for an idempotency key', async () => {
     const repository = makeRepository();
     const partnerClient = {

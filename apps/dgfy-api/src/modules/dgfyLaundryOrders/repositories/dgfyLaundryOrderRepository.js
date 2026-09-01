@@ -136,6 +136,27 @@ export const dgfyLaundryOrderRepository = {
     return rowPayload(rows[0]);
   },
 
+  async getCustomerActivity({ companyId, locationId, activityReference }) {
+    const rows = await sequelize.query(`SELECT * FROM dgfy_dglaundry_customer_activity_projections
+      WHERE company_id = ? AND location_id = ? AND activity_reference = ? LIMIT 1`, {
+      replacements: [companyId, locationId, activityReference], type: QueryTypes.SELECT
+    });
+    return rowPayload(rows[0]);
+  },
+
+  async upsertCustomerActivity({ companyId, locationId, activityReference, version, payload }) {
+    const current = await this.getCustomerActivity({ companyId, locationId, activityReference });
+    if (current && asVersion(current.version_number) >= asVersion(version)) return { row: current, stale: true };
+    const id = current?.id || crypto.randomUUID();
+    await sequelize.query(`INSERT INTO dgfy_dglaundry_customer_activity_projections
+      (id, company_id, location_id, activity_reference, version_number, payload, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+      ON DUPLICATE KEY UPDATE version_number = VALUES(version_number), payload = VALUES(payload), updated_at = NOW()`, {
+      replacements: [id, companyId, locationId, activityReference, asVersion(version), JSON.stringify(payload)]
+    });
+    return { row: await this.getCustomerActivity({ companyId, locationId, activityReference }), stale: false };
+  },
+
   async upsertOrder({ companyId, locationId, externalOrderReference, trackingReference = null, version, status, payload }) {
     const current = await this.getOrder({ companyId, locationId, externalOrderReference });
     if (current && asVersion(current.aggregate_version) >= asVersion(version)) return { row: current, stale: true };
