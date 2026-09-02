@@ -72,17 +72,26 @@ const getActiveTenantDatabaseNames = async (queryInterface, currentDatabaseName)
   return rows.map((row) => String(row?.db_name || '').trim()).filter(Boolean);
 };
 
-// Shared by up() and down() -- the exact join that decides which rows this migration owns. up()
-// writes pos_transaction_id from it; down() nulls out exactly the same set.
+// up()'s join fragment -- decides which rows this migration owns (idempotency-key pattern match).
+// down() never calls this: it throws unconditionally instead of nulling anything out (see the
+// rollback_note above). Split from the row filter (buildWhereSql, below) so up()'s statement can
+// place SET between JOIN...ON and WHERE -- MySQL's multi-table UPDATE syntax requires
+// UPDATE ... JOIN ... ON ... SET ... WHERE ..., not SET after WHERE (#1401).
 const buildJoinSql = (db) => {
   const vr = `${quoteIdentifier(db)}.${quoteIdentifier(VOUCHER_REDEMPTIONS_TABLE)}`;
   const pt = `${quoteIdentifier(db)}.${quoteIdentifier(POS_TRANSACTIONS_TABLE)}`;
   return `${vr} vr JOIN ${pt} pt ON vr.idempotency_key IN (
       CONCAT('storefront:', pt.idempotency_key, ':', vr.voucher_id),
       CONCAT('storefront:', pt.idempotency_key, ':delivery:', vr.voucher_id)
-    )
-    WHERE vr.channel = 'storefront' AND vr.entry_type = 'redemption'`;
+    )`;
 };
+
+// The row filter -- kept separate from buildJoinSql() so it can be placed after SET in the
+// statement, matching MySQL's UPDATE ... JOIN ... SET ... WHERE ... syntax. Includes
+// pos_transaction_id IS NULL directly (previously bolted on by up() as a trailing "AND ..." onto
+// buildJoinSql()'s own WHERE, which is exactly what put SET on the wrong side of WHERE).
+const buildWhereSql = () =>
+  `WHERE vr.channel = 'storefront' AND vr.entry_type = 'redemption' AND vr.pos_transaction_id IS NULL`;
 
 module.exports = {
   async up(queryInterface) {
@@ -94,8 +103,9 @@ module.exports = {
       if (!(await tableExists(queryInterface, databaseName, POS_TRANSACTIONS_TABLE))) continue;
 
       await queryInterface.sequelize.query(
-        `UPDATE ${buildJoinSql(databaseName)} AND vr.pos_transaction_id IS NULL
-         SET vr.pos_transaction_id = pt.pos_transaction_id`
+        `UPDATE ${buildJoinSql(databaseName)}
+         SET vr.pos_transaction_id = pt.pos_transaction_id
+         ${buildWhereSql()}`
       );
     }
   },
