@@ -284,8 +284,17 @@ const renderSummary = (outcome) => {
  * (`LABEL_BY_CLASS`); every other class still renders content, for the artifact/debugging trail.
  */
 const renderIssue = (outcome, meta = {}) => {
-  const runId = meta.runId || 'unknown';
-  const title = `compliance: preflight sweep ${outcome.class} — run ${runId}`;
+  // Found live, #1374 follow-up (2026-09-02, issue #1393): the workflow's own "Publish handoff
+  // issue" step only ever calls `gh issue edit --body-file` on an existing open issue, never
+  // `--title` -- by design, this is meant to be ONE persistent issue per class, updated in place,
+  // not one per run. A title embedding a specific run ID therefore goes stale the moment a SECOND
+  // run updates the same issue's body (confirmed live: #1393's title still read "run 33569433235"
+  // while its body correctly showed "run 33583946735"). The run ID belongs in the body only, which
+  // already carries it twice (this function's own `Run: <url>` trailer, and the caller's own
+  // per-run comment on update) -- the title should describe WHAT the issue is, not WHEN it was
+  // last touched, since the label-based search in the workflow (`gh issue list --label ...`)
+  // never matched on title content anyway.
+  const title = `compliance: preflight sweep ${outcome.class}`;
 
   const lines = [];
   lines.push(outcome.detail);

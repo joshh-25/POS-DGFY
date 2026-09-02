@@ -224,9 +224,34 @@ test('renderIssue: handoff_required carries the compliance:preflight-handoff lab
   const issue = renderIssue(outcome, { runId: '33545741502' });
   assert.equal(issue.label, 'compliance:preflight-handoff');
   assert.match(issue.title, /handoff_required/);
-  assert.match(issue.title, /33545741502/);
   assert.match(issue.body, /compliance-sweep\/33545741502/);
   assert.match(issue.body, /gh pr merge <N>/);
+});
+
+// #1374 follow-up (found live via #1393): the title must be STABLE across runs -- it is one
+// persistent issue per class, updated in place, and embedding a run ID in the title goes stale
+// the moment a second run updates the same issue's body without ever touching its title (the
+// workflow only calls `gh issue edit --body-file`, never `--title`).
+test('renderIssue: the title does not change between two different runs of the same class', () => {
+  const outcomeA = classifyOutcome({
+    results: [PASSING_RESULT('a.md')],
+    handoffState: { status: 'handoff_required', branch: 'compliance-sweep/111' },
+    discoverCount: 1,
+    inputError: false
+  });
+  const outcomeB = classifyOutcome({
+    results: [PASSING_RESULT('a.md')],
+    handoffState: { status: 'handoff_required', branch: 'compliance-sweep/222' },
+    discoverCount: 1,
+    inputError: false
+  });
+  const issueA = renderIssue(outcomeA, { runId: '111' });
+  const issueB = renderIssue(outcomeB, { runId: '222' });
+  assert.equal(issueA.title, issueB.title, 'the title must not embed the run ID');
+  assert.doesNotMatch(issueA.title, /\d{5,}/, 'the title must not contain a run-id-shaped number at all');
+  // The body, by contrast, is expected to change per run -- that is where the current run's
+  // specifics belong.
+  assert.notEqual(issueA.body, issueB.body);
 });
 
 test('renderIssue: preflight_failed carries the compliance:preflight-failed label and names the failing declaration', () => {
