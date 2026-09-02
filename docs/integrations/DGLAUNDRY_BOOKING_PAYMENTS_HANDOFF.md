@@ -27,6 +27,11 @@ retarget this PR to `develop`.
   emit a payment-status event for the provider reconciliation path.
 - DGFY remains the online payment authority, collects without PayMongo split,
   and retains the session/refund ledger. Counter tenders remain DGLaundry-owned.
+- The payment-session route uses a Joi validator before the use case. It
+  bounds references, idempotency keys, booking modes, lines, customer data,
+  fulfillment data, and return URLs; unknown client fields are stripped. The
+  controller derives both `tenant_id` and `company_id` from the authenticated
+  tenant context.
 
 ## Required production configuration and hosting
 

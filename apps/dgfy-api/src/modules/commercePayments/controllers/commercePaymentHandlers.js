@@ -55,8 +55,9 @@ export const createDglaundryBookingPaymentSession = async (req, res, next) => {
       // Tenant context is resolved by the host middleware; never trust a
       // client-supplied tenant_id for payment ownership.
       payload: {
-        ...(req.validatedBody || req.body || {}),
-        tenant_id: req.tenant?.id || null
+        ...req.validatedBody,
+        tenant_id: req.tenant?.id || null,
+        company_id: req.tenant?.id || null
       }
     });
     return sendResult(res, result, 201);

@@ -2,7 +2,7 @@
 status: draft_pr
 owner: DGFY payments/integration
 last_reviewed: 2026-09-02
-related_adr: docs/architecture/adr/0078-dglaundry-external-runtime-and-provider-contract.md
+related_adr: docs/architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md
 declaration_id: 2026-09-02-dglaundry-booking-payments
 classification: major
 surfaces: payments
