@@ -131,6 +131,85 @@ test('classifyOutcome: all pass + handoff handoff_required -> handoff_required',
   assert.equal(outcome.class, 'handoff_required');
 });
 
+test('classifyOutcome: a mix of no_breach passes and one not_applicable pass -> handoff_required, not preflight_failed', () => {
+  const outcome = classifyOutcome({
+    results: [
+      { declaration: 'a.md', http_code: '200', verdict: { pass: true, result: 'no_breach', reason_code: 'ALLOWED' } },
+      { declaration: 'b.md', http_code: 'n/a', verdict: { pass: true, result: 'not_applicable', reason_code: 'NO_ENDPOINT_ACCEPTED_SURFACE', declared_surfaces: ['storefront'] } }
+    ],
+    handoffState: { status: 'handoff_required', branch: 'compliance-sweep/1' },
+    discoverCount: 2,
+    inputError: false
+  });
+  assert.equal(outcome.class, 'handoff_required');
+  assert.equal(outcome.not_applicable.length, 1);
+  assert.deepEqual(outcome.not_applicable[0], {
+    declaration: 'b.md',
+    reason_code: 'NO_ENDPOINT_ACCEPTED_SURFACE',
+    declared_surfaces: ['storefront']
+  });
+});
+
+test('classifyOutcome: a not_applicable-shaped row with pass:false is a failure (defensive)', () => {
+  const outcome = classifyOutcome({
+    results: [
+      { declaration: 'b.md', http_code: 'n/a', verdict: { pass: false, result: 'not_applicable', reason_code: 'NO_ENDPOINT_ACCEPTED_SURFACE' } }
+    ],
+    handoffState: null,
+    discoverCount: 1,
+    inputError: false
+  });
+  assert.equal(outcome.class, 'preflight_failed');
+});
+
+test('renderSummary and renderIssue both show the "Not applicable to live preflight" section when non-empty', () => {
+  const outcome = classifyOutcome({
+    results: [
+      { declaration: 'a.md', http_code: '200', verdict: { pass: true, result: 'no_breach', reason_code: 'ALLOWED' } },
+      { declaration: 'b.md', http_code: 'n/a', verdict: { pass: true, result: 'not_applicable', reason_code: 'NO_ENDPOINT_ACCEPTED_SURFACE', declared_surfaces: ['storefront'] } }
+    ],
+    handoffState: { status: 'handoff_required', branch: 'compliance-sweep/1' },
+    discoverCount: 2,
+    inputError: false
+  });
+  const summary = renderSummary(outcome);
+  assert.match(summary, /Not applicable to live preflight/);
+  assert.match(summary, /b\.md/);
+  assert.match(summary, /NO_ENDPOINT_ACCEPTED_SURFACE/);
+
+  const issue = renderIssue(outcome, {});
+  assert.match(issue.body, /Not applicable to live preflight/);
+  assert.match(issue.body, /storefront/);
+});
+
+test('renderSummary omits the "Not applicable" section entirely when there are no not_applicable rows (regression)', () => {
+  const outcome = classifyOutcome({
+    results: [{ declaration: 'a.md', http_code: '200', verdict: { pass: true, result: 'no_breach', reason_code: 'ALLOWED' } }],
+    handoffState: { status: 'merged', branch: 'compliance-sweep/1' },
+    discoverCount: 1,
+    inputError: false
+  });
+  assert.doesNotMatch(renderSummary(outcome), /Not applicable to live preflight/);
+});
+
+test('writeArtifact includes the not_applicable array', () => {
+  const outcome = classifyOutcome({
+    results: [
+      { declaration: 'b.md', http_code: 'n/a', verdict: { pass: true, result: 'not_applicable', reason_code: 'NO_ENDPOINT_ACCEPTED_SURFACE', declared_surfaces: ['storefront'] } }
+    ],
+    handoffState: { status: 'handoff_required', branch: 'compliance-sweep/1' },
+    discoverCount: 1,
+    inputError: false
+  });
+  const tmpFile = path.join(os.tmpdir(), `wave-b-artifact-${Date.now()}.json`);
+  const artifact = writeArtifact(tmpFile, outcome, {});
+  assert.equal(artifact.not_applicable.length, 1);
+  const written = JSON.parse(fs.readFileSync(tmpFile, 'utf8'));
+  assert.equal(written.schema, 'compliance-preflight-sweep-handoff/v1');
+  assert.equal(written.not_applicable[0].declaration, 'b.md');
+  fs.unlinkSync(tmpFile);
+});
+
 test('classifyOutcome: all pass + handoff error status -> handoff_error', () => {
   const outcome = classifyOutcome({
     results: [PASSING_RESULT('a.md')],
