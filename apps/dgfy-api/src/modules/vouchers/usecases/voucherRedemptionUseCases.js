@@ -24,14 +24,13 @@ import { calculateVoucherBenefit, VoucherBenefitError } from '../domain/voucherB
 import { resolveVoucherScopeItemIds } from '../domain/voucherFolderScope.js';
 import { VoucherReasonCode, voucherError, voucherConflict } from '../domain/voucherErrors.js';
 import { resolveVoucherPosRedemptionEnabled } from './voucherPosRedemptionSettingCache.js';
+// #1332 (Phase 244): the free_delivery -> amount_off translation, extracted so the auto-apply
+// selector (autoAppliedCampaignPolicy.js) shares this exact resolution instead of re-deriving it.
+// See that module's own header for why a single source of truth matters here.
+import { resolveDeliveryAmountOffCentavos } from '../domain/deliveryBenefitTranslation.js';
 
 const normalizeCode = (value) => String(value ?? '').trim().toUpperCase();
 const toCentavos = (pesoAmount) => Math.round((Number(pesoAmount) || 0) * 100);
-
-// #1331: matches voucherValidator.js's own MAX_CENTAVOS -- comfortably above any real campaign
-// budget and comfortably below Number.MAX_SAFE_INTEGER. Used only as the "waive the whole fee"
-// sentinel below, never persisted.
-const MAX_CENTAVOS = 999999999999;
 
 const buildBenefitConfigSnapshot = (voucher) => ({
     benefit_class: voucher.benefit_class,
@@ -165,7 +164,7 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
     const benefitTarget = voucher.benefit_target ?? 'items';
     const isDeliveryBenefit = voucher.benefit_class === 'free_delivery';
     const resolvedAmountOffCentavos = isDeliveryBenefit
-        ? (voucher.delivery_amount_off_centavos != null ? Number(voucher.delivery_amount_off_centavos) : MAX_CENTAVOS)
+        ? resolveDeliveryAmountOffCentavos(voucher)
         : voucher.amount_off_centavos;
 
     let benefit;

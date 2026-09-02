@@ -39,7 +39,10 @@ import {
     // attachRedemptionsToTransaction call site below, near the two VOUCHER_REDEMPTION_UNRECORDED
     // guards. cancelStoreOrderUseCase's own half is injected as an optional builder dependency
     // instead (store/index.js), not imported here -- see buildCancelStoreOrderUseCase's own comment.
-    voucherRepository
+    voucherRepository,
+    // #1332 (Phase 244, epic #1321 decision 9): the auto-applied delivery-campaign selector's use
+    // case -- one query plus the pure selector, see voucherAutoApplyUseCases.js.
+    resolveAutoAppliedDeliveryCampaignUseCase
 } from '../../vouchers/index.js';
 // Phase 233 (#1324, epic #1321): fee-mode config schema. Phase 237 (#1329) wires the calculated-mode
 // formula and fail-open-to-fixed branching into resolveStoreDeliveryFee below -- see
@@ -1711,7 +1714,11 @@ const DEFAULT_DELIVERY_WAIVER_APPLICATION = Object.freeze({
     labelSnapshot: null,
     redemptionId: null,
     idempotentReplay: false,
-    enteredDeliveryVoucherCode: null
+    enteredDeliveryVoucherCode: null,
+    // #1332 (Phase 244): additive -- distinguishes a code-entered waiver from an auto-applied one.
+    // No existing reader destructures this object exhaustively (same argument #1331 made for its own
+    // additions).
+    autoApplied: false
 });
 
 // Phase 237 (#1329, epic #1321, Wave 0 decision #2 / D2): advisory-only quoted-fee pin window.
@@ -1777,6 +1784,18 @@ const isValidPinnedDeliveryBreakdown = (pin) => {
     // real pin from the write site (which always sets `new Date().toISOString()`) -- treat it as
     // shape-invalid rather than silently persisting a garbage timestamp.
     if (typeof pin.pinned_at !== 'string' || !Number.isFinite(Date.parse(pin.pinned_at))) return false;
+
+    // #1332 (Phase 244, epic #1321 decision 9): which campaign (if any) auto-applied at pin time --
+    // required so the webhook-finalized path redeems the SAME campaign that priced the order rather
+    // than re-selecting whichever campaign happens to be winning at finalize time (potentially a
+    // different one, minutes later). `undefined` is accepted as equivalent to `null` here
+    // specifically -- an in-flight pin created before this deploy has no such key at all, and
+    // treating that as shape-invalid would needlessly lose an otherwise-good pin (forcing a safe but
+    // unnecessary re-resolution) for every session already in flight across this deploy window. Not
+    // a DELIVERY_FEE_CALC_VERSION bump -- the fee formula itself is unchanged; only interpretation of
+    // one new field is backward-compatible here.
+    if (pin.autoAppliedVoucherId !== undefined && pin.autoAppliedVoucherId !== null
+        && !Number.isInteger(pin.autoAppliedVoucherId)) return false;
 
     return true;
 };
@@ -2244,7 +2263,11 @@ const resolveCheckoutContext = async ({
             distanceSource: pinnedDeliveryBreakdown.distanceSource,
             fallbackApplied: pinnedDeliveryBreakdown.fallbackApplied,
             outOfRange: pinnedDeliveryBreakdown.outOfRange,
-            calcVersion: pinnedDeliveryBreakdown.calcVersion
+            calcVersion: pinnedDeliveryBreakdown.calcVersion,
+            // #1332 (Phase 244): `?? null` covers the backward-compatibility case -- a pin written
+            // before this deploy has no such key, and `undefined` must read as "no campaign auto-
+            // applied at pin time" rather than as a distinct third state.
+            autoAppliedVoucherId: pinnedDeliveryBreakdown.autoAppliedVoucherId ?? null
         });
     } else {
         if (pinnedDeliveryBreakdown !== null) {
@@ -2264,6 +2287,12 @@ const resolveCheckoutContext = async ({
             distanceSource: deliveryDistanceSource,
             locationOverride: null
         });
+        // #1332 (Phase 244): resolveStoreDeliveryFee stays voucher-free by design (mirrors #1331's
+        // own "this function stays I/O-free" note) -- the auto-apply resolution below (if any) sets
+        // this field on the rebuilt `delivery`; every other path (pickup, or a delivery order with
+        // neither an entered nor an auto-applied campaign) needs it explicitly `null` rather than
+        // `undefined`, so the persisted/pinned breakdown always carries the key.
+        delivery = Object.freeze({ ...delivery, autoAppliedVoucherId: null });
 
         // Risk #1 (Phase 237 plan §13): the road-distance provider's timeout is unmeasured, and a
         // calculated-mode fallback is otherwise invisible to the customer -- they just see the
@@ -2392,7 +2421,10 @@ const resolveCheckoutContext = async ({
                 labelSnapshot,
                 redemptionId: deliveryResult.redemptionId ?? null,
                 idempotentReplay: Boolean(deliveryResult.idempotentReplay),
-                enteredDeliveryVoucherCode: deliveryResult.applied ? deliveryResult.code : null
+                enteredDeliveryVoucherCode: deliveryResult.applied ? deliveryResult.code : null,
+                // #1332: a typed code, never auto-applied -- this branch only runs when
+                // normalized.delivery_voucher_code is present.
+                autoApplied: false
             });
             // `delivery` stays exactly as the pin gave it -- do not rebuild it on this branch.
         } else {
@@ -2403,7 +2435,8 @@ const resolveCheckoutContext = async ({
                 labelSnapshot,
                 redemptionId: deliveryResult.redemptionId ?? null,
                 idempotentReplay: Boolean(deliveryResult.idempotentReplay),
-                enteredDeliveryVoucherCode: deliveryResult.applied ? deliveryResult.code : null
+                enteredDeliveryVoucherCode: deliveryResult.applied ? deliveryResult.code : null,
+                autoApplied: false
             });
             // ADR 0078: finalFee = max(0, baseFee - waiverAmount); overrideAmount (#1330, not built
             // yet) still wins when present -- the same precedence resolveStoreDeliveryFee's own
@@ -2415,8 +2448,204 @@ const resolveCheckoutContext = async ({
             delivery = Object.freeze({
                 ...delivery,
                 waiverAmount: deliveryWaiverApplication.waiverAmount,
-                finalFee: nextFinalFee
+                finalFee: nextFinalFee,
+                // #1332: a code-entered waiver is never an auto-applied one -- explicit null so the
+                // pinned breakdown never carries a stale/wrong campaign id on this branch.
+                autoAppliedVoucherId: null
             });
+        }
+    } else if (orderMethod === 'delivery') {
+        // #1332 (Phase 244, epic #1321 decision 9): auto-apply. Mutually exclusive with the
+        // code-entered branch above BY CONSTRUCTION (else-if on the same `deliveryWaiverApplication`
+        // variable, gated on the same `orderMethod === 'delivery'` condition) -- D3: an explicitly
+        // typed delivery code always beats an auto-applied campaign, and auto-apply is skipped
+        // entirely whenever one was typed, so no budget is ever burned evaluating it. A pickup order
+        // (orderMethod !== 'delivery') skips this branch entirely too, same as the code-entered one.
+        //
+        // Runs AFTER `delivery` is resolved (its benefit base, delivery.baseFee, doesn't exist
+        // before this point) and AFTER the out-of-range hard block above (an out-of-range order must
+        // never burn a redemption on a checkout that was always going to 422) -- same ordering
+        // reasoning #1331's own block already established.
+        if (deliveryBreakdownWasPinned) {
+            // Webhook-finalize replay. `autoAppliedVoucherId == null` on the pin means no campaign
+            // auto-applied at payment-session-creation time -- skip entirely rather than
+            // opportunistically applying a campaign that appeared after the shopper already paid
+            // (the captured amount would no longer match). `delivery` stays exactly as the pin gave
+            // it either way; this branch only ever sets `deliveryWaiverApplication`.
+            if (pinnedDeliveryBreakdown.autoAppliedVoucherId != null) {
+                let pinnedCampaign = null;
+                try {
+                    pinnedCampaign = await voucherRepository.findById(
+                        pinnedDeliveryBreakdown.autoAppliedVoucherId,
+                        { transaction: options?.transaction }
+                    );
+                } catch (error) {
+                    logger.warn('[AutoApplyDelivery] Failed to re-resolve the pinned auto-applied campaign by id', {
+                        voucher_id: pinnedDeliveryBreakdown.autoAppliedVoucherId,
+                        message: error?.message || null
+                    });
+                }
+
+                if (pinnedCampaign) {
+                    try {
+                        const autoApplyResult = options?.transaction
+                            ? await redeemVoucherUseCase({
+                                code: pinnedCampaign.code,
+                                context: { ...voucherContext, deliveryFeeCentavos: toCentavos(delivery.baseFee) },
+                                lines: voucherLines,
+                                // Distinct from both the item voucher's bare key and the code-entered
+                                // delivery key above -- so a request that legitimately carries both a
+                                // typed item code AND (on a DIFFERENT prior attempt) an auto-applied
+                                // delivery campaign never collides in the idempotency ledger.
+                                idempotencyKey: `${normalized.idempotency_key}:delivery-auto`,
+                                channel: 'storefront',
+                                storeCustomerId: storeCustomer?.customer_id || null,
+                                locationId: normalized.location_id,
+                                transaction: options.transaction
+                            })
+                            : null;
+
+                        if (autoApplyResult?.applied) {
+                            const labelSnapshot = autoApplyResult.badge || autoApplyResult.title || `Voucher (${autoApplyResult.code})`;
+                            deliveryWaiverApplication = Object.freeze({
+                                applied: true,
+                                // PERSISTED amount comes from the pin, never a fresh recomputation --
+                                // same posture as the code-entered pinned branch above (#1331):
+                                // never throws, never re-prices, this repo has no rollback (#495).
+                                waiverAmount: pinnedDeliveryBreakdown.waiverAmount,
+                                voucherId: autoApplyResult.voucherId,
+                                labelSnapshot,
+                                redemptionId: autoApplyResult.redemptionId ?? null,
+                                idempotentReplay: Boolean(autoApplyResult.idempotentReplay),
+                                // Never the campaign's code -- `enteredDeliveryVoucherCode` signals
+                                // "the shopper typed this," which is false for every auto-apply path
+                                // (RF-1, PR #1397 review). The campaign's identity is still fully
+                                // recoverable via `voucherId`/`autoAppliedVoucherId` + `labelSnapshot`.
+                                enteredDeliveryVoucherCode: null,
+                                autoApplied: true
+                            });
+                        }
+                    } catch (error) {
+                        // D2: fails open here too -- never blocks a webhook finalization (money is
+                        // already captured) because the pinned campaign could not be re-redeemed.
+                        logger.warn('[AutoApplyDelivery] Pinned auto-applied campaign failed to redeem on finalize -- fail open', {
+                            voucher_id: pinnedDeliveryBreakdown.autoAppliedVoucherId,
+                            message: error?.message || null,
+                            reason_code: error?.details?.reason_code || null
+                        });
+                    }
+                }
+            }
+            // `delivery` stays exactly as the pin gave it -- do not rebuild it on this branch.
+        } else {
+            // Fresh resolution: cart quote, direct (non-QRPh) checkout, or QRPh payment-session
+            // creation -- the only pinned pass is the webhook-finalize replay handled above. One
+            // explicit `now`, shared between the selector and the redemption call below, so a
+            // campaign with a valid_time_end boundary can't select one way and redeem another within
+            // the same request (Risk R2, Phase 244 plan).
+            const autoApplyNow = new Date();
+            let selection = { selected: null, waiverCentavos: 0 };
+            try {
+                selection = await resolveAutoAppliedDeliveryCampaignUseCase({
+                    context: {
+                        ...voucherContext,
+                        deliveryFeeCentavos: toCentavos(delivery.baseFee),
+                        now: autoApplyNow
+                    },
+                    transaction: options?.transaction ?? null
+                });
+            } catch (error) {
+                // Fail open on the candidate READ itself, not just the redemption -- this is a
+                // zero-side-effect query (`listAutoApplyDeliveryCampaigns` never writes), and every
+                // other soft dependency `resolveCheckoutContext` calls (roadDistanceProvider, the
+                // calculated-fee formula) already fails open to a safe default on its own error
+                // rather than blocking checkout. A shopper should never see checkout fail because a
+                // promotional-campaign lookup errored.
+                logger.warn('[AutoApplyDelivery] Failed to resolve auto-apply candidates -- fail open, no campaign considered', {
+                    message: error?.message || null
+                });
+            }
+
+            if (selection.selected) {
+                let autoApplyResult;
+                if (options?.transaction) {
+                    try {
+                        autoApplyResult = await redeemVoucherUseCase({
+                            code: selection.selected.code,
+                            context: {
+                                ...voucherContext,
+                                deliveryFeeCentavos: toCentavos(delivery.baseFee),
+                                now: autoApplyNow
+                            },
+                            lines: voucherLines,
+                            idempotencyKey: `${normalized.idempotency_key}:delivery-auto`,
+                            channel: 'storefront',
+                            storeCustomerId: storeCustomer?.customer_id || null,
+                            locationId: normalized.location_id,
+                            transaction: options.transaction
+                        });
+                    } catch (error) {
+                        // D2 (Phase 244 plan §4.5): auto-apply FAILS OPEN on a redemption failure --
+                        // no waiver, checkout proceeds, no next-candidate retry. Consistent with ADR
+                        // 0066 Decision 3's entered-vs-empty distinction
+                        // (voucherRedemptionUseCases.js's own module docstring): the shopper entered
+                        // nothing, so there is nothing to fail closed about. Blocking a paying
+                        // customer's checkout because a promotional campaign hit its cap between the
+                        // candidate read and the reserve is strictly worse than charging the normal
+                        // delivery fee. No retry against the next candidate either -- see that
+                        // section for why (lock-contention footgun, and the window this covers is
+                        // vanishingly small: both reads happen inside the same open transaction).
+                        logger.warn('[AutoApplyDelivery] Selected campaign failed to redeem -- fail open, checkout proceeds with no waiver', {
+                            voucher_id: selection.selected.voucher_id,
+                            code: selection.selected.code,
+                            message: error?.message || null,
+                            reason_code: error?.details?.reason_code || null
+                        });
+                        autoApplyResult = null;
+                    }
+                } else {
+                    // Preview (quote, or QRPh payment-session creation): the selector has already
+                    // computed eligibility and the exact waiver for the winner, purely -- take the
+                    // numbers from `selection` directly rather than a second, redundant preview call
+                    // that could theoretically disagree.
+                    autoApplyResult = {
+                        applied: true,
+                        voucherId: selection.selected.voucher_id,
+                        code: selection.selected.code,
+                        title: selection.selected.title,
+                        badge: selection.selected.badge,
+                        discountCentavos: selection.waiverCentavos,
+                        redemptionId: null,
+                        idempotentReplay: false
+                    };
+                }
+
+                if (autoApplyResult?.applied) {
+                    const resolvedWaiverAmount = centavosToPeso(autoApplyResult.discountCentavos);
+                    const labelSnapshot = autoApplyResult.badge || autoApplyResult.title || `Voucher (${autoApplyResult.code})`;
+                    deliveryWaiverApplication = Object.freeze({
+                        applied: true,
+                        waiverAmount: resolvedWaiverAmount,
+                        voucherId: autoApplyResult.voucherId,
+                        labelSnapshot,
+                        redemptionId: autoApplyResult.redemptionId ?? null,
+                        idempotentReplay: Boolean(autoApplyResult.idempotentReplay),
+                        // Same RF-1 fix as the pinned/webhook-finalize branch above -- never the
+                        // campaign's code, this was never something the shopper entered.
+                        enteredDeliveryVoucherCode: null,
+                        autoApplied: true
+                    });
+                    const nextFinalFee = delivery.overrideAmount !== null
+                        ? delivery.overrideAmount
+                        : Math.max(0, round4(delivery.baseFee - deliveryWaiverApplication.waiverAmount));
+                    delivery = Object.freeze({
+                        ...delivery,
+                        waiverAmount: deliveryWaiverApplication.waiverAmount,
+                        finalFee: nextFinalFee,
+                        autoAppliedVoucherId: deliveryWaiverApplication.voucherId
+                    });
+                }
+            }
         }
     }
 
@@ -3533,8 +3762,23 @@ export const buildStoreCartQuoteUseCase = ({
                     ? { applied: true, voucher_code: normalizeVoucherCode(payload.voucher_code) }
                     : null,
                 // #1331 (Phase 240): sibling of voucher_feedback above, for the delivery-fee axis.
+                // #1332 (Phase 244): the code is sourced from `deliveryWaiverApplication`'s own
+                // resolved canonical code, not `payload.delivery_voucher_code` -- an auto-applied
+                // campaign has NO payload code at all, so reading the request field would report a
+                // waiver applied with no indication of what applied it. `enteredDeliveryVoucherCode`
+                // is populated (non-null) ONLY on the code-entered path and stays null on both
+                // auto-applied paths (RF-1, PR #1397 review) -- that field exists specifically to
+                // signal "the shopper typed this," which auto-apply never is. Which campaign applied
+                // is still recoverable via `voucherId`/`autoAppliedVoucherId` and the `auto_applied`/
+                // `label` fields the storefront UI (#1391) uses to render an auto-applied campaign
+                // differently from a typed one.
                 delivery_voucher_feedback: resolved.deliveryWaiverApplication.applied
-                    ? { applied: true, voucher_code: normalizeVoucherCode(payload.delivery_voucher_code) }
+                    ? {
+                        applied: true,
+                        voucher_code: resolved.deliveryWaiverApplication.enteredDeliveryVoucherCode,
+                        auto_applied: resolved.deliveryWaiverApplication.autoApplied,
+                        label: resolved.deliveryWaiverApplication.labelSnapshot
+                    }
                     : null
             });
         } catch (error) {
@@ -4276,11 +4520,16 @@ export const buildStoreCheckoutUseCase = ({
                     }
                     : null,
                 // #1331 (Phase 240): sibling of voucher_feedback above, for the delivery-fee axis.
+                // #1332 (Phase 244): sourced from `deliveryWaiverApplication`'s own resolved code,
+                // not `normalized.delivery_voucher_code` -- see the cart-quote response's identical
+                // fix above for why. `auto_applied`/`label` are additive.
                 delivery_voucher_feedback: resolved.deliveryWaiverApplication.applied
                     ? {
                         applied: true,
-                        voucher_code: normalized.delivery_voucher_code,
-                        redemption_id: resolved.deliveryWaiverApplication.redemptionId
+                        voucher_code: resolved.deliveryWaiverApplication.enteredDeliveryVoucherCode,
+                        redemption_id: resolved.deliveryWaiverApplication.redemptionId,
+                        auto_applied: resolved.deliveryWaiverApplication.autoApplied,
+                        label: resolved.deliveryWaiverApplication.labelSnapshot
                     }
                     : null,
                 account_action: accountAction,

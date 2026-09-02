@@ -83,6 +83,11 @@ const baseVoucherFields = {
     // #1331: orthogonal to benefit_class -- see Voucher.js's own comment. 'items' is the default;
     // applyBenefitConfig forces this to 'delivery' whenever benefit_class is free_delivery.
     benefit_target: Joi.string().valid('items', 'delivery'),
+    // #1332 (Phase 244, epic #1321 decision 9): v1 is delivery-axis only -- `applyBenefitConfig`
+    // (voucherUseCases.js) rejects `auto_apply: true` combined with `benefit_target !== 'delivery'`
+    // or with any `voucher_scopes` row at authoring time; not enforceable at the schema layer alone
+    // since this validator can't see the merged row or the scopes array.
+    auto_apply: Joi.boolean(),
     min_spend_centavos: Joi.number().integer().min(0).max(MAX_CENTAVOS).allow(null),
     min_quantity: Joi.number().integer().min(1).allow(null),
     allow_below_cost: Joi.boolean(),
@@ -120,6 +125,7 @@ const createVoucherSchema = Joi.object({
     benefit_class: baseVoucherFields.benefit_class.required(),
     voucher_kind: baseVoucherFields.voucher_kind.default('promo_code'),
     benefit_target: baseVoucherFields.benefit_target.default('items'),
+    auto_apply: baseVoucherFields.auto_apply.default(false),
     allow_below_cost: baseVoucherFields.allow_below_cost.default(false),
     stackable_with_statutory: baseVoucherFields.stackable_with_statutory.default(false),
     is_publicly_listed: baseVoucherFields.is_publicly_listed.default(false),
@@ -232,6 +238,10 @@ const voucherListQuerySchema = Joi.object({
     }),
     benefit_class: Joi.string().valid('percent_off', 'amount_off', 'fixed_price', 'free_delivery'),
     voucher_kind: Joi.string().valid('promo_code', 'delivery_campaign'),
+    // #1332 (Phase 244): lets a merchant audit which campaigns auto-apply -- a flag with no way to
+    // list by it is unauditable, which matters more than usual for something that spends budget
+    // with no shopper action.
+    auto_apply: Joi.boolean().truthy('true').truthy('1').falsy('false').falsy('0'),
     search: Joi.string().trim().max(255),
     include_stats: Joi.boolean().truthy('true').truthy('1').falsy('false').falsy('0').default(false),
     sort: Joi.string().valid('created_at', 'code', 'valid_until').default('created_at'),
