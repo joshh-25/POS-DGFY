@@ -186,10 +186,15 @@ statement those two documents must conform to, not a summary that can drift from
   authorization — timestamp, the phrase given, exactly what's being skipped — **before** the merge,
   not after.
 - **Skippable, only under this override:**
-  - `npm run gate:release:local` for the promotion PR.
   - The live compliance preflight sweep (`docs/compliance/request-time-preflight-protocol.md`) —
     the one case where a `NOT-EXECUTED-*` declaration may legitimately reach `main`, logged and
     authorized, not silent.
+  - `npm run gate:release:local` **is no longer listed here as of 2026-09-03 (#1431 Phase C/D)** —
+    every gate it used to run locally is now delegated to `promotion-quality-gate.yml`
+    (`required_gate_count: 0` on a default run), so there is nothing local left to skip under this
+    override or otherwise. This bullet's shape is kept, not deleted, as the historical record of
+    what this override used to cover — see `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching
+    2026-09-03 amendment and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` for the full closeout.
 - **Never skippable, under this override or any other circumstance:**
   - The production tenant-schema-sync report (`tenant-schema-report.yml`, #1017), checked against
     **production** tenant databases specifically — the control that would have caught the
