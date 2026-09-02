@@ -16581,3 +16581,202 @@ complexity for a one-time backfill.
 
 244 (#1332 -- auto-applied free-delivery campaigns, now unblocked by this phase. #1333 already
 claimed 242, above, and is not "next" -- see the Numbering note).
+
+## Phase 244 - Auto-applied free-delivery campaigns (#1332, epic #1321)
+
+### Initiative and release
+
+Epic #1321 (Customer delivery pricing), decision 9, Wave 5. Builds on Phase 240/241 (#1331,
+code-entered `free_delivery` benefit class) and depends on Phase 243 (#1390, voucher-redemption
+reversal on cancellation) -- named a blocking prerequisite by the plan and confirmed merged to
+`develop` (PR #1395, merge commit `b7428fb1e`) before this phase started.
+
+**Numbering note.** The ticket title says "Phase 241"; that number was stale before this phase's own
+plan was even written (superseded by #1331's own 240->241 renumbering) and the plan's own §0 already
+corrected it to "Phase 242" using a since-superseded ledger snapshot. Re-verified live at branch time
+per `AGENTS.md` Continuous Phase Numbering (`grep -n '^## Phase' ... | tail -5` against a freshly-
+fetched `origin/develop`): 241 = #1331, **242 = #1333** ("Discovery from-price + close #478"), **243
+= #1390** (this phase's own prerequisite, renumbered from a first-claimed-but-collided 242 -- see
+that entry's own Numbering note). This phase is therefore **244**, the actual next-free integer,
+matching Phase 243's own "Next eligible phase" note.
+
+### Objective and scope
+
+A `vouchers.auto_apply` campaign selects and applies itself against the delivery fee with **no code
+typed**, on top of Phase 240/241's code-entered mechanism (unchanged, and always wins over auto-apply
+when a code is typed -- D3).
+
+- One new column (`auto_apply TINYINT(1) NOT NULL DEFAULT 0`) + one composite index
+  (`idx_vouchers_auto_apply (auto_apply, status, benefit_target)`), migration
+  `20260905000002-add-voucher-auto-apply.cjs`, tenant-fanned-out, kept in lockstep with
+  `sync-tenant-schemas.js` (column registry, index registry, AND the `vouchers` CREATE TABLE
+  fallback -- this migration has no ENUM widening at all, unlike Phase 240's own, so `down()` is a
+  plain guarded index-drop then column-drop with nothing that can throw on live data).
+- **The pure selector** (`apps/dgfy-api/src/modules/vouchers/domain/autoAppliedCampaignPolicy.js`,
+  new) is the entire decision surface: zero I/O, zero ambient clock (`context.now` is required and
+  explicit -- the function throws rather than defaulting to `Date.now()`), imports only pure
+  same-directory siblings (`voucherEligibilityPolicy.js`, `voucherBenefitPolicy.js`, and the newly
+  extracted `deliveryBenefitTranslation.js`). Comparator is a strict total order (waiver DESC,
+  `valid_from` ASC with `NULL` first, `voucher_id` ASC) -- proven input-order-independent by a
+  6-permutation shuffle test, not merely asserted.
+- **One call site** (`resolveCheckoutContext` in `storeUseCases.js`), which every entry point (cart
+  quote, direct checkout, QRPh payment-session creation, webhook finalize) already funnels through --
+  so quote/checkout divergence is structurally impossible, not just tested. The new branch is an
+  `else if` on the same `orderMethod === 'delivery'` condition and the same `deliveryWaiverApplication`
+  variable the code-entered branch already sets, which is also what makes D3 (a typed code always
+  wins) structural rather than a runtime check.
+- **The candidate query** (`voucherRepository.listAutoApplyDeliveryCampaigns`) is deliberately
+  SQL-minimal (`auto_apply`/`benefit_target`/stored `status` only, `ORDER BY voucher_id ASC LIMIT
+  200`); every semantic filter lives in the selector. Its own doc comment states a standing "no
+  caching, ever" prohibition -- a cache between the quote and checkout calls is the single most
+  likely way to reintroduce the exact divergence this phase exists to prevent.
+- **Deviation from the plan, surfaced explicitly** (see "Deviations" below): the candidate query
+  itself, not just the redemption, fails open on error. Required because every pre-existing
+  store-checkout unit test places a delivery order with no delivery voucher code -- which, before
+  this addition, now unconditionally attempted a real `dbStore` call with no database available in
+  that test environment, hard-failing checkout in ~20 previously-passing test files. Matches this
+  same function's existing `roadDistanceProvider` fail-open posture.
+- **D2, auto-apply fails open on a redemption failure**: no waiver, checkout proceeds, no
+  next-candidate retry. Consistent with ADR 0066 Decision 3's entered-vs-empty distinction; no ADR
+  amendment.
+- **D4, v1 auto-apply is delivery-axis only**: `applyBenefitConfig` (`voucherUseCases.js`) gains a
+  guard rejecting `auto_apply: true` combined with `benefit_target !== 'delivery'`. A second new
+  guard, `assertAutoApplyHasNoScope` (mirroring `assertFixedPriceHasScope`'s own sibling-function
+  shape, wired at the same three call sites: create, update, activate), rejects `auto_apply: true`
+  combined with any `voucher_scopes` row -- the selector never consults scopes, so this keeps that
+  v1 limitation unreachable rather than silently ignored.
+- **D5, the QRPh pin gap**: `commerce_payment_sessions.delivery_fee_breakdown` gains
+  `autoAppliedVoucherId`, so a webhook-finalize replay redeems the SAME campaign that priced the
+  order at payment-session creation rather than re-selecting a possibly-different one against an
+  already-captured amount. Backward-compatible: `isValidPinnedDeliveryBreakdown` treats a missing key
+  (every pin from before this deploy) as equivalent to `null`; `DELIVERY_FEE_CALC_VERSION` is
+  deliberately NOT bumped (the fee formula is unchanged).
+- **`delivery_voucher_feedback` response contract fixed** on both the cart-quote and checkout
+  responses -- sources `voucher_code` from `deliveryWaiverApplication.enteredDeliveryVoucherCode`
+  (populated on both the code-entered and auto-applied paths) instead of echoing
+  `payload.delivery_voucher_code`, which is empty on an auto-applied order. Additive `auto_applied`/
+  `label` fields for #1391 (storefront UI, not built here) to consume.
+- **No ADR amendment required** -- ADR 0066 Decision 8's 2026-09-02 amendment already permits exactly
+  one delivery-axis application; this phase changes HOW it is chosen, not the rule. The schema still
+  physically cannot hold two (one `delivery_fee_waiver_voucher_id` column), and the `else if`
+  structure above makes a second one unreachable in code too.
+- Extracted `deliveryBenefitTranslation.js` (the `free_delivery` -> `amount_off` translation,
+  including the `WAIVE_WHOLE_FEE_SENTINEL_CENTAVOS` sentinel) out of
+  `voucherRedemptionUseCases.js`, so the selector shares the exact same translation instead of a
+  second copy that could drift. Byte-identical behavior, asserted by that file's own unmodified
+  32-case regression suite staying green.
+- Out of scope, per the plan: the storefront/POS merchant-authoring UI checkbox for `auto_apply`
+  (the flag is fully operable via the admin API today without it -- handed to `pm` as a follow-up,
+  not filed in this pass); auto-applying item-axis vouchers (D4); voucher-to-voucher stacking within
+  one axis (#782, untouched).
+
+### Status
+
+`in_progress`. All code, tests, and docs implemented and self-verified (below). PR open against
+`develop`; not yet reviewed or merged.
+
+### Dependencies
+
+Phase 240/241 (#1331, the code-entered `free_delivery` mechanism and the `benefit_target` axis this
+phase's selector reuses unchanged), Phase 243 (#1390, voucher-redemption reversal on cancellation --
+the named blocking prerequisite, merged). ADR 0066 Decision 8's 2026-09-02 amendment (the two-
+independent-axes rule this phase operates within, unchanged). Unblocks: #1391 (storefront UI for
+both the code-entered and auto-applied delivery-waiver surfaces).
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `.js`/`.cjs` file -- OK.
+- [x] Targeted regression + new-test run, `apps/dgfy-api` (`node --experimental-vm-modules
+  .../jest.js --runInBand`): `autoAppliedCampaignPolicy.unit.test.js` (new, 28 -- the pure selector,
+  fixture-driven, zero mocks), `addVoucherAutoApply.migration.test.js` (new, 13 -- up/down
+  idempotence, column-before-index/index-before-column ordering, sync-tenant-schemas.js DDL-drift
+  guards for both the column and the index, CREATE TABLE fallback assertion),
+  `storeCheckoutAutoAppliedDelivery.unit.test.js` (new, 11 -- the ticket's own determinism acceptance
+  case, count/budget exhaustion disappearing identically from both paths, precedence against a typed
+  delivery code / typed item code / invalid code / pickup order, idempotent replay, fail-open on a
+  simulated exhausted-between-read-and-reserve race), `voucherRedemptionUseCases.usecases.test.js`
+  (unmodified, 32, regression-clean against the extracted translation), `voucherUseCases.usecases
+  .test.js`/`voucherValidator.test.js` (unmodified, regression-clean against the new field and the
+  two new authoring guards), `storeCheckoutDeliveryWaiverDualAxis.unit.test.js` (modified -- added
+  `listAutoApplyDeliveryCampaigns` to its fake voucher repository, returning `[]` for this file's
+  fixture set, and updated one `delivery_voucher_feedback` assertion for the new contract fields --
+  both changes required by, not incidental to, this phase; 15 passing),
+  `storeCheckoutDeliveryFeePin.unit.test.js` (unmodified, 27, confirms the pin validator's new field
+  is backward-compatible with every existing fixture). Full targeted sweep,
+  `--testPathPattern="storeCheckout|store.*Delivery|voucher|Voucher|migration"`: **627 passing across
+  54 suites, 0 failing.**
+- [x] `npm run check:compliance` -- confirmed to fail first (listing all 7 sensitive files with no
+  declaration), then pass once
+  `docs/compliance/impact-declarations/2026-09-02-auto-applied-delivery-campaigns.md` was added.
+- [x] `npm run check:architecture` -- OK.
+- [x] `npm run lint:docs` -- OK, no ADR amendment needed for this phase (confirmed and stated
+  explicitly in the compliance declaration, matching plan §7's own analysis).
+- [x] `npm run check:tenant-schema-coverage` -- PASS.
+
+### Deviations from the plan -- surfaced explicitly, not silently absorbed
+
+1. **The candidate query fails open on its own error, not only the redemption.** The plan specified
+   fail-open for a redemption failure (D2) but not for the candidate SQL read itself. Self-verification
+   against the existing test suite surfaced that every pre-existing store-checkout unit test places a
+   delivery order with no delivery voucher code -- which the new `else if` branch now always reaches,
+   attempting a real `dbStore.get('Voucher').findAll(...)` call with no database available in that test
+   environment. Without a fail-open guard around this specific call, ~20 previously-passing test files
+   (none related to vouchers) would have started failing checkout outright. Fixed by wrapping the
+   `resolveAutoAppliedDeliveryCampaignUseCase` call in a try/catch, logging at `warn` and treating the
+   failure as "no campaign considered" -- matching this same function's existing `roadDistanceProvider`
+   fail-open posture for an unrelated soft dependency. Documented as a deliberate extension in the
+   compliance declaration's own "Compliance Preconditions" section, not silently added.
+2. **`storeCheckoutDeliveryWaiverDualAxis.unit.test.js` needed two small updates**, for the reason
+   above (its hand-rolled fake voucher repository had no `listAutoApplyDeliveryCampaigns` method) and
+   for the `delivery_voucher_feedback` contract fix (its one assertion of that field's old shape).
+   Both are consequences of this phase's own design, not scope creep.
+3. **A dedicated QRPh-pin webhook-finalize test (plan §9.6) was not written.** The backward-
+   compatibility half is verified indirectly (`storeCheckoutDeliveryFeePin.unit.test.js`'s 27
+   existing cases all exercise a pin with no `autoAppliedVoucherId` key, staying green). A test
+   exercising a *present* `autoAppliedVoucherId` through the full `finalizePaidCommerceSession.js`
+   plumbing was not built in this pass -- named as a residual gap in the compliance declaration
+   rather than silently claimed as covered.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired: migration checkpoint (row 1), proceeded without a stop-and-ask.**
+`20260905000002-add-voucher-auto-apply.cjs` is a new file under
+`apps/dgfy-migration-runner/migrations/`. Lower blast radius than either Phase 240's or Phase 243's
+own migrations: one additive, defaulted column plus one index, no ENUM widening, no data backfill --
+`down()` cannot be blocked by live data. Per the standing "skip checkpoint confirmation by default,
+draft + self-verify, go straight to commit/PR" preference recorded for this repo (Pat reviews every
+PR himself), proceeded without pausing; stated plainly here and in the PR body's Testing Evidence
+rather than silently included.
+
+**Fired: compliance declaration (row 2, informational).** `major` / `payments,pos,terminal`, per the
+mechanical floor (`COMPLIANCE_SENSITIVE_RULES[1]` on `modules/vouchers/`, `COMPLIANCE_SENSITIVE_RULES[2]`
+on `modules/store/`). `check:compliance` confirmed to fail first, then pass once the declaration was
+added.
+
+**Not fired:** no deploy dispatch, no SSH, no force-push/branch deletion, no board-transition scope
+beyond what this skill already owns.
+
+### Links
+
+- Tracking issue: #1332. Epic: #1321. Depends on: #1390 (Phase 243, merged). Refs ADR 0066 (no
+  amendment needed this phase -- see "What this phase does and does not do" reasoning above,
+  restated in the compliance declaration).
+- New: `apps/dgfy-api/src/modules/vouchers/domain/autoAppliedCampaignPolicy.js`,
+  `apps/dgfy-api/src/modules/vouchers/domain/deliveryBenefitTranslation.js`,
+  `apps/dgfy-api/src/modules/vouchers/usecases/voucherAutoApplyUseCases.js`,
+  `apps/dgfy-migration-runner/migrations/20260905000002-add-voucher-auto-apply.cjs`,
+  `apps/dgfy-api/tests/autoAppliedCampaignPolicy.unit.test.js`,
+  `apps/dgfy-api/tests/addVoucherAutoApply.migration.test.js`,
+  `apps/dgfy-api/tests/storeCheckoutAutoAppliedDelivery.unit.test.js`,
+  `docs/compliance/impact-declarations/2026-09-02-auto-applied-delivery-campaigns.md`.
+- Modified: `apps/dgfy-api/src/models/Voucher.js`, `apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+  `apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js`,
+  `apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`,
+  `apps/dgfy-api/src/modules/vouchers/usecases/voucherUseCases.js`,
+  `apps/dgfy-api/src/modules/vouchers/index.js`, `apps/dgfy-api/src/validators/voucherValidator.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/tests/storeCheckoutDeliveryWaiverDualAxis.unit.test.js`.
+
+### Next eligible phase
+
+245 (none named yet).
