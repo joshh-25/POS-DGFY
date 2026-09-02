@@ -25,12 +25,14 @@ export const getSettingByKeyUseCase = buildGetSettingByKeyUseCase({ settingsRepo
 export const updateSettingsUseCase = buildUpdateSettingsUseCase({
     settingsRepository,
     storefrontAssetStorage,
-    tenantLocationRepository
+    tenantLocationRepository,
+    tenantRepository
 });
 export const updateSettingByKeyUseCase = buildUpdateSettingByKeyUseCase({
     settingsRepository,
     storefrontAssetStorage,
-    tenantLocationRepository
+    tenantLocationRepository,
+    tenantRepository
 });
 export const generateStorefrontSlugUseCase = buildGenerateStorefrontSlugUseCase({
     settingsRepository,

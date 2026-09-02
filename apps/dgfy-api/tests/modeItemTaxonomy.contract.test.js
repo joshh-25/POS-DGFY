@@ -45,6 +45,7 @@ describe('mode-aware item taxonomy contract', () => {
         expect([...PLACEHOLDER_ITEM_TAXONOMY_MODES].sort()).toEqual([
             'education_institutions',
             'healthcare',
+            'laundry',
             'logistics_distribution',
             'ticketing_transport'
         ]);

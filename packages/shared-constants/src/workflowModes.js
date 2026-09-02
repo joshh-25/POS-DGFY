@@ -11,6 +11,7 @@ export const UNKNOWN_WORKFLOW_MODE_FALLBACK = 'msme';
 export const WORKFLOW_MODE_VALUES = Object.freeze([
     'retail',
     'services',
+    'laundry',
     'manufacturing',
     'food_manufacturing',
     'fnb',
@@ -25,6 +26,7 @@ export const WORKFLOW_MODE_VALUES = Object.freeze([
 export const WORKFLOW_MODE_LABELS = Object.freeze({
     retail: 'Retail',
     services: 'Services',
+    laundry: 'Laundry',
     manufacturing: 'Food Manufacturing',
     food_manufacturing: 'Food Manufacturing',
     fnb: 'Food & Beverage',
@@ -68,6 +70,7 @@ export const WORKFLOW_MODE_ENGINE_VALUES = Object.freeze(['native', 'transitiona
 export const WORKFLOW_MODE_ENGINE = Object.freeze({
     retail: 'native',
     services: 'native',
+    laundry: 'external', // DGLaundry owns the operations engine
     manufacturing: 'transitional', // alias - mirrors food_manufacturing
     food_manufacturing: 'transitional', // planned external engine: Skupervisor
     fnb: 'native',
@@ -109,6 +112,7 @@ export const TEMPLATE_AUTHORABLE_MODES = Object.freeze(
 const WORKFLOW_MODE_FAMILY_MAP = Object.freeze({
     retail: 'retail',
     services: 'services',
+    laundry: 'services', // reuse the service-shaped storefront presentation
     manufacturing: 'food_manufacturing',
     food_manufacturing: 'food_manufacturing',
     fnb: 'fnb',
@@ -123,6 +127,7 @@ const WORKFLOW_MODE_FAMILY_MAP = Object.freeze({
 const WORKFLOW_MODE_TEMPLATE_MAP = Object.freeze({
     retail: 'retail',
     services: 'services',
+    laundry: 'services',
     manufacturing: 'food_manufacturing',
     food_manufacturing: 'food_manufacturing',
     fnb: 'fnb',
@@ -137,6 +142,7 @@ const WORKFLOW_MODE_TEMPLATE_MAP = Object.freeze({
 export const WORKFLOW_MODE_PIN_META = Object.freeze({
     retail: { icon: 'ShoppingBag', label: 'Retail' },
     services: { icon: 'CalendarCheck', label: 'Services' },
+    laundry: { icon: 'WashingMachine', label: 'Laundry' },
     food_manufacturing: { icon: 'Factory', label: 'Food Manufacturing' },
     manufacturing: { icon: 'Factory', label: 'Food Manufacturing' },
     fnb: { icon: 'Utensils', label: 'Food & Beverage' },
@@ -172,6 +178,9 @@ export const WORKFLOW_MODE_PIN_META = Object.freeze({
 export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
     retail: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     services: ['services', 'catalog', 'menuModifiers', 'pos', 'storefront'],
+    // DGLaundry owns staff operations, inventory, and counter POS. DGFY only
+    // exposes the public storefront and sanitized catalog/booking surfaces.
+    laundry: ['services', 'catalog', 'storefront'],
     manufacturing: ['foodManufacturing', 'productionWorkflows', 'catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     food_manufacturing: ['foodManufacturing', 'productionWorkflows', 'catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     fnb: [
@@ -349,4 +358,5 @@ export const modeHasCapability = (value, capability, enabledCapabilities = [], d
 
 export const isMsmeWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'msme';
 export const isServicesWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'services';
+export const isLaundryWorkflowMode = (value) => normalizeWorkflowMode(value) === 'laundry';
 export const isFnbWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'fnb';

@@ -9,6 +9,7 @@ const dgfyAuthMock = vi.hoisted(() => ({
   exchangeDgfyHandoff: vi.fn(),
   fetchDgfyMe: vi.fn(),
   getStoredDgfyToken: vi.fn(() => 'dgfy-token'),
+  launchDgfyLaundryOperations: vi.fn(),
   listDgfyAccountCompanies: vi.fn(),
   logoutDgfyAccount: vi.fn(),
   startDgfyTenantSession: vi.fn()
@@ -73,6 +74,7 @@ beforeEach(() => {
   dgfyAuthMock.getStoredDgfyToken.mockReturnValue('dgfy-token');
   dgfyAuthMock.fetchDgfyMe.mockResolvedValue({ account: { id: 'dgfy-1' } });
   dgfyAuthMock.startDgfyTenantSession.mockResolvedValue({ token: 'tenant-token', company: { id: 'tenant-1', token: 'company-token-1' } });
+  dgfyAuthMock.launchDgfyLaundryOperations.mockResolvedValue({ url: 'https://laundry.dgfy.ph' });
 });
 
 afterEach(() => {
@@ -167,6 +169,19 @@ describe('DgfyCompanySelect', () => {
     }));
     expect(browserSessionMock.preparePosDgfyTenantHandoff).not.toHaveBeenCalled();
     expect(await screen.findByText('POS terminal screen')).toBeTruthy();
+  });
+
+  it('keeps laundry companies in the picker but launches the external DGLaundry runtime', async () => {
+    dgfyAuthMock.listDgfyAccountCompanies.mockResolvedValue({ companies: [ownedCompany({
+      company_name: 'Laundry A',
+      business_mode: 'laundry',
+      runtime_owner: 'dglaundry'
+    })] });
+
+    renderRoutes(['/dgfy/companies']);
+
+    await waitFor(() => expect(dgfyAuthMock.launchDgfyLaundryOperations).toHaveBeenCalledWith({ companyId: 'tenant-1' }));
+    expect(dgfyAuthMock.startDgfyTenantSession).not.toHaveBeenCalled();
   });
 
   it('supports the standalone POS HashRouter handoff and removes the token from the hash', async () => {
