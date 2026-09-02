@@ -28,7 +28,7 @@ folded into this gate. See `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 a
 "Compliance verification ladder," for the full picture and why nothing on this ladder is a
 production precondition.
 
-This document is a runbook: how to run the gate and what its 19 checks mean. It is not a release
+This document is a runbook: how to run the gate and what its 16 checks mean. It is not a release
 ledger — dated pass/fail evidence for individual releases belongs in
 `.tmp/release-gates/<sha>/local_readiness.json` and, if worth keeping past that SHA's lifetime, a
 dated file under `docs/archive/testing/`. The prior 100-entry evidence log that used to live in this
@@ -92,7 +92,7 @@ falls back to `git rev-parse HEAD`.
 The only env var the script itself reads is `RELEASE_TARGET_SHA`. Everything else (DB/Redis
 connection, JWT secrets) is read by the child processes it spawns, exactly as in CI.
 
-## The 19 gates
+## The 16 gates
 
 `scripts/gate-release-local.js` runs these in order — a failing gate does not stop the run, and
 every gate's result is recorded. Exit code is `2` if any gate failed, `0` if all passed; the JSON
@@ -101,8 +101,12 @@ which gates actually run (everything else is recorded `status: "skipped"`, `dura
 the artifact carries `run_mode: "full"|"partial"` plus per-gate `duration_ms` — a partial run's
 `verdict: "pass"` is not evidence of a full pass; check `run_mode` first.
 
-**Delegation, added 2026-09-03 (#1431 Phase 1, PR-B): 7 of these 19 gates no longer "run" here by
-default.** Gates 4, 5, 9, 11, 12, 13, 15 (marked **[CI]** below) run an identical command as a
+Three gates (`release.target_sha`, `observability.evidence.report`, `release.verdict.contract`
+— formerly #1, #18, #19) were retired 2026-09-02 by #1431 Phase 3. Their closeout records are
+in `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, "Retired gates — closed resolutions."
+
+**Delegation, added 2026-09-03 (#1431 Phase 1, PR-B): 7 of the 16 gates below no longer "run" here
+by default.** Gates 3, 4, 8, 10, 11, 12, 14 (marked **[CI]** below) run an identical command as a
 blocking step in `promotion-quality-gate.yml` on the `release/*→main` leg (PR-A, 2026-09-02); once
 that was verified trustworthy and genuinely blocking (evidence: the #1431 Phase 1 PR-B plan's V1/V2′
 V3), this script stopped running them by default — each is instead recorded `status:
@@ -118,7 +122,9 @@ specifically so a reader doesn't have to infer delegation from an unusually-fast
 `scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` is the compensating
 control that keeps `CI_ENFORCED_GATES` and `promotion-quality-gate.yml`'s actual blocking-step ids
 in sync — a future edit that silently regains `continue-on-error` on one of these 7 steps fails that
-check rather than silently reopening a coverage hole on both sides at once.
+check rather than silently reopening a coverage hole on both sides at once. Combined with the 3
+gates retired by Phase 3 above, `gate:release:local`'s own required set is now 9 of the original 19
+(19 − 3 retired − 7 delegated).
 
 **Open, tracked residual gap (not closed by PR-B):** no real `release/*→main` promotion PR has yet
 exercised these 7 steps as a blocking check on an actual PR's `mergeStateStatus` — the evidence
@@ -129,33 +135,32 @@ this gap's own writeup; close it out against #1431 once a real promotion PR demo
 
 | # | Gate name | Command | Notes |
 |---|---|---|---|
-| 1 | `release.target_sha` | — | Passes iff a target SHA resolved (env var or `git rev-parse HEAD`). |
-| 2 | `dependencies.audit.prod` | `npm run audit:dependencies:prod` | `scripts/audit-dependencies.js --omit-dev` audits every tree unconditionally and independently: root, `apps/dgfy-api`, `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`, `apps/dgfy-migration-runner`. `packages/web-core` has no lockfile and no `node_modules`, so it is not an audit tree of its own — its dependencies are audited through whichever app links it. |
-| 3 | `dependencies.audit.full` | `npm run audit:dependencies` | Same runner and same six trees, including dev dependencies. |
-| 4 | `docs.lint` | `npm run lint:docs` | Validates every doc in `docs/_meta/document-registry.json` (this doc included) plus `check:adr`. **[CI, delegated 2026-09-03 PR-B]** |
-| 5 | `architecture.guardrails` | `npm run check:architecture` | `check:architecture-guardrails` + `check:controller-boundaries` inside `apps/dgfy-api`. **[CI, delegated 2026-09-03 PR-B]** |
-| 6 | `compliance.contracts` | `npm run check:compliance` | `check-compliance-impact.js` + `check-compliance-api-contracts.js`. |
-| 7 | `production.env.fixtures` | `npm run check:production-env` | Validates production env-var fixture coverage (hosting profiles, PayMongo, etc.). |
-| 8 | `runtime.doctor` | `npm run doctor:runtime` | `apps/dgfy-api`'s migration/column drift check. |
-| 9 | `backend.lint` | `npm --prefix apps/dgfy-api run lint` | ESLint on `apps/dgfy-api/src`. **[CI, delegated 2026-09-03 PR-B]** |
-| 10 | `backend.test_matrix` | `npm run test:backend:matrix` | The full chunked Jest matrix (`scripts/run-backend-test-matrix.js`) — needs real MySQL + Redis. The expensive gate; see cost below. |
-| 11 | `frontend.ims.lint` | `npm --prefix apps/dgfy-ims run lint` | ESLint on `apps/dgfy-ims`. **[CI, delegated 2026-09-03 PR-B]** |
-| 12 | `frontend.pos.lint` | `npm --prefix apps/dgfy-pos run lint` | ESLint on `apps/dgfy-pos`. **[CI, delegated 2026-09-03 PR-B]** |
-| 13 | `frontend.storefront.lint` | `npm --prefix apps/dgfy-storefront run lint` | ESLint on `apps/dgfy-storefront`. Each app lints separately since the frontend split (ADR 0071); there is no single frontend lint gate anymore. **[CI, delegated 2026-09-03 PR-B]** |
-| 14 | `frontend.contracts` | `npm run test:frontend:contracts` | `vitest run` filtered to `contract.test`/`integration.test`, run from `apps/dgfy-ims`. Because that workspace's Vitest `include` also covers `packages/web-core/**`, this gate exercises the shared trunk's contract suites as well as IMS's own. It does **not** cover POS-only or Storefront-only contract specs — run those from their own workspaces. |
-| 15 | `frontend.storefront.contracts` | `npm run test:frontend:contracts:storefront` | The Storefront-workspace equivalent of gate 14 — added alongside the per-app lint fan-out (#322) but never added to this table (RF-3, PR #513); this row closes that gap. **[CI, delegated 2026-09-03 PR-B]** |
-| 16 | `frontend.budgets` | `npm run check:frontend-budgets -- --report <dir>/frontend-budgets/frontend_budget_report.json` | Defaults to `owned-build` mode — builds all three apps itself (`npm --prefix apps/dgfy-ims run build`, then `apps/dgfy-pos`, then `apps/dgfy-storefront`) and reads `apps/<app>/dist/assets`. This is why the gate is slow even beyond the test matrix. |
-| 17 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2 POS scroll-contract spec files>` | Narrow, named-file regression pin on `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js` and `packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`, invoked from the IMS workspace because `packages/web-core` has no test runner of its own. |
-| 18 | `observability.evidence.report` | `npm run gate:release:observability -- --evidence-dir <dir>` | Warns (does not fail) if `OBSERVABILITY_BASE_URL`/`PROD_BASE_URL`/`QA_BASE_URL` is unset; only fails under `--enforce`, which this gate does not pass. Expect a pass with warnings in a plain local run. |
-| 19 | `release.verdict.contract` | `node scripts/verify-release-verdict.js --file <dir>/release_verdict.json --sha <sha>` | **Conditional and easy to over-read: this gate auto-passes with "Skipped" if `release_verdict.json` doesn't already exist for the target SHA** — the normal case on a fresh run. It only does real verification when a prior no-staging run already produced that file for the same SHA. |
+| 1 | `dependencies.audit.prod` | `npm run audit:dependencies:prod` | `scripts/audit-dependencies.js --omit-dev` audits every tree unconditionally and independently: root, `apps/dgfy-api`, `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`, `apps/dgfy-migration-runner`. `packages/web-core` has no lockfile and no `node_modules`, so it is not an audit tree of its own — its dependencies are audited through whichever app links it. |
+| 2 | `dependencies.audit.full` | `npm run audit:dependencies` | Same runner and same six trees, including dev dependencies. |
+| 3 | `docs.lint` | `npm run lint:docs` | Validates every doc in `docs/_meta/document-registry.json` (this doc included) plus `check:adr`. **[CI, delegated 2026-09-03 PR-B]** |
+| 4 | `architecture.guardrails` | `npm run check:architecture` | `check:architecture-guardrails` + `check:controller-boundaries` inside `apps/dgfy-api`. **[CI, delegated 2026-09-03 PR-B]** |
+| 5 | `compliance.contracts` | `npm run check:compliance` | `check-compliance-impact.js` + `check-compliance-api-contracts.js`. |
+| 6 | `production.env.fixtures` | `npm run check:production-env` | Validates production env-var fixture coverage (hosting profiles, PayMongo, etc.). |
+| 7 | `runtime.doctor` | `npm run doctor:runtime` | `apps/dgfy-api`'s migration/column drift check. |
+| 8 | `backend.lint` | `npm --prefix apps/dgfy-api run lint` | ESLint on `apps/dgfy-api/src`. **[CI, delegated 2026-09-03 PR-B]** |
+| 9 | `backend.test_matrix` | `npm run test:backend:matrix` | The full chunked Jest matrix (`scripts/run-backend-test-matrix.js`) — needs real MySQL + Redis. The expensive gate; see cost below. |
+| 10 | `frontend.ims.lint` | `npm --prefix apps/dgfy-ims run lint` | ESLint on `apps/dgfy-ims`. **[CI, delegated 2026-09-03 PR-B]** |
+| 11 | `frontend.pos.lint` | `npm --prefix apps/dgfy-pos run lint` | ESLint on `apps/dgfy-pos`. **[CI, delegated 2026-09-03 PR-B]** |
+| 12 | `frontend.storefront.lint` | `npm --prefix apps/dgfy-storefront run lint` | ESLint on `apps/dgfy-storefront`. Each app lints separately since the frontend split (ADR 0071); there is no single frontend lint gate anymore. **[CI, delegated 2026-09-03 PR-B]** |
+| 13 | `frontend.contracts` | `npm run test:frontend:contracts` | `vitest run` filtered to `contract.test`/`integration.test`, run from `apps/dgfy-ims`. Because that workspace's Vitest `include` also covers `packages/web-core/**`, this gate exercises the shared trunk's contract suites as well as IMS's own. It does **not** cover POS-only or Storefront-only contract specs — run those from their own workspaces. |
+| 14 | `frontend.storefront.contracts` | `npm run test:frontend:contracts:storefront` | The Storefront-workspace equivalent of gate 13 — added alongside the per-app lint fan-out (#322) but never added to this table (RF-3, PR #513); this row closes that gap. **[CI, delegated 2026-09-03 PR-B]** |
+| 15 | `frontend.budgets` | `npm run check:frontend-budgets -- --report <dir>/frontend-budgets/frontend_budget_report.json` | Defaults to `owned-build` mode — builds all three apps itself (`npm --prefix apps/dgfy-ims run build`, then `apps/dgfy-pos`, then `apps/dgfy-storefront`) and reads `apps/<app>/dist/assets`. This is why the gate is slow even beyond the test matrix. |
+| 16 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2 POS scroll-contract spec files>` | Narrow, named-file regression pin on `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js` and `packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`, invoked from the IMS workspace because `packages/web-core` has no test runner of its own. |
 
-Three gates are structurally incapable of failing on a clean promotion checkout — `compliance.contracts`
-(no compliance-relevant diff to flag), `observability.evidence.report` (warns, never fails, without
-`--enforce`), and `release.verdict.contract` (auto-skips per above) — the artifact marks each with
-`structurally_cannot_fail: true` (#1016) so a green result on these three is never cited as evidence.
+One gate is structurally incapable of failing on a clean promotion checkout —
+`compliance.contracts` (no compliance-relevant diff to flag) — and the artifact marks it
+`structurally_cannot_fail: true` (#1016) so a green result on it is never cited as evidence.
+The other two that used to carry that flag (`observability.evidence.report`,
+`release.verdict.contract`) were retired outright by #1431 Phase 3 rather than left green and
+un-citable.
 
 Evidence: `.tmp/release-gates/<sha>/local_readiness.json` — `generated_at`, `target_sha`, `run_mode`
-(`full`/`partial`), `selection` (`{only, skip}`), `verdict` (`pass`/`fail`), `gate_count` (19),
+(`full`/`partial`), `selection` (`{only, skip}`), `verdict` (`pass`/`fail`), `gate_count` (16),
 `failed_gate_count`, `skipped_gate_count`, and, since 2026-09-03 (#1431 Phase 1, PR-B),
 `required_gate_count` (gates that actually ran locally, excluding delegated and skipped),
 `delegated_gate_count` (the 7 CI-enforced gates recorded `delegated_to_ci` by default), and
@@ -163,7 +168,9 @@ Evidence: `.tmp/release-gates/<sha>/local_readiness.json` — `generated_at`, `t
 `{name, ok, status, detail, duration_ms, structurally_cannot_fail}` (`status` now also takes the
 value `"delegated_to_ci"`, alongside `"pass"`/`"fail"`/`"skipped"`). A promoter's evidence paste
 should cite this artifact **and** the promotion PR's own `promotion-quality-gate` check-run for the
-7 delegated gates — the artifact alone no longer proves they ran.
+7 delegated gates — the artifact alone no longer proves they ran. `gate_count` (16) reflects Phase
+3's retirement only — it counts every entry in `GATE_NAMES`, delegated or not; `required_gate_count`
+is the number that separately reflects PR-B's delegation on top of that.
 
 ## Measured cost (2026-08-12, target SHA `df5e72b0`, `develop`)
 
