@@ -1,26 +1,26 @@
 {
-  "generatedAt": "2026-09-02T18:32:48.533Z",
-  "totalFiles": 638,
+  "generatedAt": "2026-09-02T19:48:49.702Z",
+  "totalFiles": 636,
   "byClassification": {
-    "keep": 578,
-    "delete": 18,
-    "consolidate": 34,
+    "keep": 582,
+    "consolidate": 31,
+    "delete": 15,
     "trim": 3,
     "demote": 5
   },
   "bySuffix": {
     "migration": 27,
-    "contract": 33,
     "(none)": 219,
     "middleware": 12,
     "handler": 1,
-    "transport": 40,
+    "transport": 39,
     "integration": 13,
     "unit": 62,
     "applicationResult": 20,
     "cacheInvalidation": 1,
     "storeTemplateKey": 1,
     "usecase": 52,
+    "contract": 32,
     "ratelimit.e2e": 1,
     "hardening": 1,
     "phoneCompletionGate.middleware": 1,
@@ -349,44 +349,6 @@
       "classification": "keep",
       "reason": "default keep (suffix: migration)",
       "rule": "R5-default",
-      "findings": []
-    },
-    {
-      "path": "tests/adminAssistedProvisioningRoutes.contract.test.js",
-      "lines": 20,
-      "caseCount": 2,
-      "describeTitles": [
-        "admin assisted provisioning route contracts"
-      ],
-      "expectCount": 4,
-      "expectResCount": 0,
-      "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 1,
-      "textRatio": 1,
-      "maxMockStubCount": 0,
-      "isSupertest": false,
-      "isSnapshot": false,
-      "onDbManifest": false,
-      "usesCreateTestTenant": false,
-      "srcImportCount": 0,
-      "deadImportCount": 0,
-      "suffix": "contract",
-      "conditionalSkip": false,
-      "envGated": false,
-      "falseGreenWrapper": false,
-      "citations": {
-        "live": [
-          "docs/testing/README.md"
-        ],
-        "historical": [
-          "docs/compliance/impact-declarations/2026-06-25-platform-admin-assisted-provisioning.md",
-          "docs/compliance/impact-declarations/2026-06-27-assisted-provisioning-ui-consolidation.md"
-        ],
-        "hardcoded": []
-      },
-      "classification": "delete",
-      "reason": "source-text-only (text_ratio=1)",
-      "rule": "R3-source-text-only",
       "findings": []
     },
     {
@@ -2625,13 +2587,13 @@
     },
     {
       "path": "tests/backfillRedemptionTransactionLink.migration.test.js",
-      "lines": 164,
-      "caseCount": 8,
+      "lines": 276,
+      "caseCount": 13,
       "describeTitles": [
         "20260904000002-backfill-voucher-redemption-transaction-link up()",
         "20260904000002-backfill-voucher-redemption-transaction-link down()"
       ],
-      "expectCount": 21,
+      "expectCount": 33,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
@@ -3744,16 +3706,17 @@
       "citations": {
         "live": [
           "docs/compliance/evidence/open-controls-matrix.md",
-          "docs/compliance/evidence/rbac-sensitive-action-matrix.md"
+          "docs/compliance/evidence/rbac-sensitive-action-matrix.md",
+          "scripts/audit-backend-test-inventory.test.js"
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-04-08-compliance-redesign-slice-and-readiness-e2e.md"
         ],
         "hardcoded": []
       },
-      "classification": "consolidate",
-      "reason": "transport-responder-only (>=90% call/res assertions, <=6 cases)",
-      "rule": "R4-transport-responder-only",
+      "classification": "keep",
+      "reason": "compliance evidence citation: docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/rbac-sensitive-action-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -3818,7 +3781,8 @@
         "live": [
           "docs/compliance/control-matrix.md",
           "docs/compliance/evidence/open-controls-matrix.md",
-          "docs/compliance/evidence/residual-risk-closure-matrix.md"
+          "docs/compliance/evidence/residual-risk-closure-matrix.md",
+          "scripts/audit-backend-test-inventory.test.js"
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-04-08-compliance-redesign-slice-and-readiness-e2e.md",
@@ -3826,9 +3790,9 @@
         ],
         "hardcoded": []
       },
-      "classification": "consolidate",
-      "reason": "thin-file (2 cases in 442 lines)",
-      "rule": "R4-thin-file",
+      "classification": "keep",
+      "reason": "compliance evidence citation: docs/compliance/control-matrix.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -4017,8 +3981,8 @@
         "hardcoded": []
       },
       "classification": "keep",
-      "reason": "default keep (suffix: (none))",
-      "rule": "R5-default",
+      "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/control-matrix.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -4129,8 +4093,8 @@
         "hardcoded": []
       },
       "classification": "keep",
-      "reason": "default keep (suffix: documentaryReadiness)",
-      "rule": "R5-default",
+      "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/control-matrix.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -4203,8 +4167,8 @@
         "hardcoded": []
       },
       "classification": "keep",
-      "reason": "default keep (suffix: usecase)",
-      "rule": "R5-default",
+      "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/rbac-sensitive-action-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -4241,8 +4205,8 @@
         "hardcoded": []
       },
       "classification": "keep",
-      "reason": "default keep (suffix: usecase)",
-      "rule": "R5-default",
+      "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -9561,42 +9525,6 @@
       "findings": []
     },
     {
-      "path": "tests/itemsCategoryRoutes.contract.test.js",
-      "lines": 17,
-      "caseCount": 1,
-      "describeTitles": [
-        "item category route contract"
-      ],
-      "expectCount": 4,
-      "expectResCount": 0,
-      "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 1,
-      "textRatio": 1,
-      "maxMockStubCount": 0,
-      "isSupertest": false,
-      "isSnapshot": false,
-      "onDbManifest": false,
-      "usesCreateTestTenant": false,
-      "srcImportCount": 0,
-      "deadImportCount": 0,
-      "suffix": "contract",
-      "conditionalSkip": false,
-      "envGated": false,
-      "falseGreenWrapper": false,
-      "citations": {
-        "live": [],
-        "historical": [
-          "docs/compliance/impact-declarations/2026-07-25-pos-pdf-menu-import.md",
-          "docs/compliance/impact-declarations/2026-07-26-unified-product-domain-phase9-external-ims-delegation.md"
-        ],
-        "hardcoded": []
-      },
-      "classification": "delete",
-      "reason": "source-text-only (text_ratio=1)",
-      "rule": "R3-source-text-only",
-      "findings": []
-    },
-    {
       "path": "tests/jobOrderHandlers.transport.test.js",
       "lines": 292,
       "caseCount": 7,
@@ -13383,8 +13311,8 @@
         "hardcoded": []
       },
       "classification": "keep",
-      "reason": "default keep (suffix: transport)",
-      "rule": "R5-default",
+      "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/rbac-sensitive-action-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -13603,8 +13531,8 @@
         "hardcoded": []
       },
       "classification": "keep",
-      "reason": "default keep (suffix: usecase)",
-      "rule": "R5-default",
+      "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -14317,8 +14245,8 @@
         "hardcoded": []
       },
       "classification": "keep",
-      "reason": "default keep (suffix: usecase)",
-      "rule": "R5-default",
+      "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -14568,42 +14496,6 @@
       "classification": "keep",
       "reason": "hardcoded reference: scripts/backend-db-dependent-tests.js",
       "rule": "R1-pin",
-      "findings": []
-    },
-    {
-      "path": "tests/posSetupCashierRoute.transport.test.js",
-      "lines": 22,
-      "caseCount": 2,
-      "describeTitles": [
-        "POS setup cashier route"
-      ],
-      "expectCount": 4,
-      "expectResCount": 4,
-      "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 0,
-      "textRatio": 0,
-      "maxMockStubCount": 0,
-      "isSupertest": true,
-      "isSnapshot": false,
-      "onDbManifest": false,
-      "usesCreateTestTenant": false,
-      "srcImportCount": 1,
-      "deadImportCount": 0,
-      "suffix": "transport",
-      "conditionalSkip": false,
-      "envGated": false,
-      "falseGreenWrapper": false,
-      "citations": {
-        "live": [],
-        "historical": [
-          "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
-          "docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json"
-        ],
-        "hardcoded": []
-      },
-      "classification": "consolidate",
-      "reason": "transport-responder-only (>=90% call/res assertions, <=6 cases)",
-      "rule": "R4-transport-responder-only",
       "findings": []
     },
     {
@@ -15750,8 +15642,8 @@
         "hardcoded": []
       },
       "classification": "keep",
-      "reason": "default keep (suffix: terminalShiftIdentity)",
-      "rule": "R5-default",
+      "reason": "compliance evidence citation: docs/compliance/evidence/rbac-sensitive-action-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -16734,7 +16626,8 @@
           "docs/compliance/evidence/open-controls-matrix.md",
           "docs/compliance/evidence/residual-risk-closure-matrix.md",
           "docs/testing/README.md",
-          "docs/testing/pos-readiness-status.md"
+          "docs/testing/pos-readiness-status.md",
+          "scripts/audit-backend-test-inventory.test.js"
         ],
         "historical": [
           "docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md",
@@ -16749,9 +16642,9 @@
         ],
         "hardcoded": []
       },
-      "classification": "delete",
-      "reason": "source-text-only (text_ratio=0.83)",
-      "rule": "R3-source-text-only",
+      "classification": "keep",
+      "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -17092,8 +16985,8 @@
         "hardcoded": []
       },
       "classification": "keep",
-      "reason": "default keep (suffix: transport)",
-      "rule": "R5-default",
+      "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -17160,8 +17053,8 @@
         "hardcoded": []
       },
       "classification": "keep",
-      "reason": "default keep (suffix: applicationResult)",
-      "rule": "R5-default",
+      "reason": "compliance evidence citation: docs/compliance/evidence/open-controls-matrix.md",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -17485,6 +17378,45 @@
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/routeAuthorizationDeclarations.contract.test.js",
+      "lines": 49,
+      "caseCount": 4,
+      "describeTitles": [
+        "item category route contract",
+        "admin assisted provisioning route contracts",
+        "POS setup cashier route"
+      ],
+      "expectCount": 10,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 3,
+      "textRatio": 1,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "merge target for the route-declaration sweep; real RBAC regression guards on route lines (#1451)",
+      "mergeInto": null,
+      "newTier": null,
+      "rule": "R0-override",
       "findings": []
     },
     {
