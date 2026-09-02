@@ -11,8 +11,8 @@ verification_evidence: npm run build:pos -- passed, npm run build:skupervisor --
 rollback_note: Single-file, single-constant change. Plain revert of this PR's commit restores the prior SPLIT_VIEW_MEDIA_QUERY threshold (reusing IMIN_TABLET_MAX_WIDTH_PX). No API, schema, payment, fiscal calculation, authorization, persistence, or hardware command behavior changes -- purely a CSS media-query breakpoint used to decide which of two already-shipped React render branches (single-panel vs. split-panel) is shown.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1289-SPLIT-VIEW-VIEWPORT
+preflight_run_at: 2026-09-02T16:10:10.502Z
+preflight_request_ref: PREFLIGHT-33652723489-2026-09-02-SPLIT-VIEW-IPAD-LANDSCAPE-VIEWPORT
 ---
 
 # Split Queue+Run view (#1289) viewport threshold fix

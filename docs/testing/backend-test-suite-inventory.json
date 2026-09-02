@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T16:48:16.306Z",
+  "generatedAt": "2026-09-02T18:28:39.057Z",
   "totalFiles": 637,
   "byClassification": {
     "keep": 576,
@@ -3509,7 +3509,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/testing/dgfy-full-flow-e2e-verification-matrix-2026-06-13.md"
+          "docs/testing/dgfy-full-flow-e2e-verification-matrix-2026-06-13.md",
+          "scripts/backend-test-audit-overrides.js"
         ],
         "historical": [
           "docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md",
@@ -6571,7 +6572,7 @@
     },
     {
       "path": "tests/e2e-full-cycle.test.js",
-      "lines": 568,
+      "lines": 573,
       "caseCount": 2,
       "describeTitles": [
         "E2E Full Cycle: PO → JO → Loss → Void"
@@ -6594,9 +6595,12 @@
       "falseGreenWrapper": true,
       "citations": {
         "live": [
-          "docs/reference/DEVELOPMENT_HISTORY.md"
+          "docs/reference/DEVELOPMENT_HISTORY.md",
+          "scripts/backend-test-audit-overrides.js"
         ],
-        "historical": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
         "hardcoded": [
           "scripts/backend-db-dependent-tests.js"
         ]
@@ -6997,7 +7001,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "Implementation.md"
+          "Implementation.md",
+          "scripts/backend-test-audit-overrides.js"
         ],
         "historical": [],
         "hardcoded": []
@@ -7067,7 +7072,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/testing/telemetry-schema-contract.md"
+          "docs/testing/telemetry-schema-contract.md",
+          "scripts/backend-test-audit-overrides.js"
         ],
         "historical": [],
         "hardcoded": []
@@ -10567,7 +10573,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-05-07-mode-price-cost-catalog-contract.md",
           "docs/compliance/impact-declarations/2026-07-26-unified-product-domain-phase9-external-ims-delegation.md"
@@ -10822,9 +10830,12 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md"
+        ],
         "historical": [
-          "docs/compliance/impact-declarations/2026-06-16-production-observability-traceability.md"
+          "docs/compliance/impact-declarations/2026-06-16-production-observability-traceability.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
       },
@@ -11164,9 +11175,12 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
         "historical": [
-          "docs/archive/system-audit-2026-03/3.3-Payment_processing_atomicity.md"
+          "docs/archive/system-audit-2026-03/3.3-Payment_processing_atomicity.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
           "scripts/backend-db-dependent-tests.js"
@@ -12209,7 +12223,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -12610,7 +12626,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -13045,7 +13063,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -13113,7 +13133,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-07-07-pos-commercial-and-statutory-discount-hardening.md",
           "docs/compliance/impact-declarations/2026-08-18-pos-es-compat-guardrail.md"
@@ -14002,7 +14024,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
@@ -14643,7 +14667,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/testing/pos-readiness-status.md"
+          "docs/testing/pos-readiness-status.md",
+          "scripts/backend-test-audit-overrides.js"
         ],
         "historical": [],
         "hardcoded": []
@@ -14916,7 +14941,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-30-pos-cheque-tender-method.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
@@ -16590,7 +16617,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/api/RATE_LIMITING.md"
+          "docs/api/RATE_LIMITING.md",
+          "scripts/backend-test-audit-overrides.js"
         ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
@@ -21737,7 +21765,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
         "historical": [
           "docs/archive/system-audit-2026-03/11.1-Plaintext_DB_credentials.md",
           "docs/archive/testing/2026-02/production-readiness-audit-2026-02-19.md",
@@ -22639,7 +22669,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "scripts/backend-test-audit-overrides.js"
+        ],
         "historical": [
           "docs/archive/system-audit-2026-03/FINAL_SYSTEM_AUDIT_REVIEW_2026-03-04.md",
           "docs/archive/system-audit-2026-03/PHASE0_Acceptance_Gates_Immutable_2026-03-04.md",

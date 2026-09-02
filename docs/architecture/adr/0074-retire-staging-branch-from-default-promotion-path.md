@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-09-02
+last_reviewed: 2026-09-03
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -453,6 +453,65 @@ again on the leg into `main` (#1431 Phase 1, PR-A)
   `release/*→main` (or `staging→main`) promotion actually proving the 7 flipped steps green under
   production conditions, not assumed from this amendment alone.
 - PR: (this PR). Refs #1431, #1063, #1066, #1147.
+
+### 2026-09-03 — `gate:release:local` drops the same 7 gates from its required set, delegated to CI
+(#1431 Phase 1, PR-B)
+
+- Clause amended: **Decision 7** (`[default]` tier per ADR 0039). Its original text —
+  "`npm run gate:release:local` (`run_mode: "full"`) stays mandatory before every `develop -> main`
+  promotion PR is opened, against the exact target SHA" — is narrowed, not reversed: mandatory now
+  means "every gate this script owns either ran locally or was legitimately delegated to a
+  verified-blocking CI enforcer," not "every gate ran locally." `run_mode: "full"` keeps its literal
+  meaning and its role as the promotion precondition this Decision (and
+  `.agents/skills/promoter/SKILL.md`) requires — a run that delegates all 7 CI-enforced gates by
+  default is still `run_mode: "full"`, per the amendment's own change below.
+- Confirmed `[default]`, not `[binding]`, for the same reason the 2026-09-02 PR-A amendment above
+  gave for Decision 3: which gates a local script runs itself versus delegates to an already-verified
+  CI enforcer is rollout sequencing, not a system invariant. Decision 6 (tenant-schema report) and
+  Decision 8 (Merge Safety) remain the actual invariants in this ADR and are untouched — see the
+  scope check below.
+- Change: `scripts/gate-release-local.js` gained `CI_ENFORCED_GATES`, naming the same 7 gates the
+  amendment above flipped to blocking (`docs.lint`, `architecture.guardrails`, `backend.lint`,
+  `frontend.ims.lint`, `frontend.pos.lint`, `frontend.storefront.lint`,
+  `frontend.storefront.contracts`). By default each is recorded `status: "delegated_to_ci"`,
+  `ok: true`, `duration_ms: 0`, and never actually invoked; `--include-ci-enforced` or an explicit
+  `--only <gate>` still runs it locally. The artifact gained `required_gate_count`,
+  `delegated_gate_count`, and `ci_enforced_gates` so a reader can tell "ran" from "delegated" without
+  inferring it from `duration_ms: 0`. `scripts/check-pr-quality-workflow.js`'s new
+  `checkCiEnforcedGatesAreBlocking()` asserts every `CI_ENFORCED_GATES` step id is still present in
+  that file's `BLOCKING_STEP_IDS` — the compensating control the PR-A amendment above named as not
+  yet built, now built: a future edit that silently regains `continue-on-error` on one of these 7
+  steps fails this check rather than reopening a coverage hole on both sides (not enforced in CI,
+  not run locally) at once.
+- Rejected alternative, recorded so it isn't re-litigated: a third `run_mode` value (e.g.
+  `"ci_delegated"`) or a separate `coverage:` field, instead of redefining what `"full"` covers.
+  Rejected because this Decision and `.agents/skills/promoter/SKILL.md` both cite `run_mode: "full"`
+  by that literal string as the promotion precondition; a third value would silently break both, and
+  a promoter reading the pre-amendment rule would refuse a legitimately complete run.
+- Why: #1431 Phase 1's plan gated this delegation on the same 7 gates being verified trustworthy and
+  genuinely blocking in CI — met under a B-amended evidence bar Pat confirmed after the plan's
+  originally-stated precondition (a real `release/*→main` promotion) turned out not to be available:
+  V1 (a genuine negative-signal dispatch run, `33650659451`, reds out `frontend-pos-quality`'s own
+  check-run), V2′ (the existing green `workflow_dispatch` run on `develop` HEAD, `33642893358`, cited
+  in place of a real promotion on a verified command/runner-identity argument), V3 (local/CI command
+  parity, exact for 6 of 7, a documented CI-side superset for the 7th). Full detail:
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching 2026-09-03 amendment and
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+- **Open, tracked residual gap — not closed by this amendment or the PR behind it:** no real
+  `release/*→main` PR has yet exercised these 7 steps as a blocking check on an actual PR's
+  `mergeStateStatus: UNSTABLE` transition — V1 shows the job-level check-run itself goes red, V2′
+  shows the green path is command/runner-identical to a real promotion, neither is the same PR-level
+  mechanism Decision 8 relies on. Track close-out against #1431: cite the promotion PR that
+  eventually demonstrates it.
+- Scope check against this ADR's `[binding]` clauses, confirmed unaffected: Decision 6 (production
+  tenant-schema report) and Decision 8 (`AGENTS.md` Merge Safety, never-`--squash`, the
+  `release/<label>` head-cut rule) are untouched — this amendment only changes which gates
+  `gate:release:local` runs itself versus delegates, a `[default]`-tier detail. Decision 8 still
+  requires `mergeStateStatus: CLEAN` before any merge, unaffected by where a gate's command runs.
+- Not yet touched: `backend.test_matrix` (row 10 of the mapping doc) and `run_web_core_lint` — the
+  PR-A amendment's own "what did not change" list — remain fully out of scope here too; flipping the
+  former to blocking and delegating it locally are PR-A2/PR-B2, separate PRs per #1431's own scoping.
+- PR: (this PR). Refs #1431, #1063, #1066, #1147, #1435 (PR-A).
 
 ## Related
 
