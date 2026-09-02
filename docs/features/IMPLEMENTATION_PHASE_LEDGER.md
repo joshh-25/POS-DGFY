@@ -17863,3 +17863,119 @@ PR-C (Phase 254, #1451) and PR-D (Phase 255) follow in sequence.
 
 254 (planned — PR-C, trim transport and source-text tests to what they uniquely prove). Cut from
 this PR's head once merged/pushed.
+
+## Phase 254 - Transport/source-text trims and a compliance-pin rule-engine fix (#1451, PR-C)
+
+### Initiative and release
+
+PR-C of the four-PR sequence started in Phase 252 (#1441). Unlike Phase 253 (PR-B), this branch is
+cut from `develop` directly, not from a predecessor's head: Phases 252 and 253 are both already
+merged into `develop`, so there is no unmerged predecessor branch to stack on. Branch
+`test/1451-transport-source-text-trims`, against `develop`.
+
+Planning re-verified the issue's own premises against the live tree before implementing and found
+three of them did not hold — see the plan's own Critical Assessment (CA-1 through CA-4). Recorded
+here rather than re-derived: **CA-1**, the highest-value finding of the whole campaign, is that the
+audit tool's own rule engine — not any test file — was the compliance-evidence hazard. R1 pinned
+only on a `hardcoded` citation and ignored a `live` `docs/compliance/**` citation entirely, so
+`tests/rbacRouteCoverage.contract.test.js` classified `delete` (R3-source-text-only) despite being
+cited as control evidence by the DGFY Compliance Certification Checklist,
+`open-controls-matrix.md`, and `residual-risk-closure-matrix.md`; the same gap misclassified
+`tests/complianceActivation.transport.test.js` and
+`tests/complianceActivationReadiness.e2e.transport.test.js` as `consolidate` (R4).
+
+### Objective and scope
+
+- **`scripts/audit-backend-test-inventory.js`** — add `COMPLIANCE_PIN_PREFIX = 'docs/compliance/'`
+  and, inside R1 immediately after the existing `hardcoded` check, pin to `keep` when
+  `signals.citations.live` contains an entry rooted at that prefix. Verified blast radius across
+  all 638 pre-change files: exactly 3 rows flip to `keep` (the three files above), 10 already-`keep`
+  rows change only `Rule`/`Reason` from `R5-default` to `R1-pin`, 0 files change in any other
+  direction. `scripts/audit-backend-test-inventory.test.js` gets one new case asserting all three
+  files classify `keep` with `rule: 'R1-pin'`.
+- **Route-declaration consolidation** — `tests/itemsCategoryRoutes.contract.test.js` and
+  `tests/adminAssistedProvisioningRoutes.contract.test.js` (both pure source-text route greps)
+  folded verbatim (same titles, same assertions) into a new
+  `tests/routeAuthorizationDeclarations.contract.test.js`, one `describe` block per source file.
+  `scripts/backend-test-audit-overrides.js` gets matching `consolidate`/`keep` entries.
+- **The one honest trim** — `tests/posSetupCashierRoute.transport.test.js` deleted.
+  Both of its cases booted the full app via `supertest` + `src/server.js` to assert only
+  `response.status !== 404` on one path — the most expensive way in the suite to prove the
+  cheapest fact, and one of only 5 flagged transport files that boot the whole server. Replaced
+  with a third `describe` block in the same sweep file asserting the route lines exist in
+  `src/routes/pos.js`'s source text instead. `backend-test-audit-overrides.js` gets a matching
+  `delete` entry.
+- **What the issue's own "~20 transport files" trim target did not survive** (CA-2/CA-3, stated
+  outright rather than silently under-delivered): 50 of 59 handler modules that call
+  `sendUseCaseResult` pass their own handler-local `errorPayloadResolver` with a shape
+  `tests/useCaseResponder.test.js`'s generic two-field assertion never sees, so most flagged
+  `R4-transport-responder-only` "generic error" cases are each a module's only proof of its own
+  envelope, not a redundant re-proof. Recorded as a follow-up in
+  `docs/testing/backend-test-suite-value-audit.md` §9 rather than invented cuts to hit a number the
+  issue guessed at before the audit ran.
+- **Dropped (CA-4), not implemented**: splitting `posParkedSale.schema.contract.test.js`/
+  `posSplitPayment.schema.contract.test.js` into behavioral-vs.-text-grep files. Both still import
+  `src/models/index.js` either way (the actual cost driver), so the split raises file count by 3
+  for no import-work reduction; both are already on the fast tier via PR-A's `R0-override`. Recorded
+  in the audit doc §9, not implemented, per the plan's own recommendation.
+- No hand-written `keep` override was added for the three compliance-pinned files — the R1 rule
+  change covers them mechanically, and a redundant override would mask a future regression of that
+  rule if it were ever weakened again.
+- No ledger entry is filed for #1453 or #1454 — neither is a governed multi-phase initiative; both
+  are recorded as follow-ups in the audit doc §9 instead, and every stray entry is another
+  collision surface with #1431's concurrently-active phase numbering.
+
+### Status
+
+`completed`. All ten protected case titles (§3a of the plan) confirmed present verbatim at their
+original, unchanged line numbers in `posHandlers.transport.test.js` and
+`reportHandlers.transport.test.js` — neither file was edited (`git diff --name-only origin/develop`
+against both prints nothing). The three untouched-in-full compliance files
+(`complianceActivation.transport.test.js`, `complianceActivationReadiness.e2e.transport.test.js`,
+`rbacRouteCoverage.contract.test.js`) likewise show zero diff against `origin/develop`; their
+protection now comes from the R1 rule fix, not from being left alone by hand.
+
+### Dependencies
+
+Phases 252 and 253 (#1441 PR-A/PR-B), both already merged into `develop` — this branch is cut from
+`develop` itself, not from either predecessor's head (contrast Phase 253, which was cut from Phase
+252's then-unmerged branch).
+
+### Acceptance and validation evidence
+
+- `node --check` on every changed `.js` file: `scripts/audit-backend-test-inventory.js`,
+  `scripts/audit-backend-test-inventory.test.js`, `scripts/backend-test-audit-overrides.js`,
+  `apps/dgfy-api/tests/routeAuthorizationDeclarations.contract.test.js` — all pass.
+- `npm run test:audit-backend-tests` — 11/11 pass, including the new R1-pin compliance case.
+- `npm run audit:backend-tests:check` — `OK - inventory is up to date`.
+- Simulated blast radius (computed before implementing, then re-verified post-commit against the
+  actual inventory): 3 classification flips
+  (`rbacRouteCoverage.contract`, `complianceActivation.transport`,
+  `complianceActivationReadiness.e2e.transport`, all `-> keep` / `R1-pin`), 10 reason-only changes,
+  0 files changed in any other direction, 638 total files unchanged pre-C1.
+- `DB_PORT=1 npm test -- --runTestsByPath tests/routeAuthorizationDeclarations.contract.test.js`
+  (in `apps/dgfy-api`) — 4/4 pass (no DB needed; pure `readFileSync`).
+- The plan's §4 protected-title guard, run post-trim: the 10-line `git grep` output matches the
+  plan's predicted output exactly, including line numbers; the self-verifying count assertion
+  printed `protected cases found: 10 / 10` / `GUARD: PASS`; the untouched-files guard against all
+  five protected files printed nothing.
+- Post-regeneration inventory: 636 active files (638 - 3 removed +1 new sweep file), by
+  classification keep:582 / consolidate:31 / delete:15 / trim:3 / demote:5.
+- `npm run check:compliance` — "No compliance-sensitive changes detected" (test/doc/script-only
+  diff, no `src/` surface).
+- `npm run check:architecture` — 53 modules / 548 files, 93 controllers, OK.
+- `npm run lint:docs` (chains `check:adr`) — 29 governed docs / 86 ADRs, OK.
+- Fast-tier wall-clock measurement was not attempted this run — the change set (one deletion, two
+  tiny source-text merges) is expected to move it by noise-level amounts at most, consistent with
+  PR-A/PR-B's own "could not measure meaningfully" posture for equivalently small deltas; no number
+  is fabricated here in its place.
+
+### Links
+
+Issue #1441, #1451. Refs Phase 252 (#1441 PR-A) and Phase 253 (#1441/#1450 PR-B) as prior phases in
+the same sequence. PR-D (Phase 255) follows.
+
+### Next eligible phase
+
+255 (planned — PR-D, db-tier tenant-sync consolidation; the only cut in this sequence that actually
+moves gate wall-clock).
