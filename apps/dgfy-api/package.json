@@ -22,7 +22,6 @@
     "test:frontend-ims-pos-sales-e2e:matrix": "cross-env RUN_BROWSER_E2E=true RUN_A11Y_MATRIX=true BROWSER_E2E_VIEWPORTS=desktop,mobile node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.imsPosSalesJourney.e2e.test.js",
     "test:hosting:shared": "cross-env HOSTING_PROFILE=shared REDIS_URL= AUTH_BLACKLIST_FAILURE_MODE=fail_open TEMP_FILE_STORAGE=local STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED=false node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/hostingProfilePreflight.test.js tests/tempFileService.local.test.js tests/healthService.test.js tests/rateLimiterStoreMode.test.js",
     "test:hosting:vps": "cross-env HOSTING_PROFILE=vps REDIS_URL=redis://127.0.0.1:6379 AUTH_BLACKLIST_FAILURE_MODE=fail_closed TEMP_FILE_STORAGE=auto STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED=true node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/hostingProfilePreflight.test.js tests/healthService.test.js tests/rateLimiterStoreMode.test.js",
-    "test:integration": "cross-env TEST_TYPE=integration node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --forceExit --testPathPatterns=token_refresh_race_integration",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "logs:view": "tail -f logs/combined.log",

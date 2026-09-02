@@ -17617,3 +17617,119 @@ not a new compliance-sensitive code path.
 252 (P2-3/P2-4, once real promotion evidence exists — handed to a separate follow-up task). Re-check
 the ledger's actual highest merged entry at that time rather than assuming — both this phase and
 Phase 250 (#1446) may or may not have merged by then.
+
+## Phase 252 - Backend test-suite value audit + highest-confidence cuts (#1441, PR-A)
+
+### Initiative and release
+
+Answers the question none of the in-flight test-gate work (#1015 speed, #438 tiering, #1147/#1431
+CI wiring, Phase 249/#1432 rot repair) asks: does every backend test earn its cost, and can the set
+be reduced by subtraction. PR-A of a four-PR sequence — PR-B (Phase 253, planned), PR-C (Phase 254,
+planned), PR-D (Phase 255, planned) — each cut from the previous PR's head, all against `develop`. **Numbering note (corrected
+2026-09-03, resolving a real conflict with #1431's own Phase 250/251 entries that landed on
+`develop` first)**: this PR's plan (parked at `~/.claude/plans/this-is-heavy-ask-functional-bubble.md`)
+originally reserved Phases 250-253 outside the repo; per `AGENTS.md`'s Continuous Phase Numbering
+rule, a parked plan file reserves nothing — only the ledger's actual highest merged entry does.
+#1431 Phase 3 (PR #1446) and Phase 2 (PR #1447) merged into `develop` first and correctly claimed
+250 and 251 (see Phase 251's own 2026-09-03 RF-1 numbering-note for the identical situation). This
+entry takes the next free number, 252, matching Phase 251's own "Next eligible phase" pointer.
+
+### Objective and scope
+
+- `scripts/audit-backend-test-inventory.js` (+ `scripts/audit-backend-test-inventory.test.js`,
+  `scripts/backend-test-audit-overrides.js`) — a static, deterministic audit tool: discovers
+  `apps/dgfy-api/tests/*.test.js`, computes per-file signals, partitions against the db manifest,
+  and classifies every file (keep/consolidate/trim/delete/demote) via a first-match-wins rule
+  engine plus a manual-override file for the ~90-file judgment-call pass done while planning this
+  issue. Root scripts: `audit:backend-tests`, `audit:backend-tests:check`,
+  `test:audit-backend-tests`.
+- Applied the highest-confidence cuts identified during planning: **11 deletions**
+  (`posDeviceStatus.transport`, `toctou_reproduction`, `posOrderHistory.route.contract`,
+  `posCatalogBarcodeScope.contract`, `posCatalogCategory.contract`, `hospitalityOnboarding.contract`,
+  `posTransactionHistory.search.contract`, `itemBarcodeLabelContract`,
+  `billingAnchorBackfill.migration`, `complianceDowngradeHardening.migration`,
+  `token_refresh_race_integration` + its dead `jest.integration.cjs`/`test:integration` script and
+  manifest line); **4 consolidations** (`posDiscountCalculator` folded into `.unit`,
+  `commercePaymentReconciliation.route.contract` into `commercePaymentRouteMount.contract`,
+  `dgfyTenantSessionService.contract` into `posDayClosePinSelfService.contract`,
+  `onboardingRoutes.contract` into `rateLimiterExemptionCoverage.contract`); **3 trims**
+  (`modeFinancialTracking.contract`, `employeeCreditMigration.contract`,
+  `posShiftLocationBackfillRemediation.migration` — kept the non-literal assertions, dropped
+  literal source-text pins); **5 db-manifest demotions to the fast tier**
+  (`engagementEventModel`, `tenantCredentialSurface.security`, `posParkedSale.schema.contract`,
+  `posSplitPayment.schema.contract`, `posCashierAttendanceSchema.contract` — import-only, no real
+  query); and **1 correctness fix**, own commit: `tests/e2e-full-cycle.test.js`'s `itIfRuntimeReady`
+  wrapper (L51-60) silently returned PASS for all 20 cases when the runtime schema audit was
+  unhealthy — `beforeAll` now throws, naming the audit's issue list.
+- **A planned 6th demotion (`paymentAtomicity.test.js`) was rejected by its own empirical
+  re-proof** — a real error in the plan caught during implementation, not applied: the file
+  `jest.spyOn(db.sequelize, 'transaction')` rather than mocking the module, so the real
+  `handleWebhook` code path still opens a live transaction; under the fast tier's `DB_PORT=1`
+  guard that fails before the mocked `Payment.create` assertion is ever reached. Stayed on the db
+  manifest.
+- Reference updates in the same PR: `apps/dgfy-api/package.json` (`test:integration` removed),
+  `scripts/backend-db-dependent-tests.js` (6 manifest lines removed net, 1 kept per above, with the
+  re-proof documented inline), `apps/dgfy-api/tests/README.md` (deleted-file section rewritten),
+  `docs/testing/README.md` (corrected the stale "one file per chunk" sentence — the fast tier is
+  one worker-mode Jest invocation, not per-file chunking; only the db tier chunks, 8 files/chunk).
+  `docs/testing/pos-readiness-status.md`'s single remaining `itemBarcodeLabelContract` citation was
+  deliberately left untouched — it's inside a dated, historical run-log section
+  (`### 3.15 ... (2026-05-05)`), and rewriting a historical transcript to erase what actually ran
+  would misrepresent history, the same leave-alone principle
+  `docs/architecture/apps-layout-migration.md` already applies to dated records.
+- `docs/testing/backend-test-suite-value-audit.md` — the full audit doc: method, signals, rule
+  engine, before/after, per-family rationale (including what was *not* cut and why), stale/dead
+  findings, the frontend/lint out-of-scope statement, and follow-ups.
+
+### Status
+
+`completed` for this phase's own scope. Every file this PR touches (all deletion replacements, all
+4 consolidation targets, all 3 trims, all 5 surviving demotions, the `e2e-full-cycle.test.js` fix)
+was run directly and passes under fast-tier conditions (`DB_PORT=1`). `npm run
+test:audit-backend-tests` (10 tests) and `npm run audit:backend-tests:check` are both green.
+`npm run check:architecture`, `npm run check:compliance` (no compliance-sensitive changes detected
+— all 30 rules anchor to `src/`), and `npm run lint:docs` all pass.
+
+**Full-suite wall-clock/peak-memory before/after could not be completed in this session's
+environment** — documented in full, including the concrete failure evidence (two fast-tier
+timeouts at 600s/900s vs. the plan's 156-215s baseline; a single db-tier file taking 540.789s and
+then failing on a MySQL protocol-level "packets out of order" warning under this session's
+concurrent host+container load), in `docs/testing/backend-test-suite-value-audit.md` section 5.
+File/case/line counts before/after **are** measured and reliable: 652→637 files, 4,536→4,520 cases,
+138,704→137,883 lines. The honest timing proof is the next `promotion-quality-gate.yml` run.
+
+### Dependencies
+
+None blocking this phase's own PR. PR-B/C/D (Phases 253-255, planned) are cut from this PR's head
+in sequence and depend on it merging first.
+
+### Acceptance and validation evidence
+
+- `node --check` on every changed `.js` file.
+- `npm run test:audit-backend-tests` — 10/10 tests pass.
+- `npm run audit:backend-tests:check` — clean against the committed inventory JSON.
+- Direct Jest runs of every touched/demoted file under `DB_PORT=1` — all pass (13 suites / 49 tests
+  covering the trims/consolidations/fix; a separate 5 suites / 16 tests confirming the final 5
+  demotions, after `paymentAtomicity.test.js` was excluded per its failed re-proof above).
+- `npm run check:architecture` (53 modules / 548 files, 93 controllers) — pass.
+- `npm run check:compliance` — "No compliance-sensitive changes detected."
+- `npm run lint:docs` (29 governed docs, 86 ADRs) — pass.
+- Repo-wide `git grep --fixed-strings <basename>` sweep for every deleted/consolidated file's
+  basename, excluding leave-alone paths (`docs/archive/**`, impact declarations, ADRs,
+  `docs/release(s)/**`, this ledger) — clean; every remaining hit is either this PR's own
+  intentional "Consolidated from..." comment or the deliberately-untouched historical citation
+  above.
+
+### Links
+
+Issue #1441. Refs Phase 249 (#1432) as the prior test-gate work this audit is distinct from.
+`docs/testing/backend-test-suite-value-audit.md` (full audit + rationale + before/after).
+Found-not-fixed-here, handed to `pm`: repair `test:coverage`/`test:watch` (missing `--config`);
+wire `audit:backend-tests:check` into `scripts/pr-checks.js` (gate placement is #1147/#1431
+territory); a full sweep of live (non-historical) `npm --prefix backend` references outside this
+PR's own touched files; PR-B/C/D tracking issues (Phases 253-255).
+
+### Next eligible phase
+
+253 (planned — PR-B, static-parse POS barrel-mock helper). 254 and 255 (PR-C, PR-D) follow in
+sequence, each cut from the previous PR's head.

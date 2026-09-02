@@ -310,28 +310,18 @@ npm test -- --testPathPatterns=token_refresh_race.test
 
 ---
 
-### `token_refresh_race_integration.test.js` — Token Refresh Race Condition Integration Tests (2/2)
+### `token_refresh_race_integration.test.js` — **deleted** (#1441, Phase 250)
 
-**Purpose**: Integration tests using **real Redis**. Verifies actual blacklisting behaviour end-to-end. The `TEST_TYPE=integration` env variable causes `jest.config.cjs` to skip `setup.js`, so the Redis mock is NOT active.
+Removed: it never executed in any gate (`test:integration` invoked it directly and had no caller;
+`TEST_TYPE=integration` is never set by `scripts/run-backend-test-matrix.js`, so the matrix's own
+`jest.config.cjs` invocation always skipped it too). Its two cases:
+- **1.6** (sequential RTR, used token blacklisted) is covered by `rtr_verification.test.js`'s
+  "RT1 used twice" case, which does run in the db tier.
+- **1.5** (6 concurrent refresh calls, no distributed lock, real Redis) has **no equivalent
+  coverage anywhere that runs** — recorded as an uncovered scenario in
+  `docs/testing/backend-test-suite-value-audit.md` and tracked for PR-D (#1441).
 
-**How to run**:
-```bash
-cd backend
-npm run test:integration
-# Requires: Redis running on localhost:6379
-```
-
-**What is tested (2 tests)**:
-
-| # | Test | What it proves |
-|---|------|----------------|
-| 1.5 | Concurrent refresh calls — no 5xx | Without a distributed lock (Redlock), all concurrent requests pass the blacklist check before any write completes. No server crashes. Each 200 response has valid JWT structure. **The frontend mutex is load-bearing security.** |
-| 1.6 | Sequential RTR — used token blacklisted | `rt1 → rt2` succeeds; reusing `rt1` returns 401 |
-
-**Key design decisions**:
-- `beforeEach` waits 1100ms so `generateRefreshToken`'s `iat` (second-precision) is unique per test, preventing token collisions across tests
-- Blacklist assertion is done via HTTP reuse (not `isTokenBlacklisted()` directly) because `AsyncLocalStorage` tenant scoping produces different Redis key prefixes inside vs. outside request context
-- `--forceExit` prevents Jest from hanging after Redis connection stays open
+The dead `test:integration` npm script and `jest.integration.cjs` were removed alongside it.
 
 ---
 
