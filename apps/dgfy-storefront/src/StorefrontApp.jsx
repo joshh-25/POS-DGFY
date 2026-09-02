@@ -104,7 +104,8 @@ import { useStorefrontCartDrawerShellProps } from './app/hooks/useStorefrontCart
 import { StorefrontLoadBoundary } from './shared/components/storefront/StorefrontLoadBoundary.jsx';
 import { StorefrontBranchSwitchFeedback } from './shared/components/storefront/StorefrontBranchSwitchFeedback.jsx';
 import { openStorefrontActionLink, sanitizeExternalLink } from './shared/utils/externalLinks.js';
-import { money, toSlug } from './shared/utils/storefrontFormatters.js';
+import { money as defaultMoney, toSlug } from './shared/utils/storefrontFormatters.js';
+import { formatServiceMoney } from './modes/services/servicesFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
 import {
   buildTicketImage,
@@ -219,6 +220,7 @@ import { useServiceBookingDerivations } from './modes/services/booking/hooks/use
 import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useServiceBookingFieldFocus.js';
 import { useServiceBookingReviewProps } from './modes/services/booking/hooks/useServiceBookingReviewProps.js';
 import { SERVICES_BODY_FONT, SERVICES_DISPLAY_FONT } from './modes/services/servicesTypography.js';
+import { SERVICES_PALETTE } from './modes/services/servicesPalette.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
 import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
 import { useSimpleCheckoutGating } from './modes/simple/checkout/hooks/useSimpleCheckoutGating.js';
@@ -974,6 +976,7 @@ export default function StorefrontApp() {
     catalogError,
     hasCatalogSearchQuery: catalogSearch.trim().length > 0
   });
+  const money = isServicesMode ? formatServiceMoney : defaultMoney;
   const fnbCatalogRuntime = useFnbCatalogRuntime({
     activeSection: activeServiceTab,
     catalogSearch,
@@ -1177,14 +1180,26 @@ export default function StorefrontApp() {
     setSelectedTrackingPin(updated.tracking_pin);
     void handleTrack();
   }, [handleTrack, routeSlug, selectedStore?.slug, setSelectedTrackingPin, setTrackingPinInput]);
-  const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
-  const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
-  const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
+  // Services owns its checkout palette. A composed services capability must
+  // use the same tokens as a Services storefront instead of inheriting the
+  // legacy teal accent from the tenant's primary mode.
+  const usesServicesPalette = isServicesMode || modeAdapter?.hasServicesCapability === true;
+  const servicesPrimary = usesServicesPalette
+    ? SERVICES_PALETTE.primary
+    : (modeAdapter?.heroTheme?.accent || SERVICES_PALETTE.primary);
+  const servicesPrimaryDark = usesServicesPalette
+    ? SERVICES_PALETTE.primaryDark
+    : (modeAdapter?.heroTheme?.accentDark || SERVICES_PALETTE.primaryDark);
+  const servicesPrimarySoft = usesServicesPalette
+    ? SERVICES_PALETTE.primarySoft
+    : (modeAdapter?.heroTheme?.accentSoft || SERVICES_PALETTE.primarySoft);
   const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || SERVICES_BODY_FONT;
   const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || modeAdapter?.heroTheme?.bodyFont || SERVICES_DISPLAY_FONT;
-  const servicesPrimaryBorder = `${servicesPrimary}33`;
-  const servicesPrimaryShadow = isSimpleMode ? 'rgba(23,107,58,0.16)' : 'rgba(15,118,110,0.24)';
-  const servicesPrimaryShadowStrong = isSimpleMode ? 'rgba(23,107,58,0.24)' : 'rgba(15,118,110,0.32)';
+  const servicesPrimaryBorder = usesServicesPalette
+    ? SERVICES_PALETTE.primaryBorder
+    : (modeAdapter?.heroTheme?.borderSoft || SERVICES_PALETTE.primaryBorder);
+  const servicesPrimaryShadow = SERVICES_PALETTE.primaryShadow;
+  const servicesPrimaryShadowStrong = SERVICES_PALETTE.primaryShadowStrong;
   const servicesHighlight = '#f59e0b';
   const servicesHighlightSoft = '#fffbeb';
   const {

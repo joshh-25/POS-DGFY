@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 
 import { STYLES } from '../../../../shared/theme/storefrontStyleTokens.js';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 import { Badge, GhostButton, PrimaryButton } from '../../../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { StorefrontReviewModal } from '../../../../shared/components/storefront/StorefrontReviewModal.jsx';
@@ -18,9 +19,8 @@ import { filterCatalogItems } from '../../../../shared/model/catalogSearch.js';
 import { isItemAvailable } from '../../../../shared/model/storefrontCatalogModel.js';
 import { STOREFRONT_CLOSED_TITLE } from '../../../../shared/model/storefrontClosedState.js';
 import { openStorefrontActionLink } from '../../../../shared/utils/externalLinks.js';
-import { money } from '../../../../shared/utils/storefrontFormatters.js';
+import { formatServiceMoney as money, formatServiceNumber } from '../../servicesFormatters.js';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
-import { getServicesFlowPresentation } from '../../booking/model/servicesLocalFlow.js';
 import {
   BOOKING_FIELD_STYLE,
   buildServicePaymentOptions,
@@ -58,6 +58,7 @@ export function StorefrontServicesCatalog({
   fulfillmentStepComplete,
   activeBookingService,
   addToCart,
+  updateServiceLineOptions,
   bookingCalendarDateOptions,
   bookingDateOptions,
   bookingFieldPlan,
@@ -124,6 +125,9 @@ export function StorefrontServicesCatalog({
   resolvedTab,
   reviewDraft,
   routeServiceItemId,
+  selectedLocation,
+  selectedLocationId,
+  storeLocations,
   selectedSavedLocationId,
   selectedServiceDatePart,
   selectedServiceDetail,
@@ -144,6 +148,8 @@ export function StorefrontServicesCatalog({
   setServiceSpecialInstructions,
   serviceLocationSummaryDraft,
   serviceOrderMethod,
+  serviceFlowMethod,
+  serviceFlowProfileMethod,
   setServiceOrderMethod,
   serviceScheduleMode,
   setServiceScheduleMode,
@@ -168,6 +174,7 @@ export function StorefrontServicesCatalog({
   setDeliveryLocationAction,
   setIsReviewModalOpen,
   setReviewDraft,
+  setSelectedLocationId,
   setSelectedSavedLocationId,
   setServiceAppointmentAt,
   setServiceAreaFilter,
@@ -426,11 +433,21 @@ export function StorefrontServicesCatalog({
     const confirmationReference = String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
     const confirmationServiceName = confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle;
     const confirmationAmount = bookingConfirmation?.total_amount ?? ((Number(confirmationLine?.price ?? 0) || 0) * Math.max(1, Number(confirmationLine?.quantity || 1)));
-    const serviceLines = serviceBookingSummaryLineItems.map((line) => ({
-      key: line.key,
-      title: line.title,
-      hasAddOns: Boolean(line.notes)
-    }));
+    const serviceLines = serviceBookingSummaryLineItems.map((line) => {
+      const rawCartLine = serviceCartLines.find((cartLine) => String(cartLine.cart_line_id || cartLine.item_id || '') === line.key);
+      const catalogService = catalog.find((item) => Number(item?.item_id) === Number(line.itemId || rawCartLine?.item_id));
+      const serviceOptionGroups = Array.isArray(catalogService?.service_option_groups)
+        ? catalogService.service_option_groups
+        : line.serviceOptionGroups;
+      return {
+        key: line.key,
+        title: line.title,
+        selectedOptions: line.selectedOptions,
+        serviceOptionGroups,
+        hasAvailableAddOns: Array.isArray(serviceOptionGroups)
+          && serviceOptionGroups.some((group) => group.group_type === 'addon' && Array.isArray(group.options) && group.options.length > 0)
+      };
+    });
     const handleEditServiceLine = (line) => {
       if (hasServiceCart) {
         const rawCartLine = serviceCartLines.find((cartLine) => String(cartLine.cart_line_id || cartLine.item_id || '') === line.key);
@@ -484,9 +501,6 @@ export function StorefrontServicesCatalog({
                 />
               </div>
               <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  {getServicesFlowPresentation(serviceOrderMethod).shortLabel}
-                </div>
                 <div style={{ fontSize: isMobileViewport ? 18 : 20, fontWeight: 900, color: '#1e293b', lineHeight: 1.2, fontFamily: servicesDisplayFont, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {serviceHeroModel.name}
                 </div>
@@ -520,6 +534,7 @@ export function StorefrontServicesCatalog({
                 servicesPrimarySoft={servicesPrimarySoft}
                 servicesPrimaryBorder={servicesPrimaryBorder}
                 servicesPrimaryShadow={servicesPrimaryShadow}
+                servicesDisplayFont={servicesDisplayFont}
                 onTrackBooking={() => goStoreTrackPage({ pin: confirmationReference, serviceHandoff: serviceOrderMethod })}
                 onResetAndBackToServices={() => {
                   setCheckoutResult(null);
@@ -533,6 +548,7 @@ export function StorefrontServicesCatalog({
                 servicesPrimary={servicesPrimary}
                 servicesPrimaryDark={servicesPrimaryDark}
                 servicesPrimaryShadow={servicesPrimaryShadow}
+                servicesDisplayFont={servicesDisplayFont}
               />
             ) : (
             <>
@@ -550,6 +566,8 @@ export function StorefrontServicesCatalog({
                 fulfillmentStepComplete={fulfillmentStepComplete}
                 isMobileViewport={isMobileViewport}
                 serviceOrderMethod={serviceOrderMethod}
+                serviceFlowMethod={serviceFlowMethod}
+                serviceFlowProfileMethod={serviceFlowProfileMethod}
               />
 
               <div style={{ display: 'grid', gap: isMobileViewport ? 20 : 20, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(300px, 358.8px)', alignItems: 'start' }}>
@@ -604,7 +622,9 @@ export function StorefrontServicesCatalog({
                       servicesPrimaryBorder={servicesPrimaryBorder}
                       servicesDisplayFont={servicesDisplayFont}
                       serviceLines={serviceLines}
+                      serviceOrderMethod={serviceOrderMethod}
                       onEditLine={handleEditServiceLine}
+                      onUpdateLineOptions={updateServiceLineOptions}
                       specialInstructions={serviceSpecialInstructions}
                       setSpecialInstructions={setServiceSpecialInstructions}
                       setServiceBookingStep={setServiceBookingStep}
@@ -636,6 +656,8 @@ export function StorefrontServicesCatalog({
                       selectedServiceDatePart={selectedServiceDatePart}
                       selectedServiceTimePart={selectedServiceTimePart}
                       serviceScheduleMode={serviceScheduleMode}
+                      serviceFlowMethod={serviceFlowMethod}
+                      serviceFlowProfileMethod={serviceFlowProfileMethod}
                       serviceDraftQuantity={serviceDraftQuantity}
                       serviceIntakeResponses={serviceIntakeResponses}
                       serviceUnitType={serviceUnitType}
@@ -650,13 +672,11 @@ export function StorefrontServicesCatalog({
                       setServiceIntakeResponses={setServiceIntakeResponses}
                       setServiceUnitType={setServiceUnitType}
                       shouldBookingFieldSpanFullWidth={shouldBookingFieldSpanFullWidth}
-                      serviceOrderMethod={serviceOrderMethod}
                       onOrderMethodChange={(nextMethod) => {
                         setServiceOrderMethod(nextMethod);
-                        setServiceScheduleMode('now');
                         if (nextMethod === 'quote') setServiceAppointmentAt('');
                       }}
-                      renderLocationSection={() => (
+                      renderLocationSection={({ compactLayout = false } = {}) => (
                         <ServiceBookingLocationSection
                           STYLES={STYLES}
                           servicesPrimary={servicesPrimary}
@@ -673,7 +693,7 @@ export function StorefrontServicesCatalog({
                           setDeliveryLocationAction={setDeliveryLocationAction}
                           customerPin={customerPin}
                           setCustomerPin={setCustomerPin}
-                          handlePinMyLocation={handlePinMyLocation}
+                           handlePinMyLocation={handlePinMyLocation}
                           pinLocationLoading={pinLocationLoading}
                           deliveryLocationAction={deliveryLocationAction}
                           deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
@@ -681,9 +701,15 @@ export function StorefrontServicesCatalog({
                           canAddPinnedLocation={canAddPinnedLocation}
                           isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
                           pinLocationError={pinLocationError}
-                          showExpandedDeliveryMap={showExpandedDeliveryMap}
+                           showExpandedDeliveryMap={showExpandedDeliveryMap}
                           setShowExpandedDeliveryMap={setShowExpandedDeliveryMap}
-                        />
+                          serviceFlowMethod={serviceFlowMethod}
+                          serviceFlowProfileMethod={serviceFlowProfileMethod}
+                          selectedLocationId={selectedLocationId}
+                          setSelectedLocationId={setSelectedLocationId}
+                          storeLocations={storeLocations}
+                          compactLayout={compactLayout}
+                         />
                       )}
                       missingScheduleAndServiceInfo={missingScheduleAndServiceInfo}
                       fulfillmentStepComplete={fulfillmentStepComplete}
@@ -709,7 +735,10 @@ export function StorefrontServicesCatalog({
                       registerBookingFieldRef={registerBookingFieldRef}
                       isMobileViewport={isMobileViewport}
                       serviceOrderMethod={serviceOrderMethod}
+                      serviceFlowMethod={serviceFlowMethod}
+                      serviceFlowProfileMethod={serviceFlowProfileMethod}
                       serviceLocationSummaryDraft={serviceLocationSummaryDraft}
+                      selectedLocation={selectedLocation}
                       groupedServiceLineItems={groupedServiceLineItems}
                       selectedServiceDatePart={selectedServiceDatePart}
                       selectedServiceTimePart={selectedServiceTimePart}
@@ -928,7 +957,7 @@ export function StorefrontServicesCatalog({
         items={promoSectionModel}
         isMobileViewport={isMobileViewport}
         layoutVariant="compact"
-        palette="teal"
+        palette="services"
         titleFontFamily={servicesDisplayFont}
         bodyFontFamily={servicesBodyFont}
         sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
@@ -958,6 +987,7 @@ export function StorefrontServicesCatalog({
         titleSize={isMobileViewport ? 28 : 36}
         subtitleSize={isMobileViewport ? 14 : 16}
         starSymbol="*"
+        formatReviewCount={formatServiceNumber}
       />
 
       {isReviewModalOpen && (
@@ -965,9 +995,12 @@ export function StorefrontServicesCatalog({
           isMobileViewport={isMobileViewport}
           eyebrowColor={servicesPrimary}
           titleFontFamily={servicesDisplayFont}
-          starColor="#f59e0b"
-          starBg="#fffbeb"
-          starShadow="0 10px 20px rgba(245,158,11,0.16)"
+          starColor={SERVICES_PALETTE.warning}
+          starBg={SERVICES_PALETTE.warningSoft}
+          starShadow={`0 10px 20px ${SERVICES_PALETTE.warningShadow}`}
+          submitButtonAccentColor={servicesPrimary}
+          submitButtonAccentDarkColor={servicesPrimaryDark}
+          submitButtonShadowColor={servicesPrimaryShadow}
           keyPrefix="review-rating"
           messagePlaceholder="Tell customers what stood out about the service, response time, or booking experience."
           reviewDraft={reviewDraft}

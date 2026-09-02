@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StorefrontCatalogToolbar } from '../../../../shared/components/storefront/StorefrontCatalogToolbar.jsx';
 import { STYLES } from '../../../../shared/theme/storefrontStyleTokens.js';
 import { SERVICE_CATEGORY_ICON_MAP } from '../model/serviceCategoryIconMap.jsx';
+import { formatServiceNumber } from '../../servicesFormatters.js';
 
 const NOOP = () => {};
 
@@ -65,9 +66,14 @@ function ServicesCatalogToolbar({
     catalogEyebrow: catalogPresentation.eyebrow,
     catalogHeading: catalogPresentation.heading,
     catalogSubtitle: catalogPresentation.subtitle,
+    catalogPriceAllLabel: catalogPresentation.priceAllLabel,
+    catalogCategoryLabel: catalogPresentation.categoryLabel,
+    catalogCategoryAllLabel: catalogPresentation.categoryAllLabel,
+    catalogCategoryIconToken: catalogPresentation.categoryIconToken,
     catalogSearchPlaceholder: catalogPresentation.searchPlaceholder,
     catalogItemNounSingular: 'service',
     catalogItemNounPlural: 'services',
+    formatCatalogCount: formatServiceNumber,
     catalogMaxWidth: catalogPresentation.maxWidth,
     catalogHorizontalPadding: catalogPresentation.horizontalPadding,
     catalogUseOuterGutter: catalogPresentation.usesOuterGutter,

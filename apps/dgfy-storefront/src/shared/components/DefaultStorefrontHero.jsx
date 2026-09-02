@@ -29,6 +29,7 @@ const EMPTY_FNB_VIEW_MODEL = Object.freeze({});
 const DefaultStorefrontHero = ({
   modeAdapter,
   heroSectionModel,
+  isServicesStorefront = false,
   selectedStore,
   isMobileViewport,
   cartCount,
@@ -68,6 +69,9 @@ const DefaultStorefrontHero = ({
   const heroTheme = modeAdapter.heroTheme || {};
   const isRetailTheme = Boolean(heroTheme.palette?.retailHighlight);
   const retailPageBackground = heroTheme.palette?.pageBackground || '#F8FAFC';
+  const heroRatingColor = isServicesStorefront
+    ? (heroTheme.ratingColor || heroTheme.accent)
+    : '#fbbf24';
   const { accountBranches, hasMultipleAccountBranches } = useStorefrontAccountBranches({
     isStorefrontAccountAuthenticated,
     selectedStore
@@ -127,7 +131,7 @@ const DefaultStorefrontHero = ({
   const desktopHeroMetaItems = [
     heroSectionModel.ratingLabel ? (
       <span key="rating" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>
-        <Star size={16} fill="#fbbf24" color="#fbbf24" />
+        <Star size={16} fill={heroRatingColor} color={heroRatingColor} />
         {heroSectionModel.ratingLabel}
       </span>
     ) : null,
@@ -143,7 +147,7 @@ const DefaultStorefrontHero = ({
   const mobileHeroMetaItems = [
     heroSectionModel.ratingLabel ? (
       <span key="rating" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>
-        <Star size={14} fill="#fbbf24" color="#fbbf24" />
+        <Star size={14} fill={heroRatingColor} color={heroRatingColor} />
         {heroSectionModel.ratingLabel}
       </span>
     ) : null,
@@ -203,6 +207,7 @@ const DefaultStorefrontHero = ({
         followState={followState}
         handleFollowAction={handleFollowAction}
         heroSectionModel={{ ...heroSectionModel, orderLabel: resolvedPrimaryActionLabel }}
+        heroShadow={isServicesStorefront ? 'none' : STYLES.shadow.lg}
         heroTheme={heroTheme}
         HERO_CANVAS_MAX_WIDTH={HERO_CANVAS_MAX_WIDTH}
         isBrandingImageBlocked={isBrandingImageBlocked}
@@ -246,6 +251,7 @@ const DefaultStorefrontHero = ({
             hasWhyChooseUs={hasWhyChooseUs}
             heroSectionModel={heroSectionModel}
             heroTheme={heroTheme}
+            isServicesStorefront={isServicesStorefront}
             modeAdapter={modeAdapter}
             mapSelectedKey={mapSelectedKey}
             mapStores={mapStores}
@@ -291,6 +297,7 @@ const DefaultStorefrontHero = ({
             STOREFRONT_INFO_ICON_COLUMN={STOREFRONT_INFO_ICON_COLUMN}
             STOREFRONT_INFO_ROW_GAP={STOREFRONT_INFO_ROW_GAP}
             StorefrontExpandableBusinessHours={StorefrontExpandableBusinessHours}
+            stackedSchedule={isServicesStorefront}
             deliveryPlatformLinks={deliveryPlatformLinks}
             hasAboutOrGallerySection={hasAboutOrGallerySection}
             hasContactRows={hasContactRows}

@@ -5,6 +5,8 @@ import { Badge } from '../../../../shared/components/StorefrontActionPrimitives.
 import { STYLES } from '../../../../shared/theme/storefrontStyleTokens.js';
 import { parseOptionalObject } from '../../../../shared/model/storefrontJsonModel.js';
 import { SERVICE_CATEGORY_ICON_MAP } from '../model/serviceCategoryIconMap.jsx';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
+import { formatServiceNumber } from '../../servicesFormatters.js';
 
 /**
  * ServicesPerformanceSidebar — desktop services aside: review-score performance
@@ -28,7 +30,7 @@ export function ServicesPerformanceSidebar({
           <div style={{ fontSize: 48, fontWeight: 900, color: STYLES.colors.dark }}>{selectedStore.storefront_review_summary?.score?.toFixed(1) || '0.0'}</div>
           <div>
             <div style={{ color: STYLES.colors.amber, fontSize: 18 }}>*****</div>
-            <div style={{ fontSize: 12, color: STYLES.colors.muted }}>from {selectedStore.storefront_review_summary?.total_count || 0} reviews</div>
+            <div style={{ fontSize: 12, color: STYLES.colors.muted }}>from {formatServiceNumber(selectedStore.storefront_review_summary?.total_count || 0)} reviews</div>
           </div>
         </div>
         {isMultiGroup && (
@@ -45,7 +47,7 @@ export function ServicesPerformanceSidebar({
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '10px 14px', borderRadius: 12,
                     border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${STYLES.colors.border}`,
-                    background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || '#f0fdfa' : '#fff',
+                    background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || SERVICES_PALETTE.primarySoft : SERVICES_PALETTE.surface,
                     color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : STYLES.colors.text,
                     fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
                     transition: 'all 0.16s ease'
@@ -55,7 +57,7 @@ export function ServicesPerformanceSidebar({
                     <GroupIcon size={16} />
                     <span>{group.categoryMeta.label}</span>
                   </span>
-                  <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{group.items.length} services</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{formatServiceNumber(group.items.length)} services</span>
                 </button>
               );
             })}

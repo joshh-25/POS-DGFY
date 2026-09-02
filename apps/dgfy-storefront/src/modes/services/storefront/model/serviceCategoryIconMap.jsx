@@ -1,4 +1,5 @@
 import {
+  Box,
   ClipboardList,
   Droplets,
   HeartHandshake,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 
 export const SERVICE_CATEGORY_ICON_MAP = Object.freeze({
+  menu: Box,
   aircon: Snowflake,
   laundry: Shirt,
   pressing: Scissors,
@@ -20,5 +22,5 @@ export const SERVICE_CATEGORY_ICON_MAP = Object.freeze({
   consultation: ClipboardList,
   grooming: HeartHandshake,
   wellness: Droplets,
-  service: Sparkles
+  service: Box
 });

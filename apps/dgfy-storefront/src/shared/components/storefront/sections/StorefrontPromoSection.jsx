@@ -222,10 +222,11 @@ export function StorefrontPromoSection({
   const isTeal = palette === 'teal';
   const isFnb = palette === 'fnb';
   const isRetail = palette === 'retail';
+  const isServices = palette === 'services';
   const accentColor = isSimple ? '#176B3A' : (isFnb ? '#f97316' : (isRetail ? '#1A4E8D' : (isTeal ? '#0f766e' : '#1a4e8d')));
   const accentDark = isSimple ? '#0F5A30' : (isFnb ? '#c2410c' : (isRetail ? '#1A4586' : (isTeal ? '#134e4a' : '#1e3a6e')));
   const accentTint = isSimple ? '#FFF8E7' : (isFnb ? '#fff7ed' : (isRetail ? '#EEF4FB' : (isTeal ? '#ecfeff' : '#eef6fd')));
-  const cardBorder = isSimple ? '#E4C98E' : (isFnb ? '#ffe4c8' : (isRetail ? '#E2E8F0' : (isTeal ? '#99f6e4' : '#dbe5ee')));
+  const cardBorder = isSimple ? '#E4C98E' : (isFnb ? '#ffe4c8' : (isRetail ? '#E2E8F0' : (isTeal ? '#99f6e4' : (isServices ? 'rgba(26,78,141,0.2)' : '#dbe5ee'))));
 
   return (
     <section style={{ marginLeft: isMobileViewport ? 0 : 'calc(50% - 50vw)', width: isMobileViewport ? '100%' : '100vw', padding: sectionPadding || (isMobileViewport ? '32px 0' : '48px 0'), background: sectionBackground, borderTop: `1px solid ${collapseSpacing ? '#edf2f7' : '#f1f5f9'}`, borderBottom: collapseSpacing ? 'none' : '1px solid #f1f5f9' }}>

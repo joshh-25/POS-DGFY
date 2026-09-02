@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ShoppingCart } from 'lucide-react';
+import { ShoppingCart } from 'lucide-react';
 
 import { PrimaryButton } from '../../../../shared/components/StorefrontActionPrimitives.jsx';
+import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { ServiceImage } from '../../ServiceImage.jsx';
 import { SERVICES_BODY_FONT, SERVICES_DISPLAY_FONT } from '../../servicesTypography.js';
 import {
@@ -44,18 +45,28 @@ export function ServiceCatalogCard({
     () => normalizeServiceOptionGroups(item),
     [item]
   );
+  const variationOptionGroups = useMemo(
+    () => optionGroups.filter((group) => group.group_type === 'variation'),
+    [optionGroups]
+  );
   const [optionSelection, setOptionSelection] = useState(
     () => buildDefaultServiceOptionSelection(optionGroups)
   );
+  const [openOptionGroup, setOpenOptionGroup] = useState(null);
 
   const selectedOptions = useMemo(
-    () => resolveSelectedServiceOptions(optionGroups, optionSelection),
-    [optionGroups, optionSelection]
+    () => resolveSelectedServiceOptions(variationOptionGroups, optionSelection),
+    [optionSelection, variationOptionGroups]
   );
-  const optionSelectionValid = isServiceOptionSelectionValid(optionGroups, optionSelection);
+  const optionSelectionValid = isServiceOptionSelectionValid(variationOptionGroups, optionSelection);
   const adjustedPrice = getServiceOptionAdjustedPrice(item?.default_sale_price, selectedOptions);
   const isMobileListView = isMobileViewport && servicesViewMode === 'list';
   const isMobileGridView = isMobileViewport && servicesViewMode === 'grid';
+  const isOptionMenuOpen = openOptionGroup !== null;
+  const hasVariationDropdown = variationOptionGroups.length > 0;
+  const mobileActionLabel = available
+    ? (optionSelectionValid ? (addActionLabel || 'Add service') : 'Select required options')
+    : (unavailableLabel || 'Unavailable');
   const formatAdjustment = (centavos) => {
     const value = Number(centavos || 0) / 100;
     if (!value) return '';
@@ -104,33 +115,46 @@ export function ServiceCatalogCard({
       );
     }
 
+    const hasOptionalEmptyValue = !group.is_required && group.min_selections === 0 && group.group_type !== 'variation';
     return (
-      <label key={groupKey} style={{ display: 'block', position: 'relative' }}>
-        <span style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
-          {group.name}{group.is_required ? ' required' : ''}
-        </span>
-        <div style={{ position: 'relative' }}>
-          <select
-            aria-label={group.name}
-            value={selectedIds[0] || ''}
-            onChange={(event) => setOptionSelection((previous) => ({
-              ...previous,
-              [groupKey]: event.target.value ? [Number(event.target.value)] : []
-            }))}
-            style={{ width: '100%', minHeight: compact ? 38 : 36, boxSizing: 'border-box', appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', border: `1px solid ${servicesPrimaryBorder}`, borderRadius: compact ? 8 : 6, background: '#ffffff', color: '#0f172a', padding: compact ? '0 30px 0 10px' : '0 36px 0 12px', font: 'inherit', fontFamily: servicesBodyFont, fontSize: compact ? 12 : 13, cursor: 'pointer' }}
-          >
-            {!group.is_required && group.min_selections === 0 && group.group_type !== 'variation' ? (
-              <option value="">No {group.name.toLowerCase()}</option>
-            ) : null}
-            {group.options.map((option) => (
-              <option key={option.option_id} value={option.option_id}>
-                {option.name}{formatAdjustment(option.price_adjustment_centavos)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={compact ? 14 : 16} strokeWidth={2.5} aria-hidden="true" style={{ position: 'absolute', top: '50%', right: compact ? 9 : 11, transform: 'translateY(-50%)', color: '#0f172a', pointerEvents: 'none' }} />
-        </div>
-      </label>
+      <div key={groupKey} style={{ display: 'block' }}>
+        <StorefrontDropdown
+          value={selectedIds[0] || ''}
+          ariaLabel={`${group.name}${group.is_required ? ' required' : ''}`}
+          placeholder={hasOptionalEmptyValue ? `No ${group.name.toLowerCase()}` : 'Select an option'}
+          onChange={(nextValue) => setOptionSelection((previous) => ({
+            ...previous,
+            [groupKey]: nextValue ? [Number(nextValue)] : []
+          }))}
+          options={[
+            ...(hasOptionalEmptyValue ? [{ value: '', label: `No ${group.name.toLowerCase()}` }] : []),
+            ...group.options.map((option) => ({
+              value: option.option_id,
+              label: `${option.name}${formatAdjustment(option.price_adjustment_centavos)}`
+            }))
+          ]}
+          compactLabel={compact}
+          chevronSize={compact ? 14 : 16}
+          onOpenChange={(isOpen) => setOpenOptionGroup(isOpen ? groupKey : null)}
+          containerStyle={{ zIndex: openOptionGroup === groupKey ? 30 : 1 }}
+          triggerStyle={{
+            minHeight: compact ? 38 : 36,
+            borderRadius: compact ? 8 : 6,
+            border: `1px solid ${servicesPrimaryBorder}`,
+            background: '#ffffff',
+            color: '#0f172a',
+            padding: compact ? '0 34px 0 10px' : '0 40px 0 12px',
+            fontFamily: servicesBodyFont,
+            fontSize: compact ? 12 : 13,
+            fontWeight: 700,
+          }}
+          selectedLabelStyle={{ color: '#0f172a', fontSize: compact ? 12 : 13 }}
+          menuStyle={{ top: 'calc(100% + 6px)', width: '100%', minWidth: 0, boxSizing: 'border-box', whiteSpace: 'normal', borderRadius: compact ? 12 : 14, border: `1px solid ${servicesPrimaryBorder}`, boxShadow: `0 16px 34px ${servicesPrimaryShadow}` }}
+          optionStyle={{ color: '#0f172a', fontFamily: servicesBodyFont, fontSize: compact ? 12 : 13 }}
+          selectedOptionStyle={{ background: servicesPrimarySoft, border: `1px solid ${servicesPrimaryBorder}` }}
+          selectedOptionLabelStyle={{ color: servicesPrimaryDark }}
+        />
+      </div>
     );
   };
 
@@ -145,7 +169,7 @@ export function ServiceCatalogCard({
           maxWidth: 'calc(100% - 8px)',
           margin: '0 auto',
           boxSizing: 'border-box',
-          overflow: 'hidden',
+          overflow: isOptionMenuOpen ? 'visible' : 'hidden',
           display: 'flex',
           flexDirection: 'row',
           gap: 12,
@@ -176,7 +200,7 @@ export function ServiceCatalogCard({
           </span>
         </div>
 
-        <div style={{ flex: 1, minWidth: 0, alignSelf: 'stretch', display: 'flex', flexDirection: 'column', padding: '2px 0', overflow: 'hidden' }}>
+        <div style={{ flex: 1, minWidth: 0, alignSelf: 'stretch', display: 'flex', flexDirection: 'column', padding: '2px 0', overflow: isOptionMenuOpen ? 'visible' : 'hidden' }}>
           <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
               <h3 style={{ flex: 1, margin: 0, minWidth: 0, color: '#0f172a', fontSize: 16, fontWeight: 800, lineHeight: 1.15, letterSpacing: 0, fontFamily: servicesDisplayFont, display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -193,15 +217,16 @@ export function ServiceCatalogCard({
           ) : null}
 
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginTop: 'auto', paddingTop: 4, minWidth: 0, width: '100%' }}>
-            {optionGroups.length > 0 ? <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 6 }}>{optionGroups.map((group) => renderOptionGroup(group, true))}</div> : null}
+            {hasVariationDropdown ? <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 6 }}>{variationOptionGroups.map((group) => renderOptionGroup(group, true))}</div> : null}
             <button
               type="button"
               aria-label={`${available ? (addActionLabel || 'Add service') : (unavailableLabel || 'Unavailable')} ${title}`}
               disabled={!available || !optionSelectionValid}
               onClick={handleAdd}
-              style={{ width: optionGroups.length > 0 ? 38 : '100%', minWidth: optionGroups.length > 0 ? 38 : 0, minHeight: 38, height: 38, flexShrink: 0, border: 'none', borderRadius: 12, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: !available || !optionSelectionValid ? '#e2e8f0' : servicesPrimary, color: '#ffffff', cursor: !available || !optionSelectionValid ? 'not-allowed' : 'pointer', fontFamily: servicesBodyFont, fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}
+              style={{ width: hasVariationDropdown ? 38 : '100%', minWidth: hasVariationDropdown ? 38 : 0, minHeight: 38, height: 38, flexShrink: 0, border: 'none', borderRadius: 12, padding: hasVariationDropdown ? 0 : '0 12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: !available || !optionSelectionValid ? '#e2e8f0' : servicesPrimary, color: '#ffffff', cursor: !available || !optionSelectionValid ? 'not-allowed' : 'pointer', fontFamily: servicesBodyFont, fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}
             >
               <ShoppingCart size={17} strokeWidth={2.25} />
+              {!hasVariationDropdown ? mobileActionLabel : null}
             </button>
           </div>
         </div>
@@ -215,7 +240,8 @@ export function ServiceCatalogCard({
       data-service-catalog-view={isMobileGridView ? 'grid' : 'desktop'}
       style={{
         minWidth: 0,
-        overflow: 'hidden',
+        overflow: isOptionMenuOpen ? 'visible' : 'hidden',
+        position: 'relative',
         display: 'flex',
         flexDirection: 'column',
         background: '#ffffff',
@@ -266,7 +292,7 @@ export function ServiceCatalogCard({
             {description}
           </p>
         ) : null}
-        {optionGroups.map((group) => renderOptionGroup(group))}
+        {variationOptionGroups.map((group) => renderOptionGroup(group))}
         <PrimaryButton
           accentColor={servicesPrimary}
           accentDarkColor={servicesPrimaryDark}
