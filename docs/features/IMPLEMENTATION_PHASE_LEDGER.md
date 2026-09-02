@@ -17979,3 +17979,106 @@ the same sequence. PR-D (Phase 255) follows.
 
 255 (planned — PR-D, db-tier tenant-sync consolidation; the only cut in this sequence that actually
 moves gate wall-clock).
+
+## Phase 256 - Promotion quality gate: 5 remaining gates flipped blocking, all 16 delegated, zero local gates (#1431 Phase C/D)
+
+### Initiative and release
+
+#1431's closing phases (C: flip the remaining evidence-backed gates blocking; D: delegate the full
+16-gate set out of `gate:release:local`'s required set). **Numbering note (re-confirmed after a
+rebase, 2026-09-03)**: this entry originally claimed 256 while PR #1467 (#1451, PR-C) was still
+open and the ledger's merged tip was Phase 253. PR #1467 has since merged as Phase 254, and that
+entry's own "Next eligible phase" section explicitly reserves **255** for #1441's own PR-D
+(db-tier tenant-sync consolidation, not yet opened as a PR) — so 255 stays reserved by the ledger's
+own forward declaration, not free for this entry to take. Re-checked against the rebased
+`origin/develop` tip (Phase 254, merged) and every other open PR into `develop` (`gh pr list --base
+develop --state open`: only #1315, no phase claim) — **256 is still free** and this entry keeps it,
+per `AGENTS.md`'s Continuous Phase Numbering rule (the ledger and visible in-flight
+PRs/reservations are authoritative, not a parked plan file).
+
+### Objective and scope
+
+One PR, `ci/1431-phase-cde-zero-local-gates` into `develop`:
+
+- **Phase C** — flip 5 more `promotion-quality-gate.yml` steps from advisory to blocking, on real
+  evidence (workflow_dispatch fault-probe runs plus one throwaway PR against `main`, deleted
+  unmerged): `run_dependency_audit_prod`, `run_compliance_contracts` (`repository-quality`),
+  `run_runtime_doctor` (`dgfy-api-quality`), `run_shared_fnb_contract_tests`
+  (`frontend-ims-quality`), `check_frontend_budgets` (`frontend-budgets-quality`).
+  `run_dependency_audit_full` is settled **permanently advisory** (Pat's call) — real-failed on both
+  the clean and fault-probe runs for a pre-existing, registry-dependent reason unrelated to any code
+  defect.
+- **Phase D** — delegate the remaining 9 gates (the 5 above plus `dependencies.audit.full`,
+  `production.env.fixtures`, `scroll.contracts`, `backend.test_matrix`) into
+  `gate-release-local.js`'s `CI_ENFORCED_GATES` (7 → 16 entries). `required_gate_count` is now 0 on
+  a default run. `check-pr-quality-workflow.js` gained a two-name `ADVISORY_CI_ENFORCED_GATES`
+  allowlist (`dependencies.audit.full`, `backend.test_matrix`) so `checkCiEnforcedGatesAreBlocking()`
+  doesn't demand blocking coverage for the two gates delegated-but-not-blocking, while still failing
+  loudly for any other gate lacking real coverage.
+- **Phase B (folded into E)** — filed #1469 tracking `backend.test_matrix`'s eventual flip to
+  blocking, gated on #1015 (fast/DB tier split) and #925 (hanging `beforeAll`).
+- **Phase E** — docs closeout: `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` rewritten to closed/
+  delegated status for every remaining row (required count 0, every one of the 19 original gates
+  now has a documented closed resolution); `docs/testing/release-go-no-go-checklist.md` and
+  `.agents/skills/promoter/SKILL.md` (+ its `references/promotion-runbook.md`) updated to stop
+  citing `gate:release:local` as a pre-`main` step; `docs/ops/RELEASE_CANDIDATE_POLICY.md` gained a
+  closing dated amendment; `AGENTS.md`'s #1007 override section's `gate:release:local` bullet
+  amended to note it no longer applies (kept as historical record, not deleted).
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Built on #1431 Phase 1 (PR-A/PR-B, PR #1435/#1449 tracked outside this ledger's own phase sequence)
+and Phase 2 (Phase 251, #1447), which wired and partially flipped the remaining 9 gates into CI.
+No dependency on #1441's PR-C (merged as Phase 254) or its still-pending PR-D (reserved as Phase
+255) — different files, different scope, coordinated only by phase-number spacing. This PR was
+rebased onto `origin/develop` after Phase 254 merged, resolving a ledger-file content conflict
+(RF-1 on this PR's own re-review) without otherwise touching either phase's content.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `.js` file (`scripts/check-pr-quality-workflow.js`,
+  `scripts/check-pr-quality-workflow.test.js`, `scripts/gate-release-local.js`,
+  `scripts/gate-release-local.test.js`).
+- [x] `node --test scripts/gate-release-local.test.js` — 25/25 pass.
+- [x] `npm run check:pr-quality-workflow` — OK.
+- [x] `npm run test:pr-quality-workflow` — 41/41 pass.
+- [x] `npm run gate:release:local` — `required_gate_count: 0`, `delegated_gate_count: 16`,
+  `run_mode: "full"`, `verdict: "pass"`, fast exit (no gate actually invoked).
+- [x] `npm run lint:docs` — 29 docs validated, OK; `check:adr` — 86 ADRs, OK.
+- [x] `npm run check:compliance` — no compliance-sensitive changes detected.
+- [x] `npm run check:architecture` — 53 modules / 548 files, 93 controllers, OK.
+- [x] Filed #1469 (backend.test_matrix flip-to-blocking follow-up), added to project board.
+
+### Deviations from the plan
+
+None of substance — Phase B's issue-filing was folded into Phase E's docs closeout per the task's
+own instruction, rather than run as a separate step.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR
+base is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`.
+`npm run check:compliance`'s missing-declaration checkpoint does not fire — every touched path
+(`.github/`, `scripts/`, `docs/`) is CI/tooling/docs, not a compliance-sensitive surface.
+
+### Links
+
+- Tracking issue: #1431 (Refs, not Closes — the coordinating session confirms final state before
+  closing).
+- Follow-up filed: #1469.
+- PR: `ci/1431-phase-cde-zero-local-gates` → `develop`.
+- Modified: `.github/workflows/promotion-quality-gate.yml`, `scripts/check-pr-quality-workflow.js`,
+  `scripts/check-pr-quality-workflow.test.js`, `scripts/gate-release-local.js`,
+  `scripts/gate-release-local.test.js`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/testing/release-go-no-go-checklist.md`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`,
+  `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
+  `AGENTS.md`, `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+Re-check the ledger's actual highest merged entry at plan time rather than assuming — Phase 255
+(#1441 PR-D) may or may not have merged by then.
