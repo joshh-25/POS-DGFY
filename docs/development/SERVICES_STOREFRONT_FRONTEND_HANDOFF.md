@@ -64,15 +64,16 @@ The complete Services storefront series currently present on the branch is:
 
 | Commit | Type | Delivered area |
 | --- | --- | --- |
-| 8e499e32 | feat(services-storefront) | Storefront presentation alignment, replayed onto latest `origin/develop` |
-| 1dc1cdc0 | feat(services-storefront) | Cart, booking, and tracking completion, replayed onto latest `origin/develop` |
-| pending | docs(services-storefront) | This frontend/backend handoff |
+| 60c90166 | feat(services-storefront) | Storefront presentation alignment, replayed onto latest `origin/develop` |
+| 0d10b0f6 | feat(services-storefront) | Cart, booking, and tracking completion, replayed onto latest `origin/develop` |
+| 72758315 | fix(services-storefront) | Repair replayed source/test contracts after the upstream storefront-directory rename |
+| current | docs(services-storefront) | This frontend/backend handoff |
 
-The latest audited implementation commits are 8e499e32 and 1dc1cdc0. Together they are the two Services implementation commits added on top of the fetched `origin/develop` base. The documentation commit is intentionally separate.
+The latest audited Services commits are 60c90166, 0d10b0f6, and 72758315. The first two are the feature batches; 72758315 is the small replay-repair batch required by the updated upstream base. The documentation commits are intentionally separate.
 
-Before this documentation update, the clean replay was exactly two commits ahead of the fetched `origin/develop` base and zero commits behind it. Earlier shared history is already part of that base; no unrelated dirty-worktree commits were replayed.
+The clean replay is five commits ahead of the fetched `origin/develop` base and zero commits behind it: two feature batches, one replay-repair batch, and two documentation batches. Earlier shared history is already part of that base; no unrelated dirty-worktree commits were replayed.
 
-This document update is intentionally a separate documentation commit. No push is performed by this work.
+This document update is intentionally a separate documentation commit. The push remains gated on the final validation below.
 
 ### 3.2 Files and boundaries
 
@@ -539,16 +540,15 @@ This is a recommended sequence only; it does not renumber or amend the repositor
 
 ## 12. Validation evidence for this push
 
-The earlier Services frontend series was checked with:
+The clean replay was validated from `C:\xampp\htdocs\DGFY-push-check`, based on the fetched `origin/develop`:
 
-- focused Services tests: 30 test files and 154 tests passed;
-- presentation-focused subset: 7 files and 41 tests passed;
-- configured web lint runner: 0 errors and 86 existing warnings;
-- store build: passed, with 3,498 modules transformed;
-- staged diff whitespace check: passed;
-- compliance checks: passed using the repository-supported changed-file input;
-- commit-safety marker scan: no matches in the committed Services changes;
-- no push was performed at the time of that earlier check.
+- focused regression checks: 2 test files and 20 tests passed;
+- full storefront suite: 176 test files and 986 tests passed;
+- configured web lint runner: 0 errors and 128 existing warnings;
+- production storefront build: passed, with 2,445 modules transformed; Vite emitted its existing large-chunk advisory;
+- documentation and ADR checks: passed; 29 governed docs and 86 ADRs validated;
+- final diff whitespace check: passed;
+- conflict-marker and commit-safety marker scans: no matches in committed Services changes.
 
 The warnings that remain are not evidence that the frontend push added backend behavior. The backend team must run API, migration, contract, concurrency, and end-to-end booking tests for the work described as recommended above.
 
@@ -582,13 +582,19 @@ The warnings that remain are not evidence that the frontend push added backend b
 - generated artifacts, local database backups, and untracked scratch documents;
 - the remaining dirty F&B-only hunk in StorefrontApp.jsx.
 
+The four changed files under `src/modes/fnb/checkout` are shared checkout
+compatibility seams required by the Services booking flow (address persistence,
+service appointment validation, and the reusable promo renderer). They do not
+add or change an F&B storefront feature; F&B behavior outside those shared
+seams remains excluded.
+
 ### Push safety
 
 This updated clean replay is based on the fetched `origin/develop` and contains
-only the two reviewed Services implementation commits plus this documentation
-commit. The original dirty worktree was not staged, reset, switched, or
-overwritten. Push the verified clean replay ref only after the final test and
-scope checks pass.
+only the two reviewed Services implementation commits, one replay-repair fix,
+and the separate documentation commits. The original dirty worktree was not
+staged, reset, switched, or overwritten. The branch is ready to push after the
+final remote/scope checks.
 
 ## 14. Backend handoff checklist
 
