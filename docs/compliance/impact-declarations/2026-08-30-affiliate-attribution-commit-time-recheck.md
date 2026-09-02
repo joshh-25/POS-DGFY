@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/storeCheckoutAffiliatePricing.unit.te
 rollback_note: Revert this commit. The change is confined to which enrollment object the post-commit accrual reads; no schema change, no new column, no persisted state. Reverting restores the pricing-time cached enrollment and the pre-existing `||` fallback, with no data cleanup needed — commissions already accrued under either behavior remain valid rows.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-30T09:19:44Z
-preflight_request_ref: NOT-EXECUTED-450-AFFILIATE-ATTRIBUTION-COMMIT-RECHECK
+preflight_run_at: 2026-09-02T03:56:16.393Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-30-AFFILIATE-ATTRIBUTION-COMMIT-TIME-RECHECK
 ---
 
 # Storefront Checkout — Affiliate Enrollment Re-verified At Commit Time

@@ -9,10 +9,10 @@ reason_codes_impacted: none
 policy_version: 2026.09.02
 verification_evidence: apps/dgfy-api/tests/deliveryFromPrice.unit.test.js -- actually executed (Jest), 14 passing,apps/dgfy-api/tests/deliveryFromPrice.parity.unit.test.js -- actually executed (Jest), 7 passing,apps/dgfy-api/tests/deliveryFeeModeDiscoveryIndexPersistence.contract.test.js -- actually executed (Jest), 6 passing,apps/dgfy-api/tests/addDeliveryFeeModeDiscoveryIndex.migration.test.js -- actually executed (Jest), 6 passing,apps/dgfy-api/tests/storefrontDiscoveryRepository.test.js -- actually executed (Jest), extended + 4 new mode-pair cases, all passing (67 total across the 5 suites),node --check on every changed apps/dgfy-api .js file and the new migration .cjs file,npm run check:architecture -- passed (52 modules, 538 code files),npm run check:compliance -- confirmed "No compliance-sensitive changes detected" on this diff's full file set (no declaration required by the mechanical floor; this declaration is written anyway per the reasoning below),npm run check:tenant-schema-coverage -- --staged -- passed, 1 migration file checked (landlord-only, no tenant-schema-registry entry needed)
 rollback_note: The migration is a single additive, non-nullable-with-default (NOT NULL DEFAULT 'fixed') column on a landlord-only table -- droppable with no dependent read path outside this diff, since every consumer's mapper already defaults delivery_fee_mode to 'fixed' when absent. Reverting the code commits restores the pre-phase behavior exactly: store_delivery_fee reverts to the flat settings read it was before this phase (byte-identical for every fixed-mode store, which is every store today). No money is resolved, persisted, or charged by this diff at any point, so a rollback carries zero payment-correctness risk.
-preflight_result: no_breach
-preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1333-DISCOVERY-DELIVERY-FROM-PRICE
+preflight_result: not_applicable
+preflight_reason_code: NO_ENDPOINT_ACCEPTED_SURFACE
+preflight_run_at: 2026-09-02T03:56:16.396Z
+preflight_request_ref: NOT-APPLICABLE-33588602895-2026-09-05-DISCOVERY-DELIVERY-FROM-PRICE
 ---
 
 # Discovery delivery from-price (Phase 242, #1333)

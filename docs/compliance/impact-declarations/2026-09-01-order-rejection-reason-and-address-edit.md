@@ -12,8 +12,8 @@ verification_evidence: apps/dgfy-api/tests/posOrderRejectionAndAddressEdit.useca
 rollback_note: The three pos_transactions columns (rejection_reason, rejected_by, rejected_at) are nullable and additive -- down() is pure at the schema level for those. Dropping pos_order_address_changes, however, is genuinely destructive: it PERMANENTLY DESTROYS the address-change audit trail (there is no other copy of previous_address/previous_latitude/previous_longitude). Unlike a purely additive rollback, this down() should only be run knowing that history is gone for good.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1179-ORDER-REJECTION-REASON-AND-ADDRESS-EDIT
+preflight_run_at: 2026-09-02T03:56:16.395Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-09-01-ORDER-REJECTION-REASON-AND-ADDRESS-EDIT
 ---
 
 # Reject-with-reason and post-placement delivery address/pin edit (#1179)

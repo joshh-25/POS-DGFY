@@ -12,8 +12,8 @@ verification_evidence: apps/dgfy-api/tests/posBalancePaymentProof.usecase.test.j
 rollback_note: Reverting this PR's code diff while the six columns stay added is harmless -- the upload/serve routes simply stop existing and no other tender or settlement behavior changes. Rolling migration 20260831000001-add-pos-order-payment-proof-columns.cjs itself back is pure at the schema level (every column is nullable and additive; down() drops them per tenant, guarded by columnExists) -- but it ORPHANS any proof files already written to apps/dgfy-api/storage/pos-payment-proofs/ on disk. Those files are not tracked by the migration and are not cleaned up by down(); removing them, if ever required, is a manual, out-of-band operation. Stated here rather than left implicit.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-31T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-965-POS-BALANCE-PAYMENT-PROOF-IMAGE
+preflight_run_at: 2026-09-02T03:56:16.394Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-31-POS-BALANCE-PAYMENT-PROOF-IMAGE
 ---
 
 # POS balance-payment proof-of-payment image (#965)

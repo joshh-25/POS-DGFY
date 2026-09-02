@@ -11,8 +11,8 @@ verification_evidence: node --check on all changed apps/dgfy-api and apps/dgfy-m
 rollback_note: Revert the three new platform-admin endpoints under /api/v1/admin/tenants/:id/affiliate-slots (route, validator, handlers, controller-barrel entries, use cases, DI wiring), the one-line upsertSettings transaction-option addition, and the new tenant_admin_audit_logs.action enum value (model + migration). The migration's down() re-maps any `affiliate_slots_update` row to `capability_update` before shrinking the ENUM -- lossy by construction, matching the existing precedent's own down() behavior (20260615000001, 20260625000001). No schema change to tenant_affiliate_settings, no new table, no change to Phase 198's slot-cap enforcement semantics, no enrollment/invite row ever written by this phase.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-31T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-PHASE-213
+preflight_run_at: 2026-09-02T03:56:16.394Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-31-AFFILIATE-SLOT-CAP-ADMIN-WRITE-ENDPOINT
 ---
 
 # Landlord-Admin Write Endpoint for `max_affiliate_slots`

@@ -12,8 +12,8 @@ verification_evidence: focused POS Print Order tests,full shared POS test suite,
 rollback_note: Revert the Print Order callback normalization, order-ticket capability gating, regression tests, and this declaration together. Receipt printing, transaction persistence, fiscal calculations, payment capture, audit payloads, and database schema are unaffected.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-29T13:26:31+08:00
-preflight_request_ref: NOT-EXECUTED-1159-POS-PRINT-ORDER
+preflight_run_at: 2026-09-02T03:56:16.393Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-29-POS-PRINT-ORDER-DISPATCH-CAPABILITY
 ---
 
 # POS Print Order Dispatch And Capability Gating

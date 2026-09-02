@@ -11,8 +11,8 @@ verification_evidence: npm --prefix apps/dgfy-api run lint -- 0 errors (previous
 rollback_note: Single-token revert -- `let delivery;` back to `let delivery = null;` on one line. No behavior, control flow, or return value changes: both branches of the immediately-following if/else already unconditionally reassign `delivery` (`delivery = Object.freeze({...})` / `delivery = await resolveStoreDeliveryFee({...})`) before it is ever read, so the removed initializer was dead code, not a default any caller could observe.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-STOREUSECASES-LINT-2026-09-02
+preflight_run_at: 2026-09-02T03:56:16.396Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-09-02-STOREUSECASES-USELESS-DELIVERY-INIT-LINT-FIX
 ---
 
 # Remove useless `delivery = null` initializer (backend.lint) (#1388 context)

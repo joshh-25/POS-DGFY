@@ -18,8 +18,8 @@ rollback_note: Frontend-only. No schema change, no new endpoint, no money column
   path (#495 open), unchanged by this phase.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1334-IMS-DELIVERY-CAMPAIGN-AUTHORING
+preflight_run_at: 2026-09-02T03:56:16.395Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-09-02-IMS-DELIVERY-CAMPAIGN-AUTHORING
 ---
 
 # IMS/POS delivery-campaign authoring + reporting UI (Phase 245, #1334, epic #1321)
