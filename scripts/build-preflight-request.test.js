@@ -5,7 +5,9 @@ const {
   buildRequestFromContent,
   deriveSummary,
   parseCsvField,
+  parseFrontMatter,
   filterEndpointAcceptedSurfaces,
+  classifyEndpointApplicability,
   truncateEvidenceEntry,
   VERIFICATION_EVIDENCE_MAX_LENGTH
 } = require('./build-preflight-request');
@@ -144,4 +146,80 @@ test('buildRequestFromContent truncates every verification_evidence entry to the
   assert.ok(
     request.impact_declaration.verification_evidence[0].length <= VERIFICATION_EVIDENCE_MAX_LENGTH
   );
+});
+
+// --- classifyEndpointApplicability / exit 3 vs exit 1 contract (#1396) --------------------------
+
+const MINOR_STOREFRONT_ONLY = FIXTURE_DECLARATION
+  .replace('classification: major', 'classification: minor')
+  .replace('surfaces: pos,terminal', 'surfaces: storefront');
+
+const REGULATORY_STOREFRONT_ONLY = FIXTURE_DECLARATION
+  .replace('classification: major', 'classification: regulatory')
+  .replace('surfaces: pos,terminal', 'surfaces: storefront');
+
+test('classifyEndpointApplicability: minor + storefront-only -> not applicable, NO_ENDPOINT_ACCEPTED_SURFACE', () => {
+  const frontMatter = parseFrontMatter(MINOR_STOREFRONT_ONLY);
+  const result = classifyEndpointApplicability(frontMatter);
+  assert.equal(result.applicable, false);
+  assert.equal(result.classification, 'minor');
+  assert.equal(result.reason_code, 'NO_ENDPOINT_ACCEPTED_SURFACE');
+  assert.deepEqual(result.declared_surfaces, ['storefront']);
+});
+
+test('classifyEndpointApplicability: regulatory + storefront-only -> not applicable, classification carried through', () => {
+  const frontMatter = parseFrontMatter(REGULATORY_STOREFRONT_ONLY);
+  const result = classifyEndpointApplicability(frontMatter);
+  assert.equal(result.applicable, false);
+  assert.equal(result.classification, 'regulatory');
+});
+
+test('classifyEndpointApplicability: at least one endpoint-accepted surface -> applicable, unchanged', () => {
+  const declaration = FIXTURE_DECLARATION.replace('surfaces: pos,terminal', 'surfaces: storefront,pos');
+  const frontMatter = parseFrontMatter(declaration);
+  assert.deepEqual(classifyEndpointApplicability(frontMatter), { applicable: true });
+});
+
+const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const SCRIPT_PATH = path.resolve(__dirname, 'build-preflight-request.js');
+
+function runCli(declarationContent) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'build-preflight-request-cli-'));
+  const filePath = path.join(tmpDir, 'declaration.md');
+  fs.writeFileSync(filePath, declarationContent, 'utf8');
+  const result = spawnSync(process.execPath, [SCRIPT_PATH, filePath], { encoding: 'utf8' });
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+  return result;
+}
+
+test('CLI: minor + storefront-only exits 3 and prints the not-applicable JSON marker to stdout', () => {
+  const result = runCli(MINOR_STOREFRONT_ONLY);
+  assert.equal(result.status, 3);
+  const marker = JSON.parse(result.stdout);
+  assert.equal(marker.not_applicable, true);
+  assert.equal(marker.reason_code, 'NO_ENDPOINT_ACCEPTED_SURFACE');
+  assert.deepEqual(marker.declared_surfaces, ['storefront']);
+});
+
+test('CLI: regulatory + storefront-only exits 1 with an explanatory stderr message, nothing on stdout', () => {
+  const result = runCli(REGULATORY_STOREFRONT_ONLY);
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /classification "regulatory" but declares no endpoint-accepted surface/);
+});
+
+test('CLI: the real 2026-09-05-discovery-delivery-from-price.md declaration classifies as not applicable (exit 3)', () => {
+  const realPath = path.resolve(
+    __dirname, '..', 'docs', 'compliance', 'impact-declarations',
+    '2026-09-05-discovery-delivery-from-price.md'
+  );
+  const result = spawnSync(process.execPath, [SCRIPT_PATH, realPath], { encoding: 'utf8' });
+  assert.equal(result.status, 3);
+  const marker = JSON.parse(result.stdout);
+  assert.equal(marker.declaration_id, '2026-09-05-discovery-delivery-from-price');
+  assert.deepEqual(marker.declared_surfaces, ['storefront']);
 });
