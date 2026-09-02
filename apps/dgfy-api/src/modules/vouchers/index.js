@@ -15,6 +15,7 @@ import {
     buildRedeemVoucherUseCase
 } from './usecases/voucherRedemptionUseCases.js';
 import { buildReverseVoucherRedemptionUseCase } from './usecases/voucherReversalUseCases.js';
+import { buildResolveAutoAppliedDeliveryCampaignUseCase } from './usecases/voucherAutoApplyUseCases.js';
 import { buildResolveVoucherDisplayPricesUseCase } from './usecases/voucherDisplayUseCases.js';
 import {
     buildArchivePricelistUseCase,
@@ -39,6 +40,10 @@ export const archiveVoucherUseCase = buildArchiveVoucherUseCase({ repository: vo
 export const previewVoucherEligibilityUseCase = buildPreviewVoucherEligibilityUseCase({ repository: voucherRepository });
 export const redeemVoucherUseCase = buildRedeemVoucherUseCase({ repository: voucherRepository });
 export const reverseVoucherRedemptionUseCase = buildReverseVoucherRedemptionUseCase({ repository: voucherRepository });
+
+// #1332 (Phase 244, epic #1321 decision 9): resolves the winning auto-applied delivery campaign (if
+// any) against a checkout context -- one query plus the pure selector, see voucherAutoApplyUseCases.js.
+export const resolveAutoAppliedDeliveryCampaignUseCase = buildResolveAutoAppliedDeliveryCampaignUseCase({ repository: voucherRepository });
 
 // #603 -- storefront catalog display seam. Read-only, best-effort (fail-open), no transaction.
 export const resolveVoucherDisplayPricesUseCase = buildResolveVoucherDisplayPricesUseCase({ repository: voucherRepository });

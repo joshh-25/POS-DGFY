@@ -70,6 +70,9 @@ export const voucherRepository = {
         }
         if (filters.benefit_class) where.benefit_class = filters.benefit_class;
         if (filters.voucher_kind) where.voucher_kind = filters.voucher_kind;
+        // #1332 (Phase 244): explicit `!== undefined`, not truthy -- `auto_apply: false` is a
+        // meaningful filter value (list the code-entered-only vouchers), not "no filter given".
+        if (filters.auto_apply !== undefined) where.auto_apply = Boolean(filters.auto_apply);
         if (filters.search) {
             const pattern = `%${String(filters.search).trim()}%`;
             where[Op.or] = [
@@ -91,6 +94,48 @@ export const voucherRepository = {
         });
 
         return { rows: rows.map(toPlain), count };
+    },
+
+    /**
+     * #1332 (Phase 244, epic #1321 decision 9): candidate fetch for the auto-applied delivery
+     * campaign selector. Deliberately a MINIMAL SQL filter -- `auto_apply` + `benefit_target` +
+     * stored `status` only. Every semantic filter (date window, time-of-day, weekday, channel,
+     * fulfillment method, order timing, min spend, min quantity, exhaustion) stays in
+     * `autoAppliedCampaignPolicy.js`'s pure selector, which is the ONE place quote and checkout can
+     * provably share an implementation. Pushing any of those into SQL would create a second filter
+     * that could disagree with the first -- do not "optimize" this by adding one.
+     *
+     * `status: 'active'` in SQL is a safe narrowing, not a semantic filter: `deriveVoucherStatus`
+     * can only make a stored-`active` row LESS eligible (an elapsed `valid_until` derives to
+     * `expired`), never promote a non-`active` stored status to `active`. So this predicate is a
+     * strict superset-preserving prefilter of what the selector would do anyway -- this becomes
+     * WRONG the moment `deriveVoucherStatus` ever gains a promoting branch, so re-check this comment
+     * against that function before changing either.
+     *
+     * `ORDER BY voucher_id ASC LIMIT 200` -- the limit is defensive against an unbounded read; the
+     * explicit ORDER BY makes the truncation itself deterministic (an unordered LIMIT would be a
+     * nondeterminism source, exactly the class of bug this phase exists to prevent). A realistic
+     * tenant has far fewer than 200 auto-apply delivery campaigns; the caller logs a warning if this
+     * limit is ever actually hit.
+     *
+     * NO CACHING. EVER. Any cache between the quote call and the checkout call lets the two paths
+     * see different candidate sets at slightly different times -- precisely the quote/checkout
+     * divergence this whole phase exists to prevent. A future performance-minded refactor will
+     * otherwise look at an unindexed-seeming N-row query on a hot checkout path and add a cache in
+     * good faith -- don't.
+     *
+     * `options.transaction` MUST be threaded on the checkout path, so the candidate read and the
+     * subsequent `reserveRedemption` see one consistent snapshot inside the same open transaction.
+     */
+    async listAutoApplyDeliveryCampaigns(options = {}) {
+        const Voucher = dbStore.get('Voucher');
+        const rows = await Voucher.findAll({
+            where: { auto_apply: true, benefit_target: 'delivery', status: 'active' },
+            order: [['voucher_id', 'ASC']],
+            limit: 200,
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
     },
 
     async createVoucher(values, options = {}) {

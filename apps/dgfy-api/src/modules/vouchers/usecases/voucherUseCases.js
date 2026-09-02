@@ -42,6 +42,8 @@ const WRITABLE_VOUCHER_COLUMNS = Object.freeze([
     'benefit_class',
     // #1331: orthogonal to benefit_class -- see Voucher.js's own comment.
     'benefit_target',
+    // #1332 (Phase 244): a plain boolean, like the two flags below -- not in NUMERIC_VOUCHER_COLUMNS.
+    'auto_apply',
     'percent_off_bps',
     'amount_off_centavos',
     'fixed_unit_price_centavos',
@@ -198,6 +200,19 @@ const applyBenefitConfig = (merged) => {
         );
     }
 
+    // #1332 (Phase 244, epic #1321 decision 9): v1 auto-apply is delivery-axis only. An
+    // auto-applying ITEM voucher is a much larger product decision -- it would interact with the
+    // single governed item-discount slot (ADR 0066 Decision 8) -- and is explicitly out of scope
+    // for this phase. Checked AFTER the free_delivery-forces-delivery assignment above, so a
+    // free_delivery + auto_apply voucher (the headline case this phase exists for) passes.
+    if (applied.auto_apply === true && applied.benefit_target !== 'delivery') {
+        voucherError(
+            'auto_apply vouchers must target the delivery fee (benefit_target: "delivery").',
+            VoucherReasonCode.VOUCHER_BENEFIT_CONFIG_INVALID,
+            { auto_apply: true, benefit_target: applied.benefit_target }
+        );
+    }
+
     if (benefitClass === 'free_delivery') {
         // NULL is a legitimate, common value here -- "waive the whole fee" -- unlike every sibling
         // class, where the benefit amount is mandatory. A non-null amount must still be positive.
@@ -309,6 +324,23 @@ const assertFixedPriceHasScope = (benefitClass, scopes, pricelistId = null) => {
     voucherError(
         'fixed_price vouchers require at least one item or item folder scope, or an attached pricelist.',
         VoucherReasonCode.VOUCHER_FIXED_PRICE_REQUIRES_SCOPE
+    );
+};
+
+/**
+ * #1332 (Phase 244): the auto-apply selector (autoAppliedCampaignPolicy.js) never consults
+ * `voucher_scopes` -- a delivery-targeted benefit has no per-line component to scope in the first
+ * place (voucherBenefitPolicy.js's own "Direction A" note). Rather than let an auto-apply campaign
+ * silently carry scope rows it will never honor, fail closed at authoring time -- the same posture
+ * `assertFixedPriceHasScope` above already takes for its own unreachable-configuration case.
+ */
+const assertAutoApplyHasNoScope = (autoApply, scopes) => {
+    if (autoApply !== true) return;
+    if (!Array.isArray(scopes) || scopes.length === 0) return;
+    voucherError(
+        'auto_apply vouchers cannot carry item or item-folder scopes -- the auto-apply selector never consults voucher scope.',
+        VoucherReasonCode.VOUCHER_BENEFIT_CONFIG_INVALID,
+        { auto_apply: true, scope_count: scopes.length }
     );
 };
 
@@ -431,6 +463,7 @@ export const buildListVouchersUseCase = ({ repository }) => async ({
                 status: query.status,
                 benefit_class: query.benefit_class,
                 voucher_kind: query.voucher_kind,
+                auto_apply: query.auto_apply,
                 search: query.search
             },
             { page, limit, sort: query.sort, direction: query.direction }
@@ -504,6 +537,7 @@ export const buildCreateVoucherUseCase = ({ repository }) => async ({
 
         assertValidityInvariants(values);
         assertFixedPriceHasScope(values.benefit_class, scopes, values.pricelist_id);
+        assertAutoApplyHasNoScope(values.auto_apply, scopes);
         const preparedValues = applyBenefitConfig(values);
 
         transaction = await repository.beginTransaction();
@@ -601,6 +635,7 @@ export const buildUpdateVoucherUseCase = ({ repository }) => async ({
             : (await repository.listScopes([stored.voucher_id], { transaction }));
 
         assertFixedPriceHasScope(merged.benefit_class, nextScopes, merged.pricelist_id);
+        assertAutoApplyHasNoScope(merged.auto_apply, nextScopes);
         const preparedMerged = applyBenefitConfig(merged);
 
         // Only the columns this request may write are handed to the UPDATE -- never the merged row,
@@ -653,6 +688,7 @@ export const buildUpdateVoucherUseCase = ({ repository }) => async ({
 const assertActivationAllowed = ({ voucher, scopes, now, timezone }) => {
     applyBenefitConfig(voucher);
     assertFixedPriceHasScope(voucher.benefit_class, scopes, voucher.pricelist_id);
+    assertAutoApplyHasNoScope(voucher.auto_apply, scopes);
 
     const validUntil = toDateOnly(voucher.valid_until);
     if (!validUntil) return;
