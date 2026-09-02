@@ -166,15 +166,36 @@ logged and authorized, not silent.
 **`gate:release:local`** — run this concurrently with cutting `release/<label>` and opening its PR
 into `main` (see "Ordering" above), never serially before them. Run `npm run gate:release:local`
 against the exact target SHA — **invoke it, do not rebuild it** (the policy says this outright).
-~25 minutes on a full run, needs local
-MySQL/Redis; exit code `2` means at least one of 19 gates failed — report which, don't merge past
-it. Gate 19 (`release.verdict.contract`) auto-passes as "Skipped" whenever no `release_verdict.json`
+Covers **12 required gates locally**, not 19, since 2026-09-03 (#1431 Phase 1, PR-B): 7 gates
+(`docs.lint`, `architecture.guardrails`, `backend.lint`, `frontend.ims.lint`, `frontend.pos.lint`,
+`frontend.storefront.lint`, `frontend.storefront.contracts`) run as blocking steps in
+`promotion-quality-gate.yml` on this leg instead and are recorded `status: "delegated_to_ci"`,
+`ok: true`, `duration_ms: 0` in the artifact rather than run — read their result off the promotion
+PR's own `promotion-quality-gate` check (`gh pr checks <N>`, or per-job conclusions, never the
+workflow-run rollup — see the run-rollup trap below), not off this artifact. Correspondingly faster
+than the historical ~25-minute figure below, still needs local MySQL/Redis for the gates that do run
+locally; exit code `2` means at least one required gate failed — report which, don't merge past it.
+Gate 19 (`release.verdict.contract`) auto-passes as "Skipped" whenever no `release_verdict.json`
 exists for the target SHA — the normal case — so a green #19 is not evidence of anything; don't cite
 it as verification, nor the other two gates the artifact itself flags
 `structurally_cannot_fail: true` (`compliance.contracts`, `observability.evidence.report`). Since
 #1016, the script also accepts `--only`/`--skip` and records per-gate `duration_ms` plus a top-level
 `run_mode: "full"|"partial"` — **a promotion decision must be made on a `run_mode: "full"` artifact
 only**; a partial run is for iterating on one gate locally, never for citing as promotion evidence.
+Delegation does **not** flip `run_mode` to `"partial"` — a default run that delegates all 7 CI-
+enforced gates is still `"full"`; `run_mode` tracks `--only`/`--skip` selection, not local-vs-CI
+execution. The artifact's `required_gate_count`/`delegated_gate_count`/`ci_enforced_gates` fields
+make the split legible — **the promotion PR's evidence paste should cite both this artifact and the
+promotion PR's own `promotion-quality-gate` check-run**, not the artifact alone, for the 7 delegated
+gates.
+
+**The run-rollup reading trap** (full detail: `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
+"Critical caveat" section). `gh run view <id> --json conclusion` reports the *workflow run's* rollup
+conclusion, which stays `success` even when a quality job inside it failed — the pre-existing
+job-level `continue-on-error: true` spares the run rollup, not the job. The **job's** check-run is
+what actually carries `failure` and what GitHub computes `mergeStateStatus` from. Read per-job
+conclusions (`gh run view <id> --json jobs --jq '.jobs[]|"\(.name) \(.conclusion)"'`) or
+`gh pr checks <N>` — never the run rollup — or these 7 gates will look inert when they are not.
 
 **Production tenant-schema report — never skippable, under any circumstance including #1007's
 override.** Run this concurrently with cutting `release/<label>` and opening its PR too (see

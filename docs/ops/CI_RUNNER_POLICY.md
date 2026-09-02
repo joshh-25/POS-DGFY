@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: infra
-last_reviewed: 2026-09-01
+last_reviewed: 2026-09-03
 applies_to: ci_runner_routing
 topic: ci_runner_policy
 ---
@@ -187,6 +187,19 @@ either genuinely not yet assessed, or structurally tied to the promoter's local 
 may never move. This table is the "doesn't exist today" deliverable #1147 names — it is **not** a
 claim that #1147 is done; #1015 (fast/DB test-tier split) and #1124 (quality-gate trust audit) are
 still open and gate the remaining work, per #1147's own body.
+
+**Known stale as of 2026-09-03 — not re-derived here, flagged instead.** This table predates the
+advisory/blocking distinction entirely (every "**In CI**" row above meant "the step runs," not "the
+step blocks") and has drifted on job structure in ways this doc's own subject touches directly:
+`architecture.guardrails` actually lives in `dgfy-api-quality`, not `repository-quality`;
+`frontend-quality` (cited for all three `frontend.*.lint` rows) no longer exists — it split into
+`frontend-ims-quality`/`frontend-pos-quality`/`frontend-storefront-quality` per ADR 0071; and
+`backend.lint`/`frontend.storefront.contracts` are confirmed blocking, not merely "likely in CI."
+**`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` is the current source of truth** for this mapping,
+including which gates are blocking-in-CI-and-dropped-from-`gate:release:local`'s-required-set
+(#1431 Phase 1, PR-A/PR-B) versus advisory-only versus not-yet-wired — read it there rather than
+this table. A full rewrite of this table is out of scope for that phase; this doc has its own
+owner/review cycle.
 
 ## Status
 
