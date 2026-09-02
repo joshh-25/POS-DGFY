@@ -42,11 +42,22 @@ Production requests must use the asymmetric HTTP Message Signature profile;
 local HMAC is test-only. Mount signing keys and partner tokens from the secret
 manager and rotate any credential that was ever exposed to a developer shell.
 
+Before enabling `laundry.dgfy.ph`, the production owner must run
+`nginx/init-letsencrypt-additional-domain.sh` (or an equivalent controlled
+certificate issuance) with `DGLAUNDRY_DOMAIN=laundry.dgfy.ph` and verify that
+the `CERT_DOMAIN_PROD` certificate's SAN list contains that hostname. Reusing a
+certificate without the SAN is a hard TLS stop. The shared edge must be joined
+to `dgfy-dglaundry-edge` only, and the rendered Nginx configuration must show
+the DGLaundry gateway as its sole upstream for that host.
+
 ## Qualification still required
 
 - Real MySQL migration/restart/concurrency checks and payment-session refund
   reconciliation.
 - PayMongo sandbox payment, expiry, cancellation, refund, and receipt evidence.
+- For mixed bookings, the fixed child is the only online charge/submission;
+  the per-kilo child remains a provider reservation for counter measurement and
+  conversion. Verify this combined path explicitly before enabling it.
 - Cross-repository event delivery with provider outage, retry, duplicate, and
   redrive coverage.
 - Nginx same-host-but-isolated network preflight and dark deployment.
