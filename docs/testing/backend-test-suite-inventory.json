@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T20:38:53.380Z",
+  "generatedAt": "2026-09-02T21:04:03.519Z",
   "totalFiles": 636,
   "byClassification": {
     "keep": 582,
@@ -2169,7 +2169,8 @@
           "docs/compliance/impact-declarations/2026-05-15-account-phone-completion-gate.md",
           "docs/compliance/impact-declarations/2026-05-15-account-phone-registration.md",
           "docs/compliance/impact-declarations/2026-05-17-email-otp-verification.md",
-          "docs/compliance/impact-declarations/2026-06-17-dgfy-company-access-hardening.md"
+          "docs/compliance/impact-declarations/2026-06-17-dgfy-company-access-hardening.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
           "scripts/backend-db-dependent-tests.js"
@@ -6337,7 +6338,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
         "hardcoded": [
           "scripts/backend-db-dependent-tests.js"
         ]
@@ -17599,7 +17602,8 @@
           "docs/archive/system-audit-2026-03/PHASE0_Acceptance_Gates_Immutable_2026-03-04.md",
           "docs/archive/system-audit-2026-03/PHASE0_Failure_Matrix_2026-03-04.md",
           "docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md",
-          "docs/compliance/impact-declarations/2026-06-05-platform-admin-login-session-recovery.md"
+          "docs/compliance/impact-declarations/2026-06-05-platform-admin-login-session-recovery.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
           "scripts/backend-db-dependent-tests.js"
@@ -21277,7 +21281,8 @@
         "historical": [
           "docs/archive/system-audit-2026-03/FINAL_SYSTEM_AUDIT_REVIEW_2026-03-04.md",
           "docs/archive/system-audit-2026-03/PHASE0_Acceptance_Gates_Immutable_2026-03-04.md",
-          "docs/archive/system-audit-2026-03/PHASE0_Failure_Matrix_2026-03-04.md"
+          "docs/archive/system-audit-2026-03/PHASE0_Failure_Matrix_2026-03-04.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
           "scripts/backend-db-dependent-tests.js"
@@ -23114,7 +23119,8 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/archive/system-audit-2026-03/5.3-Void_logic_missing_batches.md"
+          "docs/archive/system-audit-2026-03/5.3-Void_logic_missing_batches.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
           "scripts/backend-db-dependent-tests.js"
