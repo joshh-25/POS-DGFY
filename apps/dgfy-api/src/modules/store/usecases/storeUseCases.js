@@ -2517,7 +2517,11 @@ const resolveCheckoutContext = async ({
                                 labelSnapshot,
                                 redemptionId: autoApplyResult.redemptionId ?? null,
                                 idempotentReplay: Boolean(autoApplyResult.idempotentReplay),
-                                enteredDeliveryVoucherCode: autoApplyResult.code,
+                                // Never the campaign's code -- `enteredDeliveryVoucherCode` signals
+                                // "the shopper typed this," which is false for every auto-apply path
+                                // (RF-1, PR #1397 review). The campaign's identity is still fully
+                                // recoverable via `voucherId`/`autoAppliedVoucherId` + `labelSnapshot`.
+                                enteredDeliveryVoucherCode: null,
                                 autoApplied: true
                             });
                         }
@@ -2626,7 +2630,9 @@ const resolveCheckoutContext = async ({
                         labelSnapshot,
                         redemptionId: autoApplyResult.redemptionId ?? null,
                         idempotentReplay: Boolean(autoApplyResult.idempotentReplay),
-                        enteredDeliveryVoucherCode: autoApplyResult.code,
+                        // Same RF-1 fix as the pinned/webhook-finalize branch above -- never the
+                        // campaign's code, this was never something the shopper entered.
+                        enteredDeliveryVoucherCode: null,
                         autoApplied: true
                     });
                     const nextFinalFee = delivery.overrideAmount !== null
@@ -3760,9 +3766,12 @@ export const buildStoreCartQuoteUseCase = ({
                 // resolved canonical code, not `payload.delivery_voucher_code` -- an auto-applied
                 // campaign has NO payload code at all, so reading the request field would report a
                 // waiver applied with no indication of what applied it. `enteredDeliveryVoucherCode`
-                // is populated on both the code-entered and auto-applied paths. `auto_applied`/
-                // `label` are additive fields the storefront UI (#1391) uses to render an
-                // auto-applied campaign differently from a typed one.
+                // is populated (non-null) ONLY on the code-entered path and stays null on both
+                // auto-applied paths (RF-1, PR #1397 review) -- that field exists specifically to
+                // signal "the shopper typed this," which auto-apply never is. Which campaign applied
+                // is still recoverable via `voucherId`/`autoAppliedVoucherId` and the `auto_applied`/
+                // `label` fields the storefront UI (#1391) uses to render an auto-applied campaign
+                // differently from a typed one.
                 delivery_voucher_feedback: resolved.deliveryWaiverApplication.applied
                     ? {
                         applied: true,
