@@ -49,6 +49,7 @@ import {
     createDgfyCustomerAddress,
     deleteDgfyCustomerAddress,
     getDgfyCustomerDashboard,
+    getDgfyCustomerOrderDetails,
     getDgfyCustomerLoyalty,
     listDgfyCustomerReviewsForModeration,
     listDgfyCustomerAddresses,
@@ -136,6 +137,7 @@ router.delete('/admin/accounts/:account_id', authenticateAdmin, deleteAdminDgfyA
 router.get('/customer/dashboard', authenticateDgfyAccount, getDgfyCustomerDashboard);
 router.get('/customer/activities', authenticateDgfyAccount, listDgfyCustomerActivities);
 router.get('/customer/orders', authenticateDgfyAccount, listDgfyCustomerOrders);
+router.get('/customer/orders/:reference', authenticateDgfyAccount, getDgfyCustomerOrderDetails);
 router.get('/customer/bookings', authenticateDgfyAccount, listDgfyCustomerBookings);
 router.get('/customer/notifications', authenticateDgfyAccount, listDgfyCustomerNotifications);
 router.patch('/customer/notifications/read-all', authenticateDgfyAccount, markAllDgfyCustomerNotificationsRead);
