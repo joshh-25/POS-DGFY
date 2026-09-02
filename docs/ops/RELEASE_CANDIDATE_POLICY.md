@@ -572,3 +572,45 @@ promotion affordable — they stay merged and useful regardless of which flow sh
 default.
 
 PR: (this PR). Refs #1007, #1008, #980, #1404.
+
+### 2026-09-02: Partial re-arm — 7 of the 8 `gate:release:local`-covered `promotion-quality-gate.yml`
+steps are blocking again on `release/*→main` (#1431 Phase 1, PR-A)
+
+Not rewritten in place, same convention as every amendment above. "What actually gates a release
+into `main` today"'s `develop → main` row (and the `staging → main` leg it now also covers per the
+2026-09-02 #1404 entry above) still describes `promotion-quality-gate.yml` as
+`continue-on-error` per the 2026-08-26 #1063 amendment — that description is now **partial, not
+wholesale**, as of this entry.
+
+**What changed.** Step-level `continue-on-error: true` was removed from exactly 8 steps in
+`.github/workflows/promotion-quality-gate.yml` (the #1066 mechanism: job-level alone doesn't drive a
+job's check-run conclusion, only every step in it lacking the step-level line does) —
+`enforce_arch_guardrails`, `enforce_controller_boundaries`, `run_api_lint` (`dgfy-api-quality`);
+`run_ims_lint` (`frontend-ims-quality`); `run_pos_lint` (`frontend-pos-quality`);
+`run_storefront_lint`, `run_storefront_vitest` (`frontend-storefront-quality`); `run_docs_lint`
+(`repository-quality`). These are exactly the 7 of `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
+8 "(a) Covered" gates confirmed healthy across 12 recent release-leg runs (rows 4, 5, 9, 11, 12, 13,
+15 — one gate maps to two steps, hence 7 gates / 8 steps). `scripts/check-pr-quality-workflow.js`'s
+`checkStepLevelAdvisory` now asserts this shape explicitly, per job, in both directions (a listed
+step must have zero step-level `continue-on-error`; every other step must have exactly one).
+
+**What did not change, on purpose.** `backend.test_matrix` (`run_test_matrix`, row 10 of the mapping
+doc) stays advisory — confirmed still failing for real on every recent release run (stale test
+mocks/fixtures/snapshots plus a hosted-runner OOM at the current heap setting), and #1147's mapping
+doc names #1015 as its hard prerequisite before it can be flipped; it gets its own follow-up track,
+not this PR. `run_web_core_lint` also stays advisory — separate, pre-existing lint debt in
+`packages/web-core` with no local gate covering it yet. Every job-level `continue-on-error: true` and
+every job's `if: ... && needs.gate.outputs.is_staging_leg != 'true'` guard is unchanged — the
+`to-staging/*→staging` soak leg (2026-08-31 #1253 entry above) still runs zero quality jobs, exactly
+as before this PR.
+
+**What "blocking" means here, stated explicitly per the plan behind this PR:** a red check-run drives
+`mergeStateStatus` to `UNSTABLE`, which `AGENTS.md`'s pre-existing Merge Safety hard stop already
+treats as a required-`CLEAN` precondition. This repo has no branch protection (GitHub Free, confirmed
+403 on both `branches/main/protection` and `rulesets`), so this is a process-rule enforcement — the
+same kind `pr-checks.yml` has always been — not a new technical gate GitHub itself imposes.
+`npm run gate:release:local` stays mandatory in full for these 7 gates until a separate, later PR
+(PR-B, gated on a real `release/*→main` promotion proving the 7 flipped steps green under production
+conditions) delegates them to CI and drops them from the local required set.
+
+PR: (this PR). Refs #1431, #1063, #1066, #1147.

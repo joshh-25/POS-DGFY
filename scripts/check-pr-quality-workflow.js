@@ -62,6 +62,14 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // chain end to end, per quality job, to close that gap.
 // Revert all three checks alongside checkStagingLegSkipShape once #1063 closes -- everything this
 // comment describes goes back to nothing at the same time.
+//
+// 2026-09-02 (#1431 Phase 1, PR-A): correction to the paragraph above -- checkStepLevelAdvisory no
+// longer reverts to nothing when #1063 closes for 8 named steps (BLOCKING_STEP_IDS). Those steps
+// are deliberately, permanently blocking now (a real failure must red out the job), so
+// checkStepLevelAdvisory's job is to keep asserting that shape going forward, not to be deleted
+// alongside checkStagingLegSkipShape. checkAdvisoryFailureReportingShape and
+// checkReporterHasNoShellBinaryDependency are unaffected by this and still revert as described
+// above once #1063 closes.
 const REQUIRED_PR_CHECKS_MARKERS = [
   'runner_labels_json: *runner_heavy'
 ];
@@ -269,6 +277,23 @@ const ADVISORY_JOB_NAMES = [...QUALITY_JOB_NAMES, 'gate', 'salvage-api-evidence'
 const REPORTING_EXCLUDED_STEP_ID = 'stop_services';
 const REPORTER_JOB_NAME = 'report-advisory-failures';
 
+// #1431 Phase 1 (2026-09-02), PR-A: 7 of the 8 `gate:release:local`-covered steps are now blocking
+// on the `release/*->main` leg (and workflow_dispatch/workflow_call) -- step-level
+// `continue-on-error: true` removed from exactly these step ids, per job. `backend.test_matrix`
+// (`run_test_matrix`) stays advisory (confirmed still failing for real, #10, deferred to a follow-up
+// track gated on #1015) and so does `run_web_core_lint` (separate lint-debt issue, no local gate
+// covers packages/web-core yet) -- neither appears here. Kept as an explicit per-job id map rather
+// than adjusting checkStepLevelAdvisory's old count comparison, so a future edit that silently
+// blocks the wrong step (or un-blocks one of these 8) still fails this check even when the totals
+// happen to still line up.
+const BLOCKING_STEP_IDS = {
+  'dgfy-api-quality': ['enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint'],
+  'frontend-ims-quality': ['run_ims_lint'],
+  'frontend-pos-quality': ['run_pos_lint'],
+  'frontend-storefront-quality': ['run_storefront_lint', 'run_storefront_vitest'],
+  'repository-quality': ['run_docs_lint']
+};
+
 /**
  * #1063 (2026-08-26), temporary: replaces the old blanket "continue-on-error anywhere in this
  * file is forbidden" check. That blanket form is what #1003 needed (a `quality-checks:` job had
@@ -331,17 +356,20 @@ function checkStagingLegSkipShape(qualityWorkflowText) {
 
 /**
  * #1066 follow-up (2026-08-26): job-level `continue-on-error` (checked above) doesn't change a
- * job's own check-run conclusion -- only step-level `continue-on-error: true` on every step in the
- * job does (see this file's own top-of-file comment, and promotion-quality-gate.yml's, for the
- * full "why"). This asserts the shape: every step-start (`      - ` at 6-space indent) in an
- * advisory job block (the six quality jobs, plus `gate` itself -- see ADVISORY_JOB_NAMES) has
- * exactly one matching step-level `continue-on-error: true` line (`        ` at 8-space indent)
- * before the next step starts -- a mismatch means at least one step is missing it (the exact
- * regression this guard exists to catch before it ships), or, less likely, a copy/paste duplicated
- * the line inside one step.
+ * job's own check-run conclusion -- only step-level `continue-on-error: true` on every advisory
+ * step in the job does (see this file's own top-of-file comment, and promotion-quality-gate.yml's,
+ * for the full "why"). This asserts the shape per step-start (`      - ` at 6-space indent) in an
+ * advisory job block (the six quality jobs, plus `gate` itself -- see ADVISORY_JOB_NAMES):
+ *
+ * #1431 Phase 1 (2026-09-02), PR-A, replaces the original "every step must carry it" count
+ * comparison: 8 named steps (BLOCKING_STEP_IDS, keyed by job) are now deliberately blocking and
+ * must carry **zero** step-level `continue-on-error: true` lines; every other step in these job
+ * blocks must still carry **exactly one**, unchanged from before. Both directions matter -- a
+ * blocking step silently regaining `continue-on-error` is the exact regression #1066 fixed, and an
+ * unlisted step silently losing it would make it blocking without anyone deciding that.
  *
  * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
- * @returns {string[]} human-readable problems found; empty when every step is covered
+ * @returns {string[]} human-readable problems found; empty when every step's blocking/advisory shape matches
  */
 function checkStepLevelAdvisory(qualityWorkflowText) {
   const problems = [];
@@ -361,19 +389,48 @@ function checkStepLevelAdvisory(qualityWorkflowText) {
       continue;
     }
     const stepsBlock = block.slice(stepsIndex);
-    const stepStarts = stepsBlock.match(/^ {6}-/gm) || [];
-    const stepLevelCoeLines = stepsBlock.match(/^ {8}continue-on-error: true$/gm) || [];
-    if (stepStarts.length === 0) {
+    const stepChunks = stepsBlock.split(/\n(?= {6}- )/).slice(1);
+    if (stepChunks.length === 0) {
       problems.push(`promotion-quality-gate.yml: "${name}" has a \`steps:\` block but no steps were found -- checkStepLevelAdvisory needs updating to match.`);
       continue;
     }
-    if (stepLevelCoeLines.length !== stepStarts.length) {
-      problems.push(
-        `promotion-quality-gate.yml: "${name}" has ${stepStarts.length} step(s) but only ` +
-        `${stepLevelCoeLines.length} step-level \`continue-on-error: true\` line(s) -- #1066 requires ` +
-        'every step in a quality job to carry its own, not just the job-level line (job-level alone ' +
-        "doesn't keep the job's check-run conclusion green when a step fails)."
-      );
+
+    const blockingIds = BLOCKING_STEP_IDS[name] || [];
+    const seenBlockingIds = new Set();
+
+    for (const chunk of stepChunks) {
+      const idMatch = chunk.match(/\bid:\s*(\S+)/);
+      const id = idMatch ? idMatch[1] : null;
+      const coeCount = (chunk.match(/^ {8}continue-on-error: true$/gm) || []).length;
+      const isBlocking = id !== null && blockingIds.includes(id);
+
+      if (isBlocking) {
+        seenBlockingIds.add(id);
+        if (coeCount !== 0) {
+          problems.push(
+            `promotion-quality-gate.yml: "${name}"'s "${id}" step is listed in BLOCKING_STEP_IDS ` +
+            `but still carries ${coeCount} step-level \`continue-on-error: true\` line(s) -- #1431 ` +
+            'Phase 1 requires this step to have none, so a real failure actually reds out the job.'
+          );
+        }
+      } else if (coeCount !== 1) {
+        const label = id ? `"${id}"` : '(no id)';
+        problems.push(
+          `promotion-quality-gate.yml: "${name}"'s ${label} step has ${coeCount} step-level ` +
+          '`continue-on-error: true` line(s), expected exactly 1 -- #1066 requires every advisory ' +
+          "step to carry its own (job-level alone doesn't keep the job's check-run conclusion green " +
+          'when a step fails), and it is not one of the 8 steps #1431 Phase 1 made blocking.'
+        );
+      }
+    }
+
+    for (const id of blockingIds) {
+      if (!seenBlockingIds.has(id)) {
+        problems.push(
+          `promotion-quality-gate.yml: "${name}" is expected to have a blocking step with id ` +
+          `"${id}" (BLOCKING_STEP_IDS) but no step with that id was found -- was it renamed or removed?`
+        );
+      }
     }
   }
   return problems;

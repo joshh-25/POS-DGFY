@@ -199,27 +199,133 @@ function buildAdvisoryWorkflow(jobBuilders) {
   return `\n${jobs.join('\n\n')}\n`;
 }
 
+// #1431 Phase 1 (2026-09-02): five of ADVISORY_JOB_NAMES now carry a BLOCKING_STEP_IDS entry, so a
+// job built from generic `step_N` ids (buildJobWithSteps) only stays a valid all-advisory example
+// for a job that has no such entry -- `migration-runner-quality` here (`gate` and
+// `salvage-api-evidence` also qualify; see BLOCKING_STEP_IDS/ADVISORY_JOB_NAMES). Every test below
+// that isn't specifically exercising BLOCKING_STEP_IDS uses CORRECT_BLOCKING_JOB_BUILDERS as its
+// baseline for the five jobs that do have an entry, defined further below.
+
 test('checkStepLevelAdvisory: every step advisory, every advisory job including gate, reports no problems', () => {
-  const text = buildAdvisoryWorkflow({});
+  const text = buildAdvisoryWorkflow(CORRECT_BLOCKING_JOB_BUILDERS);
   assert.deepEqual(checkStepLevelAdvisory(text), []);
 });
 
 test('checkStepLevelAdvisory: one step in one job missing continue-on-error is caught, others unaffected', () => {
   const text = buildAdvisoryWorkflow({
-    'dgfy-api-quality': () => buildJobWithSteps('dgfy-api-quality', 3, { missingCoeAt: [1] })
+    ...CORRECT_BLOCKING_JOB_BUILDERS,
+    // step_0/step_1/step_2 are generic ids on a job with no BLOCKING_STEP_IDS entry -- all three
+    // are ordinary advisory steps here.
+    'migration-runner-quality': () => buildJobWithSteps('migration-runner-quality', 3, { missingCoeAt: [1] })
   });
   const problems = checkStepLevelAdvisory(text);
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /"dgfy-api-quality" has 3 step\(s\) but only 2 step-level/);
+  assert.match(problems[0], /"migration-runner-quality"'s "step_1" step has 0 step-level `continue-on-error: true` line\(s\), expected exactly 1/);
 });
 
 test('checkStepLevelAdvisory: gate\'s own step missing continue-on-error is caught (not just the six quality jobs)', () => {
   const text = buildAdvisoryWorkflow({
+    ...CORRECT_BLOCKING_JOB_BUILDERS,
     gate: () => buildJobWithSteps('gate', 1, { missingCoeAt: [0] })
   });
   const problems = checkStepLevelAdvisory(text);
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /"gate" has 1 step\(s\) but only 0 step-level/);
+  assert.match(problems[0], /"gate"'s "step_0" step has 0 step-level `continue-on-error: true` line\(s\), expected exactly 1/);
+});
+
+// #1431 Phase 1 (2026-09-02), PR-A: BLOCKING_STEP_IDS coverage -- both directions named in the PR
+// plan. Builds a job whose steps use the real blocking ids from BLOCKING_STEP_IDS (rather than the
+// generic step_N ids above) so these steps are actually recognized as blocking by the function
+// under test.
+
+function buildJobWithNamedSteps(name, stepIds, { coeAt = [] } = {}) {
+  const steps = stepIds.map((id) => {
+    const lines = [`      - id: ${id}`, '        uses: actions/checkout@v4'];
+    if (coeAt.includes(id)) {
+      lines.push('        continue-on-error: true');
+    }
+    return lines.join('\n');
+  });
+  return [`  ${name}:`, '    needs: gate', '    runs-on: ubuntu-latest', '    steps:', ...steps].join('\n');
+}
+
+// Correctly-shaped builders for the 5 jobs that carry a BLOCKING_STEP_IDS entry -- each blocking id
+// present with zero continue-on-error, every other (advisory) step with exactly one. Used as the
+// baseline for every test below so a test only has to describe the one deviation it's checking,
+// rather than re-deriving a passing shape for the four jobs it isn't testing.
+const CORRECT_BLOCKING_JOB_BUILDERS = {
+  'dgfy-api-quality': () => buildJobWithNamedSteps(
+    'dgfy-api-quality',
+    ['checkout', 'enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint', 'run_test_matrix'],
+    { coeAt: ['checkout', 'run_test_matrix'] }
+  ),
+  'frontend-ims-quality': () => buildJobWithNamedSteps(
+    'frontend-ims-quality',
+    ['checkout', 'run_ims_lint', 'run_web_core_lint'],
+    { coeAt: ['checkout', 'run_web_core_lint'] }
+  ),
+  'frontend-pos-quality': () => buildJobWithNamedSteps(
+    'frontend-pos-quality',
+    ['checkout', 'run_pos_lint'],
+    { coeAt: ['checkout'] }
+  ),
+  'frontend-storefront-quality': () => buildJobWithNamedSteps(
+    'frontend-storefront-quality',
+    ['checkout', 'run_storefront_lint', 'run_storefront_vitest'],
+    { coeAt: ['checkout'] }
+  ),
+  'repository-quality': () => buildJobWithNamedSteps(
+    'repository-quality',
+    ['checkout', 'run_docs_lint'],
+    { coeAt: ['checkout'] }
+  )
+};
+
+test('checkStepLevelAdvisory: the 8 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
+  const text = buildAdvisoryWorkflow(CORRECT_BLOCKING_JOB_BUILDERS);
+  assert.deepEqual(checkStepLevelAdvisory(text), []);
+});
+
+test('checkStepLevelAdvisory: a blocking step that still carries continue-on-error is caught (must regress to red, not stay green)', () => {
+  const text = buildAdvisoryWorkflow({
+    ...CORRECT_BLOCKING_JOB_BUILDERS,
+    'dgfy-api-quality': () => buildJobWithNamedSteps(
+      'dgfy-api-quality',
+      ['checkout', 'enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint'],
+      { coeAt: ['checkout', 'run_api_lint'] }
+    )
+  });
+  const problems = checkStepLevelAdvisory(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"dgfy-api-quality"'s "run_api_lint" step is listed in BLOCKING_STEP_IDS but still carries 1 step-level `continue-on-error: true`/);
+});
+
+test('checkStepLevelAdvisory: an unlisted step silently missing continue-on-error is caught (must not become blocking by accident)', () => {
+  const text = buildAdvisoryWorkflow({
+    ...CORRECT_BLOCKING_JOB_BUILDERS,
+    'frontend-pos-quality': () => buildJobWithNamedSteps(
+      'frontend-pos-quality',
+      ['checkout', 'run_pos_lint'],
+      { coeAt: [] }
+    )
+  });
+  const problems = checkStepLevelAdvisory(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"frontend-pos-quality"'s "checkout" step has 0 step-level `continue-on-error: true` line\(s\), expected exactly 1/);
+});
+
+test('checkStepLevelAdvisory: a blocking step id that is missing entirely (renamed/removed) is caught', () => {
+  const text = buildAdvisoryWorkflow({
+    ...CORRECT_BLOCKING_JOB_BUILDERS,
+    'repository-quality': () => buildJobWithNamedSteps(
+      'repository-quality',
+      ['checkout', 'run_docs_lint_renamed'],
+      { coeAt: ['checkout', 'run_docs_lint_renamed'] }
+    )
+  });
+  const problems = checkStepLevelAdvisory(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"repository-quality" is expected to have a blocking step with id "run_docs_lint" \(BLOCKING_STEP_IDS\) but no step with that id was found/);
 });
 
 // #1066 RF-4 (2026-08-26, pr-reviewer should-fix on PR #1068): checkStepLevelAdvisory above only

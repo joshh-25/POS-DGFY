@@ -110,6 +110,10 @@ checkpoint table below; this reordering changes nothing about what gates the mer
 the branch/PR mechanics happen relative to the other two gates. `references/promotion-runbook.md`
 shows the concurrent command sequence.
 
+Since 2026-09-02 (#1431 Phase 1, PR-A), a red `promotion-quality-gate.yml` check on the promotion PR
+is a real failure to read and address before the Merge Safety poll below, not noise to skim past —
+7 of its steps now drive the check-run conclusion directly, no `continue-on-error` absorbing them.
+
 **Compliance preflight sweep — verify, don't dispatch (changed #1163/#1248, 2026-08-31; PR handoff
 is now supervised, not auto-merge, #1295/#1374, 2026-09-02).** The sweep
 (`compliance-preflight-sweep.yml`) is no longer a promotion-time step this role runs — it
