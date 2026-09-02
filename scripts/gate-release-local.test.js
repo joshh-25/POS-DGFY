@@ -18,10 +18,10 @@ const {
 // both the valid single-gate case and the invalid/empty rejections that fix that.
 
 test('resolveGateSelection accepts a valid single --only gate', () => {
-  const selection = resolveGateSelection(['node', 'gate-release-local.js', '--only', 'release.target_sha'], GATE_NAMES);
-  assert.deepEqual(selection, { onlyGates: ['release.target_sha'], skipGates: [], includeCiEnforced: false });
-  assert.equal(isSelected(selection, 'release.target_sha'), true);
-  assert.equal(isSelected(selection, 'docs.lint'), false);
+  const selection = resolveGateSelection(['node', 'gate-release-local.js', '--only', 'docs.lint'], GATE_NAMES);
+  assert.deepEqual(selection, { onlyGates: ['docs.lint'], skipGates: [], includeCiEnforced: false });
+  assert.equal(isSelected(selection, 'docs.lint'), true);
+  assert.equal(isSelected(selection, 'architecture.guardrails'), false);
 });
 
 test('resolveGateSelection accepts a valid --skip list', () => {
@@ -74,9 +74,15 @@ test('resolveGateSelection rejects --skip passed with no gate names', () => {
   );
 });
 
-test('GATE_NAMES has no duplicates and matches the documented count of 19', () => {
-  assert.equal(GATE_NAMES.length, 19);
+test('GATE_NAMES has no duplicates and matches the documented count of 16', () => {
+  assert.equal(GATE_NAMES.length, 16);
   assert.equal(new Set(GATE_NAMES).size, GATE_NAMES.length);
+});
+
+test('retired gates stay retired (#1431 Phase 3)', () => {
+  for (const retired of ['release.target_sha', 'observability.evidence.report', 'release.verdict.contract']) {
+    assert.ok(!GATE_NAMES.includes(retired), `${retired} was retired and must not be re-added`);
+  }
 });
 
 // #1431 Phase 1 PR-B: CI_ENFORCED_GATES delegation. These pin shouldDelegate's precedence
