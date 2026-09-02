@@ -275,9 +275,26 @@ function classifyCiUnavailability({ headSha, thresholdMinutes, nowMs }, deps = {
 
 // --- individual checks -------------------------------------------------------
 
-function addCheck(checks, name, localEquivalent, result, blocking = true) {
-  checks.push({ name, localEquivalent, result, blocking });
+function addCheck(checks, name, localEquivalent, result, blocking = true, excludeFromOverallResult = false) {
+  checks.push({ name, localEquivalent, result, blocking, excludeFromOverallResult });
   console.log(`[${result.toUpperCase()}] ${name} :: ${localEquivalent}`);
+}
+
+// RF-1 (#1454 PR #1473 review): a `warn` outcome degrades `overallResult` from PASS to
+// PARTIAL just like a genuine non-blocking finding does -- `blocking: false` alone only
+// keeps a check from producing FAIL, it does not keep it from producing PARTIAL. AGENTS.md's
+// outage-time Merge Safety carve-out requires the posted `## Local CI` comment to read PASS
+// specifically, not merely "not FAIL", so a `blocking: false` check whose whole purpose is to
+// preserve a qualifying carve-out PASS (the backend-test-inventory-freshness check below) needs
+// `excludeFromOverallResult: true` on top of `blocking: false` -- otherwise its warn still blocks
+// the exact outcome it was added not to block. `excludeFromOverallResult` is reserved for that
+// narrow case; every other non-blocking check (PR title, PR body, pos-receipt) keeps degrading
+// PASS to PARTIAL on a warn, unchanged -- that's established behavior, not touched by this fix.
+function computeOverallResult(checks) {
+  const failed = checks.filter((c) => c.blocking && c.result === 'fail');
+  if (failed.length > 0) return 'FAIL';
+  const relevant = checks.filter((c) => !c.excludeFromOverallResult);
+  return relevant.some((c) => c.result === 'warn') ? 'PARTIAL' : 'PASS';
 }
 
 function runChecks(options, changedFiles, components) {
@@ -313,14 +330,26 @@ function runChecks(options, changedFiles, components) {
   // did. Top-level rather than nested in the dgfy-api block above: half the trigger
   // paths live under scripts/ and docs/testing/ and never set components.dgfy_api.
   //
-  // Non-blocking on purpose. This tool's PASS is what authorizes an outage-time merge
-  // under AGENTS.md's Merge Safety carve-out; failing that closed on derived-doc drift
-  // forces a regeneration commit, which moves headRefOid and invalidates the
-  // `## Local CI` comment's own SHA binding (#725 RF-2), restarting the cycle during an
-  // active CI outage. A stale inventory is a `npm run audit:backend-tests` + commit
-  // chore, not a build or correctness failure. There is no CI counterpart to promote
-  // this against today; a blocking version belongs in promotion-quality-gate.yml's
-  // CI_ENFORCED_GATES on #1431's axis. Refs #1441, #1147, #1431.
+  // Non-blocking AND excluded from overallResult, on purpose. This tool's PASS is what
+  // authorizes an outage-time merge under AGENTS.md's Merge Safety carve-out; failing that
+  // closed on derived-doc drift forces a regeneration commit, which moves headRefOid and
+  // invalidates the `## Local CI` comment's own SHA binding (#725 RF-2), restarting the cycle
+  // during an active CI outage. A stale inventory is a `npm run audit:backend-tests` + commit
+  // chore, not a build or correctness failure. There is no CI counterpart to promote this
+  // against today; a blocking version belongs in promotion-quality-gate.yml's CI_ENFORCED_GATES
+  // on #1431's axis. Refs #1441, #1147, #1431.
+  //
+  // #1454 PR #1473 review RF-1: `blocking: false` alone was NOT sufficient to deliver the
+  // rationale above -- a `warn` result still degrades `overallResult` from PASS to PARTIAL,
+  // and the carve-out requires a posted comment reading PASS specifically, not merely
+  // "not FAIL". A stale inventory therefore still produced a non-qualifying `## Local CI —
+  // PARTIAL` comment despite this check being non-blocking, defeating the whole point of
+  // registering it that way. Fixed by adding `excludeFromOverallResult: true`: the check still
+  // runs, still prints, still lands in the JSON report and the comment's own check table, so a
+  // stale inventory is never silently invisible -- it just no longer prevents a qualifying PASS,
+  // which is the actual policy this repo wants for a local-only, no-CI-counterpart, derived-doc
+  // check during an outage. See computeOverallResult()'s own comment for why this flag exists
+  // and why it's deliberately not applied to any other non-blocking check here.
   const backendTestInventoryTouched = changedFiles.some((f) => BACKEND_TEST_INVENTORY_FILTER.test(f));
   if (backendTestInventoryTouched) {
     const inventoryResult = runCommand('npm', ['run', 'audit:backend-tests:check']);
@@ -329,7 +358,8 @@ function runChecks(options, changedFiles, components) {
       'backend test inventory freshness (local-only — no CI counterpart today)',
       'npm run audit:backend-tests:check',
       inventoryResult.ok ? 'pass' : 'warn',
-      false
+      false,
+      true
     );
   }
 
@@ -477,8 +507,7 @@ function main() {
   console.log(`[pr-checks] components: frontend_ims=${components.frontend_ims} frontend_pos=${components.frontend_pos} frontend_storefront=${components.frontend_storefront} dgfy_api=${components.dgfy_api} migration_runner=${components.migration_runner}`);
 
   const checks = runChecks(options, changedFiles, components);
-  const failed = checks.filter((c) => c.blocking && c.result === 'fail');
-  const overallResult = failed.length > 0 ? 'FAIL' : (checks.some((c) => c.result === 'warn') ? 'PARTIAL' : 'PASS');
+  const overallResult = computeOverallResult(checks);
 
   const unavailability = classifyCiUnavailability({ headSha, thresholdMinutes: options.thresholdMinutes, nowMs: Date.now() });
 
@@ -529,6 +558,7 @@ module.exports = {
   parseArgs,
   detectComponents,
   classifyCiUnavailability,
+  computeOverallResult,
   renderComment,
   findLatestLocalCiComment,
   postComment,

@@ -9,6 +9,7 @@ const {
   parseArgs,
   detectComponents,
   classifyCiUnavailability,
+  computeOverallResult,
   renderComment,
   findLatestLocalCiComment,
 } = require('./pr-checks');
@@ -139,6 +140,58 @@ test('root package.json still defines the audit:backend-tests:check script this 
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   assert.equal(typeof pkg.scripts['audit:backend-tests:check'], 'string');
   assert.ok(pkg.scripts['audit:backend-tests:check'].length > 0);
+});
+
+// --- computeOverallResult / RF-1 (PR #1473 review) --------------------------
+// A `warn` on the non-blocking, `excludeFromOverallResult` inventory-freshness check must
+// NOT prevent a qualifying PASS -- that's the entire reason the check is non-blocking. A
+// `warn` on any other non-blocking check keeps degrading PASS to PARTIAL, unchanged.
+
+test('a warning, excludeFromOverallResult check does not prevent PASS (RF-1 fix)', () => {
+  const checks = [
+    { name: 'ordinary pass', result: 'pass', blocking: true, excludeFromOverallResult: false },
+    {
+      name: 'backend test inventory freshness (local-only — no CI counterpart today)',
+      result: 'warn',
+      blocking: false,
+      excludeFromOverallResult: true,
+    },
+  ];
+  assert.equal(computeOverallResult(checks), 'PASS');
+});
+
+test('a warning on an ordinary non-blocking check still degrades PASS to PARTIAL', () => {
+  const checks = [
+    { name: 'ordinary pass', result: 'pass', blocking: true, excludeFromOverallResult: false },
+    { name: 'PR title conventional-commit', result: 'warn', blocking: false, excludeFromOverallResult: false },
+  ];
+  assert.equal(computeOverallResult(checks), 'PARTIAL');
+});
+
+test('a failing blocking check is FAIL regardless of any excluded warn checks present', () => {
+  const checks = [
+    { name: 'compliance', result: 'fail', blocking: true, excludeFromOverallResult: false },
+    {
+      name: 'backend test inventory freshness (local-only — no CI counterpart today)',
+      result: 'warn',
+      blocking: false,
+      excludeFromOverallResult: true,
+    },
+  ];
+  assert.equal(computeOverallResult(checks), 'FAIL');
+});
+
+test('all checks passing, including the excluded one, is PASS', () => {
+  const checks = [
+    { name: 'ordinary pass', result: 'pass', blocking: true, excludeFromOverallResult: false },
+    {
+      name: 'backend test inventory freshness (local-only — no CI counterpart today)',
+      result: 'pass',
+      blocking: false,
+      excludeFromOverallResult: true,
+    },
+  ];
+  assert.equal(computeOverallResult(checks), 'PASS');
 });
 
 // --- classifyCiUnavailability ---------------------------------------------
