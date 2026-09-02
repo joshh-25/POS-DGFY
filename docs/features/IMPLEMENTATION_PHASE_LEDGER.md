@@ -17008,3 +17008,105 @@ the `check:compliance` missing-declaration checkpoint does not fire either — e
 ### Next eligible phase
 
 247 (none named yet).
+
+## Phase 247 - Promotion quality gate: partial re-arm, 7 of 8 covered gates blocking on release/*→main (#1431 Phase 1, PR-A)
+
+### Initiative and release
+
+#1431's Phase 1: re-arm `promotion-quality-gate.yml`'s advisory-only steps (#1063/#1066) now that
+12 recent release-leg runs plus a local run of the seven statically-covered gates confirm 7 of the
+8 `gate:release:local`-covered gates are healthy. This phase is PR-A only — dropping the same 7
+gates from `gate:release:local`'s local required set is a separate, later PR-B, gated on a real
+`release/*→main` (or `staging→main`) promotion actually proving the 7 flipped steps green under
+production conditions (V1–V3 in the #1431 Phase 1 implementation plan).
+
+### Objective and scope
+
+- `.github/workflows/promotion-quality-gate.yml`: step-level `continue-on-error: true` removed from
+  exactly 8 steps — `enforce_arch_guardrails`, `enforce_controller_boundaries`, `run_api_lint`
+  (`dgfy-api-quality`); `run_ims_lint` (`frontend-ims-quality`); `run_pos_lint`
+  (`frontend-pos-quality`); `run_storefront_lint`, `run_storefront_vitest`
+  (`frontend-storefront-quality`); `run_docs_lint` (`repository-quality`). Every job-level
+  `continue-on-error: true` and every job's `is_staging_leg` `if:` guard is unchanged — the
+  `to-staging/*→staging` soak leg still runs zero quality jobs. `run_test_matrix`
+  (`backend.test_matrix`) and `run_web_core_lint` deliberately stay advisory — see "Not in scope"
+  below.
+- `scripts/check-pr-quality-workflow.js`: `checkStepLevelAdvisory` replaced its old
+  count(`continue-on-error`) == count(steps) comparison with an explicit `BLOCKING_STEP_IDS` map per
+  job, asserting both directions — a listed step has zero step-level `continue-on-error`, every
+  other step has exactly one.
+- `scripts/check-pr-quality-workflow.test.js`: coverage for both `BLOCKING_STEP_IDS` directions
+  (a blocking step regressing to advisory, an unlisted step silently losing its advisory line, a
+  blocking id renamed/removed) plus the existing all-advisory baseline updated to the new shape.
+- `report-advisory-failures`' PR-comment text: findings now labelled `blocking (this run is red)` vs
+  `advisory` per job, using a `BLOCKING_STEP_NAMES` set (step names, since `real_failures` is built
+  from step names) kept in sync by hand with `BLOCKING_STEP_IDS`.
+- Docs, each a dated amendment, not a rewrite: `docs/ops/RELEASE_CANDIDATE_POLICY.md`;
+  `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md` (Decision 3
+  lineage, `[default]` tier confirmed against ADR 0039's own tier table — a CI workflow's
+  `continue-on-error` shape is "the chosen approach," not a system invariant); rows 4, 5, 9, 11, 12,
+  13, 15 of `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` plus row 10's root-cause addition;
+  `.agents/skills/promoter/SKILL.md`.
+- **Not in scope**: `run_test_matrix`/`backend.test_matrix` (gate #10) — confirmed still failing for
+  real on every recent release run (a hosted-runner OOM at the current heap setting, plus real,
+  deterministic rot in 6 test files: stale ESM mock factories, a stale seeded-industry-count
+  assertion, a stale `LOCK.UPDATE` mock, a snapshot missing a `laundry` entry), and #1147's own
+  mapping doc names #1015 as its hard prerequisite. Gets its own hand-back follow-up track (fix PR,
+  then a later PR-A2/PR-B2 pair), not touched here. `run_web_core_lint` — separate, pre-existing
+  `packages/web-core` lint debt (14 errors), no local gate covers it. PR-B (dropping the 7 flipped
+  gates from `gate:release:local`'s required set) — sequenced after this phase, gated on V1–V3.
+  `scripts/gate-release-local.js` is untouched in this phase.
+
+### Status
+
+`in_progress` — flips to `completed` only once PR-B lands and V1–V3 evidence (the negative
+workflow_dispatch test, a real green `release/*→main`/`staging→main` promotion, and local/CI parity
+on the 7 gates) is linked below, per this phase's own Definition of Done.
+
+### Dependencies
+
+None blocking this phase's own PR. `backend.test_matrix`'s follow-up track depends on #1015 (backend
+test-matrix speed). PR-B depends on this phase's V1–V3 verification actually running on a real
+promotion.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `.js` file.
+- [x] `npm run check:pr-quality-workflow` passes against the updated `BLOCKING_STEP_IDS` shape.
+- [x] `npm run lint:docs` passes against the four updated/amended governed docs.
+- [x] `node --test scripts/check-pr-quality-workflow.test.js` — all cases green, including the new
+  `BLOCKING_STEP_IDS` coverage.
+- [ ] **V1 (negative, deferred to promoter/a human)**: a scratch branch off `develop` with one
+  injected lint error, dispatched via `workflow_dispatch`, shows the matching quality job
+  `conclusion: failure` and every other job green.
+- [ ] **V2 (positive, deferred)**: the next real `release/*→main` (or `staging→main`) promotion runs
+  with all 7 flipped steps green and reaches `mergeStateStatus: CLEAN`; the `to-staging/*→staging`
+  leg of the same promotion shows zero quality jobs.
+- [ ] **V3 (parity, deferred)**: on that release head, `gate:release:local -- --only <the 7>` agrees
+  with CI.
+
+### Deviations from the plan
+
+(fill in at completion if any — none expected; the plan's own §1 root-cause finding and §2
+mechanism were followed as written)
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR base
+is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`. `npm run
+check:compliance`'s missing-declaration checkpoint does not fire — every touched path (`.github/`,
+`scripts/`, `docs/`) is CI/tooling/docs, not a compliance-sensitive surface.
+
+### Links
+
+- Tracking issue: #1431 (Refs, not Closes — Phase 1 is two PRs, and neither closes the parent).
+- Plan: `.tmp/plans/1431-phase1-plan.md` (Worker Planner output, 2026-09-02).
+- Modified: `.github/workflows/promotion-quality-gate.yml`, `scripts/check-pr-quality-workflow.js`,
+  `scripts/check-pr-quality-workflow.test.js`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`,
+  `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md`,
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `.agents/skills/promoter/SKILL.md`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+248 (none named yet).

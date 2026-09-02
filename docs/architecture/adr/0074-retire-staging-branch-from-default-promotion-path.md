@@ -409,6 +409,51 @@ promotion was sound) — unaffected by this ADR either way.
   done in this PR — see the PR description note below).
 - PR: (this PR). Refs #1007, #1008, #980, #1404.
 
+### 2026-09-02 — `promotion-quality-gate.yml` partially re-arms: 7 of 8 covered gates are blocking
+again on the leg into `main` (#1431 Phase 1, PR-A)
+
+- Clause amended: **Decision 3** (`[default]` tier per ADR 0039), continuing the 2026-08-26/#1066
+  lineage above. Those entries described `promotion-quality-gate.yml` as running "in full but ...
+  unconditionally `continue-on-error`" on the leg into `main` (and, per the entry above, now the
+  `staging → main` leg by default too). That is no longer accurate for 8 of the workflow's steps —
+  restated here rather than left silently stale, matching this ADR's own established correction
+  convention.
+- Confirmed `[default]`, not `[binding]`, per ADR 0039's own tier table: which steps in a CI
+  workflow carry `continue-on-error` is "the chosen approach... rollout sequencing," not a system
+  invariant reserved for data-ownership truth, fail-closed security/compliance controls, or layer
+  boundaries. Decision 6 (production tenant-schema report, `[binding]`) and Decision 8 (Merge
+  Safety, `[binding]`) are the actual invariants this workflow interacts with, and neither is
+  touched — see the scope check below.
+- Change: step-level `continue-on-error: true` removed from exactly 8 steps —
+  `enforce_arch_guardrails`, `enforce_controller_boundaries`, `run_api_lint` (job
+  `dgfy-api-quality`); `run_ims_lint` (`frontend-ims-quality`); `run_pos_lint`
+  (`frontend-pos-quality`); `run_storefront_lint`, `run_storefront_vitest`
+  (`frontend-storefront-quality`); `run_docs_lint` (`repository-quality`) — the 7 of
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s 8 "(a) Covered" gates confirmed healthy across 12
+  recent release-leg runs (one gate, `frontend.storefront.contracts`, maps to a second step,
+  `run_storefront_vitest`, hence 7 gates / 8 steps). `backend.test_matrix` (`run_test_matrix`) and
+  `run_web_core_lint` are deliberately **not** included — both confirmed still failing/incomplete for
+  real reasons (stale test fixtures plus a hosted-runner OOM for the former, pre-existing lint debt
+  with no local gate for the latter) — and stay advisory. Full evidence and root-cause finding:
+  the #1431 Phase 1 implementation plan (Worker Planner output, 2026-09-02).
+- Why: #1431's own precondition for flipping any of its named 8 gates was "once confirmed healthy" —
+  this amendment is that confirmation acted on for the 7 gates that met it, not a reopening of
+  #1063's still-open staleness question for `backend.test_matrix`.
+- Scope check against this ADR's `[binding]` clauses, confirmed unaffected: Decision 6 (production
+  tenant-schema report) and Decision 8 (`AGENTS.md` Merge Safety, never-`--squash`, the
+  `release/<label>` head-cut rule) are untouched — this amendment only changes which
+  `promotion-quality-gate.yml` steps drive their own check-run conclusion, a `[default]`-tier detail.
+  Decision 8 itself already required `mergeStateStatus: CLEAN` before any merge; this amendment is
+  what now makes a red one of these 7 steps actually produce `UNSTABLE`, which Decision 8 already
+  knew how to react to — no change to the rule, only to whether these particular steps can trigger
+  it.
+- Not yet touched: `scripts/gate-release-local.js` still requires all 7 flipped gates locally, in
+  full, per Decision 7 (`[default]`, "`gate:release:local` (`run_mode: "full"`) stays mandatory") —
+  dropping them from the local required set is explicitly a separate, later PR (PR-B) gated on a real
+  `release/*→main` (or `staging→main`) promotion actually proving the 7 flipped steps green under
+  production conditions, not assumed from this amendment alone.
+- PR: (this PR). Refs #1431, #1063, #1066, #1147.
+
 ## Related
 
 #980 (the decision this ADR records), #1007 (the override mechanism this ADR references but does
