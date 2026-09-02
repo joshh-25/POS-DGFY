@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-08-31
+last_reviewed: 2026-09-02
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -46,32 +46,29 @@ anything beyond dispatch access.
 
 ## Flow
 
-**Default, since #980/ADR 0074 (2026-08-25):**
+**Default, since #1404 (2026-09-02) — reverses ADR 0074/#980's 2026-08-25 two-stage default; full
+decision record: ADR 0074's 2026-09-02 Amendment.**
 
 ```text
-feature branch -> develop -> release/<label> -> main
+feature branch -> develop -> to-staging/<label> -> staging -> release/<label> -> main
 ```
 
-1. Feature branches PR into `develop`. Ordinary PR checks apply
-   (`pr-checks.yml`).
-2. A **release candidate** branch — `release/<label>`, e.g. `release/2026-08-25` — is cut fresh from
-   `origin/develop` at the exact commit being promoted, whenever a batch of work is ready to ship.
-   It carries no new commits of its own; it exists only to be a PR head. Cut it fresh each time,
-   never reused.
-3. `release/<label>` PRs into `main`. Once its checks pass and it is merged, production is live at
-   that commit (once someone dispatches `deploy-main.yml` — see "The one fact that matters" above).
+1. Feature branches PR into `develop`. Ordinary PR checks apply (`pr-checks.yml`).
+2. A `to-staging/<label>` branch is cut fresh from `origin/develop`, PRs into `staging`. Once merged,
+   `staging` is at that commit.
+3. `release/<label>` is cut fresh from `origin/staging` and PRs into `main`. Once its checks pass and
+   it is merged, production is live at that commit (once someone dispatches `deploy-main.yml` — see
+   "The one fact that matters" above).
 
-**Optional, non-default: a `staging` soak first.** The three-stage flow this document described
-before 2026-08-25 still works and is not deleted — a promoter may still choose to cut
-`to-staging/<label>` fresh from `origin/develop`, PR it into `staging`, and only then cut
-`release/<label>` from `origin/staging` instead of `origin/develop`, before merging into `main`.
-Nothing requires this; it exists for a promoter who judges a specific batch risky enough to want a
-`staging` soak before it ships. See ADR 0074 for why this wasn't removed outright, and its Decision
-4 for the explicit statement that `staging` is refreshed on demand only — it is not kept
-automatically current, so treat it as possibly stale before relying on it for anything.
+**Optional, non-default: the #1007-gated expedited exception.** A promoter may skip the `staging`
+leg and PR `release/<label>` (cut fresh from `origin/develop` instead of `origin/staging`) directly
+into `main` — but only as #1007's own phrase-gated, logged override
+(`.agents/skills/promoter/SKILL.md`'s "Expedited `develop → main` override (#1007)" section owns the
+full mechanism), never as a routine per-batch judgment call. That mechanism is unchanged by this
+reversal — only which flow it is now an exception *to* has changed.
 
 ```text
-feature branch -> develop -> to-staging/<label> -> staging -> release/<label> -> main   (optional)
+feature branch -> develop -> release/<label> -> main   (#1007-gated exception only)
 ```
 
 `release/*` and `to-staging/*` are both already in
@@ -543,3 +540,35 @@ required), and the fixture's pinned posture:
 `.agents/skills/promoter/SKILL.md`'s "Pre-`main` gates" section owns the executable verify-only
 form. Supersedes #1163, which tracked provisioning the manual bot account this change removes the
 need for.
+
+### 2026-09-02: Reverse the 2026-08-25 default — restore `develop → staging → main` as default,
+`develop → main` as the #1007-gated exception (#1404)
+
+Decision record: `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md`'s
+2026-09-02 Amendment. Summarized here as the executable consequence for this policy document, same
+pattern as the original 2026-08-25 entry above.
+
+**What changed.** The "Flow" section above now states the three-stage flow as default again; the
+direct `develop → release/<label> → main` path is available only through #1007's own phrase-gated
+exception, not as a routine choice.
+
+**The compliance verification ladder table** (2026-08-22 amendment above, updated 2026-08-25) is
+**not rewritten in place**, matching this document's own established convention of recording change
+rather than silently editing prior entries. Read it as follows going forward: its
+"`develop → staging` (optional, non-default soak)" row now describes the **default** soak leg; its
+"`develop → main` promotion" row now describes **either** the default flow's final
+`staging → release/<label> → main` leg **or** the #1007-gated direct `develop → release/<label> →
+main` exception — the gates listed in that row (`gate:release:local`, the preflight sweep
+verification, the production tenant-schema report) apply to whichever leg actually merges into
+`main`, exactly as before; only which leg is presumed by default has changed.
+
+**What's unchanged, restated so it isn't assumed away:** #1007's expedited-override mechanism itself
+— the skippable list (`gate:release:local`, the live compliance preflight sweep), the
+never-skippable list (the production tenant-schema report, `AGENTS.md` Merge Safety, never-`--squash`,
+the `release/<label>` head-cut rule), the phrase-gate/restate/log-before-merge discipline — none of
+it changes here, only its relationship to "the default" does. Also unchanged: the ADR 0074
+engineering enablers (#1018/PR #1036, #1015/#1016) that make running the full gate on every
+promotion affordable — they stay merged and useful regardless of which flow shape is presumed by
+default.
+
+PR: (this PR). Refs #1007, #1008, #980, #1404.

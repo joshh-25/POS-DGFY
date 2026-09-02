@@ -3,7 +3,7 @@
 Mechanics only. Rule sources (why, and what gates apply) are in `../SKILL.md` and the docs it
 points at — don't duplicate the reasoning here, just the commands.
 
-## Default: `develop` → `main`
+## #1007-gated exception: direct `develop` → `main`
 
 **Ran `gate:release:local` locally at any point earlier in this session? `git status` before
 cutting any branch below.** The documented Docker invocation now copies the repo into a disposable
@@ -75,13 +75,14 @@ gh run view <id> --json conclusion   # expect "success" and failed_tenant_count:
 above), `gate:release:local` (`run_mode: "full"`), and the tenant-schema report. Do not merge past a
 failing gate.
 
-## Optional: a `staging` soak first
+## Default: `develop` → `staging` → `main`
 
-Choose this per batch when the change is risky enough to want it — not the default, see
-`../SKILL.md`'s "The flow" section.
+This is the default soak leg again since #1404 (2026-09-02) — see `../SKILL.md`'s "The flow"
+section.
 
 **Do NOT run `npm run gate:release:local` on this leg.** It is reserved for the `develop → main`
-(and `staging → main`) leg only — see the "Default" section above, where it's the first thing run.
+(and `staging → main`) leg only — see the "#1007-gated exception" section above, where it's the
+first thing run.
 This isn't an omission to infer from silence: this leg's own CI-side check
 (`promotion-quality-gate.yml`) is also skipped entirely here (#1063), so a `to-staging/<label>` PR
 is deliberately gated on nothing beyond `pr-checks.yml`'s Docker build checks. Filed as #1097 after
@@ -105,8 +106,8 @@ gh pr create \
   --title "chore: promote develop to staging ($LABEL)" \
   --body "## Summary
 
-Promotes \`develop\` to \`staging\` at $(git rev-parse --short origin/develop) — optional soak before
-promoting to \`main\`.
+Promotes \`develop\` to \`staging\` at $(git rev-parse --short origin/develop) — the default soak leg
+before promoting to \`main\`.
 
 ## Testing Evidence
 
@@ -117,8 +118,9 @@ See \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the promotion-PR compliance exe
 gh pr merge <N> --merge   # never --squash — see SKILL.md
 ```
 
-Then cut `release/<label>` from `origin/staging` instead of `origin/develop` in the "Default"
-section above — same commands, `origin/staging` in place of `origin/develop`.
+Then cut `release/<label>` from `origin/staging` instead of `origin/develop` in the
+"#1007-gated exception" section above — same commands, `origin/staging` in place of
+`origin/develop`.
 
 ## Expedited override (#1007) — only on Pat's explicit real-time phrase
 

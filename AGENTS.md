@@ -116,11 +116,13 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
 - **Verifier/QA** (#331/#536) — verifies a merged, deployed change against a live environment,
   then flips `For QA` to `Done` or `Failed`. @.agents/skills/verifier/SKILL.md
-- **Promoter/Release** (#331/#512) — runs a `develop → main` promotion end to end (default since
-  ADR 0074/#980, 2026-08-25; an optional `develop → staging → main` soak is still available per
-  batch), cutting the promotion branch(es) itself. Dispatches DEV/STAGING deploys unattended;
-  never merges `main` or dispatches a `main`/PROD deploy without an explicit go each time, except a
-  second, narrow, phrase-gated override (#1007) — see "The #1007 promoter override" below.
+- **Promoter/Release** (#331/#512) — runs a `develop → staging → main` promotion end to end
+  (default again since #1404, 2026-09-02, reversing ADR 0074/#980's 2026-08-25 two-stage default; a
+  direct `develop → main` promotion is available only as #1007's phrase-gated exception, not a
+  routine choice), cutting the promotion branch(es) itself. Dispatches DEV/STAGING deploys
+  unattended; never merges `main` or dispatches a `main`/PROD deploy without an explicit go each
+  time, except a second, narrow, phrase-gated override (#1007) — see "The #1007 promoter override"
+  below.
   @.agents/skills/promoter/SKILL.md
 - **Incident Responder** (#331/#546) — autonomous production incident-response loop (monitor → PM
   files → Worker fixes → fast-track Reviewer → Promoter redeploys), also reachable manually via
@@ -173,8 +175,9 @@ statement those two documents must conform to, not a summary that can drift from
 
 - **Scope.** Pat's own business-urgency call — "we critically need this shipped now" — not
   necessarily a production incident (that case is `incident-responder`'s separate override above).
-  Only `promoter` may invoke it, and only for a `develop → main` promotion (the default path since
-  ADR 0074).
+  Only `promoter` may invoke it, and only for a `develop → main` promotion — since #1404
+  (2026-09-02), this is #1007's own gated exception to the restored three-stage default, not "the
+  default path"; nothing about who may invoke it or how changes.
 - **The phrase gate.** Only on Pat's explicit real-time phrase, given in the moment the override is
   actually invoked — never inferred from urgency alone, never a standing pre-authorization from a
   prior invocation. Every single invocation, not just the first: (1) restate the standing "these
