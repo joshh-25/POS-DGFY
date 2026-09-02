@@ -28,6 +28,31 @@ describe('DGLaundry payment lifecycle bridge', () => {
     expect(result.status).toBe('finalized');
   });
 
+  it('submits only the fixed child after a mixed booking is paid', async () => {
+    const partnerClient = { submitOrder: jest.fn(async () => ({ accepted: true })) };
+    const commercePaymentRepository = { updateSessionById: jest.fn(async (_id, patch) => ({ ...session, ...patch })) };
+    const mixedSession = {
+      ...session,
+      checkout_payload: {
+        ...session.checkout_payload,
+        dglaundry_booking_group: {
+          mode: 'mixed',
+          children: [
+            { mode: 'fixed', companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'order-1:fixed', externalTrackingReference: 'track-1:fixed', reservationIds: ['reservation-fixed'], lines: [{ externalLineReference: 'line-fixed', serviceName: 'Wash', quantity: 1 }] },
+            { mode: 'per_kilo', companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'order-1:per_kilo', externalTrackingReference: 'track-1:per_kilo', reservationIds: ['reservation-kilo'], lines: [{ externalLineReference: 'line-kilo', serviceName: 'Dry', quantity: 1 }] }
+          ]
+        },
+        dglaundry_submission: { mode: 'fixed', companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'order-1:fixed', externalTrackingReference: 'track-1:fixed', reservationIds: ['reservation-fixed'], lines: [{ externalLineReference: 'line-fixed', serviceName: 'Wash', quantity: 1 }] }
+      }
+    };
+
+    await submitPaidDglaundryBooking({ session: mixedSession, resource: { id: 'pay_1' }, providerEventId: 'pm-mixed-1', commercePaymentRepository, partnerClient });
+
+    expect(partnerClient.submitOrder).toHaveBeenCalledTimes(1);
+    expect(partnerClient.submitOrder.mock.calls[0][0].data.orderMode).toBe('fixed');
+    expect(partnerClient.submitOrder.mock.calls[0][0].data.externalOrderReference).toBe('order-1:fixed');
+  });
+
   it('cancels all explicit reservations on failure and sends a refund snapshot', async () => {
     const partnerClient = { cancelOrder: jest.fn(async () => ({ accepted: true })), updateOrder: jest.fn(async () => ({ accepted: true })) };
     const commercePaymentRepository = { updateSessionById: jest.fn(async (_id, patch) => ({ ...session, ...patch })) };

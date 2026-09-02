@@ -56,6 +56,6 @@ describe('DGLaundry booking payment session', () => {
     process.env.DGLAUNDRY_BOOKING_PAYMENTS_KILL_SWITCH = 'true';
     const disabled = await useCase({ payload: payload({ idempotency_key: 'booking-key-2' }) });
     expect(disabled.success).toBe(false);
-    expect(disabled.code).toBe('SERVICE_UNAVAILABLE');
+    expect(disabled.error.code).toBe('SERVICE_UNAVAILABLE');
   });
 });
