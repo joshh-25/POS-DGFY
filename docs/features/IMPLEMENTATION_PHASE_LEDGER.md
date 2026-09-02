@@ -16780,3 +16780,144 @@ beyond what this skill already owns.
 ### Next eligible phase
 
 245 (none named yet).
+
+## Phase 245 - IMS/POS delivery-campaign authoring + reporting UI (#1334, epic #1321, Wave 6, final)
+
+### Initiative and release
+
+Epic #1321 (Customer delivery pricing), Wave 6, the final ticket. Builds a merchant-facing
+authoring/reporting UI over the `voucher_kind: 'delivery_campaign'` + `benefit_class:
+'free_delivery'` + `auto_apply` contract Phase 241/244 (#1331/#1332) already shipped and deployed.
+
+**Numbering note.** The ticket title says "Phase 242"; re-verified live at branch time per
+`AGENTS.md` Continuous Phase Numbering (`grep -n '^## Phase' ... | tail -5` against a freshly-
+fetched `origin/develop`, HEAD `162f550df3`, the #1397/#1332 merge): 241 = #1331, 242 = #1333, 243 =
+#1390, 244 = #1332 (this ledger's own immediately-preceding entry). This phase is therefore **245**,
+the actual next-free integer, matching Phase 244's own "Next eligible phase" note.
+
+**Premise correction, load-bearing.** The ticket's own framing ("IMS screen", implicitly
+lower-stakes/UI-only) is wrong on two counts, both corrected before implementation started (plan
+§1/§9, restated in the compliance declaration): there is no voucher code under `apps/dgfy-ims/` at
+all — the authoring UI is `packages/web-core/src/features/pos/components/
+VoucherManagementPanel.jsx` (#614, Phase 103), a shared component consumed by **both**
+`apps/dgfy-ims` (`/terminal`) **and** `apps/dgfy-pos` (`/`, `/terminal`, `/login`) via the shared
+`TerminalPage`; and the compliance classification is `major`/`pos,terminal` (mechanically floored
+by `COMPLIANCE_SENSITIVE_RULES`'s `/^packages\/web-core\/src\/features\/pos\//` rule), not
+"minor UI-only."
+
+### Objective and scope
+
+A kind-aware extension of the existing Vouchers authoring screen, so a non-engineer can create and
+monitor a delivery-fee campaign without any backend change:
+
+- **Zero backend changes** — verified field-by-field against the merged #1331/#1332 contract before
+  writing any frontend code (`voucher_kind`, `benefit_class`, `benefit_target`,
+  `delivery_amount_off_centavos`, `auto_apply`, the shared masks/caps, and the unconditional
+  `redemption_stats` on both `GET /vouchers/:id` and `GET /vouchers?include_stats=true`).
+- **Extended `VoucherManagementPanel.jsx` in place, kind-aware — no parallel component.** Extracted
+  the pure payload/validation/kind-defaulting layer into a new `voucherFormModel.js`
+  (`blankForm`, `voucherToForm`, `buildVoucherPayload`, `validateFormLocally`, the bitmask/money
+  helpers, plus two new pure helpers — `applyVoucherKindDefaults`, `suggestVoucherCode`), re-exporting
+  `blankForm`/`buildVoucherPayload` from the panel unchanged so #716's pre-existing regression test
+  keeps passing byte-identically against the same import path.
+- **`voucher_kind`/`benefit_class`/`benefit_target` are implicit**, never raw enum pickers — picking
+  "Delivery campaign" as the voucher type is the only control that sets all three. Every
+  server-rejectable combination (`fixed_price` targeting delivery, `auto_apply` on a non-delivery
+  target, `auto_apply` carrying scopes) is unrepresentable from this branch of the form, not merely
+  caught after a 422.
+- **Two forced mask bits, both real correctness fixes**: fulfillment locked to delivery-only
+  (a pickup order has no delivery fee — a guaranteed no-op under the shared masks' `pickup: true`
+  default), and the channel mask force-includes storefront (POS forced off) whenever `auto_apply` is
+  true — the auto-apply selector only ever fires from storefront checkout
+  (`storeUseCases.js`'s `resolveCheckoutContext`).
+- **`min_spend_centavos` explicitly labeled "item subtotal"**, with helper text stating the delivery
+  fee itself doesn't count toward it — `voucherEligibilityPolicy.js` compares this value against the
+  cart's item subtotal, not the order total; a generic label would misrepresent the ticket's own
+  headline case ("free delivery over ₱X").
+- **R6 (auto-apply + `is_publicly_listed`) decided narrowly for v1**: forced `false` for an
+  auto-applied campaign, left available (unchanged) for a code-entered delivery campaign. Flagged as
+  an open question in the PR body rather than silently decided either way.
+- **No new nav entry** — a `voucher_kind`/`auto_apply` type filter added to the existing Vouchers
+  list. `TerminalOperationsWorkspace.jsx` is untouched; the two tests that read it as raw text
+  (`ConfirmActionDialog.test.jsx`, `itemDiscountEligibility.contract.test.js`) were run and pass
+  unmodified as direct evidence.
+- **No new tenant-wide aggregate reporting endpoint** — per-campaign `redemption_stats` only
+  (already returned unconditionally by the existing GET endpoints), surfaced in the list and a new
+  read-only "Campaign performance" block on the edit form. A client-side sum across paginated pages
+  would be a materially wrong tenant-wide number silently presented as right — deliberately not
+  built.
+- **`voucher_kind` read-only in the UI once a voucher exists** — rendered as a badge on edit.
+  Converting an existing voucher's kind mid-lifecycle is out of scope for this phase, stated in the
+  PR body.
+- Out of scope, per the plan: a storefront-facing "free delivery" banner/discovery surface (a
+  separate, unbuilt feature R6 gestures at but does not build); auto-applying item-axis vouchers
+  (already out of scope per Phase 244's own D4); a tenant-wide aggregate reporting endpoint (above).
+
+### Status
+
+`in_progress`. All code and tests implemented and self-verified (below). PR open against `develop`
+using `Refs #1334`/`Refs #1321`, not `Closes` — the ticket's own acceptance criterion is a live,
+non-engineer deployed-verification walkthrough, which needs the issue to stay open for the `For QA`
+lane (`docs/process/ISSUE-TAXONOMY.md`'s linkage rule). Not yet reviewed or merged.
+
+### Dependencies
+
+Phase 241/244 (#1331/#1332, the full `delivery_campaign`/`free_delivery`/`auto_apply` backend
+contract this phase authors against, unchanged and already deployed). No phase depends on this one
+being merged first — it is a pure UI layer over an already-live contract.
+
+### Acceptance and validation evidence
+
+- [x] `npm run build:skupervisor` (real Vite build, `apps/dgfy-ims`) — green.
+- [x] `npm run build:pos` (real Vite build, `apps/dgfy-pos`) — green. Both required per plan §7,
+  since the changed component is shared via `packages/web-core`, not `apps/dgfy-ims`-only.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryCampaignPayload.test.js` (new, pure,
+  no jsdom) — 20 passing.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryCampaignPanel.behavior.test.jsx` (new,
+  jsdom + Testing Library) — 6 passing.
+- [x] `packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js` (#716
+  regression) — unmodified, 6 passing, confirming the `buildVoucherPayload`/`blankForm` extraction
+  into `voucherFormModel.js` produced no behavior change for the existing `fixed_price` XOR/
+  `is_publicly_listed` cases.
+- [x] `packages/web-core/Components/ui/__tests__/ConfirmActionDialog.test.jsx` and
+  `packages/web-core/src/features/pos/__tests__/itemDiscountEligibility.contract.test.js` (both
+  read `TerminalOperationsWorkspace.jsx` as raw text, R7) — unmodified, passing, direct evidence
+  that file was not touched.
+- [x] `npm run check:compliance` — PASS (4 sensitive files checked, one declaration file recognized).
+- [x] `npm run check:architecture` — OK (52 modules/541 files; 92 controller files, no unauthorized
+  model imports). Unaffected by this diff (frontend-only) — run for completeness.
+- [x] `npm run lint:docs` (docs-lint + `check:adr --strict`) — OK, 29 governed docs / 85 ADRs
+  validated. No ADR amendment needed for this phase (no ADR invariant is reopened by a client-only
+  diff over an already-declared backend contract).
+- [ ] Live, non-engineer deployed-verification walkthrough — outstanding by design (`Refs`, not
+  `Closes`); this is the ticket's own stated acceptance criterion and belongs to the Verifier/QA
+  role post-merge, not this PR.
+
+### Deviations from the plan -- surfaced explicitly, not silently absorbed
+
+None. The plan (§1–§11) was followed as written, including its own explicit build order
+(extract → feature → tests → docs) and its named risk mitigations R1–R8.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired: compliance declaration (row 2, informational).** `major` / `pos,terminal`, per the
+mechanical floor (`COMPLIANCE_SENSITIVE_RULES`'s `packages/web-core/src/features/pos/` rule). Per
+the standing "skip checkpoint confirmation by default, draft + self-verify, go straight to
+commit/PR" preference recorded for this repo (Pat reviews every PR himself), proceeded without
+pausing; stated plainly here and in the PR body's Testing Evidence rather than silently included.
+
+**Not fired:** no migration (zero backend changes), no deploy dispatch, no SSH, no force-push/
+branch deletion, no board-transition scope beyond what this skill already owns.
+
+### Links
+
+- Tracking issue: #1334. Epic: #1321. Depends on: #1331/#1332 (Phases 241/244, merged, unchanged).
+- New: `packages/web-core/src/features/pos/components/voucherFormModel.js`,
+  `packages/web-core/src/features/pos/__tests__/deliveryCampaignPayload.test.js`,
+  `packages/web-core/src/features/pos/__tests__/deliveryCampaignPanel.behavior.test.jsx`,
+  `docs/compliance/impact-declarations/2026-09-02-ims-delivery-campaign-authoring.md`.
+- Modified: `packages/web-core/src/features/pos/components/VoucherManagementPanel.jsx`.
+
+### Next eligible phase
+
+246 (none named yet).
