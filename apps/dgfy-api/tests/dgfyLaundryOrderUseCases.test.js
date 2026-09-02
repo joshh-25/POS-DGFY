@@ -91,7 +91,7 @@ describe('DGFY DGLaundry storefront/order projections', () => {
     const repository = makeRepository();
     repository.upsertCustomerActivity = jest.fn(async ({ payload }) => ({ row: { payload }, stale: false }));
     const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient: {} });
-    const result = await useCases.ingestProviderEvent({ event: event('dglaundry.laundry_order.counter_registered.v1', { companyId: 'company-a', locationId: 'location-a', localOrderId: 'counter-1', customerReference: { kind: 'dgfy_guest', reference: 'guest-1' }, internalStaffId: 'must-not-persist' }, 'event-counter-1') });
+    const result = await useCases.ingestProviderEvent({ event: event('dglaundry.laundry_order.counter_registered.v1', { companyId: 'company-a', locationId: 'location-a', aggregateVersion: 1, localOrderId: 'counter-1', customerReference: { kind: 'dgfy_guest', reference: 'guest-1' }, internalStaffId: 'must-not-persist' }, 'event-counter-1') });
     expect(result.status).toBe('applied');
     expect(result.projection.payload.customerReference).toEqual({ kind: 'dgfy_guest', reference: 'guest-1' });
     expect(result.projection.payload.internalStaffId).toBeUndefined();

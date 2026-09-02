@@ -21,7 +21,7 @@ const parseSignature = (value) => {
 export const verifyDglaundryEventSignature = ({ headers = {}, method = 'POST', authority = '', path = '', rawBody = '' }) => {
   const activeProfile = profile();
   if (activeProfile === 'http-message-signatures-v1') {
-    if (process.env.NODE_ENV === 'production' && !String(process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEY || '').trim()) return { ok: false, code: 'DGLAUNDRY_PUBLIC_KEY_REQUIRED' };
+    if (!String(process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEY || '').trim()) return { ok: false, code: 'DGLAUNDRY_PUBLIC_KEY_REQUIRED' };
     const parsed = parseSignature(headers.signature);
     const digest = String(headers['content-digest'] || '').trim();
     if (!parsed || !digest || parsed.algorithm !== 'ed25519' || parsed.tag !== 'dglaundry-dgfy-v1') return { ok: false, code: 'DGLAUNDRY_SIGNATURE_REQUIRED' };
