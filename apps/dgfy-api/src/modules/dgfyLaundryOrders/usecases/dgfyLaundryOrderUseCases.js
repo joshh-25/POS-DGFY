@@ -23,6 +23,35 @@ const requireScope = (payload) => {
   return { companyId, locationId };
 };
 
+const requireAccountId = (accountId) => {
+  const normalized = toTrimmed(accountId, 160);
+  if (!normalized) fail('An authenticated DGFY account is required.', 401, DomainErrorCode.AUTHENTICATION_FAILED);
+  return normalized;
+};
+
+const orderNotFound = () => fail('The requested laundry order was not found.', 404, DomainErrorCode.RESOURCE_NOT_FOUND);
+
+const withoutClientIdentity = (payload = {}) => {
+  const safePayload = { ...payload };
+  for (const key of ['customerReference', 'customerReferenceKind', 'customer_reference', 'customer_reference_kind', 'dgfyAccountId', 'dgfy_account_id']) {
+    delete safePayload[key];
+  }
+  return safePayload;
+};
+
+const requireOwnedOrder = async ({ repository, companyId, locationId, externalOrderReference, accountId }) => {
+  const row = await repository.getOrderForAccount({
+    companyId,
+    locationId,
+    externalOrderReference,
+    dgfyAccountId: accountId
+  });
+  // Deliberately use the same non-enumerating 404 for a missing order and an
+  // order owned by another account (including another member of this company).
+  if (!row) orderNotFound();
+  return row;
+};
+
 const requireOrderReferences = (payload, { requireLines = false } = {}) => {
   const scope = requireScope(payload);
   const externalOrderReference = toTrimmed(payload?.externalOrderReference || payload?.external_order_reference, 200);
@@ -143,11 +172,12 @@ export const buildDgfyLaundryOrderUseCases = ({ repository, partnerClient }) => 
     return repository.getAvailability(scope);
   },
 
-  async getOrder({ companyId, locationId, externalOrderReference }) {
+  async getOrder({ companyId, locationId, externalOrderReference, accountId }) {
     const scope = requireScope({ companyId, locationId });
     const reference = toTrimmed(externalOrderReference, 200);
     if (!reference) fail('externalOrderReference is required.');
-    return repository.getOrder({ ...scope, externalOrderReference: reference });
+    const dgfyAccountId = requireAccountId(accountId);
+    return requireOwnedOrder({ repository, ...scope, externalOrderReference: reference, accountId: dgfyAccountId });
   },
 
   async quote({ payload, idempotencyKey }) {
@@ -166,19 +196,27 @@ export const buildDgfyLaundryOrderUseCases = ({ repository, partnerClient }) => 
     return { idempotent_replay: false, quote };
   },
 
-  async submitOrder({ payload, idempotencyKey }) {
+  async submitOrder({ payload, idempotencyKey, accountId }) {
     const scope = requireOrderReferences(payload, { requireLines: true });
-    return operation({ repository, partnerClient, operationName: 'submitOrder', idempotencyKey, payload, buildEnvelope: () => createDgfyOrderEvent({ type: 'dgfy.laundry_order.submitted.v1', data: { ...payload, ...scope } }) });
+    const dgfyAccountId = requireAccountId(accountId);
+    const ownership = await repository.bindOrderOwnership({ ...scope, dgfyAccountId });
+    if (!ownership || ownership.dgfy_account_id !== dgfyAccountId) orderNotFound();
+    const ownedPayload = { ...withoutClientIdentity(payload), ...scope, customerReference: dgfyAccountId, customerReferenceKind: 'dgfy_account' };
+    return operation({ repository, partnerClient, operationName: 'submitOrder', idempotencyKey, payload: ownedPayload, buildEnvelope: () => createDgfyOrderEvent({ type: 'dgfy.laundry_order.submitted.v1', data: ownedPayload }) });
   },
 
-  async updateOrder({ payload, idempotencyKey }) {
+  async updateOrder({ payload, idempotencyKey, accountId }) {
     const scope = requireOrderReferences(payload);
-    return operation({ repository, partnerClient, operationName: 'updateOrder', idempotencyKey, payload, buildEnvelope: () => createDgfyOrderEvent({ type: 'dgfy.laundry_order.updated.v1', data: { ...payload, ...scope } }) });
+    const dgfyAccountId = requireAccountId(accountId);
+    await requireOwnedOrder({ repository, ...scope, accountId: dgfyAccountId });
+    return operation({ repository, partnerClient, operationName: 'updateOrder', idempotencyKey, payload: { ...payload, ...scope }, buildEnvelope: () => createDgfyOrderEvent({ type: 'dgfy.laundry_order.updated.v1', data: { ...payload, ...scope } }) });
   },
 
-  async cancelOrder({ payload, idempotencyKey }) {
+  async cancelOrder({ payload, idempotencyKey, accountId }) {
     const scope = requireOrderReferences(payload);
-    return operation({ repository, partnerClient, operationName: 'cancelOrder', idempotencyKey, payload, buildEnvelope: () => createDgfyOrderEvent({ type: 'dgfy.laundry_order.cancelled.v1', data: { ...payload, ...scope } }) });
+    const dgfyAccountId = requireAccountId(accountId);
+    await requireOwnedOrder({ repository, ...scope, accountId: dgfyAccountId });
+    return operation({ repository, partnerClient, operationName: 'cancelOrder', idempotencyKey, payload: { ...payload, ...scope }, buildEnvelope: () => createDgfyOrderEvent({ type: 'dgfy.laundry_order.cancelled.v1', data: { ...payload, ...scope } }) });
   },
 
   async listDeadLetters({ limit }) {

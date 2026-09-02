@@ -41,11 +41,23 @@ const makeRepository = () => {
       return { row, stale: false };
     }),
     getOrder: jest.fn(async ({ companyId, locationId, externalOrderReference }) => orders.get(`${companyId}:${locationId}:${externalOrderReference}`) || null),
+    getOrderForAccount: jest.fn(async ({ companyId, locationId, externalOrderReference, dgfyAccountId }) => {
+      const row = orders.get(`${companyId}:${locationId}:${externalOrderReference}`);
+      return row?.dgfy_account_id === dgfyAccountId ? row : null;
+    }),
+    bindOrderOwnership: jest.fn(async ({ companyId, locationId, externalOrderReference, dgfyAccountId }) => {
+      const key = `${companyId}:${locationId}:${externalOrderReference}`;
+      const existing = orders.get(key);
+      if (existing) return existing;
+      const row = { id: 'order-1', company_id: companyId, location_id: locationId, external_order_reference: externalOrderReference, dgfy_account_id: dgfyAccountId, aggregate_version: 0, status: 'pending_submission', payload: {} };
+      orders.set(key, row);
+      return row;
+    }),
     upsertOrder: jest.fn(async ({ companyId, locationId, externalOrderReference, version, status, payload }) => {
       const key = `${companyId}:${locationId}:${externalOrderReference}`;
       const current = orders.get(key);
       if (current && Number(current.aggregate_version) >= Number(version)) return { row: current, stale: true };
-      const row = { id: 'order-1', company_id: companyId, location_id: locationId, external_order_reference: externalOrderReference, aggregate_version: Number(version), status, payload };
+      const row = { id: current?.id || 'order-1', company_id: companyId, location_id: locationId, external_order_reference: externalOrderReference, dgfy_account_id: current?.dgfy_account_id || null, aggregate_version: Number(version), status, payload };
       orders.set(key, row);
       return { row, stale: false };
     }),
@@ -111,8 +123,45 @@ describe('DGFY DGLaundry storefront/order projections', () => {
     await useCases.quote({ payload, idempotencyKey: 'quote-key' });
     expect(partnerClient.prepareQuote).toHaveBeenCalledTimes(1);
     const orderPayload = { ...payload, externalOrderReference: 'order-1', externalTrackingReference: 'track-1' };
-    await useCases.submitOrder({ payload: orderPayload, idempotencyKey: 'order-key' });
-    await useCases.submitOrder({ payload: orderPayload, idempotencyKey: 'order-key' });
+    await useCases.submitOrder({ payload: orderPayload, accountId: 'account-1', idempotencyKey: 'order-key' });
+    await useCases.submitOrder({ payload: orderPayload, accountId: 'account-1', idempotencyKey: 'order-key' });
     expect(partnerClient.submitOrder).toHaveBeenCalledTimes(1);
+    expect(partnerClient.submitOrder.mock.calls[0][0].data).toEqual(expect.objectContaining({ customerReference: 'account-1', customerReferenceKind: 'dgfy_account' }));
+  });
+
+  it('only exposes an order to the immutable account that submitted it', async () => {
+    const repository = makeRepository();
+    const partnerClient = {
+      submitOrder: jest.fn(async () => ({ accepted: true })),
+      updateOrder: jest.fn(async () => ({ accepted: true })),
+      cancelOrder: jest.fn(async () => ({ accepted: true }))
+    };
+    const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient });
+    const payload = { companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'owned-order', externalTrackingReference: 'track-1', customerReference: 'attacker-supplied', customerReferenceKind: 'dgfy_account', lines: [{ variantId: 'svc-1', quantity: 1 }], fulfillment: { mode: 'pickup' } };
+
+    await useCases.submitOrder({ payload, accountId: 'account-owner', idempotencyKey: 'owned-submit' });
+    expect(partnerClient.submitOrder).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ customerReference: 'account-owner', customerReferenceKind: 'dgfy_account' }) }));
+    await expect(useCases.getOrder({ companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'owned-order', accountId: 'account-other' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    await expect(useCases.updateOrder({ payload, accountId: 'account-other', idempotencyKey: 'owned-update-other' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    await expect(useCases.cancelOrder({ payload, accountId: 'account-other', idempotencyKey: 'owned-cancel-other' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    expect(partnerClient.updateOrder).not.toHaveBeenCalled();
+    expect(partnerClient.cancelOrder).not.toHaveBeenCalled();
+
+    await expect(useCases.getOrder({ companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'owned-order', accountId: 'account-owner' })).resolves.toEqual(expect.objectContaining({ dgfy_account_id: 'account-owner' }));
+    await useCases.updateOrder({ payload, accountId: 'account-owner', idempotencyKey: 'owned-update-owner' });
+    await useCases.cancelOrder({ payload, accountId: 'account-owner', idempotencyKey: 'owned-cancel-owner' });
+    expect(partnerClient.updateOrder).toHaveBeenCalledTimes(1);
+    expect(partnerClient.cancelOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not claim an unowned provider projection', async () => {
+    const repository = makeRepository();
+    const partnerClient = { submitOrder: jest.fn(async () => ({ accepted: true })) };
+    const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient });
+    await useCases.ingestProviderEvent({ event: event('dglaundry.laundry_order.status_changed.v1', {
+      companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'provider-order', externalTrackingReference: 'track-provider', aggregateVersion: 1, status: 'received', lines: [{ externalLineReference: 'line-1', serviceName: 'Wash', quantity: 1 }], fulfillment: { mode: 'pickup' }
+    }, 'event-provider-order') });
+    await expect(useCases.submitOrder({ payload: { companyId: 'company-a', locationId: 'location-a', externalOrderReference: 'provider-order', externalTrackingReference: 'track-provider', lines: [{ variantId: 'svc-1', quantity: 1 }], fulfillment: { mode: 'pickup' } }, accountId: 'account-owner', idempotencyKey: 'provider-submit' })).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', statusCode: 404 });
+    expect(partnerClient.submitOrder).not.toHaveBeenCalled();
   });
 });

@@ -27,7 +27,7 @@ export const getDglaundryAvailability = (req, res, next) => run(
 
 export const getDglaundryOrder = (req, res, next) => run(
   dgfyLaundryOrderUseCases.getOrder,
-  { companyId: req.laundryCompany.company_id, locationId: req.query?.location_id, externalOrderReference: req.params.externalOrderReference },
+  { companyId: req.laundryCompany.company_id, locationId: req.query?.location_id, externalOrderReference: req.params.externalOrderReference, accountId: req.dgfyAccount?.id },
   res,
   next
 );
@@ -42,7 +42,7 @@ export const createDglaundryQuote = (req, res, next) => run(
 
 export const submitDglaundryOrder = (req, res, next) => run(
   dgfyLaundryOrderUseCases.submitOrder,
-  { payload: { ...req.body, companyId: req.laundryCompany.company_id }, idempotencyKey: req.headers['idempotency-key'] },
+  { payload: { ...req.body, companyId: req.laundryCompany.company_id }, accountId: req.dgfyAccount?.id, idempotencyKey: req.headers['idempotency-key'] },
   res,
   next,
   202
@@ -50,7 +50,7 @@ export const submitDglaundryOrder = (req, res, next) => run(
 
 export const updateDglaundryOrder = (req, res, next) => run(
   dgfyLaundryOrderUseCases.updateOrder,
-  { payload: { ...req.body, companyId: req.laundryCompany.company_id, externalOrderReference: req.params.externalOrderReference }, idempotencyKey: req.headers['idempotency-key'] },
+  { payload: { ...req.body, companyId: req.laundryCompany.company_id, externalOrderReference: req.params.externalOrderReference }, accountId: req.dgfyAccount?.id, idempotencyKey: req.headers['idempotency-key'] },
   res,
   next,
   202
@@ -58,7 +58,7 @@ export const updateDglaundryOrder = (req, res, next) => run(
 
 export const cancelDglaundryOrder = (req, res, next) => run(
   dgfyLaundryOrderUseCases.cancelOrder,
-  { payload: { ...req.body, companyId: req.laundryCompany.company_id, externalOrderReference: req.params.externalOrderReference }, idempotencyKey: req.headers['idempotency-key'] },
+  { payload: { ...req.body, companyId: req.laundryCompany.company_id, externalOrderReference: req.params.externalOrderReference }, accountId: req.dgfyAccount?.id, idempotencyKey: req.headers['idempotency-key'] },
   res,
   next,
   202

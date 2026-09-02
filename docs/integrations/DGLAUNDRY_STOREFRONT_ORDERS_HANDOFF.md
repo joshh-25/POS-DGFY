@@ -25,6 +25,19 @@ terminal checks, and only then retarget the PR to `develop`.
   checks.
 - DGFY quote/submit/update/cancel forwarding with explicit references and
   idempotency keys.
+- DGFY-originated orders are bound at submit time to the authenticated,
+  immutable `dgfy_account_id`. Reads, updates, and cancellations require that
+  same account plus the mapped company/location scope. Provider- and
+  counter-originated projections remain unowned and cannot be claimed by a
+  customer by guessing an external reference. Email, name, slug, and shared
+  company membership are never used as ownership evidence.
+
+The ownership column is added by migration
+`20260906000001-add-dglaundry-order-ownership.cjs`. It is nullable by design
+for provider/counter events and is preserved during inbound status/progress/
+fulfillment upserts. A submit creates a pending owner-bound projection before
+the signed provider request, so a retry after an outage cannot be claimed by a
+different account.
 
 ## Required configuration
 
@@ -41,6 +54,9 @@ place these values in source, browser storage, or a shared database.
   tables.
 - Cross-repository signed catalog, availability, quote, order, replay,
   out-of-order, dead-letter/redrive, outage, and wrong-branch scenarios.
+- Cross-account order access tests covering owner success, same-company
+  account denial, wrong-branch denial, duplicate retries, and unowned
+  provider projections.
 - Responsive storefront integration against the customer
   `dgfy.ph/tenant-store/<handle>` URL.
 - Provider sandbox/hosted evidence and the approved-branch readiness matrix.

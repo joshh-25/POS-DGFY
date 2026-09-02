@@ -136,6 +136,41 @@ export const dgfyLaundryOrderRepository = {
     return rowPayload(rows[0]);
   },
 
+  // Customer reads and mutations must always include the immutable DGFY
+  // account id.  Company membership alone is not order ownership: another
+  // member of the same company must not be able to enumerate or mutate a
+  // customer's order by guessing its external reference.
+  async getOrderForAccount({ companyId, locationId, externalOrderReference, dgfyAccountId }) {
+    const rows = await sequelize.query(`SELECT * FROM dgfy_dglaundry_order_projections
+      WHERE company_id = ? AND location_id = ? AND external_order_reference = ?
+        AND dgfy_account_id = ? LIMIT 1`, {
+      replacements: [companyId, locationId, externalOrderReference, dgfyAccountId], type: QueryTypes.SELECT
+    });
+    return rowPayload(rows[0]);
+  },
+
+  // Bind ownership before sending a submit event.  The unique scope key makes
+  // the claim race-safe; the no-op duplicate update deliberately never
+  // changes an existing owner (including an unowned provider/counter row).
+  async bindOrderOwnership({ companyId, locationId, externalOrderReference, dgfyAccountId }) {
+    const existing = await this.getOrder({ companyId, locationId, externalOrderReference });
+    if (!existing) {
+      try {
+        await sequelize.query(`INSERT INTO dgfy_dglaundry_order_projections
+          (id, company_id, location_id, external_order_reference, external_tracking_reference,
+           dgfy_account_id, aggregate_version, status, payload, created_at, updated_at)
+          VALUES (?, ?, ?, ?, NULL, ?, 0, 'pending_submission', JSON_OBJECT(), NOW(), NOW())
+          ON DUPLICATE KEY UPDATE external_order_reference = VALUES(external_order_reference)`, {
+          replacements: [crypto.randomUUID(), companyId, locationId, externalOrderReference, dgfyAccountId]
+        });
+      } catch (error) {
+        const duplicateCode = error?.original?.code || error?.parent?.code;
+        if (!['ER_DUP_ENTRY', '23505'].includes(duplicateCode)) throw error;
+      }
+    }
+    return this.getOrder({ companyId, locationId, externalOrderReference });
+  },
+
   async getCustomerActivity({ companyId, locationId, activityReference }) {
     const rows = await sequelize.query(`SELECT * FROM dgfy_dglaundry_customer_activity_projections
       WHERE company_id = ? AND location_id = ? AND activity_reference = ? LIMIT 1`, {
