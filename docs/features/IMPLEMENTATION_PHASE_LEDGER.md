@@ -17357,3 +17357,130 @@ observation that the regenerated `storeProfile` `laundry` snapshot entry keeps a
 ### Next eligible phase
 
 250 (none named yet).
+
+## Phase 254 - Promotion quality gate: 8 remaining gates wired into CI, P2-0/P2-1/P2-2 (#1431 Phase 2)
+
+### Initiative and release
+
+#1431's Phase 2: wires the 8 gates `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` still listed "(b) CI
+job to add" into `promotion-quality-gate.yml`. **Numbering note**: the ledger's highest entry before
+this one is Phase 249 (#1432); 250 is nominally next, but the parked #1441 plan
+(`~/.claude/plans/this-is-heavy-ask-functional-bubble.md`) already reserves Phases 250-253, and this
+repo already had to fix exactly this class of collision once (`20f098a62`, "fix Phase-248 collision
+with #1433"). Re-checked at PR time (2026-09-02/03): still no entry exists in 250-253, so this phase
+claims **254** per the Phase 2 plan's own recommendation, leaving 250-253 for #1441 when it lands.
+
+### Objective and scope
+
+Four PRs, per the Phase 2 plan's own P2-x split (`.tmp/plans/1431-phase2-plan.md`):
+
+- **P2-0a** (PR #1442, docs-only, no phase needed): fixed
+  `docs/compliance/impact-declarations/2026-08-31-preflight-ephemeral-target.md`'s 3 missing
+  required sections (`## Affected Surfaces`, `## Compliance Preconditions`,
+  `## Verification Evidence`) — a hard prerequisite for gate 6, since a simulated
+  `release/*→main` run of `check-compliance-impact.js` exited 1 against this declaration
+  beforehand.
+- **P2-0b** (PR #1445, no phase needed): added `security/audit-allowlist.json` entries for the
+  `express`/`body-parser`/`qs` moderate advisories in `apps/dgfy-api` and
+  `tests/frontend-cross-app` (`npm audit`'s only `fixAvailable` path is `express@5.2.1`, a
+  semver-major upgrade out of proportion here) and filed #1444 (Express 4→5 migration) per
+  `AGENTS.md`'s role-handoff convention, cited in each new entry's `reason`.
+- **P2-1/P2-2** (PR #1447, this phase's own diff): 4 new steps in `repository-quality`
+  (`run_dependency_audit_prod`/gate 2, `run_dependency_audit_full`/gate 3,
+  `run_compliance_contracts`/gate 6 — all advisory; `run_production_env_fixtures`/gate 7 —
+  **blocking** on this first PR); `frontend-ims-quality`'s `run_shared_fnb_contract_tests` step
+  now runs `npm run test:frontend:contracts` (gate 14, 107 files/552 tests, advisory) instead of a
+  hand-picked 7-file list, plus a new `run_scroll_contracts` step (gate 17, **blocking** on this
+  first PR); `dgfy-api-quality` gained `run_runtime_doctor` (gate 8, advisory); a new
+  `frontend-budgets-quality` job (gate 16, advisory) builds all three frontend apps sequentially
+  and runs `check:frontend-budgets -- --skip-build --built-after`.
+- `scripts/check-pr-quality-workflow.js`: `BLOCKING_STEP_IDS` gained `run_production_env_fixtures`
+  (repository-quality) and `run_scroll_contracts` (frontend-ims-quality); `QUALITY_JOB_NAMES`
+  gained `frontend-budgets-quality`; `REQUIRED_QUALITY_MARKERS` updated for the new/changed step
+  content.
+- `scripts/check-pr-quality-workflow.test.js` — `CORRECT_BLOCKING_JOB_BUILDERS` extended for the
+  two new blocking ids; the renamed-step-missing regression case updated so it doesn't also trip
+  the new `run_production_env_fixtures` requirement.
+- Docs, each a dated correction/amendment, not a rewrite: rows 2, 3, 6, 7, 8, 14, 16, 17 of
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` (flipped `(b)` → `(a)`, plus 4 named corrections: 7
+  lockfile trees not 6; row 8's home is `dgfy-api-quality` not `migration-runner-quality`; row 16's
+  owned-build correction; row 17's partial-overlap correction) and its `## Summary by status`/new
+  "Documented exceptions" section; this ledger entry.
+- **Not in scope**: P2-3 (flip the 6 still-advisory gates — 2, 3, 6, 8, 14, 16 — to blocking once a
+  real `release/*→main` promotion shows them green) and P2-4 (drop the 8 from
+  `gate:release:local`'s required set, this issue's analogue of PR-B) — both gated on real
+  promotion evidence per #1147's own "Must hold" bullet and #1431's own Phase-2 wording, and both
+  handed to a separate follow-up task by design, matching how Phase 247/PR-A handed its own
+  PR-B off. `.agents/skills/promoter/SKILL.md` is untouched — it still describes
+  `gate:release:local` as 19 gates, correct until P2-4 actually reduces that set.
+
+### Status
+
+`in_progress` — flips to `completed` only once P2-4 lands and the 6 gates left advisory here (plus
+gate 6's PR-context-only case) are confirmed blocking-and-verified on a real promotion, per this
+phase's own Definition of Done.
+
+### Dependencies
+
+P2-1's gate-6 step depends on P2-0a (#1442) merging first for that step to actually pass in CI (not
+just early-exit-pass on a non-PR-context run); P2-1's gate-2/gate-3 steps depend on P2-0b (#1445)
+merging first for the same reason against `apps/dgfy-api`'s real advisories. This phase's own
+`.js`/workflow diff is independently reviewable/mergeable regardless of merge order. P2-3/P2-4
+depend on this phase merging and going green on a real `release/*→main` promotion.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `.js` file.
+- [x] `npm run check:pr-quality-workflow` passes against the updated `BLOCKING_STEP_IDS`/
+  `QUALITY_JOB_NAMES`/`REQUIRED_QUALITY_MARKERS` shape.
+- [x] `npm run test:pr-quality-workflow` — 35/35 pass.
+- [x] `npm run check:runner-routing` passes — the new `frontend-budgets-quality` job's
+  commented/active scaffold pair matches the sanctioned Phase 233 shape.
+- [x] `npm run test:runner-routing` — 34/34 pass.
+- [x] `npm run lint:docs` passes against the updated mapping doc and this ledger entry.
+- [x] `GITHUB_BASE_REF=main GITHUB_HEAD_REF=release/simulated node scripts/check-compliance-impact.js`
+  exits 0 against P2-0a's fixed declaration (was exit 1 before).
+- [x] `npm run audit:dependencies:prod` — PASS across all 7 trees after P2-0b's allowlist entries.
+- [x] `npm run test:frontend:contracts` — PASS 107 files / 552 tests (gate 14's new CI command,
+  run locally).
+- [x] Gate 17's 2-file suite — PASS 2 files / 18 tests, run locally.
+- [x] `node scripts/check-frontend-budgets.js --skip-build --built-after <ts> --report <path>` —
+  args parse and the script runs correctly (fails only on missing local `dist/assets`, expected
+  without a real build in the implementation worktree).
+- [ ] **Real-promotion evidence (P2-3's own precondition, deferred)**: the next real
+  `release/*→main` promotion runs with the 6 still-advisory gates (2, 3, 6, 8, 14, 16) — and gate
+  6 specifically in real PR context, not a `workflow_dispatch` — showing green, before P2-3 flips
+  any of them to blocking.
+
+### Deviations from the plan
+
+P2-1 and P2-2 were combined into one PR (#1447) rather than two — the plan's own "your call on
+batching" allowance (both are `promotion-quality-gate.yml`/`check-pr-quality-workflow.js` changes
+riding the same validator infrastructure, so splitting the diff added review overhead without a
+corresponding benefit). P2-3/P2-4 were not started, matching the task's own instruction that they
+are gated on real promotion evidence and handled by a separate follow-up task.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR
+bases are `develop`, branch prefixes `docs/`, `chore/`, `ci/` per
+`.github/branch-cleanup-policy.json`. `npm run check:compliance`'s missing-declaration checkpoint
+does not fire for P2-1/P2-2's own diff — every touched path (`.github/`, `scripts/`, `docs/`) is
+CI/tooling/docs, not a compliance-sensitive surface; P2-0a's own diff *is* a compliance declaration
+edit, but it's a docs-only correction to an already-filed, already-`minor`-classified declaration,
+not a new compliance-sensitive code path.
+
+### Links
+
+- Tracking issue: #1431 (Refs, not Closes — Phase 2 is four PRs, and none alone closes the parent).
+- Plan: `.tmp/plans/1431-phase2-plan.md` (Worker Planner output, 2026-09-02).
+- PRs: #1442 (P2-0a), #1445 (P2-0b, files #1444), #1447 (P2-1/P2-2).
+- Modified: `docs/compliance/impact-declarations/2026-08-31-preflight-ephemeral-target.md`,
+  `security/audit-allowlist.json`, `.github/workflows/promotion-quality-gate.yml`,
+  `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this
+  entry).
+
+### Next eligible phase
+
+255 (P2-3/P2-4, once real promotion evidence exists — handed to a separate follow-up task).
