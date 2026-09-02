@@ -1,4 +1,4 @@
-import { describe, expect, it, afterEach } from '@jest/globals';
+import { describe, expect, it, afterEach, jest } from '@jest/globals';
 import { Sequelize } from 'sequelize';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 import { applyPostSyncTenantSchema } from '../src/services/tenantSchemaBootstrap.js';
@@ -25,6 +25,14 @@ import { applyPostSyncTenantSchema } from '../src/services/tenantSchemaBootstrap
 // afterward (applied defensively to all three generated columns in this migration that read an
 // association-FK'd column, not just the one #1166 reproduced).
 describe('tenantSchemaBootstrap.applyPostSyncTenantSchema (DB integration)', () => {
+    // #1432: measured against a real MySQL 8.0.46, createTestTenant()'s
+    // sync({ force: true }) alone (139 tables) takes ~235s -- the code actually
+    // under test here (applyPostSyncTenantSchema) takes ~8s/~1s. The default 30s
+    // per-test budget was never achievable; this was a mis-budgeted timeout, not
+    // a regression in the subject under test. 300s gives headroom over the
+    // measured local (slower) MySQL.
+    jest.setTimeout(300000);
+
     let ctx;
 
     afterEach(async () => {
