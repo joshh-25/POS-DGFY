@@ -1,10 +1,29 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronRight, Minus, Plus, ShoppingCart, Trash2, X } from 'lucide-react';
 
+import { STOREFRONT_CART_MOTION } from '../../../../shared/theme/storefrontMotionTokens.js';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 import { ServiceImage } from '../../ServiceImage.jsx';
+import { formatServiceNumber } from '../../servicesFormatters.js';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 const resolveLineName = (line) => String(line?.variantName || line?.name || '').trim();
+
+const requestMotionFrame = (callback) => {
+  if (typeof window.requestAnimationFrame === 'function') return window.requestAnimationFrame(callback);
+  return window.setTimeout(() => callback(window.performance?.now?.() || Date.now()), 16);
+};
+
+const cancelMotionFrame = (frameId) => {
+  if (frameId === null || frameId === undefined) return;
+  if (typeof window.cancelAnimationFrame === 'function') {
+    window.cancelAnimationFrame(frameId);
+    return;
+  }
+  window.clearTimeout(frameId);
+};
+
+const easeCartMotion = (progress) => 1 - ((1 - Math.min(1, Math.max(0, progress))) ** 3);
 
 const resolveLineDetail = (line) => {
   const optionLabels = (Array.isArray(line?.selected_options) ? line.selected_options : [])
@@ -17,6 +36,163 @@ const resolveLineDetail = (line) => {
     .filter(Boolean);
   return [...new Set([...optionLabels, ...supportingLabels])].join(' · ');
 };
+
+function ServiceCartQuantityInput({ itemId, lineName, cartLineId, quantity, updateQty, onFocusChange }) {
+  const [draftQuantity, setDraftQuantity] = useState(String(quantity));
+  const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef(null);
+  const alignmentFrameRef = useRef(null);
+  const scrollFrameRef = useRef(null);
+  const scrollAnimationStateRef = useRef(null);
+
+  useEffect(() => {
+    setDraftQuantity(String(quantity));
+  }, [quantity]);
+
+  const commitQuantity = () => {
+    const nextQuantity = Number.parseInt(draftQuantity, 10);
+    if (!Number.isInteger(nextQuantity) || nextQuantity < 1) {
+      setDraftQuantity(String(quantity));
+      return;
+    }
+    setDraftQuantity(String(nextQuantity));
+    if (nextQuantity !== quantity) updateQty(itemId, nextQuantity, cartLineId);
+  };
+
+  const selectQuantity = useCallback(() => {
+    const input = inputRef.current;
+    if (!input || typeof input.setSelectionRange !== 'function') return;
+    const end = input.value.length;
+    input.setSelectionRange(0, end);
+  }, []);
+
+  const cancelInputAlignment = useCallback(() => {
+    cancelMotionFrame(alignmentFrameRef.current);
+    cancelMotionFrame(scrollFrameRef.current);
+    alignmentFrameRef.current = null;
+    scrollFrameRef.current = null;
+    scrollAnimationStateRef.current = null;
+  }, []);
+
+  const cancelScheduledAlignment = useCallback(() => {
+    cancelMotionFrame(alignmentFrameRef.current);
+    alignmentFrameRef.current = null;
+  }, []);
+
+  const keepInputVisible = useCallback(() => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    cancelScheduledAlignment();
+    alignmentFrameRef.current = requestMotionFrame(() => {
+      alignmentFrameRef.current = null;
+      const scrollContainer = input.closest('[data-service-cart-lines="true"]');
+      if (scrollContainer) {
+        const containerBounds = scrollContainer.getBoundingClientRect();
+        const inputBounds = input.getBoundingClientRect();
+        const targetTop = inputBounds.top - containerBounds.top + scrollContainer.scrollTop - 12;
+        const startTop = scrollContainer.scrollTop;
+        const nextTop = Math.max(0, targetTop);
+        const activeAnimation = scrollAnimationStateRef.current;
+        if (activeAnimation) {
+          activeAnimation.targetTop = nextTop;
+          return;
+        }
+
+        const distance = nextTop - startTop;
+        if (Math.abs(distance) < 1) return;
+
+        const animationState = {
+          scrollContainer,
+          startTop,
+          targetTop: nextTop,
+          startedAt: window.performance?.now?.() || Date.now()
+        };
+        scrollAnimationStateRef.current = animationState;
+        const animateScroll = (now) => {
+          if (scrollAnimationStateRef.current !== animationState) return;
+          const progress = Math.min(1, (now - animationState.startedAt) / STOREFRONT_CART_MOTION.durationMs);
+          const animationDistance = animationState.targetTop - animationState.startTop;
+          animationState.scrollContainer.scrollTop = animationState.startTop + (animationDistance * easeCartMotion(progress));
+          if (progress < 1) {
+            scrollFrameRef.current = requestMotionFrame(animateScroll);
+          } else {
+            animationState.scrollContainer.scrollTop = animationState.targetTop;
+            scrollFrameRef.current = null;
+            scrollAnimationStateRef.current = null;
+          }
+        };
+
+        scrollFrameRef.current = requestMotionFrame(animateScroll);
+        return;
+      }
+
+      input.scrollIntoView?.({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+    });
+  }, [cancelScheduledAlignment]);
+
+  useEffect(() => () => cancelInputAlignment(), [cancelInputAlignment]);
+
+  useEffect(() => {
+    if (!isFocused) return undefined;
+
+    const viewport = window.visualViewport;
+    const handleViewportResize = () => keepInputVisible();
+    const timeoutId = window.setTimeout(keepInputVisible, 250);
+    viewport?.addEventListener('resize', handleViewportResize);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      viewport?.removeEventListener('resize', handleViewportResize);
+    };
+  }, [isFocused, keepInputVisible]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      role="spinbutton"
+      aria-valuemin="1"
+      aria-valuenow={Number.parseInt(draftQuantity, 10) || quantity}
+      inputMode="numeric"
+      pattern="[0-9]*"
+      aria-label={`Quantity for ${lineName}`}
+      value={draftQuantity}
+      onBeforeInput={(event) => {
+        if (event.data && /[^0-9]/.test(event.data)) event.preventDefault();
+      }}
+      onChange={(event) => setDraftQuantity(event.target.value.replace(/[^0-9]/g, ''))}
+      onFocus={() => {
+        setIsFocused(true);
+        onFocusChange?.(true);
+        selectQuantity();
+        keepInputVisible();
+      }}
+      onClick={() => {
+        selectQuantity();
+        keepInputVisible();
+      }}
+      onBlur={() => {
+        setIsFocused(false);
+        onFocusChange?.(false);
+        cancelInputAlignment();
+        commitQuantity();
+      }}
+      onKeyDown={(event) => {
+        if (event.key.length === 1 && /[^0-9]/.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          return;
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commitQuantity();
+          event.currentTarget.blur();
+        }
+      }}
+      style={{ width: 42, minWidth: 24, height: 28, border: 'none', outline: 'none', background: 'transparent', color: '#0f172a', textAlign: 'center', fontSize: 14, fontWeight: 800, lineHeight: 1, padding: 0, fontFamily: 'inherit', scrollMarginBlockStart: 12 }}
+    />
+  );
+}
 
 export function ServiceCartDrawer({
   isCheckoutOpen,
@@ -40,12 +216,29 @@ export function ServiceCartDrawer({
   serviceCartTotal,
   hasServiceCart,
   hasMixedServiceCart,
+  goStoreCatalogPage,
   handleServicesCartCheckout,
   renderPromoCodePanel
 }) {
   const safeServiceCartLines = Array.isArray(serviceCartLines) ? serviceCartLines : [];
   const safeProductCartLines = Array.isArray(productCartLines) ? productCartLines : [];
   const hasProductCartConflict = Boolean(hasMixedServiceCart || safeProductCartLines.length > 0);
+  const [isQuantityEditing, setIsQuantityEditing] = useState(false);
+  const isCompactMobileFooter = Boolean(isMobileViewport && isQuantityEditing);
+  const serviceCartLinesPadding = safeServiceCartLines.length === 0
+    ? (isMobileViewport ? '12px 16px 12px' : '14px 20px 14px')
+    : (isMobileViewport ? '0 16px 12px' : '0 20px 14px');
+  const handleAddMoreItems = () => {
+    setIsCheckoutOpen(false);
+    goStoreCatalogPage?.();
+    setTimeout(() => {
+      const catalog = document.getElementById('storefront-catalog-section');
+      if (!catalog) return;
+      const yOffset = -60;
+      const y = catalog.getBoundingClientRect().top + window.scrollY + yOffset;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    }, 0);
+  };
 
   return (
     <>
@@ -91,7 +284,7 @@ export function ServiceCartDrawer({
             border: '2px solid #fff'
           }}
         >
-          {serviceCartCount}
+          {formatServiceNumber(serviceCartCount)}
         </span>
         <ShoppingCart size={24} strokeWidth={2.2} />
       </button>
@@ -118,7 +311,7 @@ export function ServiceCartDrawer({
             background: 'rgba(15,23,42,.46)',
             backdropFilter: 'blur(4px)',
             opacity: isCheckoutOpen ? 1 : 0,
-            transition: 'opacity 180ms ease'
+            transition: `opacity ${STOREFRONT_CART_MOTION.durationMs}ms ${STOREFRONT_CART_MOTION.easing}`
           }}
         />
 
@@ -126,24 +319,31 @@ export function ServiceCartDrawer({
           data-service-cart-drawer="true"
           style={{
             position: 'absolute',
-            top: 0,
+            top: isMobileViewport ? 'auto' : 0,
+            left: isMobileViewport ? 0 : undefined,
             right: 0,
             bottom: 0,
             width: isMobileViewport ? 'min(100vw, 100%)' : 'min(520px, calc(100vw - 40px))',
+            height: isMobileViewport ? '100dvh' : undefined,
+            maxHeight: isMobileViewport ? '100dvh' : undefined,
             background: '#ffffff',
-            borderLeft: '1px solid #dbe5ee',
+            borderLeft: isMobileViewport ? 'none' : '1px solid #dbe5ee',
+            borderTop: isMobileViewport ? '1px solid #dbe5ee' : 'none',
+            borderTopLeftRadius: isMobileViewport ? 20 : 0,
+            borderTopRightRadius: isMobileViewport ? 20 : 0,
             boxShadow: '0 24px 60px rgba(15,23,42,.18)',
             display: 'flex',
             flexDirection: 'column',
-            transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(104%)',
-            transition: 'transform 220ms ease'
+            transform: isCheckoutOpen ? (isMobileViewport ? 'translateY(0)' : 'translateX(0)') : (isMobileViewport ? 'translateY(104%)' : 'translateX(104%)'),
+            transition: `transform ${STOREFRONT_CART_MOTION.durationMs}ms ${STOREFRONT_CART_MOTION.easing}`,
+            willChange: 'transform'
           }}
         >
-          <header style={{ padding: isMobileViewport ? '10px 14px' : '22px 20px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <header style={{ padding: isMobileViewport ? '10px 14px' : '22px 20px 16px', borderBottom: '1px solid #e2e8f0', display: isMobileViewport ? 'grid' : 'flex', gridTemplateColumns: isMobileViewport ? 'minmax(0, 1fr) auto' : undefined, alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            {isMobileViewport ? <div data-testid="service-cart-mobile-handle" aria-hidden="true" style={{ width: 56, height: 5, borderRadius: 999, background: SERVICES_PALETTE.border, margin: 0, gridColumn: '1 / -1', justifySelf: 'center' }} /> : null}
             <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
-              {isMobileViewport ? <div style={{ width: 56, height: 5, borderRadius: 999, background: '#d1d5db', margin: '0 auto 10px' }} /> : null}
               <h2 style={{ margin: 0, fontSize: 24, fontWeight: 900, lineHeight: 1.2, color: '#0f172a', fontFamily: servicesDisplayFont }}>
-                Your cart ({serviceCartCount})
+                Your cart ({formatServiceNumber(serviceCartCount)})
               </h2>
               <p style={{ margin: 0, color: '#64748b', fontSize: 13, lineHeight: 1.4 }}>
                 Review your items before checkout.
@@ -160,7 +360,7 @@ export function ServiceCartDrawer({
           </header>
 
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? '14px 16px 18px' : '16px 20px 18px', display: 'grid', gap: isMobileViewport ? 10 : 12, alignContent: 'start' }}>
+            <div data-service-cart-lines="true" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: serviceCartLinesPadding, display: 'grid', gap: isMobileViewport ? 10 : 12, alignContent: 'start' }}>
               {safeServiceCartLines.length === 0 ? (
                 <div style={{ border: `1px dashed ${servicesPrimaryBorder}`, borderRadius: 20, background: servicesPrimarySoft, padding: '28px 20px', minHeight: isMobileViewport ? 240 : 320, textAlign: 'center', display: 'grid', alignContent: 'center', gap: 8 }}>
                   <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>No service added yet</div>
@@ -184,12 +384,12 @@ export function ServiceCartDrawer({
                     return (
                       <article
                         key={`services-cart-line-${line.cart_line_id || line.item_id || index}`}
-                        style={{ borderBottom: '1px solid #e2e8f0', padding: isMobileViewport ? '2px 0 12px' : '4px 0 14px', display: 'grid', gap: isMobileViewport ? 8 : 10 }}
+                        style={{ borderBottom: '1px solid #e2e8f0', padding: isMobileViewport ? '12px 0' : '14px 0', display: 'grid', gap: isMobileViewport ? 8 : 10 }}
                       >
                         <div style={{ display: 'grid', gridTemplateColumns: `${imageSize}px minmax(0, 1fr)`, gap: isMobileViewport ? 12 : 14, alignItems: 'start' }}>
                           <div style={{ position: 'relative', width: imageSize, height: imageSize, borderRadius: 16, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                             <div style={{ position: 'absolute', top: 6, right: 6, minWidth: 24, height: 24, padding: '0 7px', borderRadius: 999, background: servicesPrimary, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, boxShadow: `0 8px 18px ${servicesPrimaryShadowStrong}`, zIndex: 1 }}>
-                              {quantity}
+                              {formatServiceNumber(quantity)}
                             </div>
                             {hasLineImage ? (
                               <ServiceImage
@@ -249,9 +449,14 @@ export function ServiceCartDrawer({
                                 >
                                   <Minus size={14} strokeWidth={2.5} />
                                 </button>
-                                <span style={{ minWidth: 24, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
-                                  {quantity}
-                                </span>
+                                <ServiceCartQuantityInput
+                                  itemId={line.item_id}
+                                  lineName={lineName}
+                                  cartLineId={line.cart_line_id}
+                                  quantity={quantity}
+                                  updateQty={updateQty}
+                                  onFocusChange={setIsQuantityEditing}
+                                />
                                 <button
                                   type="button"
                                   aria-label={`Increase quantity for ${lineName}`}
@@ -273,12 +478,12 @@ export function ServiceCartDrawer({
 
           </div>
 
-          <footer style={{ borderTop: '1px solid #e2e8f0', paddingTop: isMobileViewport ? 14 : 16, paddingRight: isMobileViewport ? 16 : 20, paddingBottom: isMobileViewport ? 20 : 8, paddingLeft: isMobileViewport ? 16 : 20, display: 'grid', gap: 12, background: '#ffffff' }}>
+          <footer style={{ borderTop: '1px solid #e2e8f0', paddingTop: isCompactMobileFooter ? 8 : (isMobileViewport ? 14 : 16), paddingRight: isMobileViewport ? 16 : 20, paddingBottom: isCompactMobileFooter ? 8 : (isMobileViewport ? 20 : 8), paddingLeft: isMobileViewport ? 16 : 20, display: 'grid', gap: isCompactMobileFooter ? 8 : 12, background: '#ffffff', transition: `padding ${STOREFRONT_CART_MOTION.durationMs}ms ${STOREFRONT_CART_MOTION.easing}, gap ${STOREFRONT_CART_MOTION.durationMs}ms ${STOREFRONT_CART_MOTION.easing}` }}>
             {safeServiceCartLines.length > 0 ? (
               <button
                 type="button"
-                onClick={() => setIsCheckoutOpen(false)}
-                style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', gap: 10, alignItems: 'center', width: '100%', borderRadius: 12, border: `1px solid ${servicesPrimaryBorder}`, background: servicesPrimarySoft, padding: isMobileViewport ? '10px 12px' : '10px 14px', cursor: 'pointer', textAlign: 'left' }}
+                onClick={handleAddMoreItems}
+                style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', gap: 10, alignItems: 'center', width: '100%', borderRadius: 12, border: `1px solid ${servicesPrimaryBorder}`, background: servicesPrimarySoft, padding: isCompactMobileFooter ? '6px 12px' : (isMobileViewport ? '10px 12px' : '10px 14px'), cursor: 'pointer', textAlign: 'left', transition: `padding ${STOREFRONT_CART_MOTION.durationMs}ms ${STOREFRONT_CART_MOTION.easing}` }}
               >
                 <span style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${servicesPrimaryBorder}`, background: '#fff', color: servicesPrimary, display: 'grid', placeItems: 'center' }}>
                   <Plus size={16} strokeWidth={2.5} />
@@ -301,7 +506,7 @@ export function ServiceCartDrawer({
             ) : null}
 
             {renderPromoCodePanel ? (
-              <div style={{ marginBottom: 8 }}>
+              <div style={{ marginBottom: isCompactMobileFooter ? 0 : 8 }}>
                 {renderPromoCodePanel({ compact: true, variant: 'services-cart', accentColor: servicesPrimary, bodyFont: servicesDisplayFont, isMobile: isMobileViewport })}
               </div>
             ) : null}
@@ -311,10 +516,10 @@ export function ServiceCartDrawer({
               <span style={{ fontWeight: 700, color: '#334155' }}>{money(serviceCartTotal)}</span>
             </div>
 
-            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: isCompactMobileFooter ? 10 : 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, transition: `padding ${STOREFRONT_CART_MOTION.durationMs}ms ${STOREFRONT_CART_MOTION.easing}` }}>
               <div style={{ display: 'grid', gap: 6 }}>
                 <strong style={{ color: '#0f172a', fontSize: 18, lineHeight: 1.2, fontFamily: servicesDisplayFont }}>Total</strong>
-                <span style={{ color: '#64748b', fontSize: 13, lineHeight: 1.2 }}>{serviceCartCount} item{serviceCartCount === 1 ? '' : 's'}</span>
+                <span style={{ color: '#64748b', fontSize: 13, lineHeight: 1.2 }}>{formatServiceNumber(serviceCartCount)} item{serviceCartCount === 1 ? '' : 's'}</span>
               </div>
               <strong style={{ color: '#0f172a', fontSize: isMobileViewport ? 26 : 32, fontWeight: 900, lineHeight: 1.2, textAlign: 'right', fontFamily: servicesDisplayFont }}>{money(serviceCartTotal)}</strong>
             </div>
@@ -323,7 +528,7 @@ export function ServiceCartDrawer({
               type="button"
               onClick={handleServicesCartCheckout}
               disabled={!hasServiceCart}
-              style={{ width: '100%', minHeight: isMobileViewport ? 48 : 54, padding: '11.2px 17.6px', borderRadius: 18, border: 'none', background: !hasServiceCart ? '#cbd5e1' : `linear-gradient(135deg,${servicesPrimary},${servicesPrimaryDark})`, color: '#fff', fontSize: 16, lineHeight: 1.4, fontWeight: 900, fontFamily: servicesDisplayFont, cursor: !hasServiceCart ? 'not-allowed' : 'pointer', boxShadow: !hasServiceCart ? 'none' : `0 14px 30px ${servicesPrimaryShadowStrong}` }}
+              style={{ width: '100%', minHeight: isCompactMobileFooter ? 44 : (isMobileViewport ? 48 : 54), padding: '11.2px 17.6px', borderRadius: 18, border: 'none', background: !hasServiceCart ? '#cbd5e1' : `linear-gradient(135deg,${servicesPrimary},${servicesPrimaryDark})`, color: '#fff', fontSize: 16, lineHeight: 1.4, fontWeight: 900, fontFamily: servicesDisplayFont, cursor: !hasServiceCart ? 'not-allowed' : 'pointer', boxShadow: !hasServiceCart ? 'none' : `0 14px 30px ${servicesPrimaryShadowStrong}`, transition: `min-height ${STOREFRONT_CART_MOTION.durationMs}ms ${STOREFRONT_CART_MOTION.easing}` }}
             >
               Continue to booking
             </button>

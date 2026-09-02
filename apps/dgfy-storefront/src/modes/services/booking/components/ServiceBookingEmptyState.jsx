@@ -1,11 +1,13 @@
 import React from 'react';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 export function ServiceBookingEmptyState({
   onBrowseServices,
   isMobileViewport,
-  servicesPrimary = '#0f766e',
-  servicesPrimaryDark = '#134e4a',
-  servicesPrimaryShadow = 'rgba(15,118,110,0.24)',
+  servicesPrimary = SERVICES_PALETTE.primary,
+  servicesPrimaryDark = SERVICES_PALETTE.primaryDark,
+  servicesPrimaryShadow = SERVICES_PALETTE.primaryShadow,
+  servicesDisplayFont,
 }) {
   return (
     <section
@@ -21,7 +23,7 @@ export function ServiceBookingEmptyState({
       }}
     >
       <div style={{ display: 'grid', gap: 8 }}>
-        <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>
+        <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>
           No service selected yet
         </div>
         <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: '#64748b' }}>

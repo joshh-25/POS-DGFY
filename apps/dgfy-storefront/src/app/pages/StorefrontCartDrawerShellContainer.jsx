@@ -18,6 +18,7 @@ import { FnbTrackingRouteContainer } from '../../modes/fnb/tracking/pages/FnbTra
 import { ServicesTrackingRouteContainer } from '../../modes/services/tracking/pages/ServicesTrackingRouteContainer.jsx';
 import { RetailTrackingRouteContainer } from '../../modes/retail/tracking/pages/RetailTrackingRouteContainer.jsx';
 import { TrackingDrawerMount } from '../../tracking/components/TrackingDrawerMount.jsx';
+import { SERVICES_PALETTE } from '../../modes/services/servicesPalette.js';
 
 // Cart/checkout drawer shell — cross-mode composition (fnb/services/simple/shared) that mounts
 // the follow floating action, cart FABs/drawers per mode, the shared checkout-drawer frame
@@ -98,12 +99,14 @@ export function StorefrontCartDrawerShellContainer(props) {
       ? { accentColor: '#1a4e8d', accentSoft: 'rgba(26,78,141,0.16)', accentStrong: 'rgba(26,78,141,0.32)', borderColor: 'rgba(26,78,141,0.24)', icon: ShoppingCart }
       : isSimpleMode
         ? { accentColor: '#176B3A', accentSoft: 'rgba(23,107,58,0.14)', accentStrong: 'rgba(23,107,58,0.24)', borderColor: 'rgba(23,107,58,0.22)', icon: ShoppingCart }
+        : isServicesMode
+          ? { accentColor: servicesPrimary || SERVICES_PALETTE.primary, accentSoft: 'rgba(26,78,141,0.16)', accentStrong: SERVICES_PALETTE.primaryShadowStrong, borderColor: SERVICES_PALETTE.primaryBorder, icon: ShoppingCart }
         : {};
 
   return (
     <>
       {!isAccountDrawerOpen && isServicesCartDrawerMode && (
-        <ServiceCartDrawer {...serviceCartDrawerProps} />
+        <ServiceCartDrawer {...serviceCartDrawerProps} goStoreCatalogPage={goStoreCatalogPage} />
       )}
       {(isServicesMode || isFnbMode || isRetailMode || isSimpleMode) && (
         <StorefrontCartFlyAnimations animations={serviceCartFlyAnimations} {...cartFlyAnimationProps} />
@@ -189,7 +192,7 @@ export function StorefrontCartDrawerShellContainer(props) {
               )}
               {!(isFnbMode && !isFnbOrderSubpage) && (
                 <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', background: '#e6fffb', border: '1px solid #99f6e4', borderRadius: 999, padding: '3px 8px' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: isServicesMode ? servicesPrimary : '#0f766e', background: isServicesMode ? SERVICES_PALETTE.primarySoft : '#e6fffb', border: `1px solid ${isServicesMode ? SERVICES_PALETTE.primaryBorder : '#99f6e4'}`, borderRadius: 999, padding: '3px 8px' }}>
                     {cartCount} {isServicesMode && hasServiceCart ? 'service' : 'item'}{cartCount === 1 ? '' : 's'}
                   </span>
                   {(!isServicesMode || !hasServiceCart) && (
@@ -232,7 +235,7 @@ export function StorefrontCartDrawerShellContainer(props) {
                   onClick={() => {
                     setCheckoutTab(tab.id);
                   }}
-                  style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
+                  style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? (isServicesMode ? servicesPrimary : '#0f766e') : '#cbd5e1'}`, background: checkoutTab === tab.id ? (isServicesMode ? SERVICES_PALETTE.primarySoft : '#e6fffb') : '#fff', color: checkoutTab === tab.id ? (isServicesMode ? servicesPrimary : '#0f766e') : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
                 >
                   {tab.label}
                   </button>

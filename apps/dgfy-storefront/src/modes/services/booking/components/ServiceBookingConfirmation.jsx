@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle2 } from 'lucide-react';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 export function ServiceBookingConfirmation({
   isMobileViewport,
@@ -8,11 +9,12 @@ export function ServiceBookingConfirmation({
   confirmationAmount,
   checkoutResult,
   money,
-  servicesPrimary = '#0f766e',
-  servicesPrimaryDark = '#134e4a',
-  servicesPrimarySoft = '#ecfeff',
-  servicesPrimaryBorder = 'rgba(15,118,110,0.2)',
-  servicesPrimaryShadow = 'rgba(15,118,110,0.24)',
+  servicesPrimary = SERVICES_PALETTE.primary,
+  servicesPrimaryDark = SERVICES_PALETTE.primaryDark,
+  servicesPrimarySoft = SERVICES_PALETTE.primarySoft,
+  servicesPrimaryBorder = SERVICES_PALETTE.primaryBorder,
+  servicesPrimaryShadow = SERVICES_PALETTE.primaryShadow,
+  servicesDisplayFont,
   onTrackBooking,
   onResetAndBackToServices,
 }) {
@@ -40,7 +42,7 @@ export function ServiceBookingConfirmation({
           <CheckCircle2 size={16} />
           Booking confirmed
         </div>
-        <div style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: '#0f172a', lineHeight: 1.08 }}>
+        <div style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: '#0f172a', lineHeight: 1.08, fontFamily: servicesDisplayFont }}>
           Your service booking is confirmed
         </div>
         <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: '#64748b', maxWidth: 680 }}>
@@ -51,15 +53,15 @@ export function ServiceBookingConfirmation({
       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
         <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Reference</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{confirmationReference || 'Pending'}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>{confirmationReference || 'Pending'}</div>
         </div>
         <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{confirmationServiceName}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>{confirmationServiceName}</div>
         </div>
         <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated total</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{money(confirmationAmount)}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>{money(confirmationAmount)}</div>
         </div>
       </div>
 

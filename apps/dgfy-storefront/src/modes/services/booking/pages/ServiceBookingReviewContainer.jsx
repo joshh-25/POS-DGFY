@@ -2,6 +2,7 @@ import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 import { ServiceImage } from '../../ServiceImage.jsx';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the "Review Your Booking" summary
@@ -27,6 +28,7 @@ export function ServiceBookingReviewContainer({
   servicePaymentTiming,
   servicesPrimary,
   servicesPrimaryDark,
+  servicesDisplayFont,
   setCartImageErrors,
   setCheckoutTab,
 }) {
@@ -36,7 +38,7 @@ export function ServiceBookingReviewContainer({
         <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 18, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Review Your Booking</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>Review Your Booking</div>
               <div style={{ marginTop: 4, fontSize: 13, color: '#64748b' }}>Confirm the selected service, schedule, and booking instructions before you continue.</div>
             </div>
             <button
@@ -82,7 +84,7 @@ export function ServiceBookingReviewContainer({
                   <div style={{ fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                     {firstServiceLine?.service_detail?.service_type || firstServiceLine?.category || 'Service'}
                   </div>
-                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 900, color: '#0f172a' }}>
+                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>
                     {firstServiceLine?.variantName || firstServiceLine?.name}
                   </div>
                 </div>
@@ -98,7 +100,7 @@ export function ServiceBookingReviewContainer({
                   </span>
                 </div>
               </div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', textAlign: isMobileViewport ? 'left' : 'right' }}>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont, textAlign: isMobileViewport ? 'left' : 'right' }}>
                 {money((Number(firstServiceLine?.price || 0) || 0) * Math.max(1, Number(firstServiceLine?.quantity || 1)))}
               </div>
             </div>
@@ -124,7 +126,7 @@ export function ServiceBookingReviewContainer({
   
             {serviceIntakeFields.length > 0 && (
               <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Service requirements</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>Service requirements</div>
                 <div style={{ display: 'grid', gap: 8 }}>
                   {serviceIntakeFields.map((field) => (
                     <div key={`review-${field.id}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '180px 1fr', gap: 10, padding: '10px 0', borderTop: '1px solid #edf2f7' }}>
@@ -146,13 +148,13 @@ export function ServiceBookingReviewContainer({
       <aside style={{ display: 'grid', gap: 12, position: isDesktopCheckout ? 'sticky' : 'static', top: 0 }}>
         <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 16, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)', display: 'grid', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Booking Summary</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>Booking Summary</div>
             <div style={{ fontSize: 12, color: '#64748b' }}>Move to customer details when the service details look correct.</div>
           </div>
           <div style={{ borderRadius: 16, background: `linear-gradient(135deg, ${servicesPrimary}, ${servicesPrimaryDark})`, color: '#fff', padding: 14, display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, opacity: .95 }}>Service total</span>
-              <strong style={{ fontSize: 18 }}>{money(cartTotal)}</strong>
+              <strong style={{ fontSize: 18, fontFamily: servicesDisplayFont }}>{money(cartTotal)}</strong>
             </div>
             <div style={{ fontSize: 12, opacity: .95 }}>
               {serviceBookingSummarySchedule}
@@ -162,7 +164,7 @@ export function ServiceBookingReviewContainer({
             <button
               type="button"
               onClick={() => setCheckoutTab('checkout')}
-              style={{ borderRadius: 14, border: '1px solid rgba(15,118,110,.15)', background: servicesPrimary, color: '#fff', padding: '12px 14px', fontWeight: 800, cursor: 'pointer' }}
+              style={{ borderRadius: 14, border: `1px solid ${SERVICES_PALETTE.primaryBorder}`, background: servicesPrimary, color: '#fff', padding: '12px 14px', fontWeight: 800, cursor: 'pointer' }}
             >
               Continue to Checkout
             </button>

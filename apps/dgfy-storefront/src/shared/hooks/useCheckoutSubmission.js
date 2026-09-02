@@ -94,6 +94,7 @@ export function useCheckoutSubmission({
   serviceCartValidationIssues,
   serviceDraftQuantity,
   serviceOrderMethod,
+  serviceFlowMethod,
   servicesLocalSimulationEnabled,
   isServicesLocalSimulationMethod,
   createServicesLocalSimulation,
@@ -133,6 +134,7 @@ export function useCheckoutSubmission({
   writeLastTrackingPinForStore,
   writeSavedCustomerDetails
 }) {
+  const effectiveServiceOrderMethod = String(serviceFlowMethod || serviceOrderMethod || '').trim().toLowerCase();
   const handleQuote = async () => {
     if (!selectedStore) return;
     setQuoteError('');
@@ -235,7 +237,7 @@ export function useCheckoutSubmission({
       toast.error(message);
       return;
     }
-    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt && serviceOrderMethod !== 'quote') {
+    if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt && effectiveServiceOrderMethod !== 'quote') {
       const message = 'Choose an appointment date and time before booking.';
       setCheckoutError(message);
       toast.error(message);
@@ -290,7 +292,7 @@ export function useCheckoutSubmission({
     const shouldCreateLocalServicesSimulation = isServicesMode
       && servicesLocalSimulationEnabled
       && typeof isServicesLocalSimulationMethod === 'function'
-      && isServicesLocalSimulationMethod(serviceOrderMethod);
+      && isServicesLocalSimulationMethod(effectiveServiceOrderMethod);
     if (shouldCreateLocalServicesSimulation) {
       const localSimulation = createServicesLocalSimulation({
         customerAddress,
@@ -303,7 +305,7 @@ export function useCheckoutSubmission({
         serviceAppointmentAt,
         serviceBookingLine,
         serviceCartLines,
-        serviceOrderMethod
+        serviceOrderMethod: effectiveServiceOrderMethod
       });
       setCart([]);
       setSelectedServiceCartLineId('');
@@ -320,7 +322,7 @@ export function useCheckoutSubmission({
       setServicePaymentPreviewReceiptName('');
       setShowOrderSuccessAnimation(false);
       setCheckoutTab('track');
-      goStoreTrackPage({ pin: localSimulation.tracking_pin, serviceHandoff: serviceOrderMethod });
+      goStoreTrackPage({ pin: localSimulation.tracking_pin, serviceHandoff: effectiveServiceOrderMethod });
       clearCheckoutAuthResumeDraft();
       toast.success('Local Services preview created. No backend booking was submitted.');
       return;
@@ -604,7 +606,7 @@ export function useCheckoutSubmission({
         setCheckoutResult(null);
         goStoreTrackPage({
           pin: trackingPinToOpen,
-          serviceHandoff: isServicesMode ? serviceOrderMethod : ''
+          serviceHandoff: isServicesMode ? effectiveServiceOrderMethod : ''
         });
       } else {
         setFnbOrderStep(4);

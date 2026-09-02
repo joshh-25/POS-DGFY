@@ -43,6 +43,7 @@ export function useCheckoutTotalsAndGating({
   quoteNeedsRefresh,
   quoteResult,
   selectedStore,
+  serviceAppointmentAt,
   selectedLocationId,
   serviceCartLines,
   storeLocations,
@@ -155,8 +156,8 @@ export function useCheckoutTotalsAndGating({
     hasAvailableFulfillmentMethod: simpleOrderMethodOptions.some((option) => option.available)
   });
   const serviceCartValidationIssues = useMemo(
-    () => buildServiceCartValidationIssues(serviceCartLines),
-    [serviceCartLines]
+    () => buildServiceCartValidationIssues(serviceCartLines, serviceAppointmentAt),
+    [serviceAppointmentAt, serviceCartLines]
   );
   const checkoutAllowed = canCheckout({
     selectedStore,
