@@ -115,6 +115,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Found live (#1374 follow-up, 2026-09-02, run 33569433235): this repo's runners are a
+      # fixed-count self-hosted pool that does NOT wipe /tmp between jobs (the same reason
+      # PREFLIGHT_API_PORT above has to dodge DEV's real port instead of assuming isolation). The
+      # "Push reconciliation branch and open PR or hand off" step below only writes
+      # /tmp/handoff-state.json when it actually runs (overall_fail=='0') -- on a run where
+      # preflight genuinely fails, that step is skipped entirely, so the report step below read
+      # WHATEVER handoff-state.json a previous, unrelated successful run had left on disk and
+      # presented its stale branch/PR/superseded-branch fields as if they belonged to this run's
+      # failure. Confirmed live: issue #1393 (preflight_failed, run 33569433235) showed branch
+      # `compliance-sweep/33560381242` from the prior successful run 33560381242, not anything
+      # from this run. Clearing every file this job's own steps later write, at the very start of
+      # the job, is the fix -- report-preflight-sweep-outcome.js already treats a genuinely-absent
+      # handoff-state.json as `not_attempted` correctly (that path had test coverage; a
+      # stale-but-present file from a DIFFERENT run never did, since a unit test can't reproduce a
+      # non-ephemeral shared /tmp on its own).
+      - name: Clear stale per-run temp state
+        run: rm -f /tmp/handoff-state.json /tmp/results.json /tmp/declarations.txt /tmp/all-declarations.txt /tmp/declarations-validated.txt /tmp/pr-create.stderr /tmp/pr-body.md /tmp/compliance-preflight-sweep-handoff.json /tmp/handoff-issue.md
+
       - name: Discover NOT-EXECUTED-* declarations
         id: discover
         env:
