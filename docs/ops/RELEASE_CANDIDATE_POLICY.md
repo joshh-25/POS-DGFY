@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-02
+last_reviewed: 2026-09-03
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -614,3 +614,71 @@ same kind `pr-checks.yml` has always been — not a new technical gate GitHub it
 conditions) delegates them to CI and drops them from the local required set.
 
 PR: (this PR). Refs #1431, #1063, #1066, #1147.
+
+### 2026-09-03: Delegate the same 7 gates out of `gate:release:local`'s required set (#1431 Phase 1,
+PR-B) — closes the loop the 2026-09-02 PR-A entry above forward-referenced
+
+Not rewritten in place, same convention as every amendment above. This is the "separate, later PR"
+the PR-A entry immediately above named as its own forward reference — that loop is now closed.
+
+**What changed.** `scripts/gate-release-local.js` gained a `CI_ENFORCED_GATES` map naming the same
+7 gates PR-A flipped to blocking (`docs.lint`, `architecture.guardrails`, `backend.lint`,
+`frontend.ims.lint`, `frontend.pos.lint`, `frontend.storefront.lint`,
+`frontend.storefront.contracts`). By default, each now delegates: recorded `status:
+"delegated_to_ci"`, `ok: true`, `duration_ms: 0`, never actually invoked. `--include-ci-enforced`
+runs all 7 locally anyway; naming one explicitly via `--only` also runs it rather than delegating it
+(an explicit `--only` is an explicit request). `run_mode` is unaffected by delegation — a default
+run that delegates all 7 is still `run_mode: "full"`, satisfying Decision 7's `run_mode: "full"`
+precondition below unchanged; the artifact's new `required_gate_count`/`delegated_gate_count`/
+`ci_enforced_gates` fields make what actually ran locally legible instead of inferred.
+`scripts/check-pr-quality-workflow.js` gained `checkCiEnforcedGatesAreBlocking()`, asserting every
+`CI_ENFORCED_GATES` step id is still present in that same file's `BLOCKING_STEP_IDS` — the
+compensating control named in PR-A's own entry as the thing that would keep a future edit from
+silently re-adding `continue-on-error` to one of these 7 steps without anything noticing. **12 of
+the 19 gates remain required locally** — this is a narrowing of scope, not a removal of the gate
+itself; `docs/testing/release-go-no-go-checklist.md`'s "## The 19 gates" section and
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` carry the full per-gate detail.
+
+**The evidence bar this PR met, and the one residual gap it did not close.** #1431 Phase 1's plan
+originally gated this PR on a real `release/*→main` promotion PR proving the 7 steps green under
+production conditions (V2 as PR-A's entry describes it). No such promotion has run since PR-A
+merged. On escalation, Pat confirmed a substituted, B-amended evidence bar instead: **V1** — a
+genuine negative-signal dispatch run (`33650659451`) on a throwaway probe branch with one injected
+lint error, confirming `frontend-pos-quality`'s own check-run (not the workflow-run rollup, which
+stays `success` under the pre-existing job-level `continue-on-error: true` — see the trap noted
+below) reds out to `failure` while every other job stays green; **V2′** — the existing green
+`workflow_dispatch` run on `develop` HEAD (`33642893358`) cited in place of a not-yet-run real
+promotion, on the strength of a verified command/runner-identity argument (§1–2 of the #1431 Phase 1
+PR-B plan) rather than an assumption; **V3** — `npm run gate:release:local --only <the 7>` against
+the same HEAD, 7/7 pass, confirming local/CI command parity is exact for 6 of the 7 and a documented
+CI-side superset for the 7th (`frontend.storefront.contracts`, unfiltered `npx vitest run` vs. the
+local gate's `contract.test`/`integration.test` filter).
+
+**Open, tracked residual gap — not closed by this PR:** no real `release/*→main` PR has yet
+exercised these 7 steps as a blocking check on an actual PR's `mergeStateStatus`. V1 demonstrates a
+red check-run at the job level; V2′ demonstrates the green path is command/runner-identical to a
+real promotion; neither demonstrates the specific mechanism this policy and `AGENTS.md`'s Merge
+Safety hard stop both rely on — that a red check-run on this workflow drives a promotion PR's
+`mergeStateStatus` to `UNSTABLE`. This is GitHub platform behavior this repo already relies on
+elsewhere (`pr-checks.yml`), not a novel risk, but it is untested for this specific workflow on an
+actual PR. Track close-out against #1431: the next real `release/*→main` (or `staging→main`)
+promotion PR that runs with one of these 7 steps genuinely red should have its `mergeStateStatus`
+and Checks-tab state cited back on that issue, and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
+matching footnote updated once it is.
+
+**The run-rollup reading trap, restated here because it is easy to get backwards.**
+`gh run view <id> --json conclusion` reports the *workflow run's* rollup conclusion, which stays
+`success` even when a quality job inside it failed — the pre-existing job-level
+`continue-on-error: true` (unchanged by PR-A or this PR) spares the run rollup, not the job. The
+**job's** check-run is what actually carries `failure` and what GitHub computes `mergeStateStatus`
+from. Anyone verifying these gates block — now, or on a future promotion — must read per-job
+conclusions (`gh run view <id> --json jobs --jq '.jobs[]|"\(.name) \(.conclusion)"'`) or
+`gh pr checks <N>`, never the run rollup; a promoter checking only the rollup would wrongly conclude
+the gate is inert.
+
+`run_mode: "full"` still means "every gate this script owns either ran locally or was legitimately
+delegated to a verified-blocking CI enforcer" — not "every gate ran locally." Decision 7's
+precondition below is satisfied by that reading, not violated by it (see the rejected-alternative
+note in the #1431 Phase 1 PR-B plan for why a third `run_mode` value was considered and rejected).
+
+PR: (this PR). Refs #1431, #1063, #1066, #1147, #1435 (PR-A).

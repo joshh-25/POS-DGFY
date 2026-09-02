@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T18:13:23.429Z",
+  "generatedAt": "2026-09-02T18:28:39.057Z",
   "totalFiles": 637,
   "byClassification": {
     "keep": 576,
@@ -10830,9 +10830,12 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md"
+        ],
         "historical": [
-          "docs/compliance/impact-declarations/2026-06-16-production-observability-traceability.md"
+          "docs/compliance/impact-declarations/2026-06-16-production-observability-traceability.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
       },

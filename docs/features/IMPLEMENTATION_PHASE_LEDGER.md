@@ -17015,10 +17015,12 @@ the `check:compliance` missing-declaration checkpoint does not fire either — e
 
 #1431's Phase 1: re-arm `promotion-quality-gate.yml`'s advisory-only steps (#1063/#1066) now that
 12 recent release-leg runs plus a local run of the seven statically-covered gates confirm 7 of the
-8 `gate:release:local`-covered gates are healthy. This phase is PR-A only — dropping the same 7
-gates from `gate:release:local`'s local required set is a separate, later PR-B, gated on a real
-`release/*→main` (or `staging→main`) promotion actually proving the 7 flipped steps green under
-production conditions (V1–V3 in the #1431 Phase 1 implementation plan).
+8 `gate:release:local`-covered gates are healthy, then drop the same 7 gates from
+`gate:release:local`'s local required set once that's proven blocking. Two PRs, one phase: **PR-A**
+flips the CI steps to blocking; **PR-B** (2026-09-03) delegates the same 7 gates out of the local
+required set, gated on V1–V3 evidence — met under the B-amended bar Pat confirmed after the
+originally-planned V2 (a real `release/*→main`/`staging→main` promotion) turned out not to be
+available; see Status below for the substitution and the residual gap it leaves open.
 
 ### Objective and scope
 
@@ -17053,21 +17055,32 @@ production conditions (V1–V3 in the #1431 Phase 1 implementation plan).
   assertion, a stale `LOCK.UPDATE` mock, a snapshot missing a `laundry` entry), and #1147's own
   mapping doc names #1015 as its hard prerequisite. Gets its own hand-back follow-up track (fix PR,
   then a later PR-A2/PR-B2 pair), not touched here. `run_web_core_lint` — separate, pre-existing
-  `packages/web-core` lint debt (14 errors), no local gate covers it. PR-B (dropping the 7 flipped
-  gates from `gate:release:local`'s required set) — sequenced after this phase, gated on V1–V3.
-  `scripts/gate-release-local.js` is untouched in this phase.
+  `packages/web-core` lint debt (14 errors), no local gate covers it.
+- **PR-B (this phase's second and closing PR, 2026-09-03)**: drops the same 7 gates from
+  `scripts/gate-release-local.js`'s required set (`CI_ENFORCED_GATES`, delegated by default,
+  `--include-ci-enforced`/`--only <gate>` escape hatches), adds
+  `scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` cross-file guard, and
+  carries the matching doc amendments — gated on V1–V3 evidence per this phase's own Definition of
+  Done, met under the B-amended bar recorded in Status below.
 
 ### Status
 
-`in_progress` — flips to `completed` only once PR-B lands and V1–V3 evidence (the negative
-workflow_dispatch test, a real green `release/*→main`/`staging→main` promotion, and local/CI parity
-on the 7 gates) is linked below, per this phase's own Definition of Done.
+`completed` (2026-09-03, PR-B landed). This phase's Definition of Done named a real
+`release/*→main`/`staging→main` promotion (V2) as the closing evidence; none has run since PR-A
+merged. On escalation, Pat confirmed a **B-amended evidence bar** in its place: V1 (run now, a
+genuine negative signal), V2′ (cite the existing green `workflow_dispatch` run in place of a not-yet-
+run real promotion, residual gap named), V3 (local/CI parity, run now). All three executed and
+passed — see Acceptance below. **Residual gap, open and tracked, not closed by this phase:** no real
+`release/*→main` PR has yet exercised these 7 steps as a blocking check on an actual PR's
+`mergeStateStatus: UNSTABLE` transition. Track close-out against #1431 — the next real promotion PR
+that runs with one of these 7 steps genuinely red should have that transition cited back on the
+issue, and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s matching footnote updated once it is.
 
 ### Dependencies
 
-None blocking this phase's own PR. `backend.test_matrix`'s follow-up track depends on #1015 (backend
-test-matrix speed). PR-B depends on this phase's V1–V3 verification actually running on a real
-promotion.
+None blocking either PR in this phase. `backend.test_matrix`'s follow-up track (PR-A2/PR-B2, out of
+this phase's scope) depends on #1015 (backend test-matrix speed) — resolved by #1432/Phase 249,
+making that follow-up track newly actionable but still separate work.
 
 ### Acceptance and validation evidence
 
@@ -17076,19 +17089,42 @@ promotion.
 - [x] `npm run lint:docs` passes against the four updated/amended governed docs.
 - [x] `node --test scripts/check-pr-quality-workflow.test.js` — all cases green, including the new
   `BLOCKING_STEP_IDS` coverage.
-- [ ] **V1 (negative, deferred to promoter/a human)**: a scratch branch off `develop` with one
-  injected lint error, dispatched via `workflow_dispatch`, shows the matching quality job
-  `conclusion: failure` and every other job green.
-- [ ] **V2 (positive, deferred)**: the next real `release/*→main` (or `staging→main`) promotion runs
-  with all 7 flipped steps green and reaches `mergeStateStatus: CLEAN`; the `to-staging/*→staging`
-  leg of the same promotion shows zero quality jobs.
-- [ ] **V3 (parity, deferred)**: on that release head, `gate:release:local -- --only <the 7>` agrees
-  with CI.
+- [x] **V1 (negative)**: run `33650659451`, `workflow_dispatch` on scratch branch
+  `ci/1431-v1-negative-probe` @ `74f0fe01`, one injected `no-restricted-syntax` error under
+  `apps/dgfy-pos/src` → `frontend-pos-quality`'s own check-run `conclusion: failure`, every other
+  job `success`. Probe branch deleted after; worktree left clean.
+- [x] **V2′ (positive, substituted per Pat's B-amended decision)**: no real `release/*→main`
+  promotion has run since PR-A merged, so this cites the existing green `workflow_dispatch` run
+  instead — `33642893358` on `develop` @ `c16cc6b50`, `conclusion: success`, all 6 quality jobs
+  green, all 8 flipped steps blocking-and-green. Verified command/runner-identical to a real
+  promotion run (§1–2 of the #1431 Phase 1 PR-B plan), but **does not** demonstrate the
+  `mergeStateStatus: UNSTABLE` transition on an actual PR — that remains the phase's one open,
+  tracked residual gap (see Status above).
+- [x] **V3 (parity)**: `npm run gate:release:local --only <the 7>` on `c16cc6b50` — 7/7 PASS,
+  `verdict: pass`, `failed_gate_count: 0`. Artifact: `.tmp/release-gates/c16cc6b50…/local_readiness.json`.
+- [x] PR-B: `scripts/gate-release-local.js` delegates the 7 gates by default
+  (`CI_ENFORCED_GATES`), artifact gains `required_gate_count`/`delegated_gate_count`/
+  `ci_enforced_gates`, `run_mode` unaffected by delegation.
+- [x] PR-B: `scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` cross-
+  asserts `CI_ENFORCED_GATES` against `BLOCKING_STEP_IDS` — the compensating control this phase's
+  own scope named as needed once local enforcement is dropped.
+- [x] PR-B: `node --test scripts/gate-release-local.test.js scripts/check-pr-quality-workflow.test.js`
+  — all cases green, including new delegation/counter coverage.
+- [x] PR-B: doc updates (dated amendments, not rewrites) — `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/testing/release-go-no-go-checklist.md`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`,
+  ADR 0074 (Decision 7), `.agents/skills/promoter/SKILL.md` +
+  `.agents/skills/promoter/references/promotion-runbook.md`.
 
 ### Deviations from the plan
 
-(fill in at completion if any — none expected; the plan's own §1 root-cause finding and §2
-mechanism were followed as written)
+PR-A: none — the plan's own §1 root-cause finding and §2 mechanism were followed as written.
+
+PR-B: the PR-B plan's own precondition (V2: a real `release/*→main`/`staging→main` promotion
+proving the 7 flipped steps green under production conditions) was not met — none had run since
+PR-A merged. On escalation, Pat confirmed a B-amended substitution: V1 run for real, V2′ (the
+existing green `workflow_dispatch` run cited in its place, residual gap named), V3 run for real.
+This is a deviation from the phase's originally-stated Definition of Done, not a silent
+substitution — see Status above for the full evidence and the residual gap it leaves open.
 
 ### Checkpoints (`.agents/skills/implement/SKILL.md`)
 
@@ -17100,11 +17136,21 @@ check:compliance`'s missing-declaration checkpoint does not fire — every touch
 ### Links
 
 - Tracking issue: #1431 (Refs, not Closes — Phase 1 is two PRs, and neither closes the parent).
-- Plan: `.tmp/plans/1431-phase1-plan.md` (Worker Planner output, 2026-09-02).
-- Modified: `.github/workflows/promotion-quality-gate.yml`, `scripts/check-pr-quality-workflow.js`,
+- Plans: `.tmp/plans/1431-phase1-plan.md` (Worker Planner output for PR-A, 2026-09-02);
+  `.tmp/plans/1431-prb-plan.md` (Planner output for PR-B, 2026-09-02, including the precondition
+  finding, the B-amended decision, and the V1/V2′/V3 evidence this entry's Acceptance section
+  links).
+- Modified (PR-A): `.github/workflows/promotion-quality-gate.yml`, `scripts/check-pr-quality-workflow.js`,
   `scripts/check-pr-quality-workflow.test.js`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`,
   `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md`,
   `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `.agents/skills/promoter/SKILL.md`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+- Modified (PR-B): `scripts/gate-release-local.js`, `scripts/gate-release-local.test.js`,
+  `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/testing/release-go-no-go-checklist.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`,
+  `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md`,
+  `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
   `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
 
 ### Next eligible phase
@@ -17310,16 +17356,283 @@ observation that the regenerated `storeProfile` `laundry` snapshot entry keeps a
 
 ### Next eligible phase
 
-250.
+250, claimed below by #1431 Phase 3. Phase 251 (#1431 Phase 2, coordinated separately at PR #1447
+review time, RF-1) follows immediately after it.
 
-## Phase 250 - Backend test-suite value audit + highest-confidence cuts (#1441, PR-A)
+## Phase 250 - Retire the 3 structurally-unfailable local gates: closed resolutions for #1, #18, #19 (#1431 Phase 3)
+
+### Initiative and release
+
+#1431's Phase 3: the three gates `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` marked "(c) stays
+local-only." #1431's Definition of Done requires every one of the 19 original gates to reach "a
+documented, closed resolution," and its own End-goal paragraph resolves what that means for these
+three: the local requirement is *dropped* because CI needs no equivalent — not that an equivalent
+gets built, and not that they stay local. Independent of #1431 Phase 1's PR-A/PR-B track (the 7
+CI-covered gates) and of #1431 Phase 2's own P2-0/P2-1/P2-2 (Phase 251, immediately below); neither
+blocks the other.
+
+### Objective and scope
+
+- `scripts/gate-release-local.js`: `GATE_NAMES` 19 -> 16 (`release.target_sha`,
+  `observability.evidence.report`, `release.verdict.contract` removed), their three `runGate(...)`
+  calls removed, and `STRUCTURALLY_CANNOT_FAIL` reduced to `compliance.contracts` alone. **The
+  `const targetSha = ...` resolution is kept** — it names `.tmp/release-gates/<sha>/` and populates
+  `local_readiness.json`'s `target_sha`, which the `## Local CI` commit-binding (#725 RF-2) depends
+  on; only the scored gate row is retired. **PR #1446 review, RF-1:** the empty-SHA edge case the
+  plan itself flagged ("nothing downstream works anyway") now fails fast and loud (`process.exit(1)`)
+  instead of silently writing evidence under `.tmp/release-gates/undefined/`.
+- `scripts/gate-release-local.test.js`: documented count 19 -> 16; the `--only` example switched off
+  `release.target_sha` to a surviving gate (`docs.lint`); a new assertion that none of the three
+  retired names is in `GATE_NAMES`, so a future edit cannot silently re-add one; plus a subprocess
+  test (RF-1) proving the fail-fast/no-evidence-dir behavior from a non-git tmpdir. Rebased onto
+  #1431 Phase 1 PR-B/Phase 2's own additions to this same file (`CI_ENFORCED_GATES` delegation,
+  `shouldDelegate`, `summarizeGates`) — the two changes are independent (retirement vs. delegation)
+  and merged without semantic conflict; the file now carries 20 tests total, not just this phase's own.
+- `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`: status letter (c) redefined from "stays local-only"
+  to "resolved without a CI job — gate row retired"; rows 1/18/19 rewritten as retirements; row
+  19's factual error corrected (a producer *does* exist — `scripts/gate-release-no-staging.js` —
+  but it belongs to the superseded `NO_STAGING_RELEASE_STANDARD.md`); new "Retired gates — closed
+  resolutions" table carrying the five-column closeout record #1431's DoD asks for. Merged onto
+  Phase 251's own Phase-2 rewrite of the same doc (rows 2/3/6/7/8/14/16/17 flipped `(b)` -> `(a)`) —
+  the required-gate-count math in "Summary by status" reflects both phases together: 19 − 7
+  delegated (Phase 1 PR-B) − 3 retired (this phase) = 9 currently required.
+- `docs/testing/release-go-no-go-checklist.md` (authoritative, registry-governed): "The 19 gates"
+  -> "The 16 gates," rows 1/18/19 removed and the rest renumbered, and the
+  "three gates are structurally incapable of failing" paragraph reduced to `compliance.contracts`
+  alone. Merged onto Phase 1 PR-B's own delegation paragraph in the same section.
+- `docs/ops/CI_RUNNER_POLICY.md` (authoritative): its stale duplicate of the #1147 mapping table
+  deleted in favour of a dated pointer to the mapping doc. This fixes a real precedence inversion —
+  a drifted `authoritative` copy outranked the correct `reference` one under `AGENTS.md`'s Surface
+  precedence.
+- `.agents/skills/promoter/SKILL.md`: "one of 19 gates" -> 16, folded together with Phase 1 PR-B's
+  own edit to the same paragraph (7 delegated gates) into one combined "9 required gates locally,
+  not 19" statement; the "Gate 19 auto-passes as Skipped" guidance replaced with the retirement,
+  leaving `compliance.contracts` as the sole `structurally_cannot_fail` caution.
+- **Not in scope**: `scripts/gate-release-observability.js`, `scripts/verify-release-verdict.js`,
+  `scripts/gate-release-no-staging.js`, `scripts/gate-release-dgfy-evidence.js` and
+  `apps/dgfy-api/tests/observabilityReleaseGateScript.test.js` — all untouched. Retiring a gate row
+  is not deleting a tool; `gate:release:observability` remains the post-deploy/incident tool
+  `docs/ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md` invokes, and the verdict contract is still used by
+  `gate-release-dgfy-evidence.js`. Also not in scope: adding `runtime_sha` parity or the
+  trace-header round-trip to `verify-deployment.yml` — filed as #1443 (via `pm`), since it needs
+  per-environment base-URL/secret work, not a closeout.
+- **No ADR amendment.** ADR 0074 Decision 7 (`[default]`) says `npm run gate:release:local`
+  (`run_mode: "full"`) stays mandatory before every `develop -> main` promotion. It constrains
+  whether the gate runs, not which gates compose it; a 16-gate full run is still `run_mode: "full"`.
+  Decision 7 *is* the clause #1431's final phase (required gate count -> zero) will have to amend —
+  named here so that isn't rediscovered later.
+
+### Status
+
+`completed` on merge — unlike Phase 247 there is no deferred live-promotion verification: removing
+three gates that were structurally incapable of failing cannot change a promotion's outcome. The
+first real promotion's artifact showing `gate_count: 16` is a post-merge confirmation, not a gate.
+
+### Dependencies
+
+None on its own scope. Required a rebase onto #1431 Phase 1 PR-B and Phase 2 (#1447) once both
+merged into `develop` ahead of this PR — a mechanical/textual dependency from landing order, not a
+scope dependency; independent of #1015/#1018.
+
+### Acceptance and validation evidence
+
+- [x] `node --check scripts/gate-release-local.js scripts/gate-release-local.test.js`.
+- [x] `node --test scripts/gate-release-local.test.js` — green (20/20, including this phase's
+  retired-names-absent and RF-1 fail-fast assertions, plus Phase 1 PR-B's own delegation tests).
+- [x] `npm run lint:docs` — passes; `docs/testing/release-go-no-go-checklist.md` is registry-governed.
+- [x] `npm run gate:release:local -- --only docs.lint` completes and writes an artifact whose
+  `gates[]` contains none of the three retired names (`gate_count: 16`) and whose `target_sha` is
+  still populated (proves the gate-1 split — row retired, SHA resolution kept).
+- [x] `rg 'release\.target_sha|observability\.evidence\.report|release\.verdict\.contract'` over
+  `docs/` (excluding `docs/archive/**`), `.agents/`, and `scripts/gate-release-local*.js` returns
+  only the retirement records, not live gate references.
+- [x] #1443 filed for the `verify-deployment.yml` residual gap (via `pm`), added to project #10.
+- [x] `npm run check:compliance` and `npm run check:architecture` pass on the rebased tree.
+
+### Deviations from the plan
+
+None on the plan's own four open questions — implemented per its recommended options: docs + code
+(not docs-only), Phase number 250, `CI_RUNNER_POLICY.md`'s stale table deleted (not just bannered),
+and the `verify-deployment.yml` residual-gap follow-up filed in this phase (#1443) rather than
+deferred. One deviation not anticipated by the plan: this PR needed **two** rebases onto
+`origin/develop` after #1431 Phase 1 PR-B (#1442/#1448) and then Phase 2 (#1447) each merged ahead
+of it, both touching the same doc/script files — reconciled by hand, verified green after each.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push. PR base is `develop`,
+branch prefix `chore/` per `.github/branch-cleanup-policy.json`. `check:compliance`'s
+missing-declaration checkpoint does not fire — every touched path is `scripts/`, `docs/`,
+`.agents/`.
+
+### Links
+
+- Tracking issue: #1431 (`Refs`, not `Closes` — Phase 3 closes 3 of 19 gates; Phase 2's 8 and
+  `backend.test_matrix` remain).
+- Plan: `.tmp/plans/1431-phase3-plan.md` (Worker Planner output, 2026-09-02).
+- Follow-up filed: #1443 (`verify-deployment.yml` runtime_sha parity + trace round-trip).
+- Modified: `scripts/gate-release-local.js`, `scripts/gate-release-local.test.js`,
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/testing/release-go-no-go-checklist.md`,
+  `docs/ops/CI_RUNNER_POLICY.md`, `.agents/skills/promoter/SKILL.md`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+251, already claimed by #1431 Phase 2 immediately below (coordinated at PR #1447 review time,
+RF-1) — re-check the ledger's actual highest merged entry at the next phase's start time rather
+than assuming, per the same rule that coordination itself relied on.
+
+## Phase 251 - Promotion quality gate: 8 remaining gates wired into CI, P2-0/P2-1/P2-2 (#1431 Phase 2)
+
+### Initiative and release
+
+#1431's Phase 2: wires the 8 gates `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` still listed "(b) CI
+job to add" into `promotion-quality-gate.yml`. **Numbering note (corrected 2026-09-03, RF-1 on
+PR #1447's review)**: the ledger's highest *merged* entry is Phase 249 (#1432). This entry
+originally claimed **254**, reasoning from the parked #1441 plan
+(`~/.claude/plans/this-is-heavy-ask-functional-bubble.md`) reserving Phases 250-253 on disk outside
+this repo — that reasoning was wrong per `AGENTS.md`'s Continuous Phase Numbering rule: **the
+repository ledger is the authoritative phase sequence; a plan file, parked or not, reserves
+nothing.** The actual constraint is simpler and entirely in-repo: sibling PR #1446 (#1431 Phase 3,
+open, not yet merged) already claims **Phase 250** for its own scope (retiring gates #1, #18, #19).
+This entry claims **251**, the next number after that, coordinating with the visible sibling claim
+rather than an external file. If #1446 merges first, 251 stays free and correct; if this PR merges
+first, whichever lands second must re-check the ledger at merge/PR time per the same rule, same as
+`20f098a62`'s prior fix for the Phase-248/#1433 collision. #1441's own plan is not otherwise
+authoritative here and needs no ledger stub — it is not yet a filed, in-progress PR.
+
+### Objective and scope
+
+Four PRs, per the Phase 2 plan's own P2-x split (`.tmp/plans/1431-phase2-plan.md`):
+
+- **P2-0a** (PR #1442, docs-only, no phase needed): fixed
+  `docs/compliance/impact-declarations/2026-08-31-preflight-ephemeral-target.md`'s 3 missing
+  required sections (`## Affected Surfaces`, `## Compliance Preconditions`,
+  `## Verification Evidence`) — a hard prerequisite for gate 6, since a simulated
+  `release/*→main` run of `check-compliance-impact.js` exited 1 against this declaration
+  beforehand.
+- **P2-0b** (PR #1445, no phase needed): added `security/audit-allowlist.json` entries for the
+  `express`/`body-parser`/`qs` moderate advisories in `apps/dgfy-api` and
+  `tests/frontend-cross-app` (`npm audit`'s only `fixAvailable` path is `express@5.2.1`, a
+  semver-major upgrade out of proportion here) and filed #1444 (Express 4→5 migration) per
+  `AGENTS.md`'s role-handoff convention, cited in each new entry's `reason`.
+- **P2-1/P2-2** (PR #1447, this phase's own diff): 4 new steps in `repository-quality`
+  (`run_dependency_audit_prod`/gate 2, `run_dependency_audit_full`/gate 3,
+  `run_compliance_contracts`/gate 6 — all advisory; `run_production_env_fixtures`/gate 7 —
+  **blocking** on this first PR); `frontend-ims-quality`'s `run_shared_fnb_contract_tests` step
+  now runs `npm run test:frontend:contracts` (gate 14, 107 files/552 tests, advisory) instead of a
+  hand-picked 7-file list, plus a new `run_scroll_contracts` step (gate 17, **blocking** on this
+  first PR); `dgfy-api-quality` gained `run_runtime_doctor` (gate 8, advisory); a new
+  `frontend-budgets-quality` job (gate 16, advisory) builds all three frontend apps sequentially
+  and runs `check:frontend-budgets -- --skip-build --built-after`.
+- `scripts/check-pr-quality-workflow.js`: `BLOCKING_STEP_IDS` gained `run_production_env_fixtures`
+  (repository-quality) and `run_scroll_contracts` (frontend-ims-quality); `QUALITY_JOB_NAMES`
+  gained `frontend-budgets-quality`; `REQUIRED_QUALITY_MARKERS` updated for the new/changed step
+  content.
+- `scripts/check-pr-quality-workflow.test.js` — `CORRECT_BLOCKING_JOB_BUILDERS` extended for the
+  two new blocking ids; the renamed-step-missing regression case updated so it doesn't also trip
+  the new `run_production_env_fixtures` requirement.
+- Docs, each a dated correction/amendment, not a rewrite: rows 2, 3, 6, 7, 8, 14, 16, 17 of
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` (flipped `(b)` → `(a)`, plus 4 named corrections: 7
+  lockfile trees not 6; row 8's home is `dgfy-api-quality` not `migration-runner-quality`; row 16's
+  owned-build correction; row 17's partial-overlap correction) and its `## Summary by status`/new
+  "Documented exceptions" section; this ledger entry.
+- **Not in scope**: P2-3 (flip the 6 still-advisory gates — 2, 3, 6, 8, 14, 16 — to blocking once a
+  real `release/*→main` promotion shows them green) and P2-4 (drop the 8 from
+  `gate:release:local`'s required set, this issue's analogue of PR-B) — both gated on real
+  promotion evidence per #1147's own "Must hold" bullet and #1431's own Phase-2 wording, and both
+  handed to a separate follow-up task by design, matching how Phase 247/PR-A handed its own
+  PR-B off. `.agents/skills/promoter/SKILL.md` is untouched — it still describes
+  `gate:release:local` as 19 gates, correct until P2-4 actually reduces that set.
+
+### Status
+
+`in_progress` — flips to `completed` only once P2-4 lands and the 6 gates left advisory here (plus
+gate 6's PR-context-only case) are confirmed blocking-and-verified on a real promotion, per this
+phase's own Definition of Done.
+
+### Dependencies
+
+P2-1's gate-6 step depends on P2-0a (#1442) merging first for that step to actually pass in CI (not
+just early-exit-pass on a non-PR-context run); P2-1's gate-2/gate-3 steps depend on P2-0b (#1445)
+merging first for the same reason against `apps/dgfy-api`'s real advisories. This phase's own
+`.js`/workflow diff is independently reviewable/mergeable regardless of merge order. P2-3/P2-4
+depend on this phase merging and going green on a real `release/*→main` promotion.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `.js` file.
+- [x] `npm run check:pr-quality-workflow` passes against the updated `BLOCKING_STEP_IDS`/
+  `QUALITY_JOB_NAMES`/`REQUIRED_QUALITY_MARKERS` shape.
+- [x] `npm run test:pr-quality-workflow` — 35/35 pass.
+- [x] `npm run check:runner-routing` passes — the new `frontend-budgets-quality` job's
+  commented/active scaffold pair matches the sanctioned Phase 233 shape.
+- [x] `npm run test:runner-routing` — 34/34 pass.
+- [x] `npm run lint:docs` passes against the updated mapping doc and this ledger entry.
+- [x] `GITHUB_BASE_REF=main GITHUB_HEAD_REF=release/simulated node scripts/check-compliance-impact.js`
+  exits 0 against P2-0a's fixed declaration (was exit 1 before).
+- [x] `npm run audit:dependencies:prod` — PASS across all 7 trees after P2-0b's allowlist entries.
+- [x] `npm run test:frontend:contracts` — PASS 107 files / 552 tests (gate 14's new CI command,
+  run locally).
+- [x] Gate 17's 2-file suite — PASS 2 files / 18 tests, run locally.
+- [x] `node scripts/check-frontend-budgets.js --skip-build --built-after <ts> --report <path>` —
+  args parse and the script runs correctly (fails only on missing local `dist/assets`, expected
+  without a real build in the implementation worktree).
+- [ ] **Real-promotion evidence (P2-3's own precondition, deferred)**: the next real
+  `release/*→main` promotion runs with the 6 still-advisory gates (2, 3, 6, 8, 14, 16) — and gate
+  6 specifically in real PR context, not a `workflow_dispatch` — showing green, before P2-3 flips
+  any of them to blocking.
+
+### Deviations from the plan
+
+P2-1 and P2-2 were combined into one PR (#1447) rather than two — the plan's own "your call on
+batching" allowance (both are `promotion-quality-gate.yml`/`check-pr-quality-workflow.js` changes
+riding the same validator infrastructure, so splitting the diff added review overhead without a
+corresponding benefit). P2-3/P2-4 were not started, matching the task's own instruction that they
+are gated on real promotion evidence and handled by a separate follow-up task.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR
+bases are `develop`, branch prefixes `docs/`, `chore/`, `ci/` per
+`.github/branch-cleanup-policy.json`. `npm run check:compliance`'s missing-declaration checkpoint
+does not fire for P2-1/P2-2's own diff — every touched path (`.github/`, `scripts/`, `docs/`) is
+CI/tooling/docs, not a compliance-sensitive surface; P2-0a's own diff *is* a compliance declaration
+edit, but it's a docs-only correction to an already-filed, already-`minor`-classified declaration,
+not a new compliance-sensitive code path.
+
+### Links
+
+- Tracking issue: #1431 (Refs, not Closes — Phase 2 is four PRs, and none alone closes the parent).
+- Plan: `.tmp/plans/1431-phase2-plan.md` (Worker Planner output, 2026-09-02).
+- PRs: #1442 (P2-0a), #1445 (P2-0b, files #1444), #1447 (P2-1/P2-2).
+- Modified: `docs/compliance/impact-declarations/2026-08-31-preflight-ephemeral-target.md`,
+  `security/audit-allowlist.json`, `.github/workflows/promotion-quality-gate.yml`,
+  `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this
+  entry).
+
+### Next eligible phase
+
+252 (P2-3/P2-4, once real promotion evidence exists — handed to a separate follow-up task). Re-check
+the ledger's actual highest merged entry at that time rather than assuming — both this phase and
+Phase 250 (#1446) may or may not have merged by then.
+
+## Phase 252 - Backend test-suite value audit + highest-confidence cuts (#1441, PR-A)
 
 ### Initiative and release
 
 Answers the question none of the in-flight test-gate work (#1015 speed, #438 tiering, #1147/#1431
 CI wiring, Phase 249/#1432 rot repair) asks: does every backend test earn its cost, and can the set
-be reduced by subtraction. PR-A of a four-PR sequence — PR-B (Phase 251, planned), PR-C (Phase 252,
-planned), PR-D (Phase 253, planned) — each cut from the previous PR's head, all against `develop`.
+be reduced by subtraction. PR-A of a four-PR sequence — PR-B (Phase 253, planned), PR-C (Phase 254,
+planned), PR-D (Phase 255, planned) — each cut from the previous PR's head, all against `develop`. **Numbering note (corrected
+2026-09-03, resolving a real conflict with #1431's own Phase 250/251 entries that landed on
+`develop` first)**: this PR's plan (parked at `~/.claude/plans/this-is-heavy-ask-functional-bubble.md`)
+originally reserved Phases 250-253 outside the repo; per `AGENTS.md`'s Continuous Phase Numbering
+rule, a parked plan file reserves nothing — only the ledger's actual highest merged entry does.
+#1431 Phase 3 (PR #1446) and Phase 2 (PR #1447) merged into `develop` first and correctly claimed
+250 and 251 (see Phase 251's own 2026-09-03 RF-1 numbering-note for the identical situation). This
+entry takes the next free number, 252, matching Phase 251's own "Next eligible phase" pointer.
 
 ### Objective and scope
 
@@ -17387,7 +17700,7 @@ File/case/line counts before/after **are** measured and reliable: 652→637 file
 
 ### Dependencies
 
-None blocking this phase's own PR. PR-B/C/D (Phases 251-253, planned) are cut from this PR's head
+None blocking this phase's own PR. PR-B/C/D (Phases 253-255, planned) are cut from this PR's head
 in sequence and depend on it merging first.
 
 ### Acceptance and validation evidence
@@ -17414,9 +17727,9 @@ Issue #1441. Refs Phase 249 (#1432) as the prior test-gate work this audit is di
 Found-not-fixed-here, handed to `pm`: repair `test:coverage`/`test:watch` (missing `--config`);
 wire `audit:backend-tests:check` into `scripts/pr-checks.js` (gate placement is #1147/#1431
 territory); a full sweep of live (non-historical) `npm --prefix backend` references outside this
-PR's own touched files; PR-B/C/D tracking issues (Phases 251-253).
+PR's own touched files; PR-B/C/D tracking issues (Phases 253-255).
 
 ### Next eligible phase
 
-251 (planned — PR-B, static-parse POS barrel-mock helper). 252 and 253 (PR-C, PR-D) follow in
+253 (planned — PR-B, static-parse POS barrel-mock helper). 254 and 255 (PR-C, PR-D) follow in
 sequence, each cut from the previous PR's head.

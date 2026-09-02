@@ -10,7 +10,7 @@ Issue #1441 asks the question none of the in-flight test-gate work answers: does
 test earn its cost, and can the set be reduced by subtraction rather than re-organized. This
 document is that audit's output — a keep/consolidate/delete/trim/demote classification for every
 active file in `apps/dgfy-api/tests/`, the rationale per cut, and measured before/after numbers for
-the highest-confidence cuts applied in PR-A (this PR, Phase 250).
+the highest-confidence cuts applied in PR-A (this PR, Phase 252).
 
 **Out of scope** (named explicitly so this audit isn't mistaken for covering them): test **speed**
 (#1015), test **tiering mechanics** — fast vs. db, chunking, worker limits (#438), CI **wiring** for
@@ -19,13 +19,15 @@ plus a worker-memory OOM (#1432). Those projects ask "does the suite run efficie
 this audit asks "does the suite need to exist at the size it's at."
 
 **PR sequence.** This work ships as four PRs cut from each other's heads, each opened against
-`develop`: **PR-A** (this PR, Phase 250) — the audit tool, this doc, and the 11 deletions + 4
+`develop`: **PR-A** (this PR, Phase 252) — the audit tool, this doc, and the 11 deletions + 4
 consolidations + 3 trims + 6 db-manifest demotions + 1 correctness fix that were high-confidence
-enough to apply immediately. **PR-B** (Phase 251, planned) — a static-parse POS barrel-mock helper
+enough to apply immediately. **PR-B** (Phase 253, planned) — a static-parse POS barrel-mock helper
 so the two worst hand-enumerated-stub transport tests stop hand-maintaining ~135/~120 factory keys
-each. **PR-C** (Phase 252, planned) — transport/source-text trims across the remaining ~20 files the
-rule engine below flags, with every compliance-cited case left untouched. **PR-D** (Phase 253,
-planned) — db-tier tenant-sync consolidation, the only cut that actually moves gate wall-clock.
+each. **PR-C** (Phase 254, planned) — transport/source-text trims across the remaining ~20 files the
+rule engine below flags, with every compliance-cited case left untouched. **PR-D** (Phase 255,
+planned) — db-tier tenant-sync consolidation, the only cut that actually moves gate wall-clock. (Renumbered 2026-09-03 from the plan's original
+250-253 — #1431's own Phase 250/251 entries merged into `develop` first and claimed those
+numbers; see the ledger's Phase 252 entry for the full note.)
 
 ## 2. Method
 
@@ -943,7 +945,7 @@ historical numbers as if they were re-measured. The actual proof of the fast-tie
 impact of this PR's cuts is the next `promotion-quality-gate.yml` run's `fast-tier.log` and
 `tenant_storefront_modes`/`compliance_pos_fiscal` chunk durations on a properly provisioned
 2-worker/7GB CI runner — a different, already-documented envelope from either this session's
-sandbox or the plan's original measurement machine. PR-D (Phase 253) is where a repeat of this
+sandbox or the plan's original measurement machine. PR-D (Phase 255) is where a repeat of this
 attempt, on infrastructure that can actually sustain a 200+s run, matters most — its whole premise
 is measuring the db-tier tenant-sync consolidation's wall-clock impact.
 
@@ -1054,10 +1056,10 @@ Filed via `pm` after this PR (Refs #1441; not implemented here):
   `apps/dgfy-api/tests/**` changing — gate placement is #1147/#1431 territory, not decided here.
 - A full sweep of live (non-historical) `npm --prefix backend` references outside this PR's own
   touched files (section 7, finding 6).
-- PR-B (Phase 251) — static-parse POS barrel-mock helper.
-- PR-C (Phase 252) — transport/source-text trims across the ~20 remaining files this audit's rule
+- PR-B (Phase 253) — static-parse POS barrel-mock helper.
+- PR-C (Phase 254) — transport/source-text trims across the ~20 remaining files this audit's rule
   engine flags as `consolidate` (compliance-cited cases untouched).
-- PR-D (Phase 253) — db-tier tenant-sync consolidation (`token_refresh_race`,
+- PR-D (Phase 255) — db-tier tenant-sync consolidation (`token_refresh_race`,
   `supertest_security`, `voidMovement.supertest`); this is where matrix wall-clock actually moves,
   and where case 1.5's uncovered scenario (finding 2 above) should be re-evaluated.
 
