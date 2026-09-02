@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T19:48:49.702Z",
+  "generatedAt": "2026-09-02T20:07:05.096Z",
   "totalFiles": 636,
   "byClassification": {
     "keep": 582,
@@ -3710,7 +3710,8 @@
           "scripts/audit-backend-test-inventory.test.js"
         ],
         "historical": [
-          "docs/compliance/impact-declarations/2026-04-08-compliance-redesign-slice-and-readiness-e2e.md"
+          "docs/compliance/impact-declarations/2026-04-08-compliance-redesign-slice-and-readiness-e2e.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
       },
@@ -3786,7 +3787,8 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-04-08-compliance-redesign-slice-and-readiness-e2e.md",
-          "docs/compliance/impact-declarations/2026-06-01-rmo-24-2023-filing-readiness-gate.md"
+          "docs/compliance/impact-declarations/2026-06-01-rmo-24-2023-filing-readiness-gate.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
       },
@@ -6561,6 +6563,7 @@
       "citations": {
         "live": [
           "docs/reference/DEVELOPMENT_HISTORY.md",
+          "scripts/audit-backend-test-inventory.js",
           "scripts/backend-test-audit-overrides.js"
         ],
         "historical": [
@@ -16981,7 +16984,9 @@
           "docs/compliance/DGFY Compliance Certification Checklist.md",
           "docs/compliance/evidence/open-controls-matrix.md"
         ],
-        "historical": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -17409,7 +17414,9 @@
         "live": [
           "scripts/backend-test-audit-overrides.js"
         ],
-        "historical": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -22869,7 +22876,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
