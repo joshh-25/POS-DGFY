@@ -1,6 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import { beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { mockBarrel } from './helpers/esmBarrelMock.js';
 
 const mockVoidTransaction = jest.fn((req, res) => res.status(200).json({
     success: true,
@@ -56,38 +57,6 @@ const createControllerMock = (names, overrides = {}) => Object.fromEntries(
     ])
 );
 
-const posControllerNames = [
-    'addPaymentAllocation', 'assignDeliveryPersonnel', 'authorizeDeviceDrawer', 'cancelParkedSale',
-    'cancelPaymentAllocation', 'cancelPaymentSession', 'checkout', 'claimOnlineOrderReceiptAutoPrint', 'claimParkedSale',
-    'clearPairedTerminal', 'closeDayZReading', 'closeTerminalShift', 'collectCashDeliveryOrder',
-    'collectCashPickupOrder', 'completePaymentSession', 'confirmPaymentAllocation', 'createParkedSale',
-    'createPaymentSession', 'createSetupCashier', 'deleteCatalogImage', 'exportReports',
-    'forceCloseStaleTerminalShift', 'generateESalesReport', 'getActivePaymentSession',
-    'getAdminLocationMonitor', 'getCashierShiftHistory', 'getCurrentTerminalShift', 'getCurrentXReading',
-    'getDailyZReading', 'getDayCloseReadiness', 'getDeviceStatus', 'getMerchantTenderReconciliation',
-    'getPairedTerminal', 'getPaymentSession', 'getReportsOverview', 'getTerminalTodayDashboard',
-    'getTransactionById', 'incrementGovernedResetCounter', 'listActiveDeliveryPersonnel', 'listCatalog',
-    'listCatalogOverrides', 'listDiscountApprovers', 'listDiscountEmployees', 'listESalesReports', 'listFiscalTerminalRegistrations',
-    'listIncomingOnlineOrders', 'listOnlineOrderHistory', 'listParkedSales', 'listSetupCashiers',
-    'listTransactions', 'loginCashier', 'openDeviceDrawer', 'openTerminalShift', 'overrideDeliveryFee', 'printReceipt',
-    'printShiftSummary', 'printZReading', 'reconcilePaymentAllocation', 'recordCashDrawerEvent',
-    'recordFiscalPrintEvent', 'reparkParkedSale', 'requirePairedTerminal', 'requireActiveOperatorForMutation',
-    'requireRegisteredTerminal',
-    'reviewMerchantTenderReconciliation', 'scanBarcode', 'streamCatalogEvents', 'switchTerminalShiftLocation',
-    'updateBulkCatalogOverrides', 'updateCatalogOverride', 'updateDeliveryJobStatus',
-    'updateESalesReportStatus', 'uploadBulkCatalogImages', 'uploadCatalogImage',
-    'updateOnlineOrderStatus', 'upsertFiscalTerminalRegistration', 'verifyDiscountApproval',
-    'verifyFiscalEventLedger', 'verifyTerminal', 'voidTransaction', 'cashRefundTransaction', 'externalRefundTransaction', 'providerRefundTransaction', 'splitAllocationReversal',
-    // Phase 148 (#825): this list enumerates every named export posController.js provides, so a
-    // new one has to be added here too or the route wiring under test fails to construct.
-    'recordOrderBalancePayment', 'uploadOrderBalancePaymentProof', 'getOrderBalancePaymentProof',
-    'updateOnlineOrderDeliveryAddress'
-    , 'getAttendanceConfig', 'updateAttendanceConfig', 'getCurrentAttendance', 'timeInAttendance', 'timeOutAttendance', 'startAttendanceBreak',
-    'endAttendanceBreak', 'startReliefDuty', 'endReliefDuty', 'correctAttendance', 'enrollCashierPin',
-    'resetCashierPin', 'takeOverRegister', 'returnRegister', 'startSharedRelief', 'endSharedRelief',
-    'countedCustodyHandoff', 'getCurrentOperator', 'listEligibleOperators', 'resumeCashier', 'endOperatorSession'
-];
-
 const employeeCreditControllerNames = [
     'adjustEmployeeCreditOutstanding', 'enableEmployeeCreditForActiveEmployees', 'getEmployeeCreditReport',
     'listEmployeeCreditAccounts', 'listEmployeeCreditCheckoutOptions', 'lookupEmployeeCreditAccount',
@@ -96,32 +65,40 @@ const employeeCreditControllerNames = [
 
 const employeeControllerNames = ['createEmployee', 'listEmployees', 'updateEmployee'];
 
-const posControllerMock = createControllerMock(posControllerNames, {
-    voidTransaction: mockVoidTransaction,
-    cashRefundTransaction: mockCashRefundTransaction,
-    externalRefundTransaction: mockExternalRefundTransaction,
-    providerRefundTransaction: mockProviderRefundTransaction,
-    splitAllocationReversal: mockSplitAllocationReversal,
-    requirePairedTerminal: jest.fn((req, res, next) => {
-        const requestedTerminalId = String(
-            req.body?.terminal_id
-            || req.headers?.['x-pos-terminal-id']
-            || ''
-        ).trim().toUpperCase();
-        if (!terminalRegistered || requestedTerminalId !== 'COUNTER-01') {
-            return res.status(403).json({
-                success: false,
-                error_code: 'POS_TERMINAL_INACTIVE_OR_UNKNOWN',
-                message: 'The selected terminal is not active or registered for this business.'
-            });
-        }
-        req.posTerminalRegistration = {
-            terminal_id: 'COUNTER-01',
-            location_id: 7
-        };
-        return next();
-    }),
-    requireActiveOperatorForMutation: jest.fn((req, res, next) => next())
+// Derived from the real shape of src/controllers/posController.js (its `export default { ... }`
+// object, not hand-enumerated here) so a new export doesn't silently rot this mock -- the exact
+// contract Phase 148 (#825) hit twice. Every name not explicitly overridden below gets the same
+// generic 200/success stub the hand-enumerated list used to give it.
+const posControllerMock = mockBarrel(jest, '../src/controllers/posController.js', {
+    from: import.meta.url,
+    overrides: {
+        voidTransaction: mockVoidTransaction,
+        cashRefundTransaction: mockCashRefundTransaction,
+        externalRefundTransaction: mockExternalRefundTransaction,
+        providerRefundTransaction: mockProviderRefundTransaction,
+        splitAllocationReversal: mockSplitAllocationReversal,
+        requirePairedTerminal: jest.fn((req, res, next) => {
+            const requestedTerminalId = String(
+                req.body?.terminal_id
+                || req.headers?.['x-pos-terminal-id']
+                || ''
+            ).trim().toUpperCase();
+            if (!terminalRegistered || requestedTerminalId !== 'COUNTER-01') {
+                return res.status(403).json({
+                    success: false,
+                    error_code: 'POS_TERMINAL_INACTIVE_OR_UNKNOWN',
+                    message: 'The selected terminal is not active or registered for this business.'
+                });
+            }
+            req.posTerminalRegistration = {
+                terminal_id: 'COUNTER-01',
+                location_id: 7
+            };
+            return next();
+        }),
+        requireActiveOperatorForMutation: jest.fn((req, res, next) => next())
+    },
+    defaultStub: () => jest.fn((req, res) => res.status(200).json({ success: true, data: {} }))
 });
 
 const employeeCreditControllerMock = createControllerMock(employeeCreditControllerNames);
@@ -162,7 +139,6 @@ const mockCheckAnyPermission = (permissions) => (req, res, next) => {
     return next();
 };
 
-jest.unstable_mockModule('../src/controllers/posController.js', () => posControllerMock);
 jest.unstable_mockModule('../src/modules/employeeCredit/controllers/employeeCreditHandlers.js', () => employeeCreditControllerMock);
 jest.unstable_mockModule('../src/modules/employees/controllers/employeeHandlers.js', () => employeeControllerMock);
 jest.unstable_mockModule('../src/middleware/auth.js', () => ({
