@@ -17109,4 +17109,92 @@ check:compliance`'s missing-declaration checkpoint does not fire — every touch
 
 ### Next eligible phase
 
-248 (none named yet).
+248 (this phase, below).
+
+---
+
+## Phase 248 - packages/web-core: run_web_core_lint green, zero compliance surface (#1433, #1431 hand-back)
+
+### Initiative and release
+
+#1431 Phase 1's own "Not in scope" note named `run_web_core_lint` as a separate, pre-existing
+`packages/web-core` lint debt (14 errors) with no local gate covering it, hand-backed to #1433. This
+phase is that hand-back: making the step's own command (`npx eslint ../../packages/web-core --ext
+.js,.jsx --resolve-plugins-relative-to .`, run from `apps/dgfy-ims`) exit 0. It does **not** flip
+the step's `continue-on-error: true` to blocking — that stays out of scope, matching #1431 Phase 1's
+own framing of `run_web_core_lint` as a distinct follow-up track.
+
+### Objective and scope
+
+- `packages/web-core/.eslintrc.json`: one rule-scoped, commented `rules` block downgrading 5 rules
+  from `error` to `warn` — `react-hooks/set-state-in-effect`, `react-hooks/preserve-manual-
+  memoization`, `react-hooks/refs`, `react-hooks/static-components` (13 of 14 original errors — all
+  `eslint-plugin-react-hooks@7.0.1` React-Compiler-readiness diagnostics; the compiler is not in
+  this repo's build pipeline anywhere), and `react/no-unescaped-entities` (the 14th and last error,
+  a genuinely fixable 2-character JSX apostrophe typo in
+  `packages/web-core/src/features/pos/components/DeliveryRunsWorkspacePanel.jsx:435` — deliberately
+  handled at config level instead of fixed in place, because that file matches
+  `scripts/check-compliance-impact.js`'s `packages/web-core/src/features/pos/` → `major`
+  classification rule, and a real edit there costs the same declaration as an inline disable would.
+  This keeps the phase at zero compliance surface; the 1-character fix is deferred, not abandoned).
+  No rule is set to `off`; no inline `eslint-disable` comment is used anywhere. Per
+  `packages/web-core/.eslintrc.json`'s own eslintrc-cascade isolation (confirmed: no
+  `apps/dgfy-ims`/`dgfy-pos`/`dgfy-storefront` `.eslintrc.json` extends or references it, and each
+  app's own `npm run lint` script scopes only to its own `src`/entry files, never to
+  `packages/web-core`), this change cannot leak into any of the three apps' own lint runs.
+- No other file changed. The 137 pre-existing warnings are untouched (they never gated the step's
+  exit code, with or without the blocking flip — no `--max-warnings` is passed) and none of the 5
+  candidate-real-bug warning sites (`canViewPos`, `ReceiptPrintView`, `onConfirm`/`onArchive`, the
+  three orphaned ingredient handlers, `authMode`/`resetStep`) were deleted or silenced — handed off
+  to `pm` as a separate issue instead.
+- **Not in scope**: flipping `run_web_core_lint`'s `continue-on-error: true` to blocking (a separate
+  follow-up, mirroring #1431 Phase 1's mechanism for the other 7 steps); fixing any of the 137
+  warnings; the deferred `DeliveryRunsWorkspacePanel.jsx:435` apostrophe fix itself.
+
+### Status
+
+`completed`.
+
+### Dependencies
+
+None. Independent of #1431 Phase 1's own PR-B/V1-V3 (`run_test_matrix` track); this phase's own
+gate (`run_web_core_lint`) is unrelated to those.
+
+### Acceptance and validation evidence
+
+- [x] `npx eslint ../../packages/web-core --ext .js,.jsx --resolve-plugins-relative-to .` from
+  `apps/dgfy-ims`, after `npm ci`, exits **0** — `✖ 151 problems (0 errors, 151 warnings)`.
+- [x] No rule set to `off`; no blanket `/* eslint-disable */`; every downgrade names its reason
+  in-file (see `.eslintrc.json` itself).
+- [x] All three app builds pass: `npm run build:skupervisor`, `npm run build:pos`,
+  `npm run build:store` — all exit 0.
+- [x] `npm run check:compliance` passes — `[check:compliance] No compliance-sensitive changes
+  detected.`
+- [x] Isolation confirmed: no other app's `.eslintrc.json` or `lint` script references
+  `packages/web-core/.eslintrc.json`.
+
+### Deviations from the plan
+
+The Worker Planner's plan (`.tmp/plans/1433-*.md`, if retained) recommended fixing the E14 apostrophe
+in place plus a compliance impact declaration, offering the config-level 5th-rule alternative as
+Pat's call. Per explicit direction for this phase, the zero-compliance-surface alternative was taken
+instead — the 5th rule (`react/no-unescaped-entities`) was added to the same downgrade block, and no
+compliance declaration was written. The real 1-character fix stays open as a deferred follow-up.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR base
+is `develop`, branch prefix `fix/`. `npm run check:compliance`'s missing-declaration checkpoint does
+not fire — the only changed file (`packages/web-core/.eslintrc.json`) is not a compliance-sensitive
+path.
+
+### Links
+
+- Tracking issue: #1433 (Refs, not Closes — the bug-candidate hand-off issue and the deferred
+  apostrophe-fix note both stay open follow-ups this PR doesn't resolve).
+- Modified: `packages/web-core/.eslintrc.json`, `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`
+  (this entry).
+
+### Next eligible phase
+
+249 (none named yet).
