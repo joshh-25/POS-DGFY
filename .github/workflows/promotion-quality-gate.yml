@@ -511,6 +511,15 @@ jobs:
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
           RELEASE_TARGET_SHA: ${{ github.sha }}
+          # #1432: this hosted runner is 2-vCPU on a private repo, so Jest's own
+          # getMaxWorkers() resolves to 1 and shouldRunInBand() then runs the entire
+          # 616-file fast tier in one in-band process, whose single heap OOMs partway
+          # through. Forcing >=2 workers flips it out of in-band; the memory limit
+          # bounds each worker's heap so it recycles instead of growing unbounded.
+          # This is a concurrency fix, not a heap-size one -- see #1432's plan for why
+          # raising NODE_OPTIONS further does not address the actual cause.
+          BACKEND_TEST_MATRIX_FAST_MAX_WORKERS: 2
+          BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT: 1G
 
       - name: Run F&B contracts with open-handle diagnostics
         id: run_fnb_contracts
