@@ -31,19 +31,24 @@ Each gate maps to exactly one of:
 PR-A/PR-B, Phase 2 P2-1/P2-2 PR #1447)**: `promotion-quality-gate.yml` (the CI workflow all "(a)"
 rows point at) was **entirely advisory** as of #1063/#1066/#1253 — every step in every quality job
 carried its own `continue-on-error: true`, so a red run never blocked a promotion PR's
-`mergeStateStatus`. That is no longer true for 10 of the 16 "(a)" rows (4, 5, 7, 9, 11, 12, 13, 15,
-17, plus 6 which is blocking only in the narrow PR-context sense its own row describes — see each
-row's own updated Status below): those gates' CI steps are now blocking on the `release/*→main` leg
-(and `staging→main`, and any `workflow_dispatch`/`workflow_call` run) — a real failure reds out the
-check-run and trips `AGENTS.md`'s Merge Safety hard stop, same as any other required check. Rows 2,
-3, 6, 8, 14, 16 stay **advisory in CI** (`continue-on-error: true`) pending real-promotion evidence
-(P2-3), and row 10 (`backend.test_matrix`) stays fully advisory for a separate, named reason — see
-each row's own updated note.
+`mergeStateStatus`. That is no longer true for 9 of the 16 "(a)" rows (4, 5, 7, 9, 11, 12, 13, 15,
+17 — see each row's own updated Status below): those gates' CI steps are now blocking on the
+`release/*→main` leg (and `staging→main`, and any `workflow_dispatch`/`workflow_call` run) — a real
+failure reds out the check-run and trips `AGENTS.md`'s Merge Safety hard stop, same as any other
+required check. Rows 2, 3, 6, 8, 14, 16 stay **advisory in CI** (`continue-on-error: true`) pending
+real-promotion evidence (P2-3), and row 10 (`backend.test_matrix`) stays fully advisory for a
+separate, named reason — see each row's own updated note. **Row 6 is squarely in this advisory
+group, not the blocking one** — `run_compliance_contracts` carries `continue-on-error: true` and is
+absent from both `BLOCKING_STEP_IDS` and `BLOCKING_STEP_NAMES`, so a `compliance.contracts` failure
+does not block a promotion PR's merge today, full stop. "PR-context only" (row 6's own note)
+describes a *narrower scope of what the step can validate* under `workflow_dispatch`/
+`workflow_call` versus a real PR — it is not a second, qualified kind of "blocking" and must not be
+read as one.
 
 Per #1147's own "Must hold" bullet, a gate only moves from "local is authoritative" to "CI replaces
 local" (i.e. drops out of `gate:release:local`'s required set) once its CI job has been verified
 trustworthy against #1124's audit standard **and** proven blocking on a real promotion. That bar has
-now been met for exactly **7** of the 10 blocking rows — **4, 5, 9, 11, 12, 13, 15 dropped out of
+now been met for exactly **7** of the 9 blocking rows — **4, 5, 9, 11, 12, 13, 15 dropped out of
 `gate:release:local`'s required set 2026-09-03 (PR-B)**, under the B-amended evidence standard Pat
 confirmed (V1: a genuine negative dispatch run, `33650659451`, reds out `frontend-pos-quality`
 alone; V2′: the existing green positive dispatch run, `33642893358`, cited in place of a not-yet-run
@@ -59,14 +64,16 @@ plan) but cannot itself demonstrate that a red check-run on this workflow drives
 this gap needs a real `release/*→main` PR to run with intent to observe `mergeStateStatus`; #1431's
 parent issue is where that close-out should be recorded once it happens.
 
-**The remaining 3 blocking rows (7, 17, and 6's PR-context-only case) have NOT yet had this same
-V1–V3 bar run against them** — they landed blocking in CI at P2-1 (2026-09-03, #1447) on the
-strength of their own low-risk profile (no prerequisite, no flake surface, no external dependency),
-not on a completed verification cycle, so they stay in `gate:release:local`'s required set for now;
-their own delegation-out is a later, separate step (P2-4), not folded into PR-B's scope. `gate:
-release:local` therefore still runs and requires all 12 gates PR-B left in its required set
-(19 minus the 7 PR-B delegated), including 6/7/8/14/16/17, until each is individually verified and
-delegated.
+**The remaining 2 blocking rows (7 and 17) have NOT yet had this same V1–V3 bar run against
+them** — they landed blocking in CI at P2-1 (2026-09-03, #1447) on the strength of their own
+low-risk profile (no prerequisite, no flake surface, no external dependency), not on a completed
+verification cycle, so they stay in `gate:release:local`'s required set for now; their own
+delegation-out is a later, separate step (P2-4), not folded into PR-B's scope. Row 6 stays fully
+advisory in CI (see above) and is not part of either the "already delegated" or the "blocking,
+pending delegation" groups — its own delegation question doesn't arise until P2-3 first flips it to
+blocking. `gate:release:local` therefore still runs and requires all 12 gates PR-B left in its
+required set (19 minus the 7 PR-B delegated), including 6/7/8/14/16/17, until each is individually
+verified and delegated.
 
 | # | Gate name | Local command (`gate-release-local.js`) | Status | CI job / detail |
 |---|---|---|---|---|
@@ -95,25 +102,28 @@ delegated.
 - **(a) Covered**: 16 gates — #2, #3, #4, #5, #6, #7, #8, #9, #10, #11, #12, #13, #14, #15, #16,
   #17. All run the same (or, for #15, a superset; for #16, a deliberately different build
   orchestration — see the documented exception below) command in `promotion-quality-gate.yml`
-  today. Of these, **10 are blocking** on the `release/*→main` leg (#4, #5, #7, #9, #11, #12, #13,
-  #15, #17, plus #6 which is blocking only in the narrow PR-context sense its own row describes —
-  gate 6's actual CI step still carries `continue-on-error: true`, it is advisory like every other
-  P2-1/P2-2 gate; "PR-context only" describes what the step *can* validate, not its blocking
-  status) and **6 remain advisory in CI pending real-promotion evidence** (#2, #3, #6, #8, #14,
+  today. Of these, **9 are blocking** on the `release/*→main` leg (#4, #5, #7, #9, #11, #12, #13,
+  #15, #17) and **7 remain advisory in CI pending real-promotion evidence** (#2, #3, #6, #8, #14,
   #16 — #1431 Phase 2's P2-1/P2-2; flip to blocking is P2-3, gated on one real `release/*→main`
-  promotion showing them green, per #1147's own "Must hold" bullet).
+  promotion showing them green, per #1147's own "Must hold" bullet). **Row 6 belongs squarely in
+  the advisory group**: `run_compliance_contracts` carries `continue-on-error: true` and is absent
+  from both `BLOCKING_STEP_IDS` and `BLOCKING_STEP_NAMES`, so a `compliance.contracts` failure
+  does not block a promotion PR's merge today. Its own "PR-context only" note (row 6 above)
+  describes a narrower scope of *what the step can validate* under `workflow_dispatch`/
+  `workflow_call` versus a real PR — it is not a qualified or partial form of "blocking", and
+  promotion reviewers should not read it that way.
 
-  Of the 10 blocking rows, **7 (#4, #5, #9, #11, #12, #13, #15) have also cleared the full "proven
+  Of the 9 blocking rows, **7 (#4, #5, #9, #11, #12, #13, #15) have also cleared the full "proven
   blocking on a real promotion" bar and dropped out of `gate:release:local`'s required set as of
   2026-09-03 (PR-B)** — see the caveat above for the evidence and the residual `mergeStateStatus`
-  gap this leaves open. The remaining 3 blocking rows (#7, #17, and #6's PR-context case) landed
-  blocking at P2-1 (2026-09-03, #1447) on their own low-risk profile, not a completed V1–V3 cycle,
-  and stay in `gate:release:local`'s required set for now — their delegation-out is a later,
-  separate step (P2-4). #10 (`backend.test_matrix`) stays advisory-only and locally required for a
-  separate, named reason (its own row); it additionally carries #1147's own named hard dependency
-  on #1015 (now resolved by #1432 — see row 10's own note — but the flip to blocking is a separate
-  PR, PR-A2, out of PR-B's scope). #3 is recommended to stay advisory *permanently* (see the
-  documented exception below), not just until P2-3 — the only gate in this batch on that path.
+  gap this leaves open. The remaining 2 blocking rows (#7, #17) landed blocking at P2-1
+  (2026-09-03, #1447) on their own low-risk profile, not a completed V1–V3 cycle, and stay in
+  `gate:release:local`'s required set for now — their delegation-out is a later, separate step
+  (P2-4). #10 (`backend.test_matrix`) stays advisory-only and locally required for a separate,
+  named reason (its own row); it additionally carries #1147's own named hard dependency on #1015
+  (now resolved by #1432 — see row 10's own note — but the flip to blocking is a separate PR,
+  PR-A2, out of PR-B's scope). #3 is recommended to stay advisory *permanently* (see the documented
+  exception below), not just until P2-3 — the only gate in this batch on that path.
 - **(b) CI job to add**: 0 gates. Every gate that was `(b)` at Phase 1 landed in Phase 2 (#1431
   P2-1/P2-2, PR #1447).
 - **(c) Stays local-only**: 3 gates — #1, #18, #19. Each for a distinct, documented reason: the
