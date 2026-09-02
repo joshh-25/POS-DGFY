@@ -251,20 +251,22 @@ function buildJobWithNamedSteps(name, stepIds, { coeAt = [] } = {}) {
   return [`  ${name}:`, '    needs: gate', '    runs-on: ubuntu-latest', '    steps:', ...steps].join('\n');
 }
 
-// Correctly-shaped builders for the 5 jobs that carry a BLOCKING_STEP_IDS entry -- each blocking id
+// Correctly-shaped builders for the 6 jobs that carry a BLOCKING_STEP_IDS entry -- each blocking id
 // present with zero continue-on-error, every other (advisory) step with exactly one. Used as the
 // baseline for every test below so a test only has to describe the one deviation it's checking,
-// rather than re-deriving a passing shape for the four jobs it isn't testing.
+// rather than re-deriving a passing shape for the jobs it isn't testing.
 const CORRECT_BLOCKING_JOB_BUILDERS = {
+  // #1431 Phase C (2026-09-03): run_runtime_doctor joins the blocking set.
   'dgfy-api-quality': () => buildJobWithNamedSteps(
     'dgfy-api-quality',
-    ['checkout', 'enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint', 'run_test_matrix'],
+    ['checkout', 'enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint', 'run_runtime_doctor', 'run_test_matrix'],
     { coeAt: ['checkout', 'run_test_matrix'] }
   ),
   // #1431 Phase 2 (2026-09-02), P2-1: run_scroll_contracts (gate 17) joins run_ims_lint as blocking.
+  // #1431 Phase C (2026-09-03): run_shared_fnb_contract_tests joins too.
   'frontend-ims-quality': () => buildJobWithNamedSteps(
     'frontend-ims-quality',
-    ['checkout', 'run_ims_lint', 'run_web_core_lint', 'run_scroll_contracts'],
+    ['checkout', 'run_ims_lint', 'run_web_core_lint', 'run_shared_fnb_contract_tests', 'run_scroll_contracts'],
     { coeAt: ['checkout', 'run_web_core_lint'] }
   ),
   'frontend-pos-quality': () => buildJobWithNamedSteps(
@@ -278,16 +280,22 @@ const CORRECT_BLOCKING_JOB_BUILDERS = {
     { coeAt: ['checkout'] }
   ),
   // #1431 Phase 2 (2026-09-02), P2-1: run_production_env_fixtures (gate 7) joins run_docs_lint as
-  // blocking; run_dependency_audit_prod/run_dependency_audit_full/run_compliance_contracts (gates
-  // 2/3/6) stay advisory, so they're not listed here.
+  // blocking. #1431 Phase C (2026-09-03): run_dependency_audit_prod/run_compliance_contracts join
+  // too; run_dependency_audit_full stays advisory (settled permanently), so it's not listed here.
   'repository-quality': () => buildJobWithNamedSteps(
     'repository-quality',
-    ['checkout', 'run_docs_lint', 'run_production_env_fixtures'],
+    ['checkout', 'run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts', 'run_dependency_audit_full'],
+    { coeAt: ['checkout', 'run_dependency_audit_full'] }
+  ),
+  // #1431 Phase C (2026-09-03): frontend-budgets-quality's first BLOCKING_STEP_IDS entry.
+  'frontend-budgets-quality': () => buildJobWithNamedSteps(
+    'frontend-budgets-quality',
+    ['checkout', 'check_frontend_budgets'],
     { coeAt: ['checkout'] }
   )
 };
 
-test('checkStepLevelAdvisory: the 8 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
+test('checkStepLevelAdvisory: the 15 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
   const text = buildAdvisoryWorkflow(CORRECT_BLOCKING_JOB_BUILDERS);
   assert.deepEqual(checkStepLevelAdvisory(text), []);
 });
@@ -297,7 +305,7 @@ test('checkStepLevelAdvisory: a blocking step that still carries continue-on-err
     ...CORRECT_BLOCKING_JOB_BUILDERS,
     'dgfy-api-quality': () => buildJobWithNamedSteps(
       'dgfy-api-quality',
-      ['checkout', 'enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint'],
+      ['checkout', 'enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint', 'run_runtime_doctor'],
       { coeAt: ['checkout', 'run_api_lint'] }
     )
   });
@@ -325,7 +333,7 @@ test('checkStepLevelAdvisory: a blocking step id that is missing entirely (renam
     ...CORRECT_BLOCKING_JOB_BUILDERS,
     'repository-quality': () => buildJobWithNamedSteps(
       'repository-quality',
-      ['checkout', 'run_docs_lint_renamed', 'run_production_env_fixtures'],
+      ['checkout', 'run_docs_lint_renamed', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts'],
       { coeAt: ['checkout', 'run_docs_lint_renamed'] }
     )
   });
@@ -610,4 +618,24 @@ test('checkCiEnforcedGatesAreBlocking: every entry present and blocking reports 
   ]));
   assert.deepEqual(problems, []);
   assert.deepEqual(BLOCKING_STEP_IDS['dgfy-api-quality'].includes('run_api_lint'), true);
+});
+
+// #1431 Phase C/D (2026-09-03): the two-name ADVISORY_CI_ENFORCED_GATES allowlist. A gate named in
+// it is exempt from the blocking-membership check (its step is deliberately never in
+// BLOCKING_STEP_IDS); every other gate in the same map is still held to the normal rule.
+test('checkCiEnforcedGatesAreBlocking: an ADVISORY_CI_ENFORCED_GATES-listed gate is exempt from the blocking check', () => {
+  const problems = checkCiEnforcedGatesAreBlocking(new Map([
+    ['backend.test_matrix', { job: 'dgfy-api-quality', steps: ['run_test_matrix'] }],
+    ['dependencies.audit.full', { job: 'repository-quality', steps: ['run_dependency_audit_full'] }]
+  ]));
+  assert.deepEqual(problems, []);
+});
+
+test('checkCiEnforcedGatesAreBlocking: a non-exempt gate lacking blocking coverage still fails even when an exempt gate is present', () => {
+  const problems = checkCiEnforcedGatesAreBlocking(new Map([
+    ['backend.test_matrix', { job: 'dgfy-api-quality', steps: ['run_test_matrix'] }],
+    ['docs.lint', { job: 'repository-quality', steps: ['some_not_yet_blocking_step'] }]
+  ]));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"some_not_yet_blocking_step"/);
 });
