@@ -203,6 +203,15 @@ function main() {
   }
 
   const targetSha = (process.env.RELEASE_TARGET_SHA || captureStdout('git', ['rev-parse', 'HEAD'])).toLowerCase();
+  if (!targetSha) {
+    // PR #1446 review, RF-1: retiring the release.target_sha *gate* must not also let an empty
+    // SHA silently produce an "unbound" artifact -- fail fast and loud instead of writing evidence
+    // to `.tmp/release-gates/` (i.e. the literal string "undefined") that nothing downstream can
+    // use anyway. Only reachable outside a git checkout with RELEASE_TARGET_SHA also unset.
+    console.error('[gate:release:local] could not resolve a target SHA: RELEASE_TARGET_SHA is unset and `git rev-parse HEAD` failed. Run inside a git checkout, or set RELEASE_TARGET_SHA explicitly.');
+    process.exit(1);
+    return;
+  }
   const evidenceDir = path.join('.tmp', 'release-gates', targetSha);
   ensureDir(evidenceDir);
   const outputFile = path.join(evidenceDir, 'local_readiness.json');
