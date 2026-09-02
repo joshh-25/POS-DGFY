@@ -5,13 +5,11 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const npmCmd = 'npm';
-const nodeCmd = 'node';
 
 // The full, ordered set of gate names this script can run. This is also the source of truth
 // --only/--skip validate against (#1021 review, RF-1) -- a misspelled gate name must fail loudly,
 // not silently skip every gate and write a passing artifact.
 const GATE_NAMES = [
-  'release.target_sha',
   'dependencies.audit.prod',
   'dependencies.audit.full',
   'docs.lint',
@@ -28,16 +26,15 @@ const GATE_NAMES = [
   'frontend.storefront.contracts',
   'frontend.budgets',
   'scroll.contracts',
-  'observability.evidence.report',
-  'release.verdict.contract',
 ];
 
 // Gates that are structurally incapable of failing on a clean promotion checkout -- flagged so a
-// green result here is never cited as evidence of anything (#1016).
+// green result here is never cited as evidence of anything (#1016). `release.target_sha`,
+// `observability.evidence.report` and `release.verdict.contract` were retired outright (#1431
+// Phase 3, Phase 250) rather than kept as green-but-uncitable rows -- see
+// docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md's "Retired gates -- closed resolutions".
 const STRUCTURALLY_CANNOT_FAIL = new Set([
   'compliance.contracts', // no compliance-relevant diff on a clean checkout -> nothing to flag
-  'observability.evidence.report', // warns, never fails, unless run with --enforce (not passed here)
-  'release.verdict.contract', // auto-skips unless a prior run already produced release_verdict.json
 ]);
 
 // Gates whose identical command runs as a BLOCKING step in promotion-quality-gate.yml on the
@@ -206,6 +203,15 @@ function main() {
   }
 
   const targetSha = (process.env.RELEASE_TARGET_SHA || captureStdout('git', ['rev-parse', 'HEAD'])).toLowerCase();
+  if (!targetSha) {
+    // PR #1446 review, RF-1: retiring the release.target_sha *gate* must not also let an empty
+    // SHA silently produce an "unbound" artifact -- fail fast and loud instead of writing evidence
+    // to `.tmp/release-gates/` (i.e. the literal string "undefined") that nothing downstream can
+    // use anyway. Only reachable outside a git checkout with RELEASE_TARGET_SHA also unset.
+    console.error('[gate:release:local] could not resolve a target SHA: RELEASE_TARGET_SHA is unset and `git rev-parse HEAD` failed. Run inside a git checkout, or set RELEASE_TARGET_SHA explicitly.');
+    process.exit(1);
+    return;
+  }
   const evidenceDir = path.join('.tmp', 'release-gates', targetSha);
   ensureDir(evidenceDir);
   const outputFile = path.join(evidenceDir, 'local_readiness.json');
@@ -217,7 +223,6 @@ function main() {
     console.log(`[gate:release:local] --skip=${skipGates.join(',')}`);
   }
 
-  runGate(gates, selection, 'release.target_sha', () => Boolean(targetSha), `target_sha=${targetSha || '<missing>'}`);
   runGate(gates, selection, 'dependencies.audit.prod', runCommand(npmCmd, ['run', 'audit:dependencies:prod']), 'npm run audit:dependencies:prod');
   runGate(gates, selection, 'dependencies.audit.full', runCommand(npmCmd, ['run', 'audit:dependencies']), 'npm run audit:dependencies');
   runGate(gates, selection, 'docs.lint', runCommand(npmCmd, ['run', 'lint:docs']), 'npm run lint:docs');
@@ -261,27 +266,6 @@ function main() {
     ]),
     'npm --prefix apps/dgfy-ims test -- --run <scroll-contract-suite>'
   );
-  runGate(
-    gates,
-    selection,
-    'observability.evidence.report',
-    runCommand(npmCmd, ['run', 'gate:release:observability', '--', '--evidence-dir', evidenceDir]),
-    'npm run gate:release:observability -- --evidence-dir <release-evidence-dir>'
-  );
-
-  const verdictFile = path.join('.tmp', 'release-gates', targetSha, 'release_verdict.json');
-  const observabilityEvidenceFile = path.join(evidenceDir, 'observability_evidence.json');
-  if (fs.existsSync(verdictFile)) {
-    runGate(
-      gates,
-      selection,
-      'release.verdict.contract',
-      runCommand(nodeCmd, ['scripts/verify-release-verdict.js', '--file', verdictFile, '--sha', targetSha]),
-      `node scripts/verify-release-verdict.js --file ${verdictFile} --sha ${targetSha}`
-    );
-  } else {
-    runGate(gates, selection, 'release.verdict.contract', () => true, `Skipped: verdict file not present (${verdictFile})`);
-  }
 
   const summary = summarizeGates(gates);
   // A partial run (--only/--skip) must never be citable as a full gate pass -- run_mode makes
@@ -307,9 +291,7 @@ function main() {
     gates,
     artifact_paths: {
       local_readiness_file: outputFile,
-      release_verdict_file: verdictFile,
       frontend_budget_report_file: frontendBudgetReportFile,
-      observability_evidence_file: observabilityEvidenceFile,
     },
   };
   fs.writeFileSync(outputFile, JSON.stringify(payload, null, 2));

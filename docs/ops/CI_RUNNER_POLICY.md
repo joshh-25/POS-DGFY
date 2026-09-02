@@ -17,7 +17,7 @@ the explicit, auditable switch used when a runner class becomes unavailable. Fil
 (child of the runner-strategy epic, #1363).
 
 **Scope note, stated once:** this doc answers *where a job runs*. It does not decide *what runs in
-CI at all* — that's #1147's scope (moving `gate:release:local`'s 19 gates into CI), covered
+CI at all* — that's #1147's scope (moving `gate:release:local`'s 16 gates into CI), covered
 separately below in "#1147 gate mapping" because #1364's own acceptance criteria calls for
 reconciling with it, not duplicating it. The PR that originally introduced this doc deliberately
 implemented no routing change itself — that was left to #1365, which has since shipped its live
@@ -92,7 +92,7 @@ which is exactly why that stays self-hosted).
 
 **SOPS/decrypted secrets, and other jobs that stay local-only regardless of runner class:**
 anything that needs the promoter's own locally-decrypted secrets or the promoter's own git-branch
-state (e.g. several of `gate:release:local`'s 19 gates — see the mapping table below) is out of
+state (e.g. several of `gate:release:local`'s 16 gates — see `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`) is out of
 scope for *any* CI runner, hosted or self-hosted. Moving a job onto a different runner class doesn't
 solve that; it needs a different design (SOPS age-key provisioning to CI, tracked separately under
 the SOPS/age cutover work) before it can run in CI at all.
@@ -151,55 +151,24 @@ session. This doc's own "Current state" section is evidence for *today*, not a s
 
 ## #1147 gate mapping
 
-#1147's own body names this as its first, currently-missing deliverable: map each of
-`gate:release:local`'s 19 gates (`scripts/gate-release-local.js`'s `GATE_NAMES`) to either an
-existing CI job, a CI job still to be added, or a documented reason it stays local-only.
-
-| Gate | Status | Notes |
-|---|---|---|
-| `release.target_sha` | Local-only | Needs the promoter's own git-branch state (which SHA is actually being promoted) |
-| `dependencies.audit.prod` | Not yet in CI | Candidate for a cheap CI job; no blocking dependency identified |
-| `dependencies.audit.full` | Not yet in CI | Same as above |
-| `docs.lint` | **In CI** | `repository-quality` job, `promotion-quality-gate.yml` (since PR #1036) |
-| `architecture.guardrails` | **In CI** | `repository-quality` job, same PR |
-| `compliance.contracts` | Local-only (for now) | Structurally-cannot-fail on a clean checkout per `gate-release-local.js`'s own flag; low priority to move |
-| `production.env.fixtures` | Not assessed | Needs a look — may need SOPS-decrypted secrets, would stay local if so |
-| `runtime.doctor` | Not assessed | Needs a look |
-| `backend.lint` | Likely in CI | Part of `dgfy-api-quality`'s job steps — confirm exact step coverage before marking fully done |
-| `backend.test_matrix` | **In CI** | `dgfy-api-quality` job, `promotion-quality-gate.yml`, pinned `sieitz-lg` |
-| `frontend.ims.lint` | **In CI** | `frontend-quality` (dgfy-ims) |
-| `frontend.pos.lint` | **In CI** | `frontend-quality` (dgfy-pos) |
-| `frontend.storefront.lint` | **In CI** | `frontend-quality` (dgfy-storefront) |
-| `frontend.contracts` | Likely in CI | Confirm exact step coverage per app |
-| `frontend.storefront.contracts` | Likely in CI | Same |
-| `frontend.budgets` | Not assessed | Needs a look |
-| `scroll.contracts` | Not assessed | Needs a look |
-| `observability.evidence.report` | Local-only (for now) | Warns, never fails, unless run with `--enforce` (not passed in CI today) |
-| `release.verdict.contract` | Local-only, auto-skips | Only fires if a prior local run already produced `release_verdict.json` — structurally tied to the local flow |
-
-**Read plainly:** 6 of 19 gates are confirmed in CI today (`docs.lint`, `architecture.guardrails`,
-`backend.test_matrix`, and the three `frontend.*.lint` gates — largely via PR #1036, tracked under
-issue #1018, which is still open despite this work being merged 2026-08-25; flagged separately for
-Pat to confirm and close). A further 3 (`backend.lint`, `frontend.contracts`,
-`frontend.storefront.contracts`) are *likely* covered as sub-steps of jobs already in CI but need
-explicit step-level confirmation, not just inferred from the job name. The remaining gates are
-either genuinely not yet assessed, or structurally tied to the promoter's local state/secrets and
-may never move. This table is the "doesn't exist today" deliverable #1147 names — it is **not** a
-claim that #1147 is done; #1015 (fast/DB test-tier split) and #1124 (quality-gate trust audit) are
-still open and gate the remaining work, per #1147's own body.
-
-**Known stale as of 2026-09-03 — not re-derived here, flagged instead.** This table predates the
-advisory/blocking distinction entirely (every "**In CI**" row above meant "the step runs," not "the
-step blocks") and has drifted on job structure in ways this doc's own subject touches directly:
-`architecture.guardrails` actually lives in `dgfy-api-quality`, not `repository-quality`;
-`frontend-quality` (cited for all three `frontend.*.lint` rows) no longer exists — it split into
-`frontend-ims-quality`/`frontend-pos-quality`/`frontend-storefront-quality` per ADR 0071; and
-`backend.lint`/`frontend.storefront.contracts` are confirmed blocking, not merely "likely in CI."
-**`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` is the current source of truth** for this mapping,
+**Superseded 2026-09-02 by `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, which is now the single
+source for this mapping — the table that used to live here is deleted, not merely flagged stale.**
+#1147's mapping deliverable originally landed here as a table; it had already drifted before this
+deletion (it placed `architecture.guardrails` in `repository-quality` rather than
+`dgfy-api-quality` — `frontend-quality` (cited for all three `frontend.*.lint` rows) no longer
+exists either, having split into `frontend-ims-quality`/`frontend-pos-quality`/
+`frontend-storefront-quality` per ADR 0071 — said "6 of 19 in CI," left four gates "Not assessed,"
+and called `backend.lint`/`frontend.storefront.contracts` merely "likely in CI" when they're
+confirmed blocking), and predated the advisory/blocking distinction entirely (every "**In CI**" row
+in it meant "the step runs," not "the step blocks"). Because this doc is
+`authority_level: authoritative` while the mapping doc is `reference`, the stale copy would have won
+any conflict under `AGENTS.md`'s Surface precedence. Two tables, one of them wrong and outranking
+the right one, is the defect — not the drift, and not something a "known stale" flag on the table
+would have fixed either. Read the mapping doc.
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` is the current source of truth for this mapping,
 including which gates are blocking-in-CI-and-dropped-from-`gate:release:local`'s-required-set
-(#1431 Phase 1, PR-A/PR-B) versus advisory-only versus not-yet-wired — read it there rather than
-this table. A full rewrite of this table is out of scope for that phase; this doc has its own
-owner/review cycle.
+(#1431 Phase 1, PR-A/PR-B) versus advisory-only versus not-yet-wired. `gate:release:local` is 16
+gates as of #1431 Phase 3, not 19.
 
 ## Status
 

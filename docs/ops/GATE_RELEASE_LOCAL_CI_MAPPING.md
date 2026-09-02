@@ -18,14 +18,22 @@ of which has landed as of this writing.
 
 ## How to read this table
 
-`scripts/gate-release-local.js`'s `GATE_NAMES` array (19 entries, in the order the script runs
+`scripts/gate-release-local.js`'s `GATE_NAMES` array (16 entries, in the order the script runs
 them) is the source of truth for the left column — read it there before trusting a stale copy here.
+This table still lists all 19 original gates, including the 3 retired ones, for historical
+continuity — the retired rows (#1, #18, #19) no longer appear in `GATE_NAMES` or the artifact.
 Each gate maps to exactly one of:
 
 - **(a) Covered** — an existing CI job already runs the same check.
 - **(b) CI job to add** — no CI job runs this today; a concrete recommendation is given.
-- **(c) Stays local-only** — a documented reason this gate cannot (or should not) move to CI, not
-  merely "hasn't been done yet."
+- **(c) Resolved without a CI job — the local gate row is retired.** CI needs no equivalent,
+  because the gate asserted something CI already has for free, or something anchored to a
+  pipeline stage that is not promotion-PR time. Retirement, not "stays local": per #1431's own
+  End-goal, *"'outsourced' means the local requirement is dropped because CI doesn't need an
+  equivalent, not that an equivalent gets built."* Each (c) gate's closeout record — reason,
+  residual capability, evidence — is in **"Retired gates — closed resolutions"** below; a bare
+  auto-skip or a `structurally_cannot_fail` flag is *not* a closed resolution, it is an open
+  question with a green badge.
 
 **Critical caveat that applies to every "(a) Covered" row below — updated 2026-09-03 (#1431 Phase 1
 PR-A/PR-B, Phase 2 P2-1/P2-2 PR #1447)**: `promotion-quality-gate.yml` (the CI workflow all "(a)"
@@ -72,12 +80,15 @@ delegation-out is a later, separate step (P2-4), not folded into PR-B's scope. R
 advisory in CI (see above) and is not part of either the "already delegated" or the "blocking,
 pending delegation" groups — its own delegation question doesn't arise until P2-3 first flips it to
 blocking. `gate:release:local` therefore still runs and requires all 12 gates PR-B left in its
-required set (19 minus the 7 PR-B delegated), including 6/7/8/14/16/17, until each is individually
-verified and delegated.
+required set (19 minus the 7 PR-B delegated), including 6/7/8/14/16/17 — **12 minus the 3 more
+retired by #1431 Phase 3 below (#1, #18, #19), leaving 9 actually required today** — until each of
+6/7/8/14/16/17 is individually verified and delegated. PR-B's 7 delegations and Phase 3's 3
+retirements subtract from the same 19-gate starting point for different reasons (CI now enforces
+the same check vs. CI needs no equivalent at all); neither phase blocks the other.
 
 | # | Gate name | Local command (`gate-release-local.js`) | Status | CI job / detail |
 |---|---|---|---|---|
-| 1 | `release.target_sha` | `RELEASE_TARGET_SHA` env, else `git rev-parse HEAD` | **(c)** | The promoter's own checked-out git-branch state — exactly the example #1147's own body names. CI already has its own unambiguous SHA (`github.sha`); there is nothing to migrate. |
+| 1 | `release.target_sha` | *(retired — was: `RELEASE_TARGET_SHA` env, else `git rev-parse HEAD`)* | **(c) — RETIRED 2026-09-02 (#1431 Phase 3, Phase 250)** | A tautology as a gate: it could only fail outside a git checkout, where the evidence dir itself is already broken. CI has `github.sha` unambiguously and for free. **The SHA *resolution* is kept** — it still names `.tmp/release-gates/<sha>/` and populates `local_readiness.json`'s `target_sha`, which the `## Local CI` commit-binding (#725 RF-2) traces back to; only the scored gate row is gone. No residual capability lost. |
 | 2 | `dependencies.audit.prod` | `node scripts/audit-dependencies.js --omit-dev` | **(a) — enforced in CI on release/\*→main since #1447 (advisory; local still required until PR-B)** | `repository-quality`'s "Run production dependency audit" step (`run_dependency_audit_prod`) runs the identical `npm run audit:dependencies:prod`. **Correction (#1431 Phase 2):** the script audits **7** lockfile trees, not 6 — `tests/frontend-cross-app` is the seventh (`scripts/audit-dependencies.js:32-43`), and it's the tree the `.full` variant (#3) actually surfaces the express/body-parser/qs advisories through. |
 | 3 | `dependencies.audit.full` | `node scripts/audit-dependencies.js` | **(a) — enforced in CI on release/\*→main since #1447 (advisory, recommended to stay advisory permanently — Pat's call not yet made, flagged explicitly below; local still required until PR-B)** | `repository-quality`'s "Run full dependency audit" step (`run_dependency_audit_full`) runs the identical `npm run audit:dependencies`. Same script as #2, without `--omit-dev`; 7 lockfile trees (see #2's correction). **This variant's verdict depends on the npm registry, not the repo** — a new dev-only advisory can flip it red with zero code change here (its dev-only findings, e.g. `@lhci/cli`'s puppeteer chain, never ship) — so #1431 Phase 2's plan recommends keeping it advisory permanently, unlike every other gate in this batch. Not yet decided; needs Pat's explicit confirmation before P2-3 treats it as settled. |
 | 4 | `docs.lint` | `node scripts/lint-docs.js && npm run check:adr` (via `npm run lint:docs`) | **(a) — enforced in CI on release/\*→main; dropped from `gate:release:local`'s required set 2026-09-03 (PR-B)** | `repository-quality`'s "Run governed documentation lint" step runs the identical `npm run lint:docs`; that step's `continue-on-error` was removed 2026-09-02 (#1431 Phase 1, PR-A). |
@@ -94,8 +105,8 @@ verified and delegated.
 | 15 | `frontend.storefront.contracts` | `cd apps/dgfy-storefront && npx vitest run contract.test integration.test` (via `npm run test:frontend:contracts:storefront`) | **(a)**† — **enforced in CI on release/\*→main; dropped from `gate:release:local`'s required set 2026-09-03 (PR-B)** | `frontend-storefront-quality`'s "Run storefront vitest suite" step runs unfiltered `npx vitest run`; `continue-on-error` removed 2026-09-02 (#1431 Phase 1, PR-A). Storefront's `vite.config.js` `test.exclude` only excludes `tests/e2e/**` (Playwright's own domain) — every other vitest file runs, which is a strict superset of the local gate's 26-file `contract.test`/`integration.test` pattern. † Superset, not identical command — flagged so a future edit to either side doesn't assume byte-for-byte parity. |
 | 16 | `frontend.budgets` | `node scripts/check-frontend-budgets.js` (via `npm run check:frontend-budgets`) | **(a) — enforced in CI on release/\*→main since #1447 (advisory; local still required until PR-B)** | New `frontend-budgets-quality` job's "Check frontend budgets" step (`check_frontend_budgets`). **Correction (#1431 Phase 2):** the original recommendation — "add builds to `frontend-ims-quality`/`frontend-pos-quality` first" — does not work. `check-frontend-budgets.js` needs all three `dist/assets` dirs in **one job's own workspace**, and a build step in a *different* job is invisible to it; a build step added there would also be redundant, since `check-frontend-budgets.js` **already owns its own build by default** (`--skip-build` is opt-in and then *requires* `--built-after`). The actual fix: a dedicated job that builds all three apps **sequentially** (`npm --prefix <app> run build` × 3, not `check:frontend-budgets`'s own concurrent default — `pr-checks.yml`'s own comment records #923's measurement of exactly the concurrent shape's documented #662 exit-137 OOM on this box) and then runs `check:frontend-budgets -- --skip-build --built-after "$BUILD_STARTED_AT"` — **a different command shape than the local gate runs**, see the documented exception below. |
 | 17 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2-file scroll-contract suite>` | **(a) — enforced in CI on release/\*→main since #1447 (blocking from its first PR — local still required until PR-B)** | `frontend-ims-quality`'s "Run scroll contracts" step (`run_scroll_contracts`), mirroring the local gate's exact two-file list. **Correction (#1431 Phase 2):** the overlap claim was half wrong — `terminalResponsiveScroll.contract.test.js` already falls inside gate #14's broadened `contract.test`/`integration.test` pattern (its filename matches); only `scrollKeyControls.behavior.test.js` is genuinely outside it. Kept as its own step regardless (not folded into #14) so a future edit to #14's pattern can't silently drop the second file. Landed **blocking immediately**: 2 files, ~1s, green, no external dependency. |
-| 18 | `observability.evidence.report` | `node scripts/gate-release-observability.js --evidence-dir <dir>` (via `npm run gate:release:observability`) | **(c)** | Probes a **live deployed environment** (`OBSERVABILITY_BASE_URL`/`PROD_BASE_URL`/`QA_BASE_URL`, hitting `/api/v1/health` and, if enabled, `/metrics`) — this is a post-deploy check, not a pre-merge static/build-time one. `STRUCTURALLY_CANNOT_FAIL` in the normal case (warns, never fails, unless run with `--enforce`, which `gate-release-local.js` never passes). Overlaps in spirit with `verify-deployment.yml`'s read-only health poll (dispatched by the Verifier role post-deploy) rather than with a promotion-PR-time gate — if this is ever wired anywhere, that's the more natural home, not `promotion-quality-gate.yml`. |
-| 19 | `release.verdict.contract` | `node scripts/verify-release-verdict.js --file <verdict> --sha <sha>`, only if the file exists; else auto-skip | **(c)** | Auto-skips ("Skipped: verdict file not present") whenever no `release_verdict.json` exists for the target SHA — the normal case; also `STRUCTURALLY_CANNOT_FAIL` for the same reason. No CI pipeline in this repo currently produces that artifact for `promotion-quality-gate.yml` (or anything else) to consume. Revisit only if/when a governed release-verdict artifact pipeline exists — nothing to wire today. |
+| 18 | `observability.evidence.report` | *(retired — was: `npm run gate:release:observability -- --evidence-dir <dir>`)* | **(c) — RETIRED 2026-09-02 (#1431 Phase 3, Phase 250)** | A post-deploy probe wearing a pre-merge gate's clothing: at `release/<label>`-PR time there is no running environment and no deployed SHA to probe. In a promoter's actual run, 5 of its 8 checks `warn` (no `OBSERVABILITY_BASE_URL`/`PROD_BASE_URL`/`QA_BASE_URL`, no server-side `.deploy-state/last_deployed_commit`, no `release_verdict.json`/`qa_deploy_summary.txt`), and `verdict: 'fail'` is unreachable without `--enforce`, which `gate-release-local.js` never passes. **The tool is kept, not deleted** — `npm run gate:release:observability` stays the post-deploy/incident tool `docs/ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md` already invokes. **Named residual gap:** `verify-deployment.yml` (#514) polls container health/`RestartCount`/in-container `/health` but does **not** check `services.observability.runtime_sha` parity against the promoted SHA, nor the `x-request-id`/`x-trace-id` round-trip — tracked as #1443, not silently absorbed. |
+| 19 | `release.verdict.contract` | *(retired — was: `node scripts/verify-release-verdict.js --file <verdict> --sha <sha>`, else auto-skip)* | **(c) — RETIRED 2026-09-02 (#1431 Phase 3, Phase 250)** | **Corrects this row's earlier claim that "no pipeline produces that artifact":** a producer does exist — `scripts/gate-release-no-staging.js` (`npm run gate:release:no-staging`) writes `release_verdict.json`. It is dead for a stronger reason. That script is the gate of `docs/ops/NO_STAGING_RELEASE_STANDARD.md`, which is `status: superseded` / `authority_level: historical`, retired by #1019 and ADR 0074 Decision 10; `docs/testing/release-go-no-go-checklist.md` (authoritative) states outright that it and its wrappers "are not part of this gate and are not must-pass here." The governed promotion flow never invokes it, so the artifact never exists for a `release/<label>` head and the gate auto-passed as `Skipped` on every real run. Reviving the producer is forbidden by `AGENTS.md`'s Prohibited Behavior (`superseded_by` target exists). `scripts/verify-release-verdict.js` and `scripts/gate-release-no-staging.js` are **not** deleted — `scripts/gate-release-dgfy-evidence.js` still uses the verdict contract. No residual capability lost. |
 
 ## Summary by status
 
@@ -126,17 +137,21 @@ verified and delegated.
   exception below), not just until P2-3 — the only gate in this batch on that path.
 - **(b) CI job to add**: 0 gates. Every gate that was `(b)` at Phase 1 landed in Phase 2 (#1431
   P2-1/P2-2, PR #1447).
-- **(c) Stays local-only**: 3 gates — #1, #18, #19. Each for a distinct, documented reason: the
-  promoter's own git-branch state, a live-deployed-environment probe that's a different kind of
-  check than a promotion-PR gate, and an artifact-dependent check with no producing pipeline.
+- **(c) Resolved without a CI job, gate row retired**: 3 gates — #1, #18, #19, retired 2026-09-02
+  by #1431 Phase 3 (Phase 250). `GATE_NAMES` is now 16 entries. Closeout records below. Each was
+  structurally incapable of failing on a governed promotion checkout — a tautology, a warn-only
+  post-deploy probe, and an auto-skip whose producer belongs to a superseded standard. Two of the
+  three (#18, #19) carried `structurally_cannot_fail: true`; #1 did not, which was itself an
+  inconsistency the retirement removes.
 
 None of the Phase 2 (P2-1/P2-2) work above drops any gate out of `gate:release:local`'s required
-set — that's P2-4 (this issue's own analogue of PR-B, for gates 6/7/8/14/16/17), and it happens
-only after P2-3 flips each still-advisory one of those to blocking on real promotion evidence, per
-#1147's own "Must hold" bullet. **Separately, Phase 1's own PR-B (2026-09-03) already dropped 7
-different gates (#4, #5, #9, #11, #12, #13, #15) out of the required set** — see the Critical
-caveat above; `gate:release:local` currently requires 12 gates, not 19. See #1147's own scope for
-the fuller sequencing history (#1015, #1018).
+set on its own — that's P2-4 (this issue's own analogue of PR-B, for gates 6/7/8/14/16/17), and it
+happens only after P2-3 flips each still-advisory one of those to blocking on real promotion
+evidence, per #1147's own "Must hold" bullet. **Phase 1's own PR-B (2026-09-03) dropped 7 different
+gates (#4, #5, #9, #11, #12, #13, #15) out of the required set** via delegation — see the Critical
+caveat above — **and Phase 3 (this update) retired 3 more gates outright (#1, #18, #19)**:
+`gate:release:local` currently requires **9** gates, not 19 (19 − 7 delegated − 3 retired). See
+#1147's own scope for the fuller sequencing history (#1015, #1018).
 
 ## Documented exceptions — gates that do not get a byte-for-byte-identical CI command
 
@@ -157,6 +172,26 @@ so a future edit to either side doesn't assume parity:
    --built-after "$BUILD_STARTED_AT"` plus three explicit serial build steps, vs. the local gate's
    own owned-concurrent-build default. Same assertions, same report shape, different build
    orchestration, for the documented #662/#923 OOM reason (see gate #16's row above).
+
+## Retired gates — closed resolutions
+
+#1431's Definition of Done requires every one of the 19 original gates to reach "a documented,
+closed resolution." For the three (c) gates that is retirement, and this section is the record —
+kept here rather than only in the phase ledger, so the mapping table and its closeouts stay in one
+place. A gate is only *closed* when all five columns below are filled; an auto-skip, a
+`structurally_cannot_fail: true` flag, or a warning telling readers not to cite the row are each
+evidence of the opposite.
+
+| Gate | Resolution | Reason (one line) | Residual capability, and where it lives now | Closing evidence |
+|---|---|---|---|---|
+| `release.target_sha` | Retired from `GATE_NAMES`; SHA resolution kept as script setup | Tautology — CI has `github.sha` for free | None lost. `local_readiness.json`'s `target_sha` and `.tmp/release-gates/<sha>/` are unchanged | `GATE_NAMES.length === 16`; `local_readiness.json` still carries a correct `target_sha`; `scripts/gate-release-local.test.js` asserts the name is absent |
+| `observability.evidence.report` | Gate row retired; `npm run gate:release:observability` kept as a post-deploy/incident tool | Post-deploy probe, not a promotion-PR-time check; `fail` unreachable without `--enforce` | `docs/ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md` invokes the tool directly. `runtime_sha` parity + trace round-trip are **not** in `verify-deployment.yml` — tracked as #1443 | `scripts/gate-release-observability.js` and `apps/dgfy-api/tests/observabilityReleaseGateScript.test.js` unchanged and passing; #1443 open |
+| `release.verdict.contract` | Retired from `GATE_NAMES` | Sole producer belongs to `NO_STAGING_RELEASE_STANDARD.md`, `status: superseded` (#1019, ADR 0074 Decision 10) | None in the governed flow. `scripts/verify-release-verdict.js` kept for `scripts/gate-release-dgfy-evidence.js` | `docs/testing/release-go-no-go-checklist.md`'s own authoritative exclusion of the no-staging wrappers; `scripts/gate-release-local.test.js` asserts the name is absent |
+
+**Not retired here, and not to be confused with these three:** `compliance.contracts` (#6) is still
+flagged `structurally_cannot_fail: true` on a clean checkout, but it is an **(a)** row now (wired
+into CI advisory since #1447, #1431 Phase 2) — it has a real CI destination, and a real diff *can*
+fail it. It stays in `GATE_NAMES`.
 
 ## `develop` → `staging` leg: confirmed clear of `gate:release:local` (and its CI equivalent)
 
@@ -195,11 +230,13 @@ otherwise.
 ## Related
 
 #1147 (this doc's parent, partially resolved by it — not closed), #1431 (Phase 1: PR-A flipped 7
-CI steps to blocking; PR-B, this update, dropped the same 7 out of `gate:release:local`'s required
-set — the `mergeStateStatus: UNSTABLE` residual gap named above lives against this issue until a
-real `release/*→main` PR closes it), #1124 (pipeline-trust epic this mapping's advisory-caveat
-depends on), #1018 (fast-tier CI wiring, first migration milestone), #1015 (hard prerequisite for
-gate #10), #1016 (already-shipped `--only`/`--skip` tooling), #1097 (the develop→staging leg
-incident this doc's second section confirms stays fixed), #1063/#1066/#1253 (the advisory-only
-history of `promotion-quality-gate.yml`), #927 (the original "where does this run" question #1018
-resolves for the fast subset).
+CI steps to blocking; PR-B dropped the same 7 out of `gate:release:local`'s required set — the
+`mergeStateStatus: UNSTABLE` residual gap named above lives against this issue until a real
+`release/*→main` PR closes it; Phase 3, this update, retired 3 more gates outright — the (c) rows
+above), #1124 (pipeline-trust epic this mapping's advisory-caveat depends on), #1018 (fast-tier CI
+wiring, first migration milestone), #1015 (hard prerequisite for gate #10), #1016 (already-shipped
+`--only`/`--skip` tooling), #1097 (the develop→staging leg incident this doc's second section
+confirms stays fixed), #1063/#1066/#1253 (the advisory-only history of `promotion-quality-gate.yml`),
+#927 (the original "where does this run" question #1018 resolves for the fast subset), #1019 / ADR
+0074 Decision 10 (the superseded standard gate 19 depended on), #514 (`verify-deployment.yml`, gate
+18's residual-gap home), #1443 (the filed follow-up for gate 18's residual gap).

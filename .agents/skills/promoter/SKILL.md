@@ -166,19 +166,20 @@ logged and authorized, not silent.
 **`gate:release:local`** — run this concurrently with cutting `release/<label>` and opening its PR
 into `main` (see "Ordering" above), never serially before them. Run `npm run gate:release:local`
 against the exact target SHA — **invoke it, do not rebuild it** (the policy says this outright).
-Covers **12 required gates locally**, not 19, since 2026-09-03 (#1431 Phase 1, PR-B): 7 gates
-(`docs.lint`, `architecture.guardrails`, `backend.lint`, `frontend.ims.lint`, `frontend.pos.lint`,
-`frontend.storefront.lint`, `frontend.storefront.contracts`) run as blocking steps in
-`promotion-quality-gate.yml` on this leg instead and are recorded `status: "delegated_to_ci"`,
-`ok: true`, `duration_ms: 0` in the artifact rather than run — read their result off the promotion
-PR's own `promotion-quality-gate` check (`gh pr checks <N>`, or per-job conclusions, never the
-workflow-run rollup — see the run-rollup trap below), not off this artifact. Correspondingly faster
-than the historical ~25-minute figure below, still needs local MySQL/Redis for the gates that do run
-locally; exit code `2` means at least one required gate failed — report which, don't merge past it.
-Gate 19 (`release.verdict.contract`) auto-passes as "Skipped" whenever no `release_verdict.json`
-exists for the target SHA — the normal case — so a green #19 is not evidence of anything; don't cite
-it as verification, nor the other two gates the artifact itself flags
-`structurally_cannot_fail: true` (`compliance.contracts`, `observability.evidence.report`). Since
+Covers **9 required gates locally**, not 19, since 2026-09-03 (#1431 Phase 1 PR-B + Phase 3
+together): 7 gates (`docs.lint`, `architecture.guardrails`, `backend.lint`, `frontend.ims.lint`,
+`frontend.pos.lint`, `frontend.storefront.lint`, `frontend.storefront.contracts`) run as blocking
+steps in `promotion-quality-gate.yml` on this leg instead and are recorded `status:
+"delegated_to_ci"`, `ok: true`, `duration_ms: 0` in the artifact rather than run — read their result
+off the promotion PR's own `promotion-quality-gate` check (`gh pr checks <N>`, or per-job
+conclusions, never the workflow-run rollup — see the run-rollup trap below), not off this artifact.
+`release.target_sha`, `observability.evidence.report`, and `release.verdict.contract` were retired
+outright 2026-09-02 (#1431 Phase 3) rather than left green-but-meaningless — do not expect them in
+the artifact and do not re-add them. Correspondingly faster than the historical ~25-minute figure
+below, still needs local MySQL/Redis for the gates that do run locally; exit code `2` means at
+least one required gate failed — report which, don't merge past it. The one remaining gate the
+artifact flags `structurally_cannot_fail: true` is `compliance.contracts`; a green result there is
+not evidence of anything, so don't cite it as verification. Since
 #1016, the script also accepts `--only`/`--skip` and records per-gate `duration_ms` plus a top-level
 `run_mode: "full"|"partial"` — **a promotion decision must be made on a `run_mode: "full"` artifact
 only**; a partial run is for iterating on one gate locally, never for citing as promotion evidence.

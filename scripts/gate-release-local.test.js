@@ -1,5 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const {
   GATE_NAMES,
@@ -18,10 +22,10 @@ const {
 // both the valid single-gate case and the invalid/empty rejections that fix that.
 
 test('resolveGateSelection accepts a valid single --only gate', () => {
-  const selection = resolveGateSelection(['node', 'gate-release-local.js', '--only', 'release.target_sha'], GATE_NAMES);
-  assert.deepEqual(selection, { onlyGates: ['release.target_sha'], skipGates: [], includeCiEnforced: false });
-  assert.equal(isSelected(selection, 'release.target_sha'), true);
-  assert.equal(isSelected(selection, 'docs.lint'), false);
+  const selection = resolveGateSelection(['node', 'gate-release-local.js', '--only', 'docs.lint'], GATE_NAMES);
+  assert.deepEqual(selection, { onlyGates: ['docs.lint'], skipGates: [], includeCiEnforced: false });
+  assert.equal(isSelected(selection, 'docs.lint'), true);
+  assert.equal(isSelected(selection, 'architecture.guardrails'), false);
 });
 
 test('resolveGateSelection accepts a valid --skip list', () => {
@@ -74,9 +78,15 @@ test('resolveGateSelection rejects --skip passed with no gate names', () => {
   );
 });
 
-test('GATE_NAMES has no duplicates and matches the documented count of 19', () => {
-  assert.equal(GATE_NAMES.length, 19);
+test('GATE_NAMES has no duplicates and matches the documented count of 16', () => {
+  assert.equal(GATE_NAMES.length, 16);
   assert.equal(new Set(GATE_NAMES).size, GATE_NAMES.length);
+});
+
+test('retired gates stay retired (#1431 Phase 3)', () => {
+  for (const retired of ['release.target_sha', 'observability.evidence.report', 'release.verdict.contract']) {
+    assert.ok(!GATE_NAMES.includes(retired), `${retired} was retired and must not be re-added`);
+  }
 });
 
 // #1431 Phase 1 PR-B: CI_ENFORCED_GATES delegation. These pin shouldDelegate's precedence
@@ -163,4 +173,24 @@ test('run_mode stays "full" on a default (delegating, --only/--skip absent) sele
   const selection = resolveGateSelection(['node', 'gate-release-local.js'], GATE_NAMES);
   const isPartialRun = selection.onlyGates.length > 0 || selection.skipGates.length > 0;
   assert.equal(isPartialRun, false);
+});
+
+// PR #1446 review, RF-1: retiring the release.target_sha *gate* must not also let an unresolvable
+// SHA silently produce an "unbound" passing artifact -- outside a git checkout with
+// RELEASE_TARGET_SHA also unset, the script must fail fast and loud instead of writing evidence
+// under `.tmp/release-gates/undefined/`.
+test('main() fails fast when no target SHA can be resolved', () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-release-local-nogit-'));
+  try {
+    const result = spawnSync(process.execPath, [path.join(__dirname, 'gate-release-local.js'), '--only', 'docs.lint'], {
+      cwd,
+      encoding: 'utf8',
+      env: { ...process.env, RELEASE_TARGET_SHA: '' },
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /could not resolve a target SHA/);
+    assert.ok(!fs.existsSync(path.join(cwd, '.tmp')), 'must not write an evidence dir when the SHA is unresolvable');
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
 });
