@@ -43,7 +43,7 @@ const resolveLaundryCompany = async (req, res, next) => {
 // DGLaundry -> DGFY. The receiver persists the signed event before applying a
 // sanitized projection and treats duplicate, stale, and version-gap deliveries
 // as explicit outcomes.
-router.post('/api/v1/integrations/dglaundry/events', express.json(), verifyProviderEvent, ingestDglaundryEvent);
+router.post('/api/v1/integrations/dglaundry/events', verifyProviderEvent, ingestDglaundryEvent);
 
 // DGFY customer/storefront operations. Company selection is always backed by
 // the immutable DGFY membership mapping; no email, slug, or display name is used.
