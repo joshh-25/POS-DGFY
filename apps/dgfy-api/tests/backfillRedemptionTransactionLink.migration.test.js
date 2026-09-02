@@ -103,6 +103,23 @@ describe('20260904000002-backfill-voucher-redemption-transaction-link up()', () 
 
         expect(updateStatementsOf(queryInterface)).toHaveLength(0);
     });
+
+    it('emits SET before WHERE, and WHERE containing pos_transaction_id IS NULL, in every UPDATE -- regression for #1401 (invalid multi-table UPDATE syntax: SET must precede WHERE)', async () => {
+        const queryInterface = buildQueryInterface({ tenantDbNames: ['tenant_a', 'tenant_b'] });
+
+        await migration.up(queryInterface);
+
+        const statements = updateStatementsOf(queryInterface);
+        expect(statements.length).toBeGreaterThan(0);
+        for (const sql of statements) {
+            const setIndex = sql.indexOf(' SET ');
+            const whereIndex = sql.indexOf(' WHERE ');
+            expect(setIndex).toBeGreaterThan(-1);
+            expect(whereIndex).toBeGreaterThan(-1);
+            expect(setIndex).toBeLessThan(whereIndex);
+            expect(sql.slice(whereIndex)).toContain('vr.pos_transaction_id IS NULL');
+        }
+    });
 });
 
 describe('20260904000002-backfill-voucher-redemption-transaction-link down()', () => {
