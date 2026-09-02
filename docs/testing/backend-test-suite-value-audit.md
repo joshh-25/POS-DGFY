@@ -23,8 +23,19 @@ this audit asks "does the suite need to exist at the size it's at."
 consolidations + 3 trims + 6 db-manifest demotions + 1 correctness fix that were high-confidence
 enough to apply immediately. **PR-B** (Phase 253, planned) — a static-parse POS barrel-mock helper
 so the two worst hand-enumerated-stub transport tests stop hand-maintaining ~135/~120 factory keys
-each. **PR-C** (Phase 254, planned) — transport/source-text trims across the remaining ~20 files the
-rule engine below flags, with every compliance-cited case left untouched. **PR-D** (Phase 255,
+each. **PR-C** (Phase 254) — headlined by a rule-engine fix, not a trim: R1 previously pinned only
+on a `hardcoded` citation and ignored a `live` `docs/compliance/**` one entirely, which let
+`tests/rbacRouteCoverage.contract.test.js` classify `delete` while three governed compliance
+documents cite it as control evidence (same gap misclassified two more compliance-activation
+files as `consolidate`). Fixed the rule, not by hand-protecting the three files. The issue's
+"~20 transport files" trim target did not survive verification once checked against the source —
+50 of 59 handler modules pass a handler-local `errorPayloadResolver`, so most of the flagged
+`R4-transport-responder-only` "generic error" cases are each a module's only proof of its own
+non-default envelope, not a redundant re-proof of `sendUseCaseResult`'s default. The honest cut
+under the issue's own rule, applied honestly, is one deletion
+(`tests/posSetupCashierRoute.transport.test.js`, a full-app supertest boot to prove only "not
+404") plus two source-text route-declaration files folded into one shared sweep. See §9 for the
+precision finding and the follow-ups this leaves for a future pass. **PR-D** (Phase 255,
 planned) — db-tier tenant-sync consolidation, the only cut that actually moves gate wall-clock. (Renumbered 2026-09-03 from the plan's original
 250-253 — #1431's own Phase 250/251 entries merged into `develop` first and claimed those
 numbers; see the ledger's Phase 252 entry for the full note.)
@@ -81,13 +92,19 @@ signal); `jest.fn(` count; supertest/snapshot usage; db-manifest membership;
 `createTestTenant`/`landlordSchemaReadiness` use; `../src` import resolution on disk; filename
 suffix; and citations from a repo-wide scan split into `live` / `historical` (leave-alone prefixes
 per `docs/architecture/apps-layout-migration.md:173-184`) / `hardcoded` (the db manifest, the F&B
-readiness gate, the promotion quality-gate workflow, `apps/dgfy-api/package.json`).
+readiness gate, the promotion quality-gate workflow, `apps/dgfy-api/package.json`). The `live`
+bucket is now load-bearing, not just informational (#1451, PR-C): a `live` citation rooted at
+`docs/compliance/` pins the file the same way a `hardcoded` one does — see R1 below.
 
 ## 4. Rules and precedence
 
 First match wins: **R0** an entry in `scripts/backend-test-audit-overrides.js` overrides everything
-below it. **R1** pins — a hardcoded citation, db-manifest membership, or a snapshot guard — keep,
-regardless of any other signal. **R3** `source-text-only` (no `../src` runtime import, text ratio
+below it. **R1** pins — a hardcoded citation, **a live `docs/compliance/**` citation**, db-manifest
+membership, or a snapshot guard — keep, regardless of any other signal. Added #1451 (PR-C): before
+this, a `live` citation (including one from the compliance-evidence corpus itself) did not pin at
+all, which let `tests/rbacRouteCoverage.contract.test.js` classify `delete` despite being cited as
+control evidence by three governed compliance documents — see §9. **R3** `source-text-only` (no
+`../src` runtime import, text ratio
 ≥0.8) → delete; `duplicate-describe` (a top-level `describe` title shared with a filename-stem
 sibling) → consolidate. **R4** `hand-enumerated-barrel` (≥40 mock factory stubs) → consolidate;
 `source-text-mixed` (ratio 0.5–0.8) → consolidate; `transport-responder-only` (a `.transport` file,
@@ -103,16 +120,16 @@ the db manifest does, for delete/consolidate entries once the cut is actually ap
 
 ### Summary
 
-Total active test files: **638** | db-manifest members: **30** | findings: **4**
+Total active test files: **636** | db-manifest members: **30** | findings: **4**
 
 ### By classification
 
 | Classification | Count |
 | --- | --- |
-| consolidate | 34 |
-| delete | 18 |
+| consolidate | 31 |
+| delete | 15 |
 | demote | 5 |
-| keep | 578 |
+| keep | 582 |
 | trim | 3 |
 
 ### By suffix
@@ -122,8 +139,8 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | (none) | 219 |
 | unit | 62 |
 | usecase | 52 |
-| transport | 40 |
-| contract | 33 |
+| transport | 39 |
+| contract | 32 |
 | usecases | 30 |
 | migration | 27 |
 | applicationResult | 20 |
@@ -255,7 +272,6 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | tests/addDeliveryVoucherBenefit.migration.test.js | 308 | 13 | keep | R5-default | default keep (suffix: migration) |
 | tests/addThirdPartyDeliveryPersonnelName.migration.test.js | 49 | 3 | keep | R5-default | default keep (suffix: migration) |
 | tests/addVoucherAutoApply.migration.test.js | 236 | 13 | keep | R5-default | default keep (suffix: migration) |
-| tests/adminAssistedProvisioningRoutes.contract.test.js | 20 | 2 | delete | R3-source-text-only | source-text-only (text_ratio=1) |
 | tests/adminAssistedProvisioningUseCase.test.js | 294 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/adminAuthConfig.test.js | 66 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/adminAuthHandlers.test.js | 141 | 4 | keep | R5-default | default keep (suffix: (none)) |
@@ -317,7 +333,7 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | tests/authenticateAdmin.middleware.test.js | 94 | 3 | keep | R5-default | default keep (suffix: middleware) |
 | tests/autoAppliedCampaignPolicy.unit.test.js | 239 | 16 | keep | R5-default | default keep (suffix: unit) |
 | tests/backendDockerfile.test.js | 25 | 1 | keep | R5-default | default keep (suffix: (none)) |
-| tests/backfillRedemptionTransactionLink.migration.test.js | 164 | 8 | keep | R5-default | default keep (suffix: migration) |
+| tests/backfillRedemptionTransactionLink.migration.test.js | 276 | 13 | keep | R5-default | default keep (suffix: migration) |
 | tests/barcodePolicy.test.js | 61 | 6 | keep | R5-default | default keep (suffix: (none)) |
 | tests/billingRouteAuditService.test.js | 41 | 1 | keep | R5-default | default keep (suffix: (none)) |
 | tests/billingScheduler.db.integration.test.js | 133 | 4 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
@@ -346,20 +362,20 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | tests/commercePaymentValidator.test.js | 117 | 7 | keep | R5-default | default keep (suffix: (none)) |
 | tests/commercialPromoPolicy.unit.test.js | 154 | 5 | keep | R5-default | default keep (suffix: unit) |
 | tests/companyRegistrationStatusUseCase.test.js | 22 | 2 | keep | R5-default | default keep (suffix: (none)) |
-| tests/complianceActivation.transport.test.js | 137 | 4 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
+| tests/complianceActivation.transport.test.js | 137 | 4 | keep | R1-pin | compliance evidence citation: docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/rbac-sensitive-action-matrix.md |
 | tests/complianceActivation.usecase.test.js | 65 | 2 | keep | R5-default | default keep (suffix: usecase) |
-| tests/complianceActivationReadiness.e2e.transport.test.js | 442 | 2 | consolidate | R4-thin-file | thin-file (2 cases in 442 lines) |
+| tests/complianceActivationReadiness.e2e.transport.test.js | 442 | 2 | keep | R1-pin | compliance evidence citation: docs/compliance/control-matrix.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
 | tests/complianceAuditFallback.usecase.test.js | 98 | 2 | keep | R5-default | default keep (suffix: usecase) |
 | tests/complianceDowngradeTrigger.db.integration.test.js | 257 | 4 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/complianceModeDowngrade.transport.test.js | 93 | 2 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/complianceModeDowngrade.usecase.test.js | 338 | 11 | keep | R5-default | default keep (suffix: usecase) |
-| tests/compliancePolicyEngine.test.js | 662 | 14 | keep | R5-default | default keep (suffix: (none)) |
+| tests/compliancePolicyEngine.test.js | 662 | 14 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/control-matrix.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
 | tests/compliancePreflight.transport.test.js | 212 | 5 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/compliancePreflightUsecase.test.js | 125 | 4 | keep | R5-default | default keep (suffix: (none)) |
-| tests/complianceRepository.documentaryReadiness.test.js | 211 | 4 | keep | R5-default | default keep (suffix: documentaryReadiness) |
+| tests/complianceRepository.documentaryReadiness.test.js | 211 | 4 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/control-matrix.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
 | tests/complianceRepository.profileMerge.test.js | 97 | 1 | keep | R5-default | default keep (suffix: profileMerge) |
-| tests/complianceSecurityIncidents.usecase.test.js | 188 | 2 | keep | R5-default | default keep (suffix: usecase) |
-| tests/complianceSecuritySignal.usecase.test.js | 154 | 4 | keep | R5-default | default keep (suffix: usecase) |
+| tests/complianceSecurityIncidents.usecase.test.js | 188 | 2 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/rbac-sensitive-action-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
+| tests/complianceSecuritySignal.usecase.test.js | 154 | 4 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
 | tests/complianceUsecases.authorization.test.js | 46 | 2 | keep | R5-default | default keep (suffix: authorization) |
 | tests/controllerBoundaryScript.integration.test.js | 38 | 2 | keep | R5-default | default keep (suffix: integration) |
 | tests/controllerFacadeParity.test.js | 88 | 5 | keep | R5-default | default keep (suffix: (none)) |
@@ -506,7 +522,6 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | tests/itemToolRegistry.test.js | 129 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/itemUseCasesEnabledCapabilities.test.js | 89 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/itemUseCasesInventoryAuthorityGate.test.js | 150 | 7 | keep | R5-default | default keep (suffix: (none)) |
-| tests/itemsCategoryRoutes.contract.test.js | 17 | 1 | delete | R3-source-text-only | source-text-only (text_ratio=1) |
 | tests/jobOrderHandlers.transport.test.js | 292 | 7 | keep | R5-default | default keep (suffix: transport) |
 | tests/jobOrderToolRegistry.test.js | 177 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/jobOrderUsecases.applicationResult.test.js | 96 | 5 | keep | R5-default | default keep (suffix: applicationResult) |
@@ -609,13 +624,13 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | tests/posDrawerAuthorization.unit.test.js | 79 | 3 | keep | R5-default | default keep (suffix: unit) |
 | tests/posExternalRefund.usecase.test.js | 267 | 7 | keep | R5-default | default keep (suffix: usecase) |
 | tests/posGovernedDiscountLineId.contract.test.js | 23 | 1 | delete | R3-source-text-only | source-text-only (text_ratio=1) |
-| tests/posHandlers.transport.test.js | 1324 | 27 | keep | R5-default | default keep (suffix: transport) |
+| tests/posHandlers.transport.test.js | 1324 | 27 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/rbac-sensitive-action-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
 | tests/posItemDiscountPolicy.unit.test.js | 56 | 2 | keep | R5-default | default keep (suffix: unit) |
 | tests/posMerchantTenderReconciliation.route.contract.test.js | 33 | 2 | keep | R5-default | default keep (suffix: route.contract) |
 | tests/posMerchantTenderReconciliation.usecases.test.js | 127 | 4 | keep | R5-default | default keep (suffix: usecases) |
 | tests/posOnlineInventoryReservationLifecycle.unit.test.js | 106 | 2 | keep | R5-default | default keep (suffix: unit) |
 | tests/posOnlineOrderCompletionBalanceGate.usecase.test.js | 202 | 6 | keep | R5-default | default keep (suffix: usecase) |
-| tests/posOperationReplayParity.usecase.test.js | 975 | 13 | keep | R5-default | default keep (suffix: usecase) |
+| tests/posOperationReplayParity.usecase.test.js | 975 | 13 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
 | tests/posOperatorAuthority.migration.test.js | 128 | 3 | keep | R5-default | default keep (suffix: migration) |
 | tests/posOperatorAuthority.security.contract.test.js | 92 | 4 | keep | R5-default | default keep (suffix: security.contract) |
 | tests/posOperatorAuthority.usecases.test.js | 428 | 19 | keep | R5-default | default keep (suffix: usecases) |
@@ -635,14 +650,13 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | tests/posPaymentProviderConfirmation.test.js | 45 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/posPickupCashCollection.usecase.test.js | 203 | 6 | keep | R5-default | default keep (suffix: usecase) |
 | tests/posProviderRefund.usecase.test.js | 429 | 8 | keep | R5-default | default keep (suffix: usecase) |
-| tests/posReadings.usecase.test.js | 438 | 9 | keep | R5-default | default keep (suffix: usecase) |
+| tests/posReadings.usecase.test.js | 438 | 9 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md |
 | tests/posReports.repository.test.js | 772 | 11 | keep | R5-default | default keep (suffix: repository) |
 | tests/posReports.usecase.test.js | 84 | 5 | keep | R5-default | default keep (suffix: usecase) |
 | tests/posRepository.catalogImages.test.js | 351 | 5 | keep | R5-default | default keep (suffix: catalogImages) |
 | tests/posRepository.locationStockFallback.test.js | 162 | 5 | keep | R5-default | default keep (suffix: locationStockFallback) |
 | tests/posRepository.transactionInclude.contract.test.js | 65 | 3 | keep | R5-default | default keep (suffix: transactionInclude.contract) |
 | tests/posSalesReconciliation.db.integration.test.js | 1731 | 1 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
-| tests/posSetupCashierRoute.transport.test.js | 22 | 2 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/posSetupCashierUseCase.test.js | 43 | 1 | keep | R5-default | default keep (suffix: (none)) |
 | tests/posShiftAuthorizationPolicy.test.js | 101 | 6 | keep | R5-default | default keep (suffix: (none)) |
 | tests/posShiftLocationBackfillRemediation.migration.test.js | 28 | 1 | trim | R0-override | keep only the "migrations must not import app code" negative |
@@ -673,7 +687,7 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | tests/posValidator.discountPolicy.test.js | 460 | 17 | keep | R5-default | default keep (suffix: discountPolicy) |
 | tests/posValidator.orderHistoryQuery.test.js | 62 | 3 | keep | R5-default | default keep (suffix: orderHistoryQuery) |
 | tests/posValidator.reportsOverviewQuery.test.js | 167 | 9 | keep | R5-default | default keep (suffix: reportsOverviewQuery) |
-| tests/posValidator.terminalShiftIdentity.test.js | 100 | 6 | keep | R5-default | default keep (suffix: terminalShiftIdentity) |
+| tests/posValidator.terminalShiftIdentity.test.js | 100 | 6 | keep | R1-pin | compliance evidence citation: docs/compliance/evidence/rbac-sensitive-action-matrix.md |
 | tests/posValidator.transactionsQuery.test.js | 78 | 4 | keep | R5-default | default keep (suffix: transactionsQuery) |
 | tests/posVoid.route.transport.test.js | 436 | 9 | keep | R5-default | default keep (suffix: route.transport) |
 | tests/posVoidFinancialOutcome.test.js | 94 | 6 | keep | R5-default | default keep (suffix: (none)) |
@@ -700,7 +714,7 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | tests/rateLimiter.behavior.test.js | 548 | 22 | keep | R5-default | default keep (suffix: behavior) |
 | tests/rateLimiterExemptionCoverage.contract.test.js | 110 | 7 | consolidate | R4-source-text-mixed | source-text-mixed (text_ratio=0.64) |
 | tests/rateLimiterStoreMode.test.js | 45 | 2 | keep | R1-pin | hardcoded reference: apps/dgfy-api/package.json |
-| tests/rbacRouteCoverage.contract.test.js | 290 | 5 | delete | R3-source-text-only | source-text-only (text_ratio=0.83) |
+| tests/rbacRouteCoverage.contract.test.js | 290 | 5 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
 | tests/receiptLogoRaster.unit.test.js | 155 | 7 | keep | R5-default | default keep (suffix: unit) |
 | tests/receiveTokenHandlers.transport.test.js | 248 | 6 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/receiveTokenUsecases.applicationResult.test.js | 106 | 6 | keep | R5-default | default keep (suffix: applicationResult) |
@@ -709,9 +723,9 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | tests/registrationIndustries.contract.test.js | 131 | 10 | keep | R5-default | default keep (suffix: contract) |
 | tests/registrationIndustries.transport.test.js | 237 | 10 | keep | R5-default | default keep (suffix: transport) |
 | tests/registrationIndustryNiches.test.js | 21 | 3 | keep | R5-default | default keep (suffix: (none)) |
-| tests/reportHandlers.transport.test.js | 490 | 10 | keep | R5-default | default keep (suffix: transport) |
+| tests/reportHandlers.transport.test.js | 490 | 10 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md |
 | tests/reportService.poAnalysis.test.js | 94 | 1 | keep | R5-default | default keep (suffix: poAnalysis) |
-| tests/reportUsecases.applicationResult.test.js | 100 | 6 | keep | R5-default | default keep (suffix: applicationResult) |
+| tests/reportUsecases.applicationResult.test.js | 100 | 6 | keep | R1-pin | compliance evidence citation: docs/compliance/evidence/open-controls-matrix.md |
 | tests/reproduce_import_bypass.test.js | 202 | 2 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/reproduce_invite_issue.test.js | 89 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/requestContext.middleware.test.js | 103 | 5 | keep | R5-default | default keep (suffix: middleware) |
@@ -721,6 +735,7 @@ Total active test files: **638** | db-manifest members: **30** | findings: **4**
 | tests/requireTenantContext.middleware.test.js | 76 | 4 | keep | R5-default | default keep (suffix: middleware) |
 | tests/resolveStoreProfile.usecase.test.js | 205 | 9 | keep | R5-default | default keep (suffix: usecase) |
 | tests/roadDistanceProvider.test.js | 121 | 8 | keep | R5-default | default keep (suffix: (none)) |
+| tests/routeAuthorizationDeclarations.contract.test.js | 49 | 4 | keep | R0-override | merge target for the route-declaration sweep; real RBAC regression guards on route lines (#1451) |
 | tests/routeCalculatorRepository.test.js | 120 | 7 | keep | R5-default | default keep (suffix: (none)) |
 | tests/routeCalculatorUseCase.test.js | 93 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/routeCalculatorValidator.test.js | 80 | 4 | keep | R5-default | default keep (suffix: (none)) |
@@ -1059,11 +1074,50 @@ Filed via `pm` after this PR (Refs #1441; not implemented here):
 - A full sweep of live (non-historical) `npm --prefix backend` references outside this PR's own
   touched files (section 7, finding 6).
 - PR-B (Phase 253) — static-parse POS barrel-mock helper.
-- PR-C (Phase 254) — transport/source-text trims across the ~20 remaining files this audit's rule
-  engine flags as `consolidate` (compliance-cited cases untouched).
+- PR-C (Phase 254, shipped) — see above for what actually landed. Follow-ups this PR left open,
+  rather than folding into scope it wasn't planned for:
+  - **`R4-transport-responder-only` has ~zero precision.** Read in full during PR-C planning: the
+    rule fires on "≤6 cases and ≥90% of assertions are on `res`/mock calls," which describes a
+    well-written, already-tight transport test, not a bloated one. The 2-case files pair one
+    success case with one failure case (in `analyticsHandlers`/`dashboardHandlers` the two cases
+    cover two different handlers, so the "error" case is that handler's only coverage); the larger
+    files (`purchaseOrderHandlers`, `receiveTokenHandlers`, `stockMovementHandlers`) each carry
+    exactly one generic error case alongside handler-specific ones. Under the rule's own logic,
+    honestly applied, the safe cut count across all 23 flagged files was 1, not ~20 — a future pass
+    should tighten the rule's precision (e.g. require the flagged case to actually duplicate an
+    assertion already made by `useCaseResponder.test.js`) before trusting its `consolidate` output
+    at scale again.
+  - **The "drop pure `sendUseCaseResult` envelope re-proof" premise doesn't hold for most handler
+    modules.** `tests/useCaseResponder.test.js` proves only the *default* two-field failure
+    envelope (`{ success: false, message }`). 50 of 59 handler modules that call
+    `sendUseCaseResult` (`rg -l errorPayloadResolver apps/dgfy-api/src` vs.
+    `rg -l sendUseCaseResult apps/dgfy-api/src`) pass their own handler-local
+    `errorPayloadResolver` with a different, module-specific shape (worked example:
+    `alertHandlers.js`'s seven-field payload with `error_code`/`errors`/`request_id`/`timestamp`).
+    A transport test's "generic error" case for one of those 50 modules is proving that module's
+    own envelope, not re-proving `useCaseResponder`'s default — deleting it deletes real coverage.
+    Only 7 handler modules use the bare default, and neither of the two with flagged transport
+    tests (`dgfyAdminAccountHandlers`, `paymentHandlers.publicRoutes`) has a generic-envelope case
+    to begin with.
+  - **Dropped: splitting `posParkedSale.schema.contract`/`posSplitPayment.schema.contract` into
+    behavioral-vs.-text-grep files.** Each has exactly one case touching the real Sequelize model
+    and the rest pure migration-source greps; splitting yields two files where one still imports
+    `src/models/index.js` — the entire cost driver — so total import work is unchanged and file
+    count goes up by 3. Both files were already demoted to the fast tier by PR-A
+    (`R0-override`, `newTier: 'fast'`), which captured the real win. Not worth doing unless a
+    reviewer asks for it explicitly.
+  - **Next sweep candidates for the route-declaration consolidation pattern**, deliberately not
+    folded into PR-C's `routeAuthorizationDeclarations.contract.test.js` (scope discipline, not an
+    oversight): `tests/auditRoute.contract.test.js` and
+    `tests/dgfyAdminAccountRoutes.contract.test.js` are the same shape (a route file's source text
+    grepped for its authorization middleware) and are the obvious next two to fold in.
 - PR-D (Phase 255) — db-tier tenant-sync consolidation (`token_refresh_race`,
   `supertest_security`, `voidMovement.supertest`); this is where matrix wall-clock actually moves,
   and where case 1.5's uncovered scenario (finding 2 above) should be re-evaluated.
+- #1453/#1454 each get **no** ledger entry (Phase 254's own decision, not an oversight): neither is
+  a governed multi-phase initiative, both are recorded as follow-ups here, and every stray ledger
+  entry is another collision surface with #1431's concurrently-active phase numbering. #1451 and
+  #1452 each get their own entry.
 
 ## 10. Generated inventory
 
