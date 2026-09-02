@@ -322,6 +322,232 @@ const syncExplicitAccountOrderActivities = async ({ account, activities = [] } =
     return Promise.all(rows.map((activity) => syncExplicitAccountOrderActivity({ account, activity })));
 };
 
+const optionalNumber = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const buildAvailableAssociationInclude = async ({ sequelize, model, as, nested = [] } = {}) => {
+    if (!model) return null;
+    const attributes = await existingModelAttributes(sequelize, model);
+    if (!attributes.length) return null;
+    return {
+        model,
+        as,
+        required: false,
+        attributes,
+        ...(nested.length ? { include: nested } : {})
+    };
+};
+
+const buildDgfyItemNestedInclude = async ({ sequelize, itemModel }) => {
+    if (!itemModel) return null;
+    const attributes = await existingModelAttributes(sequelize, itemModel);
+    if (!attributes.length) return null;
+    return {
+        model: itemModel,
+        as: 'item',
+        required: false,
+        attributes
+    };
+};
+
+const buildDgfyOrderLineInclude = async ({ sequelize, lineModel, itemModel }) => {
+    const itemInclude = await buildDgfyItemNestedInclude({ sequelize, itemModel });
+    return buildAvailableAssociationInclude({
+        sequelize,
+        model: lineModel,
+        as: 'lines',
+        nested: itemInclude ? [itemInclude] : []
+    });
+};
+
+const lineValue = (line, fallbackLine, ...keys) => {
+    for (const key of keys) {
+        if (line?.[key] !== undefined && line?.[key] !== null && line?.[key] !== '') return line[key];
+        if (fallbackLine?.[key] !== undefined && fallbackLine?.[key] !== null && fallbackLine?.[key] !== '') return fallbackLine[key];
+    }
+    return null;
+};
+
+const serializeDgfyOrderLines = (lines = [], fallbackLines = []) => {
+    const usedFallbackIndexes = new Set();
+    return (Array.isArray(lines) ? lines : []).map((line) => {
+        const itemId = parsePositiveInt(line?.item_id);
+        const fallbackIndex = Array.isArray(fallbackLines)
+            ? fallbackLines.findIndex((candidate, index) => (
+                !usedFallbackIndexes.has(index)
+                && parsePositiveInt(candidate?.item_id) === itemId
+            ))
+            : -1;
+        const fallbackLine = fallbackIndex >= 0 ? fallbackLines[fallbackIndex] : null;
+        if (fallbackIndex >= 0) usedFallbackIndexes.add(fallbackIndex);
+        const quantity = optionalNumber(lineValue(line, fallbackLine, 'quantity', 'qty'));
+        const unitPrice = optionalNumber(lineValue(line, fallbackLine, 'sale_price', 'unit_price', 'price'));
+        const lineTotal = optionalNumber(lineValue(line, fallbackLine, 'line_subtotal', 'line_total', 'line_total_amount', 'amount'));
+        const item = line?.item || fallbackLine?.item || {};
+        return {
+            line_id: lineValue(line, fallbackLine, 'line_id', 'check_line_id'),
+            item_id: itemId || parsePositiveInt(fallbackLine?.item_id),
+            name: lineValue(line, fallbackLine, 'item_name_snapshot', 'name') || item.name || 'Item',
+            sku_code: lineValue(line, fallbackLine, 'sku_snapshot', 'sku_code') || item.sku_code || null,
+            quantity: quantity ?? 0,
+            unit_of_measure: lineValue(line, fallbackLine, 'unit_of_measure') || item.unit_of_measure || null,
+            unit_price: unitPrice,
+            line_total: lineTotal,
+            ...(line?.course ? { course: line.course } : {}),
+            ...(line?.modifiers_snapshot ? { modifiers: line.modifiers_snapshot } : {}),
+            ...(line?.special_instructions ? { special_instructions: line.special_instructions } : {})
+        };
+    }).filter((line) => line.item_id);
+};
+
+const isDgfyOrderOwnedByAccount = ({ activity, account, order } = {}) => {
+    const storeCustomer = order?.storeCustomer || order?.store_customer || order?.posTransaction?.storeCustomer || {};
+    const orderAccountId = String(storeCustomer.dgfy_account_id || '').trim();
+    if (orderAccountId && orderAccountId !== String(account?.id || '').trim()) return false;
+
+    const activityCustomerId = parsePositiveInt(activity?.store_customer_id);
+    const orderCustomerId = parsePositiveInt(
+        order?.store_customer_id
+        || storeCustomer.customer_id
+        || order?.posTransaction?.store_customer_id
+    );
+    return !(activityCustomerId && orderCustomerId && activityCustomerId !== orderCustomerId);
+};
+
+const setDisplayValue = (display, key, ...candidates) => {
+    const value = candidates.find((candidate) => candidate !== undefined && candidate !== null && candidate !== '');
+    if (value !== undefined) display[key] = value;
+};
+
+const buildDgfyOrderDetailSnapshot = ({ activity, order = {}, lines = [], supplemental = {} } = {}) => {
+    const existingDisplay = isPlainObject(activity?.display_snapshot) ? activity.display_snapshot : {};
+    const display = { ...existingDisplay };
+    setDisplayValue(display, 'order_id', order.pos_transaction_id, supplemental.pos_transaction_id, existingDisplay.order_id);
+    setDisplayValue(display, 'check_id', supplemental.check_id, existingDisplay.check_id);
+    setDisplayValue(display, 'order_method', order.order_method, supplemental.order_method, existingDisplay.order_method);
+    setDisplayValue(display, 'receipt_number', order.invoice_number, order.receipt_number, existingDisplay.receipt_number);
+    setDisplayValue(display, 'payment_type', order.payment_type, existingDisplay.payment_type);
+    setDisplayValue(display, 'payment_timing', order.payment_timing, existingDisplay.payment_timing);
+    setDisplayValue(display, 'payment_status', order.payment_status, supplemental.payment_status, existingDisplay.payment_status);
+    setDisplayValue(display, 'delivery_address', order.delivery_address, existingDisplay.delivery_address);
+    setDisplayValue(display, 'scheduled_for', order.scheduled_for, existingDisplay.scheduled_for);
+    setDisplayValue(display, 'special_instructions', order.special_instructions, existingDisplay.special_instructions);
+    setDisplayValue(display, 'subtotal_amount', order.subtotal_amount, existingDisplay.subtotal_amount);
+    setDisplayValue(display, 'discount_amount', order.discount_amount, existingDisplay.discount_amount);
+    setDisplayValue(display, 'service_fee_amount', order.service_fee_amount, existingDisplay.service_fee_amount);
+    setDisplayValue(display, 'service_fee', order.service_fee_amount, existingDisplay.service_fee);
+    setDisplayValue(display, 'delivery_fee', order.delivery_fee, existingDisplay.delivery_fee);
+    setDisplayValue(display, 'amount_paid', order.amount_paid, existingDisplay.amount_paid);
+    setDisplayValue(display, 'balance_due', order.balance_due, existingDisplay.balance_due);
+    if (lines.length) display.lines = lines;
+
+    return {
+        ...activity,
+        status: order.fulfillment_status || supplemental.status || activity.status,
+        status_label: order.status_label || activity.status_label,
+        payment_status: order.payment_status || supplemental.payment_status || activity.payment_status,
+        total_amount: order.total_amount ?? activity.total_amount,
+        occurred_at: order.created_at || supplemental.closed_at || supplemental.opened_at || activity.occurred_at,
+        display_snapshot: display
+    };
+};
+
+const readDgfyPosOrderDetails = async ({ account, activity, sequelize }) => {
+    const PosTransaction = dbStore.get('PosTransaction');
+    if (!PosTransaction) return null;
+    const transactionAttributes = await existingModelAttributes(sequelize, PosTransaction);
+    if (!transactionAttributes.includes('tracking_pin')) return null;
+
+    const include = [];
+    const StoreCustomer = dbStore.get('StoreCustomer');
+    const storeCustomerInclude = await buildAvailableAssociationInclude({ sequelize, model: StoreCustomer, as: 'storeCustomer' });
+    if (storeCustomerInclude) include.push(storeCustomerInclude);
+    const TenantLocation = dbStore.get('TenantLocation');
+    const locationInclude = await buildAvailableAssociationInclude({ sequelize, model: TenantLocation, as: 'location' });
+    if (locationInclude) include.push(locationInclude);
+    const PosTransactionLine = dbStore.get('PosTransactionLine');
+    const Item = dbStore.get('Item');
+    const lineInclude = await buildDgfyOrderLineInclude({ sequelize, lineModel: PosTransactionLine, itemModel: Item });
+    if (lineInclude) include.push(lineInclude);
+
+    const row = await PosTransaction.findOne({
+        where: { tracking_pin: normalizeReference(activity.reference) },
+        attributes: transactionAttributes,
+        include
+    });
+    if (!row) return null;
+    const order = toPlainRecord(row);
+    if (!isDgfyOrderOwnedByAccount({ activity, account, order })) return null;
+    return buildDgfyOrderDetailSnapshot({
+        activity,
+        order,
+        lines: serializeDgfyOrderLines(order.lines),
+        supplemental: { location: order.location }
+    });
+};
+
+const readDgfyFnbOrderDetails = async ({ account, activity, sequelize }) => {
+    const FnbCheck = dbStore.get('FnbCheck');
+    if (!FnbCheck) return null;
+    const checkAttributes = await existingModelAttributes(sequelize, FnbCheck);
+    if (!checkAttributes.includes('check_id')) return null;
+
+    const include = [];
+    const PosTransaction = dbStore.get('PosTransaction');
+    const StoreCustomer = dbStore.get('StoreCustomer');
+    const Item = dbStore.get('Item');
+    if (PosTransaction) {
+        const transactionAttributes = await existingModelAttributes(sequelize, PosTransaction);
+        if (transactionAttributes.length) {
+            const transactionInclude = [];
+            const storeCustomerInclude = await buildAvailableAssociationInclude({ sequelize, model: StoreCustomer, as: 'storeCustomer' });
+            if (storeCustomerInclude) transactionInclude.push(storeCustomerInclude);
+            const PosTransactionLine = dbStore.get('PosTransactionLine');
+            const transactionLineInclude = await buildDgfyOrderLineInclude({ sequelize, lineModel: PosTransactionLine, itemModel: Item });
+            if (transactionLineInclude) transactionInclude.push(transactionLineInclude);
+            include.push({ model: PosTransaction, as: 'posTransaction', required: false, attributes: transactionAttributes, include: transactionInclude });
+        }
+    }
+    const FnbCheckLine = dbStore.get('FnbCheckLine');
+    const checkLineInclude = await buildDgfyOrderLineInclude({ sequelize, lineModel: FnbCheckLine, itemModel: Item });
+    if (checkLineInclude) include.push(checkLineInclude);
+
+    const checkId = parsePositiveInt(activity.display_snapshot?.check_id);
+    if (!checkId) return null;
+    const row = await FnbCheck.findOne({ where: { check_id: checkId }, attributes: checkAttributes, include });
+    if (!row) return null;
+    const check = toPlainRecord(row);
+    const order = check.posTransaction || {};
+    if (!isDgfyOrderOwnedByAccount({ activity, account, order: { ...order, posTransaction: order } })) return null;
+    return buildDgfyOrderDetailSnapshot({
+        activity,
+        order,
+        lines: serializeDgfyOrderLines(check.lines, order.lines),
+        supplemental: {
+            check_id: check.check_id,
+            order_method: check.order_method,
+            status: check.status,
+            payment_status: check.status === 'paid' ? 'paid' : null,
+            opened_at: check.opened_at,
+            closed_at: check.closed_at,
+            pos_transaction_id: check.pos_transaction_id
+        }
+    });
+};
+
+const readDgfyCustomerOrderDetails = async ({ account, activity } = {}) => {
+    if (!activity?.tenant_id) return null;
+    return withTenantContext(activity.tenant_id, async ({ sequelize }) => {
+        const activityType = String(activity.activity_type || '').trim().toLowerCase();
+        if (activityType === 'fnb_order') return readDgfyFnbOrderDetails({ account, activity, sequelize });
+        if (['order', 'pos_order'].includes(activityType)) return readDgfyPosOrderDetails({ account, activity, sequelize });
+        return null;
+    });
+};
+
 const matchAccountForOrder = (order = {}) => {
     const storeCustomer = order.storeCustomer || {};
     if (storeCustomer.dgfy_account_id) return { id: storeCustomer.dgfy_account_id };
@@ -690,6 +916,37 @@ export const buildGetDgfyCustomerDashboardUseCase = ({
         });
     } catch (error) {
         return fail(mapError(error, 'Failed to load DGFY customer dashboard'));
+    }
+};
+
+export const buildGetDgfyCustomerOrderDetailsUseCase = ({
+    repository = dgfyCustomerRepository,
+    detailReader = readDgfyCustomerOrderDetails
+} = {}) => async ({ account, reference } = {}) => {
+    try {
+        const dgfyAccount = ensureAccount(account);
+        const normalizedReference = normalizeReference(reference);
+        if (!TRACKING_REFERENCE_PATTERN.test(normalizedReference)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'A valid order reference is required.', { statusCode: 422 });
+        }
+
+        const activity = await repository.findActivityForAccount({
+            dgfyAccountId: dgfyAccount.id,
+            reference: normalizedReference
+        });
+        const activityType = String(activity?.activity_type || '').trim().toLowerCase();
+        if (!activity || !ORDER_ACTIVITY_TYPES.has(activityType)) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Order was not found for this DGFY account.', { statusCode: 404 });
+        }
+
+        const detailedActivity = await detailReader({ account: dgfyAccount, activity });
+        const responseActivity = detailedActivity || activity;
+        return ok({
+            order: publicActivity(responseActivity),
+            details_available: Boolean(detailedActivity)
+        });
+    } catch (error) {
+        return fail(mapError(error, 'Failed to load DGFY customer order details'));
     }
 };
 

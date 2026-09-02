@@ -2,8 +2,9 @@ import React from 'react';
 import { CalendarDays } from 'lucide-react';
 import { isCustomerBookingReview } from '../model/customerBookingStatus.js';
 import { CUSTOMER_DASHBOARD_TYPOGRAPHY } from '../model/customerDashboardPresentation.jsx';
+import { CustomerTransactionCard } from './CustomerTransactionCard.jsx';
 
-export function BookingsSection({ activeTab, setActiveTab, activeBookings, pastBookings, reviews, isMobileViewport, EmptyState, StatusBadge, formatDate, theme }) {
+export function BookingsSection({ activeTab, setActiveTab, activeBookings, pastBookings, reviews, isMobileViewport, EmptyState, StatusBadge, formatDate, money, theme }) {
   const bookingReviews = reviews.filter(isCustomerBookingReview);
   const tabs = [
     { id: 'active', label: 'Active Bookings', count: activeBookings.length },
@@ -13,17 +14,26 @@ export function BookingsSection({ activeTab, setActiveTab, activeBookings, pastB
   const visibleBookings = activeTab === 'active' ? activeBookings : pastBookings;
 
   const renderBookingCard = (booking) => (
-    <div key={`all-booking-${booking.reference}`} style={{ background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, padding: isMobileViewport ? 16 : 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
-        <div style={{ width: 48, height: 48, borderRadius: 12, background: theme.purpleBg, color: theme.purple, display: 'grid', placeItems: 'center', flexShrink: 0 }}><CalendarDays size={24} /></div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.cardTitle, fontWeight: 700, color: theme.text, marginBottom: 4 }}>{booking.store_name || 'DGFY Service'}</div>
-          <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, color: theme.muted }}>{booking.reference} {'\u2022'} {formatDate(booking.occurred_at)}</div>
-        </div>
-      </div>
-      <StatusBadge status={booking.status_label || booking.status} />
-      <button type="button" onClick={() => window.alert('Booking details will be available soon.')} style={{ background: theme.surface, border: `1px solid ${theme.border}`, color: theme.primary, borderRadius: 8, padding: '8px 16px', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, fontWeight: 600, cursor: 'pointer' }}>View Details</button>
-    </div>
+    <CustomerTransactionCard
+      key={`all-booking-${booking.reference}`}
+      testId="customer-booking-card"
+      ariaLabel={`${booking.store_name || 'DGFY Service'} booking ${booking.reference}`}
+      entry={booking}
+      storeName={booking.store_name || 'DGFY Service'}
+      reference={booking.reference}
+      occurredAt={booking.occurred_at}
+      status={booking.status_label || booking.status}
+      totalAmount={booking.total_amount}
+      totalValue={booking.service_name || booking.booking_type || 'Service booking'}
+      formatDate={formatDate}
+      money={money}
+      isMobileViewport={isMobileViewport}
+      theme={theme}
+      StatusBadge={StatusBadge}
+      FallbackIcon={CalendarDays}
+      primaryActionLabel="View Details"
+      onPrimaryAction={() => window.alert('Booking details will be available soon.')}
+    />
   );
 
   return (

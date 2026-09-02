@@ -33,11 +33,11 @@ export function useCustomerAccountPanel({
       return;
     }
     if (!silent) {
-      setAccountPanel((previous) => ({ ...previous, loading: true, error: '' }));
+      setAccountPanel((previous) => ({ ...previous, loading: true, error: '', affiliateAccessStatus: 'loading' }));
     }
 
     const loadDgfyPanel = async (authToken = '') => {
-      const [meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData, affiliateEnrollmentsData, affiliateEarningsData, affiliatePayoutMethodsData, affiliateCashoutsData] = await Promise.all([
+      const [meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData, affiliateEnrollmentsResult, affiliateEarningsData, affiliatePayoutMethodsData, affiliateCashoutsData] = await Promise.all([
         requestJson('/api/v1/dgfy/auth/me', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/dashboard', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
@@ -45,12 +45,12 @@ export function useCustomerAccountPanel({
         requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] })),
         requestJson('/api/v1/dgfy/customer/notifications?limit=50', { authToken, cache: 'no-store' }).catch(() => ({ notifications: [], unread_count: 0 })),
         requestJson('/api/v1/dgfy/customer/addresses', { authToken, cache: 'no-store' }).catch(() => ({ addresses: [] })),
-        requestJson('/api/v1/dgfy/affiliate/enrollments', { authToken, cache: 'no-store' }).catch(() => ({ enrollments: [] })),
+        requestJson('/api/v1/dgfy/affiliate/enrollments', { authToken, cache: 'no-store' }).then((data) => ({ status: 'ready', data })).catch(() => ({ status: 'error', data: { enrollments: [] } })),
         requestJson('/api/v1/dgfy/affiliate/earnings', { authToken, cache: 'no-store' }).catch(() => ({ earnings: null, by_store: [] })),
         requestJson('/api/v1/dgfy/affiliate/payout-methods', { authToken, cache: 'no-store' }).catch(() => ({ payout_methods: [] })),
         requestJson('/api/v1/dgfy/affiliate/cashouts', { authToken, cache: 'no-store' }).catch(() => ({ cashouts: [] }))
       ]);
-      return { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData, affiliateEnrollmentsData, affiliateEarningsData, affiliatePayoutMethodsData, affiliateCashoutsData };
+      return { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData, affiliateEnrollmentsData: affiliateEnrollmentsResult.data, affiliateAccessStatus: affiliateEnrollmentsResult.status, affiliateEarningsData, affiliatePayoutMethodsData, affiliateCashoutsData };
     };
 
     try {
@@ -66,7 +66,7 @@ export function useCustomerAccountPanel({
         }
         if (requestId !== loadRequestRef.current) return;
 
-        const { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData, affiliateEnrollmentsData, affiliateEarningsData, affiliatePayoutMethodsData, affiliateCashoutsData } = panelData;
+        const { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData, affiliateEnrollmentsData, affiliateAccessStatus, affiliateEarningsData, affiliatePayoutMethodsData, affiliateCashoutsData } = panelData;
         const activityCollections = deriveAccountActivityCollections({ dashboardData, activitiesData });
         const addresses = Array.isArray(addressesData?.addresses) && addressesData.addresses.length > 0
           ? addressesData.addresses
@@ -87,6 +87,7 @@ export function useCustomerAccountPanel({
           loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null,
           businessCompanies: mapCustomerBusinessCompanies(companiesData?.companies, knownStoreRouteCandidates),
           businessStepUp: companiesData?.business_step_up || { verified: false },
+          affiliateAccessStatus,
           affiliateEnrollments: Array.isArray(affiliateEnrollmentsData?.enrollments) ? affiliateEnrollmentsData.enrollments : [],
           affiliateEarnings: affiliateEarningsData?.earnings || null,
           affiliateEarningsByStore: Array.isArray(affiliateEarningsData?.by_store) ? affiliateEarningsData.by_store : [],
@@ -122,7 +123,13 @@ export function useCustomerAccountPanel({
         addresses: [],
         loyalty: null,
         businessCompanies: [],
-        businessStepUp: { verified: false }
+        businessStepUp: { verified: false },
+        affiliateAccessStatus: 'ready',
+        affiliateEnrollments: [],
+        affiliateEarnings: null,
+        affiliateEarningsByStore: [],
+        affiliatePayoutMethods: [],
+        affiliateCashouts: []
       });
     } catch (error) {
       if (requestId !== loadRequestRef.current) return;
@@ -131,7 +138,7 @@ export function useCustomerAccountPanel({
         setDgfyAuthTokenState('');
         setDgfySessionAccount(null);
       }
-      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
+      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, affiliateAccessStatus: 'error', error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
       // Surface retryAfterSeconds (never thrown further -- this function
       // always resolves) so a caller polling on an interval, e.g.
       // useCustomerDashboardLiveSync, can back off instead of retrying at

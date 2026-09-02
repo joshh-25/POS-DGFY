@@ -11,11 +11,13 @@ function buildCustomerDashboardViewProps({
   return {
     isMobileViewport,
     onRefresh: actions.onRefresh,
+    onGetOrderDetails: actions.onGetOrderDetails,
     onTrackReference: actions.onTrackReference,
     onMarkNotificationRead: actions.onMarkNotificationRead,
     onMarkAllNotificationsRead: actions.onMarkAllNotificationsRead,
     onSignOut: actions.onSignOut,
     onHelp: actions.onHelp,
+    onFeedback: actions.onFeedback,
     onRegisterBusiness: actions.onRegisterBusiness,
     onRequestBusinessStepUp: actions.onRequestBusinessStepUp,
     onAcceptCompanyInvitation: actions.onAcceptCompanyInvitation,

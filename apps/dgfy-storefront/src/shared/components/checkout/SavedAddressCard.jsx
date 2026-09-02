@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Edit2, MapPin, Star, Trash2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Edit2, MapPin, MoreHorizontal, Star, Trash2 } from 'lucide-react';
 
 /**
  * SavedAddressCard
@@ -17,6 +17,8 @@ import { Edit2, MapPin, Star, Trash2 } from 'lucide-react';
  *   onSetDefault fn(address) — called when "Set default" is tapped (explicit action)
  *   onRemove    fn(address) — called when "Remove" is tapped
  *   showActions bool  — whether to render Set default / Remove buttons
+ *   layoutVariant string — use "dashboard" for the compact account-address layout
+ *   isMobileViewport bool — lets the dashboard layout stack actions at narrow widths
  */
 export function SavedAddressCard({
   address,
@@ -27,6 +29,8 @@ export function SavedAddressCard({
   onEdit,
   onRemove,
   showActions = true,
+  layoutVariant = 'checkout',
+  isMobileViewport = false,
   themeColor = '#1a4e8d',
   themeBg = '#eff6ff',
   themeHoverBorder = '#93c5fd',
@@ -35,6 +39,26 @@ export function SavedAddressCard({
   themeShadowColorSoft = 'rgba(26,78,141,0.08)',
 }) {
   const [isHovered, setIsHovered] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (layoutVariant !== 'dashboard' || !isMenuOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!menuRef.current?.contains(event.target)) setIsMenuOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsMenuOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMenuOpen, layoutVariant]);
 
   const handleSelect = () => {
     if (!isBusy && typeof onSelect === 'function') onSelect(address);
@@ -53,6 +77,12 @@ export function SavedAddressCard({
   const handleRemove = (event) => {
     event.stopPropagation();
     if (!isBusy && typeof onRemove === 'function') onRemove(address);
+  };
+
+  const handleDashboardMenuAction = (event, action) => {
+    event.stopPropagation();
+    setIsMenuOpen(false);
+    if (!isBusy && typeof action === 'function') action(address);
   };
 
   const isHoverActive = isHovered && !isSelected && !isBusy;
@@ -118,6 +148,292 @@ export function SavedAddressCard({
     opacity: isBusy ? 0.5 : 1,
     transition: 'opacity 150ms',
   };
+
+  if (layoutVariant === 'dashboard') {
+    const addressTitle = address.label || 'Saved Address';
+    const dashboardActionStyle = {
+      minHeight: isMobileViewport ? 44 : 40,
+      border: 'none',
+      background: 'transparent',
+      borderRadius: 8,
+      padding: '0 4px',
+      color: themeColor,
+      fontSize: 13,
+      fontWeight: 700,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      cursor: isBusy ? 'not-allowed' : 'pointer',
+      opacity: isBusy ? 0.5 : 1,
+      whiteSpace: 'nowrap',
+    };
+    const dashboardMenuItemStyle = {
+      width: '100%',
+      minHeight: 44,
+      border: 'none',
+      background: '#ffffff',
+      borderRadius: 8,
+      padding: '0 12px',
+      color: '#334155',
+      fontSize: 13,
+      fontWeight: 600,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      textAlign: 'left',
+      cursor: isBusy ? 'not-allowed' : 'pointer',
+      opacity: isBusy ? 0.5 : 1,
+    };
+    const isMobileDashboard = isMobileViewport;
+    const hasDashboardActions = showActions && (
+      typeof onSetDefault === 'function'
+      || typeof onEdit === 'function'
+      || typeof onRemove === 'function'
+    );
+
+    return (
+      <article
+        data-testid="customer-address-card"
+        aria-busy={isBusy}
+        style={{
+          position: 'relative',
+          overflow: 'visible',
+          borderRadius: 14,
+          border: isSelected
+            ? `1px solid ${themeColor}`
+            : isHoverActive
+              ? `1px solid ${themeHoverBorder}`
+              : '1px solid #e2e8f0',
+          borderLeft: isSelected ? `3px solid ${themeColor}` : undefined,
+          background: isSelected ? '#fbfdff' : isHoverActive ? themeHoverBg : '#ffffff',
+          boxShadow: isSelected
+            ? `0 4px 16px ${themeShadowColorSoft}`
+            : '0 2px 8px rgba(15,23,42,0.04)',
+          padding: isMobileViewport ? '12px' : '16px 18px',
+          display: 'grid',
+          gridTemplateColumns: isMobileViewport ? '44px minmax(0, 1fr)' : '48px minmax(0, 1fr) auto',
+          columnGap: isMobileViewport ? 12 : 16,
+          rowGap: 8,
+          alignItems: 'center',
+          transition: 'border-color 180ms ease, box-shadow 180ms ease, background 180ms ease',
+          opacity: 1,
+          cursor: isBusy ? 'wait' : 'default',
+        }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <button
+          type="button"
+          aria-label={typeof onSelect === 'function' ? `Use ${addressTitle} for checkout` : undefined}
+          disabled={isBusy}
+          onClick={handleSelect}
+          style={{
+            gridColumn: isMobileViewport ? '1 / -1' : '1 / 3',
+            border: 'none',
+            background: 'transparent',
+            padding: 0,
+            display: 'grid',
+            gridTemplateColumns: `${isMobileViewport ? 44 : 48}px minmax(0, 1fr)`,
+            alignItems: 'center',
+            columnGap: isMobileViewport ? 12 : 16,
+            textAlign: 'left',
+            cursor: isBusy ? 'not-allowed' : 'pointer',
+            width: '100%',
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              width: isMobileViewport ? 44 : 48,
+              height: isMobileViewport ? 44 : 48,
+              borderRadius: '50%',
+              background: themeBg,
+              color: themeColor,
+              display: 'grid',
+              placeItems: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <MapPin size={isMobileViewport ? 20 : 21} strokeWidth={2} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <p style={{ margin: 0, color: '#0f172a', fontSize: 15, fontWeight: 700, lineHeight: 1.35, overflowWrap: 'anywhere' }}>
+                {addressTitle}
+              </p>
+              {address.isDefault ? (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    minHeight: 24,
+                    borderRadius: 999,
+                    background: 'rgba(22, 163, 74, 0.12)',
+                    color: '#15803d',
+                    padding: '0 9px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <span aria-hidden="true" style={{ marginRight: 4 }}>✓</span>
+                  Default
+                </span>
+              ) : null}
+            </div>
+            {address.fullAddress ? (
+              <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13, fontWeight: 500, lineHeight: 1.45, overflowWrap: 'anywhere' }}>
+                {address.fullAddress}
+              </p>
+            ) : null}
+          </div>
+        </button>
+
+        {hasDashboardActions ? (
+          <div
+            data-testid={`customer-address-actions-${address.addressId || address.id || addressTitle}`}
+            style={{
+              gridColumn: isMobileDashboard ? '1 / -1' : '3',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: isMobileDashboard ? 8 : 12,
+              rowGap: 4,
+              flexWrap: 'wrap',
+              minWidth: 0,
+              width: '100%',
+            }}
+          >
+            {!address.isDefault && typeof onSetDefault === 'function' ? (
+              <button
+                type="button"
+                aria-label="Set Default"
+                disabled={isBusy}
+                onClick={handleSetDefault}
+                style={dashboardActionStyle}
+              >
+                <Star size={16} strokeWidth={2} />
+                Set as default
+              </button>
+            ) : null}
+            {typeof onEdit === 'function' ? (
+              <button
+                type="button"
+                aria-label="Edit"
+                disabled={isBusy}
+                onClick={handleEdit}
+                style={dashboardActionStyle}
+              >
+                <Edit2 size={16} strokeWidth={2} />
+                Edit
+              </button>
+            ) : null}
+            {isMobileDashboard && typeof onRemove === 'function' ? (
+              <button
+                type="button"
+                aria-label={`Delete ${addressTitle} address`}
+                disabled={isBusy}
+                onClick={handleRemove}
+                style={{ ...dashboardActionStyle, color: '#dc2626' }}
+              >
+                <Trash2 size={16} strokeWidth={2} />
+                Delete
+              </button>
+            ) : null}
+            {!isMobileDashboard ? (
+              <>
+                <div style={{ width: 1, height: 24, background: '#e2e8f0', flexShrink: 0 }} aria-hidden="true" />
+                <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    aria-label={`More actions for ${addressTitle}`}
+                    aria-haspopup="menu"
+                    aria-expanded={isMenuOpen}
+                    disabled={isBusy}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setIsMenuOpen((open) => !open);
+                    }}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      border: '1px solid #dbe5ee',
+                      borderRadius: 10,
+                      background: '#ffffff',
+                      color: themeColor,
+                      display: 'grid',
+                      placeItems: 'center',
+                      cursor: isBusy ? 'not-allowed' : 'pointer',
+                      opacity: isBusy ? 0.5 : 1,
+                    }}
+                  >
+                    <MoreHorizontal size={18} strokeWidth={2} />
+                  </button>
+                  {isMenuOpen ? (
+                    <div
+                      role="menu"
+                      aria-label={`Actions for ${addressTitle}`}
+                      style={{
+                        position: 'absolute',
+                        zIndex: 20,
+                        top: 'calc(100% + 6px)',
+                        right: 0,
+                        width: 184,
+                        padding: 5,
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 12,
+                        background: '#ffffff',
+                        boxShadow: '0 14px 30px rgba(15,23,42,0.14)',
+                      }}
+                    >
+                      {!address.isDefault && typeof onSetDefault === 'function' ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={isBusy}
+                          onClick={(event) => handleDashboardMenuAction(event, onSetDefault)}
+                          style={dashboardMenuItemStyle}
+                        >
+                          <Star size={16} strokeWidth={2} color={themeColor} />
+                          Set as default
+                        </button>
+                      ) : null}
+                      {typeof onEdit === 'function' ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={isBusy}
+                          onClick={(event) => handleDashboardMenuAction(event, onEdit)}
+                          style={dashboardMenuItemStyle}
+                        >
+                          <Edit2 size={16} strokeWidth={2} color={themeColor} />
+                          Edit address
+                        </button>
+                      ) : null}
+                      {typeof onRemove === 'function' ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={isBusy}
+                          onClick={(event) => handleDashboardMenuAction(event, onRemove)}
+                          style={{ ...dashboardMenuItemStyle, color: '#dc2626' }}
+                        >
+                          <Trash2 size={16} strokeWidth={2} />
+                          Delete address
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </article>
+    );
+  }
 
   return (
     <div

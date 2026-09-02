@@ -3,10 +3,11 @@ import { Lock, MapPin } from 'lucide-react';
 import { AddressEditorModal } from './AddressEditorModal.jsx';
 import { SavedAddressCard, SavedAddressCardEmpty } from '../../shared/components/checkout/SavedAddressCard.jsx';
 import {
+  createCustomerAddressDraft,
   getCustomerAddressActionMeta,
   getCustomerAddressLine,
-  getCustomerAddressNote,
-  getCustomerAddressTitle
+  getCustomerAddressTitle,
+  isCustomerAddressDefault
 } from '../model/customerAddressPresentation.js';
 import { CUSTOMER_DASHBOARD_TYPOGRAPHY } from '../model/customerDashboardPresentation.jsx';
 export function AddressesSection({
@@ -42,8 +43,8 @@ export function AddressesSection({
 
   // Sort addresses to pin default to top
   const sortedAddresses = [...allAddresses].sort((a, b) => {
-    if (a.is_default) return -1;
-    if (b.is_default) return 1;
+    if (isCustomerAddressDefault(a)) return -1;
+    if (isCustomerAddressDefault(b)) return 1;
     return 0;
   });
 
@@ -55,14 +56,7 @@ export function AddressesSection({
 
   const handleOpenEditAddressModal = (address) => {
     setAddressModalMode(`edit-${address.address_id}`);
-    setAddressDraft({
-      label: getCustomerAddressNote(address),
-      address_line: getCustomerAddressLine(address),
-      latitude: address.latitude,
-      longitude: address.longitude,
-      is_default: address.is_default === true,
-      address_id: address.address_id
-    });
+    setAddressDraft(createCustomerAddressDraft(address, { keepDefaultFlag: true }));
     setIsAddressModalOpen(true);
   };
 
@@ -87,6 +81,7 @@ export function AddressesSection({
     if (success !== false) { // Assuming returning nothing or true means success
       setIsAddressModalOpen(false);
     }
+    return success;
   };
 
   const confirmDelete = async (address) => {
@@ -119,7 +114,7 @@ export function AddressesSection({
           {sortedAddresses.length === 0 ? (
             <SavedAddressCardEmpty message="No addresses saved. Add one below for faster checkout." />
           ) : sortedAddresses.map((address) => {
-            const isDefault = Boolean(address.is_default);
+            const isDefault = isCustomerAddressDefault(address);
             const isDeleting = deletingAddressId === address.address_id;
             const actionMeta = getCustomerAddressActionMeta(accountAddressActionId);
             const isAddressActionTarget = actionMeta.id === String(address.address_id);
@@ -138,6 +133,8 @@ export function AddressesSection({
                   }}
                   isSelected={isDefault}
                   isBusy={busy}
+                  layoutVariant="dashboard"
+                  isMobileViewport={isMobileViewport}
                   onSelect={isAddressActionTarget ? undefined : (() => onUseAddressForCheckout?.(address))}
                   onSetDefault={!isDefault ? () => onSetDefaultAddress?.(address) : undefined}
                   onEdit={() => handleOpenEditAddressModal(address)}
