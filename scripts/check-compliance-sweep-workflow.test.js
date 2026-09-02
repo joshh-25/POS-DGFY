@@ -186,3 +186,26 @@ test('Report sweep outcome / Upload handoff artifact / Publish handoff issue / T
     assert.ok(indices[i - 1] < indices[i], `${ordered[i - 1]} must come before ${ordered[i]}`);
   }
 });
+
+// --- stale-state regression (found live, run 33569433235, 2026-09-02) ----------------------------
+// This repo's runners are a fixed self-hosted pool that does NOT wipe /tmp between jobs. A run
+// where preflight fails skips the handoff step entirely, so /tmp/handoff-state.json from a
+// PREVIOUS successful run was left on disk and read as if it belonged to the current (failing)
+// run -- issue #1393 showed a stale branch/PR from an unrelated earlier run. Fixed by clearing
+// every file this job's own steps write, once, at the very start of the job.
+
+test('a "Clear stale per-run temp state" step exists, runs right after Checkout, and clears handoff-state.json', () => {
+  const names = getStepNames(workflowText);
+  const checkoutIdx = names.indexOf('Checkout');
+  const clearIdx = names.indexOf('Clear stale per-run temp state');
+  assert.notEqual(checkoutIdx, -1, 'Checkout step not found');
+  assert.notEqual(clearIdx, -1, '"Clear stale per-run temp state" step not found');
+  assert.equal(clearIdx, checkoutIdx + 1, 'the clear step must run immediately after Checkout, before Discover');
+  const block = getStepBlock(workflowText, 'Clear stale per-run temp state');
+  assert.match(block, /rm -f[^\n]*\/tmp\/handoff-state\.json/, 'must clear /tmp/handoff-state.json specifically -- that is the file that leaked stale data');
+});
+
+test('the clear step runs unconditionally (no `if:` guard) -- every code path, including a failing one, needs a clean slate', () => {
+  const block = getStepBlock(workflowText, 'Clear stale per-run temp state');
+  assert.ok(!/\n\s*if:/.test(block), 'the clear step must not be conditionally skipped on any path');
+});
