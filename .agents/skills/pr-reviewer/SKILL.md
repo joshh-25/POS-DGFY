@@ -59,6 +59,10 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    `to-staging/*` PR (the continuous sweep, once its own handoff PR is merged, should have cleared it
    well before this PR was opened — worth checking whether an open `compliance:preflight-handoff`
    issue explains the miss), **blocker** for a `release/*` PR (per the policy, none may reach `main`).
+   A `NOT-APPLICABLE-*` `preflight_request_ref` (#1396) is a distinct, legitimate reconciled state —
+   not a finding on any PR — recording a `minor` declaration whose surfaces the live endpoint cannot
+   evaluate at all; a `major`/`regulatory` declaration reaching this state instead of a real
+   `no_breach` is a `should-fix` at PR time, since `check-compliance-impact.js` will fail it closed.
 4. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
    `npm run lint:docs`, which chains `check:adr`, for docs-only PRs) against the merge-result tree.
 5. **Tenant schema risk** — if the PR touches `apps/dgfy-migration-runner/migrations/` or

@@ -30,6 +30,13 @@ test('a reconciled declaration (real PROMOTER-* ref) is not outstanding', () => 
   assert.equal(isOutstanding(FRONT_MATTER('PROMOTER-1121-2026-08-28')), false);
 });
 
+test('a NOT-APPLICABLE-* ref (the #1396 not-applicable-to-live-preflight outcome) is not outstanding', () => {
+  assert.equal(
+    isOutstanding(FRONT_MATTER('NOT-APPLICABLE-33600000000-2026-09-05-DISCOVERY-DELIVERY-FROM-PRICE')),
+    false
+  );
+});
+
 // pr-reviewer RF-6's exact scenario: front matter is reconciled, but the body still mentions the
 // old NOT-EXECUTED-* placeholder in a historical prose note. A whole-file grep for the substring
 // would wrongly re-select this file; only the front matter's current value should count.

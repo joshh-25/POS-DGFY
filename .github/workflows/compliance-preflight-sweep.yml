@@ -131,7 +131,7 @@ jobs:
       # stale-but-present file from a DIFFERENT run never did, since a unit test can't reproduce a
       # non-ephemeral shared /tmp on its own).
       - name: Clear stale per-run temp state
-        run: rm -f /tmp/handoff-state.json /tmp/results.json /tmp/declarations.txt /tmp/all-declarations.txt /tmp/declarations-validated.txt /tmp/pr-create.stderr /tmp/pr-body.md /tmp/compliance-preflight-sweep-handoff.json /tmp/handoff-issue.md
+        run: rm -f /tmp/handoff-state.json /tmp/results.json /tmp/declarations.txt /tmp/all-declarations.txt /tmp/declarations-validated.txt /tmp/pr-create.stderr /tmp/pr-body.md /tmp/compliance-preflight-sweep-handoff.json /tmp/handoff-issue.md /tmp/handoff-issue-body.md /tmp/build-preflight-request.stderr
 
       - name: Discover NOT-EXECUTED-* declarations
         id: discover
@@ -394,6 +394,15 @@ jobs:
           cat /tmp/dgfy-api-preflight.log
           exit 1
 
+      # #1396: a NOT-EXECUTED-* declaration whose declared `surfaces` contain nothing the live
+      # endpoint accepts (pos|terminal|settings|payments|compliance -- see
+      # scripts/build-preflight-request.js's ENDPOINT_ACCEPTED_SURFACES) is not evaluable by this
+      # endpoint at all -- adding a new accepted surface would be a no-op that reads as a real
+      # check (there is no such rule in compliancePolicyEngine.js). Recorded honestly as
+      # `not_applicable` instead, minor-classification only: check-compliance-impact.js's
+      # PREFLIGHT_REQUIRED_CLASSIFICATIONS still hard-requires preflight_result=no_breach for
+      # major/regulatory, so those fail closed (exit 1, no reconciliation) rather than being
+      # silently waved through.
       - name: Run preflight sweep
         id: sweep
         if: steps.discover.outputs.count != '0'
@@ -422,8 +431,44 @@ jobs:
             # less. See scripts/build-preflight-request.js's own header for the parsing/summary-
             # derivation rationale, and for the surface-filtering + evidence-truncation fixes
             # confirmed necessary during the #1248 spike.
-            if ! body=$(node scripts/build-preflight-request.js "$declaration"); then
-              echo "::error::failed to build the preflight request body for $declaration"
+            set +e
+            body=$(node scripts/build-preflight-request.js "$declaration" 2>/tmp/build-preflight-request.stderr)
+            build_exit=$?
+            set -e
+
+            # #1396 -- exit 3 is not a failure: build-preflight-request.js's
+            # classifyEndpointApplicability() determined this `minor` declaration declares no
+            # endpoint-accepted surface (pos|terminal|settings|payments|compliance). Recorded as
+            # `not_applicable` through the same reconciliation machinery every other result uses,
+            # with no HTTP call made -- check-compliance-impact.js only hard-requires
+            # preflight_result=no_breach for major/regulatory (PREFLIGHT_REQUIRED_CLASSIFICATIONS),
+            # so this class is minor-only by construction; a regulatory/major declaration with no
+            # evaluable surface fails closed at exit 1 below instead.
+            if [ "$build_exit" = "3" ]; then
+              reason_code=$(printf '%s' "$body" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).reason_code))')
+              echo "::notice::$declaration is not applicable to live preflight (no endpoint-accepted surface, minor) -- recorded not_applicable, reason_code=$reason_code"
+              declared_surfaces_json=$(printf '%s' "$body" | node -e 'process.stdout.write(JSON.stringify(JSON.parse(require("fs").readFileSync(0,"utf8")).declared_surfaces || []))')
+              node -e '
+                const fs = require("fs");
+                const results = JSON.parse(fs.readFileSync("/tmp/results.json", "utf8"));
+                results.push({
+                  declaration: process.argv[1],
+                  http_code: "n/a",
+                  verdict: {
+                    pass: true,
+                    result: "not_applicable",
+                    can_proceed: true,
+                    reason_code: "NO_ENDPOINT_ACCEPTED_SURFACE",
+                    declared_surfaces: JSON.parse(process.argv[2])
+                  }
+                });
+                fs.writeFileSync("/tmp/results.json", JSON.stringify(results, null, 2));
+              ' "$declaration" "$declared_surfaces_json"
+              continue
+            fi
+
+            if [ "$build_exit" != "0" ]; then
+              echo "::error::failed to build the preflight request body for $declaration: $(cat /tmp/build-preflight-request.stderr 2>/dev/null)"
               overall_fail=1
               continue
             fi
@@ -847,14 +892,22 @@ jobs:
           esac
 
           if [ -n "$label" ]; then
+            # #1402 leftover: report-preflight-sweep-outcome.js's renderIssue() writes
+            # `${title}\n\n${body}\n` to /tmp/handoff-issue.md (title on line 1, blank line 2, body
+            # from line 3) -- the workflow used to ignore that title entirely and inline a
+            # run-scoped one here instead, which went stale the moment a SECOND run updated the
+            # same persistent issue's body (confirmed live on #1393). Use the rendered title -- it
+            # is stable across runs of the same outcome class by design -- for both create and edit.
+            issue_title=$(head -n1 /tmp/handoff-issue.md)
+            tail -n +3 /tmp/handoff-issue.md > /tmp/handoff-issue-body.md
             existing=$(gh issue list --label "$label" --state open --json number --jq '.[0].number // empty')
             if [ -n "$existing" ]; then
-              gh issue edit "$existing" --body-file /tmp/handoff-issue.md
+              gh issue edit "$existing" --title "$issue_title" --body-file /tmp/handoff-issue-body.md
               gh issue comment "$existing" --body "Updated by run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             else
               gh issue create --label "$label" --label area:infra \
-                --title "compliance: preflight sweep ${outcome_class} — run ${{ github.run_id }}" \
-                --body-file /tmp/handoff-issue.md
+                --title "$issue_title" \
+                --body-file /tmp/handoff-issue-body.md
             fi
           else
             # Green outcome: close, with a comment, any open compliance:preflight-handoff issue

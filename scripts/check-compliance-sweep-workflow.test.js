@@ -89,6 +89,58 @@ test('set +e immediately precedes `gh pr create`, and set -e follows once its ex
   );
 });
 
+// --- not-applicable exit-3 handling (#1396) --------------------------------------------------
+
+test('"Run preflight sweep" captures build-preflight-request.js\'s exit code explicitly (set +e / build_exit / set -e)', () => {
+  const block = getStepBlock(workflowText, 'Run preflight sweep');
+  assert.match(block, /set \+e\n\s*body=\$\(node scripts\/build-preflight-request\.js[\s\S]*?\)\n\s*build_exit=\$\?\n\s*set -e/);
+});
+
+test('"Run preflight sweep" handles build_exit == 3 as not-applicable, and the curl call sits after that branch', () => {
+  const block = getStepBlock(workflowText, 'Run preflight sweep');
+  const notApplicableIdx = block.indexOf('"$build_exit" = "3"');
+  const curlIdx = block.indexOf('curl -sS');
+  assert.notEqual(notApplicableIdx, -1, 'no build_exit == 3 branch found');
+  assert.notEqual(curlIdx, -1, 'no curl call found');
+  assert.ok(notApplicableIdx < curlIdx, 'the not-applicable branch must be checked before the curl call');
+});
+
+test('the build_exit == 3 branch records http_code "n/a" and result "not_applicable" without calling curl', () => {
+  const block = getStepBlock(workflowText, 'Run preflight sweep');
+  const branchMatch = block.match(/if \[ "\$build_exit" = "3" \][\s\S]*?\n {12}fi\n/);
+  assert.ok(branchMatch, 'no isolated build_exit == 3 branch found');
+  assert.doesNotMatch(branchMatch[0], /curl -sS/);
+  assert.match(branchMatch[0], /not_applicable/);
+  assert.match(branchMatch[0], /"n\/a"/);
+});
+
+// --- Publish handoff issue: rendered title used, github.run_id no longer inlined (#1402 leftover) ---
+
+test('"Publish handoff issue" no longer inlines github.run_id into --title', () => {
+  const block = getStepBlock(workflowText, 'Publish handoff issue');
+  const createMatch = block.match(/gh issue create[\s\S]*?--body-file[^\n]*/);
+  assert.ok(createMatch, 'no gh issue create invocation found');
+  assert.doesNotMatch(createMatch[0], /github\.run_id/);
+});
+
+test('"Publish handoff issue" derives the title from the rendered issue file\'s first line for both create and edit', () => {
+  const block = getStepBlock(workflowText, 'Publish handoff issue');
+  assert.match(block, /issue_title=\$\(head -n1 \/tmp\/handoff-issue\.md\)/);
+  assert.match(block, /gh issue edit "\$existing" --title "\$issue_title" --body-file \/tmp\/handoff-issue-body\.md/);
+  assert.match(block, /--title "\$issue_title"[\s\S]*?--body-file \/tmp\/handoff-issue-body\.md/);
+});
+
+test('"Publish handoff issue" writes the body from line 3 on into a separate file', () => {
+  const block = getStepBlock(workflowText, 'Publish handoff issue');
+  assert.match(block, /tail -n \+3 \/tmp\/handoff-issue\.md > \/tmp\/handoff-issue-body\.md/);
+});
+
+test('the clear step lists both new #1396/#1402 temp files among the files it removes', () => {
+  const block = getStepBlock(workflowText, 'Clear stale per-run temp state');
+  assert.match(block, /\/tmp\/handoff-issue-body\.md/);
+  assert.match(block, /\/tmp\/build-preflight-request\.stderr/);
+});
+
 // --- classify-pr-create wired in, the live policy-block string never inlined into the YAML --------
 
 test('the workflow invokes classify-pr-create rather than pattern-matching gh pr create\'s stderr itself', () => {

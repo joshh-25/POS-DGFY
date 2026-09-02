@@ -316,6 +316,36 @@ promotion was sound) — unaffected by this ADR either way.
   change.
 - PR: (this PR). Refs #1295, #1374.
 
+### 2026-09-02 — not-applicable preflight outcome (#1396)
+
+- Clause amended: Decision 5, `[default]` tier — the reconciliation write path (the 2026-08-25 and
+  2026-08-31 amendments above) previously only ever wrote a `PREFLIGHT-*` ref for a `result:
+  no_breach` pass; it had no outcome for a declaration the live endpoint cannot evaluate at all.
+- Why: `docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md`
+  (`classification: minor`, `surfaces: storefront`) 422s at the live endpoint — of 315 declarations
+  scanned, the only one with a `NOT-EXECUTED-*` ref and no endpoint-accepted surface. Widening the
+  endpoint's accepted-surface enum to include `storefront` was researched and rejected as a no-op
+  (no storefront rule exists in `compliancePolicyEngine.js`; see
+  `docs/compliance/request-time-preflight-protocol.md`'s "Not applicable to live preflight" section
+  for the full reasoning).
+- Change: `scripts/build-preflight-request.js` classifies this case before any HTTP call
+  (`classifyEndpointApplicability`) and exits 3 with a JSON marker; the sweep step records
+  `{http_code: "n/a", verdict: {pass: true, result: "not_applicable", can_proceed: true,
+  reason_code: "NO_ENDPOINT_ACCEPTED_SURFACE"}}` and skips the curl call entirely.
+  `scripts/reconcile-preflight-declarations.js` writes `preflight_request_ref:
+  NOT-APPLICABLE-<run_id>-<slug>` for that result (`PREFLIGHT-*` unchanged for every other pass).
+  `scripts/report-preflight-sweep-outcome.js` treats a `not_applicable` + `pass:true` row as passing
+  (not a failure) and renders it in its own "Not applicable to live preflight" section in the
+  summary, the handoff issue, and the `compliance-preflight-sweep-handoff` artifact, so the human
+  merging the handoff PR sees it named explicitly rather than folded silently into the same list as
+  a real `no_breach` pass.
+- Scope, stated plainly: **`minor`-classification only.** `check-compliance-impact.js`'s
+  `PREFLIGHT_REQUIRED_CLASSIFICATIONS` is unchanged and still hard-requires
+  `preflight_result=no_breach` for `major`/`regulatory` — a `major`/`regulatory` declaration with no
+  endpoint-accepted surface fails closed (exit 1), never reconciled as not-applicable.
+  `complianceValidator.js` is untouched (compliance-sensitive, and unnecessary under this design).
+- PR: (this PR). Refs #1396, #1402.
+
 ## Related
 
 #980 (the decision this ADR records), #1007 (the override mechanism this ADR references but does

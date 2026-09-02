@@ -252,6 +252,34 @@ policy ever changes), but now classifies the result
   poll + merge path runs exactly as it always has — auto-merge is not gone,
   it's just no longer assumed to always be reachable.
 
+### Not applicable to live preflight (#1396, 2026-09-02)
+
+A declaration can be classification `minor` and still declare nothing the live preflight endpoint
+can evaluate — e.g. `surfaces: storefront` alone. `complianceUseCases.js`'s own
+`surfaceToOperations` map has exactly five keys (`pos`, `terminal`, `settings`, `payments`,
+`compliance`); a surface outside that set contributes zero operations, and zero operations falls
+back to the generic `REQUEST_PREFLIGHT` decision — indistinguishable from submitting no surfaces at
+all. **Widening the endpoint's accepted-surface set (or `ENDPOINT_ACCEPTED_SURFACES` in
+`scripts/build-preflight-request.js`) to include `storefront` was considered and rejected** — there
+is no storefront rule anywhere in `compliancePolicyEngine.js`, and the regulatory framework this
+endpoint evaluates (BIR/BSP/NPC) is POS-fiscal/payments scoped; adding the surface would be a no-op
+that reads as a real check, i.e. false confidence.
+
+The honest fix: `scripts/build-preflight-request.js`'s `classifyEndpointApplicability()` detects
+this case before any HTTP call and the sweep records it as `not_applicable` through the same
+reconciliation machinery every other result uses — `preflight_result: not_applicable`,
+`preflight_reason_code: NO_ENDPOINT_ACCEPTED_SURFACE`, and a
+`preflight_request_ref: NOT-APPLICABLE-<run_id>-<slug>` (a distinct prefix from `PREFLIGHT-*`, so a
+reader can tell "verified against the real endpoint" from "not evaluable by it" without opening the
+run — still matches `isValidPreflightRequestRef`'s 3+-segment pattern).
+
+**`minor`-only, by construction.** `check-compliance-impact.js`'s
+`PREFLIGHT_REQUIRED_CLASSIFICATIONS` still hard-requires `preflight_result=no_breach` for
+`major`/`regulatory` — a `major`/`regulatory` declaration with no endpoint-accepted surface fails
+closed instead (`build-preflight-request.js` exits 1 with an explicit message: declare an evaluable
+surface, or reclassify). The `NOT-EXECUTED-*` → `NOT-APPLICABLE-*` lifecycle never applies to those
+two classifications.
+
 ### Operator handoff procedure
 
 When a sweep run finishes green-with-warning (`handoff_required`), the

@@ -16921,3 +16921,90 @@ branch deletion, no board-transition scope beyond what this skill already owns.
 ### Next eligible phase
 
 246 (none named yet).
+
+## Phase 246 - Compliance preflight sweep: not-applicable outcome + #1402 leftover (#1396, #1402)
+
+### Initiative and release
+
+Unblocks the continuous compliance preflight sweep (#1374) alongside the #1401 migration-syntax fix
+(a separate, parallel PR — not part of this phase's own scope; see that PR's own commit history, no
+ledger entry per the #1399/#1402 pure-bug-fix precedent). This phase covers only the #1396
+not-applicable-outcome design and the #1402 leftover (stale `github.run_id` in the handoff issue
+title).
+
+### Objective and scope
+
+- `scripts/build-preflight-request.js`: `classifyEndpointApplicability()` + exit 3 (not-applicable,
+  minor-only)/exit 1 (major|regulatory, fails closed) CLI contract.
+- `.github/workflows/compliance-preflight-sweep.yml`: the sweep step handles exit 3 without calling
+  curl; the "Publish handoff issue" step uses the rendered title (first line of the issue file)
+  instead of inlining `github.run_id`.
+- `scripts/reconcile-preflight-declarations.js`: `NOT-APPLICABLE-<run_id>-<slug>` ref for a
+  `not_applicable` result, `PREFLIGHT-*` unchanged otherwise.
+- `scripts/report-preflight-sweep-outcome.js`: `not_applicable` + `pass:true` is not a failure;
+  summary/issue/artifact gain a "Not applicable to live preflight" section.
+- Docs: `request-time-preflight-protocol.md`, ADR 0074 dated amendment,
+  `RELEASE_CANDIDATE_POLICY.md`, `pr-reviewer` SKILL.md, declarations README.
+- **Not in scope** (explicitly rejected): widening `ENDPOINT_ACCEPTED_SURFACES`/the endpoint's Joi
+  enum to accept `storefront` — a no-op that would read as a real check; no `complianceValidator.js`
+  change (compliance-sensitive, unnecessary under this design); partial reconciliation (still
+  all-or-nothing).
+
+### Status
+
+`planned` at PR-open time — flip to `completed` only once Wave C's acceptance criteria (below) are
+actually observed, not at merge.
+
+### Dependencies
+
+#1374 (Phase 239, the supervised-handoff/full-scan sweep redesign this phase extends) — merged and
+verified live before this phase started. #1401 (parallel, independent PR — the migration-syntax
+fix that unblocks the sweep's "Run landlord migrations" step; no ledger entry of its own per
+precedent).
+
+### Acceptance and validation evidence
+
+- [x] `npm run test:preflight-sweep` (all six files) green.
+- [x] `node --check` on every changed script; `bash -n` on every edited `run:` block in the workflow.
+- [x] `npm run check:compliance` — confirms no compliance-sensitive changes on this diff (no
+  declaration filed for this PR — see this plan's own compliance-sensitivity confirmation).
+- [x] `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs`,
+  `npm run check:pr-quality-workflow` all pass.
+- [x] Local end-to-end: `node scripts/build-preflight-request.js
+  docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md; echo $?` → `3`.
+- [ ] **Deployed acceptance (Wave C, tracked separately, not required for this phase's own PR to
+  merge)**: first green sweep run after this PR (and #1401) merge reports `handoff_required` with
+  28 live passes + 1 `not_applicable`; the handoff PR is opened and merged; a re-triggered sweep
+  reports `nothing_to_sweep`; zero outstanding `NOT-EXECUTED-*` declarations remain.
+
+### Deviations from the plan
+
+(fill in at completion — none expected; state explicitly if any B1–B6 item above changed shape
+during implementation)
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion, no
+board-transition scope beyond what this skill already owns. Confirmed via
+`COMPLIANCE_SENSITIVE_RULES` read in full (see this plan's compliance-sensitivity confirmation) that
+the `check:compliance` missing-declaration checkpoint does not fire either — every touched path
+(`scripts/`, `.github/`, `docs/`) is outside the rule set.
+
+### Links
+
+- Tracking issues: #1396 (not-applicable outcome), #1402 (leftover run-id-in-title bug).
+- New: (list actual new files once written — expected: no new files, only edits to the six
+  scripts/workflow/test files and five docs files named above).
+- Modified: `scripts/build-preflight-request.js`, `scripts/build-preflight-request.test.js`,
+  `.github/workflows/compliance-preflight-sweep.yml`,
+  `scripts/reconcile-preflight-declarations.js`, `scripts/reconcile-preflight-declarations.test.js`,
+  `scripts/is-preflight-outstanding.test.js`, `scripts/report-preflight-sweep-outcome.js`,
+  `scripts/report-preflight-sweep-outcome.test.js`, `scripts/check-compliance-sweep-workflow.test.js`,
+  `docs/compliance/request-time-preflight-protocol.md`,
+  `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, `.agents/skills/pr-reviewer/SKILL.md`,
+  `docs/compliance/impact-declarations/README.md`.
+
+### Next eligible phase
+
+247 (none named yet).

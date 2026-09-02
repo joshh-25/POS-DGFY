@@ -74,6 +74,7 @@ const classifyOutcome = ({ results, handoffState, discoverCount, inputError } = 
       class: 'input_error',
       discoverCount: count,
       declarations: [],
+      not_applicable: [],
       handoff,
       detail: 'An explicit declarations= entry does not exist on the checked-out ref -- ' +
         'operator input error, not a compliance failure.'
@@ -85,6 +86,7 @@ const classifyOutcome = ({ results, handoffState, discoverCount, inputError } = 
       class: 'nothing_to_sweep',
       discoverCount: 0,
       declarations: [],
+      not_applicable: [],
       handoff,
       detail: 'No NOT-EXECUTED-* declarations were discovered -- nothing to sweep.'
     };
@@ -96,19 +98,38 @@ const classifyOutcome = ({ results, handoffState, discoverCount, inputError } = 
       class: 'preflight_failed',
       discoverCount: count,
       declarations: [],
+      not_applicable: [],
       handoff,
       detail: `${count} declaration(s) were discovered but no preflight results were produced -- ` +
         'the sweep step did not complete.'
     };
   }
 
-  // Mirrors compliance-preflight-sweep.yml's own test (line ~381): http_code != 200 OR
-  // verdict.pass !== true is a failure, regardless of what result/reason_code came back.
+  // Mirrors compliance-preflight-sweep.yml's own test ("Run preflight sweep" step, `[ "$http_code"
+  // != "200" ] || [ "$pass" != "true" ]`): a row is a failure unless it passed AND either got a
+  // real HTTP 200 or is a #1396 not_applicable row (http_code "n/a" by construction -- no HTTP call
+  // was made). A not_applicable row with pass:false would still be caught here defensively --
+  // that shape should never occur (build-preflight-request.js only ever emits pass:true for it),
+  // but this filter does not special-case away a malformed one.
   const failing = resultsList.filter((entry) => {
     const httpCode = entry && entry.http_code !== undefined ? String(entry.http_code) : undefined;
     const pass = Boolean(entry && entry.verdict && entry.verdict.pass === true);
-    return httpCode !== '200' || !pass;
+    const isNotApplicable = Boolean(entry && entry.verdict && entry.verdict.result === 'not_applicable');
+    return !pass || (httpCode !== '200' && !isNotApplicable);
   });
+
+  // #1396 -- broken out separately (not folded into `failing`) so the handoff artifact/issue can
+  // tell a human "these N declarations were reconciled without the live endpoint ever being
+  // called" instead of presenting them identically to a real no_breach pass. Computed once, reused
+  // by every branch below (including the preflight_failed branch -- a batch can have both a real
+  // failure and a not_applicable row in the same run).
+  const notApplicable = resultsList
+    .filter((entry) => entry && entry.verdict && entry.verdict.result === 'not_applicable' && entry.verdict.pass === true)
+    .map((entry) => ({
+      declaration: entry.declaration,
+      reason_code: entry.verdict.reason_code,
+      declared_surfaces: entry.verdict.declared_surfaces || []
+    }));
 
   if (failing.length > 0) {
     return {
@@ -120,6 +141,7 @@ const classifyOutcome = ({ results, handoffState, discoverCount, inputError } = 
         result: entry.verdict && entry.verdict.result,
         reason_code: entry.verdict && entry.verdict.reason_code
       })),
+      not_applicable: notApplicable,
       handoff,
       detail: `${failing.length} of ${resultsList.length} declaration(s) failed preflight.`
     };
@@ -135,6 +157,7 @@ const classifyOutcome = ({ results, handoffState, discoverCount, inputError } = 
       class: 'nothing_to_reconcile',
       discoverCount: count,
       declarations,
+      not_applicable: notApplicable,
       handoff,
       detail: 'Every declaration was already reconciled -- no diff to push.'
     };
@@ -144,6 +167,7 @@ const classifyOutcome = ({ results, handoffState, discoverCount, inputError } = 
       class: 'merged',
       discoverCount: count,
       declarations,
+      not_applicable: notApplicable,
       handoff,
       detail: 'Reconciliation branch pushed, PR opened, and merged.'
     };
@@ -153,6 +177,7 @@ const classifyOutcome = ({ results, handoffState, discoverCount, inputError } = 
       class: 'handoff_required',
       discoverCount: count,
       declarations,
+      not_applicable: notApplicable,
       handoff,
       detail: 'Preflight passed and a reconciliation branch was pushed, but gh pr create was ' +
         'policy-blocked (#1295) -- a human (or credentialed AI session) must open and merge the PR.'
@@ -162,6 +187,7 @@ const classifyOutcome = ({ results, handoffState, discoverCount, inputError } = 
     class: 'handoff_error',
     discoverCount: count,
     declarations,
+    not_applicable: notApplicable,
     handoff,
     detail: (handoff && handoff.detail) ||
       `The handoff step did not report a recognized status (got: ${JSON.stringify(status)}).`
@@ -230,6 +256,23 @@ const renderSupersededSection = (outcome) => {
   return lines;
 };
 
+const renderNotApplicableSection = (outcome) => {
+  const list = Array.isArray(outcome.not_applicable) ? outcome.not_applicable : [];
+  if (list.length === 0) return [];
+
+  const lines = [];
+  lines.push('Not applicable to live preflight (recorded, reconciled):');
+  lines.push('| Declaration | Reason code | Declared surfaces |');
+  lines.push('|---|---|---|');
+  for (const d of list) {
+    const surfaces = Array.isArray(d.declared_surfaces) && d.declared_surfaces.length > 0
+      ? d.declared_surfaces.join(', ')
+      : '-';
+    lines.push(`| ${d.declaration} | ${d.reason_code ?? '-'} | ${surfaces} |`);
+  }
+  return lines;
+};
+
 const renderHandoffSection = (outcome) => {
   if (!outcome.handoff) return [];
   const h = outcome.handoff;
@@ -254,6 +297,11 @@ const renderSummary = (outcome) => {
   lines.push('');
 
   lines.push(...renderDeclarationsSection(outcome));
+  const notApplicableLines = renderNotApplicableSection(outcome);
+  if (notApplicableLines.length > 0) {
+    lines.push('');
+    lines.push(...notApplicableLines);
+  }
   const handoffLines = renderHandoffSection(outcome);
   if (handoffLines.length > 0) {
     lines.push('');
@@ -300,6 +348,11 @@ const renderIssue = (outcome, meta = {}) => {
   lines.push(outcome.detail);
   lines.push('');
   lines.push(...renderDeclarationsSection(outcome));
+  const notApplicableLines = renderNotApplicableSection(outcome);
+  if (notApplicableLines.length > 0) {
+    lines.push('');
+    lines.push(...notApplicableLines);
+  }
   const handoffLines = renderHandoffSection(outcome);
   if (handoffLines.length > 0) {
     lines.push('');
@@ -340,6 +393,7 @@ const writeArtifact = (outputPath, outcome, meta = {}) => {
     handoff_status: (outcome.handoff && outcome.handoff.status) || null,
     discover_count: outcome.discoverCount,
     declarations: outcome.declarations,
+    not_applicable: outcome.not_applicable || [],
     handoff: outcome.handoff || null,
     operator_commands: buildOperatorCommands(outcome)
   };
