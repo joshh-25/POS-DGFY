@@ -8,6 +8,8 @@ const {
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
   checkReportingJobsRespectStagingLeg,
+  checkCiEnforcedGatesAreBlocking,
+  BLOCKING_STEP_IDS,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,
   QUALITY_JOB_NAMES,
@@ -566,4 +568,42 @@ test('checkReportingJobsRespectStagingLeg: a missing job block is caught rather 
   const problems = checkReportingJobsRespectStagingLeg(`\n${text}\n`);
   assert.equal(problems.length, 1);
   assert.match(problems[0], /could not find the ".*:" job block/);
+});
+
+// #1431 Phase 1 PR-B: checkCiEnforcedGatesAreBlocking is the cross-file guard that keeps
+// gate-release-local.js's CI_ENFORCED_GATES honest against this file's own BLOCKING_STEP_IDS --
+// a gate cannot be dropped locally and silently regain continue-on-error in CI without this
+// failing. The real CI_ENFORCED_GATES (gate-release-local.js) is verified to pass by
+// `npm run check:pr-quality-workflow` itself; these cases exercise the failure paths via an
+// injected Map, matching the function's own testability seam.
+
+test('checkCiEnforcedGatesAreBlocking: the real CI_ENFORCED_GATES map (default arg) reports no problems', () => {
+  assert.deepEqual(checkCiEnforcedGatesAreBlocking(), []);
+});
+
+test('checkCiEnforcedGatesAreBlocking: a step id missing from BLOCKING_STEP_IDS for its job is caught', () => {
+  const problems = checkCiEnforcedGatesAreBlocking(new Map([
+    ['docs.lint', { job: 'repository-quality', steps: ['run_docs_lint', 'some_new_step_not_yet_blocking'] }]
+  ]));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"some_new_step_not_yet_blocking"/);
+  assert.match(problems[0], /"repository-quality"/);
+});
+
+test('checkCiEnforcedGatesAreBlocking: a job with no BLOCKING_STEP_IDS entry at all is caught', () => {
+  const problems = checkCiEnforcedGatesAreBlocking(new Map([
+    ['docs.lint', { job: 'a-job-that-does-not-exist', steps: ['run_docs_lint'] }]
+  ]));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"a-job-that-does-not-exist"/);
+  assert.match(problems[0], /has no entry in BLOCKING_STEP_IDS/);
+});
+
+test('checkCiEnforcedGatesAreBlocking: every entry present and blocking reports no problems', () => {
+  const problems = checkCiEnforcedGatesAreBlocking(new Map([
+    ['backend.lint', { job: 'dgfy-api-quality', steps: ['run_api_lint'] }],
+    ['frontend.pos.lint', { job: 'frontend-pos-quality', steps: ['run_pos_lint'] }]
+  ]));
+  assert.deepEqual(problems, []);
+  assert.deepEqual(BLOCKING_STEP_IDS['dgfy-api-quality'].includes('run_api_lint'), true);
 });

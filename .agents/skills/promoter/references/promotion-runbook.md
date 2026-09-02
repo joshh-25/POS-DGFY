@@ -53,7 +53,8 @@ Promotes \`develop\` to \`main\` at $(git rev-parse --short origin/develop).
 
 ## Testing Evidence
 
-\`npm run gate:release:local\`: <paste result>. Tenant-schema sync checked against production: <result>.
+\`npm run gate:release:local\`: <paste result — 12 required gates as of PR-B>. \`promotion-quality-gate\`
+check-run for the 7 CI-delegated gates: <link>. Tenant-schema sync checked against production: <result>.
 Aggregate promotion — see \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the compliance exemption."
 
 # Merging this PR is Pat's action, always — see ../SKILL.md's checkpoint table.
@@ -62,8 +63,18 @@ Aggregate promotion — see \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the com
 Run these two alongside (or immediately after) the branch cut/PR open above — not before it:
 
 ```bash
-npm run gate:release:local   # ~25min; background it or use a separate terminal, then post the
-                              # result as a comment on the release/<label> PR once it finishes
+npm run gate:release:local   # Covers 12 required gates locally since 2026-09-03 (#1431 Phase 1,
+                              # PR-B; historically ~25min for the full 19-gate set) -- 7 gates
+                              # (docs.lint, architecture.guardrails, backend.lint, frontend.ims.lint,
+                              # frontend.pos.lint, frontend.storefront.lint,
+                              # frontend.storefront.contracts) delegate to promotion-quality-gate.yml
+                              # instead and show status: "delegated_to_ci" in the artifact -- read
+                              # their result off the release/<label> PR's own promotion-quality-gate
+                              # check (gh pr checks <N> or per-job conclusions, NEVER the workflow
+                              # run's rollup conclusion -- see GATE_RELEASE_LOCAL_CI_MAPPING.md's
+                              # "Critical caveat"). Background it or use a separate terminal, then
+                              # post BOTH the local artifact result AND the promotion-quality-gate
+                              # check-run link as a comment on the release/<label> PR once it finishes
 
 gh workflow run tenant-schema-report.yml -f environment=PROD
 # poll:

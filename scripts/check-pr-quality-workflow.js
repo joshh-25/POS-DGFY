@@ -727,6 +727,45 @@ function checkReportingJobsRespectStagingLeg(qualityWorkflowText) {
   return problems;
 }
 
+// 2026-09-0X (#1431 Phase 1, PR-B): the compensating control for gate-release-local.js's new
+// delegation mechanism. Once a gate stops running locally (CI_ENFORCED_GATES,
+// gate-release-local.js), CI is its only remaining signal -- nothing before this check stopped a
+// future edit from re-adding `continue-on-error: true` (or renaming/removing a step id) for one of
+// these steps and silently reopening a coverage hole on both sides at once: not enforced in CI
+// *and* not run locally. Requiring `./gate-release-local` is safe here -- that module is guarded by
+// `if (require.main === module)` and exports no side effects on require.
+//
+// @param {Map} [ciEnforcedGates] defaults to gate-release-local.js's real CI_ENFORCED_GATES;
+// injectable so tests can assert the failure path without editing the real script.
+// @returns {string[]} human-readable problems found; empty when every CI_ENFORCED_GATES step id is
+// still present in BLOCKING_STEP_IDS for its named job.
+function checkCiEnforcedGatesAreBlocking(ciEnforcedGates) {
+  const problems = [];
+  const gates = ciEnforcedGates || require('./gate-release-local').CI_ENFORCED_GATES;
+  for (const [gateName, enforcement] of gates) {
+    const blockingIds = BLOCKING_STEP_IDS[enforcement.job];
+    if (!blockingIds) {
+      problems.push(
+        `gate-release-local.js: CI_ENFORCED_GATES["${gateName}"] names job "${enforcement.job}", ` +
+        'which has no entry in BLOCKING_STEP_IDS -- was the job renamed, or does ' +
+        'BLOCKING_STEP_IDS need a new entry for it?'
+      );
+      continue;
+    }
+    for (const stepId of enforcement.steps) {
+      if (!blockingIds.includes(stepId)) {
+        problems.push(
+          `gate-release-local.js: CI_ENFORCED_GATES["${gateName}"] names step "${stepId}" in job ` +
+          `"${enforcement.job}", but that step id is missing from BLOCKING_STEP_IDS["${enforcement.job}"] ` +
+          '-- it may have regained continue-on-error in promotion-quality-gate.yml, been renamed, ' +
+          'or been removed. A gate delegated locally must stay genuinely blocking in CI.'
+        );
+      }
+    }
+  }
+  return problems;
+}
+
 function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWorkflowText }) {
   const missing = [
     ...REQUIRED_PR_CHECKS_MARKERS.filter((marker) => !prChecksText.includes(marker)).map((marker) => `pr-checks.yml:${marker}`),
@@ -737,7 +776,8 @@ function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWor
     ...checkStepLevelAdvisory(qualityWorkflowText),
     ...checkAdvisoryFailureReportingShape(qualityWorkflowText),
     ...checkReporterHasNoShellBinaryDependency(qualityWorkflowText),
-    ...checkReportingJobsRespectStagingLeg(qualityWorkflowText)
+    ...checkReportingJobsRespectStagingLeg(qualityWorkflowText),
+    ...checkCiEnforcedGatesAreBlocking()
   ];
 
   return missing;
@@ -774,6 +814,8 @@ module.exports = {
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
   checkReportingJobsRespectStagingLeg,
+  checkCiEnforcedGatesAreBlocking,
+  BLOCKING_STEP_IDS,
   STAGING_LEG_RESPECTING_JOBS,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,
