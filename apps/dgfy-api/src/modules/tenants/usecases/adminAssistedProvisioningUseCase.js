@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
-import { isWorkflowMode, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
+import { isWorkflowMode, isLaundryWorkflowMode, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import { resolveRegisteredTenantPlan } from './tenantPlanPolicy.js';
 import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../../../config/permissions.js';
@@ -214,7 +214,17 @@ const createTenantRecord = async ({
         provisioning_source: 'platform_admin',
         ownership_status: ownershipStatus,
         settings: {
-            workflow_mode: tenantInput.workflowMode
+            workflow_mode: tenantInput.workflowMode,
+            ...(isLaundryWorkflowMode(tenantInput.workflowMode)
+                ? {
+                    business_mode: 'laundry',
+                    runtime_owner: 'dglaundry',
+                    dgfy_storefront: true,
+                    ims: false,
+                    pos: false,
+                    operations_url: 'https://laundry.dgfy.ph'
+                }
+                : {})
         }
     }, { transaction });
 };

@@ -23,21 +23,36 @@ name: Compliance Preflight Sweep
 #     ephemeral mysql+redis+dgfy-api, then tears both down at the end of the run.
 #   - Auto-triggers on push when a declaration actually lands on develop (path-filtered -- see the
 #     `on:` block below for why that filter is required, not optional, on this repo's runners).
-#   - Reconciles front matter and opens + auto-merges a PR into develop when every result passed,
-#     closing the loop this file's original version deliberately left as a separate manual step.
+#   - Reconciles front matter and pushes a `compliance-sweep/<run_id>` branch, then *attempts* the
+#     PR. PR open + merge is a SUPERVISED HANDOFF (#1295/#1374), not an auto-merge: an org-level
+#     policy blocks `github-actions[bot]` from creating or approving pull requests outright (its own
+#     error text is pinned exactly once, in scripts/report-preflight-sweep-outcome.js's
+#     POLICY_BLOCKED_PATTERN -- deliberately not repeated here, so there is only ever one place this
+#     could drift), confirmed live across four separate runs (33531804412 / 33536811560 /
+#     33542764832 / 33545741502) before this fix shipped -- every one of those runs had a preflight
+#     that PASSED, red only at PR creation, which this workflow used to render identically to a real
+#     compliance failure. `gh pr create` is still attempted every run (not skipped) so the loop
+#     self-heals for free the moment that org policy ever changes -- see
+#     scripts/report-preflight-sweep-outcome.js's `classifyPrCreate`, which is what actually tells a
+#     policy-blocked create apart from a genuine one.
 #
 # ADR 0074 Decision 5 ("against a deployed non-production host") is `[default]` tier -- this change
 # is recorded as a dated Amendments block on that ADR in the same PR, not a superseding ADR (ADR
-# 0039 line 83, AGENTS.md Planning Rule 4).
+# 0039 line 83, AGENTS.md Planning Rule 4). The 2026-09-02 Amendments block covers the supervised-
+# handoff redesign and the full-tree discovery switch below.
 #
 # Governance/checkpoint classification carried forward unchanged from the #1121 design: every
 # remote call this workflow makes (login, preflight, git/gh operations against this repo) is
-# read-only or additive (no destructive git op, no force-push, no deploy dispatch) -- see
-# .agents/skills/promoter/SKILL.md's "Pre-`main` gates" section and AGENTS.md's checkpoint table.
-# The one new capability -- opening and auto-merging a PR into `develop` -- is unattended by the
-# same reasoning `pr-reviewer`'s own merge policy already uses for a `develop`-base PR: no
-# destructive action, no `main`, and every result gates on an actual `no_breach`/`can_proceed`
-# pass, never merged past a real policy breach.
+# read-only or additive -- with exactly ONE destructive git operation, carved out precisely: `git
+# push origin --delete` of a superseded `compliance-sweep/<numeric run id>` branch (this workflow's
+# own naming, never a human's), only after this run's REPLACEMENT branch has already been pushed
+# (so a delete-step failure never leaves zero branches behind), and only when that branch carries no
+# open PR (a human may already be working against an old one -- never delete out from under that).
+# #1374's own research found 11 such branches leaked on origin: push succeeds, `gh pr create` fails
+# on the org policy above, and nothing before this fix ever cleaned them up. See "Push reconciliation
+# branch and open PR or hand off" below for the exact guard. This carve-out is otherwise unchanged
+# from .agents/skills/promoter/SKILL.md's "Pre-`main` gates" section and AGENTS.md's checkpoint
+# table: no force-push, no deploy dispatch, nothing touching `main`.
 
 on:
   push:
@@ -46,7 +61,7 @@ on:
   workflow_dispatch:
     inputs:
       declarations:
-        description: Comma-separated declaration filenames (bare, e.g. 2026-08-28-example.md -- resolved under docs/compliance/impact-declarations/ automatically) to sweep. A full docs/compliance/impact-declarations/... path also works. Leave blank to auto-discover every outstanding declaration in the develop..main diff.
+        description: Comma-separated declaration filenames (bare, e.g. 2026-08-28-example.md -- resolved under docs/compliance/impact-declarations/ automatically) to sweep. A full docs/compliance/impact-declarations/... path also works. Leave blank to auto-discover every outstanding declaration on the checked-out ref.
         type: string
         required: false
 
@@ -54,10 +69,14 @@ on:
 # isolation between jobs (AGENTS.md's queue-starvation history, and this workflow's own fixed
 # 3306/6379 container ports below) -- path-filtering the trigger above is what keeps this workflow
 # from firing on every unrelated develop push, and this concurrency group is the second half of
-# that same discipline: never two sweeps racing for the same ports at once. The reconciliation PR
-# this workflow opens re-triggers this workflow exactly once (it also touches
-# docs/compliance/impact-declarations/**) -- that second run's own discovery step finds zero
-# outstanding declarations and exits immediately, so the loop terminates on its own.
+# that same discipline: never two sweeps racing for the same ports at once. A queued duplicate run
+# is already superseded by GitHub on its own even with `cancel-in-progress: false` (observed live,
+# run 33515820882) -- the branch-pruning this workflow now does is about the separate PR-create-
+# failure leak (11 branches, #1374 research), not about concurrent-run duplication. Once a human (or
+# credentialed AI session) opens and merges the reconciliation PR this workflow produces, that merge
+# re-triggers this workflow exactly once (it also touches docs/compliance/impact-declarations/**) --
+# that re-triggered run's own discovery step finds zero outstanding declarations and exits
+# immediately, so the loop terminates on its own.
 concurrency:
   group: compliance-preflight-sweep
   cancel-in-progress: false
@@ -65,6 +84,13 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  # #1374: filing/updating the handoff issue (`compliance:preflight-handoff` /
+  # `compliance:preflight-failed`, both created once by hand -- this workflow never `gh label
+  # create`s them). `contents: write` above already implies read, which `gh issue create`'s own
+  # template-detection GraphQL query needs (`repository.defaultBranchRef`) -- confirmed live this
+  # session (run 33550030776): `issues: write` alone, without `contents` at all, was insufficient
+  # for that reason. Keep `contents: write`, just add `issues: write` alongside it.
+  issues: write
 
 env:
   MYSQL_CONTAINER: dgfy-preflight-mysql-${{ github.run_id }}-${{ github.run_attempt }}
@@ -88,6 +114,24 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Found live (#1374 follow-up, 2026-09-02, run 33569433235): this repo's runners are a
+      # fixed-count self-hosted pool that does NOT wipe /tmp between jobs (the same reason
+      # PREFLIGHT_API_PORT above has to dodge DEV's real port instead of assuming isolation). The
+      # "Push reconciliation branch and open PR or hand off" step below only writes
+      # /tmp/handoff-state.json when it actually runs (overall_fail=='0') -- on a run where
+      # preflight genuinely fails, that step is skipped entirely, so the report step below read
+      # WHATEVER handoff-state.json a previous, unrelated successful run had left on disk and
+      # presented its stale branch/PR/superseded-branch fields as if they belonged to this run's
+      # failure. Confirmed live: issue #1393 (preflight_failed, run 33569433235) showed branch
+      # `compliance-sweep/33560381242` from the prior successful run 33560381242, not anything
+      # from this run. Clearing every file this job's own steps later write, at the very start of
+      # the job, is the fix -- report-preflight-sweep-outcome.js already treats a genuinely-absent
+      # handoff-state.json as `not_attempted` correctly (that path had test coverage; a
+      # stale-but-present file from a DIFFERENT run never did, since a unit test can't reproduce a
+      # non-ephemeral shared /tmp on its own).
+      - name: Clear stale per-run temp state
+        run: rm -f /tmp/handoff-state.json /tmp/results.json /tmp/declarations.txt /tmp/all-declarations.txt /tmp/declarations-validated.txt /tmp/pr-create.stderr /tmp/pr-body.md /tmp/compliance-preflight-sweep-handoff.json /tmp/handoff-issue.md /tmp/handoff-issue-body.md /tmp/build-preflight-request.stderr
 
       - name: Discover NOT-EXECUTED-* declarations
         id: discover
@@ -125,19 +169,50 @@ jobs:
               esac
             done
           else
-            # Only the front matter's CURRENT preflight_request_ref decides "outstanding" --
-            # pr-reviewer RF-6 on PR #1127/#1121: a whole-file `grep NOT-EXECUTED-` also matches a
-            # reconciled declaration whose body still mentions the placeholder in a historical
-            # note (its front matter carries a real reference by then). See
-            # scripts/is-preflight-outstanding.js for the fix and its tests.
-            git fetch origin main develop --quiet
-            git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/ \
-              | while read -r f; do
-                  if [ -f "$f" ] && node scripts/is-preflight-outstanding.js "$f" > /dev/null; then
-                    echo "$f"
-                  fi
-                done > /tmp/declarations.txt || true
+            # #1374: full-tree discovery, not a develop..main diff. The diff had a permanent blind
+            # spot -- declarations that reached `main` via a #1007-override promotion sit on BOTH
+            # branches and never appear in a diff between them. #1374's own research: a full scan of
+            # `develop` found 26 outstanding declarations where the diff found 4; the promoter's own
+            # verification snippet used the same diff and truthfully reported "0 outstanding" on
+            # PR #1357 while 22 sat unreconciled on `main`. Only the front matter's CURRENT
+            # preflight_request_ref decides "outstanding" (pr-reviewer RF-6 on PR #1127/#1121 --
+            # see scripts/is-preflight-outstanding.js), same as before.
+            git ls-files -- "$DECLARATIONS_DIR" | grep '\.md$' > /tmp/all-declarations.txt || true
+            : > /tmp/declarations.txt
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              if node scripts/is-preflight-outstanding.js "$f" > /dev/null; then
+                echo "$f" >> /tmp/declarations.txt
+              fi
+            done < /tmp/all-declarations.txt
           fi
+
+          # Validation pass, over BOTH paths above -- a non-subshell loop (`done < file`, never
+          # `| while`) so `input_error` and `exit 1` actually escape to this step's own shell rather
+          # than dying inside a forked subshell the way the explicit-input parsing above still does
+          # for its own, narrower path-traversal check (unchanged there; not reproducing that trap
+          # here). A missing file is only possible on the explicit-input path (auto-discovery only
+          # ever lists files `git ls-files` already confirmed exist) -- an operator-input error, not
+          # a compliance failure, and it must be visibly distinguishable as one (#1374's own
+          # research: run 33545860516 misrendered exactly this as a preflight failure). An explicit
+          # entry that's already reconciled is a no-op, not an error -- warn and skip it.
+          input_error=0
+          : > /tmp/declarations-validated.txt
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if [ ! -f "$f" ]; then
+              echo "::error::declarations= entry does not exist on the checked-out ref: $f"
+              echo "input_error=1" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+            if ! node scripts/is-preflight-outstanding.js "$f" > /dev/null; then
+              echo "::warning::declarations= entry is already reconciled, skipping: $f"
+              continue
+            fi
+            echo "$f" >> /tmp/declarations-validated.txt
+          done < /tmp/declarations.txt
+          mv /tmp/declarations-validated.txt /tmp/declarations.txt
+          echo "input_error=0" >> "$GITHUB_OUTPUT"
 
           count=$(wc -l < /tmp/declarations.txt | tr -d ' ')
           echo "count=$count" >> "$GITHUB_OUTPUT"
@@ -319,6 +394,15 @@ jobs:
           cat /tmp/dgfy-api-preflight.log
           exit 1
 
+      # #1396: a NOT-EXECUTED-* declaration whose declared `surfaces` contain nothing the live
+      # endpoint accepts (pos|terminal|settings|payments|compliance -- see
+      # scripts/build-preflight-request.js's ENDPOINT_ACCEPTED_SURFACES) is not evaluable by this
+      # endpoint at all -- adding a new accepted surface would be a no-op that reads as a real
+      # check (there is no such rule in compliancePolicyEngine.js). Recorded honestly as
+      # `not_applicable` instead, minor-classification only: check-compliance-impact.js's
+      # PREFLIGHT_REQUIRED_CLASSIFICATIONS still hard-requires preflight_result=no_breach for
+      # major/regulatory, so those fail closed (exit 1, no reconciliation) rather than being
+      # silently waved through.
       - name: Run preflight sweep
         id: sweep
         if: steps.discover.outputs.count != '0'
@@ -347,8 +431,44 @@ jobs:
             # less. See scripts/build-preflight-request.js's own header for the parsing/summary-
             # derivation rationale, and for the surface-filtering + evidence-truncation fixes
             # confirmed necessary during the #1248 spike.
-            if ! body=$(node scripts/build-preflight-request.js "$declaration"); then
-              echo "::error::failed to build the preflight request body for $declaration"
+            set +e
+            body=$(node scripts/build-preflight-request.js "$declaration" 2>/tmp/build-preflight-request.stderr)
+            build_exit=$?
+            set -e
+
+            # #1396 -- exit 3 is not a failure: build-preflight-request.js's
+            # classifyEndpointApplicability() determined this `minor` declaration declares no
+            # endpoint-accepted surface (pos|terminal|settings|payments|compliance). Recorded as
+            # `not_applicable` through the same reconciliation machinery every other result uses,
+            # with no HTTP call made -- check-compliance-impact.js only hard-requires
+            # preflight_result=no_breach for major/regulatory (PREFLIGHT_REQUIRED_CLASSIFICATIONS),
+            # so this class is minor-only by construction; a regulatory/major declaration with no
+            # evaluable surface fails closed at exit 1 below instead.
+            if [ "$build_exit" = "3" ]; then
+              reason_code=$(printf '%s' "$body" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).reason_code))')
+              echo "::notice::$declaration is not applicable to live preflight (no endpoint-accepted surface, minor) -- recorded not_applicable, reason_code=$reason_code"
+              declared_surfaces_json=$(printf '%s' "$body" | node -e 'process.stdout.write(JSON.stringify(JSON.parse(require("fs").readFileSync(0,"utf8")).declared_surfaces || []))')
+              node -e '
+                const fs = require("fs");
+                const results = JSON.parse(fs.readFileSync("/tmp/results.json", "utf8"));
+                results.push({
+                  declaration: process.argv[1],
+                  http_code: "n/a",
+                  verdict: {
+                    pass: true,
+                    result: "not_applicable",
+                    can_proceed: true,
+                    reason_code: "NO_ENDPOINT_ACCEPTED_SURFACE",
+                    declared_surfaces: JSON.parse(process.argv[2])
+                  }
+                });
+                fs.writeFileSync("/tmp/results.json", JSON.stringify(results, null, 2));
+              ' "$declaration" "$declared_surfaces_json"
+              continue
+            fi
+
+            if [ "$build_exit" != "0" ]; then
+              echo "::error::failed to build the preflight request body for $declaration: $(cat /tmp/build-preflight-request.stderr 2>/dev/null)"
               overall_fail=1
               continue
             fi
@@ -422,7 +542,11 @@ jobs:
       # self-installs a portable `gh` binary into a per-run temp dir if it's not already on PATH,
       # with no `sudo` required either way.
       - name: Ensure gh CLI is available
-        if: steps.discover.outputs.count != '0' && steps.sweep.outputs.overall_fail == '0'
+        # #1374: broadened from "...&& overall_fail == '0'" -- "Publish handoff issue" below also
+        # needs `gh` and runs at `always()` (it must file a `compliance:preflight-failed` issue on
+        # exactly the overall_fail == '1' path), so this install can no longer be scoped to the
+        # green path only.
+        if: always() && steps.discover.outputs.count != '0'
         run: |
           set -euo pipefail
           if command -v gh > /dev/null 2>&1; then
@@ -447,28 +571,136 @@ jobs:
       # Cut-branch-and-PR discipline unchanged from the manual procedure this replaces
       # (docs/compliance/request-time-preflight-protocol.md: "never a direct commit" to develop --
       # this is regulator-facing evidence and gets the same review path as everything else).
-      # Auto-merged here rather than left for a human because every declaration in this PR already
-      # passed a real policy evaluation in the reconcile step above -- there is nothing left for a
-      # reviewer to adjudicate that this workflow hasn't already gated on.
-      - name: Open and merge reconciliation PR
+      #
+      # #1374: no longer auto-merges. `gh pr create` from `github-actions[bot]` is blocked outright
+      # by org policy (#1295) -- confirmed live across four runs before this fix. This step still
+      # ATTEMPTS the create every run (so the loop self-heals if that policy ever changes) but
+      # classifies the failure precisely via scripts/report-preflight-sweep-outcome.js's
+      # `classifyPrCreate` instead of treating every non-zero exit as an undifferentiated error: a
+      # policy-blocked create is `handoff_required` (branch pushed, evidence handed to a human/
+      # credentialed AI session, exit 0 with a warning); a genuine create failure is `handoff_error`
+      # (exit 1); a successful create still goes through the existing Merge Safety poll + merge.
+      #
+      # `write_state` records the outcome of every exit path to /tmp/handoff-state.json (consumed
+      # by "Report sweep outcome" below) and the `handoff_status` output -- nothing downstream keys
+      # off this step's own `steps.handoff.outcome` (both `merged` and `handoff_required` exit 0
+      # from THIS step; only the state file distinguishes them).
+      - name: Push reconciliation branch and open PR or hand off
+        id: handoff
         if: steps.discover.outputs.count != '0' && steps.sweep.outputs.overall_fail == '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
+          write_state() {
+            local status="$1" detail="$2"
+            STATUS="$status" DETAIL="$detail" \
+            BRANCH="${BRANCH:-}" HEAD_SHA="${HEAD_SHA:-}" BASE_SHA="${BASE_SHA:-}" \
+            PR_URL="${PR_URL:-}" PR_CREATE_EXIT="${PR_CREATE_EXIT:-}" PR_BODY_FILE="${PR_BODY_FILE:-/tmp/pr-body.md}" \
+            node -e '
+              const fs = require("fs");
+              let superseded = [];
+              try { superseded = JSON.parse(fs.readFileSync("/tmp/superseded.json", "utf8")); } catch { superseded = []; }
+              let prCreateStderr = null;
+              try {
+                const raw = fs.readFileSync("/tmp/pr-create.stderr", "utf8");
+                prCreateStderr = raw.length > 0 ? raw : null;
+              } catch { prCreateStderr = null; }
+              const state = {
+                status: process.env.STATUS,
+                detail: process.env.DETAIL || null,
+                branch: process.env.BRANCH || null,
+                head_sha: process.env.HEAD_SHA || null,
+                base_sha: process.env.BASE_SHA || null,
+                pr_url: process.env.PR_URL || null,
+                pr_create_exit: process.env.PR_CREATE_EXIT !== "" ? Number(process.env.PR_CREATE_EXIT) : null,
+                pr_create_stderr: prCreateStderr,
+                superseded,
+                pr_body: process.env.PR_BODY_FILE || null
+              };
+              fs.writeFileSync("/tmp/handoff-state.json", JSON.stringify(state, null, 2));
+            '
+            echo "handoff_status=${status}" >> "$GITHUB_OUTPUT"
+          }
+          echo '[]' > /tmp/superseded.json
+          : > /tmp/pr-create.stderr
+
           if git diff --quiet -- docs/compliance/impact-declarations/; then
             echo "Nothing to reconcile (results were empty or already reconciled)."
+            write_state nothing_to_reconcile "Every declaration was already reconciled; no diff to push."
             exit 0
           fi
 
           BRANCH="compliance-sweep/${{ github.run_id }}"
+          BASE_SHA="$(git rev-parse HEAD)"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add docs/compliance/impact-declarations/
           git commit -m "docs(compliance): reconcile preflight sweep results (run ${{ github.run_id }})"
-          git push -u origin "$BRANCH"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if ! git push -u origin "$BRANCH" 2>/tmp/git-push.stderr; then
+            echo "::error::failed to push $BRANCH: $(cat /tmp/git-push.stderr)"
+            write_state error "git push -u origin $BRANCH failed: $(cat /tmp/git-push.stderr)"
+            exit 1
+          fi
+
+          # Prune superseded compliance-sweep/<numeric run id> branches -- only reached once THIS
+          # run's replacement branch is already pushed above. A `gh pr list` query failure skips
+          # every deletion this run and fails closed (never guesses which branches are safe).
+          set +e
+          open_pr_heads=$(gh pr list --state open --json headRefName --jq '.[].headRefName' 2>/tmp/pr-list.stderr)
+          pr_list_exit=$?
+          set -e
+          if [ "$pr_list_exit" != "0" ]; then
+            echo "::warning::gh pr list failed ($(cat /tmp/pr-list.stderr)) -- skipping branch pruning this run, fail closed."
+            node -e '
+              const fs = require("fs");
+              const list = JSON.parse(fs.readFileSync("/tmp/superseded.json", "utf8"));
+              list.push({ branch: "*", action: "delete_skipped_pr_query_failed" });
+              fs.writeFileSync("/tmp/superseded.json", JSON.stringify(list));
+            '
+          else
+            git ls-remote --heads origin 'compliance-sweep/*' | awk '{print $2}' | sed 's#refs/heads/##' \
+              | while IFS= read -r ref; do
+                  [ -z "$ref" ] && continue
+                  [ "$ref" = "$BRANCH" ] && continue
+                  case "$ref" in
+                    compliance-sweep/[0-9]*) ;;
+                    *) continue ;;
+                  esac
+
+                  # Bot-committed check -- never delete a branch under this naming pattern that a
+                  # human happened to push by hand. A shallow fetch of just that ref is cheap and
+                  # avoids needing every remote branch's full history locally.
+                  if git fetch --quiet --depth 1 origin "$ref" 2>/tmp/branch-fetch.stderr; then
+                    commit_author=$(git log -1 --format='%ae' FETCH_HEAD)
+                  else
+                    echo "::warning::failed to fetch $ref for its author check, skipping (not deleting): $(cat /tmp/branch-fetch.stderr)"
+                    continue
+                  fi
+                  case "$commit_author" in
+                    'github-actions[bot]@users.noreply.github.com') ;;
+                    *) continue ;;
+                  esac
+
+                  if printf '%s\n' "$open_pr_heads" | grep -qx "$ref"; then
+                    action="kept_open_pr"
+                  elif git push origin --delete "$ref" 2>/tmp/branch-delete.stderr; then
+                    action="deleted"
+                  else
+                    action="delete_failed"
+                    echo "::warning::failed to delete superseded branch $ref: $(cat /tmp/branch-delete.stderr)"
+                  fi
+                  node -e '
+                    const fs = require("fs");
+                    const list = JSON.parse(fs.readFileSync("/tmp/superseded.json", "utf8"));
+                    list.push({ branch: process.argv[1], action: process.argv[2] });
+                    fs.writeFileSync("/tmp/superseded.json", JSON.stringify(list));
+                  ' "$ref" "$action"
+                done
+          fi
 
           # PR body written via a heredoc piped through `sed` to strip this step's own 10-space
           # YAML block-scalar indentation -- a plain heredoc does not strip leading spaces on its
@@ -484,16 +716,38 @@ jobs:
 
           Every declaration reconciled here returned \`result: no_breach\`, \`can_proceed: true\` from a real \`POST /api/v1/compliance/preflight\` call. Full per-declaration responses are in the \`compliance-preflight-sweep-results\` artifact on the linked run.
 
+          PR open + merge is a supervised handoff (#1295/#1374) -- `github-actions[bot]` cannot open this PR itself (org policy), so it is left pushed and ready for a human or credentialed AI session to open and merge per AGENTS.md's Merge Safety rule.
+
           ## Testing Evidence
 
           N/A -- automated front-matter reconciliation only, no code change. The preflight call itself is the evidence; see the linked run's artifact.
           PR_BODY_EOF
 
+          set +e
           PR_URL=$(gh pr create \
             --base develop \
             --head "$BRANCH" \
             --title "docs(compliance): reconcile preflight sweep results ($(date -u +%Y-%m-%d))" \
-            --body-file /tmp/pr-body.md)
+            --body-file /tmp/pr-body.md 2>/tmp/pr-create.stderr)
+          pr_create_exit=$?
+          set -e
+
+          classification=$(node scripts/report-preflight-sweep-outcome.js classify-pr-create --exit-code "$pr_create_exit" --stderr-file /tmp/pr-create.stderr)
+
+          if [ "$classification" = "policy_blocked" ]; then
+            echo "::warning::gh pr create was blocked by org policy (#1295) -- branch $BRANCH is pushed and ready. A human or credentialed AI session must open and merge the PR; see the compliance-preflight-sweep-handoff artifact and the filed compliance:preflight-handoff issue for the exact commands."
+            write_state handoff_required "gh pr create was policy-blocked; branch pushed, PR not opened."
+            exit 0
+          fi
+
+          if [ "$classification" = "error" ]; then
+            echo "::error::gh pr create failed: $(cat /tmp/pr-create.stderr)"
+            write_state error "gh pr create failed: $(cat /tmp/pr-create.stderr)"
+            exit 1
+          fi
+
+          # classification == created -- org policy has changed, or this is a credentialed AI
+          # session's own token. Merge Safety poll + merge, unchanged from the previous design.
           PR_NUMBER="${PR_URL##*/}"
           echo "Opened PR #${PR_NUMBER}: ${PR_URL}"
 
@@ -541,6 +795,7 @@ jobs:
             fi
             if printf '%s\n' "$buckets" | grep -qx "fail"; then
               echo "::error::PR #${PR_NUMBER} has a failing check -- refusing to merge. Left open for investigation: ${PR_URL}"
+              write_state error "PR #${PR_NUMBER} has a failing check -- refusing to merge. Left open: ${PR_URL}"
               exit 1
             fi
             if ! printf '%s\n' "$buckets" | grep -qx "pending"; then
@@ -551,6 +806,7 @@ jobs:
           done
           if [ "$checks_terminal" != "1" ]; then
             echo "::error::PR #${PR_NUMBER}'s checks did not reach a terminal state within 10 minutes -- refusing to merge. Left open for investigation: ${PR_URL}"
+            write_state error "PR #${PR_NUMBER}'s checks did not reach a terminal state within 10 minutes. Left open: ${PR_URL}"
             exit 1
           fi
 
@@ -558,29 +814,117 @@ jobs:
           mergeable=$(gh pr view "$PR_NUMBER" --json mergeable --jq '.mergeable')
           if [ "$merge_state" != "CLEAN" ] || [ "$mergeable" != "MERGEABLE" ]; then
             echo "::error::PR #${PR_NUMBER} is not safe to merge (mergeStateStatus=${merge_state}, mergeable=${mergeable}) -- refusing to merge. Left open for investigation: ${PR_URL}"
+            write_state error "PR #${PR_NUMBER} not safe to merge (mergeStateStatus=${merge_state}, mergeable=${mergeable}). Left open: ${PR_URL}"
             exit 1
           fi
 
           gh pr merge "$PR_NUMBER" --merge --delete-branch
+          write_state merged "PR #${PR_NUMBER} merged."
 
-      - name: Write step summary
+      # Replaces "Write step summary": renders one of the outcome classes below via
+      # scripts/report-preflight-sweep-outcome.js instead of a bare results dump, and produces the
+      # two artifacts ("Upload handoff artifact" and "Publish handoff issue" below consume) that
+      # dump never did. `always()` -- this step's job is to leave a trail regardless of which
+      # earlier step failed or was skipped. `report`'s own exit code 2 means "handoff pending, not
+      # broken" -- downgraded to a warning here rather than failing this step a second time for
+      # something the handoff step already reported (or didn't need to -- a policy-blocked PR
+      # create is not this run's fault). Exit 1 means the renderer itself could not produce
+      # evidence at all -- the one case this step should actually go red.
+      - name: Report sweep outcome
+        id: report
         if: always()
         run: |
-          {
-            echo "### Compliance preflight sweep"
-            echo ""
-            if [ "${{ steps.discover.outputs.count }}" = "0" ]; then
-              echo "No NOT-EXECUTED-* declarations found -- nothing to sweep."
+          set +e
+          node scripts/report-preflight-sweep-outcome.js report \
+            --results /tmp/results.json \
+            --handoff-state /tmp/handoff-state.json \
+            --discover-count "${{ steps.discover.outputs.count || '0' }}" \
+            --input-error "${{ steps.discover.outputs.input_error || '0' }}" \
+            --output /tmp/compliance-preflight-sweep-handoff.json \
+            --issue-file /tmp/handoff-issue.md >> "$GITHUB_STEP_SUMMARY"
+          report_exit=$?
+          set -e
+          if [ "$report_exit" = "2" ]; then
+            echo "::warning::compliance preflight sweep handoff pending -- see the step summary and the compliance-preflight-sweep-handoff artifact."
+            exit 0
+          fi
+          if [ "$report_exit" != "0" ]; then
+            echo "::error::scripts/report-preflight-sweep-outcome.js could not render this run's outcome (exit $report_exit)."
+            exit 1
+          fi
+
+      - name: Upload handoff artifact
+        if: always() && steps.discover.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-preflight-sweep-handoff
+          path: /tmp/compliance-preflight-sweep-handoff.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      # Files or updates a labelled GitHub issue so the handoff (or a real preflight failure)
+      # doesn't just wait silently to be noticed -- Pat's addition to the #1374 design, assessed
+      # sound: it's the one mitigation that pushes the handoff to a human instead of waiting for one
+      # to look. Only `issues: write`, org-blocked only for PR create/approve. One open issue per
+      # class, updated in place -- never one per run (four sweeps ran in two hours on 2026-09-01;
+      # one issue per run would have been noise, not signal). Labels `compliance:preflight-handoff`
+      # and `compliance:preflight-failed` are created once by hand -- this workflow never `gh label
+      # create`s them.
+      - name: Publish handoff issue
+        if: always() && steps.discover.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          trap 'echo "::error::Publish handoff issue step failed -- the handoff issue may not have been created/updated. See the compliance-preflight-sweep-handoff artifact for the raw evidence, and file/update the issue by hand."' ERR
+
+          if [ ! -f /tmp/compliance-preflight-sweep-handoff.json ]; then
+            echo "::warning::no handoff artifact found -- Report sweep outcome must have failed to render, nothing to publish."
+            exit 0
+          fi
+
+          outcome_class=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/compliance-preflight-sweep-handoff.json","utf8")).outcome_class)')
+
+          case "$outcome_class" in
+            handoff_required) label="compliance:preflight-handoff" ;;
+            preflight_failed) label="compliance:preflight-failed" ;;
+            *) label="" ;;
+          esac
+
+          if [ -n "$label" ]; then
+            # #1402 leftover: report-preflight-sweep-outcome.js's renderIssue() writes
+            # `${title}\n\n${body}\n` to /tmp/handoff-issue.md (title on line 1, blank line 2, body
+            # from line 3) -- the workflow used to ignore that title entirely and inline a
+            # run-scoped one here instead, which went stale the moment a SECOND run updated the
+            # same persistent issue's body (confirmed live on #1393). Use the rendered title -- it
+            # is stable across runs of the same outcome class by design -- for both create and edit.
+            issue_title=$(head -n1 /tmp/handoff-issue.md)
+            tail -n +3 /tmp/handoff-issue.md > /tmp/handoff-issue-body.md
+            existing=$(gh issue list --label "$label" --state open --json number --jq '.[0].number // empty')
+            if [ -n "$existing" ]; then
+              gh issue edit "$existing" --title "$issue_title" --body-file /tmp/handoff-issue-body.md
+              gh issue comment "$existing" --body "Updated by run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             else
-              echo "Swept ${{ steps.discover.outputs.count }} declaration(s) against an ephemeral"
-              echo "CI-provisioned instance. Results attached as the"
-              echo "\`compliance-preflight-sweep-results\` artifact."
-              echo ""
-              echo '```'
-              cat /tmp/results.json 2>/dev/null || echo "(no results captured)"
-              echo '```'
+              gh issue create --label "$label" --label area:infra \
+                --title "$issue_title" \
+                --body-file /tmp/handoff-issue-body.md
             fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          else
+            # Green outcome: close, with a comment, any open compliance:preflight-handoff issue
+            # whose recorded branch no longer exists on origin -- it was already merged (the human-
+            # opened PR's own `Closes #N` is the normal path; this is the fallback for a leftover
+            # issue that PR never referenced).
+            open_handoff_issues=$(gh issue list --label "compliance:preflight-handoff" --state open --json number --jq '.[].number')
+            for n in $open_handoff_issues; do
+              [ -z "$n" ] && continue
+              body=$(gh issue view "$n" --json body --jq '.body')
+              branch=$(printf '%s' "$body" | grep -oE 'compliance-sweep/[0-9]+' | head -1 || true)
+              if [ -n "$branch" ] && ! git ls-remote --exit-code --heads origin "$branch" > /dev/null 2>&1; then
+                gh issue comment "$n" --body "Branch $branch is gone from origin -- reconciliation appears merged. Closing. (run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+                gh issue close "$n"
+              fi
+            done
+          fi
 
       # Best-effort, always attempted -- never gates the run's own pass/fail (that's the next
       # step). Removes the fixture tenant/database this run created; see

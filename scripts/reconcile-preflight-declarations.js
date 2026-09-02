@@ -60,15 +60,18 @@ const buildReconciledValues = (verdict, { runId, declarationId }) => {
     .replace(/[^A-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+  // #1396 -- a `not_applicable` result never called the live endpoint at all (build-preflight-
+  // request.js's classifyEndpointApplicability short-circuited before any HTTP call, minor-only).
+  // Give it a distinct ref prefix so a reader can tell "verified no_breach against the real
+  // endpoint" from "not evaluable by this endpoint" without opening the run -- both still match
+  // isValidPreflightRequestRef's 3+-segment pattern (scripts/check-compliance-impact.js).
+  const refPrefix = verdict.result === 'not_applicable' ? 'NOT-APPLICABLE' : 'PREFLIGHT';
+
   return {
     preflight_result: verdict.result,
     preflight_reason_code: verdict.reason_code,
     preflight_run_at: new Date().toISOString(),
-    // Matches isValidPreflightRequestRef's 3+-segment uppercase/digit pattern
-    // (scripts/check-compliance-impact.js) and stays traceable back to the actual CI run that
-    // produced this result -- unlike the operator-authored PROMOTER-* convention this replaces,
-    // this ref is at least reproducible: `gh run view <runId>` finds the exact sweep.
-    preflight_request_ref: `PREFLIGHT-${runId}-${slug}`
+    preflight_request_ref: `${refPrefix}-${runId}-${slug}`
   };
 };
 

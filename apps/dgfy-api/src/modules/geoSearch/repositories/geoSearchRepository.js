@@ -82,6 +82,7 @@ const runGeoQuery = async ({ itemIds, userLat, userLng, radiusKm, stockFilter, l
                sdi.supports_pickup,
                sdi.supports_dine_in,
                sdi.store_delivery_fee,
+               sdi.delivery_fee_mode,
                sdi.catalog_count,
                sdi.storefront_profile_image_url,
                sdi.storefront_cover_image_url,
@@ -208,6 +209,11 @@ export const geoSearchRepository = {
             supports_pickup: Boolean(r.supports_pickup),
             supports_dine_in: Boolean(r.supports_dine_in),
             store_delivery_fee: r.store_delivery_fee != null ? Number(r.store_delivery_fee) : null,
+            // Phase 242 (#1333): store_delivery_fee above is a FROM-price; this is what makes it
+            // readable. `|| 'fixed'` covers a row written before the migration ran (the column
+            // defaults to 'fixed' at the DB level too, so this is belt-and-suspenders for a
+            // cached/legacy row rather than a live case).
+            delivery_fee_mode: r.delivery_fee_mode || 'fixed',
             catalog_count: r.catalog_count,
             storefront_profile_image_url: r.storefront_profile_image_url,
             storefront_cover_image_url: r.storefront_cover_image_url,

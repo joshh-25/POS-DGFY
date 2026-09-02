@@ -203,7 +203,8 @@ export const createDgfyInvitationUseCase = buildCreateDgfyInvitationUseCase({
 });
 
 export const startDgfyTenantSessionUseCase = buildStartDgfyTenantSessionUseCase({
-    createTenantSessionForDgfyAccount
+    createTenantSessionForDgfyAccount,
+    repository: dgfyAccountRepository
 });
 
 export const startDgfyPosSessionUseCase = buildStartDgfyPosSessionUseCase({

@@ -27,7 +27,10 @@ Additional required front matter keys when `classification` is `major` or `regul
 - `preflight_result` (must be `no_breach`)
 - `preflight_reason_code` (uppercase decision reason code token from preflight)
 - `preflight_run_at` (ISO datetime of preflight run)
-- `preflight_request_ref` (ticket/PR/request reference token for the preflight run)
+- `preflight_request_ref` (lifecycle: `NOT-EXECUTED-*` placeholder at PR-open time → the sweep
+  reconciles it to either `PREFLIGHT-*` (a real `no_breach` pass) or, for a `minor` declaration with
+  no endpoint-accepted surface, `NOT-APPLICABLE-*` (#1396) — never left as `NOT-EXECUTED-*` on
+  `main`)
 
 Required sections in each declaration:
 - `## Compliance Impact Classification`

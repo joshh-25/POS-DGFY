@@ -12,8 +12,8 @@ verification_evidence: apps/dgfy-api/tests/posOrderBalanceSettlement.usecase.tes
 rollback_note: Reverting this PR's code diff while the ENUM stays widened is harmless -- cheque simply becomes unselectable again, and no other tender's behavior changes. Rolling the migration itself back is NOT a pure operation: 20260830000003-add-cheque-payment-method.cjs's down() refuses outright, per tenant database and per table, once any 'cheque' row exists on pos_order_payments.payment_method, pos_transactions.payment_type, or pos_payment_allocations.payment_method -- loud failure over silent financial-data mutation, matching the grab_pay/shopeepay precedent's own posture. A tenant with recorded cheque tenders cannot have the migration rolled back; the code-only revert is the correct rollback path in that case.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-30T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1085-POS-CHEQUE-TENDER-METHOD
+preflight_run_at: 2026-09-02T03:56:16.393Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-30-POS-CHEQUE-TENDER-METHOD
 ---
 
 # POS cheque tender method (#1085)

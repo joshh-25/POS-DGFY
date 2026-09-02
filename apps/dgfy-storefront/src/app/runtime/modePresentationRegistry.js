@@ -371,8 +371,9 @@ export const ModePresentationRegistry = Object.freeze({
 
 export const getStorefrontModeAdapter = (store = null) => {
   const mode = normalizeBusinessMode(store?.workflow_mode || store?.ops_workflow_mode);
-  const modeConfig = ModePresentationRegistry[mode] || ModePresentationRegistry.default;
-  const storefrontTemplate = getStorefrontTemplateConfig(mode);
+  const presentationMode = mode === 'laundry' ? 'services' : mode;
+  const modeConfig = ModePresentationRegistry[presentationMode] || ModePresentationRegistry.default;
+  const storefrontTemplate = getStorefrontTemplateConfig(presentationMode);
   const pin = getBusinessModePinMeta(mode);
   // A tenant whose scalar mode is NOT 'services' can still have the `services`
   // capability composed in via the ops_enabled_capabilities overlay (Phase 6a).
@@ -392,7 +393,7 @@ export const getStorefrontModeAdapter = (store = null) => {
     journeyVariant: storefrontTemplate.journeyVariant,
     ...ModePresentationRegistry.default,
     ...modeConfig,
-    isServicesMode: mode === 'services',
+    isServicesMode: mode === 'services' || mode === 'laundry',
     isFnbMode: mode === 'fnb',
     isSimpleMode: mode === 'msme',
     isHospitalityMode: mode === 'hospitality',

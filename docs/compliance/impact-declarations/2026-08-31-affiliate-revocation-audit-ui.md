@@ -11,8 +11,8 @@ verification_evidence: packages/web-core/src/features/pos/__tests__/AffiliatesWo
 rollback_note: Revert the shared AffiliatesWorkspacePanel audit display, its focused component test, this declaration, and the Phase 215 ledger entry together. The change only renders existing GET /affiliates fields; it adds no API call, status-event dependency, database lookup, persisted state, or financial/POS operation behavior.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-31T17:35:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-215
+preflight_run_at: 2026-09-02T03:56:16.394Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-31-AFFILIATE-REVOCATION-AUDIT-UI
 ---
 
 # Affiliate Revocation Audit UI

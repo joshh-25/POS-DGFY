@@ -11,6 +11,7 @@ export const CORRECTED_ITEM_TAXONOMY_MODES = Object.freeze([
 ]);
 
 export const PLACEHOLDER_ITEM_TAXONOMY_MODES = Object.freeze([
+    'laundry',
     'healthcare',
     'ticketing_transport',
     'logistics_distribution',

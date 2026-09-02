@@ -1000,6 +1000,7 @@ export default function TerminalPageDialogLayer({ model }) {
               loading={incomingReceiptOpeningId !== null && !incomingOrderDetail}
               onPrint={handlePrintIncomingOrder}
               printLoading={incomingOrderPrintLoading}
+              businessSettings={terminalMeta.businessSettings}
             />
             </Suspense>
         )}

@@ -59,6 +59,7 @@ import {
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
 import { assertFulfillmentMethodAvailableForAccessModeTransition } from './customerAccessModeFulfillmentPolicy.js';
+import { assertLaundryWorkflowModeRuntimeOwnership } from './laundryWorkflowModeRuntimeGuard.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -163,7 +164,8 @@ const getTenantComplianceSnapshot = () => {
 export const buildUpdateSettingByKeyUseCase = ({
     settingsRepository,
     storefrontAssetStorage = null,
-    tenantLocationRepository = null
+    tenantLocationRepository = null,
+    tenantRepository = null
 }) => {
     return async ({ key, value, actorUser = null }) => {
         if (!key || typeof key !== 'string') {
@@ -260,6 +262,11 @@ export const buildUpdateSettingByKeyUseCase = ({
                     ));
                 }
                 normalizedValue = normalizeWorkflowMode(value);
+                await assertLaundryWorkflowModeRuntimeOwnership({
+                    requestedMode: normalizedValue,
+                    actorUser,
+                    tenantRepository
+                });
             }
             if (key === ENABLED_CAPABILITIES_SETTING_KEY) {
                 if (!Array.isArray(value) || value.some((entry) => !ALL_WORKFLOW_CAPABILITIES.includes(String(entry || '').trim()))) {

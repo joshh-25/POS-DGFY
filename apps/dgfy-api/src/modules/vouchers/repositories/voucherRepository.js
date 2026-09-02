@@ -70,6 +70,9 @@ export const voucherRepository = {
         }
         if (filters.benefit_class) where.benefit_class = filters.benefit_class;
         if (filters.voucher_kind) where.voucher_kind = filters.voucher_kind;
+        // #1332 (Phase 244): explicit `!== undefined`, not truthy -- `auto_apply: false` is a
+        // meaningful filter value (list the code-entered-only vouchers), not "no filter given".
+        if (filters.auto_apply !== undefined) where.auto_apply = Boolean(filters.auto_apply);
         if (filters.search) {
             const pattern = `%${String(filters.search).trim()}%`;
             where[Op.or] = [
@@ -91,6 +94,48 @@ export const voucherRepository = {
         });
 
         return { rows: rows.map(toPlain), count };
+    },
+
+    /**
+     * #1332 (Phase 244, epic #1321 decision 9): candidate fetch for the auto-applied delivery
+     * campaign selector. Deliberately a MINIMAL SQL filter -- `auto_apply` + `benefit_target` +
+     * stored `status` only. Every semantic filter (date window, time-of-day, weekday, channel,
+     * fulfillment method, order timing, min spend, min quantity, exhaustion) stays in
+     * `autoAppliedCampaignPolicy.js`'s pure selector, which is the ONE place quote and checkout can
+     * provably share an implementation. Pushing any of those into SQL would create a second filter
+     * that could disagree with the first -- do not "optimize" this by adding one.
+     *
+     * `status: 'active'` in SQL is a safe narrowing, not a semantic filter: `deriveVoucherStatus`
+     * can only make a stored-`active` row LESS eligible (an elapsed `valid_until` derives to
+     * `expired`), never promote a non-`active` stored status to `active`. So this predicate is a
+     * strict superset-preserving prefilter of what the selector would do anyway -- this becomes
+     * WRONG the moment `deriveVoucherStatus` ever gains a promoting branch, so re-check this comment
+     * against that function before changing either.
+     *
+     * `ORDER BY voucher_id ASC LIMIT 200` -- the limit is defensive against an unbounded read; the
+     * explicit ORDER BY makes the truncation itself deterministic (an unordered LIMIT would be a
+     * nondeterminism source, exactly the class of bug this phase exists to prevent). A realistic
+     * tenant has far fewer than 200 auto-apply delivery campaigns; the caller logs a warning if this
+     * limit is ever actually hit.
+     *
+     * NO CACHING. EVER. Any cache between the quote call and the checkout call lets the two paths
+     * see different candidate sets at slightly different times -- precisely the quote/checkout
+     * divergence this whole phase exists to prevent. A future performance-minded refactor will
+     * otherwise look at an unindexed-seeming N-row query on a hot checkout path and add a cache in
+     * good faith -- don't.
+     *
+     * `options.transaction` MUST be threaded on the checkout path, so the candidate read and the
+     * subsequent `reserveRedemption` see one consistent snapshot inside the same open transaction.
+     */
+    async listAutoApplyDeliveryCampaigns(options = {}) {
+        const Voucher = dbStore.get('Voucher');
+        const rows = await Voucher.findAll({
+            where: { auto_apply: true, benefit_target: 'delivery', status: 'active' },
+            order: [['voucher_id', 'ASC']],
+            limit: 200,
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
     },
 
     async createVoucher(values, options = {}) {
@@ -421,6 +466,30 @@ export const voucherRepository = {
     },
 
     /**
+     * #1390: back-links already-written redemption ledger rows to the order they belong to.
+     * `pos_transaction_id` has existed on `voucher_redemptions` (and been indexed) since #455, but
+     * was written by nothing -- the redemption necessarily happens inside `resolveCheckoutContext`,
+     * before the checkout transaction has an order id. A separate write from
+     * `createRedemptionLedgerEntry` rather than a param on it, for exactly that reason. Idempotent:
+     * a replayed checkout re-sets the same value, and a redemption with `entry_type: 'reversal'`
+     * never reaches this call (only fresh/replayed redemption ids are collected at the call site).
+     */
+    async attachRedemptionsToTransaction(voucherRedemptionIds, posTransactionId, options = {}) {
+        const VoucherRedemption = dbStore.get('VoucherRedemption');
+        const ids = (Array.isArray(voucherRedemptionIds) ? voucherRedemptionIds : [voucherRedemptionIds])
+            .map(Number)
+            .filter((id) => Number.isInteger(id) && id > 0);
+        const orderId = Number(posTransactionId);
+        if (ids.length === 0 || !Number.isInteger(orderId) || orderId <= 0) return 0;
+
+        const [affectedCount] = await VoucherRedemption.update(
+            { pos_transaction_id: orderId },
+            { where: { voucher_redemption_id: ids }, transaction: options.transaction }
+        );
+        return affectedCount;
+    },
+
+    /**
      * List of a redemption's allocated lines, needed to mirror them (quantities/prices, discount
      * negated) into a reversal's own lines -- not part of the task's explicitly-named repository
      * key list, added because `buildReverseVoucherRedemptionUseCase` has no other way to read what
@@ -455,6 +524,27 @@ export const voucherRepository = {
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
         return toPlain(row);
+    },
+
+    /**
+     * #1390: the read half of `attachRedemptionsToTransaction` -- index-backed on
+     * `idx_voucher_redemptions_transaction`, scoped to `channel: 'storefront'` as a cheap, explicit
+     * guard against ever reversing a POS-channel redemption through this storefront-only path (no
+     * POS writer of this column exists today, but the filter costs nothing and removes the
+     * assumption). Ordered ascending by id -- deliberate, not incidental: reversing in a
+     * deterministic order is what keeps two concurrent cancels sharing both a delivery and an item
+     * voucher from crossing lock order (see the PR's own plan, "Lock ordering").
+     */
+    async listRedemptionsByTransactionId(posTransactionId, options = {}) {
+        const VoucherRedemption = dbStore.get('VoucherRedemption');
+        const orderId = Number(posTransactionId);
+        if (!Number.isInteger(orderId) || orderId <= 0) return [];
+        const rows = await VoucherRedemption.findAll({
+            where: { pos_transaction_id: orderId, channel: 'storefront' },
+            order: [['voucher_redemption_id', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
     },
 
     /**

@@ -5,12 +5,14 @@
 // REQUIRES an open transaction, same contract as `buildRedeemVoucherUseCase` -- this function opens
 // none of its own.
 //
-// KNOWN GAP, named rather than silently left: `buildCancelStoreOrderUseCase` in
-// `storeUseCases.js` has no `status: 'voided'` path today -- storefront has no cancel/refund hook
-// that calls this use case yet (ADR 0066 Consequences #3: "Storefront has no refund reversal
-// path... A real gap this ADR does not close"). This use case is built and unit-tested on its own
-// terms so it exists once that hook is built; it is currently unreachable from any real HTTP
-// request.
+// #1390: `buildCancelStoreOrderUseCase` (storeUseCases.js) is now this use case's live caller --
+// a cancelled storefront order reverses whichever voucher redemption(s) (item and/or delivery
+// axis) it recorded at checkout, in the same transaction as the fulfillment_status flip. This
+// closes the *cancelled-order* half of ADR 0066 Consequences #3's gap. The other half named there
+// -- "a refunded-but-not-cancelled storefront order" -- is still open: storefront has no refund
+// flow at all, so there is nothing yet to hook a reversal into for that case. The POS-void half of
+// ADR 0066 Validation #3 (a voided POS transaction reversing its own redemption) is also still
+// open and tracked separately -- posUseCases.js has no `status: 'voided'` reversal path either.
 
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { VoucherReasonCode, voucherConflict } from '../domain/voucherErrors.js';

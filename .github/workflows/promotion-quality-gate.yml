@@ -180,7 +180,16 @@ on:
           are the two heaviest jobs in the repo.
         required: false
         type: string
-        default: '["sieitz-lg"]'
+        # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+        # (ubuntu-latest) is the intended class here too. This default is reached only
+        # on the release/* -> main leg -- #1253 skips the to-staging/* -> staging leg
+        # entirely (is_staging_leg != 'true' gates every quality job below), and a
+        # plain pull_request trigger supplies no `inputs` at all -- so flipping this
+        # one default routes exactly the prod promotion leg, nothing else. This anchor
+        # covers both workflow_call and workflow_dispatch (below) -- it's one YAML
+        # anchor, don't duplicate the flip at *runner_labels_input.
+        # default: '["sieitz-lg"]'
+        default: '["ubuntu-latest"]'
   workflow_dispatch:
     inputs: *runner_labels_input
 
@@ -202,6 +211,12 @@ jobs:
   # silently. A `workflow_dispatch`/`workflow_call` trigger always proceeds unconditionally -- same
   # behavior this workflow always had for those triggers, no promotion check applies to a manual
   # run or a reusable-workflow caller.
+  # Phase 233 (#1365) anchor exception, deliberate, not an omission: stays
+  # self-hosted permanently, no commented hosted alternate. A ~1-2 minute
+  # control-plane job that must run even when everything downstream was
+  # skipped or killed -- self-hosted is the class this repo has direct
+  # visibility into. See docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's Phase 233
+  # entry.
   gate:
     runs-on: ['sieitz-runner']
     timeout-minutes: 2
@@ -268,7 +283,15 @@ jobs:
     # covered too (2026-08-26 #1066 follow-up, see that same comment).
     if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. The `|| '["sieitz-lg"]'`
+    # fallback literal is reached only on the release/* -> main leg (see the
+    # workflow_call/workflow_dispatch input comment above) -- flipping it routes
+    # exactly the prod promotion leg, by construction, no if:/matrix conditional
+    # needed or wanted. salvage-api-evidence below MUST always carry this job's same
+    # active class -- see that job's own comment for why.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 45
     outputs:
       # #1066 RF-1: the *real* per-step outcome, read from steps.<id>.outcome (survives
@@ -593,7 +616,12 @@ jobs:
     # covered too (2026-08-26 #1066 follow-up, see that same comment).
     if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. See gate/
+    # dgfy-api-quality's comments above for the release/* -> main-leg-only
+    # reasoning (F-3) -- same logic applies here.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -712,7 +740,12 @@ jobs:
     # job-level alone wasn't enough).
     if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. See gate/
+    # dgfy-api-quality's comments above for the release/* -> main-leg-only
+    # reasoning (F-3) -- same logic applies here.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -800,7 +833,12 @@ jobs:
     # job-level alone wasn't enough).
     if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. See gate/
+    # dgfy-api-quality's comments above for the release/* -> main-leg-only
+    # reasoning (F-3) -- same logic applies here.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -860,7 +898,12 @@ jobs:
     # job-level alone wasn't enough).
     if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. See gate/
+    # dgfy-api-quality's comments above for the release/* -> main-leg-only
+    # reasoning (F-3) -- same logic applies here.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 20
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -970,7 +1013,12 @@ jobs:
     # job-level alone wasn't enough).
     if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. See gate/
+    # dgfy-api-quality's comments above for the release/* -> main-leg-only
+    # reasoning (F-3) -- same logic applies here.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 15
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
@@ -1008,6 +1056,29 @@ jobs:
       - name: Validate PR quality workflow contract
         id: validate_pr_quality_workflow
         run: npm run check:pr-quality-workflow && npm run test:pr-quality-workflow
+        continue-on-error: true
+        timeout-minutes: 5
+
+      # Phase 233 (#1365): the #1365 acceptance criterion is "workflow tests and
+      # documentation verify runner routing so future edits cannot silently invert the
+      # strategy" -- this is that check, run in the same step/job as the sibling
+      # contract validator above so it costs no new runner slot.
+      - name: Validate runner routing contract
+        id: validate_runner_routing
+        run: npm run check:runner-routing && npm run test:runner-routing
+        continue-on-error: true
+        timeout-minutes: 5
+
+      # #1374 Wave 4: regression coverage for compliance-preflight-sweep.yml's supervised-handoff
+      # redesign (the hard-fail-step-is-last invariant, the report step's always()/exit-2-mapping
+      # contract, the handoff step's dual guard, classify-pr-create wiring, the numeric-branch-
+      # prefix-guarded delete, full-tree discovery) -- run in the same step/job as the sibling
+      # contract validators above so it costs no new runner slot. Also runs the four
+      # scripts/*preflight*.test.js files this repo already had but never wired to any npm script
+      # (test:preflight-sweep is the first call site for any of them).
+      - name: Validate compliance sweep contract
+        id: validate_compliance_sweep
+        run: npm run test:preflight-sweep
         continue-on-error: true
         timeout-minutes: 5
 
@@ -1062,6 +1133,8 @@ jobs:
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install repository dependencies|${{ steps.install_repo_deps.outcome }}
             Validate PR quality workflow contract|${{ steps.validate_pr_quality_workflow.outcome }}
+            Validate runner routing contract|${{ steps.validate_runner_routing.outcome }}
+            Validate compliance sweep contract|${{ steps.validate_compliance_sweep.outcome }}
             Run governed documentation lint|${{ steps.run_docs_lint.outcome }}
             Run compatibility-seam contract gate|${{ steps.run_compat_seams.outcome }}
             Check retired-path resurrection|${{ steps.check_retired_path_resurrection.outcome }}
@@ -1123,6 +1196,11 @@ jobs:
     # job has nothing to report when every job it depends on was itself skipped on the staging leg,
     # and skipping it too is what makes the staging leg's "no runner time spent" claim true again.
     if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+  # Phase 233 (#1365) anchor exception, deliberate, not an omission: stays
+  # self-hosted permanently, no commented hosted alternate. Must run even when
+  # every job between gate and here was skipped or killed -- self-hosted is the
+  # class this repo has direct visibility into. See
+  # docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's Phase 233 entry.
     runs-on: ['sieitz-runner']
     timeout-minutes: 3
     permissions:
@@ -1278,12 +1356,63 @@ jobs:
     # needing salvage, per the needsSalvage check below).
     if: always() && needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
     continue-on-error: true
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too -- BUT: co-location
+    # invariant (F-2), binding. This job's active class MUST always match
+    # dgfy-api-quality's active class above -- it recomputes and reads that job's
+    # workspace path directly, which only exists on the same box under self-hosted.
+    # Flipping this job hosted while dgfy-api-quality stays self-hosted (or vice
+    # versa) breaks salvage silently (if-no-files-found: warn + continue-on-error --
+    # no red check).
+    #
+    # Phase 234 Wave 0 (#1375) resolution: flipping both hosted does NOT silently
+    # degrade #1124/#1165 evidence recovery to a no-op anymore. F-3 (verified against
+    # the tree): the recommended re-implementation over actions/upload-artifact
+    # (if: always()) already exists -- it's dgfy-api-quality's own "Upload API
+    # test-matrix evidence" step below (L547-556) -- so that path was never actually
+    # lost. What genuinely cannot be recovered on an ephemeral hosted runner is the
+    # narrower case this job exists for: the job envelope dying mid-run, before any
+    # step -- always() or not -- gets to execute (run 33241398956). That loss is
+    # accepted, not fixed (a chunked/streaming upload redesign is out of proportion
+    # to a residual this narrow); what shipped instead is a loudness guarantee -- see
+    # the first step below, which fires only when this job lands on a hosted runner
+    # and says so explicitly, rather than degrading silently the way the old
+    # if-no-files-found: warn path did.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 5
     permissions:
       contents: read
       actions: read
     steps:
+      # #1375 (Phase 234 Wave 0): this job's real salvage capability only exists on the
+      # self-hosted co-location box (see the header comment above) -- `runner.environment`
+      # is the step-level context (`'github-hosted' | 'self-hosted'`) that can see which
+      # class this specific run landed on; a job-level `if:` cannot read it at all, which
+      # is why this is gated per-step rather than on the job. Fires only when this job's
+      # `runs-on:` resolved hosted (the flipped-both case F-3 covers), and is loud, not
+      # silent, about the residual: the below is the one case the F-3 fix does not cover.
+      - name: Warn if evidence salvage is unavailable on this runner
+        id: warn_salvage_unavailable_hosted
+        if: runner.environment != 'self-hosted'
+        continue-on-error: true
+        run: |
+          echo '::warning::salvage-api-evidence: cross-job evidence salvage is not available on an ephemeral hosted runner (runner.environment=${{ runner.environment }}). dgfy-api-quality'"'"'s own "if: always()" upload ("Upload API test-matrix evidence") remains the evidence path. The uncovered case is envelope-death only -- see #1375.'
+          {
+            echo '### `salvage-api-evidence`: unavailable on this (hosted) runner'
+            echo ''
+            echo 'This job landed on a GitHub-hosted runner, where cross-job evidence salvage is'
+            echo 'definitionally unavailable -- an ephemeral VM'"'"'s job workspace does not persist'
+            echo 'across jobs the way the self-hosted co-location box'"'"'s does.'
+            echo ''
+            echo '`dgfy-api-quality`'"'"'s own `if: always()` upload step ("Upload API test-matrix'
+            echo 'evidence", this file) remains the evidence path and is unaffected.'
+            echo ''
+            echo 'The only case left uncovered is the job envelope dying mid-run, before any step --'
+            echo '`always()` or not -- ever executes (run 33241398956). That loss is accepted, not'
+            echo 'recovered here. See #1375.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Independently recomputes the same durable path dgfy-api-quality's matrix step resolved --
       # this is a separate job, so it has no access to that job's $GITHUB_ENV. Deterministic given
       # the same run id/attempt and the two jobs sharing a runner (see the assumptions above), so
@@ -1292,11 +1421,13 @@ jobs:
       # verification) that actions/upload-artifact@v4 rejects any `path:` glob containing `..`.
       - name: Resolve durable evidence path
         id: resolve_evidence_path
+        if: runner.environment == 'self-hosted'
         continue-on-error: true
         run: echo "RELEASE_GATES_EVIDENCE_ROOT=$(dirname "$RUNNER_WORKSPACE")/_dgfy_gate_evidence/${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_ENV"
 
       - name: Check dgfy-api-quality's real job conclusion
         id: check_api_quality_envelope
+        if: runner.environment == 'self-hosted'
         continue-on-error: true
         uses: actions/github-script@v7
         env:
@@ -1315,7 +1446,7 @@ jobs:
 
       - name: Upload salvaged API test-matrix evidence
         id: upload_salvaged_evidence
-        if: steps.check_api_quality_envelope.outputs.needs_salvage == 'true'
+        if: runner.environment == 'self-hosted' && steps.check_api_quality_envelope.outputs.needs_salvage == 'true'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -1326,6 +1457,6 @@ jobs:
 
       - name: Sweep salvaged evidence
         id: sweep_salvaged_evidence
-        if: always()
+        if: always() && runner.environment == 'self-hosted'
         continue-on-error: true
         run: rm -rf "${{ env.RELEASE_GATES_EVIDENCE_ROOT }}"

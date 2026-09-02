@@ -161,8 +161,12 @@ export const getIncomingOrderUtilityActions = (order = {}) => {
       ? ['print_order', 'open_order']
       : ['print_receipt', 'open_order'];
   case 'ready_for_pickup':
-  case 'out_for_delivery':
     return ['open_order'];
+  case 'out_for_delivery':
+    // #1319: the print/reprint action must stay available across the whole in-progress delivery
+    // window -- pending_dispatch/assigned/picked_up/delivered -- not just one deliveryJob.status
+    // sub-state, so this is never gated on order.deliveryJob?.status here.
+    return ['print_receipt', 'open_order'];
   default:
     return [];
   }

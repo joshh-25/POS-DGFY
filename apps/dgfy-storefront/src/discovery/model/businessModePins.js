@@ -1,6 +1,7 @@
 export const BUSINESS_MODE_PIN_META = Object.freeze({
   retail: { icon: 'ShoppingBag', label: 'Retail', color: '#ea580c' },
   services: { icon: 'CalendarCheck', label: 'Services', color: '#1a4e8d' },
+  laundry: { icon: 'CalendarCheck', label: 'Laundry', color: '#0f766e' },
   food_manufacturing: { icon: 'Factory', label: 'Food Manufacturing', color: '#16a34a' },
   manufacturing: { icon: 'Factory', label: 'Food Manufacturing', color: '#16a34a' },
   fnb: { icon: 'Utensils', label: 'Food & Beverage', color: '#dc2626' },

@@ -3,18 +3,37 @@
 Mechanics only. Rule sources (why, and what gates apply) are in `../SKILL.md` and the docs it
 points at — don't duplicate the reasoning here, just the commands.
 
-## Default: `develop` → `main`
+## #1007-gated exception: direct `develop` → `main`
 
-Pre-flight, then the gates in `../SKILL.md`'s "Pre-`main` gates" section (compliance preflight
-sweep, `gate:release:local`, production tenant-schema report) — run all three against the target
-SHA before cutting the branch below. Do not proceed past a failing gate.
+**Ran `gate:release:local` locally at any point earlier in this session? `git status` before
+cutting any branch below.** The documented Docker invocation now copies the repo into a disposable
+scratch directory before running (#1358), but that protection only covers a session that follows
+the current doc exactly — a stale terminal, a command pasted from shell history before the fix
+landed, or a gate run directly on a host with node/MySQL/Redis already configured (no Docker, no
+scratch copy involved) can all still leave an unintended `node_modules`/lockfile diff sitting in
+the working tree. `git switch -c` carries a dirty tree's uncommitted changes into the new branch —
+an unnoticed diff here rides straight onto `release/$LABEL` (or `to-staging/$LABEL`). A clean
+`git status` (or `git checkout -- <file>` on anything unexpected) before the branch cut is the
+cheap backstop that catches it regardless of cause.
+
+Pre-flight, then confirm the compliance sweep is clear against the target SHA — the one real
+precondition here, since no `NOT-EXECUTED-*` declaration may reach `main` (full detail:
+`../SKILL.md`'s "Pre-`main` gates" section, "Ordering" note, #1359):
 
 ```bash
-gh workflow run tenant-schema-report.yml -f environment=PROD
-# poll:
-gh run list --workflow=tenant-schema-report.yml -L1 --json databaseId,status
-gh run view <id> --json conclusion   # expect "success" and failed_tenant_count: 0 in the step summary
+git fetch origin main develop
+git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/ \
+  | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
+# empty output → clear, proceed. Any line printed → the continuous sweep hasn't caught up yet —
+# dispatch it manually (`gh workflow run compliance-preflight-sweep.yml`) and wait, per ../SKILL.md.
 ```
+
+Once that's clear, cut `release/<label>` and open its PR into `main` right away — **do not wait on
+`gate:release:local` or the production tenant-schema report first.** Those two have no dependency on
+the compliance sweep, on each other, or on the branch cut/PR-open step below: start them
+**concurrently** with it (a backgrounded command, a second terminal — whatever fits), not serially
+before it. This was caught live on the 2026-09-01/02 promotion (#1359), where the ~25min local gate
+was run to completion before the branch was even cut.
 
 ```bash
 git fetch origin
@@ -40,13 +59,30 @@ Aggregate promotion — see \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the com
 # Merging this PR is Pat's action, always — see ../SKILL.md's checkpoint table.
 ```
 
-## Optional: a `staging` soak first
+Run these two alongside (or immediately after) the branch cut/PR open above — not before it:
 
-Choose this per batch when the change is risky enough to want it — not the default, see
-`../SKILL.md`'s "The flow" section.
+```bash
+npm run gate:release:local   # ~25min; background it or use a separate terminal, then post the
+                              # result as a comment on the release/<label> PR once it finishes
+
+gh workflow run tenant-schema-report.yml -f environment=PROD
+# poll:
+gh run list --workflow=tenant-schema-report.yml -L1 --json databaseId,status
+gh run view <id> --json conclusion   # expect "success" and failed_tenant_count: 0 in the step summary
+```
+
+**Only the merge into `main` waits on all three** — the compliance sweep (already confirmed clear
+above), `gate:release:local` (`run_mode: "full"`), and the tenant-schema report. Do not merge past a
+failing gate.
+
+## Default: `develop` → `staging` → `main`
+
+This is the default soak leg again since #1404 (2026-09-02) — see `../SKILL.md`'s "The flow"
+section.
 
 **Do NOT run `npm run gate:release:local` on this leg.** It is reserved for the `develop → main`
-(and `staging → main`) leg only — see the "Default" section above, where it's the first thing run.
+(and `staging → main`) leg only — see the "#1007-gated exception" section above, where it's the
+first thing run.
 This isn't an omission to infer from silence: this leg's own CI-side check
 (`promotion-quality-gate.yml`) is also skipped entirely here (#1063), so a `to-staging/<label>` PR
 is deliberately gated on nothing beyond `pr-checks.yml`'s Docker build checks. Filed as #1097 after
@@ -70,8 +106,8 @@ gh pr create \
   --title "chore: promote develop to staging ($LABEL)" \
   --body "## Summary
 
-Promotes \`develop\` to \`staging\` at $(git rev-parse --short origin/develop) — optional soak before
-promoting to \`main\`.
+Promotes \`develop\` to \`staging\` at $(git rev-parse --short origin/develop) — the default soak leg
+before promoting to \`main\`.
 
 ## Testing Evidence
 
@@ -82,8 +118,9 @@ See \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the promotion-PR compliance exe
 gh pr merge <N> --merge   # never --squash — see SKILL.md
 ```
 
-Then cut `release/<label>` from `origin/staging` instead of `origin/develop` in the "Default"
-section above — same commands, `origin/staging` in place of `origin/develop`.
+Then cut `release/<label>` from `origin/staging` instead of `origin/develop` in the
+"#1007-gated exception" section above — same commands, `origin/staging` in place of
+`origin/develop`.
 
 ## Expedited override (#1007) — only on Pat's explicit real-time phrase
 

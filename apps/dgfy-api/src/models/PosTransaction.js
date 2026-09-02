@@ -139,6 +139,70 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         defaultValue: false
     },
+    // Phase 236 (#1328, epic #1321): observation-only server-side road-distance capture. Neither
+    // field feeds delivery_fee/total_amount computation anywhere in this codebase -- see
+    // docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md.
+    delivery_distance_meters: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    delivery_distance_source: {
+        type: DataTypes.ENUM('road', 'fallback', 'none'),
+        allowNull: false,
+        defaultValue: 'none'
+    },
+    // Phase 237 (#1329, epic #1321). Money-provenance columns for the resolved delivery-fee
+    // breakdown -- see
+    // docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md
+    // and the ADR 0012 amendment dated 2026-09-02. `delivery_fee_base - delivery_fee_waiver ===
+    // delivery_fee` whenever delivery_fee_override is null. fallbackApplied/outOfRange are
+    // deliberately NOT persisted here -- fully derivable from `delivery_fee_mode = 'calculated' AND
+    // delivery_distance_source <> 'road'` (plus the config-malformed case), so a derivable boolean
+    // never drifts out of sync with the columns it's derived from.
+    delivery_fee_mode: {
+        type: DataTypes.ENUM('fixed', 'calculated', 'free'),
+        allowNull: false,
+        defaultValue: 'fixed'
+    },
+    delivery_fee_base: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    delivery_fee_waiver: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    // Nullable is load-bearing: NULL means "no override", 0.0000 means "staff set it free" -- the
+    // same null-vs-zero convention Phase 140 already established for downpayment_amount.
+    delivery_fee_override: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: true,
+        defaultValue: null
+    },
+    delivery_fee_calc_version: {
+        type: DataTypes.SMALLINT.UNSIGNED,
+        allowNull: false,
+        defaultValue: 1
+    },
+    // #1331 (Phase 240, epic #1321 decision 9). Provenance for delivery_fee_waiver above: which
+    // voucher waived it, and what it was called at the time. Both nullable-with-NULL-default --
+    // the overwhelming majority of orders have no waiver, and NULL (no waiver) must stay
+    // distinguishable from a ₱0 waiver on a free-mode tenant. ON DELETE SET NULL (declared on the
+    // migration's FK, mirrored here via `references`) rather than RESTRICT: an order's fiscal
+    // record must survive a voucher being purged; the label snapshot preserves the human-readable
+    // trace regardless, same reasoning discount_label_snapshot already embodies.
+    delivery_fee_waiver_voucher_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'vouchers', key: 'voucher_id' },
+        onDelete: 'SET NULL'
+    },
+    delivery_fee_waiver_label_snapshot: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
     accepted_by: {
         type: DataTypes.INTEGER,
         allowNull: true

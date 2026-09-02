@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-08-31
+last_reviewed: 2026-09-02
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -271,13 +271,153 @@ promotion was sound) — unaffected by this ADR either way.
   removes the need for.
 - PR: (this PR). Refs #1163, #1248.
 
+### 2026-09-02 — Decision 5's PR handoff: supervised, not auto-merge; discovery: full scan (#1295/#1374)
+
+- Clause amended: Decision 5, `[default]` tier — the 2026-08-31 amendment above's "reconciles +
+  auto-merges a PR when every result passes" and its implicit "auto-triggers ... rather than waiting
+  for the promotion leg" discovery mechanism (a `develop..main` diff).
+- Why (PR open + merge): an org-level policy blocks `github-actions[bot]` from creating or approving
+  pull requests outright — confirmed live across four separate runs (33531804412 / 33536811560 /
+  33542764832 / 33545741502) where the preflight itself had genuinely PASSED, red only at the PR-
+  create step, rendering identically to a real compliance breach with no way to tell the two apart
+  from the run's own red status. #1295 settled the underlying policy question: no PAT bot, no direct
+  commit to `develop`; a human or credentialed AI session opens and merges the PR.
+- Why (discovery): the `develop..main` diff had a permanent blind spot — a declaration that reached
+  `main` via #1007's expedited-override path sits on *both* branches and never appears in a diff
+  between them. #1374's own research, 2026-09-02: a full scan of `develop` found 26 outstanding
+  declarations where the diff found 4, and the promoter's own verification snippet (using the same
+  diff) truthfully reported "0 outstanding" on a real promotion PR while 22 sat unreconciled on
+  `main`.
+- Change: the sweep still pushes the reconciliation branch and still *attempts* `gh pr create` every
+  run (so the loop self-heals for free if that org policy ever changes), but now classifies the
+  result (`scripts/report-preflight-sweep-outcome.js`'s `classifyPrCreate`) instead of treating every
+  non-zero exit as an undifferentiated failure: a policy-blocked create finishes the run **green**
+  with a `::warning::` (`handoff_required`) rather than red, backed by a
+  `compliance-preflight-sweep-handoff` artifact and a filed/updated `compliance:preflight-handoff`
+  GitHub issue naming the branch, head/base SHA, swept declarations, and the exact operator commands
+  to finish the handoff; any other create/merge failure is still a genuine, red handoff error. A real
+  preflight failure (`overall_fail=1`) is unchanged — still red — and now also files/updates a
+  `compliance:preflight-failed` issue. Discovery switches from the `develop..main` diff to a full
+  scan of the checked-out ref (`git ls-files` under `docs/compliance/impact-declarations/`, filtered
+  by `scripts/is-preflight-outstanding.js`) — **every outstanding declaration on the checked-out
+  ref**, not a diff against any other branch. Full detail:
+  `docs/compliance/request-time-preflight-protocol.md`'s "Where live preflight actually runs" and
+  "Operator handoff procedure" sections.
+- Scope check, confirmed unaffected: the ephemeral-target mechanism from the 2026-08-31 amendment
+  (fixture tenant, no deployed host, no secrets) is untouched — this amendment only changes who opens
+  the resulting PR and how the sweep finds its own work, not how the preflight call itself runs.
+  Decisions 6 (production tenant-schema report) and 8 (Merge Safety) remain untouched — the handoff
+  PR is still subject to Merge Safety like every other GitHub merge in this repo, unchanged.
+- Risk noted, not resolved here: the first sweep run after this change reconciles all 26 currently-
+  outstanding declarations into one handoff branch/issue in a single run (the discovery blind spot's
+  own backlog); `promoter`'s own verification step now blocks on that one PR merging before cutting
+  `release/<label>`. All-or-nothing reconcile is unchanged — one `breach` in that batch blocks the
+  other 25 from reconciling until resolved; partial reconciliation is a flagged follow-up, not this
+  change.
+- PR: (this PR). Refs #1295, #1374.
+
+### 2026-09-02 — not-applicable preflight outcome (#1396)
+
+- Clause amended: Decision 5, `[default]` tier — the reconciliation write path (the 2026-08-25 and
+  2026-08-31 amendments above) previously only ever wrote a `PREFLIGHT-*` ref for a `result:
+  no_breach` pass; it had no outcome for a declaration the live endpoint cannot evaluate at all.
+- Why: `docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md`
+  (`classification: minor`, `surfaces: storefront`) 422s at the live endpoint — of 315 declarations
+  scanned, the only one with a `NOT-EXECUTED-*` ref and no endpoint-accepted surface. Widening the
+  endpoint's accepted-surface enum to include `storefront` was researched and rejected as a no-op
+  (no storefront rule exists in `compliancePolicyEngine.js`; see
+  `docs/compliance/request-time-preflight-protocol.md`'s "Not applicable to live preflight" section
+  for the full reasoning).
+- Change: `scripts/build-preflight-request.js` classifies this case before any HTTP call
+  (`classifyEndpointApplicability`) and exits 3 with a JSON marker; the sweep step records
+  `{http_code: "n/a", verdict: {pass: true, result: "not_applicable", can_proceed: true,
+  reason_code: "NO_ENDPOINT_ACCEPTED_SURFACE"}}` and skips the curl call entirely.
+  `scripts/reconcile-preflight-declarations.js` writes `preflight_request_ref:
+  NOT-APPLICABLE-<run_id>-<slug>` for that result (`PREFLIGHT-*` unchanged for every other pass).
+  `scripts/report-preflight-sweep-outcome.js` treats a `not_applicable` + `pass:true` row as passing
+  (not a failure) and renders it in its own "Not applicable to live preflight" section in the
+  summary, the handoff issue, and the `compliance-preflight-sweep-handoff` artifact, so the human
+  merging the handoff PR sees it named explicitly rather than folded silently into the same list as
+  a real `no_breach` pass.
+- Scope, stated plainly: **`minor`-classification only.** `check-compliance-impact.js`'s
+  `PREFLIGHT_REQUIRED_CLASSIFICATIONS` is unchanged and still hard-requires
+  `preflight_result=no_breach` for `major`/`regulatory` — a `major`/`regulatory` declaration with no
+  endpoint-accepted surface fails closed (exit 1), never reconciled as not-applicable.
+  `complianceValidator.js` is untouched (compliance-sensitive, and unnecessary under this design).
+- PR: (this PR). Refs #1396, #1402.
+
+### 2026-09-02 — Reverse Decision 1: restore `develop → staging → main` as the default;
+`develop → main` becomes the #1007-gated exception (#1404)
+
+- Clause amended: **Decision 1** (`[default]` tier per ADR 0039) and, as a consequence, the framing
+  of **Decision 3** (also `[default]`). Decision 1's original text ("The default promotion path
+  becomes `feature branch -> develop -> release/<label> -> main` — two stages, not three") is
+  reversed. Decision 3's original text ("kept available as a non-default, optional path... nothing
+  about this ADR requires it") is inverted the other way: the three-stage soak is no longer the
+  optional add-on, it is the default; the direct two-stage path is now the thing a promoter needs a
+  stated reason to choose.
+- Why: this ADR's own Decision 1 and #1007 ("Define an expedited develop→main promotion override
+  for promoter"), filed the *same day* (2026-08-25) as part of the same parent epic (#1008), stated
+  opposite defaults. #1007's own body quotes Pat directly: "...develop -> staging -> main takes
+  time... that is understandable under normal circumstances, and should be the best practice... Let's
+  make this rule loose and allow the promoter to directly promote to main [as an exception]" — and
+  states outright "The normal ... flow stays the default/best-practice path. This is an exception
+  mechanism on top of it, not a replacement." #1008's own Definition of Done anticipated exactly this
+  clash ("Whichever amendment lands second should reconcile against the other") and that
+  reconciliation never happened until now. Confirmed 2026-09-02 (Pat, #1404): #1007's framing was the
+  correct one; this ADR's Decision 1 should have matched it instead of overriding it.
+- Change: `feature branch -> develop -> to-staging/<label> -> staging -> release/<label> -> main`
+  (three-stage) is the default/best-practice path again. `feature branch -> develop ->
+  release/<label> -> main` (direct, two-stage) becomes the deliberate, gated exception — invoked
+  **only** through the mechanism #1007 already defined and implemented, unchanged: Pat's explicit
+  real-time phrase (never inferred, never a standing pre-authorization), the standing-rule
+  restatement before acting, a logged authorization comment posted before the merge, and the
+  never-skippable list (production tenant-schema-sync report, `AGENTS.md` Merge Safety, never-
+  `--squash`, the `release/<label>` head-cut rule) staying exactly as mandatory as it already was.
+  Nothing about #1007's design changes — only which flow it is now an exception *to*.
+- Explicitly unaffected, restated so it isn't assumed away: the engineering enablers this ADR's own
+  Context section cited to justify affordability — **#1018/PR #1036** (the CI quality gate cheap
+  enough to run every promotion) and **#1015/#1016** (the backend test-matrix cut + selectable
+  `gate:release:local`) — stay merged and useful regardless of which path is default. They are what
+  makes running the full gate on *every* promotion (not just risky ones) affordable; that property
+  doesn't depend on which flow shape is presumed by default, and this reversal does not revert,
+  disable, or reduce the value of either.
+- Decision 4 (`staging` refreshed on demand only, no automatic anti-rot mechanism) is not amended,
+  but is now largely self-resolving as a side effect: since every ordinary promotion's
+  `to-staging/<label> -> staging` leg runs by default again, `staging` gets refreshed as a routine
+  part of shipping, not only on manual demand. The named gap (no *guaranteed* anti-rot mechanism)
+  still stands — a run of consecutive #1007 exceptions can still leave `staging` stale, same as any
+  other gap in front of that override — this is an observation, not a new decision, and not a
+  prerequisite for anything here.
+- Decisions 2 (`staging` environment retained), 5 (compliance sweep anchor), 6 (tenant-schema report
+  mandatory, `[binding]`), 7 (`gate:release:local` at the leg before `main`), 8 (Merge Safety /
+  no-squash / head-cut, `[binding]`), 9 (#1007's mechanism defined elsewhere), and 10
+  (`NO_STAGING_RELEASE_STANDARD.md` stays retired) are **untouched** — none of them asserted a
+  two-stage-is-default premise; Decision 9 in particular already anticipated this exact kind of
+  amendment ("this ADR accepts that `promoter` carries a narrow, phrase-gated exception... mirroring
+  `incident-responder`'s existing `main`-merge override in shape").
+- Consequences section correction: its claim "a promotion is now faster by construction... This is
+  the explicit goal" no longer describes the default case — restated here rather than left stale in
+  place (matching this file's own established correction convention): the *default* promotion is
+  once again the three-stage flow's full wall-clock cost; the speed gain is now available on demand,
+  bounded and audited, via the #1007 exception, not by construction on every promotion.
+- Scope check against this issue's own explicit boundary: #1007's mechanism/design (the phrase gate,
+  the checkpoint table, the never-skippable list) is **not** touched by this entry — only its
+  relationship to "the default" is restored to what #1007 itself already stated.
+- Related: reconciles #1008's Definition of Done item 3 ("The two amendments are reconciled with
+  each other") — #1008's own checklist should be updated to reflect this once this PR merges (not
+  done in this PR — see the PR description note below).
+- PR: (this PR). Refs #1007, #1008, #980, #1404.
+
 ## Related
 
 #980 (the decision this ADR records), #1007 (the override mechanism this ADR references but does
 not define), #1019 (the doc retirement this ADR's Decision 10 executes), #1008 (parent epic), #1018
 / PR #1036 (the CI quality gate that makes this affordable), #860 / PR #858 (the concrete precedent
 and the risk this ADR answers directly), #639, #495, #408, #409, #927 (resolved, unaffected),
-#1063 / PR #1064 (the amendment above), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (the executable
-policy this ADR governs),
+#1063 / PR #1064 (the amendment above), #1295 (the org-policy finding), #1374 (the supervised-
+handoff + full-scan-discovery amendment above), #1404 (this reversal),
+`docs/ops/RELEASE_CANDIDATE_POLICY.md` (the
+executable policy this ADR governs),
 `docs/architecture/adr/0030-free-tier-signed-release-authorization.md` (superseded, the model
 `NO_STAGING_RELEASE_STANDARD.md` described).

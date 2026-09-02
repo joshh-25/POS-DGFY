@@ -377,6 +377,23 @@ export const listDgfyAccountCompanies = async (token = getStoredDgfyToken()) => 
   return response.data.data;
 };
 
+// Laundry staff operations are owned by the independently hosted DGLaundry
+// runtime. The DGFY account session authorizes this launch request, but no
+// DGFY password, refresh token, or tenant session is passed to the other app.
+export const launchDgfyLaundryOperations = async ({
+  companyId,
+  branchId = null
+} = {}, token = getStoredDgfyToken()) => {
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post('/partners/dglaundry/account/launch', {
+      company_id: companyId,
+      ...(branchId ? { branch_id: branchId } : {})
+    }, config),
+    token
+  );
+  return response.data.data;
+};
+
 export const listDgfyAccountCompaniesForTenantSession = async () => {
   // skipAuthRefresh: a DGFY-only storefront visitor (no tenant/IMS session) will
   // legitimately 401 here -- authenticateDgfyAccountOrTenantMembership forces the

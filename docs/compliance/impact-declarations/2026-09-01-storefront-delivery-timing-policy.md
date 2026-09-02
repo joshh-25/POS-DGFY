@@ -11,8 +11,8 @@ verification_evidence: node --check on changed API and migration files; npm run 
 rollback_note: Four tenant_locations columns are additive; down is symmetric and schema-pure. Rolling back loses only merchant-configured timing-policy values.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1218-STOREFRONT-DELIVERY-TIMING-POLICY
+preflight_run_at: 2026-09-02T03:56:16.395Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-09-01-STOREFRONT-DELIVERY-TIMING-POLICY
 ---
 
 # Storefront per-location delivery timing policy (#1218)

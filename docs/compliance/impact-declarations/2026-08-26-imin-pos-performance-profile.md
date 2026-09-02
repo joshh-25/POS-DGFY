@@ -12,8 +12,8 @@ verification_evidence: focused iMin performance-profile tests,POS catalog workfl
 rollback_note: Revert the iMin runtime marker, scoped low-effects CSS, and deferred catalog-search query. No API, schema, payment, fiscal calculation, authorization, persistence, or hardware command behavior changes.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-26T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1058-IMIN-POS-PERFORMANCE-PROFILE
+preflight_run_at: 2026-09-02T03:56:16.392Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-26-IMIN-POS-PERFORMANCE-PROFILE
 ---
 
 # iMin POS Runtime Performance Profile

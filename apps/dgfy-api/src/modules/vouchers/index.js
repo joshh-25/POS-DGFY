@@ -15,6 +15,7 @@ import {
     buildRedeemVoucherUseCase
 } from './usecases/voucherRedemptionUseCases.js';
 import { buildReverseVoucherRedemptionUseCase } from './usecases/voucherReversalUseCases.js';
+import { buildResolveAutoAppliedDeliveryCampaignUseCase } from './usecases/voucherAutoApplyUseCases.js';
 import { buildResolveVoucherDisplayPricesUseCase } from './usecases/voucherDisplayUseCases.js';
 import {
     buildArchivePricelistUseCase,
@@ -40,6 +41,10 @@ export const previewVoucherEligibilityUseCase = buildPreviewVoucherEligibilityUs
 export const redeemVoucherUseCase = buildRedeemVoucherUseCase({ repository: voucherRepository });
 export const reverseVoucherRedemptionUseCase = buildReverseVoucherRedemptionUseCase({ repository: voucherRepository });
 
+// #1332 (Phase 244, epic #1321 decision 9): resolves the winning auto-applied delivery campaign (if
+// any) against a checkout context -- one query plus the pure selector, see voucherAutoApplyUseCases.js.
+export const resolveAutoAppliedDeliveryCampaignUseCase = buildResolveAutoAppliedDeliveryCampaignUseCase({ repository: voucherRepository });
+
 // #603 -- storefront catalog display seam. Read-only, best-effort (fail-open), no transaction.
 export const resolveVoucherDisplayPricesUseCase = buildResolveVoucherDisplayPricesUseCase({ repository: voucherRepository });
 
@@ -58,3 +63,11 @@ export const archivePricelistUseCase = buildArchivePricelistUseCase({ repository
 // by name instead of a free-floating string literal, matching the registry's own stated purpose
 // ("re-exported... so the registry cannot drift" -- voucherErrors.js's header comment).
 export { VoucherReasonCode };
+
+// #1390: the raw repository, re-exported so storeUseCases.js can call
+// `attachRedemptionsToTransaction`/`listRedemptionsByTransactionId` directly at the checkout and
+// cancel call sites -- neither is a use case in its own right (no eligibility/policy logic, just an
+// indexed read/write), so wrapping either in a `build*UseCase` would be ceremony with no behaviour
+// behind it. Every other cross-module reference in this file already goes through this same public
+// surface (this file), never `./repositories/voucherRepository.js` directly.
+export { voucherRepository };

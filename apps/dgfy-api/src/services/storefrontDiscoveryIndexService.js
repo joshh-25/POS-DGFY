@@ -31,6 +31,7 @@ import {
 import { DISPLAY_RELEVANT_REASON_CODES } from '../modules/vouchers/usecases/voucherDisplayUseCases.js';
 import { syncTenantGeoCatalog } from '../modules/geoSearch/services/geoCatalogSyncService.js';
 import { deriveStorefrontSlug, normalizeStorefrontSlug } from '../modules/shared/utils/storefrontSlug.js';
+import { resolveAdvertisedDeliveryFromPrice } from '../modules/deliveryPricing/index.js';
 
 const STOREFRONT_SETTING_KEYS = Object.freeze([
     'ops_workflow_mode',
@@ -38,6 +39,11 @@ const STOREFRONT_SETTING_KEYS = Object.freeze([
     'store_is_visible',
     'store_has_no_location',
     'store_delivery_fee',
+    // Phase 242 (#1333): without these two in the read allowlist the SystemSetting rows are never
+    // fetched at all and every tenant resolves mode 'fixed' silently -- no error, no log, just a
+    // permanently wrong discovery card.
+    'store_delivery_fee_mode',
+    'store_delivery_fee_calc',
     'pos_wait_time_minutes',
     'storefront_cover_image_url',
     'storefront_profile_image_url',
@@ -842,6 +848,18 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
     const storefrontFollowEnabled = parseBoolean(settings.storefront_follow_enabled, false);
     const storefrontShareEnabled = parseBoolean(settings.storefront_share_enabled, false);
     const storefrontReviewSummary = normalizeStorefrontReviewSummary(settings.storefront_review_summary);
+    // Phase 242 (#1333, epic #1321). `settings` here is a map of RAW setting_value strings
+    // (toSettingsMap, :109-117) -- NOT storeUseCases.js's `{ ...row, value }` wrapper. The calc blob
+    // must therefore be JSON-parsed before resolveDeliveryFeeConfig sees it: normalizeCalcBlob
+    // rejects a string outright and would resolve `calc: null`, silently advertising the fixed rate
+    // for every calculated-mode store.
+    const advertisedDelivery = resolveAdvertisedDeliveryFromPrice({
+        tenantSettings: {
+            store_delivery_fee: settings.store_delivery_fee,
+            store_delivery_fee_mode: settings.store_delivery_fee_mode,
+            store_delivery_fee_calc: parseJsonObject(settings.store_delivery_fee_calc)
+        }
+    });
     const now = new Date();
     return {
         tenant_id: tenant.id,
@@ -863,7 +881,11 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
         supports_delivery: fulfillmentLocation?.supports_delivery !== false,
         supports_pickup: fulfillmentLocation?.supports_pickup !== false,
         supports_dine_in: fulfillmentLocation?.supports_dine_in !== false,
-        store_delivery_fee: toNumber(settings.store_delivery_fee, 0),
+        // Phase 242 (#1333): a FROM-price, not the charged fee -- the fixed rate in `fixed` mode,
+        // the calc `min_fee` in `calculated` mode, 0 in `free` mode. Read it with delivery_fee_mode
+        // below, never alone.
+        store_delivery_fee: toNumber(advertisedDelivery.fromPrice, 0),
+        delivery_fee_mode: advertisedDelivery.mode,
         catalog_count: canExposeCatalog ? (Number(catalogCount) || 0) : 0,
         customer_access_mode: accessPolicy.customer_access_mode,
         effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
@@ -941,6 +963,12 @@ const buildExternalListingSnapshot = (payload = {}) => {
         supports_pickup: payload.supports_pickup !== false,
         supports_dine_in: payload.supports_dine_in !== false,
         store_delivery_fee: toNumber(payload.store_delivery_fee, 0),
+        // Phase 242 (#1333): an external listing has no tenant settings and therefore no fee mode to
+        // resolve -- the master-admin-supplied figure is a flat advertised rate. Hardcoded rather
+        // than accepted from the payload: offering a `calculated` mode with no calc blob behind it
+        // would let an operator create a listing whose advertised floor means nothing. If external
+        // listings ever need a mode, that is a validator + payload change, filed separately.
+        delivery_fee_mode: 'fixed',
         catalog_count: 0,
         storefront_cover_image_url: payload.storefront_cover_image_url
             ? normalizeExternalHttpUrl(payload.storefront_cover_image_url, 500)

@@ -62,13 +62,17 @@ on:
         description: Connect to a VPN (OVPN_CONFIG/OVPN_USERNAME/OVPN_PASSWORD secrets) before SSH-ing in -- only needed on a GitHub-hosted runner, see header comment
         type: boolean
         default: false
+      runner_labels_json:
+        description: 'JSON array of runner labels to dispatch onto (Phase 234 Wave 2, #1365) -- default is unchanged self-hosted behavior; every remote command here is read-only'
+        type: string
+        default: '["sieitz-runner"]'
 
 permissions:
   contents: read
 
 jobs:
   verify:
-    runs-on: ['sieitz-runner']  # #923: generic, either box
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}  # #923: generic, either box; #1365 Wave 2: dispatch-input override, default unchanged
     timeout-minutes: 15
     environment: ${{ inputs.environment }}
     steps:

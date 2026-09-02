@@ -8,6 +8,7 @@ import { toValidDate, extendOneCalendarMonth } from './tenantBillingDateUtils.js
 import { createBillingFunnelTracker } from '../../../services/billingFunnelTelemetryService.js';
 import {
     isWorkflowMode,
+    isLaundryWorkflowMode,
     normalizeWorkflowMode,
     WORKFLOW_MODE_VALUES
 } from '../../shared/constants/workflowModes.js';
@@ -20,6 +21,19 @@ import {
 } from './tenantPlanPolicy.js';
 import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
 import { resolveCompanyRegistrationStatusUrl } from '../entities/companyRegistrationStatusUrl.js';
+
+const buildRuntimeOwnershipSettings = (workflowMode) => (
+    isLaundryWorkflowMode(workflowMode)
+        ? {
+            business_mode: 'laundry',
+            runtime_owner: 'dglaundry',
+            dgfy_storefront: true,
+            ims: false,
+            pos: false,
+            operations_url: 'https://laundry.dgfy.ph'
+        }
+        : {}
+);
 
 const buildLegalPersistenceError = () => new DomainError(
     DomainErrorCode.INTERNAL_ERROR,
@@ -412,7 +426,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                             workflow_mode: normalizedWorkflowMode,
                             industry_tag: normalizedIndustryTag,
                             registration_industry: resolvedIndustry ? normalizedIndustryKey : null,
-                            store_template_key: storeTemplateKey
+                            store_template_key: storeTemplateKey,
+                            ...buildRuntimeOwnershipSettings(normalizedWorkflowMode)
                         }
                     }, { transaction });
 

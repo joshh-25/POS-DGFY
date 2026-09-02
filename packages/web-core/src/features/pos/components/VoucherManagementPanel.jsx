@@ -29,8 +29,22 @@ import {
 } from '@/services/voucherService.js';
 import { listPricelists } from '@/services/pricelistService.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import {
+  BENEFIT_CLASS_LABEL,
+  PAGE_SIZE,
+  WEEKDAY_LABELS,
+  applyVoucherKindDefaults,
+  blankForm,
+  bpsToPercentString,
+  buildVoucherPayload,
+  peso,
+  pesoStringToCentavos,
+  suggestVoucherCode,
+  validateFormLocally,
+  voucherToForm
+} from './voucherFormModel.js';
 
-// Voucher merchant authoring UI (#614, Phase 103). Governed by ADR 0066.
+// Voucher merchant authoring UI (#614, Phase 103; extended #1334, Phase 245). Governed by ADR 0066.
 //
 // Read `apps/dgfy-api/src/modules/vouchers/domain/voucherEligibilityPolicy.js` and
 // `apps/dgfy-api/src/validators/voucherValidator.js` before touching the bitmask/payload shape
@@ -43,61 +57,17 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 // The voucher API defends against exactly this with a mandatory `version` field (409
 // VOUCHER_VERSION_CONFLICT on a stale value) and `Joi.any().forbidden()` on `redeemed_count` /
 // `redeemed_value_centavos` / `redeemed_quantity` on both create and update. This file never spreads
-// its whole form draft into an outgoing payload -- `buildVoucherPayload` below builds the request
-// body field-by-field from exactly the writable columns, so a server-owned counter can never leak
-// into a PUT/POST no matter what ends up in local state, and every update always resends the last
-// known `version`.
+// its whole form draft into an outgoing payload -- `buildVoucherPayload` (voucherFormModel.js) builds
+// the request body field-by-field from exactly the writable columns, so a server-owned counter can
+// never leak into a PUT/POST no matter what ends up in local state, and every update always resends
+// the last known `version`.
+//
+// #1334/Phase 245: the pure payload/validation/kind-defaulting logic lives in voucherFormModel.js,
+// extracted so it's unit-testable without jsdom. This file re-exports `blankForm` and
+// `buildVoucherPayload` below purely so #716's pre-existing regression test
+// (`voucherManagementPayload.test.js`, which imports from this file's path) keeps passing unchanged.
 
-const PAGE_SIZE = 20;
-// #667 Phase 110: capped at 40, not the server column's full 64, to match
-// apps/dgfy-api/src/validators/voucherValidator.js's narrower cap -- see that file's comment for
-// why (the fiscal audit-row column a voucher redemption now writes into is VARCHAR(40)).
-const VOUCHER_CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{2,39}$/;
-
-// Bitmask <-> checkbox-triad conversion. Bit meanings mirror
-// `voucherEligibilityPolicy.js`'s VOUCHER_CHANNEL_BITS / VOUCHER_FULFILLMENT_BITS /
-// VOUCHER_ORDER_TIMING_BITS / VOUCHER_WEEKDAY_BITS exactly -- duplicated here (small, frozen,
-// read-only maps) because the API module tree isn't importable from the web bundle.
-const CHANNEL_BITS = Object.freeze({ storefront: 1, pos: 2 });
-const FULFILLMENT_BITS = Object.freeze({ delivery: 1, pickup: 2 });
-const TIMING_BITS = Object.freeze({ asap: 1, scheduled: 2 });
-const WEEKDAY_BITS = Object.freeze([1, 2, 4, 8, 16, 32, 64]);
-const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
-const WEEKDAY_MASK_ALL = 127;
-
-const hasMaskBit = (mask, bit) => {
-  const numericMask = Number(mask) || 0;
-  return (numericMask & bit) === bit;
-};
-
-const maskToFlags = (mask, bitsMap) => Object.fromEntries(
-  Object.entries(bitsMap).map(([key, bit]) => [key, hasMaskBit(mask, bit)])
-);
-
-const flagsToMask = (flags, bitsMap) => Object.entries(bitsMap).reduce(
-  (accumulator, [key, bit]) => (flags?.[key] ? accumulator | bit : accumulator),
-  0
-);
-
-const maskToWeekdayFlags = (mask) => WEEKDAY_BITS.map((bit) => hasMaskBit(mask, bit));
-const weekdayFlagsToMask = (flags) => WEEKDAY_BITS.reduce(
-  (accumulator, bit, index) => (flags?.[index] ? accumulator | bit : accumulator),
-  0
-);
-
-// Money/percent <-> string helpers, same shape as AffiliatesWorkspacePanel.jsx's.
-const centavosToPesoString = (centavos) => (centavos === null || centavos === undefined ? '' : String(Number(centavos) / 100));
-const pesoStringToCentavos = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) : NaN;
-};
-const bpsToPercentString = (bps) => (bps === null || bps === undefined ? '' : String(Number(bps) / 100));
-const percentStringToBps = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) : NaN;
-};
-
-const peso = (centavos) => `PHP ${(Number(centavos || 0) / 100).toFixed(2)}`;
+export { blankForm, buildVoucherPayload };
 
 // The status machine, mirrored from `voucherUseCases.js`'s ALLOWED_STATUS_TRANSITIONS. The server's
 // 409 VOUCHER_INVALID_STATUS_TRANSITION is the real source of truth -- this copy only drives which
@@ -120,12 +90,6 @@ const STATUS_BADGE_CLASS = Object.freeze({
   archived: 'bg-slate-200 text-slate-500 border-slate-300'
 });
 
-const BENEFIT_CLASS_LABEL = Object.freeze({
-  percent_off: 'Percent off',
-  amount_off: 'Amount off',
-  fixed_price: 'Fixed price'
-});
-
 // Friendly copy for the domain-level reason codes voucherErrors.js emits. These arrive as an OBJECT
 // (`errors: { reason_code, ...details }`), not the field-level array Joi validation failures use --
 // see `getReasonCode`/`getFieldErrors` below, which read the two shapes differently.
@@ -143,8 +107,18 @@ const REASON_CODE_MESSAGES = Object.freeze({
   VOUCHER_TIME_WINDOW_DEGENERATE: 'Start time and end time cannot be equal.',
   VOUCHER_PRICELIST_CONFLICT: 'A fixed-price voucher can carry a single price or a pricelist, not both.',
   VOUCHER_PRICELIST_REF_NOT_FOUND: 'The selected pricelist could not be found.',
-  VOUCHER_PRICELIST_NOT_ACTIVE: 'Only a published (active) pricelist can be attached to a voucher.'
+  VOUCHER_PRICELIST_NOT_ACTIVE: 'Only a published (active) pricelist can be attached to a voucher.',
+  // #1334/Phase 245:
+  VOUCHER_BENEFIT_TARGET_MISMATCH: 'This code applies to items, not to the delivery fee (or vice versa).',
+  VOUCHER_POS_REDEMPTION_DISABLED: 'POS voucher redemption is turned off for this business.'
 });
+
+// #1334/Phase 245 (plan §6 Layer 3): VOUCHER_BENEFIT_CONFIG_INVALID covers four distinct authoring
+// guards in voucherUseCases.js's applyBenefitConfig/assertAutoApplyHasNoScope (fixed_price+delivery,
+// auto_apply+non-delivery, auto_apply+scopes, an invalid free_delivery amount), each with its own
+// human-readable server message -- more specific than any single static copy this file could write.
+// Prefer the server's own `message` for these codes instead of the generic REASON_CODE_MESSAGES entry.
+const PREFER_SERVER_MESSAGE_CODES = Object.freeze(new Set(['VOUCHER_BENEFIT_CONFIG_INVALID']));
 
 const getReasonCode = (data) => String(data?.errors?.reason_code || '').trim();
 
@@ -159,195 +133,8 @@ const getFieldErrors = (data) => {
 const describeError = (error, fallback) => {
   const data = error?.response?.data;
   const reasonCode = getReasonCode(data);
+  if (PREFER_SERVER_MESSAGE_CODES.has(reasonCode) && data?.message) return data.message;
   return REASON_CODE_MESSAGES[reasonCode] || data?.message || fallback;
-};
-
-// Exported alongside buildVoucherPayload (#716) so the regression test can start from a known-good
-// form shape rather than hand-duplicating every field.
-export const blankForm = () => ({
-  voucherId: null,
-  version: null,
-  status: 'draft',
-  derivedStatus: 'draft',
-  code: '',
-  title: '',
-  subtitle: '',
-  badge: '',
-  validityText: '',
-  benefitClass: 'percent_off',
-  percentOffPercent: '',
-  amountOffPesos: '',
-  fixedUnitPricePesos: '',
-  // #696/#698: fixed_price carries EITHER fixedUnitPricePesos OR pricelistId, never both --
-  // fixedPriceSource picks which the form is currently expressing.
-  fixedPriceSource: 'single',
-  pricelistId: '',
-  maxDiscountPesos: '',
-  minSpendPesos: '',
-  minQuantity: '',
-  allowBelowCost: false,
-  stackableWithStatutory: false,
-  // #713: independent of channelFlags below -- controls public storefront advertising, not code
-  // usability. Default false, matching the backend column default.
-  isPubliclyListed: false,
-  validFrom: '',
-  validUntil: '',
-  validTimeStart: '',
-  validTimeEnd: '',
-  weekdayFlags: maskToWeekdayFlags(WEEKDAY_MASK_ALL),
-  channelFlags: { storefront: true, pos: false },
-  fulfillmentFlags: { delivery: true, pickup: true },
-  orderTimingFlags: { asap: true, scheduled: true },
-  maxRedemptions: '',
-  maxTotalDiscountPesos: '',
-  maxBenefitQuantity: '',
-  scopes: [],
-  redeemedCount: 0,
-  redeemedValueCentavos: 0,
-  redeemedQuantity: 0
-});
-
-const voucherToForm = (voucher, scopes = []) => ({
-  voucherId: voucher.voucher_id,
-  version: Number(voucher.version),
-  status: voucher.status,
-  derivedStatus: voucher.derived_status,
-  code: voucher.code || '',
-  title: voucher.title || '',
-  subtitle: voucher.subtitle || '',
-  badge: voucher.badge || '',
-  validityText: voucher.validity_text || '',
-  benefitClass: voucher.benefit_class,
-  percentOffPercent: voucher.benefit_class === 'percent_off' ? bpsToPercentString(voucher.percent_off_bps) : '',
-  amountOffPesos: voucher.benefit_class === 'amount_off' ? centavosToPesoString(voucher.amount_off_centavos) : '',
-  fixedUnitPricePesos: voucher.benefit_class === 'fixed_price' ? centavosToPesoString(voucher.fixed_unit_price_centavos) : '',
-  fixedPriceSource: voucher.pricelist_id != null ? 'pricelist' : 'single',
-  pricelistId: voucher.pricelist_id != null ? String(voucher.pricelist_id) : '',
-  maxDiscountPesos: voucher.max_discount_centavos != null ? centavosToPesoString(voucher.max_discount_centavos) : '',
-  minSpendPesos: voucher.min_spend_centavos != null ? centavosToPesoString(voucher.min_spend_centavos) : '',
-  minQuantity: voucher.min_quantity != null ? String(voucher.min_quantity) : '',
-  allowBelowCost: voucher.allow_below_cost === true,
-  stackableWithStatutory: voucher.stackable_with_statutory === true,
-  isPubliclyListed: voucher.is_publicly_listed === true,
-  validFrom: voucher.valid_from || '',
-  validUntil: voucher.valid_until || '',
-  validTimeStart: voucher.valid_time_start || '',
-  validTimeEnd: voucher.valid_time_end || '',
-  weekdayFlags: maskToWeekdayFlags(voucher.weekday_mask),
-  channelFlags: maskToFlags(voucher.channels_mask, CHANNEL_BITS),
-  fulfillmentFlags: maskToFlags(voucher.fulfillment_methods_mask, FULFILLMENT_BITS),
-  orderTimingFlags: maskToFlags(voucher.order_timings_mask, TIMING_BITS),
-  maxRedemptions: voucher.max_redemptions != null ? String(voucher.max_redemptions) : '',
-  maxTotalDiscountPesos: voucher.max_total_discount_centavos != null ? centavosToPesoString(voucher.max_total_discount_centavos) : '',
-  maxBenefitQuantity: voucher.max_benefit_quantity != null ? String(voucher.max_benefit_quantity) : '',
-  scopes: (Array.isArray(scopes) ? scopes : []).map((scope) => ({
-    scope_type: scope.scope_type,
-    scope_ref_id: Number(scope.scope_ref_id)
-  })),
-  redeemedCount: Number(voucher.redeemed_count || 0),
-  redeemedValueCentavos: Number(voucher.redeemed_value_centavos || 0),
-  redeemedQuantity: Number(voucher.redeemed_quantity || 0)
-});
-
-// Builds the outgoing request body field-by-field from exactly the writable columns -- never a
-// spread of the local draft -- so a server-owned/forbidden field can never leak into a PUT/POST.
-// Exported for #716's regression test — buildVoucherPayload is a pure function of `form`, and no
-// frontend test previously existed for this panel (how the create-schema null rejection shipped
-// undetected).
-export const buildVoucherPayload = (form) => {
-  const payload = {
-    code: form.code.trim().toUpperCase(),
-    voucher_kind: 'promo_code',
-    title: form.title.trim(),
-    subtitle: form.subtitle.trim() || null,
-    badge: form.badge.trim() || null,
-    validity_text: form.validityText.trim() || null,
-    benefit_class: form.benefitClass,
-    min_spend_centavos: form.minSpendPesos === '' ? null : pesoStringToCentavos(form.minSpendPesos),
-    min_quantity: form.minQuantity === '' ? null : Math.max(1, parseInt(form.minQuantity, 10) || 1),
-    allow_below_cost: form.allowBelowCost === true,
-    stackable_with_statutory: form.stackableWithStatutory === true,
-    is_publicly_listed: form.isPubliclyListed === true,
-    valid_from: form.validFrom || null,
-    valid_until: form.validUntil || null,
-    valid_time_start: form.validTimeStart || null,
-    valid_time_end: form.validTimeEnd || null,
-    weekday_mask: weekdayFlagsToMask(form.weekdayFlags),
-    channels_mask: flagsToMask(form.channelFlags, CHANNEL_BITS),
-    fulfillment_methods_mask: flagsToMask(form.fulfillmentFlags, FULFILLMENT_BITS),
-    order_timings_mask: flagsToMask(form.orderTimingFlags, TIMING_BITS),
-    max_redemptions: form.maxRedemptions === '' ? null : Math.max(1, parseInt(form.maxRedemptions, 10) || 1),
-    max_total_discount_centavos: form.maxTotalDiscountPesos === '' ? null : pesoStringToCentavos(form.maxTotalDiscountPesos),
-    max_benefit_quantity: form.maxBenefitQuantity === '' ? null : Math.max(1, parseInt(form.maxBenefitQuantity, 10) || 1),
-    scopes: form.scopes.map(({ scope_type, scope_ref_id }) => ({ scope_type, scope_ref_id: Number(scope_ref_id) }))
-  };
-
-  if (form.benefitClass === 'percent_off') {
-    payload.percent_off_bps = percentStringToBps(form.percentOffPercent);
-    payload.max_discount_centavos = form.maxDiscountPesos === '' ? null : pesoStringToCentavos(form.maxDiscountPesos);
-  } else if (form.benefitClass === 'amount_off') {
-    payload.amount_off_centavos = pesoStringToCentavos(form.amountOffPesos);
-  } else if (form.benefitClass === 'fixed_price') {
-    // #696: EITHER a single pinned price OR a pricelist, never both -- the server enforces this
-    // XOR authoritatively (voucherUseCases.js's applyBenefitConfig); mirrored here so a merchant
-    // never even builds a payload that would be rejected.
-    if (form.fixedPriceSource === 'pricelist') {
-      payload.pricelist_id = form.pricelistId ? Number(form.pricelistId) : null;
-      payload.fixed_unit_price_centavos = null;
-      // A pricelist IS the scope (#696) -- no voucher_scopes rows needed.
-      payload.scopes = [];
-    } else {
-      payload.fixed_unit_price_centavos = pesoStringToCentavos(form.fixedUnitPricePesos);
-      payload.pricelist_id = null;
-    }
-  }
-
-  return payload;
-};
-
-const validateFormLocally = (form) => {
-  const errors = [];
-  const addError = (field, message) => errors.push({ field, message });
-
-  if (form.title.trim().length < 2) addError('title', 'Title must be at least 2 characters.');
-  const normalizedCode = form.code.trim().toUpperCase();
-  if (!normalizedCode) addError('code', 'Code is required.');
-  else if (!VOUCHER_CODE_PATTERN.test(normalizedCode)) {
-    addError('code', 'Code must be 3-40 characters: A-Z, 0-9, dot, underscore or hyphen, starting with a letter or digit.');
-  }
-
-  if (form.benefitClass === 'percent_off') {
-    const bps = percentStringToBps(form.percentOffPercent);
-    if (!Number.isFinite(bps) || bps < 1 || bps > 10000) addError('percent_off_bps', 'Enter a percentage between 0.01% and 100%.');
-  } else if (form.benefitClass === 'amount_off') {
-    const centavos = pesoStringToCentavos(form.amountOffPesos);
-    if (!Number.isFinite(centavos) || centavos < 1) addError('amount_off_centavos', 'Enter an amount greater than 0.');
-  } else if (form.benefitClass === 'fixed_price') {
-    if (form.fixedPriceSource === 'pricelist') {
-      if (!form.pricelistId) addError('pricelist_id', 'Select a pricelist.');
-    } else {
-      const centavos = pesoStringToCentavos(form.fixedUnitPricePesos);
-      if (!Number.isFinite(centavos) || centavos < 0) addError('fixed_unit_price_centavos', 'Enter a fixed price of 0 or more.');
-      if (form.scopes.length === 0) addError('scopes', 'Add at least one item or folder scope for a fixed-price voucher.');
-    }
-  }
-
-  if (form.weekdayFlags.every((flag) => !flag)) addError('weekday_mask', 'Select at least one day of the week.');
-  if (!form.channelFlags.storefront && !form.channelFlags.pos) addError('channels_mask', 'Select at least one channel.');
-  if (!form.fulfillmentFlags.delivery && !form.fulfillmentFlags.pickup) addError('fulfillment_methods_mask', 'Select at least one fulfillment method.');
-  if (!form.orderTimingFlags.asap && !form.orderTimingFlags.scheduled) addError('order_timings_mask', 'Select at least one order timing.');
-
-  if (form.validFrom && form.validUntil && form.validUntil < form.validFrom) {
-    addError('valid_until', 'End date cannot be earlier than the start date.');
-  }
-  const hasStart = Boolean(form.validTimeStart);
-  const hasEnd = Boolean(form.validTimeEnd);
-  if (hasStart !== hasEnd) addError('valid_time_end', 'Set both a start and end time, or leave both blank.');
-  else if (hasStart && hasEnd && form.validTimeStart === form.validTimeEnd) {
-    addError('valid_time_end', 'Start time and end time cannot be equal.');
-  }
-
-  return errors;
 };
 
 const FieldError = ({ message }) => (message ? <p className="mt-1 text-[11px] font-semibold text-rose-600">{message}</p> : null);
@@ -360,6 +147,10 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [benefitClassFilter, setBenefitClassFilter] = useState('');
+  // #1334/Phase 245: a type filter over the SAME Vouchers list, rather than a second nav entry
+  // (plan §4.6) -- 'delivery_campaign' also turns on `include_stats` for the two report columns.
+  const [voucherKindFilter, setVoucherKindFilter] = useState('');
+  const [autoApplyFilter, setAutoApplyFilter] = useState('');
   const [sort, setSort] = useState('created_at');
   const [direction, setDirection] = useState('desc');
   const [searchInput, setSearchInput] = useState('');
@@ -372,6 +163,9 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState('');
+  // #1334/Phase 245: GET /vouchers/:id already returns `redemption_stats` unconditionally -- this
+  // just stops the panel from discarding it (plan §5.2).
+  const [redemptionStats, setRedemptionStats] = useState(null);
 
   const [scopeCatalogLoaded, setScopeCatalogLoaded] = useState(false);
   const [scopeCatalogLoading, setScopeCatalogLoading] = useState(false);
@@ -400,6 +194,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
     if (!silent) setListLoading(true);
     setListError('');
     try {
+      const isDeliveryCampaignFilter = voucherKindFilter === 'delivery_campaign';
       const params = {
         page,
         limit: PAGE_SIZE,
@@ -407,6 +202,12 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
         direction,
         ...(statusFilter ? { status: statusFilter } : {}),
         ...(benefitClassFilter ? { benefit_class: benefitClassFilter } : {}),
+        ...(voucherKindFilter ? { voucher_kind: voucherKindFilter } : {}),
+        // #1332: only meaningful once the type filter narrows to delivery campaigns.
+        ...(isDeliveryCampaignFilter && autoApplyFilter ? { auto_apply: autoApplyFilter === 'true' } : {}),
+        // Plan §5.1: keep `include_stats` off for the all-vouchers view -- it costs an extra grouped
+        // aggregate per page -- only pay for it when a merchant is actually looking at campaigns.
+        ...(isDeliveryCampaignFilter ? { include_stats: true } : {}),
         ...(appliedSearch ? { search: appliedSearch } : {})
       };
       const result = await listVouchers(params);
@@ -417,7 +218,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
     } finally {
       if (!silent) setListLoading(false);
     }
-  }, [page, sort, direction, statusFilter, benefitClassFilter, appliedSearch]);
+  }, [page, sort, direction, statusFilter, benefitClassFilter, voucherKindFilter, autoApplyFilter, appliedSearch]);
 
   useEffect(() => {
     if (disabled) return;
@@ -516,6 +317,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
     setFieldErrors({});
     setFormError('');
     setScopeRefDraft('');
+    setRedemptionStats(null);
     setView('form');
   };
 
@@ -526,6 +328,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
     try {
       const detail = await getVoucher(voucherSummary.voucher_id);
       setForm(voucherToForm(detail.voucher, detail.scopes));
+      setRedemptionStats(detail.redemption_stats || null);
       setScopeRefDraft('');
       setView('form');
     } catch (error) {
@@ -540,6 +343,25 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
     setFieldErrors({});
     setFormError('');
   };
+
+  // #1334/Phase 245: create-time only -- voucher_kind is read-only once a voucher exists (plan
+  // §4.2/R8). applyVoucherKindDefaults resets the kind-dependent slice of the form so an invalid
+  // combination (e.g. a leftover fixed-price scope on a delivery campaign) can never be saved.
+  const handleVoucherKindChange = (voucherKind) => {
+    setForm((current) => applyVoucherKindDefaults(current, voucherKind));
+  };
+
+  // #1334/Phase 245 (plan §4.4): an auto-applied campaign has no shopper-facing code, so prefill a
+  // suggestion derived from the title -- kept editable, never generated silently. Only on the
+  // create form; only while the code field is still untouched.
+  useEffect(() => {
+    if (form.voucherId) return; // edit -- code is either set or intentionally left as-is
+    if (form.voucherKind !== 'delivery_campaign' || !form.autoApply) return;
+    if (form.code !== '') return;
+    const suggestion = suggestVoucherCode(form.title);
+    if (!suggestion) return;
+    setForm((current) => (current.code === '' ? { ...current, code: suggestion } : current));
+  }, [form.voucherId, form.voucherKind, form.autoApply, form.title, form.code]);
 
   const handleSaveError = (error, fallback) => {
     const data = error?.response?.data;
@@ -684,7 +506,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
           <div className="space-y-1 lg:col-span-2">
             <Label className="text-[11px] font-semibold text-[#0F172A]">Search</Label>
             <div className="flex gap-1.5">
@@ -713,6 +535,35 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
               <option value="archived">Archived</option>
             </select>
           </div>
+          {/* #1334/Phase 245 (plan §4.6): a type filter on the existing Vouchers list rather than a
+              second nav entry -- two file-content-asserting tests read TerminalOperationsWorkspace.jsx
+              as text (R7), so this stays inside the panel rather than touching that file. */}
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold text-[#0F172A]">Type</Label>
+            <select
+              className="h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold"
+              value={voucherKindFilter}
+              onChange={(e) => { setPage(1); setVoucherKindFilter(e.target.value); setAutoApplyFilter(''); }}
+            >
+              <option value="">All voucher types</option>
+              <option value="promo_code">Promo codes</option>
+              <option value="delivery_campaign">Delivery campaigns</option>
+            </select>
+          </div>
+          {voucherKindFilter === 'delivery_campaign' && (
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-[#0F172A]">Auto-apply</Label>
+              <select
+                className="h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold"
+                value={autoApplyFilter}
+                onChange={(e) => { setPage(1); setAutoApplyFilter(e.target.value); }}
+              >
+                <option value="">Any</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </div>
+          )}
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold text-[#0F172A]">Benefit type</Label>
             <select
@@ -724,6 +575,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
               <option value="percent_off">Percent off</option>
               <option value="amount_off">Amount off</option>
               <option value="fixed_price">Fixed price</option>
+              <option value="free_delivery">Free delivery</option>
             </select>
           </div>
           <div className="space-y-1">
@@ -790,8 +642,19 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       {voucher.benefit_class === 'amount_off' && ` · ${peso(voucher.amount_off_centavos)} off`}
                       {voucher.benefit_class === 'fixed_price' && voucher.pricelist_id != null && ' · Pricelist'}
                       {voucher.benefit_class === 'fixed_price' && voucher.pricelist_id == null && ` · ${peso(voucher.fixed_unit_price_centavos)}`}
+                      {voucher.benefit_class === 'free_delivery' && voucher.delivery_amount_off_centavos == null && ' · Whole fee waived'}
+                      {voucher.benefit_class === 'free_delivery' && voucher.delivery_amount_off_centavos != null && ` · up to ${peso(voucher.delivery_amount_off_centavos)} waived`}
+                      {voucher.auto_apply === true && ' · Auto-applied'}
                       {' · Redeemed '}{voucher.redeemed_count || 0}{voucher.max_redemptions ? ` / ${voucher.max_redemptions}` : ''}
                     </p>
+                    {/* #1334/Phase 245 (plan §5.1): only fetched (include_stats: true) when the
+                        Type filter is narrowed to delivery campaigns -- an extra grouped aggregate
+                        per page isn't worth paying for on the all-vouchers view. */}
+                    {voucher.redemption_stats && (
+                      <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                        Redemptions {voucher.redemption_stats.redemption_count} · Waived {peso(voucher.redemption_stats.total_discount_centavos)}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Button type="button" size="sm" variant="outline" onClick={() => openEditForm(voucher)}>
@@ -841,6 +704,8 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
     const codeEditable = canManage && (!isEdit || (form.status === 'draft' && form.redeemedCount === 0));
     const allowedTargets = ALLOWED_STATUS_TRANSITIONS[form.derivedStatus] || [];
     const formLocked = !canManage || form.status === 'archived';
+    // #1334/Phase 245:
+    const isDeliveryCampaign = form.voucherKind === 'delivery_campaign';
 
     return (
       <div className="space-y-3">
@@ -898,6 +763,37 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
             <fieldset disabled={formLocked} className="space-y-3">
               <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
                 <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Basics</h4>
+
+                {/* #1334/Phase 245 (plan §4.2): voucher_kind/benefit_class/benefit_target are never
+                    raw enum pickers -- picking "Delivery campaign" here is the only control that
+                    sets all three, so every rejectable server combination becomes unrepresentable
+                    from this UI rather than merely validated (plan §6 Layer 1). Read-only once a
+                    voucher exists (R8) -- converting an existing voucher's kind is out of scope. */}
+                <div className="mb-3 space-y-1.5">
+                  <Label className="text-xs font-semibold text-[#0F172A]">Voucher type <span className="text-rose-600" aria-hidden="true">*</span></Label>
+                  {isEdit ? (
+                    <div>
+                      <Badge className="bg-slate-100 text-slate-700 border-slate-200">
+                        {form.voucherKind === 'delivery_campaign' ? 'Delivery campaign' : 'Promo code'}
+                      </Badge>
+                      <p className="mt-1 text-[11px] text-slate-400">Voucher type can’t be changed after creation.</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-4">
+                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                        <input type="radio" name="voucherKind" checked={form.voucherKind === 'promo_code'}
+                          onChange={() => handleVoucherKindChange('promo_code')} />
+                        Promo code
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                        <input type="radio" name="voucherKind" checked={form.voucherKind === 'delivery_campaign'}
+                          onChange={() => handleVoucherKindChange('delivery_campaign')} />
+                        Delivery campaign
+                      </label>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">Code <span className="text-rose-600" aria-hidden="true">*</span></Label>
@@ -912,9 +808,14 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                     {isEdit && !codeEditable && (
                       <p className="text-[11px] text-slate-400">Code is locked once a voucher leaves draft or has a redemption.</p>
                     )}
+                    {!isEdit && form.voucherKind === 'delivery_campaign' && form.autoApply && (
+                      <p className="text-[11px] text-slate-400">Suggested from the campaign name -- shoppers never type this, but it still appears in reports.</p>
+                    )}
                   </div>
                   <div className="space-y-1 sm:col-span-2">
-                    <Label className="text-xs font-semibold text-[#0F172A]">Title <span className="text-rose-600" aria-hidden="true">*</span></Label>
+                    <Label className="text-xs font-semibold text-[#0F172A]">
+                      {form.voucherKind === 'delivery_campaign' ? 'Campaign name' : 'Title'} <span className="text-rose-600" aria-hidden="true">*</span>
+                    </Label>
                     <Input className="h-8 text-xs" value={form.title} onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))} />
                     <FieldError message={fieldErrors.title} />
                   </div>
@@ -940,6 +841,55 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
 
               <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
                 <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Benefit</h4>
+
+                {/* #1334/Phase 245 (plan §4.2/§4.3): benefit_class/benefit_target are implicit for a
+                    delivery campaign -- always free_delivery/delivery, never a raw picker. Item-
+                    voucher scopes and the percent/amount/fixed-price fields don't apply and are
+                    never rendered here, so the three server-rejectable combinations (fixed_price
+                    targeting delivery, auto_apply on a non-delivery target, auto_apply carrying
+                    scopes) are unrepresentable from this branch of the form. */}
+                {form.voucherKind === 'delivery_campaign' ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label className="text-xs font-semibold text-[#0F172A]">Waiver amount <span className="text-rose-600" aria-hidden="true">*</span></Label>
+                        <div className="flex flex-wrap gap-4">
+                          <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                            <input type="radio" name="deliveryWaiverMode" checked={form.deliveryWaiverMode === 'whole'}
+                              onChange={() => setForm((current) => ({ ...current, deliveryWaiverMode: 'whole', deliveryAmountOffPesos: '' }))} />
+                            Waive the whole delivery fee
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                            <input type="radio" name="deliveryWaiverMode" checked={form.deliveryWaiverMode === 'partial'}
+                              onChange={() => setForm((current) => ({ ...current, deliveryWaiverMode: 'partial' }))} />
+                            Waive up to a set amount
+                          </label>
+                        </div>
+                      </div>
+                      {form.deliveryWaiverMode === 'partial' && (
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-[#0F172A]">Waive up to (PHP) <span className="text-rose-600" aria-hidden="true">*</span></Label>
+                          <Input type="number" min="0.01" step="0.01" className="h-8 text-xs" value={form.deliveryAmountOffPesos}
+                            onChange={(e) => setForm((current) => ({ ...current, deliveryAmountOffPesos: e.target.value }))} />
+                          <FieldError message={fieldErrors.delivery_amount_off_centavos} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-3 rounded-lg border border-dashed border-slate-300 p-3">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
+                        <Checkbox checked={form.autoApply} onCheckedChange={(checked) => setForm((current) => ({ ...current, autoApply: checked === true }))} />
+                        Apply automatically -- shoppers get this without typing a code
+                      </label>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {form.autoApply
+                          ? 'Applies automatically at storefront checkout once the order qualifies. The code below is only used internally (reports, audit) -- no one types it.'
+                          : `Off -- shoppers must enter the code${form.code ? ` "${form.code}"` : ''} at checkout, same as a regular promo code.`}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">Benefit type <span className="text-rose-600" aria-hidden="true">*</span></Label>
@@ -1094,15 +1044,29 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                     )}
                   </div>
                 )}
+                  </>
+                )}
               </div>
 
               <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
                 <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Minimums &amp; limits</h4>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-[#0F172A]">Min spend (PHP, optional)</Label>
+                    <Label className="text-xs font-semibold text-[#0F172A]">
+                      {isDeliveryCampaign ? 'Minimum item subtotal (PHP, optional)' : 'Min spend (PHP, optional)'}
+                    </Label>
                     <Input type="number" min="0" step="1" className="h-8 text-xs" value={form.minSpendPesos}
                       onChange={(e) => setForm((current) => ({ ...current, minSpendPesos: e.target.value }))} />
+                    <FieldError message={fieldErrors.min_spend_centavos} />
+                    {/* R4: min_spend_centavos is compared against the ITEM subtotal
+                        (voucherEligibilityPolicy.js), which excludes the delivery fee -- a generic
+                        "min spend" label here would be a real merchant-comprehension bug, since a
+                        merchant would reasonably read it as "order total including delivery." */}
+                    {isDeliveryCampaign && (
+                      <p className="text-[11px] text-slate-400">
+                        Free delivery when the items in the cart total at least this amount -- the delivery fee itself doesn’t count toward it.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">Min quantity (optional)</Label>
@@ -1115,20 +1079,35 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       onChange={(e) => setForm((current) => ({ ...current, maxRedemptions: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-[#0F172A]">Max total discount budget (PHP, optional)</Label>
+                    <Label className="text-xs font-semibold text-[#0F172A]">
+                      {isDeliveryCampaign ? 'Campaign budget (PHP, optional)' : 'Max total discount budget (PHP, optional)'}
+                    </Label>
                     <Input type="number" min="0" step="1" className="h-8 text-xs" value={form.maxTotalDiscountPesos}
                       onChange={(e) => setForm((current) => ({ ...current, maxTotalDiscountPesos: e.target.value }))} />
+                    {/* For an auto-applied campaign, this is the merchant's actual spend cap and the
+                        most important guard rail on the screen -- relabelled accordingly. */}
+                    {isDeliveryCampaign && form.autoApply && (
+                      <p className="text-[11px] text-slate-400">Stops auto-applying once total waived fees reach this amount.</p>
+                    )}
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-[#0F172A]">Max benefit quantity (optional)</Label>
-                    <Input type="number" min="1" step="1" className="h-8 text-xs" value={form.maxBenefitQuantity}
-                      onChange={(e) => setForm((current) => ({ ...current, maxBenefitQuantity: e.target.value }))} />
-                  </div>
+                  {/* A delivery waiver has no per-line quantity component -- hidden for a delivery
+                      campaign (always sent as null, see buildVoucherPayload). */}
+                  {!isDeliveryCampaign && (
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-[#0F172A]">Max benefit quantity (optional)</Label>
+                      <Input type="number" min="1" step="1" className="h-8 text-xs" value={form.maxBenefitQuantity}
+                        onChange={(e) => setForm((current) => ({ ...current, maxBenefitQuantity: e.target.value }))} />
+                    </div>
+                  )}
                   <div className="flex flex-col justify-end gap-2 pb-1">
-                    <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
-                      <Checkbox checked={form.allowBelowCost} onCheckedChange={(checked) => setForm((current) => ({ ...current, allowBelowCost: checked === true }))} />
-                      Allow selling below cost
-                    </label>
+                    {/* Item-COGS guard (#697) -- no meaning against a delivery fee, hidden for a
+                        delivery campaign. */}
+                    {!isDeliveryCampaign && (
+                      <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
+                        <Checkbox checked={form.allowBelowCost} onCheckedChange={(checked) => setForm((current) => ({ ...current, allowBelowCost: checked === true }))} />
+                        Allow selling below cost
+                      </label>
+                    )}
                     {/* #734: 'Stackable with statutory discounts' removed -- the stored
                         stackable_with_statutory column had zero policy readers anywhere in the
                         codebase and, if actually wired up, would contradict ADR 0066 Decision 8
@@ -1138,10 +1117,16 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                         not here. Form state/mapper/submit payload below are left untouched so the
                         API contract and an existing voucher's stored value round-trip unchanged
                         (always sends stackable_with_statutory: false for a new voucher). */}
-                    <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
-                      <Checkbox checked={form.isPubliclyListed} onCheckedChange={(checked) => setForm((current) => ({ ...current, isPubliclyListed: checked === true }))} />
-                      List on public storefront
-                    </label>
+                    {/* R6 (plan §4.3/§9, open question -- see the PR body): advertising a card for a
+                        code nobody needs to type is, at best, an unaudited storefront-discovery
+                        interaction -- forced off for auto-apply campaigns in v1. Still offered for
+                        a code-entered delivery campaign and for every promo code, unchanged. */}
+                    {!(isDeliveryCampaign && form.autoApply) && (
+                      <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
+                        <Checkbox checked={form.isPubliclyListed} onCheckedChange={(checked) => setForm((current) => ({ ...current, isPubliclyListed: checked === true }))} />
+                        List on public storefront
+                      </label>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1193,26 +1178,58 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-[#0F172A]">Channels</Label>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-                      <Checkbox checked={form.channelFlags.storefront} onCheckedChange={(checked) => setForm((current) => ({ ...current, channelFlags: { ...current.channelFlags, storefront: checked === true } }))} />
-                      Storefront
-                    </label>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-                      <Checkbox checked={form.channelFlags.pos} onCheckedChange={(checked) => setForm((current) => ({ ...current, channelFlags: { ...current.channelFlags, pos: checked === true } }))} />
-                      POS
-                    </label>
+                    {/* R2: auto_apply only ever fires from storefront checkout
+                        (storeUseCases.js's resolveCheckoutContext) -- a merchant who unchecked
+                        Storefront on an auto-apply campaign would author something that can never
+                        fire, and nothing server-side rejects a channels_mask that omits it. Locked
+                        on, POS hidden, whenever auto-apply is on. */}
+                    {isDeliveryCampaign && form.autoApply ? (
+                      <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                        <Checkbox checked disabled />
+                        Storefront
+                      </label>
+                    ) : (
+                      <>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                          <Checkbox checked={form.channelFlags.storefront} onCheckedChange={(checked) => setForm((current) => ({ ...current, channelFlags: { ...current.channelFlags, storefront: checked === true } }))} />
+                          Storefront
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                          <Checkbox checked={form.channelFlags.pos} onCheckedChange={(checked) => setForm((current) => ({ ...current, channelFlags: { ...current.channelFlags, pos: checked === true } }))} />
+                          POS
+                        </label>
+                      </>
+                    )}
                     <FieldError message={fieldErrors.channels_mask} />
+                    {isDeliveryCampaign && form.autoApply && (
+                      <p className="text-[11px] text-slate-400">Auto-applied campaigns only ever fire at storefront checkout.</p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-[#0F172A]">Fulfillment methods</Label>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-                      <Checkbox checked={form.fulfillmentFlags.delivery} onCheckedChange={(checked) => setForm((current) => ({ ...current, fulfillmentFlags: { ...current.fulfillmentFlags, delivery: checked === true } }))} />
-                      Delivery
-                    </label>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-                      <Checkbox checked={form.fulfillmentFlags.pickup} onCheckedChange={(checked) => setForm((current) => ({ ...current, fulfillmentFlags: { ...current.fulfillmentFlags, pickup: checked === true } }))} />
-                      Pickup
-                    </label>
+                    {/* R3: a pickup order has no delivery fee -- the pickup bit is a guaranteed
+                        no-op for a delivery campaign, so it's locked to delivery-only rather than
+                        offered as a free triad (plan §4.5). */}
+                    {isDeliveryCampaign ? (
+                      <>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                          <Checkbox checked disabled />
+                          Delivery
+                        </label>
+                        <p className="text-[11px] text-slate-400">Delivery campaigns only apply to delivery orders.</p>
+                      </>
+                    ) : (
+                      <>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                          <Checkbox checked={form.fulfillmentFlags.delivery} onCheckedChange={(checked) => setForm((current) => ({ ...current, fulfillmentFlags: { ...current.fulfillmentFlags, delivery: checked === true } }))} />
+                          Delivery
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                          <Checkbox checked={form.fulfillmentFlags.pickup} onCheckedChange={(checked) => setForm((current) => ({ ...current, fulfillmentFlags: { ...current.fulfillmentFlags, pickup: checked === true } }))} />
+                          Pickup
+                        </label>
+                      </>
+                    )}
                     <FieldError message={fieldErrors.fulfillment_methods_mask} />
                   </div>
                   <div className="space-y-1.5">
@@ -1230,7 +1247,45 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                 </div>
               </div>
 
-              {isEdit && (
+              {/* #1334/Phase 245 (plan §5.2): GET /vouchers/:id already returns redemption_stats
+                  unconditionally -- for a delivery campaign, show the LEDGER figures
+                  (redemption_count / total_discount_centavos), not the cached redeemed_* columns
+                  the promo-code block below still uses. ADR 0066 Decision 4 makes the ledger
+                  authoritative; cache_in_sync is deliberately never surfaced here -- it's EXPECTED
+                  false once reversal rows exist (Phase 243), so showing it would be a permanent
+                  false alarm (voucherUseCases.js's own buildRedemptionStats comment). */}
+              {isEdit && isDeliveryCampaign && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Campaign performance (read-only)</h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+                    <div>
+                      <span className="text-slate-500">Redemptions</span>
+                      <p className="font-bold text-[#0F172A]">{redemptionStats?.redemption_count ?? 0}</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Delivery fees waived</span>
+                      <p className="font-bold text-[#0F172A]">{peso(redemptionStats?.total_discount_centavos ?? 0)}</p>
+                      <p className="text-[11px] text-slate-400">Net of cancelled orders</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Last redeemed</span>
+                      <p className="font-bold text-[#0F172A]">
+                        {redemptionStats?.last_redeemed_at ? new Date(redemptionStats.last_redeemed_at).toLocaleString() : 'Never'}
+                      </p>
+                    </div>
+                    {form.maxTotalDiscountPesos !== '' && (
+                      <div>
+                        <span className="text-slate-500">Budget remaining</span>
+                        <p className="font-bold text-[#0F172A]">
+                          {peso(Math.max(0, pesoStringToCentavos(form.maxTotalDiscountPesos) - (redemptionStats?.total_discount_centavos ?? 0)))}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {isEdit && !isDeliveryCampaign && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                   <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Redemptions (read-only)</h4>
                   <div className="grid grid-cols-3 gap-3 text-xs">

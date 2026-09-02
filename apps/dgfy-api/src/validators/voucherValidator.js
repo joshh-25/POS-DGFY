@@ -34,7 +34,8 @@ const MAX_CENTAVOS = 999999999999;
 const BENEFIT_AMOUNT_FIELDS = Object.freeze([
     'percent_off_bps',
     'amount_off_centavos',
-    'fixed_unit_price_centavos'
+    'fixed_unit_price_centavos',
+    'delivery_amount_off_centavos'
 ]);
 
 // Server-owned counters, identity, timestamps, the derived status, and the reserved `conditions`
@@ -73,12 +74,20 @@ const baseVoucherFields = {
     code: Joi.string().trim().uppercase().pattern(VOUCHER_CODE_PATTERN).messages({
         'string.pattern.base': 'code must be 3-40 characters of A-Z, 0-9, dot, underscore or hyphen, starting with a letter or digit'
     }),
-    voucher_kind: Joi.string().valid('promo_code'),
+    voucher_kind: Joi.string().valid('promo_code', 'delivery_campaign'),
     title: Joi.string().trim().min(2).max(255),
     subtitle: Joi.string().trim().max(255).allow(null, ''),
     badge: Joi.string().trim().max(80).allow(null, ''),
     validity_text: Joi.string().trim().max(255).allow(null, ''),
-    benefit_class: Joi.string().valid('percent_off', 'amount_off', 'fixed_price'),
+    benefit_class: Joi.string().valid('percent_off', 'amount_off', 'fixed_price', 'free_delivery'),
+    // #1331: orthogonal to benefit_class -- see Voucher.js's own comment. 'items' is the default;
+    // applyBenefitConfig forces this to 'delivery' whenever benefit_class is free_delivery.
+    benefit_target: Joi.string().valid('items', 'delivery'),
+    // #1332 (Phase 244, epic #1321 decision 9): v1 is delivery-axis only -- `applyBenefitConfig`
+    // (voucherUseCases.js) rejects `auto_apply: true` combined with `benefit_target !== 'delivery'`
+    // or with any `voucher_scopes` row at authoring time; not enforceable at the schema layer alone
+    // since this validator can't see the merged row or the scopes array.
+    auto_apply: Joi.boolean(),
     min_spend_centavos: Joi.number().integer().min(0).max(MAX_CENTAVOS).allow(null),
     min_quantity: Joi.number().integer().min(1).allow(null),
     allow_below_cost: Joi.boolean(),
@@ -115,6 +124,8 @@ const createVoucherSchema = Joi.object({
     title: baseVoucherFields.title.required(),
     benefit_class: baseVoucherFields.benefit_class.required(),
     voucher_kind: baseVoucherFields.voucher_kind.default('promo_code'),
+    benefit_target: baseVoucherFields.benefit_target.default('items'),
+    auto_apply: baseVoucherFields.auto_apply.default(false),
     allow_below_cost: baseVoucherFields.allow_below_cost.default(false),
     stackable_with_statutory: baseVoucherFields.stackable_with_statutory.default(false),
     is_publicly_listed: baseVoucherFields.is_publicly_listed.default(false),
@@ -127,6 +138,10 @@ const createVoucherSchema = Joi.object({
         .when('benefit_class', { is: 'percent_off', then: Joi.required(), otherwise: Joi.forbidden() }),
     amount_off_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS)
         .when('benefit_class', { is: 'amount_off', then: Joi.required(), otherwise: Joi.forbidden() }),
+    // #1331: OPTIONAL, unlike the two siblings above -- NULL is a legitimate, common value meaning
+    // "waive the whole fee"; a positive integer caps the waiver to that amount (a partial waiver).
+    delivery_amount_off_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS).allow(null)
+        .when('benefit_class', { is: 'free_delivery', then: Joi.optional(), otherwise: Joi.forbidden() }),
     // #696: fixed_price requires EITHER this OR pricelist_id, never both. Required only when
     // benefit_class is fixed_price AND no real pricelist_id was sent; must be exactly null the
     // moment a real pricelist_id is present, so a payload cannot even express both at the schema
@@ -194,6 +209,7 @@ const updateVoucherSchema = Joi.object({
     percent_off_bps: Joi.number().integer().min(1).max(10000).allow(null),
     amount_off_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS).allow(null),
     fixed_unit_price_centavos: Joi.number().integer().min(0).max(MAX_CENTAVOS).allow(null),
+    delivery_amount_off_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS).allow(null),
     max_discount_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS).allow(null),
 
     scopes: scopesSchema,
@@ -220,8 +236,12 @@ const voucherListQuerySchema = Joi.object({
         if (parts.some((part) => !VOUCHER_STATUSES.includes(part))) return helpers.error('any.invalid');
         return parts;
     }),
-    benefit_class: Joi.string().valid('percent_off', 'amount_off', 'fixed_price'),
-    voucher_kind: Joi.string().valid('promo_code'),
+    benefit_class: Joi.string().valid('percent_off', 'amount_off', 'fixed_price', 'free_delivery'),
+    voucher_kind: Joi.string().valid('promo_code', 'delivery_campaign'),
+    // #1332 (Phase 244): lets a merchant audit which campaigns auto-apply -- a flag with no way to
+    // list by it is unauditable, which matters more than usual for something that spends budget
+    // with no shopper action.
+    auto_apply: Joi.boolean().truthy('true').truthy('1').falsy('false').falsy('0'),
     search: Joi.string().trim().max(255),
     include_stats: Joi.boolean().truthy('true').truthy('1').falsy('false').falsy('0').default(false),
     sort: Joi.string().valid('created_at', 'code', 'valid_until').default('created_at'),
@@ -272,7 +292,8 @@ const collectCrossFieldErrors = (value, { mode }) => {
             const expected = {
                 percent_off: 'percent_off_bps',
                 amount_off: 'amount_off_centavos',
-                fixed_price: 'fixed_unit_price_centavos'
+                fixed_price: 'fixed_unit_price_centavos',
+                free_delivery: 'delivery_amount_off_centavos'
             }[value.benefit_class];
             BENEFIT_AMOUNT_FIELDS.forEach((field) => {
                 if (field !== expected && has(value, field) && value[field] != null) {

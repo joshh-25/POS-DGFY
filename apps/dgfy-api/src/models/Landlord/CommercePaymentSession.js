@@ -69,6 +69,17 @@ export default (sequelize) => sequelize.define('CommercePaymentSession', {
     allowNull: false,
     defaultValue: 0
   },
+  // Phase 237 (#1329, epic #1321, Wave 0 decision #2). The whole resolved delivery-fee breakdown
+  // (storeUseCases.js's `delivery` object) plus a `pinned_at` ISO timestamp, captured at
+  // payment-session creation and read back by finalizePaidCommerceSession.js on webhook
+  // finalization -- see resolveCheckoutContext's pinnedDeliveryBreakdown param. NULL for every
+  // pre-Phase-237 session and any session created before this column existed; the replay path
+  // treats NULL as "no pin, re-resolve," which is exactly today's (pre-237) behavior.
+  delivery_fee_breakdown: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: null
+  },
   service_fee_amount: {
     type: DataTypes.DECIMAL(14, 4),
     allowNull: false,

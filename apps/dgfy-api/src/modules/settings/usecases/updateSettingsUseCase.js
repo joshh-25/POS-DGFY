@@ -59,6 +59,7 @@ import logger from '../../../config/logger.js';
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
 import { assertFulfillmentMethodAvailableForAccessModeTransition } from './customerAccessModeFulfillmentPolicy.js';
+import { assertLaundryWorkflowModeRuntimeOwnership } from './laundryWorkflowModeRuntimeGuard.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -392,7 +393,8 @@ const extractTenantReviewedPosReceiptChanges = async ({ settingsRepository, sett
 export const buildUpdateSettingsUseCase = ({
     settingsRepository,
     storefrontAssetStorage = null,
-    tenantLocationRepository = null
+    tenantLocationRepository = null,
+    tenantRepository = null
 }) => {
     return async ({ settingsData, actorUser = null }) => {
         if (!settingsData || typeof settingsData !== 'object' || Array.isArray(settingsData)) {
@@ -418,6 +420,11 @@ export const buildUpdateSettingsUseCase = ({
             });
             assertStoreProfileNotClientWritten({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
+            await assertLaundryWorkflowModeRuntimeOwnership({
+                requestedMode: settingsData[WORKFLOW_MODE_SETTING_KEY],
+                actorUser,
+                tenantRepository
+            });
             assertEnabledCapabilitiesAuthorization({ settingsData, actorUser });
             assertDisabledCapabilitiesAuthorization({ settingsData, actorUser });
             await assertEffectiveModuleSelectionIsBuildable({ settingsRepository, settingsData });

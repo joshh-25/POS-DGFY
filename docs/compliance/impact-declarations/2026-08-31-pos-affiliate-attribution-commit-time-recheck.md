@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/posCheckoutAffiliateAttribution.unit.
 rollback_note: Revert this commit. The change is confined to which enrollment object the post-commit accrual reads inside the existing try block; no schema change, no new column, no persisted state. Reverting restores the pre-existing behavior of accruing against the entry-time-resolved enrollment unconditionally, with no data cleanup needed — commissions already accrued under either behavior remain valid rows.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-31T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1199-POS-AFFILIATE-ATTRIBUTION-COMMIT-RECHECK
+preflight_run_at: 2026-09-02T03:56:16.394Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-31-POS-AFFILIATE-ATTRIBUTION-COMMIT-TIME-RECHECK
 ---
 
 # POS In-Store Checkout — Affiliate Enrollment Re-verified At Commit Time

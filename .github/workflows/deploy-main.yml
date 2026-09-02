@@ -34,6 +34,17 @@ on:
         description: SSH-deploy to the server after images are pushed
         type: boolean
         default: true
+      runner_labels_json:
+        description: >-
+          JSON array passed to runs-on for every build/publish job below. Phase 234 Wave 3
+          (#1365) live cutover: hosted is the active default. Emergency fallback (F-5) --
+          if hosted is unavailable, re-dispatch with this input set to
+          '["sieitz-runner"]' instead of comment/uncommenting the 6 pair sites and pushing a
+          commit to main. See docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's Phase 234 entry.
+        required: false
+        type: string
+        # default: '["sieitz-runner"]'
+        default: '["ubuntu-latest"]'
 
 concurrency:
   group: deploy-main-${{ github.ref }}
@@ -95,9 +106,20 @@ jobs:
   # 2026-08-25 a dispatch with no --ref silently ran against the repo's
   # *default* branch (`develop`), and PROD ran unreviewed, unpromoted code
   # for ~30 minutes before anyone noticed via head_sha inspection.
+  # Phase 233 (#1365) anchor exception, deliberate, not an omission: this job
+  # stays self-hosted permanently, with no commented hosted alternate. It is a
+  # ~1-minute control-plane job (routing it hosted buys nothing and costs
+  # minutes), and it is the always-available anchor the Phase 233 Wave 2
+  # in-workflow runner preflight hooks into -- a preflight that itself ran on
+  # the class it is checking would be a chicken-and-egg (if hosted is
+  # unavailable, a hosted preflight job never starts). See
+  # docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's Phase 233 entry.
   guard-branch:
     runs-on: ['sieitz-runner']  # #923: generic, either box
-    timeout-minutes: 1
+    # Raised from 1 to 5 (Phase 233, #1365, Wave 2 R-2): the runner-preflight step below makes its
+    # own network calls (gh api / curl) on top of the branch-ref check, which would trip a
+    # 1-minute timeout on a slow API response.
+    timeout-minutes: 5
     steps:
       - name: Refuse to run against anything but main
         shell: bash
@@ -108,6 +130,38 @@ jobs:
             exit 1
           fi
           echo "OK: dispatched against refs/heads/main."
+
+      # Phase 233 (#1365), Wave 2 H2 / Phase 234 Wave 3 (live cutover): runs the same pre-dispatch
+      # preflight scripts/ci-runner-preflight.js exposes to `promoter` (H1). Probes --class both
+      # (F-4), not a single class: the active class is now hosted (post-flip), but single-class
+      # probing can never produce the informative mixed-state exit code once both classes are
+      # legitimately in play (activeRouting is derived from the file itself, not passed here).
+      # guard-branch is the deliberate anchor for this (Wave 1 Sec 1.4): it always runs, and every
+      # downstream job carries `needs: guard-branch`, so a failure here stops the whole dispatch
+      # before any build starts -- "hosted-runner unavailability fails clearly and permits only the
+      # documented, logged fallback strategy" (#1365's own acceptance criterion). This step does
+      # NOT flip any routing value itself, on any exit code -- it only reports.
+      - name: Checkout for runner preflight
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Runner availability preflight
+        id: runner_preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci-runner-preflight.js --target-sha "${{ github.sha }}" --class both >> "$GITHUB_STEP_SUMMARY" || {
+            status=$?
+            if [ "$status" -eq 3 ]; then
+              echo "::error::Runner preflight says a documented flip is required -- see the step summary above and comment/uncomment the alternate lines in deploy-main.yml (docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md). This job intentionally fails rather than silently degrading."
+            else
+              echo "::error::Runner preflight could not confirm the active class is available -- see the step summary above."
+            fi
+            exit 1
+          }
 
   # Shared dgfy-api image (environment-agnostic; built once, tagged latest
   # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
@@ -124,9 +178,13 @@ jobs:
     with:
       environment: PROD
       image_tags: "latest"
-      # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
@@ -140,8 +198,13 @@ jobs:
     with:
       environment: PROD
       image_tags: "latest"
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
@@ -184,8 +247,13 @@ jobs:
       app: dgfy-ims
       environment: PROD
       image_tags: "latest"
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
@@ -199,8 +267,13 @@ jobs:
       app: dgfy-pos
       environment: PROD
       image_tags: "latest"
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
@@ -214,8 +287,13 @@ jobs:
       app: dgfy-storefront
       environment: PROD
       image_tags: "latest"
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read
@@ -243,8 +321,18 @@ jobs:
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: PROD
-      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
-      runner_labels_json: '["sieitz-runner"]'  # #923: PROD, either box
+      # No vpn_required change needed here: this job SSHes to secrets.SSH_TARGET
+      # (PROD, public-internet Linode), not the DEV/STAGING LAN, so
+      # publish-platform.yml's vpn_required default (false, L52) already applies to
+      # both classes. A future hosted job added to this workflow that targets
+      # DEV/STAGING would need vpn_required: true -- don't inherit this silence.
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
       contents: read

@@ -15559,3 +15559,1452 @@ run filter narrows the split view's drop-eligible orders the same way it narrows
 ### Next eligible phase
 
 233.
+
+## Phase 233 - CI Runner Routing: Prod-Hosted Scaffold + Runner Preflight (#1365)
+
+### Initiative and release
+
+Build stage of Phase 233 (#1365, child of epic #1363), following `docs/ops/CI_RUNNER_POLICY.md`
+(PR #1368, merged to `develop`) declaring GitHub-hosted (`ubuntu-latest`) the intended default
+class for production build/deploy/quality jobs -- an inversion of every prior entry in
+`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`, which routed self-hosted as default and hosted as
+emergency fallback. This phase builds the commented-hosted scaffold and the runner-preflight
+tooling; it does not flip anything live. Full build spec: the planning-stage artifact this phase
+followed verbatim (Wave 1 scaffold + Wave 2 preflight tooling), summarized in
+`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`'s own "Status as of 2026-09-02 -- Phase 233 scaffold"
+entry rather than restated here.
+
+### Objective and scope
+
+Wave 1 (scaffold, inert): commented hosted alternates at every non-exempt `runner_labels_json:`/
+`runs-on:` site in `deploy-main.yml` and `promotion-quality-gate.yml` (both deploy path and the six
+`promotion-quality-gate.yml` quality jobs plus `salvage-api-evidence`, per the resolved Q-2 --
+in-scope per the plan's own §1.3, not descoped to deploy-only), three anchor exceptions left
+self-hosted with a documented reason, plus a new `check:runner-routing` validator enforcing the
+pairing invariant. Wave 2 (tooling): a shared `scripts/lib/runner-availability.js` (F-4 refactor,
+no behavior change to `scripts/pr-checks.js`), a new pre-dispatch `scripts/ci-runner-preflight.js`
++ `runner-probe.yml` canary, wired into `deploy-main.yml`'s `guard-branch` (H2, in-workflow) and
+`.agents/skills/promoter/SKILL.md`'s pre-`main` gate list (H1, standalone). Out of scope, per the
+plan's own §3: any live flip of an active routing value, any deploy-workflow dispatch, any Phase
+234 (live cutover) work, `pr-checks.yml`'s own anchors, `deploy.yml`/`deployment-orchestrator.yml`
+(DEV/STAGING), and `CI_RUNNER_POLICY.md`'s stale `deploy-production.yml` row (F-5, handed to
+`pm`/PR #1368's reviewer instead of fixed here).
+
+### Status
+
+`completed` for the scaffold and tooling as specified; Phase 234 (live cutover) is the next
+eligible phase and is explicitly not started here -- no active `runner_labels_json`/`runs-on` value
+changed, no workflow dispatched, no `main` merge or production promotion.
+
+### Dependencies
+
+`docs/ops/CI_RUNNER_POLICY.md` (PR #1368, merged to `develop` first -- the plan's own Q-1,
+resolved by sequencing this phase's branch cut after that merge). Builds on
+`scripts/check-pr-quality-workflow.js`'s existing DI/text-assertion style (`check-runner-routing.js`
+extends its spirit rather than duplicating its pairing logic) and `scripts/pr-checks.js`'s existing
+`classifyCiUnavailability()` four-way taxonomy (F-4 refactor reuses it via extraction, not
+duplication).
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/added `.js` file -- OK.
+- [x] `npm run check:pr-quality-workflow && npm run test:pr-quality-workflow` -- OK, 31/31 passing,
+  confirming the `promotion-quality-gate.yml` comment-only edits didn't disturb the existing #1063
+  contract.
+- [x] `npm run check:runner-routing && npm run test:runner-routing` -- OK, 17/17 passing (new
+  validator, including a live integration test against the real workflow files on disk).
+- [x] `npm --prefix . run test:runner-availability` (`scripts/lib/runner-availability.test.js`) --
+  OK, 8/8 passing; `scripts/pr-checks.test.js`'s pre-existing 29/29 pass unmodified, confirming the
+  F-4 refactor didn't change `classifyCiUnavailability()`'s observable behavior.
+- [x] `npm run test:runner-preflight` (`scripts/ci-runner-preflight.test.js`) -- OK, 25/25 passing,
+  fully dependency-injected (no real network calls).
+- [x] `npm run lint:docs` -- OK, covering the two doc edits
+  (`CI_RUNNER_MIGRATION_HANDOFF.md`, this file).
+- [x] `git diff` proof: every uncommented `runner_labels_json:`/`runs-on:` value in
+  `deploy-main.yml`/`promotion-quality-gate.yml` is byte-identical to `develop`; the only non-
+  comment, non-purely-additive change is `guard-branch`'s `timeout-minutes: 1 -> 5` (R-2, needed for
+  the added preflight step's network calls).
+- [x] `npm run check:compliance` -- `.github/**` confirmed not a compliance surface; no
+  declaration needed or produced.
+- [ ] Live exercise of `scripts/ci-runner-preflight.js` against real `gh api`/`curl` calls, and a
+  live `guard-branch` H2 run -- **not run**, out of scope for an inert scaffold with no dispatch
+  permitted (checkpoint policy and the task brief's own hard invariant). Deferred to Phase 234.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+None fired, confirmed rather than assumed: no `apps/dgfy-migration-runner/migrations/` change;
+`.github/**` is not a `check-compliance-impact.js` surface; base is `develop`; nothing dispatches a
+deploy workflow (`runner-probe.yml` is added, never dispatched); no force-push or branch deletion.
+
+### Links
+
+- Tracking issue: #1365 (child of epic #1363). This PR uses `Refs #1365`, not `Closes` -- Phase 234
+  completes the issue.
+- `.github/workflows/deploy-main.yml`, `.github/workflows/promotion-quality-gate.yml` (both
+  modified, comment/scaffold-only plus the `guard-branch` timeout bump),
+  `.github/workflows/runner-probe.yml` (new),
+  `scripts/check-runner-routing.js` + `.test.js` (new),
+  `scripts/lib/runner-availability.js` + `.test.js` (new),
+  `scripts/ci-runner-preflight.js` + `.test.js` (new),
+  `scripts/pr-checks.js` (modified, F-4 refactor consumer change),
+  `.agents/skills/promoter/SKILL.md` (modified, H1 pre-`main` gate wiring),
+  `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md` (modified, new dated status entry).
+- Open questions carried into Phase 234, per the plan's §4: Q-2 resolved this phase (quality jobs
+  in scope); Q-3 (AVX-gated test behavior change on hosted), Q-4 (PROD SSH source-IP restriction --
+  **partially checked only**: `sshd_config` confirmed to carry no `AllowUsers`/`Match Address`
+  restriction, but `ufw`/Linode Cloud Firewall status is unconfirmed, needs root/Pat's own server
+  access), Q-5 (org billing-token scope gap), and Q-6 (`salvage-api-evidence` re-implementation for
+  an independent hosted flip) remain open blockers for Phase 234, not resolved here.
+
+### Next eligible phase
+
+234 (not yet recorded in this ledger as its own entry; the next entry actually recorded here is
+Phase 237, a separate epic/track -- see that entry's own "Ledger gap" note for why 233/235/236 of
+epic #1321 have no ledger entries of their own either).
+
+## Phase 237 - Wire calculated + free delivery-fee modes (#1329, epic #1321) — RISK GATE
+
+### Ledger gap, flagged not silently papered over
+
+This ledger's most recently recorded entry before this one is Phase 232, which itself named "233"
+as next-eligible. But Phases 233 (#1324, PR #1337), 235 (#1325, PR #1352), and 236 (#1328, PR #1361)
+of epic #1321 ("Customer delivery pricing") already merged to `develop` -- confirmed live via
+`git log` on this PR's own base commit -- with no ledger entry ever recorded for any of the three.
+This phase continues the real numeric sequence those three PRs actually used (237, following 236),
+not the ledger's stale "233" trailer. Backfilling accurate 233/235/236 entries retroactively is out
+of this phase's own scope -- named as a finding for `pm` to track separately rather than
+reconstructed hastily here. (Phase 234 is untouched by this note -- it belongs to a different,
+unrelated track and is not part of epic #1321.)
+
+### Initiative and release
+
+Epic #1321 ("Customer delivery pricing"), the risk gate: the first phase in the epic where a
+customer-visible storefront price actually changes based on tenant delivery-fee-mode configuration.
+Wires the `calculated` and `free` delivery-fee modes (Phase 233's config schema, Phase 235's pure
+formula, Phase 236's road-distance observation capture) into the real fee-resolution choke point,
+`resolveStoreDeliveryFee`/`resolveCheckoutContext` in `storeUseCases.js`.
+
+### Objective and scope
+
+Per the Planner's full plan (`docs/ai/PR.md`-format PR body carries the plan's own D1-D6 decision
+table): rewrite `resolveStoreDeliveryFee` as an `async` function resolving a full 10-field breakdown
+(the ticket's own 9 fields plus a 10th `outOfRange: boolean`, D1); enforce ADR 0078 Decision 2
+`[binding]`'s out-of-range hard block at checkout + payment-session only, never at cart quote (D6);
+pin the whole resolved breakdown across a webhook-replay finalization, advisory-only past a 60-minute
+TTL, never hard-invalidated (Wave 0 decision #2 / D2); touch
+`modules/commercePayments/usecases/finalizePaidCommerceSession.js` and a landlord-DB migration to
+make the pin real (D3); minimal out-of-range storefront affordance only -- the full fee-breakdown
+summary line across 6 frontend files in 3 mode trees is explicitly OUT of scope, split to a follow-up
+ticket via `pm` (D4); both new migrations are a Worker checkpoint (D5).
+
+### Status
+
+`in_progress` -- merged to `develop`, deployed verification still the open acceptance gate (per this
+ledger's own rule that a phase is marked `completed` only once its acceptance gates and required
+validation pass; that gate is deployed verification, not yet run). PR #1377 merged to `develop`
+as commit `4932cda4f600fe93774666cf961e069fb5f6f741` (`Refs #1329`, not `Closes` -- see below for
+why). All backend code, the ADR 0012 amendment, and the compliance declaration are in `develop`.
+**The two new migrations, the matching `sync-tenant-schemas.js` entries, and the
+`PosTransaction.js`/`CommercePaymentSession.js` model field additions are no longer held pending --
+D5's Worker-checkpoint approval landed and the batch was committed as
+`4ceca26ae93ee72b9a2070de9c192d793c6eafe4`, an ancestor of the PR #1377 merge commit.**
+`pr-reviewer`'s first pass `BLOCK`ed on three findings (merge conflict against `develop`, incomplete
+pin-shape validation, an explicit-`null`-coordinate gap); addressed in a 2026-09-02 fixup pass -- see
+the compliance declaration's own dated Amendments section for the fix-by-fix detail, not restated
+here. Because the code is merged but not yet verified against a deployed environment, issue #1329
+stays open (board Status `For QA`) rather than auto-closing -- the same `Refs`-not-`Closes` reasoning
+already used for the PR linkage above; deployed verification (Verifier/QA role) is the remaining gap
+before this phase can be marked fully done.
+
+### Dependencies
+
+Phase 233 (#1324, PR #1337, fee-mode config schema), Phase 235 (#1325, PR #1352, pure calculated-fee
+formula, unwired until this phase), Phase 236 (#1328, PR #1361, observation-only road-distance
+capture, now wired into fee pricing for the first time) -- all three merged to `develop`. Phase 238
+(#1330, POS staff fee override, already merged) is a post-hoc override of the persisted
+`pos_transactions.delivery_fee` column and is explicitly NOT a resolve-time input this phase reads.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `apps/dgfy-api` `.js` file and both new
+  `apps/dgfy-migration-runner` `.cjs` migration files -- no syntax errors (no build step; Tier 0
+  equivalent).
+- [x] `storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js` (new, 2/2) -- the ticket's
+  own named acceptance evidence: cart quote, checkout, and payment-session creation resolve strictly
+  `===` `delivery_fee`/`total_amount` from one frozen fixture, calculated and free modes both.
+- [x] `storeCheckoutCalculatedDeliveryFee.unit.test.js` (13/13, up from 10 in the 2026-09-02 review
+  fixup) -- ADR 0078 Decision 2 `[binding]` fail-open-to-fixed on every named failure branch, the
+  happy-path formula (hand-computed against the real algorithm: 5400m -> ₱97), the in-range boundary
+  at exactly `max_distance_km`, the out-of-range hard block at all three entry points, and (RF-3) a
+  4-row no-usable-coordinates matrix (omitted/explicit-null/empty-string/non-numeric).
+- [x] `storeCheckoutDeliveryFeePin.unit.test.js` (26/26, up from 10 in the 2026-09-02 review fixup)
+  -- the pin mechanism itself, the advisory-TTL-never-enforces behavior, `finalizePaidCommerceSession.js`'s
+  own plumbing, and (RF-2) full field-by-field shape validation of every persisted breakdown field,
+  not just mode/finalFee/calcVersion.
+- [x] `addDeliveryFeeBreakdown.migration.test.js` (new, 10/10) -- both migrations' idempotence/down
+  behavior, plus a drift guard confirming `sync-tenant-schemas.js`'s DDL strings are
+  column-definition-identical to the tenant-fanout migration's own DDL.
+- [x] `deliveryFeePolicy.unit.test.js` (31/31, 1 new case) -- the new `DELIVERY_FEE_CALC_VERSION`
+  constant.
+- [x] `deliveryFeeModeConfig.checkoutFallback.unit.test.js` (5/5, unmodified) and
+  `storeCheckoutRoadDistanceCapture.unit.test.js` (10/10, up from 7 -- RF-4 added an explicit
+  `store_delivery_fee_mode: 'fixed'` fixture variant to the byte-identity parameterized regression,
+  alongside the pre-existing absent-config case) -- together the actual evidence that every
+  fixed-mode tenant, explicit or defaulted, stays byte-identical to pre-237.
+- [x] Whole-suite regression gate -- `storeCartQuotePreviewNoContactRequired`,
+  `storeCheckoutAffiliatePricing`, `storeCheckoutDownpaymentResolution`,
+  `storeCheckoutInventoryReservation`, `storeCheckoutVoucherPromoStacking`, `storePaymentTruth`,
+  `storeUsecases.applicationResult` -- 105/105, all unmodified.
+- [x] `npm run check:architecture` -- OK (52 modules, 537 code files; 92 controller files).
+- [x] `npm run lint:docs` -- OK (85 ADRs incl. the ADR 0012 amendment, 29 governed docs).
+- [x] `npm run check:compliance` -- confirmed to fail first (listing `storeUseCases.js` and
+  `finalizePaidCommerceSession.js`), then pass once the declaration was added.
+- [ ] Deployed verification -- **not run**, and not expected to be: the PR itself uses `Refs #1329`
+  (not `Closes`) specifically because this is the epic's risk gate and needs a deployed
+  Verifier/QA pass before the issue closes, per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule.
+- [ ] D5 migration checkpoint -- **not yet approved**, see Status above.
+
+### Links
+
+- Tracking issue: #1329 (epic #1321). Follow-up filed separately (D4, storefront fee-breakdown
+  summary line across 6 files in 3 mode trees) -- handed to `pm` to file, not improvised here.
+- `apps/dgfy-api/src/modules/deliveryPricing/index.js`, `domain/deliveryFeePolicy.js` (additive
+  exports), `README.md` (updated shipped/not-shipped tables).
+- `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (the core diff),
+  `apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js` (pin
+  plumbing).
+- `docs/architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md` (amended,
+  2026-09-02 block).
+- `docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md`.
+- Held pending D5 approval: `apps/dgfy-migration-runner/migrations/20260903000001-add-delivery-fee-breakdown.cjs`,
+  `20260903000002-add-payment-session-delivery-breakdown.cjs`,
+  `apps/dgfy-api/scripts/sync-tenant-schemas.js`, `apps/dgfy-api/src/models/PosTransaction.js`,
+  `apps/dgfy-api/src/models/Landlord/CommercePaymentSession.js`.
+
+### Next eligible phase
+
+238 (#1330, POS staff fee override, already merged separately -- confirm its own ledger status
+before claiming further numbers; this entry does not assert 238's own status).
+## Phase 239 - Compliance Preflight Sweep: Supervised Handoff + Full-Scan Discovery (#1374)
+
+### Initiative and release
+
+Note on numbering: Phase 233's own status text (above) informally calls Phase 234 "the runner live
+cutover," anticipating that work as the next item in the CI-runner-routing initiative (#1365). That
+work has not started as of this entry -- per Continuous Phase Numbering (`AGENTS.md`), phase numbers
+are never reserved in advance, so this unrelated, independently-scoped initiative (#1374) does not
+take that number. Phase 233's own text is unedited; the runner live cutover keeps its informal "234"
+label there until it is actually scheduled. Phase 234 itself was independently claimed by epic
+#1321's delivery-pricing work (see the Phase 237 entry immediately above, which documents that
+233/235/236/237 already merged) while this branch's work was in flight -- confirmed live via a rebase
+conflict against `origin/develop`, not assumed. Phase 238 is also already spoken for (`#1330`, POS
+staff fee override, referenced by the Phase 237 entry's own "Next eligible phase" note) even though
+it has no ledger entry of its own yet -- the same kind of gap Phase 237 itself flags for 233/235/236,
+not backfilled here either. The next genuinely free number is therefore 239, taken here.
+
+Closes out #1374: `compliance-preflight-sweep.yml` conflated three distinct outcomes as one
+undifferentiated red run -- a real preflight failure, an operator-input error (a `declarations=`
+entry missing on the checked-out ref), and `gh pr create` being blocked by an org-level policy
+(#1295, "GitHub Actions is not permitted to create or approve pull requests") even when the
+preflight itself had genuinely passed. #1374's own research (2026-09-02) also found the sweep's
+auto-discovery (a `develop..main` diff) had a permanent blind spot for declarations that reached
+`main` via a #1007-override promotion, and that 11 `compliance-sweep/<run_id>` branches had leaked
+on origin with no cleanup path. Built across five sequenced commits on one branch
+(`fix/1374-preflight-sweep-handoff`): `31d516ff5` (classification/rendering script + tests),
+`5a56cf9ce` (workflow rewrite), `24db1586a` (structure test + CI wiring), and this docs/ADR/skills/
+ledger commit.
+
+### Objective and scope
+
+New `scripts/report-preflight-sweep-outcome.js` (+ `.test.js`, 25 cases): pure, DI-friendly
+classification/rendering functions (`classifyPrCreate`, `classifyOutcome`, `buildOperatorCommands`,
+`renderSummary`, `renderIssue`, `writeArtifact`) behind a `classify-pr-create`/`report` CLI, never
+throwing past `main()`. `compliance-preflight-sweep.yml` rewritten: `permissions` gains
+`issues: write`; discovery switches from a `develop..main` diff to a full `git ls-files` scan of the
+checked-out ref (26 outstanding found vs. the diff's 4, confirmed live) with a new validation pass
+distinguishing an operator input error from a compliance failure; the auto-merge PR step is replaced
+by a supervised-handoff step that still attempts `gh pr create` every run but classifies a
+policy-blocked failure as green-with-warning (`handoff_required`) instead of red, and prunes
+superseded, bot-committed, no-open-PR `compliance-sweep/<numeric run id>` branches (fails closed on a
+`gh pr list` query failure); a new report step renders the outcome to `$GITHUB_STEP_SUMMARY`, a new
+`compliance-preflight-sweep-handoff` artifact, and a new step files/updates a labelled
+`compliance:preflight-handoff`/`compliance:preflight-failed` GitHub issue (one open per class,
+updated in place, both labels created once by hand, never by the workflow). New
+`scripts/check-compliance-sweep-workflow.test.js` (19 regression assertions against the live YAML)
+and a new `test:preflight-sweep` npm script wiring it plus the report script's tests and four
+pre-existing `scripts/*preflight*.test.js` files that had never been wired to any npm script, plus a
+new advisory `Validate compliance sweep contract` step in `promotion-quality-gate.yml`. Docs/ADR/
+skills updated to describe the supervised handoff and full-scan discovery in place of the retired
+"opens + auto-merges" / `develop..main`-diff description. Out of scope, per the plan: partial
+reconciliation (one `breach` still blocks the other declarations in a batch -- flagged follow-up,
+not this phase); a rollback mechanism for a bad merge (none exists, unchanged); the pre-existing,
+separately-flagged "deployed non-production host" staleness in
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s promotion-stage table (left as found, not this phase's
+scope).
+
+### Status
+
+`completed`. All five commits landed on `fix/1374-preflight-sweep-handoff`; PR open/merge is the
+next step, owned by the coordinating session, not this phase's own work.
+
+### Dependencies
+
+`scripts/is-preflight-outstanding.js`, `scripts/build-preflight-request.js`,
+`scripts/parse-preflight-response.js`, `scripts/reconcile-preflight-declarations.js` (all
+pre-existing, unmodified -- their test files were wired into CI here for the first time, not
+changed). `scripts/summarize-backend-test-matrix.js` and `scripts/ci-runner-preflight.js` supplied
+the house style (DI-friendly, no-deps, never-throws-past-`main()`) the new script follows.
+`scripts/check-runner-routing.test.js` supplied the style for the new structure test. Builds on
+ADR 0074 Decision 5 (the ephemeral-CI-instance preflight target, 2026-08-31 amendment) and #1295
+(the org policy finding that motivated the supervised-handoff redesign).
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every new/changed `.js` file -- OK.
+- [x] `bash -n` on every rewritten `run:` block in `compliance-preflight-sweep.yml` (extracted via a
+  PyYAML step-by-step parse) -- OK, all 16 blocks.
+- [x] `npm run test:preflight-sweep` -- OK, 75/75 passing across all six wired files
+  (`is-preflight-outstanding.test.js` 6, `build-preflight-request.test.js` 12,
+  `parse-preflight-response.test.js` 7, `reconcile-preflight-declarations.test.js` 6,
+  `report-preflight-sweep-outcome.test.js` 25, `check-compliance-sweep-workflow.test.js` 19); none
+  of the four pre-existing files needed any changes to pass.
+- [x] `npm run check:pr-quality-workflow && npm run test:pr-quality-workflow` -- OK, 31/31 passing,
+  confirming the new `promotion-quality-gate.yml` step matches the sanctioned #1063 advisory shape.
+- [x] `npm run check:adr` -- OK.
+- [x] `npm run lint:docs` -- OK.
+- [x] `npm run check:compliance` -- "No compliance-sensitive changes detected"; no declaration
+  required (CI/docs/skills-only change, no runtime or tenant-data surface touched) -- decided by
+  running the tool against the diff, not assumed from the change's apparent shape.
+- [x] `npm run check:architecture` -- OK.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+None fired, confirmed rather than assumed: no `apps/dgfy-migration-runner/migrations/` change; base
+is `develop` (branched fresh before this work); nothing dispatches a deploy workflow or touches a
+deployed environment; no force-push or branch deletion during implementation (the workflow's own new
+`git push origin --delete` of superseded `compliance-sweep/*` branches is CI-runtime behavior this
+phase built, not an action this phase's own implementation session took).
+
+### Links
+
+- Tracking issue: #1374. Refs `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s expedited-override amendment,
+  ADR 0074 (2026-09-02 Amendments block, this phase), #1295 (the org policy finding).
+- `scripts/report-preflight-sweep-outcome.js` + `.test.js` (new),
+  `scripts/check-compliance-sweep-workflow.test.js` (new),
+  `.github/workflows/compliance-preflight-sweep.yml` (modified, supervised-handoff + full-scan
+  discovery rewrite), `.github/workflows/promotion-quality-gate.yml` (modified, new advisory step +
+  `STEP_OUTCOMES` entry), `package.json` (modified, new `test:preflight-sweep` script),
+  `docs/compliance/request-time-preflight-protocol.md` (modified, "Where live preflight actually
+  runs" + "Run it." + new "Operator handoff procedure"),
+  `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md` (modified, new
+  2026-09-02 Amendments block), `.agents/skills/promoter/SKILL.md` (modified, full-scan verification
+  snippet + handoff fast-signal check + checkpoint-table row),
+  `.agents/skills/pr-reviewer/SKILL.md` (modified, Compliance item 3),
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md` (modified, one clause on the `develop → main` promotion row).
+
+### Next eligible phase
+
+240 -- noting the 238 ledger gap above for whoever claims it next.
+## Phase 240 - CI Runner Routing: Live Cutover (#1365 Wave 3)
+
+### Initiative and release
+
+Build stage of Phase 234's plan document, child of epic #1363 -- taking ledger number **240**, not
+234. Numbering note, confirmed live rather than assumed: Phase 233's own entry (above) informally
+called this work "Phase 234," anticipating it as the next item in the CI-runner-routing initiative.
+Per Continuous Phase Numbering (`AGENTS.md`), phase numbers are never reserved in advance, and the
+Phase 239 entry (above) already recorded that 234 was independently claimed by epic #1321's
+delivery-pricing track while this work was still pending, making 239 the next free number at that
+time and, per that entry's own "Next eligible phase" note, **240** the number for whoever claims it
+next -- this phase. The planning document this phase implements (`PHASE-234-PLAN.md`, "Wave 3 -- The
+flip") keeps its own "234" name for continuity with the plan's earlier waves (Wave 0/#1375, Wave 1/2
+recorded under the ledger's actual Phase 233 entry above); only the ledger's own sequence number
+differs from the plan's informal label, which is exactly the situation Phase 239's entry predicted.
+
+### Objective and scope
+
+Purely mechanical comment⇄uncomment flip at the 14 pair sites Phase 233 scaffolded (6 in
+`deploy-main.yml`, 8 in `promotion-quality-gate.yml`), making GitHub-hosted (`ubuntu-latest`) the
+active class for every non-exempt production build/deploy/promotion job, plus four required
+non-pair edits: `scripts/lib/runner-routing-state.js`'s `EXPECTED_ACTIVE_CLASS` constant flipped to
+`'hosted'`; `deploy-main.yml`'s `guard-branch` preflight step's `--class self-hosted` →
+`--class both`; a new `runner_labels_json` `workflow_dispatch` input on `deploy-main.yml` itself
+(default hosted, commented self-hosted alternate) threaded to all 6 job call sites, turning the
+emergency fallback from "commit to `main`" into "re-dispatch with one input" (F-5) --
+`check-runner-routing.js` extended with a delegation-aware site resolution and new regression tests
+to match; and doc updates (`CI_RUNNER_MIGRATION_HANDOFF.md` new dated status entry,
+`CI_RUNNER_POLICY.md`'s Status section corrected, this ledger entry). Out of scope, per the plan:
+Wave 4 (a real production promotion actually exercising the hosted path) and Wave 5 (closeout) --
+both separate, gated, `promoter`-role work, not attempted here.
+
+### Status
+
+`in_progress`. This build stage is complete and self-verified (below), and its PR is open against
+`develop` -- but Wave 4 (the first real production promotion over this hosted path) and Wave 5
+(closeout) have not run yet, and this phase's own acceptance criteria (#1365's AC-5) explicitly
+depend on Wave 4 actually happening. Marking `completed` before that live exercise would overstate
+what's actually been proven beyond Wave 2's controlled, non-production T1-T5 evidence (below).
+Revisit once Wave 4/5 land.
+
+### Dependencies
+
+Phase 233 (#1365, this file, scaffold + preflight tooling -- the 14 pair sites and
+`check-runner-routing.js` this phase flips/extends). Wave 0 (#1375, PR #1376,
+`salvage-api-evidence`'s hosted-routing residual accepted and made loud, not silent -- a named
+prerequisite for flipping `dgfy-api-quality`/`salvage-api-evidence` specifically). Wave 2's
+dispatch-only evidence run (PR #1380, `ci/1365-runner-switch-harness`) is the basis for confidence
+in this flip, not a code dependency: T1/T2 proved both runner classes still pick up dispatches: T3
+proved the whole `promotion-quality-gate.yml` runs clean hosted (all 9 jobs `success`, ~50 est.
+billed minutes, wall-clock 35m28s); T4 the self-hosted control (same job set, unbilled, 38m42s); T5
+proved hosted → PROD SSH works read-only. The plan's predicted AVX surprise
+(`menuPdfRasterService.test.js`'s `CANVAS_SUPPORTED_ON_THIS_HOST`-gated render tests) did not
+materialize on the hosted runner image used; two advisory `dgfy-api-quality` failures were shown
+identical on both T3/T4, confirming them pre-existing and runner-independent, not new noise from
+this flip. T6 (optional Tier 2 build+GHCR smoke) was skipped in Wave 2 and not attempted here either.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `.js` file -- OK
+  (`scripts/check-runner-routing.js`, `scripts/check-runner-routing.test.js`,
+  `scripts/lib/runner-routing-state.js`, `scripts/ci-runner-preflight.test.js`).
+- [x] `npm run check:runner-routing` -- OK, confirms every non-exempt site's active class now
+  matches `EXPECTED_ACTIVE_CLASS` ("hosted"), the pairing invariant holds at all 14 sites plus the
+  new `deploy-main.yml` input-default site, the 3 anchor exceptions are untouched, co-location
+  (`salvage-api-evidence`/`dgfy-api-quality`) still matches, and no DEV/STAGING or `NON_HOSTED_FILES`
+  target carries a hosted literal.
+- [x] `npm run test:runner-routing` -- OK, 34/34 passing (17 pre-existing fixtures updated for the
+  new hosted-active baseline, 3 new tests covering the delegation-to-input resolution path).
+- [x] `npm run check:pr-quality-workflow && npm run test:pr-quality-workflow` -- OK, 31/31 passing;
+  the #1063 shape is unaffected by the pair-flip (comment/uncomment + delegation only, no gate
+  structure changed).
+- [x] `npm run test:runner-preflight` -- OK, 30/30 passing after updating two fixtures/assertions
+  that had hardcoded the pre-flip "self-hosted" baseline (`resolveActiveRouting` default-read test,
+  and `runner-routing-state.js`'s own delegation-aware rewrite of `readActiveRouting`, needed once
+  `deploy-main.yml`'s 6 job sites stopped carrying their own literal and started delegating to the
+  new input -- otherwise this resolver read them as self-hosted-active, deriving `'mixed'` instead
+  of `'hosted'`).
+- [x] `npm run test:runner-availability` -- OK, 8/8 passing, unaffected.
+- [x] `node --test scripts/pr-checks.test.js` -- OK, 29/29 passing, unaffected.
+- [x] `npm run lint:docs` -- OK (29 governed docs) + `check:adr --strict` -- OK (85 ADRs).
+- [x] `npm run check:compliance` -- `.github/**`/`scripts/**` confirmed not a compliance-impact
+  surface for this shape of change (routing-class only, no tenant-data/runtime-behavior surface);
+  ran the tool against the diff rather than assuming, no declaration produced.
+- [x] `git diff` review: every workflow-file change is comment/uncomment plus exactly the four
+  enumerated non-pair edits (EXPECTED_ACTIVE_CLASS, `--class both`, the new input + 6 delegated call
+  sites); no unrelated line touched.
+- [ ] Wave 4's live production promotion over this hosted path -- **not run**, out of scope for this
+  phase (gated, `promoter`-role, never unattended per the plan).
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+None fired, confirmed rather than assumed: no `apps/dgfy-migration-runner/migrations/` change;
+`.github/**`/`scripts/**` not a `check-compliance-impact.js` surface; base is `develop`, branched
+fresh (`git fetch` then `origin/develop`, including Wave 1/Wave 2's merges); nothing dispatches a
+deploy workflow or touches a deployed environment; no force-push, branch deletion, or rewriting
+shared history.
+
+### Links
+
+- Tracking issue: #1365 (child of epic #1363). This PR uses `Refs #1365`, not `Closes` -- #1365's
+  full AC-3 depends on #1147, which isn't done; AC-5 depends on Wave 4, not attempted here either.
+- `.github/workflows/deploy-main.yml`, `.github/workflows/promotion-quality-gate.yml` (both
+  modified, the 14-site pair flip plus the new `deploy-main.yml` input + `guard-branch --class both`),
+  `scripts/lib/runner-routing-state.js` (modified, `EXPECTED_ACTIVE_CLASS` flip + delegation-aware
+  `readActiveRouting`), `scripts/check-runner-routing.js` + `.test.js` (modified, delegation-site
+  resolution + new tests), `scripts/ci-runner-preflight.test.js` (modified, one fixture updated for
+  the new baseline), `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md` (modified, new dated status entry),
+  `docs/ops/CI_RUNNER_POLICY.md` (modified, Status section corrected), this file (new entry).
+- Referenced plan: `PHASE-234-PLAN.md`, "Wave 3 -- The flip" (external to this repo's own docs tree,
+  a planning-session artifact -- summarized here and in `CI_RUNNER_MIGRATION_HANDOFF.md`, not linked
+  as a repo-relative path since it isn't one).
+
+### Next eligible phase
+
+241.
+
+## Phase 241 - free_delivery voucher benefit class, code-entered (#1331, epic #1321)
+
+### Initiative and release
+
+Epic #1321 (Customer delivery pricing), decision 9. Depends on Phase 237 (#1329, PR #1377 + #1384,
+merged -- the delivery-fee breakdown `resolveStoreDeliveryFee`/`resolveCheckoutContext` wiring this
+phase's waiver folds into) and Phase 239 (epic #1321's own numbering; ADR 0066's Decision 8
+2026-08-19 amendment's `benefit_target`-shaped call-site contract this phase fulfils --
+`voucherBenefitPolicy.js`'s own header names this exact phase as the intended caller).
+
+**Numbering note, confirmed live rather than assumed** (mirrors Phase 239's own gap-documentation
+precedent, above): this phase was planned and implemented as "Phase 240," per Phase 239's own ledger
+entry ("Next eligible phase: 240"). Before this branch's PR could merge, PR #1386 (#1365 Wave 3, CI
+runner routing live cutover) independently claimed and merged its own "Phase 240" entry into
+`develop` -- a genuine concurrent-numbering race, both sessions reading the same "240" note. Per
+Continuous Phase Numbering (`AGENTS.md`), phase numbers are never reserved in advance and historical
+entries are never renumbered; since PR #1386's Phase 240 entry landed on `develop` first, it is the
+one that keeps the number, and this entry takes the next actually-free number, **241**, on rebase
+into this branch. Every in-repo reference this phase's own diff created before the collision was
+discovered -- code comments, the ADR 0066 amendment, the compliance declaration, commit messages
+already pushed -- still says "Phase 240" and is intentionally left that way rather than rewritten:
+rewriting already-pushed commit messages is its own checkpoint-worthy action (`implement`'s own
+"rewriting already-pushed shared history" trigger) this diff does not take, and Phase 233's own
+entry (above) already establishes the precedent that an informal in-place label may keep a stale
+number while the ledger's own authoritative number is what's correct. This entry's own number is
+the one to trust.
+
+### Objective and scope
+
+Adds `free_delivery` as a fourth voucher `benefit_class`, code-entered only (no auto-apply --
+that's #1332/Phase 241). Two orthogonal new columns on `vouchers` (`benefit_target`
+`items`|`delivery`, `delivery_amount_off_centavos`), reusing Phase 237's existing
+`pos_transactions.delivery_fee_waiver` amount column and adding two new provenance columns
+(`delivery_fee_waiver_voucher_id`, `delivery_fee_waiver_label_snapshot`) rather than a duplicate
+amount column (a correction to the ticket's own literal text, plan §0.2). A SECOND, independent
+code-entry payload field (`delivery_voucher_code`) was added -- also a correction to the ticket's
+literal text (plan §0.1): the acceptance criterion ("a 10%-off item voucher and a typed
+free-delivery code both apply to the same order") is unreachable without it, since the storefront
+checkout payload previously carried exactly one voucher-code field.
+
+`free_delivery`'s benefit math is NOT a new arm in `voucherBenefitPolicy.js` (deliberately -- that
+module's own header documents exactly three benefit classes plus the items/delivery target axis,
+unchanged by this phase). It is translated to the module's existing `amount_off` math at the single
+call site in `voucherRedemptionUseCases.js`'s `resolveEligibleBenefit` -- `NULL` (waive the whole
+fee) maps to a large sentinel so the module's own `Math.min(amount, benefitBaseCentavos)` clamp does
+the "whole fee" job with no new code path. Discovered live, not anticipated by the plan's own file
+inventory (plan §11 omitted this translation as a distinct piece of work) -- see "Deviations from
+the plan" below.
+
+ADR 0066 Decision 8 (`[default]`) amended (2026-09-02, appended at the end of the ADR's own
+`## Amendments` section, in the file's real forward-chronological order -- see "Deviations from the
+plan" below): the single governed-discount slot is scoped to the item axis only; a delivery-fee
+waiver never occupies `pos_transaction_discounts` and never blocks or is blocked by an item-axis
+discount. Enforced structurally, not by convention, via four independent mechanisms (plan §3): a
+separate write path (`header` vs. `discount` arguments to `createOnlineTransactionWithLines`), a
+field-disjoint resolved shape (`DEFAULT_DELIVERY_WAIVER_APPLICATION`, deliberately carrying none of
+`buildVoucherDiscountRecord`'s five destructured keys), Phase 239's own mutual-exclusion on
+`lineAllocations` for a `benefitTarget: 'delivery'` resolution, and a `VOUCHER_REDEMPTION_UNRECORDED`
+defensive guard.
+
+Two new fail-closed axis-mismatch guards (`VOUCHER_BENEFIT_TARGET_MISMATCH`, new reason code): a
+delivery-targeted voucher submitted via `voucher_code`, and an item-targeted voucher submitted via
+`delivery_voucher_code`. The first direction required a fix beyond the plan's own text (see
+"Deviations from the plan").
+
+Out of scope, per the plan and stated in the PR body for `pm` to action: (a) waiver-reversal-on-
+cancellation (plan §10 -- the reversal primitive exists and is voucher-kind-agnostic, but nothing
+calls it for ANY voucher kind today; a code-entered delivery voucher's need is identical to a
+code-entered item voucher's pre-existing gap, so this is a separate, cross-voucher-kind ticket, not
+bundled here); (b) storefront/POS UI surfaces (plan §8 -- ~15 files across 3 mode families, plus a
+second code-entry input box; #240 makes the waiver available on every API response a UI would read
+from and builds no UI, mirroring #1382's own precedent for Phase 237's breakdown columns).
+
+### Status
+
+`in_progress`. All code, tests, and docs are implemented and self-verified (below), including the
+migration (`20260904000001-add-delivery-voucher-benefit.cjs`) -- held uncommitted pending explicit
+confirmation per `.agents/skills/implement/SKILL.md`'s checkpoint policy (an `ENUM MODIFY` on a
+tenant-fanned-out table is the checkpoint-policy row-1 trigger, in its strictly harder
+ordinal-shifting sub-case), then confirmed and committed after the coordinating session reviewed
+its exact content. PR open against `develop` (PR #1389); not yet reviewed or merged.
+
+### Dependencies
+
+Phase 237 (#1329) -- `resolveStoreDeliveryFee`/`resolveCheckoutContext`'s delivery-fee breakdown,
+`pos_transactions.delivery_fee_waiver`, the pinned-breakdown replay path this phase's waiver
+resolution must respect (plan §5.5). Phase 239 (epic #1321 numbering) --
+`voucherBenefitPolicy.js`'s `benefitTarget`/`deliveryFeeCentavos` axis, built anticipating this
+exact call-site change. ADR 0066 Decision 8 (2026-08-19 amendment) -- the single-slot rule this
+phase narrows in scope, not weakens.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `.js`/`.cjs` file -- OK.
+- [x] `npm run lint:docs` (chains `check:adr`) -- OK, 29 governed docs / 85 ADRs validated.
+- [x] Full targeted regression + new-test run, `apps/dgfy-api` (`node --experimental-vm-modules
+  .../jest.js --runInBand`, 13 suites): 297/297 passing --
+  `voucherRedemptionUseCases.usecases.test.js` (32, extended with 6 free_delivery-translation cases),
+  `voucherValidator.test.js` (unchanged, 100% pass), `voucherUseCases.usecases.test.js` (unchanged,
+  100% pass), `addDeliveryVoucherBenefit.migration.test.js` (new, 13, incl. the sync-tenant-schemas
+  DDL-drift guard and the CREATE TABLE enum-widening guard), `storeCheckoutDownpaymentResolution`,
+  `storeCheckoutDeliveryFeeThreeEntryPointConsistency`, `deliveryFeeModeConfig.checkoutFallback`,
+  `storeCheckoutVoucherPromoStacking`, `storeCheckoutDeliveryFeePin`,
+  `storeCheckoutCalculatedDeliveryFee`, `storeCheckoutAffiliatePricing`,
+  `posVoucherDiscountCalculator` (all byte-identity regressions, unmodified, 100% pass),
+  `storeCheckoutDeliveryWaiverDualAxis.unit.test.js` (new, 12 -- the headline acceptance case plus
+  11 supporting cases from plan §9).
+- [x] `npm run check:compliance` -- confirmed to fail first (listing the four sensitive files with
+  no declaration), then pass once `docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md`
+  was added.
+- [x] `npm run check:architecture` -- OK, 52 modules / 537 files; controller boundary check OK, 92
+  controller files, no unauthorized model imports.
+- [x] `npm run check:tenant-schema-coverage --staged` (pre-commit, fired on the migration commit) --
+  `PASS`, 1 migration file checked.
+
+### Deviations from the plan -- surfaced explicitly, not silently absorbed
+
+1. **`voucherBenefitPolicy.js` call-site translation was a real, necessary addition the plan's own
+   file inventory (§11) omitted.** The plan is explicit that the module gets no new benefit-class
+   arm, but its file list never states where `free_delivery` maps onto the module's existing
+   `amount_off` math -- without this, `calculateVoucherBenefit` throws `UNKNOWN_BENEFIT_CLASS` for
+   every `free_delivery` voucher and the feature cannot function at all. Implemented at the single
+   call site the plan's own §5.2 already flags for editing (`voucherRedemptionUseCases.js`), so the
+   file list is unchanged; the additional logic within that file is the actual gap closed.
+2. **`VOUCHER_BENEFIT_TARGET_MISMATCH` needed a second enforcement point the plan's §5.4 text did
+   not fully specify.** The plan's own "symmetric guard" (checked in `storeUseCases.js` after a
+   voucher resolves) is unreachable for a delivery-targeted voucher entered via `voucher_code`,
+   because `calculateVoucherBenefit` throws `INVALID_DELIVERY_FEE_CENTAVOS` (caught and remapped to
+   the generic `VOUCHER_BENEFIT_CONFIG_INVALID`) before ever returning to that guard. Fixed at the
+   domain-adjacent catch site in `voucherRedemptionUseCases.js`: `INVALID_DELIVERY_FEE_CENTAVOS` is
+   remapped to `VOUCHER_BENEFIT_TARGET_MISMATCH` specifically, since that `VoucherBenefitError` code
+   can only ever fire for exactly this axis-mismatch condition (a `benefit_target: 'delivery'`
+   voucher resolved through a call site supplying no fee base -- today, exclusively the item-voucher
+   path). The `storeUseCases.js`-level guards are kept as defensive belt-and-braces, not removed.
+3. **ADR 0066's `## Amendments` section is forward-chronological (oldest first), not
+   reverse-chronological-at-top as the plan's §6 assumed.** Confirmed by reading the file's actual
+   dated headers (2026-08-18, 2026-08-18, 2026-08-19, 2026-08-19, 2026-08-20, 2026-08-25, in that
+   order). The 2026-09-02 amendment is appended at the END of the section (after the 2026-08-25
+   entry, before the file's own `## Decision (continued)` block) to match the file's real
+   established convention, rather than at the top per the plan's incorrect assumption about it.
+   Content of the amendment itself is otherwise the plan's exact given text.
+4. **`buildBenefitConfigSnapshot` (`voucherRedemptionUseCases.js`) was extended with
+   `benefit_target`/`delivery_amount_off_centavos`, contrary to the plan's §4 claim that "no code
+   change needed, it snapshots the whole benefit config today."** That claim doesn't hold on
+   inspection -- the function is a hand-picked field list (`benefit_class`, `percent_off_bps`,
+   `amount_off_centavos`, `fixed_unit_price_centavos`, `max_discount_centavos`), not a full snapshot,
+   and it omitted these two fields entirely. Added them for parity with every sibling class's own
+   amount field already being captured, and because plan §10 itself says the future
+   reversal-on-cancellation ticket needs exactly this kind of provenance.
+5. **`FUNDING_AND_DISCOUNT_STACKING.md`'s "One voucher per order" claim (outside plan §7's exact
+   edit list) was also corrected**, since this phase's own diff falsifies it (storefront now carries
+   two code-entry fields, one per axis) -- left uncorrected would have shipped a doc contradicting
+   the very diff that merged alongside it.
+
+None of these are judgment-call reversals of anything the plan actually decided -- each is either a
+gap the plan's own text didn't cover, or a factual correction against the plan's own stated
+assumption about existing file contents, surfaced here rather than silently absorbed into the diff.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired: migration checkpoint (row 1), resolved.** `20260904000001-add-delivery-voucher-benefit.cjs`
+is a new file under `apps/dgfy-migration-runner/migrations/` performing an `ENUM MODIFY` on the
+tenant-fanned-out `vouchers` table -- ordinal-shifting and NOT cleanly reversible once any delivery
+voucher is authored (`down()` throws rather than truncating such rows, matching
+`20260830000003-add-cheque-payment-method.cjs`'s own precedent). Held uncommitted pending
+confirmation rather than proceeding past this row on the standing "skip routine checkpoints"
+preference; its exact content was reviewed and explicitly confirmed by the coordinating session,
+then committed as its own final commit.
+
+**Fired: compliance declaration (row 2, informational).** `major` / `payments,pos,terminal`, per
+plan §12's mechanical floor (`COMPLIANCE_SENSITIVE_RULES[1]` on `modules/vouchers/`,
+`COMPLIANCE_SENSITIVE_RULES[2]` on `modules/store/`). `check:compliance` confirmed to fail first,
+then pass once the declaration was added.
+
+**Not fired:** no deploy dispatch, no SSH, no force-push/branch deletion, no board-transition
+scope beyond what this skill already owns (board Status set at branch time and PR-open time, per
+the skill's own "Board transitions" section).
+
+### Links
+
+- Tracking issue: #1331. Epic: #1321. PR: #1389. Refs ADR 0066's 2026-09-02 amendment, ADR 0078,
+  ADR 0012's 2026-09-02 amendment (the totals term this waiver reduces).
+- New: `apps/dgfy-migration-runner/migrations/20260904000001-add-delivery-voucher-benefit.cjs`,
+  `apps/dgfy-api/tests/addDeliveryVoucherBenefit.migration.test.js`,
+  `apps/dgfy-api/tests/storeCheckoutDeliveryWaiverDualAxis.unit.test.js`,
+  `docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md`.
+- Modified: `apps/dgfy-api/src/models/Voucher.js`, `PosTransaction.js`,
+  `src/validators/voucherValidator.js`, `src/validators/storeValidator.js`,
+  `src/modules/vouchers/usecases/voucherUseCases.js`,
+  `src/modules/vouchers/usecases/voucherRedemptionUseCases.js`,
+  `src/modules/vouchers/domain/voucherErrors.js`,
+  `src/modules/store/usecases/storeUseCases.js`, `scripts/sync-tenant-schemas.js`,
+  `src/modules/deliveryPricing/README.md`,
+  `apps/dgfy-api/tests/voucherRedemptionUseCases.usecases.test.js`,
+  `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md`,
+  `docs/features/FUNDING_AND_DISCOUNT_STACKING.md`.
+
+### Next eligible phase
+
+242 (#1332, auto-applied delivery campaigns -- also where Wave 0 decision #5's cancellation-reversal
+work lands, per plan §10; renumbered from this entry's own pre-collision "241" reference per the
+Numbering note above).
+
+## Phase 242 - Discovery from-price + close #478 (#1333, epic #1321)
+
+### Initiative and release
+
+Epic #1321 (Customer delivery pricing). The epic's own ticket calls this "Phase 243"; per
+Continuous Phase Numbering (`AGENTS.md`), the repo-wide ledger sequence is decoupled from the
+epic's internal labels, so the ledger number used here is the next actually-free integer, not the
+epic's own count.
+
+**Numbering note, confirmed live rather than assumed** (same pattern as Phase 241's own note,
+above): Phase 241's entry names **242** as its own "next eligible phase," reserved for #1332
+(auto-applied delivery campaigns). #1332 is unmerged as of this PR -- confirmed via
+`gh issue view 1332 --json state` (`OPEN`) immediately before this commit -- so no `## Phase 242`
+heading exists yet anywhere in this file. Per Continuous Phase Numbering, phase numbers are never
+reserved in advance and historical entries are never renumbered; this PR claims 242 as the number
+actually free at this PR's own commit time. If #1332 merges into `develop` first with its own
+`## Phase 242` entry, this entry (or #1332's, whichever merges second) renumbers to the next free
+integer at that merge -- the same collision-resolution precedent Phase 241's own note already
+established for the 240/241 race with PR #1386.
+
+### Objective and scope
+
+Adds a `delivery_fee_mode` column to the landlord-only `storefront_discovery_index` table and
+derives a `store_delivery_fee` value that is honestly a FROM-price (the fixed fee in `fixed` mode,
+the calc `min_fee` in `calculated` mode, `0` in `free` mode) rather than the flat rate the column
+held before this phase. Closes issue #478 (delivery-radius enforcement) on the enforcement question,
+resolved by Phase 237/#1329 -- see the closure comment posted to #478 for the full verified
+mechanism and the explicit caveat about #478's own 2026-08-19 stakeholder note. **Does not close
+#625** -- #625's closure depends on #1332 (auto-apply), which is unmerged; #625 is left completely
+untouched by this PR, per the ticket's own explicit hold (plan §8).
+
+A new pure module, `modules/deliveryPricing/domain/deliveryFromPrice.js`
+(`resolveAdvertisedDeliveryFromPrice`), mirrors every branch of `resolveStoreDeliveryFee`
+(`storeUseCases.js:586-694`) including its fail-open-to-fixed behavior for a `calculated`-mode store
+with a malformed/absent calc blob -- that store still advertises `mode: 'calculated'` (the
+configured mode), with `fromPrice` falling back to the flat fee rather than a floor the store will
+not actually charge. Deliberately duplicates `parseFixedDeliveryFee`'s ~7-line guard rather than
+exporting it from `modules/store/usecases/storeUseCases.js`, to keep this diff out of
+`COMPLIANCE_SENSITIVE_RULES[2]`'s `major`/`payments` floor for no functional benefit.
+
+Two silent-wrong-but-green traps guarded against explicitly (the reason this phase's plan flagged
+them as blocking, and the reason `deliveryFeeModeDiscoveryIndexPersistence.contract.test.js` exists
+as a source-contract guard, #713-class):
+
+1. `STOREFRONT_SETTING_KEYS` (`storefrontDiscoveryIndexService.js`) did not include
+   `store_delivery_fee_mode`/`store_delivery_fee_calc` -- without both, the SystemSetting rows are
+   never fetched and every store silently resolves `mode: 'fixed'` forever.
+2. `storefrontDiscoveryIndexService.js`'s `settings.<key>` is the raw `setting_value` string
+   (`toSettingsMap`), not `storeUseCases.js`'s `{ ...row, value }` wrapper --
+   `store_delivery_fee_calc` is explicitly `parseJsonObject(...)`-ed before reaching
+   `resolveDeliveryFeeConfig`, or every calculated-mode store would silently advertise its fixed fee
+   instead of its `min_fee`.
+
+Read paths updated to carry the new field alongside the existing scalar: `geoSearchRepository.js`'s
+raw-SQL SELECT and row mapper, and `storefrontDiscoveryRepository.js`'s response mapper --
+deliberately NOT added to that file's `LEGACY_SCHEMA_SAFE_ATTRIBUTES` (the missing-column fallback
+allowlist; adding a brand-new column there would break the exact legacy-schema case it exists to
+survive). An external listing (`entity_type: 'external_listing'`) has no tenant settings to resolve
+a mode from and is hardcoded to `delivery_fee_mode: 'fixed'`.
+
+**No discovery-card renderer consumes this field anywhere in the repo as of this phase** (`grep -rn
+"store_delivery_fee"` across every frontend app returns zero hits) -- this phase's deliverable is
+the API contract only, asserted at that level by the tests below. The recommended display contract
+(a `fixed`-mode fee renders without "from," every other mode renders "From ₱X") is documented in
+the PR body for whoever builds the card, not implemented here.
+
+Out of scope, named in the PR body for `pm` to action: (a) the discovery index is not refreshed on
+a `store_delivery_fee_mode`/`store_delivery_fee_calc` settings write -- nothing in
+`modules/settings/` calls `syncStorefrontDiscoveryIndexForTenant`, so a mode change takes up to the
+existing 15-minute reconciliation sweep to appear (pre-existing behavior for every field on this
+table, not introduced by this phase); (b) the discovery-card renderer itself; (c) an adjacent latent
+bug, unrelated to this ticket and not fixed here -- `storefrontDiscoveryIndexService.js`'s voucher-
+eligibility timezone read (`settings.storefront_hours?.value?.timezone`) is always `undefined`
+against this file's raw-string `settings` map, so it always falls back to
+`DEFAULT_VOUCHER_TIMEZONE`.
+
+### Status
+
+`in_progress`. All code, tests, and docs implemented and self-verified (below). PR open against
+`develop`, `Refs #1333` (not `Closes` -- #625's hold keeps this issue open past this PR); not yet
+reviewed or merged.
+
+### Dependencies
+
+Phase 233 (#1324) -- `resolveDeliveryFeeConfig`/`DELIVERY_FEE_MODES`, the config-normalization
+module this phase's `resolveAdvertisedDeliveryFromPrice` wraps. Phase 235 (#1325) --
+`computeCalculatedDeliveryFeeCentavos`, the calculated-mode formula this phase's parity test
+verifies the floor property against. Phase 237/#1329, ADR 0078 -- the checkout-side
+`resolveStoreDeliveryFee` branching this phase's advertised value must mirror, and the #478 closure
+mechanism. #1332 (unmerged) -- the dependency #625's closure is held on; not a code dependency of
+this phase's own diff.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `apps/dgfy-api` `.js` file and the new migration `.cjs`
+  file -- OK.
+- [x] Full targeted test run, `apps/dgfy-api` (`node --experimental-vm-modules .../jest.js
+  --runInBand`, 5 suites): 67/67 passing -- `deliveryFromPrice.unit.test.js` (14, the mode matrix
+  incl. the raw-JSON-string trap as a named case), `deliveryFromPrice.parity.unit.test.js` (7, the
+  floor-is-real and floor-is-reachable properties against the actual checkout formula),
+  `deliveryFeeModeDiscoveryIndexPersistence.contract.test.js` (6, the #713-class source-contract
+  guard covering both traps above plus the `LEGACY_SCHEMA_SAFE_ATTRIBUTES` backwards-easy mistake),
+  `addDeliveryFeeModeDiscoveryIndex.migration.test.js` (6, idempotence/down/no-tenant-fan-out),
+  `storefrontDiscoveryRepository.test.js` (extended, existing suite unmodified elsewhere + 4 new
+  mode-pair cases, all passing).
+- [x] `npm run check:architecture` -- OK, 52 modules / 538 code files; controller boundary check OK,
+  92 controller files, no unauthorized model imports.
+- [x] `npm run check:compliance` -- confirmed to report "No compliance-sensitive changes detected"
+  on this diff's full file set (none of `apps/dgfy-api/src/services/`,
+  `modules/geoSearch/repositories/`, `modules/storefrontDiscovery/repositories/`,
+  `modules/deliveryPricing/`, or the migration are in `COMPLIANCE_SENSITIVE_RULES`) -- matching the
+  plan's §9.1 prediction exactly. A `minor` declaration is still written (§9.2's reasoning: this
+  diff changes the meaning of a customer-visible advertised price, even though the mechanical floor
+  doesn't require one).
+- [x] `npm run check:tenant-schema-coverage -- --staged` (pre-commit, fired on the migration
+  commit) -- `PASS`, 1 migration file checked (landlord-only, no tenant-schema-registry entry
+  needed or added).
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired: migration checkpoint (row 1), not held.** New file under
+`apps/dgfy-migration-runner/migrations/` (`20260905000001-add-delivery-fee-mode-to-discovery-index.cjs`).
+Per the standing "skip routine migration/compliance checkpoints by default" preference (Pat has
+confirmed this twice), and because this migration is about the lowest-risk shape this repo has --
+landlord-only, single additive `NOT NULL DEFAULT 'fixed'` column, idempotence-guarded, fully
+reversible -- proceeded straight through to commit/PR without holding for confirmation. Called out
+explicitly here and in the PR body's Testing Evidence, per the plan's own §10 instruction.
+
+**Not fired:** `check:compliance` did not report a missing required declaration (confirmed, not
+merely predicted -- see Acceptance evidence above). No deploy dispatch, no SSH, no force-push/branch
+deletion. PR base is `develop`. Board: #1333 set to `In progress` at branch time, `For Review` at
+PR-open time.
+
+### Links
+
+- Tracking issue: #1333. Epic: #1321. Closes (via a direct `gh issue close`, not this PR's own
+  linkage) #478. Explicitly does NOT close #625 -- see #1333 for the #1332-dependent hold. Refs ADR
+  0078 (the #478 closure mechanism), Phase 237/#1329, Phase 233/#1324.
+- New: `apps/dgfy-migration-runner/migrations/20260905000001-add-delivery-fee-mode-to-discovery-index.cjs`,
+  `apps/dgfy-api/src/modules/deliveryPricing/domain/deliveryFromPrice.js`,
+  `apps/dgfy-api/tests/deliveryFromPrice.unit.test.js`,
+  `apps/dgfy-api/tests/deliveryFromPrice.parity.unit.test.js`,
+  `apps/dgfy-api/tests/deliveryFeeModeDiscoveryIndexPersistence.contract.test.js`,
+  `apps/dgfy-api/tests/addDeliveryFeeModeDiscoveryIndex.migration.test.js`,
+  `docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md`.
+- Modified: `apps/dgfy-api/src/models/Landlord/StorefrontDiscoveryIndex.js`,
+  `apps/dgfy-api/src/modules/deliveryPricing/index.js`,
+  `apps/dgfy-api/src/services/storefrontDiscoveryIndexService.js`,
+  `apps/dgfy-api/src/modules/geoSearch/repositories/geoSearchRepository.js`,
+  `apps/dgfy-api/src/modules/storefrontDiscovery/repositories/storefrontDiscoveryRepository.js`,
+  `apps/dgfy-api/tests/storefrontDiscoveryRepository.test.js`.
+
+### Next eligible phase
+
+243. #625's closure and any product/category-conditional delivery-fee follow-up remain gated on
+#1332 (still tracked as this ledger's own "242," pending its merge).
+## Phase 243 - Storefront order cancellation emits a voucher-redemption reversal, all voucher kinds (#1390, epic #1321)
+
+### Initiative and release
+
+Epic #1321 (Customer delivery pricing). Named by Phase 241's own "Next eligible phase" note above as
+where "Wave 0 decision #5's cancellation-reversal work lands" -- filed and built as its own ticket
+(#1390) rather than folded into #1332, because it is a blocking prerequisite for #1332 (auto-applied
+free-delivery campaigns): a campaign whose budget never releases on cancellation cannot be trusted to
+auto-apply. **Renumbered 242 -> 243 at merge time, a real collision this time, not the
+near-miss Phase 242's own entry (#1333) anticipated.** This entry was originally appended as
+"Phase 242" against `develop` as it stood when #1395 branched. In the meantime PR #1392 (#1333,
+"Discovery from-price + close #478") merged to `develop` and claimed `## Phase 242` for itself
+first. Resolved by merging `origin/develop` into this branch (not rebasing), matching Phase 241's
+own 240/241 merge-not-rebase precedent for PR #1386 -- see that entry's own "Numbering note" and
+merge commit `01510ac29`. #1333's already-merged Phase 242 entry is left completely untouched (per
+Continuous Phase Numbering, `AGENTS.md`: historical entries are never renumbered); this entry alone
+renumbers to **243**, the actual next-free integer confirmed live post-merge via
+`grep -n '^## Phase ' docs/features/IMPLEMENTATION_PHASE_LEDGER.md | tail -5` against the merged
+state. Merge commit: `21c2b77e6`.
+
+### Objective and scope
+
+Closes a real, customer-facing correctness bug the ticket's own framing under-stated: the ticket
+assumed "wiring an existing primitive into an existing call site" was the whole job, but
+`voucher_redemptions.pos_transaction_id` (indexed since #455) was written by nothing anywhere in the
+codebase, so there was no way to locate which redemption row(s) belong to a cancelled order. Closing
+that link is a real, deliberate addition to the **checkout** path, not only the cancel path --
+flagged explicitly per the plan, not silently smuggled in.
+
+- **Checkout-side**: `voucherRepository.attachRedemptionsToTransaction` sets
+  `pos_transaction_id` on whichever redemption(s) (item axis, delivery axis, or both) the order just
+  recorded, in the same transaction, immediately after the two existing
+  `VOUCHER_REDEMPTION_UNRECORDED` guards in `storeUseCases.js`. Both redemption ids are already in
+  memory (including on an idempotent-replay branch), so this is a single indexed `UPDATE`, no lookup.
+- **Cancel-side**: `buildCancelStoreOrderUseCase` reads the redemption(s) back via a new
+  `voucherRepository.listRedemptionsByTransactionId` (`channel: 'storefront'`-scoped, ordered
+  ascending by id for deterministic lock ordering against a concurrent cancel sharing the same
+  voucher) and reverses each via the existing, unmodified `reverseVoucherRedemptionUseCase` --
+  IN-TRANSACTION, between the inventory release and the `fulfillment_status: 'cancelled'` flip,
+  before commit, per ADR 0066 Validation item 3's own already-accepted requirement. Both dependencies
+  are injected as optional builder args defaulting to `null` (mirrors the existing
+  `commerceOrderLifecycleUseCase` pattern), wired for real in `store/index.js`.
+- **Fail-CLOSED** -- the direct opposite of Phase 241's own fail-open precedent for this same
+  function's payment-lifecycle block, and stated as such rather than left as an unexplained
+  inconsistency: that block is cross-database/cross-provider (ADR 0052's carve-out), this reversal is
+  same-database/same-transaction, so a failure is atomically undoable. A reversal failure throws and
+  rolls the ENTIRE cancellation back (inventory release included) -- the customer sees a retryable
+  error, never a silently-unreturned campaign budget.
+- **Legacy orders** (`pos_transaction_id IS NULL`, placed before this ships): the delivery axis is
+  exactly reconstructable from the order header's `delivery_fee_waiver_voucher_id` via a fallback
+  exact-key lookup (never a `LIKE`/prefix scan -- a real collision hazard against client-supplied
+  idempotency keys, per the plan's own finding). The item axis has no equivalent and is a documented,
+  `logger.warn`-observable gap for any redemption the optional backfill migration (below) doesn't
+  already cover.
+- **Included, data-only backfill migration**
+  (`20260904000002-backfill-voucher-redemption-transaction-link.cjs`): no schema change, exact-key
+  `UPDATE ... JOIN` (never `LIKE`) backfilling `pos_transaction_id` on existing storefront
+  redemptions, tenant-fanned-out following `20260901000004`'s established pattern. This is a
+  migration -- per the standing "skip routine checkpoint confirmation, self-verify and proceed"
+  preference recorded for this repo (Pat reviews every PR himself), proceeded without a stop-and-ask,
+  stated plainly in this entry and the PR body's Testing Evidence rather than silently included.
+- Response gains one purely additive field, `voucher_reversal: { attempted, reversed, entries }`,
+  always this stable shape (never `null`).
+- Two doc-drift fixes in the same PR: `reverseVoucherRedemptionUseCase`'s own header comment and
+  `finalizePaidCommerceSession.js`'s comment both previously stated it had no live caller; both are
+  corrected to name the new caller and the narrower gap that survives (an abandoned/expired payment
+  session still has no release path -- a distinct trigger from a cancelled order).
+- ADR 0066 amended (2026-09-02, appended at the end of the `## Amendments` section, after the
+  2026-09-02 Phase 240 entry, per that section's real forward-chronological order): Consequences item
+  3's *cancelled-order* half closed; its *refunded-but-not-cancelled* half stays open. Validation item
+  3's storefront half now satisfied as written; its POS-void half stays open.
+- Out of scope, named rather than silently dropped: a refunded-but-not-cancelled storefront order (no
+  storefront refund flow exists to hook into); POS void reversal (`posUseCases.js` has no
+  `status: 'voided'` path); an admin/manual reversal HTTP surface; #1332 itself (auto-apply campaign
+  budgeting -- this phase is its prerequisite, not part of it).
+
+### Status
+
+`in_progress`. All code, tests, and docs implemented and self-verified (below). PR open against
+`develop` (PR #1395); not yet reviewed or merged.
+
+### Dependencies
+
+#455 (voucher entity/ledger, `pos_transaction_id` column origin), ADR 0066 Validation item 3 (the
+in-transaction/same-transaction requirement this phase satisfies) and Consequences item 3 (the gap
+this phase partially closes), Phase 240/241 (#1331, the delivery-axis waiver this phase's delivery-
+side reversal depends on existing at all). Blocking prerequisite for #1332 (auto-applied free-
+delivery campaigns) and #1333 (built in parallel per this ticket's own brief -- #1333 merged first
+and claimed Phase 242; this phase renumbered to 243 as a result, per the Numbering note above).
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `.js`/`.cjs` file -- OK.
+- [x] `npm run lint:docs` (chains `check:adr`) -- OK, 29 governed docs / 85 ADRs validated.
+- [x] Targeted regression + new-test run, `apps/dgfy-api` (`node --experimental-vm-modules
+  .../jest.js --runInBand`, 7 suites): 80/80 passing (re-run post-review, RF-1 fix included) --
+  `storeCancelVoucherReversal.unit.test.js` (new, 11 -- item-axis only, delivery-axis only with zero
+  benefit_quantity and no mirrored lines, BOTH axes independently, zero-query no-op with no voucher
+  at all, idempotent replay, 409-before-any-voucher-work on a re-cancel, FAIL-CLOSED rollback of the
+  entire cancellation on a reversal failure, lock ordering, legacy delivery-axis recovery, the
+  documented item-axis legacy gap with its `logger.warn` asserted, and a guest cancellation),
+  `backfillRedemptionTransactionLink.migration.test.js` (updated post-review to 7 -- one exact-key
+  `UPDATE` per active tenant DB plus landlord, no `LIKE`/prefix scan, table-existence skip,
+  tenants-table-absent no-op, `down()` always throwing forward-only before issuing any query (RF-1
+  fix, replacing the earlier "nulls exactly the same join's rows" behavior), a post-`up()` link
+  surviving an attempted `down()`),
+  `storeCheckoutDeliveryWaiverDualAxis.unit.test.js` (extended with `attachRedemptionsToTransaction`
+  on the existing fake voucher repository, 12/12 passing, regression-clean),
+  `voucherReversalUseCases.usecases.test.js`, `voucherRedemptionUseCases.usecases.test.js`,
+  `storeCancelDownpaymentLifecycle.unit.test.js`, `storeCheckoutVoucherPromoStacking.unit.test.js`
+  (all unmodified, 100% pass -- the reversal primitive itself and the adjacent payment-lifecycle
+  block are both untouched by this phase).
+- [x] `npm run check:compliance` -- confirmed to fail first (listing all 6 sensitive files with no
+  declaration), then pass once
+  `docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md` was added.
+- [x] `npm run check:architecture` -- OK, 52 modules / 537 files; controller boundary check OK, 92
+  controller files, no unauthorized model imports.
+- [x] `npm run check:tenant-schema-coverage` -- PASS, 1 migration file checked (data-only, no DDL --
+  nothing for the registry to carry).
+
+### Deviations from the plan -- surfaced explicitly, not silently absorbed
+
+1. **The item-axis legacy-gap warning is broader than the plan's own §4.3 code sample.** The plan's
+   shown helper code has no `logger.warn` call at all, even though its own §6 test-case list (case
+   10) requires one. Implemented by checking whether any surviving candidate row actually carries a
+   `benefit_target: 'items'` snapshot, rather than the narrower `candidates.length === 0 &&
+   !hasDeliveryAxis` condition a literal reading of the plan's code would produce -- the narrower
+   version misses the case where a legacy order has BOTH axes and only the delivery one recovers via
+   the fallback (the item axis would then be silently dropped with no warning, since `candidates`
+   would be non-empty). The broader check covers that combination too.
+2. **`voucherRepository` needed a new export from `vouchers/index.js`.** The plan's call-site code
+   (§3.1, §4.3) references `voucherRepository.attachRedemptionsToTransaction`/
+   `listRedemptionsByTransactionId` directly but does not say how `storeUseCases.js` obtains that
+   repository reference. Every existing cross-module import in this codebase's checkout path goes
+   through a module's own `index.js`, never its `repositories/` file directly -- so `voucherRepository`
+   itself is now re-exported from `vouchers/index.js` (used as a static import at the checkout call
+   site, matching how `redeemVoucherUseCase` is already used there; injected as an optional builder
+   dependency at the cancel call site instead, matching `commerceOrderLifecycleUseCase`'s own
+   pattern, since `storeCancelDownpaymentLifecycle.unit.test.js` and others build that use case with
+   no voucher wiring at all).
+
+Neither is a judgment-call reversal of anything the plan actually decided -- both are gaps the plan's
+own text didn't fully specify, surfaced here rather than silently absorbed into the diff.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired: migration checkpoint (row 1), proceeded without a stop-and-ask.**
+`20260904000002-backfill-voucher-redemption-transaction-link.cjs` is a new file under
+`apps/dgfy-migration-runner/migrations/`, but DATA-ONLY (no DDL, no `ENUM MODIFY`, no dropped/added
+column) and, since RF-1's fix, explicitly forward-only rather than reversible via its own `down()`
+(which would otherwise risk nulling live post-deploy attribution links it cannot distinguish from
+the backfilled ones) -- still lower blast radius than Phase 241's own migration, since no data is
+ever deleted by either direction and `up()` alone is the only state change.
+Per the standing "skip checkpoint confirmation by default, draft + self-verify, go straight to
+commit/PR" preference recorded for this repo (Pat reviews every PR himself), proceeded without
+pausing; stated plainly here and in the PR body's Testing Evidence rather than silently included.
+
+**Fired: compliance declaration (row 2, informational).** `major` / `payments,pos,terminal`, per the
+mechanical floor (`COMPLIANCE_SENSITIVE_RULES[1]` on `modules/vouchers/`,
+`COMPLIANCE_SENSITIVE_RULES[2]` on `modules/store/`, `COMPLIANCE_SENSITIVE_RULES[5]` on
+`modules/commercePayments/`, redundant with the `payments` floor already reached). `check:compliance`
+confirmed to fail first, then pass once the declaration was added.
+
+**Not fired:** no deploy dispatch, no SSH, no force-push/branch deletion, no board-transition scope
+beyond what this skill already owns.
+
+### Post-review fix (PR #1395 review RF-1, blocker)
+
+`pr-reviewer` found `down()`'s original "null out exactly the rows the identical join would have set"
+behavior was not actually safe: that join (idempotency-key pattern + `pos_transaction_id` equality)
+cannot tell a row this migration's `up()` backfilled apart from a row the checkout-side
+`attachRedemptionsToTransaction` write path legitimately set afterward through ordinary post-deploy
+checkout traffic -- both satisfy the same join, so a rollback after any real checkout had happened
+would have silently nulled live attribution links, contradicting the migration's own original
+header claim. Fixed by making `down()` forward-only: it now always throws, matching this repo's
+existing "loud failure over silent data corruption" posture for not-cleanly-reversible data
+migrations (e.g. `20260830000003-add-cheque-payment-method.cjs`'s `down()`). The migration's header
+comment, the compliance declaration's `rollback_note`, this entry's own Checkpoints reasoning and
+Acceptance evidence line, and the migration's test file were all updated to match -- no marker/
+tracking table was introduced, per the reviewer's own stated preference against that added
+complexity for a one-time backfill.
+
+### Links
+
+- Tracking issue: #1390. Epic: #1321. PR: #1395. Refs ADR 0066's 2026-09-02 (this phase's) amendment.
+- New: `apps/dgfy-migration-runner/migrations/20260904000002-backfill-voucher-redemption-transaction-link.cjs`,
+  `apps/dgfy-api/tests/storeCancelVoucherReversal.unit.test.js`,
+  `apps/dgfy-api/tests/backfillRedemptionTransactionLink.migration.test.js`,
+  `docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md`.
+- Modified: `apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js`,
+  `src/modules/vouchers/index.js`, `src/modules/vouchers/usecases/voucherReversalUseCases.js`
+  (comment-only), `src/modules/store/usecases/storeUseCases.js`, `src/modules/store/index.js`,
+  `src/modules/commercePayments/usecases/finalizePaidCommerceSession.js` (comment-only),
+  `apps/dgfy-api/tests/storeCheckoutDeliveryWaiverDualAxis.unit.test.js`,
+  `docs/architecture/adr/0066-voucher-sale-time-price-resolution.md`.
+
+### Next eligible phase
+
+244 (#1332 -- auto-applied free-delivery campaigns, now unblocked by this phase. #1333 already
+claimed 242, above, and is not "next" -- see the Numbering note).
+
+## Phase 244 - Auto-applied free-delivery campaigns (#1332, epic #1321)
+
+### Initiative and release
+
+Epic #1321 (Customer delivery pricing), decision 9, Wave 5. Builds on Phase 240/241 (#1331,
+code-entered `free_delivery` benefit class) and depends on Phase 243 (#1390, voucher-redemption
+reversal on cancellation) -- named a blocking prerequisite by the plan and confirmed merged to
+`develop` (PR #1395, merge commit `b7428fb1e`) before this phase started.
+
+**Numbering note.** The ticket title says "Phase 241"; that number was stale before this phase's own
+plan was even written (superseded by #1331's own 240->241 renumbering) and the plan's own §0 already
+corrected it to "Phase 242" using a since-superseded ledger snapshot. Re-verified live at branch time
+per `AGENTS.md` Continuous Phase Numbering (`grep -n '^## Phase' ... | tail -5` against a freshly-
+fetched `origin/develop`): 241 = #1331, **242 = #1333** ("Discovery from-price + close #478"), **243
+= #1390** (this phase's own prerequisite, renumbered from a first-claimed-but-collided 242 -- see
+that entry's own Numbering note). This phase is therefore **244**, the actual next-free integer,
+matching Phase 243's own "Next eligible phase" note.
+
+### Objective and scope
+
+A `vouchers.auto_apply` campaign selects and applies itself against the delivery fee with **no code
+typed**, on top of Phase 240/241's code-entered mechanism (unchanged, and always wins over auto-apply
+when a code is typed -- D3).
+
+- One new column (`auto_apply TINYINT(1) NOT NULL DEFAULT 0`) + one composite index
+  (`idx_vouchers_auto_apply (auto_apply, status, benefit_target)`), migration
+  `20260905000002-add-voucher-auto-apply.cjs`, tenant-fanned-out, kept in lockstep with
+  `sync-tenant-schemas.js` (column registry, index registry, AND the `vouchers` CREATE TABLE
+  fallback -- this migration has no ENUM widening at all, unlike Phase 240's own, so `down()` is a
+  plain guarded index-drop then column-drop with nothing that can throw on live data).
+- **The pure selector** (`apps/dgfy-api/src/modules/vouchers/domain/autoAppliedCampaignPolicy.js`,
+  new) is the entire decision surface: zero I/O, zero ambient clock (`context.now` is required and
+  explicit -- the function throws rather than defaulting to `Date.now()`), imports only pure
+  same-directory siblings (`voucherEligibilityPolicy.js`, `voucherBenefitPolicy.js`, and the newly
+  extracted `deliveryBenefitTranslation.js`). Comparator is a strict total order (waiver DESC,
+  `valid_from` ASC with `NULL` first, `voucher_id` ASC) -- proven input-order-independent by a
+  6-permutation shuffle test, not merely asserted.
+- **One call site** (`resolveCheckoutContext` in `storeUseCases.js`), which every entry point (cart
+  quote, direct checkout, QRPh payment-session creation, webhook finalize) already funnels through --
+  so quote/checkout divergence is structurally impossible, not just tested. The new branch is an
+  `else if` on the same `orderMethod === 'delivery'` condition and the same `deliveryWaiverApplication`
+  variable the code-entered branch already sets, which is also what makes D3 (a typed code always
+  wins) structural rather than a runtime check.
+- **The candidate query** (`voucherRepository.listAutoApplyDeliveryCampaigns`) is deliberately
+  SQL-minimal (`auto_apply`/`benefit_target`/stored `status` only, `ORDER BY voucher_id ASC LIMIT
+  200`); every semantic filter lives in the selector. Its own doc comment states a standing "no
+  caching, ever" prohibition -- a cache between the quote and checkout calls is the single most
+  likely way to reintroduce the exact divergence this phase exists to prevent.
+- **Deviation from the plan, surfaced explicitly** (see "Deviations" below): the candidate query
+  itself, not just the redemption, fails open on error. Required because every pre-existing
+  store-checkout unit test places a delivery order with no delivery voucher code -- which, before
+  this addition, now unconditionally attempted a real `dbStore` call with no database available in
+  that test environment, hard-failing checkout in ~20 previously-passing test files. Matches this
+  same function's existing `roadDistanceProvider` fail-open posture.
+- **D2, auto-apply fails open on a redemption failure**: no waiver, checkout proceeds, no
+  next-candidate retry. Consistent with ADR 0066 Decision 3's entered-vs-empty distinction; no ADR
+  amendment.
+- **D4, v1 auto-apply is delivery-axis only**: `applyBenefitConfig` (`voucherUseCases.js`) gains a
+  guard rejecting `auto_apply: true` combined with `benefit_target !== 'delivery'`. A second new
+  guard, `assertAutoApplyHasNoScope` (mirroring `assertFixedPriceHasScope`'s own sibling-function
+  shape, wired at the same three call sites: create, update, activate), rejects `auto_apply: true`
+  combined with any `voucher_scopes` row -- the selector never consults scopes, so this keeps that
+  v1 limitation unreachable rather than silently ignored.
+- **D5, the QRPh pin gap**: `commerce_payment_sessions.delivery_fee_breakdown` gains
+  `autoAppliedVoucherId`, so a webhook-finalize replay redeems the SAME campaign that priced the
+  order at payment-session creation rather than re-selecting a possibly-different one against an
+  already-captured amount. Backward-compatible: `isValidPinnedDeliveryBreakdown` treats a missing key
+  (every pin from before this deploy) as equivalent to `null`; `DELIVERY_FEE_CALC_VERSION` is
+  deliberately NOT bumped (the fee formula is unchanged).
+- **`delivery_voucher_feedback` response contract fixed** on both the cart-quote and checkout
+  responses -- sources `voucher_code` from `deliveryWaiverApplication.enteredDeliveryVoucherCode`
+  (populated on both the code-entered and auto-applied paths) instead of echoing
+  `payload.delivery_voucher_code`, which is empty on an auto-applied order. Additive `auto_applied`/
+  `label` fields for #1391 (storefront UI, not built here) to consume.
+- **No ADR amendment required** -- ADR 0066 Decision 8's 2026-09-02 amendment already permits exactly
+  one delivery-axis application; this phase changes HOW it is chosen, not the rule. The schema still
+  physically cannot hold two (one `delivery_fee_waiver_voucher_id` column), and the `else if`
+  structure above makes a second one unreachable in code too.
+- Extracted `deliveryBenefitTranslation.js` (the `free_delivery` -> `amount_off` translation,
+  including the `WAIVE_WHOLE_FEE_SENTINEL_CENTAVOS` sentinel) out of
+  `voucherRedemptionUseCases.js`, so the selector shares the exact same translation instead of a
+  second copy that could drift. Byte-identical behavior, asserted by that file's own unmodified
+  32-case regression suite staying green.
+- Out of scope, per the plan: the storefront/POS merchant-authoring UI checkbox for `auto_apply`
+  (the flag is fully operable via the admin API today without it -- handed to `pm` as a follow-up,
+  not filed in this pass); auto-applying item-axis vouchers (D4); voucher-to-voucher stacking within
+  one axis (#782, untouched).
+
+### Status
+
+`in_progress`. All code, tests, and docs implemented and self-verified (below). PR open against
+`develop`; not yet reviewed or merged.
+
+### Dependencies
+
+Phase 240/241 (#1331, the code-entered `free_delivery` mechanism and the `benefit_target` axis this
+phase's selector reuses unchanged), Phase 243 (#1390, voucher-redemption reversal on cancellation --
+the named blocking prerequisite, merged). ADR 0066 Decision 8's 2026-09-02 amendment (the two-
+independent-axes rule this phase operates within, unchanged). Unblocks: #1391 (storefront UI for
+both the code-entered and auto-applied delivery-waiver surfaces).
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `.js`/`.cjs` file -- OK.
+- [x] Targeted regression + new-test run, `apps/dgfy-api` (`node --experimental-vm-modules
+  .../jest.js --runInBand`): `autoAppliedCampaignPolicy.unit.test.js` (new, 28 -- the pure selector,
+  fixture-driven, zero mocks), `addVoucherAutoApply.migration.test.js` (new, 13 -- up/down
+  idempotence, column-before-index/index-before-column ordering, sync-tenant-schemas.js DDL-drift
+  guards for both the column and the index, CREATE TABLE fallback assertion),
+  `storeCheckoutAutoAppliedDelivery.unit.test.js` (new, 11 -- the ticket's own determinism acceptance
+  case, count/budget exhaustion disappearing identically from both paths, precedence against a typed
+  delivery code / typed item code / invalid code / pickup order, idempotent replay, fail-open on a
+  simulated exhausted-between-read-and-reserve race), `voucherRedemptionUseCases.usecases.test.js`
+  (unmodified, 32, regression-clean against the extracted translation), `voucherUseCases.usecases
+  .test.js`/`voucherValidator.test.js` (unmodified, regression-clean against the new field and the
+  two new authoring guards), `storeCheckoutDeliveryWaiverDualAxis.unit.test.js` (modified -- added
+  `listAutoApplyDeliveryCampaigns` to its fake voucher repository, returning `[]` for this file's
+  fixture set, and updated one `delivery_voucher_feedback` assertion for the new contract fields --
+  both changes required by, not incidental to, this phase; 15 passing),
+  `storeCheckoutDeliveryFeePin.unit.test.js` (unmodified, 27, confirms the pin validator's new field
+  is backward-compatible with every existing fixture). Full targeted sweep,
+  `--testPathPattern="storeCheckout|store.*Delivery|voucher|Voucher|migration"`: **627 passing across
+  54 suites, 0 failing.**
+- [x] `npm run check:compliance` -- confirmed to fail first (listing all 7 sensitive files with no
+  declaration), then pass once
+  `docs/compliance/impact-declarations/2026-09-02-auto-applied-delivery-campaigns.md` was added.
+- [x] `npm run check:architecture` -- OK.
+- [x] `npm run lint:docs` -- OK, no ADR amendment needed for this phase (confirmed and stated
+  explicitly in the compliance declaration, matching plan §7's own analysis).
+- [x] `npm run check:tenant-schema-coverage` -- PASS.
+
+### Deviations from the plan -- surfaced explicitly, not silently absorbed
+
+1. **The candidate query fails open on its own error, not only the redemption.** The plan specified
+   fail-open for a redemption failure (D2) but not for the candidate SQL read itself. Self-verification
+   against the existing test suite surfaced that every pre-existing store-checkout unit test places a
+   delivery order with no delivery voucher code -- which the new `else if` branch now always reaches,
+   attempting a real `dbStore.get('Voucher').findAll(...)` call with no database available in that test
+   environment. Without a fail-open guard around this specific call, ~20 previously-passing test files
+   (none related to vouchers) would have started failing checkout outright. Fixed by wrapping the
+   `resolveAutoAppliedDeliveryCampaignUseCase` call in a try/catch, logging at `warn` and treating the
+   failure as "no campaign considered" -- matching this same function's existing `roadDistanceProvider`
+   fail-open posture for an unrelated soft dependency. Documented as a deliberate extension in the
+   compliance declaration's own "Compliance Preconditions" section, not silently added.
+2. **`storeCheckoutDeliveryWaiverDualAxis.unit.test.js` needed two small updates**, for the reason
+   above (its hand-rolled fake voucher repository had no `listAutoApplyDeliveryCampaigns` method) and
+   for the `delivery_voucher_feedback` contract fix (its one assertion of that field's old shape).
+   Both are consequences of this phase's own design, not scope creep.
+3. **A dedicated QRPh-pin webhook-finalize test (plan §9.6) was not written.** The backward-
+   compatibility half is verified indirectly (`storeCheckoutDeliveryFeePin.unit.test.js`'s 27
+   existing cases all exercise a pin with no `autoAppliedVoucherId` key, staying green). A test
+   exercising a *present* `autoAppliedVoucherId` through the full `finalizePaidCommerceSession.js`
+   plumbing was not built in this pass -- named as a residual gap in the compliance declaration
+   rather than silently claimed as covered.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired: migration checkpoint (row 1), proceeded without a stop-and-ask.**
+`20260905000002-add-voucher-auto-apply.cjs` is a new file under
+`apps/dgfy-migration-runner/migrations/`. Lower blast radius than either Phase 240's or Phase 243's
+own migrations: one additive, defaulted column plus one index, no ENUM widening, no data backfill --
+`down()` cannot be blocked by live data. Per the standing "skip checkpoint confirmation by default,
+draft + self-verify, go straight to commit/PR" preference recorded for this repo (Pat reviews every
+PR himself), proceeded without pausing; stated plainly here and in the PR body's Testing Evidence
+rather than silently included.
+
+**Fired: compliance declaration (row 2, informational).** `major` / `payments,pos,terminal`, per the
+mechanical floor (`COMPLIANCE_SENSITIVE_RULES[1]` on `modules/vouchers/`, `COMPLIANCE_SENSITIVE_RULES[2]`
+on `modules/store/`). `check:compliance` confirmed to fail first, then pass once the declaration was
+added.
+
+**Not fired:** no deploy dispatch, no SSH, no force-push/branch deletion, no board-transition scope
+beyond what this skill already owns.
+
+### Links
+
+- Tracking issue: #1332. Epic: #1321. Depends on: #1390 (Phase 243, merged). Refs ADR 0066 (no
+  amendment needed this phase -- see "What this phase does and does not do" reasoning above,
+  restated in the compliance declaration).
+- New: `apps/dgfy-api/src/modules/vouchers/domain/autoAppliedCampaignPolicy.js`,
+  `apps/dgfy-api/src/modules/vouchers/domain/deliveryBenefitTranslation.js`,
+  `apps/dgfy-api/src/modules/vouchers/usecases/voucherAutoApplyUseCases.js`,
+  `apps/dgfy-migration-runner/migrations/20260905000002-add-voucher-auto-apply.cjs`,
+  `apps/dgfy-api/tests/autoAppliedCampaignPolicy.unit.test.js`,
+  `apps/dgfy-api/tests/addVoucherAutoApply.migration.test.js`,
+  `apps/dgfy-api/tests/storeCheckoutAutoAppliedDelivery.unit.test.js`,
+  `docs/compliance/impact-declarations/2026-09-02-auto-applied-delivery-campaigns.md`.
+- Modified: `apps/dgfy-api/src/models/Voucher.js`, `apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+  `apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js`,
+  `apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`,
+  `apps/dgfy-api/src/modules/vouchers/usecases/voucherUseCases.js`,
+  `apps/dgfy-api/src/modules/vouchers/index.js`, `apps/dgfy-api/src/validators/voucherValidator.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/tests/storeCheckoutDeliveryWaiverDualAxis.unit.test.js`.
+
+### Next eligible phase
+
+245 (none named yet).
+
+## Phase 245 - IMS/POS delivery-campaign authoring + reporting UI (#1334, epic #1321, Wave 6, final)
+
+### Initiative and release
+
+Epic #1321 (Customer delivery pricing), Wave 6, the final ticket. Builds a merchant-facing
+authoring/reporting UI over the `voucher_kind: 'delivery_campaign'` + `benefit_class:
+'free_delivery'` + `auto_apply` contract Phase 241/244 (#1331/#1332) already shipped and deployed.
+
+**Numbering note.** The ticket title says "Phase 242"; re-verified live at branch time per
+`AGENTS.md` Continuous Phase Numbering (`grep -n '^## Phase' ... | tail -5` against a freshly-
+fetched `origin/develop`, HEAD `162f550df3`, the #1397/#1332 merge): 241 = #1331, 242 = #1333, 243 =
+#1390, 244 = #1332 (this ledger's own immediately-preceding entry). This phase is therefore **245**,
+the actual next-free integer, matching Phase 244's own "Next eligible phase" note.
+
+**Premise correction, load-bearing.** The ticket's own framing ("IMS screen", implicitly
+lower-stakes/UI-only) is wrong on two counts, both corrected before implementation started (plan
+§1/§9, restated in the compliance declaration): there is no voucher code under `apps/dgfy-ims/` at
+all — the authoring UI is `packages/web-core/src/features/pos/components/
+VoucherManagementPanel.jsx` (#614, Phase 103), a shared component consumed by **both**
+`apps/dgfy-ims` (`/terminal`) **and** `apps/dgfy-pos` (`/`, `/terminal`, `/login`) via the shared
+`TerminalPage`; and the compliance classification is `major`/`pos,terminal` (mechanically floored
+by `COMPLIANCE_SENSITIVE_RULES`'s `/^packages\/web-core\/src\/features\/pos\//` rule), not
+"minor UI-only."
+
+### Objective and scope
+
+A kind-aware extension of the existing Vouchers authoring screen, so a non-engineer can create and
+monitor a delivery-fee campaign without any backend change:
+
+- **Zero backend changes** — verified field-by-field against the merged #1331/#1332 contract before
+  writing any frontend code (`voucher_kind`, `benefit_class`, `benefit_target`,
+  `delivery_amount_off_centavos`, `auto_apply`, the shared masks/caps, and the unconditional
+  `redemption_stats` on both `GET /vouchers/:id` and `GET /vouchers?include_stats=true`).
+- **Extended `VoucherManagementPanel.jsx` in place, kind-aware — no parallel component.** Extracted
+  the pure payload/validation/kind-defaulting layer into a new `voucherFormModel.js`
+  (`blankForm`, `voucherToForm`, `buildVoucherPayload`, `validateFormLocally`, the bitmask/money
+  helpers, plus two new pure helpers — `applyVoucherKindDefaults`, `suggestVoucherCode`), re-exporting
+  `blankForm`/`buildVoucherPayload` from the panel unchanged so #716's pre-existing regression test
+  keeps passing byte-identically against the same import path.
+- **`voucher_kind`/`benefit_class`/`benefit_target` are implicit**, never raw enum pickers — picking
+  "Delivery campaign" as the voucher type is the only control that sets all three. Every
+  server-rejectable combination (`fixed_price` targeting delivery, `auto_apply` on a non-delivery
+  target, `auto_apply` carrying scopes) is unrepresentable from this branch of the form, not merely
+  caught after a 422.
+- **Two forced mask bits, both real correctness fixes**: fulfillment locked to delivery-only
+  (a pickup order has no delivery fee — a guaranteed no-op under the shared masks' `pickup: true`
+  default), and the channel mask force-includes storefront (POS forced off) whenever `auto_apply` is
+  true — the auto-apply selector only ever fires from storefront checkout
+  (`storeUseCases.js`'s `resolveCheckoutContext`).
+- **`min_spend_centavos` explicitly labeled "item subtotal"**, with helper text stating the delivery
+  fee itself doesn't count toward it — `voucherEligibilityPolicy.js` compares this value against the
+  cart's item subtotal, not the order total; a generic label would misrepresent the ticket's own
+  headline case ("free delivery over ₱X").
+- **R6 (auto-apply + `is_publicly_listed`) decided narrowly for v1**: forced `false` for an
+  auto-applied campaign, left available (unchanged) for a code-entered delivery campaign. Flagged as
+  an open question in the PR body rather than silently decided either way.
+- **No new nav entry** — a `voucher_kind`/`auto_apply` type filter added to the existing Vouchers
+  list. `TerminalOperationsWorkspace.jsx` is untouched; the two tests that read it as raw text
+  (`ConfirmActionDialog.test.jsx`, `itemDiscountEligibility.contract.test.js`) were run and pass
+  unmodified as direct evidence.
+- **No new tenant-wide aggregate reporting endpoint** — per-campaign `redemption_stats` only
+  (already returned unconditionally by the existing GET endpoints), surfaced in the list and a new
+  read-only "Campaign performance" block on the edit form. A client-side sum across paginated pages
+  would be a materially wrong tenant-wide number silently presented as right — deliberately not
+  built.
+- **`voucher_kind` read-only in the UI once a voucher exists** — rendered as a badge on edit.
+  Converting an existing voucher's kind mid-lifecycle is out of scope for this phase, stated in the
+  PR body.
+- Out of scope, per the plan: a storefront-facing "free delivery" banner/discovery surface (a
+  separate, unbuilt feature R6 gestures at but does not build); auto-applying item-axis vouchers
+  (already out of scope per Phase 244's own D4); a tenant-wide aggregate reporting endpoint (above).
+
+### Status
+
+`in_progress`. All code and tests implemented and self-verified (below). PR open against `develop`
+using `Refs #1334`/`Refs #1321`, not `Closes` — the ticket's own acceptance criterion is a live,
+non-engineer deployed-verification walkthrough, which needs the issue to stay open for the `For QA`
+lane (`docs/process/ISSUE-TAXONOMY.md`'s linkage rule). Not yet reviewed or merged.
+
+### Dependencies
+
+Phase 241/244 (#1331/#1332, the full `delivery_campaign`/`free_delivery`/`auto_apply` backend
+contract this phase authors against, unchanged and already deployed). No phase depends on this one
+being merged first — it is a pure UI layer over an already-live contract.
+
+### Acceptance and validation evidence
+
+- [x] `npm run build:skupervisor` (real Vite build, `apps/dgfy-ims`) — green.
+- [x] `npm run build:pos` (real Vite build, `apps/dgfy-pos`) — green. Both required per plan §7,
+  since the changed component is shared via `packages/web-core`, not `apps/dgfy-ims`-only.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryCampaignPayload.test.js` (new, pure,
+  no jsdom) — 20 passing.
+- [x] `packages/web-core/src/features/pos/__tests__/deliveryCampaignPanel.behavior.test.jsx` (new,
+  jsdom + Testing Library) — 6 passing.
+- [x] `packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js` (#716
+  regression) — unmodified, 6 passing, confirming the `buildVoucherPayload`/`blankForm` extraction
+  into `voucherFormModel.js` produced no behavior change for the existing `fixed_price` XOR/
+  `is_publicly_listed` cases.
+- [x] `packages/web-core/Components/ui/__tests__/ConfirmActionDialog.test.jsx` and
+  `packages/web-core/src/features/pos/__tests__/itemDiscountEligibility.contract.test.js` (both
+  read `TerminalOperationsWorkspace.jsx` as raw text, R7) — unmodified, passing, direct evidence
+  that file was not touched.
+- [x] `npm run check:compliance` — PASS (4 sensitive files checked, one declaration file recognized).
+- [x] `npm run check:architecture` — OK (52 modules/541 files; 92 controller files, no unauthorized
+  model imports). Unaffected by this diff (frontend-only) — run for completeness.
+- [x] `npm run lint:docs` (docs-lint + `check:adr --strict`) — OK, 29 governed docs / 85 ADRs
+  validated. No ADR amendment needed for this phase (no ADR invariant is reopened by a client-only
+  diff over an already-declared backend contract).
+- [ ] Live, non-engineer deployed-verification walkthrough — outstanding by design (`Refs`, not
+  `Closes`); this is the ticket's own stated acceptance criterion and belongs to the Verifier/QA
+  role post-merge, not this PR.
+
+### Deviations from the plan -- surfaced explicitly, not silently absorbed
+
+None. The plan (§1–§11) was followed as written, including its own explicit build order
+(extract → feature → tests → docs) and its named risk mitigations R1–R8.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired: compliance declaration (row 2, informational).** `major` / `pos,terminal`, per the
+mechanical floor (`COMPLIANCE_SENSITIVE_RULES`'s `packages/web-core/src/features/pos/` rule). Per
+the standing "skip checkpoint confirmation by default, draft + self-verify, go straight to
+commit/PR" preference recorded for this repo (Pat reviews every PR himself), proceeded without
+pausing; stated plainly here and in the PR body's Testing Evidence rather than silently included.
+
+**Not fired:** no migration (zero backend changes), no deploy dispatch, no SSH, no force-push/
+branch deletion, no board-transition scope beyond what this skill already owns.
+
+### Links
+
+- Tracking issue: #1334. Epic: #1321. Depends on: #1331/#1332 (Phases 241/244, merged, unchanged).
+- New: `packages/web-core/src/features/pos/components/voucherFormModel.js`,
+  `packages/web-core/src/features/pos/__tests__/deliveryCampaignPayload.test.js`,
+  `packages/web-core/src/features/pos/__tests__/deliveryCampaignPanel.behavior.test.jsx`,
+  `docs/compliance/impact-declarations/2026-09-02-ims-delivery-campaign-authoring.md`.
+- Modified: `packages/web-core/src/features/pos/components/VoucherManagementPanel.jsx`.
+
+### Next eligible phase
+
+246 (none named yet).
+
+## Phase 246 - Compliance preflight sweep: not-applicable outcome + #1402 leftover (#1396, #1402)
+
+### Initiative and release
+
+Unblocks the continuous compliance preflight sweep (#1374) alongside the #1401 migration-syntax fix
+(a separate, parallel PR — not part of this phase's own scope; see that PR's own commit history, no
+ledger entry per the #1399/#1402 pure-bug-fix precedent). This phase covers only the #1396
+not-applicable-outcome design and the #1402 leftover (stale `github.run_id` in the handoff issue
+title).
+
+### Objective and scope
+
+- `scripts/build-preflight-request.js`: `classifyEndpointApplicability()` + exit 3 (not-applicable,
+  minor-only)/exit 1 (major|regulatory, fails closed) CLI contract.
+- `.github/workflows/compliance-preflight-sweep.yml`: the sweep step handles exit 3 without calling
+  curl; the "Publish handoff issue" step uses the rendered title (first line of the issue file)
+  instead of inlining `github.run_id`.
+- `scripts/reconcile-preflight-declarations.js`: `NOT-APPLICABLE-<run_id>-<slug>` ref for a
+  `not_applicable` result, `PREFLIGHT-*` unchanged otherwise.
+- `scripts/report-preflight-sweep-outcome.js`: `not_applicable` + `pass:true` is not a failure;
+  summary/issue/artifact gain a "Not applicable to live preflight" section.
+- Docs: `request-time-preflight-protocol.md`, ADR 0074 dated amendment,
+  `RELEASE_CANDIDATE_POLICY.md`, `pr-reviewer` SKILL.md, declarations README.
+- **Not in scope** (explicitly rejected): widening `ENDPOINT_ACCEPTED_SURFACES`/the endpoint's Joi
+  enum to accept `storefront` — a no-op that would read as a real check; no `complianceValidator.js`
+  change (compliance-sensitive, unnecessary under this design); partial reconciliation (still
+  all-or-nothing).
+
+### Status
+
+`planned` at PR-open time — flip to `completed` only once Wave C's acceptance criteria (below) are
+actually observed, not at merge.
+
+### Dependencies
+
+#1374 (Phase 239, the supervised-handoff/full-scan sweep redesign this phase extends) — merged and
+verified live before this phase started. #1401 (parallel, independent PR — the migration-syntax
+fix that unblocks the sweep's "Run landlord migrations" step; no ledger entry of its own per
+precedent).
+
+### Acceptance and validation evidence
+
+- [x] `npm run test:preflight-sweep` (all six files) green.
+- [x] `node --check` on every changed script; `bash -n` on every edited `run:` block in the workflow.
+- [x] `npm run check:compliance` — confirms no compliance-sensitive changes on this diff (no
+  declaration filed for this PR — see this plan's own compliance-sensitivity confirmation).
+- [x] `npm run check:architecture`, `npm run check:adr`, `npm run lint:docs`,
+  `npm run check:pr-quality-workflow` all pass.
+- [x] Local end-to-end: `node scripts/build-preflight-request.js
+  docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md; echo $?` → `3`.
+- [ ] **Deployed acceptance (Wave C, tracked separately, not required for this phase's own PR to
+  merge)**: first green sweep run after this PR (and #1401) merge reports `handoff_required` with
+  28 live passes + 1 `not_applicable`; the handoff PR is opened and merged; a re-triggered sweep
+  reports `nothing_to_sweep`; zero outstanding `NOT-EXECUTED-*` declarations remain.
+
+### Deviations from the plan
+
+(fill in at completion — none expected; state explicitly if any B1–B6 item above changed shape
+during implementation)
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion, no
+board-transition scope beyond what this skill already owns. Confirmed via
+`COMPLIANCE_SENSITIVE_RULES` read in full (see this plan's compliance-sensitivity confirmation) that
+the `check:compliance` missing-declaration checkpoint does not fire either — every touched path
+(`scripts/`, `.github/`, `docs/`) is outside the rule set.
+
+### Links
+
+- Tracking issues: #1396 (not-applicable outcome), #1402 (leftover run-id-in-title bug).
+- New: (list actual new files once written — expected: no new files, only edits to the six
+  scripts/workflow/test files and five docs files named above).
+- Modified: `scripts/build-preflight-request.js`, `scripts/build-preflight-request.test.js`,
+  `.github/workflows/compliance-preflight-sweep.yml`,
+  `scripts/reconcile-preflight-declarations.js`, `scripts/reconcile-preflight-declarations.test.js`,
+  `scripts/is-preflight-outstanding.test.js`, `scripts/report-preflight-sweep-outcome.js`,
+  `scripts/report-preflight-sweep-outcome.test.js`, `scripts/check-compliance-sweep-workflow.test.js`,
+  `docs/compliance/request-time-preflight-protocol.md`,
+  `docs/architecture/adr/0074-retire-staging-branch-from-default-promotion-path.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, `.agents/skills/pr-reviewer/SKILL.md`,
+  `docs/compliance/impact-declarations/README.md`.
+
+### Next eligible phase
+
+247 (none named yet).

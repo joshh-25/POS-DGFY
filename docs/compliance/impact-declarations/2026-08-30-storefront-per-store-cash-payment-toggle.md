@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/customerAccessPolicy.test.js (new cas
 rollback_note: Revert this commit. The new setting key defaults to enabled everywhere it is read (customerAccessPolicy.js's DEFAULT_CASH_PAYMENT_ENABLED, and the storefront's own isEnabledStorefrontCheckoutPaymentType fail-open `!== false` check), and no existing tenant has a seeded row for it (only newly-provisioned tenants get one, at provisioning time, and always `true` there too) -- reverting removes the enforcement and the toggle with no persisted-state cleanup needed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-30T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-626-STOREFRONT-PER-STORE-CASH-PAYMENT-TOGGLE
+preflight_run_at: 2026-09-02T03:56:16.394Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-30-STOREFRONT-PER-STORE-CASH-PAYMENT-TOGGLE
 ---
 
 # Per-Store Setting To Disable Cash/COD At Checkout

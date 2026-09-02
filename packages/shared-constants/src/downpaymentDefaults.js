@@ -28,6 +28,7 @@ const buildEntry = (overrides = {}) => Object.freeze({ ...BASE_DOWNPAYMENT_DEFAU
 export const DOWNPAYMENT_DEFAULTS_REGISTRY = Object.freeze({
     retail: buildEntry(),
     services: buildEntry(),
+    laundry: buildEntry(),
     manufacturing: buildEntry(),
     food_manufacturing: buildEntry(),
     fnb: buildEntry(),

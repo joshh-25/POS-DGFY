@@ -47,6 +47,22 @@ describe('orderFulfillmentUi queue action mapping', () => {
     })).toEqual([]);
   });
 
+  it('offers the print/reprint receipt action across the whole in-progress delivery window (#1319)', () => {
+    ['pending_dispatch', 'assigned', 'picked_up', 'delivered'].forEach((deliveryJobStatus) => {
+      expect(getIncomingOrderUtilityActions({
+        fulfillment_status: 'out_for_delivery',
+        order_method: 'delivery',
+        deliveryJob: { status: deliveryJobStatus }
+      })).toEqual(['print_receipt', 'open_order']);
+    });
+
+    // No deliveryJob loaded yet is not a reason to withhold the action either.
+    expect(getIncomingOrderUtilityActions({
+      fulfillment_status: 'out_for_delivery',
+      order_method: 'delivery'
+    })).toEqual(['print_receipt', 'open_order']);
+  });
+
   it('uses fulfillment-specific action wording', () => {
     expect(getFulfillmentActionLabel('out_for_delivery', { order_method: 'delivery' })).toBe('Out for Delivery');
     expect(getFulfillmentActionLabel('ready_for_pickup', { order_method: 'pickup' })).toBe('Ready for Pickup');
