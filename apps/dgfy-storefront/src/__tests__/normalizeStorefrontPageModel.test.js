@@ -52,7 +52,7 @@ describe('normalizeStorefrontPageModel', () => {
         storefront_gallery_images: [
           { url: '/uploads/storefront-assets/simple/about-1.jpg' },
           { url: '/uploads/storefront-assets/simple/about-2.jpg' }
-        }
+        ]
       },
       catalog: []
     });
