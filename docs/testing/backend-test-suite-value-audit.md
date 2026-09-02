@@ -419,7 +419,7 @@ Total active test files: **637** | db-manifest members: **30** | findings: **4**
 | tests/downpaymentSettingsValidator.unit.test.js | 83 | 6 | keep | R5-default | default keep (suffix: unit) |
 | tests/downpaymentWebhookFinalization.unit.test.js | 482 | 7 | keep | R5-default | default keep (suffix: unit) |
 | tests/dropRegistrationIndustryVisibility.migration.test.js | 193 | 7 | keep | R5-default | default keep (suffix: migration) |
-| tests/e2e-full-cycle.test.js | 568 | 2 | keep | R0-override | correctness fix: beforeAll now throws when the runtime audit is unhealthy instead of silently returning (false-green fix, #1441) |
+| tests/e2e-full-cycle.test.js | 573 | 2 | keep | R0-override | correctness fix: beforeAll now throws when the runtime audit is unhealthy instead of silently returning (false-green fix, #1441) |
 | tests/effectiveFnbModifierGroups.test.js | 54 | 3 | keep | R1-pin | hardcoded reference: scripts/run-fnb-readiness-gate.js |
 | tests/emailDeliveryLogRepository.unit.test.js | 189 | 14 | keep | R5-default | default keep (suffix: unit) |
 | tests/emailOtpService.test.js | 333 | 9 | keep | R5-default | default keep (suffix: (none)) |
