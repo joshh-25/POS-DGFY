@@ -17420,3 +17420,128 @@ PR's own touched files; PR-B/C/D tracking issues (Phases 251-253).
 
 251 (planned — PR-B, static-parse POS barrel-mock helper). 252 and 253 (PR-C, PR-D) follow in
 sequence, each cut from the previous PR's head.
+
+## Phase 251 - Derive POS mocks from the real module instead of hand-enumerated stub lists (#1441/#1450, PR-B)
+
+### Initiative and release
+
+Closes Phase 250's (#1441 PR-A) unfiled `pm` hand-off and #1450: the audit found exactly two files
+still hand-enumerating the real POS export surface inside a `jest.unstable_mockModule` factory
+(`posHandlers.transport.test.js`, 135 keys of `src/modules/pos/index.js`;
+`posVoid.route.transport.test.js`, ~120 keys of `src/controllers/posController.js`'s `export
+default {}`) — the exact rot that recurred twice within 24h during Phase 249 (#1432). PR-B of the
+four-PR sequence started in Phase 250; cut from PR-A's head (`pat/test-dgfy-api-audit-backend-test-
+suite-for-value`), branch `test/1441-esm-barrel-mock`, against `develop`.
+
+### Objective and scope
+
+- `apps/dgfy-api/tests/helpers/esmBarrelMock.js` — three static, source-text-only parsers (never
+  `import()`/`require()` the target module, since the real POS barrel transitively pulls in
+  `src/models/index.js`'s `new Sequelize(...)`, the Phase 249 OOM driver): `listNamedExports(source)`
+  (regex over `export { ... } [from '...']` blocks and inline `export const|let|var|function|
+  function*|class name`; throws on `export *` or `export default`), `listDefaultExportKeys(source)`
+  (brace-matched parse of a top-level `export default { ... }` object literal's own keys, ignoring
+  nested object/array values), and `mockBarrel(jest, specifier, { from, overrides, defaultStub })`
+  (resolves `specifier` against `from`, parses its real export names — named or default-object,
+  auto-detected — builds a `jest.unstable_mockModule` stub object from those names, and throws if
+  an override name isn't an actual export).
+- Self-test `apps/dgfy-api/tests/esmBarrelMock.helper.test.js` (12 cases): the parsed
+  `src/modules/pos/index.js` barrel includes the 3 Phase 249 additions
+  (`openTerminalShiftUseCase`, `switchTerminalShiftLocationUseCase`, `closeTerminalShiftUseCase`);
+  every name `posHandlers.js` destructures from `../index.js` is a subset of the parsed barrel
+  names (the exact contract that rotted); `export *` and `export default` inputs throw;
+  `listDefaultExportKeys` parses `posController.js`'s default object correctly and ignores nested
+  values; `mockBarrel` derives a working stub set, rejects an unknown override name, and picks
+  default-object parsing automatically for a module whose source has `export default`.
+- Rewrote `posHandlers.transport.test.js` and `posVoid.route.transport.test.js` onto the helper.
+  Every `mockXxx = jest.fn()` variable, every `it()` title, and every observed behavior is
+  byte-identical to before — only the mock-construction mechanism changed. `posHandlers.transport`
+  now builds one `posHandlersBarrelOverrides` object (the 87 mocks tests actually assert against)
+  and passes it to `mockBarrel`; every other real export auto-stubs to a bare `jest.fn()`
+  (identical behavior to the deleted inline `jest.fn()` entries it replaced). A stale key,
+  `posTerminalPairingMaxAgeMs: 300000`, that didn't correspond to any real export of
+  `src/modules/pos/index.js` at all was dropped — `mockBarrel`'s override validation would have
+  thrown on it, which is the exact "reverse rot" it exists to catch; it was unused by any test.
+  `posVoid.route.transport` replaces its hand-typed 109-name `posControllerNames` array with
+  `mockBarrel` against `posController.js`, keeping its per-name overrides
+  (`voidTransaction`/`cashRefundTransaction`/`externalRefundTransaction`/
+  `providerRefundTransaction`/`splitAllocationReversal`/`requirePairedTerminal`/
+  `requireActiveOperatorForMutation`) and a `defaultStub` factory that reproduces the original
+  generic 200/success stub for every other real export.
+- **Correctness fix surfaced by the tool itself, own commit**: building the mock from
+  `posController.js`'s real `export default { ... }` object exposed that the object was missing 2
+  keys its own local `import { ... } from '../modules/pos/controllers/posHandlers.js'` block and
+  its `export { ... } from ...` re-export block both already had — `reconcilePaymentAllocation`
+  and `claimOnlineOrderReceiptAutoPrint`. Both were absent from the plain import list *and* the
+  default-export object (adding a key to only the default object without the import produced a
+  `ReferenceError` at first attempt, caught by re-running the wider `tests/pos*.test.js` sweep).
+  Fixed by adding both names to the local import list and the default-export object, mirroring
+  their existing position in the re-export block. Nothing in `src/` imports this default export
+  today (`import * as posController from '../controllers/posController.js'` is the only consumer
+  pattern, which resolves via the named re-exports, not the default object), so this was latent
+  and harmless in production — but it is the "same rot mechanism one layer down" the Phase 250
+  audit already flagged for this exact file, now closed for both of its blind spots rather than
+  just the one PR-B set out to fix.
+
+### Status
+
+`completed`. Self-test: 12/12 pass. Both rewritten files pass with identical case titles and
+counts (`posHandlers.transport.test.js`: 27/27; `posVoid.route.transport.test.js`: 9/9), confirmed
+against a byte-diff of every `it(...)` title versus the pre-PR-B file. A repo-wide
+`tests/pos*.test.js` sweep (109 suites / 744 cases) under `DB_PORT=1` was run twice — once after
+each `posController.js` edit — to catch the `ReferenceError` regression above; final state is
+107/109 suites passing, the remaining 2 (`posCheckout.db.integration.test.js`,
+`posSalesReconciliation.db.integration.test.js`) failing only on `SequelizeConnectionRefusedError`,
+expected for db-tier files run with no database available. `node --check` on every changed file;
+`npm run check:compliance` ("No compliance-sensitive changes detected" — the one `src/` line-count
+change is a 2-key object/import-list addition, not a compliance-sensitive surface);
+`npm run check:architecture` (53 modules / 548 files, 93 controllers) — both pass.
+
+**Per-file heap/duration measurement, before vs. after, is only partially usable — stated plainly
+rather than fabricated.** Jest's own `--logHeapUsage` reporter line ("PASS ... (Xs, Y MB heap
+size)") did not print at all in this session's sandbox, under `--runInBand` or worker mode, `--ci`
+or not — a console-reporter gap in this environment, not a DB-container issue (`DB_PORT=1`
+throughout; no DB was needed or attempted). Duration *is* available from Jest's own JSON output
+(`--json --outputFile`, `endTime - startTime` per suite): `posHandlers.transport.test.js` 0.623s
+before / 0.528s after; `posVoid.route.transport.test.js` 1.477s before / 1.054s after — both
+directionally flat-to-faster, within normal run-to-run noise for sub-2s suites, matching the plan's
+own expectation ("no gate-level change expected; say so"). As a rough proxy, peak process RSS was
+sampled via `ps` at 50ms intervals across each file's whole `jest` process lifetime: before 432MB /
+463MB, after 459MB / 469MB (`posHandlers`/`posVoid` respectively) — within the noise band expected
+from process/worker-startup overhead dwarfing a few hundred KB of stub-object difference; neither
+version imports the real barrel, so no import-graph-driven heap difference was expected either.
+
+### Dependencies
+
+Phase 250 (#1441 PR-A, merged into `pat/test-dgfy-api-audit-backend-test-suite-for-value`) — this
+PR is cut from that branch's head, not `develop`. PR-C (Phase 252) and PR-D (Phase 253) are cut from
+this PR's head in sequence and depend on it merging first.
+
+### Acceptance and validation evidence
+
+- `node --check` on `apps/dgfy-api/tests/helpers/esmBarrelMock.js`,
+  `apps/dgfy-api/tests/esmBarrelMock.helper.test.js`, `apps/dgfy-api/tests/posHandlers.transport.test.js`,
+  `apps/dgfy-api/tests/posVoid.route.transport.test.js`, `apps/dgfy-api/src/controllers/posController.js`.
+- `esmBarrelMock.helper.test.js` — 12/12 pass under `DB_PORT=1`.
+- `posHandlers.transport.test.js` — 27/27 pass, titles byte-identical to pre-PR-B.
+- `posVoid.route.transport.test.js` — 9/9 pass, titles byte-identical to pre-PR-B.
+- Compliance-cited cases (per #1451's scope note) confirmed present verbatim via `git grep`:
+  `checkout returns 201...`, the `openTerminalShift`/`recordCashDrawerEvent`/`closeTerminalShift`
+  "preserves replay metadata..." trio, `switchTerminalShiftLocation...`, `closeDayZReading...`,
+  `getCurrentXReading...`.
+- `tests/pos*.test.js` repo-wide sweep — 107/109 suites pass under `DB_PORT=1` (2 db-integration
+  suites fail only on no-DB-available, expected).
+- `npm run check:compliance` — "No compliance-sensitive changes detected."
+- `npm run check:architecture` (53 modules / 548 files, 93 controllers) — pass.
+- `git diff --numstat` on the two rewritten test files shows only stub-list deletions plus helper
+  wiring (posHandlers.transport.test.js: +8/-50 lines; posVoid.route.transport.test.js: +35/-59).
+
+### Links
+
+Issue #1441, #1450. Refs Phase 250 (#1441 PR-A) as the prior phase this is cut from and continues.
+PR-C (Phase 252, #1451) and PR-D (Phase 253) follow in sequence.
+
+### Next eligible phase
+
+252 (planned — PR-C, trim transport and source-text tests to what they uniquely prove). Cut from
+this PR's head once merged/pushed.
