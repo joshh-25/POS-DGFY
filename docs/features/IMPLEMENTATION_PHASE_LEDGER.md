@@ -17356,7 +17356,131 @@ observation that the regenerated `storeProfile` `laundry` snapshot entry keeps a
 
 ### Next eligible phase
 
-250 (none named yet).
+250, claimed below by #1431 Phase 3. Phase 251 (#1431 Phase 2, coordinated separately at PR #1447
+review time, RF-1) follows immediately after it.
+
+## Phase 250 - Retire the 3 structurally-unfailable local gates: closed resolutions for #1, #18, #19 (#1431 Phase 3)
+
+### Initiative and release
+
+#1431's Phase 3: the three gates `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` marked "(c) stays
+local-only." #1431's Definition of Done requires every one of the 19 original gates to reach "a
+documented, closed resolution," and its own End-goal paragraph resolves what that means for these
+three: the local requirement is *dropped* because CI needs no equivalent — not that an equivalent
+gets built, and not that they stay local. Independent of #1431 Phase 1's PR-A/PR-B track (the 7
+CI-covered gates) and of #1431 Phase 2's own P2-0/P2-1/P2-2 (Phase 251, immediately below); neither
+blocks the other.
+
+### Objective and scope
+
+- `scripts/gate-release-local.js`: `GATE_NAMES` 19 -> 16 (`release.target_sha`,
+  `observability.evidence.report`, `release.verdict.contract` removed), their three `runGate(...)`
+  calls removed, and `STRUCTURALLY_CANNOT_FAIL` reduced to `compliance.contracts` alone. **The
+  `const targetSha = ...` resolution is kept** — it names `.tmp/release-gates/<sha>/` and populates
+  `local_readiness.json`'s `target_sha`, which the `## Local CI` commit-binding (#725 RF-2) depends
+  on; only the scored gate row is retired. **PR #1446 review, RF-1:** the empty-SHA edge case the
+  plan itself flagged ("nothing downstream works anyway") now fails fast and loud (`process.exit(1)`)
+  instead of silently writing evidence under `.tmp/release-gates/undefined/`.
+- `scripts/gate-release-local.test.js`: documented count 19 -> 16; the `--only` example switched off
+  `release.target_sha` to a surviving gate (`docs.lint`); a new assertion that none of the three
+  retired names is in `GATE_NAMES`, so a future edit cannot silently re-add one; plus a subprocess
+  test (RF-1) proving the fail-fast/no-evidence-dir behavior from a non-git tmpdir. Rebased onto
+  #1431 Phase 1 PR-B/Phase 2's own additions to this same file (`CI_ENFORCED_GATES` delegation,
+  `shouldDelegate`, `summarizeGates`) — the two changes are independent (retirement vs. delegation)
+  and merged without semantic conflict; the file now carries 20 tests total, not just this phase's own.
+- `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`: status letter (c) redefined from "stays local-only"
+  to "resolved without a CI job — gate row retired"; rows 1/18/19 rewritten as retirements; row
+  19's factual error corrected (a producer *does* exist — `scripts/gate-release-no-staging.js` —
+  but it belongs to the superseded `NO_STAGING_RELEASE_STANDARD.md`); new "Retired gates — closed
+  resolutions" table carrying the five-column closeout record #1431's DoD asks for. Merged onto
+  Phase 251's own Phase-2 rewrite of the same doc (rows 2/3/6/7/8/14/16/17 flipped `(b)` -> `(a)`) —
+  the required-gate-count math in "Summary by status" reflects both phases together: 19 − 7
+  delegated (Phase 1 PR-B) − 3 retired (this phase) = 9 currently required.
+- `docs/testing/release-go-no-go-checklist.md` (authoritative, registry-governed): "The 19 gates"
+  -> "The 16 gates," rows 1/18/19 removed and the rest renumbered, and the
+  "three gates are structurally incapable of failing" paragraph reduced to `compliance.contracts`
+  alone. Merged onto Phase 1 PR-B's own delegation paragraph in the same section.
+- `docs/ops/CI_RUNNER_POLICY.md` (authoritative): its stale duplicate of the #1147 mapping table
+  deleted in favour of a dated pointer to the mapping doc. This fixes a real precedence inversion —
+  a drifted `authoritative` copy outranked the correct `reference` one under `AGENTS.md`'s Surface
+  precedence.
+- `.agents/skills/promoter/SKILL.md`: "one of 19 gates" -> 16, folded together with Phase 1 PR-B's
+  own edit to the same paragraph (7 delegated gates) into one combined "9 required gates locally,
+  not 19" statement; the "Gate 19 auto-passes as Skipped" guidance replaced with the retirement,
+  leaving `compliance.contracts` as the sole `structurally_cannot_fail` caution.
+- **Not in scope**: `scripts/gate-release-observability.js`, `scripts/verify-release-verdict.js`,
+  `scripts/gate-release-no-staging.js`, `scripts/gate-release-dgfy-evidence.js` and
+  `apps/dgfy-api/tests/observabilityReleaseGateScript.test.js` — all untouched. Retiring a gate row
+  is not deleting a tool; `gate:release:observability` remains the post-deploy/incident tool
+  `docs/ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md` invokes, and the verdict contract is still used by
+  `gate-release-dgfy-evidence.js`. Also not in scope: adding `runtime_sha` parity or the
+  trace-header round-trip to `verify-deployment.yml` — filed as #1443 (via `pm`), since it needs
+  per-environment base-URL/secret work, not a closeout.
+- **No ADR amendment.** ADR 0074 Decision 7 (`[default]`) says `npm run gate:release:local`
+  (`run_mode: "full"`) stays mandatory before every `develop -> main` promotion. It constrains
+  whether the gate runs, not which gates compose it; a 16-gate full run is still `run_mode: "full"`.
+  Decision 7 *is* the clause #1431's final phase (required gate count -> zero) will have to amend —
+  named here so that isn't rediscovered later.
+
+### Status
+
+`completed` on merge — unlike Phase 247 there is no deferred live-promotion verification: removing
+three gates that were structurally incapable of failing cannot change a promotion's outcome. The
+first real promotion's artifact showing `gate_count: 16` is a post-merge confirmation, not a gate.
+
+### Dependencies
+
+None on its own scope. Required a rebase onto #1431 Phase 1 PR-B and Phase 2 (#1447) once both
+merged into `develop` ahead of this PR — a mechanical/textual dependency from landing order, not a
+scope dependency; independent of #1015/#1018.
+
+### Acceptance and validation evidence
+
+- [x] `node --check scripts/gate-release-local.js scripts/gate-release-local.test.js`.
+- [x] `node --test scripts/gate-release-local.test.js` — green (20/20, including this phase's
+  retired-names-absent and RF-1 fail-fast assertions, plus Phase 1 PR-B's own delegation tests).
+- [x] `npm run lint:docs` — passes; `docs/testing/release-go-no-go-checklist.md` is registry-governed.
+- [x] `npm run gate:release:local -- --only docs.lint` completes and writes an artifact whose
+  `gates[]` contains none of the three retired names (`gate_count: 16`) and whose `target_sha` is
+  still populated (proves the gate-1 split — row retired, SHA resolution kept).
+- [x] `rg 'release\.target_sha|observability\.evidence\.report|release\.verdict\.contract'` over
+  `docs/` (excluding `docs/archive/**`), `.agents/`, and `scripts/gate-release-local*.js` returns
+  only the retirement records, not live gate references.
+- [x] #1443 filed for the `verify-deployment.yml` residual gap (via `pm`), added to project #10.
+- [x] `npm run check:compliance` and `npm run check:architecture` pass on the rebased tree.
+
+### Deviations from the plan
+
+None on the plan's own four open questions — implemented per its recommended options: docs + code
+(not docs-only), Phase number 250, `CI_RUNNER_POLICY.md`'s stale table deleted (not just bannered),
+and the `verify-deployment.yml` residual-gap follow-up filed in this phase (#1443) rather than
+deferred. One deviation not anticipated by the plan: this PR needed **two** rebases onto
+`origin/develop` after #1431 Phase 1 PR-B (#1442/#1448) and then Phase 2 (#1447) each merged ahead
+of it, both touching the same doc/script files — reconciled by hand, verified green after each.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push. PR base is `develop`,
+branch prefix `chore/` per `.github/branch-cleanup-policy.json`. `check:compliance`'s
+missing-declaration checkpoint does not fire — every touched path is `scripts/`, `docs/`,
+`.agents/`.
+
+### Links
+
+- Tracking issue: #1431 (`Refs`, not `Closes` — Phase 3 closes 3 of 19 gates; Phase 2's 8 and
+  `backend.test_matrix` remain).
+- Plan: `.tmp/plans/1431-phase3-plan.md` (Worker Planner output, 2026-09-02).
+- Follow-up filed: #1443 (`verify-deployment.yml` runtime_sha parity + trace round-trip).
+- Modified: `scripts/gate-release-local.js`, `scripts/gate-release-local.test.js`,
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/testing/release-go-no-go-checklist.md`,
+  `docs/ops/CI_RUNNER_POLICY.md`, `.agents/skills/promoter/SKILL.md`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+251, already claimed by #1431 Phase 2 immediately below (coordinated at PR #1447 review time,
+RF-1) — re-check the ledger's actual highest merged entry at the next phase's start time rather
+than assuming, per the same rule that coordination itself relied on.
 
 ## Phase 251 - Promotion quality gate: 8 remaining gates wired into CI, P2-0/P2-1/P2-2 (#1431 Phase 2)
 
