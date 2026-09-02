@@ -17980,6 +17980,139 @@ the same sequence. PR-D (Phase 255) follows.
 255 (planned — PR-D, db-tier tenant-sync consolidation; the only cut in this sequence that actually
 moves gate wall-clock).
 
+## Phase 255 - db-tier tenant-sync consolidation: 12 -> 9 createTestTenant() syncs (#1452, #1441 PR-D)
+
+### Initiative and release
+
+PR-D of the four-PR sequence started in Phase 252 (#1441) — the only PR in the sequence authorized
+to `Closes #1441`. Branch `test/1452-db-tier-tenant-sync`, cut fresh from `origin/develop`
+(`e4deebf45`, which already includes Phase 256/#1470 — see the numbering note below).
+
+**Numbering note**: 255 was reserved for this PR by Phase 254's own "Next eligible phase" section
+and independently by `docs/testing/backend-test-suite-value-audit.md` (`"PR-D (Phase 255)"`, three
+citations). PR #1470 (#1431 Phase C/D) merged first and claims **256** — confirmed by re-scanning
+`origin/develop`'s ledger for the highest `## Phase ` heading before branching (254, then 256 after
+fetching #1470's merge; no `## Phase 255` heading existed anywhere on any remote branch). The two
+numbers do not collide.
+
+### Objective and scope
+
+Three consolidations to `apps/dgfy-api/tests/`'s db-tier files, re-verified against the live tree
+before implementing (three scope corrections, all stated up front rather than silently absorbed
+into the arithmetic):
+
+- **Corrected target: 12 -> 9 `createTestTenant()` call sites, not the issue's original "12 -> 8"**
+  (its own consolidation assumed a fold that turns out to be impossible — see the third bullet
+  below) **or this campaign's pre-corrected "14 -> 10"** (the naive `grep -c` count includes 2
+  comment lines in `tenantSchemaBootstrap.integration.test.js`, which is not a `.test.js` call
+  site). Canonical counting method, quoted in the PR body:
+  `grep -rn "createTestTenant(" apps/dgfy-api/tests/*.test.js | grep -vE ":[0-9]+:[[:space:]]*(//|\*)"`.
+- **Fold `tests/token_refresh_race.test.js` into `tests/rtr_verification.test.js` (-1 sync).**
+  Safe because `tests/setup.js`'s Redis mock turned out to be a real stateful in-memory store
+  (`NX`/`EX` honored, gets persist) rather than the fail-open stub both files' own comments
+  claimed — `rtr_verification.test.js`'s `REDIS_URL` assignment was dead code (`tests/setup.js`
+  module-mocks `src/config/redis.js` wholesale) and `token_refresh_race.test.js`'s header
+  ("Returns null for all blacklist lookups") was simply false. Case-by-case: case 1.2 (body-only
+  refresh token, 400) was an exact duplicate of an existing `rtr_verification` case, dropped; case
+  1.3 (sequential refresh, `expiresIn: 86400`) was unique only in that one assertion, ported as a
+  one-line addition to an existing case; cases 1.1 (6 concurrent refreshes) and 1.4 (blacklist
+  lookup on a fresh token) were ported as new cases, with 1.4's comment rewritten since the old
+  "mock always returns null" claim was false. File deleted; its
+  `scripts/backend-db-dependent-tests.js` entry removed in the same commit (an entry pointing at a
+  deleted file throws loudly on every matrix run otherwise).
+- **Reduce `tests/voidMovement.supertest.test.js` from 4 tenants to 2 (-2 syncs).** Hoisted a
+  single shared `secondaryTenantCtx` (`'alt'`) into the top-level `beforeAll`/`afterAll`, reused by
+  both the `Multi-tenant code path` describe (replacing its own one-off `'mt'` tenant) and the
+  `Cross-tenant isolation` describe (replacing its `'iso-b'` tenant; `'iso-a'` is now the existing
+  `defaultTenantCtx`/`managerToken`, removing an extra register+login round trip too). Isolation is
+  preserved — A and B remain two distinct `createTestTenant()` databases, the property under test.
+  Also dropped 2 duplicate cases (re-scoped from the issue's "3" — see below), unrelated to the
+  sync count: the "fully consumed" 409 case (identical code path/status/envelope/message regex to
+  the surviving "partially consumed" case, differing only in fixture) and the "double-void
+  prevention" 400 case (a strict subset of the surviving Concurrency case's assertions on the same
+  path).
+- **Re-scoped, not implemented: folding `tests/supertest_security.test.js`'s other 3 cases into
+  `tests/auth.test.js` (issue's proposed -1 sync) is impossible, not merely undesirable.**
+  `supertest_security.test.js` module-mocks *all* of `src/services/authService.js` via
+  `jest.unstable_mockModule` (`comparePassword`/`generateToken`/`hashPassword` all stubbed);
+  `auth.test.js` exercises the real register/login/refresh path and asserts against it directly
+  (`should return 401 for invalid password`, `should return 401 for non-existent user`, the whole
+  refresh-token describe) — folding would force that mock onto `auth.test.js` and break it.
+  `jest.unstable_mockModule` is file-scoped with no per-describe escape, and no other file in the
+  `createTestTenant`-using set also mocks `authService`, so there is no alternative fold target
+  either. Net effect on this file: **0 syncs removed**, but its `'Finding 8.2: Distributed
+  Locking'` case (only calls `getRedisClient()`/`client.set`/`client.get`/`client.del`, zero DB
+  queries) was extracted to a new fast-tier file, `tests/distributedLock.redis.test.js`, not listed
+  on `scripts/backend-db-dependent-tests.js` (absence from that manifest is fast-tier membership).
+  The other 3 cases (2 named security-regression findings, 1 validation case) stay on the manifest.
+- **Case 1.5's uncovered scenario is explicitly not resolved by this PR.** Per
+  `docs/testing/backend-test-suite-value-audit.md` §7 finding 2: 6 concurrent refreshes against a
+  *real* Redis with no distributed lock still has no equivalent coverage anywhere that runs — the
+  ported case 1.1 runs against the same single-process in-memory mock as everything else in this
+  file, proving "no crash + valid response structure," not "exactly one wins under real contention."
+  The cheapest partial answer (extend the ported 1.4 to also assert
+  `isTokenBlacklisted(...) === true` after a rotation, covering the blacklist-write path) is
+  offered as a follow-up in the PR body, not applied unilaterally.
+- `docs/testing/backend-test-suite-value-audit.md` updated: §5's before/after table gets a new
+  `After PR-D (#1452)` column (with an explicit note that PR-B/PR-C never appended rows, so two of
+  the four metrics can't be re-totaled honestly without fabricating a baseline); §6's "not cut"
+  table's `token_refresh_race.test.js` row (now self-contradictory) rewritten to record the actual
+  fold, and its adjacent `db-manifest members` row's pre-existing 29-vs-30 off-by-one corrected as
+  a drive-by; §7 finding 2 gets the case-1.5 re-evaluation above; §9 records this PR as shipped with
+  the `auth.test.js`-fold impossibility spelled out so a future pass doesn't re-propose it.
+  `docs/testing/backend-test-suite-inventory.json` regenerated (`npm run audit:backend-tests`).
+- #1453/#1454 continue to get **no** ledger entry — Phase 254's own standing decision
+  (`docs/testing/backend-test-suite-value-audit.md` §9), reaffirmed here, not reopened.
+
+### Status
+
+`completed`.
+
+### Dependencies
+
+Phases 252, 253, and 254 (#1441 PR-A/PR-B/PR-C), all merged into `develop` before this branch was
+cut.
+
+### Acceptance and validation evidence
+
+- `node --check` on every changed `.js` file (`apps/dgfy-api` has no real build step) —
+  `tests/rtr_verification.test.js`, `tests/supertest_security.test.js`,
+  `tests/voidMovement.supertest.test.js`, `tests/distributedLock.redis.test.js`,
+  `scripts/backend-db-dependent-tests.js` — all pass.
+- Occurrence count, canonical method (quoted above): **12 -> 9**, confirmed both before editing and
+  after, on the working tree.
+- db-tier evidence: see the PR body / PR comment for whichever of (a) the full
+  `npm run test:backend:db` tier or (b) the three touched files run individually
+  (`rtr_verification.test.js`, `supertest_security.test.js`, `voidMovement.supertest.test.js`)
+  actually completed in this session's sandbox, against the `dgfy-mysql-test`/`dgfy-redis-test`
+  containers on the `dgfy-local-test` Docker network per
+  `docs/testing/release-go-no-go-checklist.md`'s containerized invocation.
+- Manifest re-proof: `BACKEND_TEST_MATRIX_FAST_ALLOW_DB=false npm run test:backend:fast` — the full
+  fast tier (607 files) hit the same 600s timeout PR-A's own §5 documented for the same tier, with
+  11 `jest-worker` children still actively consuming CPU (not hung) and `manifest=29` confirmed
+  correct in its own log line. Fallback per the plan's own pre-decided posture: the new file run
+  alone, `DB_HOST=127.0.0.1 DB_PORT=1 npm test -- --runTestsByPath tests/distributedLock.redis.test.js`
+  (in `apps/dgfy-api`) — 1/1 pass in 0.3s, proving the file genuinely needs no reachable MySQL/Redis
+  even though it imports and uses `src/config/redis.js` directly (that module mocks/connects
+  independently of the DB_HOST/DB_PORT guard).
+- `npm run audit:backend-tests:check` — `OK - inventory is up to date` after regeneration; summary
+  line reads `Total active test files: 636 | db-manifest members: 29`.
+- Wall-clock: attempted the documented containerized `docker run ... npm run gate:release:local`
+  invocation; per this PR's own body/comment for the outcome (matching PR-A/PR-B's precedent of
+  naming the failure mode and deferring to the next `promotion-quality-gate.yml` run's db-tier log
+  rather than blocking or fabricating a number).
+
+### Links
+
+Issue #1441 (parent, closed by this PR), #1452 (this PR's own issue). Refs Phase 252 (#1441 PR-A),
+Phase 253 (#1441/#1450 PR-B), and Phase 254 (#1451 PR-C) as prior phases in the same sequence.
+`docs/testing/backend-test-suite-value-audit.md`, `scripts/backend-db-dependent-tests.js`.
+
+### Next eligible phase
+
+257. (256 is claimed by PR #1470/#1431 Phase C/D, already merged into `develop` before this branch
+was cut — see the numbering note above.)
+
 ## Phase 256 - Promotion quality gate: 5 remaining gates flipped blocking, all 16 delegated, zero local gates (#1431 Phase C/D)
 
 ### Initiative and release
