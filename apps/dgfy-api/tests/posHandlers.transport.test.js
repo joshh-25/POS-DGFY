@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { mockBarrel } from './helpers/esmBarrelMock.js';
 
 const mockListPosCatalogUseCase = jest.fn();
 const mockScanPosBarcodeUseCase = jest.fn();
@@ -92,7 +93,7 @@ const mockEndPosCashierReliefDutyUseCase = jest.fn();
 const mockCorrectPosCashierAttendanceUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
-jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
+const posHandlersBarrelOverrides = {
     listPosCatalogUseCase: mockListPosCatalogUseCase,
     scanPosBarcodeUseCase: mockScanPosBarcodeUseCase,
     checkoutPosUseCase: mockCheckoutPosUseCase,
@@ -116,7 +117,6 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     upsertFiscalTerminalRegistrationUseCase: mockUpsertFiscalTerminalRegistrationUseCase,
     listFiscalTerminalRegistrationsUseCase: mockListFiscalTerminalRegistrationsUseCase,
     closeDayZReadingUseCase: mockCloseDayZReadingUseCase,
-    getDayCloseReadinessUseCase: jest.fn(),
     getDailyZReadingUseCase: mockGetDailyZReadingUseCase,
     getCurrentXReadingUseCase: mockGetCurrentXReadingUseCase,
     incrementGovernedResetCounterUseCase: mockIncrementGovernedResetCounterUseCase,
@@ -144,8 +144,6 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     collectCashPickupOrderUseCase: mockCollectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase: mockCollectCashDeliveryOrderUseCase,
     recordOrderBalancePaymentUseCase: mockRecordOrderBalancePaymentUseCase,
-    attachOrderBalancePaymentProofUseCase: jest.fn(),
-    getOrderBalancePaymentProofUseCase: jest.fn(),
     assignDeliveryPersonnelUseCase: mockAssignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase: mockUpdateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase: mockUpdateOnlineOrderStatusUseCase,
@@ -183,52 +181,12 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     startPosCashierReliefDutyUseCase: mockStartPosCashierReliefDutyUseCase,
     endPosCashierReliefDutyUseCase: mockEndPosCashierReliefDutyUseCase,
     correctPosCashierAttendanceUseCase: mockCorrectPosCashierAttendanceUseCase,
-    enrollPosCashierPinUseCase: jest.fn(),
-    resetPosCashierPinUseCase: jest.fn(),
-    takeOverPosRegisterUseCase: jest.fn(),
-    returnPosRegisterUseCase: jest.fn(),
-    startPosSharedReliefUseCase: jest.fn(),
-    endPosSharedReliefUseCase: jest.fn(),
-    countedPosCustodyHandoffUseCase: jest.fn(),
-    getCurrentPosOperatorUseCase: jest.fn(),
-    listEligiblePosOperatorsUseCase: jest.fn(),
-    authorizePosOperatorMutationUseCase: jest.fn(),
-    releasePosOperatorMutationUseCase: jest.fn(),
-    endPosOperatorSessionUseCase: jest.fn(),
-    revokePosOperatorSessionsForTerminal: jest.fn(),
-    resumePosCashierUseCase: jest.fn(),
-    posTerminalPairingMaxAgeMs: 300000,
-    acknowledgeMobilePosCheckpointUseCase: jest.fn(),
-    addDeliveryRunMembersUseCase: jest.fn(),
-    createDeliveryRunUseCase: jest.fn(),
-    createPosCashierAttendanceRepository: jest.fn(),
-    dispatchDeliveryRunUseCase: jest.fn(),
-    getDeliveryRunUseCase: jest.fn(),
-    getMobilePosCatalogBootstrapUseCase: jest.fn(),
-    getMobilePosDevicePolicyUseCase: jest.fn(),
-    getMobilePosSettingsBootstrapUseCase: jest.fn(),
-    getMobilePosTransactionCheckpointUseCase: jest.fn(),
-    listDeliveryRunsUseCase: jest.fn(),
-    removeDeliveryRunMemberUseCase: jest.fn(),
-    revokePosOperatorSessionsForUser: jest.fn(),
-    serializeEmployeeAttendanceSession: jest.fn(),
-    serializeEmployeeBreakSegment: jest.fn(),
-    serializePosDrawerHandoffEvent: jest.fn(),
-    serializePosTerminalOperatorSession: jest.fn(),
-    serializePosTransactionOperatorAttribution: jest.fn(),
-    setDeliveryRunPersonnelUseCase: jest.fn(),
-    syncMobilePosCheckoutsUseCase: jest.fn(),
-    syncMobilePosHardwareEventsUseCase: jest.fn(),
-    syncMobilePosItemsUseCase: jest.fn(),
-    syncMobilePosOrderActionsUseCase: jest.fn(),
-    syncMobilePosShiftsUseCase: jest.fn(),
-    syncMobilePosVoidsUseCase: jest.fn(),
-    updateDeliveryRunUseCase: jest.fn(),
-    updateOnlineOrderDeliveryAddressUseCase: jest.fn(),
-    claimOnlineOrderReceiptAutoPrintUseCase: jest.fn(),
-    overrideDeliveryFeeUseCase: jest.fn(),
-    syncMobilePosRefundsUseCase: jest.fn(),
-}));
+};
+
+mockBarrel(jest, '../src/modules/pos/index.js', {
+    from: import.meta.url,
+    overrides: posHandlersBarrelOverrides
+});
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
     trackProductUsageFromResult: mockTrackProductUsageFromResult
