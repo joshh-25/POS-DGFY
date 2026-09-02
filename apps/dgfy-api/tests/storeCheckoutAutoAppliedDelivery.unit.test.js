@@ -370,9 +370,12 @@ describe('determinism -- quote and checkout agree byte-for-byte with no delivery
         // AUTO_PAUSED is ineligible and must never be considered.
         expect(quote.data.delivery_fee).toBe(0);
         expect(quote.data.delivery_fee_waiver).toBe(100);
+        // RF-1 (PR #1397 review): `voucher_code` signals "the shopper typed this," so it stays
+        // null on the auto-apply path -- campaign identity is carried by `label`/`auto_applied`
+        // instead (and, on the persisted checkout side, `header.delivery_fee_waiver_voucher_id`).
         expect(quote.data.delivery_voucher_feedback).toEqual({
             applied: true,
-            voucher_code: 'AUTOBEST',
+            voucher_code: null,
             auto_applied: true,
             label: 'Auto Best'
         });
@@ -388,7 +391,7 @@ describe('determinism -- quote and checkout agree byte-for-byte with no delivery
         expect(header.delivery_fee_waiver_voucher_id).toBe(AUTO_BEST_ID);
         expect(checkout.data.delivery_voucher_feedback).toEqual({
             applied: true,
-            voucher_code: 'AUTOBEST',
+            voucher_code: null,
             redemption_id: expect.any(Number),
             auto_applied: true,
             label: 'Auto Best'
@@ -403,7 +406,8 @@ describe('determinism -- quote and checkout agree byte-for-byte with no delivery
         const fixtures = Object.values(makeVoucherFixtures());
         currentFakeVoucherRepository = buildFakeVoucherRepository([...fixtures].reverse());
         const quote = await runQuote({ settingsRows: baseSettingsRows() });
-        expect(quote.data.delivery_voucher_feedback.voucher_code).toBe('AUTOBEST');
+        expect(quote.data.delivery_voucher_feedback.voucher_code).toBeNull();
+        expect(quote.data.delivery_voucher_feedback.label).toBe('Auto Best');
     });
 });
 
@@ -414,7 +418,8 @@ describe('exhaustion -- a budget-exhausted campaign disappears identically from 
         })));
 
         const quote = await runQuote({ settingsRows: baseSettingsRows() });
-        expect(quote.data.delivery_voucher_feedback.voucher_code).toBe('AUTOMID');
+        expect(quote.data.delivery_voucher_feedback.voucher_code).toBeNull();
+        expect(quote.data.delivery_voucher_feedback.label).toBe('Auto Mid');
         expect(quote.data.delivery_fee_waiver).toBe(60);
 
         const { result: checkout, storeRepository } = await runCheckout({ settingsRows: baseSettingsRows() });
@@ -457,7 +462,8 @@ describe('exhaustion -- a budget-exhausted campaign disappears identically from 
         })));
 
         const quote = await runQuote({ settingsRows: baseSettingsRows() });
-        expect(quote.data.delivery_voucher_feedback.voucher_code).toBe('AUTOMID');
+        expect(quote.data.delivery_voucher_feedback.voucher_code).toBeNull();
+        expect(quote.data.delivery_voucher_feedback.label).toBe('Auto Mid');
     });
 });
 
