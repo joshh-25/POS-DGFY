@@ -1,5 +1,4 @@
 import { createDgfyOrderEvent } from '../../dgfyLaundryOrders/contracts.js';
-import { dglaundryPartnerClient } from '../../dgfyLaundryOrders/services/dglaundryPartnerClient.js';
 
 const parseObject = (value) => {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value;
@@ -34,6 +33,9 @@ const submissionFor = (session) => {
   const payload = parseObject(session.checkout_payload);
   const submission = parseObject(payload.dglaundry_submission);
   const children = Array.isArray(payload.dglaundry_booking_group?.children) ? payload.dglaundry_booking_group.children : [];
+  // A mixed booking charges and submits only its fixed child online. The
+  // per-kilo child remains an explicit provider reservation for attendant
+  // measurement/conversion at the counter; DGLaundry owns that tender path.
   const fixed = children.find((child) => child.mode === 'fixed') || submission;
   return {
     companyId: submission.companyId || payload.company_id,
@@ -52,7 +54,7 @@ const submissionFor = (session) => {
   };
 };
 
-export const submitPaidDglaundryBooking = async ({ session, resource, providerEventId, commercePaymentRepository, partnerClient = dglaundryPartnerClient }) => {
+export const submitPaidDglaundryBooking = async ({ session, resource, providerEventId, commercePaymentRepository, partnerClient }) => {
   const plain = session?.get ? session.get({ plain: true }) : session;
   if (!plain || plain.target_type !== 'dglaundry_booking') return null;
   if (plain.status === 'finalized') return plain;
@@ -80,7 +82,7 @@ export const submitPaidDglaundryBooking = async ({ session, resource, providerEv
   }).then((updated) => ({ ...updated, dglaundry_provider_response: providerResponse }));
 };
 
-export const cancelDglaundryBookingReservations = async ({ session, reason, providerEventId = null, commercePaymentRepository, partnerClient = dglaundryPartnerClient }) => {
+export const cancelDglaundryBookingReservations = async ({ session, reason, providerEventId = null, commercePaymentRepository, partnerClient }) => {
   const plain = session?.get ? session.get({ plain: true }) : session;
   if (!plain || plain.target_type !== 'dglaundry_booking') return null;
   const payload = parseObject(plain.checkout_payload);
@@ -108,7 +110,7 @@ export const cancelDglaundryBookingReservations = async ({ session, reason, prov
   });
 };
 
-export const notifyDglaundryBookingRefund = async ({ session, refund, providerEventId = null, partnerClient = dglaundryPartnerClient }) => {
+export const notifyDglaundryBookingRefund = async ({ session, refund, providerEventId = null, partnerClient }) => {
   const plain = session?.get ? session.get({ plain: true }) : session;
   if (!plain || plain.target_type !== 'dglaundry_booking') return null;
   const submission = submissionFor(plain);

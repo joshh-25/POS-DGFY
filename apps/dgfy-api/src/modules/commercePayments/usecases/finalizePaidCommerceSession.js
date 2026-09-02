@@ -122,7 +122,8 @@ export const finalizePaidCommerceSession = async ({
   session,
   resource = {},
   providerEventId = null,
-  commercePaymentRepository
+  commercePaymentRepository,
+  partnerClient
 }) => {
   const plainSession = toPlain(session);
   if (plainSession.pos_transaction_id || plainSession.tracking_pin || plainSession.status === 'finalized') {
@@ -135,7 +136,8 @@ export const finalizePaidCommerceSession = async ({
         session: plainSession,
         resource,
         providerEventId,
-        commercePaymentRepository
+        commercePaymentRepository,
+        partnerClient
       });
       if (finalized) return finalized;
       throw new DomainError(DomainErrorCode.INTERNAL_ERROR, 'DGLaundry booking session could not be finalized.', { statusCode: 500 });

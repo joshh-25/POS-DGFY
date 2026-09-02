@@ -124,12 +124,13 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
   recordSucceededRevenueRefund = recordSucceededTenantRevenueRefundUseCase,
   raiseOperationalAlert = async () => {},
   processVerifiedPaidCommerceSession: processVerifiedPaidCommerceSessionOverride = null,
+  partnerClient,
   // Phase 144 (#824): injected so the tenant-ledger wiring is assertable without module mocking,
   // matching how commerceOrderLifecycleUseCase takes its own writer.
   updateOrderPaymentLedgerEntryStatus = updateTenantOrderPaymentEntryStatus
 }) => {
   const processVerifiedPaidCommerceSession = processVerifiedPaidCommerceSessionOverride
-    || buildProcessVerifiedPaidCommerceSessionUseCase({ commercePaymentRepository });
+    || buildProcessVerifiedPaidCommerceSessionUseCase({ commercePaymentRepository, partnerClient });
 
   const writeWebhookAudit = async ({
     eventType,
@@ -227,7 +228,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
         actor: 'paymongo_webhook'
       });
       if (!revenueResult.success) throw revenueResult.error;
-      await notifyDglaundryBookingRefund({ session: updatedSession, refund: updatedRefund, providerEventId }).catch((error) => {
+      await notifyDglaundryBookingRefund({ session: updatedSession, refund: updatedRefund, providerEventId, partnerClient }).catch((error) => {
         logger?.warn?.('DGLaundry refund notification is pending retry.', { error: error?.message, paymentSession: session.public_reference });
       });
     }
@@ -462,7 +463,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           failure_reason: getAttributes(paymentResource)?.failed_message || 'PayMongo reported payment failure.'
         });
         if (session.target_type === 'dglaundry_booking') {
-          await cancelDglaundryBookingReservations({ session: failed, reason: 'PAYMENT_FAILED', providerEventId, commercePaymentRepository });
+          await cancelDglaundryBookingReservations({ session: failed, reason: 'PAYMENT_FAILED', providerEventId, commercePaymentRepository, partnerClient });
         }
         await writeWebhookAudit({
           eventType,
@@ -484,7 +485,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           failure_reason: 'PayMongo QR Ph code expired before payment.'
         });
         if (session.target_type === 'dglaundry_booking') {
-          await cancelDglaundryBookingReservations({ session: expired, reason: 'QRPH_EXPIRED', providerEventId, commercePaymentRepository });
+          await cancelDglaundryBookingReservations({ session: expired, reason: 'QRPH_EXPIRED', providerEventId, commercePaymentRepository, partnerClient });
         }
         await writeWebhookAudit({
           eventType,

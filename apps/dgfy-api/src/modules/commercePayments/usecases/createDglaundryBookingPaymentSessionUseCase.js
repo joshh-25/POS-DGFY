@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { createDgfyOrderEvent, toTrimmed } from '../../dgfyLaundryOrders/contracts.js';
-import { dglaundryPartnerClient } from '../../dgfyLaundryOrders/services/dglaundryPartnerClient.js';
 
 const trim = (value, max = 255) => toTrimmed(value, max);
 const publicReference = () => `DGL-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
@@ -17,7 +16,7 @@ const branchEnabled = (locationId) => {
 const lineMode = (line, mode) => line?.mode || (mode === 'per_kilo' ? 'per_kilo' : mode === 'fixed' ? 'fixed' : null);
 const paymentSnapshot = ({ status, amountCentavos, externalReference = null, provider = 'paymongo' }) => ({ owner: 'dgfy', status, amountCentavos, externalReference, provider });
 
-const cancelPreparedChildren = async (children, reason, partnerClient = dglaundryPartnerClient) => {
+const cancelPreparedChildren = async (children, reason, partnerClient) => {
   await Promise.all(children.map((child) => partnerClient.cancelOrder(createDgfyOrderEvent({
     type: 'dgfy.laundry_order.cancelled.v1',
     data: {
@@ -48,7 +47,7 @@ const serialized = (session) => ({
 export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
   commercePaymentRepository,
   paymongoService,
-  partnerClient = dglaundryPartnerClient
+  partnerClient
 }) => async ({ payload = {} } = {}) => {
   try {
     if (!enabled()) throw new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'DGLaundry booking payments are dark-disabled.', { statusCode: 503 });

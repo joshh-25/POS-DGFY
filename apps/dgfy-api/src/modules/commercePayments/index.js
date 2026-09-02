@@ -26,7 +26,8 @@ export const handlePayMongoCommerceWebhookUseCase = buildHandlePayMongoCommerceW
   commercePaymentRepository,
   paymongoService,
   logger,
-  raiseOperationalAlert
+  raiseOperationalAlert,
+  partnerClient: dglaundryPartnerClient
 });
 
 export const listCommercePaymentSessionsUseCase = buildListCommercePaymentSessionsUseCase({
@@ -42,12 +43,14 @@ export const getCommerceSettlementReportUseCase = buildGetCommerceSettlementRepo
 });
 
 export const retryCommercePaymentFinalizationUseCase = buildRetryCommercePaymentFinalizationUseCase({
-  commercePaymentRepository
+  commercePaymentRepository,
+  partnerClient: dglaundryPartnerClient
 });
 
 export const reconcileCommercePaymentSessionUseCase = buildReconcileCommercePaymentSessionUseCase({
   commercePaymentRepository,
-  paymongoService
+  paymongoService,
+  partnerClient: dglaundryPartnerClient
 });
 
 export const confirmCommercePaymentSessionSandboxUseCase = buildConfirmCommercePaymentSessionSandboxUseCase({
