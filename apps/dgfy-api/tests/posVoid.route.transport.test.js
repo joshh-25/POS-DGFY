@@ -58,7 +58,7 @@ const createControllerMock = (names, overrides = {}) => Object.fromEntries(
 
 const posControllerNames = [
     'addPaymentAllocation', 'assignDeliveryPersonnel', 'authorizeDeviceDrawer', 'cancelParkedSale',
-    'cancelPaymentAllocation', 'cancelPaymentSession', 'checkout', 'claimParkedSale',
+    'cancelPaymentAllocation', 'cancelPaymentSession', 'checkout', 'claimOnlineOrderReceiptAutoPrint', 'claimParkedSale',
     'clearPairedTerminal', 'closeDayZReading', 'closeTerminalShift', 'collectCashDeliveryOrder',
     'collectCashPickupOrder', 'completePaymentSession', 'confirmPaymentAllocation', 'createParkedSale',
     'createPaymentSession', 'createSetupCashier', 'deleteCatalogImage', 'exportReports',
@@ -69,7 +69,7 @@ const posControllerNames = [
     'getTransactionById', 'incrementGovernedResetCounter', 'listActiveDeliveryPersonnel', 'listCatalog',
     'listCatalogOverrides', 'listDiscountApprovers', 'listDiscountEmployees', 'listESalesReports', 'listFiscalTerminalRegistrations',
     'listIncomingOnlineOrders', 'listOnlineOrderHistory', 'listParkedSales', 'listSetupCashiers',
-    'listTransactions', 'loginCashier', 'openDeviceDrawer', 'openTerminalShift', 'printReceipt',
+    'listTransactions', 'loginCashier', 'openDeviceDrawer', 'openTerminalShift', 'overrideDeliveryFee', 'printReceipt',
     'printShiftSummary', 'printZReading', 'reconcilePaymentAllocation', 'recordCashDrawerEvent',
     'recordFiscalPrintEvent', 'reparkParkedSale', 'requirePairedTerminal', 'requireActiveOperatorForMutation',
     'requireRegisteredTerminal',

@@ -17197,4 +17197,117 @@ path.
 
 ### Next eligible phase
 
-249 (none named yet).
+249 (this phase, below).
+
+---
+
+## Phase 249 - `backend.test_matrix` rot fix + hosted-runner OOM root cause (#1432)
+
+### Initiative and release
+
+The hand-back follow-up track named by Phase 247/#1431 Phase 1's "Not in scope" note: fixes the 6
+stale test files and root-causes and fixes the hosted-runner OOM that Phase 247 confirmed were
+keeping `backend.test_matrix` genuinely failing. Test-only — does not flip `run_test_matrix` from
+advisory to blocking (that stays PR-A2, gated on #1015 per Phase 247's own scoping).
+
+### Objective and scope
+
+- `apps/dgfy-api/tests/posHandlers.transport.test.js`,
+  `apps/dgfy-api/tests/posDeviceStatus.transport.test.js` — added the 3 POS use-case names
+  (`claimOnlineOrderReceiptAutoPrintUseCase`, `overrideDeliveryFeeUseCase`,
+  `syncMobilePosRefundsUseCase`) missing from each file's hand-enumerated ESM mock of
+  `src/modules/pos/index.js`, added by the laundry-mode/online-order-receipt-auto-print work
+  without updating these mocks (second recurrence of this class in ~24h, after `bab53e056`).
+- `apps/dgfy-api/tests/posVoid.route.transport.test.js` — a *different* bug from the two above,
+  corrected from #1432's own issue text during planning: this file fails with `Route.post()
+  requires a callback function` (not an ESM `SyntaxError`), because its separate
+  `posControllerNames` array (not a mock of `pos/index.js`) was missing the corresponding 2
+  `posController.js` export names (`claimOnlineOrderReceiptAutoPrint`, `overrideDeliveryFee`).
+- `apps/dgfy-api/tests/adminRegistrationIndustryUseCases.test.js`,
+  `apps/dgfy-api/tests/registrationIndustries.transport.test.js` — the seeded registration-industry
+  catalog count (11 → 12, `laundry` added) was hardcoded in both files' assertions; replaced with a
+  `SEEDED = Object.keys(REGISTRATION_INDUSTRIES).length`-derived count, following the existing,
+  non-rotted precedent in `tests/seedRegistrationIndustries.migration.test.js`.
+  `apps/dgfy-api/tests/registrationIndustries.contract.test.js` gained one new explicit pin (the
+  ordered key list) so an *unintended* catalog change still fails loudly exactly once, rather than
+  silently in the two files that now derive their count.
+- `apps/dgfy-api/tests/inventoryItemRepository.test.js` — the `transaction` mock in one test was
+  `{}`; `itemRepository.js`'s soft-delete path (added by `c859787ba`) now reads
+  `transaction.LOCK.UPDATE`. Fixed to `{ LOCK: { UPDATE: 'UPDATE' } }`.
+- `apps/dgfy-api/tests/__snapshots__/storeProfile.equivalence.contract.test.js.snap` — **not
+  touched**; already carries the `laundry` entry, merged into `develop` by #1436 ahead of this PR.
+- `scripts/run-backend-test-matrix.js` — added `--ci` to both `runFastTier()`'s and `runChunk()`'s
+  Jest args, so `gate:release:local` can no longer silently write a missing snapshot and false-pass
+  the exact class of rot this phase fixes (reproduced and confirmed during planning: the same
+  command without `CI=true`/`--ci` passes and dirties the snapshot). Also added a
+  `BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT` knob alongside the existing
+  `BACKEND_TEST_MATRIX_FAST_MAX_WORKERS` one, wired to `--workerIdleMemoryLimit`.
+- `.github/workflows/promotion-quality-gate.yml` — `Run dgfy-api test matrix` step's `env:` now sets
+  `BACKEND_TEST_MATRIX_FAST_MAX_WORKERS: 2` and `BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT:
+  1G`. Root cause (confirmed during planning, correcting Phase 247's working hypothesis that this
+  was a routing/heap decision tied to #1365/#1015): this hosted runner is 2-vCPU on a private repo,
+  so Jest's own `getMaxWorkers()` resolves to 1 and `shouldRunInBand()` then runs the entire
+  616-file fast tier in one in-band process, whose single V8 heap accumulates every file's ESM
+  module registry until it hits the 4096MB `NODE_OPTIONS` cap. Not a heap-size problem — 206/616
+  files already consumed ~3.5GB, extrapolating to ~10.5GB to finish, on a 7GB box. Forcing ≥2
+  workers flips Jest out of in-band; the memory limit bounds each worker's heap so it recycles
+  instead of growing unbounded across ~300 files per worker.
+- `apps/dgfy-api/tests/tenantSchemaBootstrap.integration.test.js` — raised the suite's Jest timeout
+  to 300s (`jest.setTimeout(300000)`). Measured against a real MySQL 8.0.46 during planning:
+  `createTestTenant()`'s `sync({ force: true })` alone (139 tables) takes ~235s; the code actually
+  under test (`applyPostSyncTenantSchema`) takes ~8.4s/~1.1s. The default 30s per-test budget was
+  never achievable since this test was un-skipped by #1166 — a mis-budgeted timeout, not a
+  regression in the subject under test.
+- `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` row 10 — updated to record this phase's resolved root
+  cause and that the rot is fixed; the gate stays advisory (PR-A2 is the flip, still out of scope).
+
+### Status
+
+`completed` for this phase's own scope (the rot fix + OOM root cause + timeout fix). The 7 fixed
+test files were re-run locally under `--ci` and pass (157/157 across the 8 files touched or newly
+guarded, plus `registrationIndustries.contract.test.js`'s existing coverage); `git status` confirms
+no snapshot drift. `tenantSchemaBootstrap.integration.test.js` could not be executed end-to-end in
+the implementation environment (no reachable test MySQL matching the tenant helper's hardcoded
+port — a separate, out-of-scope helper bug flagged during planning) — verified by code review and
+`node --check` only; the real proof is the next `promotion-quality-gate.yml` run's `fast-tier.log`
+and `tenant_storefront_modes` chunk duration. PR-A2 (flip `run_test_matrix` to blocking) and PR-B2
+(drop it from `gate:release:local`'s required set) remain separate, un-started follow-ups.
+
+### Dependencies
+
+None blocking this phase's own PR. PR-A2/PR-B2 depend on this phase merging and going green on the
+next `release/*→main` (or `staging→main`) promotion's `promotion-quality-gate.yml` run.
+
+### Acceptance and validation evidence
+
+- Local repro of the pre-fix state: 6 of 7 targeted files failing (47 failed tests), matching the
+  most recent CI fast-tier log's `FAIL` set.
+- Local re-run post-fix, under the same `CI=true --runInBand` invocation used by
+  `scripts/run-backend-test-matrix.js`'s db tier: `posHandlers.transport.test.js`,
+  `posDeviceStatus.transport.test.js`, `posVoid.route.transport.test.js`,
+  `adminRegistrationIndustryUseCases.test.js`, `registrationIndustries.transport.test.js`,
+  `inventoryItemRepository.test.js`, `storeProfile.equivalence.contract.test.js`,
+  `registrationIndustries.contract.test.js` — 8 suites / 157 tests, 0 failed (one run showed a
+  single unrelated flaky `Parse Error: Expected HTTP/, RTSP/ or ICE/` in `posVoid.route.transport`
+  under concurrent-port contention with sibling suites; isolated and repeated runs of the same
+  batch are consistently green).
+- `git status --porcelain` clean after the `--ci` run — confirms the local false-pass
+  (undeclared snapshot write) this phase closes.
+- `node --check` on every changed `.js` file — no build step exists for `apps/dgfy-api` or the
+  repo-root `scripts/` directory.
+- Real CI proof (fast-tier worker-mode ordering, 616/616 files reported, chunk timing) is pending
+  the next `promotion-quality-gate.yml` run on this PR / the next promotion.
+
+### Links
+
+Issue #1432. Refs Phase 247 (#1431 Phase 1, PR-A) as the phase that identified this follow-up.
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` row 10. Found-not-fixed-here, handed to `pm`: the POS
+mock-enumeration recurrence (a durable fix would build the mock from the real module instead of a
+hand-enumerated list), `tests/helpers/testTenantHelper.js`'s tenant `Sequelize` connection missing
+a `port` option (a portability gap, harmless in CI where `DB_PORT` is already 3306), and an
+observation that the regenerated `storeProfile` `laundry` snapshot entry keeps a fully-populated
+`pos_workflow` while dropping `pos` from `modules` (may be intentional, may be a product gap).
+
+### Next eligible phase
+
+250 (none named yet).
