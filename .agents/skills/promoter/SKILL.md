@@ -71,7 +71,7 @@ history from what the next promotion diffs against.
 ## Pre-flight — run before touching any branch
 
 The check that would have caught #426: confirm the **target** branch exists on the remote
-(`git ls-remote --exit-code --heads origin main`, plus `staging` too if using the optional soak)
+(`git ls-remote --exit-code --heads origin main`, plus `staging` too on the default flow's soak leg)
 before starting. If it's missing, restore it from the last known-good SHA and stop — do not proceed
 into a promotion against a branch that isn't there. Also confirm the head you're about to cut has
 never been used as a PR head before (long-lived branches — `develop`, `staging`, `main` — must never
@@ -80,15 +80,16 @@ be a head; that's the mechanism the `to-staging/`/`release/` prefixes exist to p
 ## Pre-`main` gates
 
 Everything below runs once per promotion batch, before `release/<label>` merges into `main` —
-whether that PR came directly off `staging` (the default flow's final leg) or directly off
-`develop` (the #1007-gated exception). See
-`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment for the full ladder this collapses
-from three stages into one.
+whether that PR came directly off `staging` (the default flow's final leg, per #1404) or directly
+off `develop` (the #1007-gated exception, which skips the `staging` soak entirely). See
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment (and its 2026-09-02 #1404 reversal)
+for the full ladder the #1007 exception collapses from three stages into two — the default flow
+itself keeps all three.
 
 **Stated the other direction, explicitly, since #1097 found this gets over-applied in practice:
 none of this — including `gate:release:local` — runs on the `develop → staging` leg** (the
-`to-staging/<label>` PR, when the optional soak is chosen). That leg's own procedure is in
-`references/promotion-runbook.md`'s "Optional: a `staging` soak first" section and stops at
+`to-staging/<label>` PR, the default flow's first leg since #1404). That leg's own procedure is in
+`references/promotion-runbook.md`'s `## Default: develop → staging → main` section and stops at
 `pr-checks.yml`'s build checks; don't reach for this section's gates there.
 
 **Ordering — only one real dependency (#1359).** These three gates read top-to-bottom below, but
