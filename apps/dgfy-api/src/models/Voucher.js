@@ -64,6 +64,16 @@ const Voucher = sequelize.define('Voucher', {
     allowNull: false,
     defaultValue: 'items'
   },
+  // #1332 (Phase 244): the auto-apply flag. `false` (default) keeps every existing voucher
+  // byte-identical -- code-entered only. NOT NULL with an explicit default, same "eligible
+  // everywhere cannot be produced by omission" property ADR 0066 Decision 10 requires elsewhere
+  // (#459). v1 auto-apply is delivery-axis only -- voucherUseCases.js's applyBenefitConfig rejects
+  // `auto_apply: true` on anything but `benefit_target: 'delivery'` at authoring time.
+  auto_apply: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
   percent_off_bps: {
     type: DataTypes.INTEGER,
     allowNull: true
@@ -216,7 +226,8 @@ const Voucher = sequelize.define('Voucher', {
     { name: 'uq_vouchers_code', unique: true, fields: ['code'] },
     { name: 'idx_vouchers_status_validity', fields: ['status', 'valid_from', 'valid_until'] },
     { name: 'idx_vouchers_kind', fields: ['voucher_kind'] },
-    { name: 'idx_vouchers_pricelist', fields: ['pricelist_id'] }
+    { name: 'idx_vouchers_pricelist', fields: ['pricelist_id'] },
+    { name: 'idx_vouchers_auto_apply', fields: ['auto_apply', 'status', 'benefit_target'] }
   ]
 });
 

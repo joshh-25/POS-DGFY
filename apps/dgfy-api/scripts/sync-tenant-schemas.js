@@ -490,6 +490,15 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         delivery_amount_off_centavos: Object.freeze({
             sql: "ALTER TABLE `vouchers` ADD COLUMN `delivery_amount_off_centavos` BIGINT NULL DEFAULT NULL"
+        }),
+        // #1332 (Phase 244, epic #1321 decision 9): the auto-apply flag. NOT NULL DEFAULT 0 so
+        // "eligible everywhere" cannot be produced by omission (ADR 0066 Decision 10, the #459
+        // failure mode) -- every existing voucher stays `0` (code-entered only), byte-identical.
+        // Kept in lockstep with migration 20260905000002-add-voucher-auto-apply.cjs -- this DDL
+        // string must stay string-identical to that migration's own (addVoucherAutoApply.migration
+        // .test.js).
+        auto_apply: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `auto_apply` TINYINT(1) NOT NULL DEFAULT 0"
         })
     }),
     // Phase 204 (#965): six nullable, additive columns for an optional proof-of-payment image on
@@ -1429,6 +1438,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `validity_text` varchar(255) DEFAULT NULL,\n"
             + "  `benefit_class` enum('percent_off','amount_off','fixed_price','free_delivery') NOT NULL,\n"
             + "  `benefit_target` enum('items','delivery') NOT NULL DEFAULT 'items',\n"
+            + "  `auto_apply` tinyint(1) NOT NULL DEFAULT '0',\n"
             + "  `percent_off_bps` int DEFAULT NULL,\n"
             + "  `amount_off_centavos` bigint DEFAULT NULL,\n"
             + "  `fixed_unit_price_centavos` bigint DEFAULT NULL,\n"
@@ -1460,7 +1470,8 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  PRIMARY KEY (`voucher_id`),\n"
             + "  UNIQUE KEY `uq_vouchers_code` (`code`),\n"
             + "  KEY `idx_vouchers_status_validity` (`status`,`valid_from`,`valid_until`),\n"
-            + "  KEY `idx_vouchers_kind` (`voucher_kind`)\n"
+            + "  KEY `idx_vouchers_kind` (`voucher_kind`),\n"
+            + "  KEY `idx_vouchers_auto_apply` (`auto_apply`,`status`,`benefit_target`)\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
     // `scope_ref_id` is polymorphic across items(item_id) and item_folders(folder_id) depending on
@@ -2074,6 +2085,12 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         idx_vouchers_pricelist: Object.freeze({
             sql: "ALTER TABLE `vouchers` ADD INDEX `idx_vouchers_pricelist` (`pricelist_id`)"
+        }),
+        // #1332 (Phase 244): covers voucherRepository.js's `listAutoApplyDeliveryCampaigns` query
+        // exactly. Kept in lockstep with migration 20260905000002-add-voucher-auto-apply.cjs -- this
+        // DDL string must stay string-identical to that migration's own ADD INDEX statement.
+        idx_vouchers_auto_apply: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD INDEX `idx_vouchers_auto_apply` (`auto_apply`,`status`,`benefit_target`)"
         })
     }),
     voucher_scopes: Object.freeze({
