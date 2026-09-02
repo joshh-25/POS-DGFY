@@ -11,8 +11,8 @@ verification_evidence: node --check on all five changed apps/dgfy-api files (syn
 rollback_note: Revert the new POST /affiliates/affiliates/:enrollment_id/reactivate endpoint (route, controller, use case, repository method), the PATCH status:'active' rejection, and the two packages/web-core files (affiliateService.js, AffiliatesWorkspacePanel.jsx). No schema change, no new column, no persisted state beyond the existing status field. No checkout, payment, receipt, terminal operation, or persisted transaction record is changed by any of it.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-30T09:48:11Z
-preflight_request_ref: NOT-EXECUTED-PHASE-207
+preflight_run_at: 2026-09-02T03:56:16.393Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-30-AFFILIATE-REACTIVATION-ENDPOINT
 ---
 
 # Affiliate Reactivation Endpoint with Slot-Cap Enforcement

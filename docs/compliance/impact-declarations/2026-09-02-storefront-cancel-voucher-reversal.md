@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/storeCancelVoucherReversal.unit.test.
 rollback_note: The code change (checkout-side attachRedemptionsToTransaction write, cancel-side reverseOrderVoucherRedemptions call, the two new voucherRepository methods) is revertible with no schema dependency -- it only writes an existing, already-indexed, nullable column (voucher_redemptions.pos_transaction_id, present since #455). Any entry_type: 'reversal' ledger rows already written by a cancellation before a revert are append-only and are NOT un-written by reverting the code -- the voucher counters they decremented stay decremented, which is the correct end state (the campaign budget genuinely was returned; reverting the code does not and should not re-grant it). The optional data-only backfill migration (20260904000002-backfill-voucher-redemption-transaction-link.cjs) is forward-only by design (corrected 2026-09-02, PR #1395 review RF-1): its up() join (idempotency-key pattern + pos_transaction_id equality) cannot distinguish a row it backfilled from a row the checkout-side attachRedemptionsToTransaction path legitimately set afterward via ordinary post-deploy checkout traffic -- both satisfy the identical join, so any down() built on it would silently null out live, freshly-created attribution links alongside the backfilled ones. down() now throws unconditionally instead of running that unsafe query; the correct rollback path is reverting the checkout-side code only, which leaves the backfilled links in place and undoes nothing. No schema (DDL) changes anywhere in this diff -- sync-tenant-schemas.js needs no change and no tenant-schema-report.yml drift is introduced. There is no rollback mechanism for the container deploy path (#495 open).
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1390-STOREFRONT-CANCEL-VOUCHER-REVERSAL
+preflight_run_at: 2026-09-02T03:56:16.395Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-09-02-STOREFRONT-CANCEL-VOUCHER-REVERSAL
 ---
 
 # Storefront order cancellation reverses its voucher redemption(s) (Phase 242, #1390)

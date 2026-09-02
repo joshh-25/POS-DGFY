@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/storeUsecases.applicationResult.test.
 rollback_note: Revert this commit. Both changes are additive parameter threading plus one error-detail rename (DIRECT_PAYMENT_NOT_READY -> DIRECT_PAYMENT_CONFIGURATION_INCOMPLETE); reverting restores the prior advertise/enforce mismatch (the #926 defect) and the prior inconsistent error code, changing no schema, migration, or persisted state.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-26T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1022-STOREFRONT-DIRECT-PAYMENT-CAPABILITY-ADVERTISING
+preflight_run_at: 2026-09-02T03:56:16.393Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-26-STOREFRONT-DIRECT-PAYMENT-CAPABILITY-ADVERTISING
 ---
 
 # Storefront Catalog Now Agrees With Checkout on Direct-Payment-Required Mode

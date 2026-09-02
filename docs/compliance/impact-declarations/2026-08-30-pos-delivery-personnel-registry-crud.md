@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/deliveryPersonnelRegistry.usecase.tes
 rollback_note: Revert this commit. No migration and no schema change were made -- delivery_personnel already carried every column this phase uses. The three new routes are additive-only; the existing GET /pos/delivery-personnel route, its use case, and posUseCases.js/posRepository.js are untouched. Reverting removes the registry CRUD routes, the admin panel, and the picker's datalist/id-submission path; every existing free-text delivery assignment keeps working unchanged both before and after a revert.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-30T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1080-POS-DELIVERY-PERSONNEL-REGISTRY-CRUD
+preflight_run_at: 2026-09-02T03:56:16.393Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-30-POS-DELIVERY-PERSONNEL-REGISTRY-CRUD
 ---
 
 # Delivery Personnel Registry CRUD

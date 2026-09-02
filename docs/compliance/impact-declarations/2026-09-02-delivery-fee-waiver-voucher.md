@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/storeCheckoutDeliveryWaiverDualAxis.u
 rollback_note: The two new pos_transactions columns (delivery_fee_waiver_voucher_id, delivery_fee_waiver_label_snapshot) and the two new vouchers columns (benefit_target, delivery_amount_off_centavos) are additive, nullable/defaulted, and droppable with no dependent read path outside this diff. The two vouchers ENUM widenings (voucher_kind gains 'delivery_campaign', benefit_class gains 'free_delivery') are NOT cleanly reversible once any delivery voucher is authored -- an ordinal reverse-MODIFY truncates/errors on such a row under strict mode; the migration's own down() checks for such rows first and throws rather than silently truncating campaign/financial configuration data (same posture as 20260830000003-add-cheque-payment-method.cjs's own enum-widening precedent), so a revert is safe only before first authoring. Orders already persisted with a non-zero delivery_fee_waiver are NOT recomputed by a revert -- the fee they carry is correct for the money actually collected; only the two new attribution columns become unreadable. There is no rollback mechanism for the container deploy path (#495 open).
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1331-DELIVERY-FEE-WAIVER-VOUCHER
+preflight_run_at: 2026-09-02T03:56:16.395Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-09-02-DELIVERY-FEE-WAIVER-VOUCHER
 ---
 
 # Delivery-fee waiver voucher — `free_delivery` benefit class, code-entered (Phase 240, #1331)

@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/affiliateCategoryRates.unit.test.js (
 rollback_note: Revert this commit. The new dgfy_affiliate_category_rates table and the category_rates_enabled column may be left in place (both inert — category_rates_enabled defaults false) or dropped via the migration's down(). No data cleanup — commissions accrued under either behavior are valid rows.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-448-AFFILIATE-CATEGORY-RATES
+preflight_run_at: 2026-09-02T03:56:16.395Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-09-01-AFFILIATE-PER-CATEGORY-COMMISSION-RATES
 ---
 
 # Per-Category Affiliate Commission Rates

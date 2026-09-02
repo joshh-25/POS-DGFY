@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/storeCheckoutDeliveryFeeThreeEntryPoi
 rollback_note: All five pos_transactions columns (delivery_fee_mode/base/waiver/override/calc_version) and the one commerce_payment_sessions column (delivery_fee_breakdown) are additive and nullable/defaulted, droppable with no dependent read path outside this diff -- reverting the commit set restores the pre-237 flat-rate resolver exactly, since resolveDeliveryFeeConfig's output was already being computed-and-discarded before this phase (Phase 233). Orders already persisted at a calculated fee are NOT recomputed by a revert -- the fee they carry stays correct for the money that was actually collected; only the provenance columns and the payment-session pin become unreadable. The quoted-fee pin (commerce_payment_sessions.delivery_fee_breakdown) reverting to NULL degrades a webhook finalization back to a fresh re-resolution -- exactly today's (pre-237) behavior, not a new failure mode.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1329-CALCULATED-AND-FREE-DELIVERY-FEE-MODES
+preflight_run_at: 2026-09-02T03:56:16.395Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-09-02-STOREFRONT-CALCULATED-AND-FREE-DELIVERY-FEE-MODES
 ---
 
 # Storefront calculated and free delivery-fee modes (Phase 237, #1329)

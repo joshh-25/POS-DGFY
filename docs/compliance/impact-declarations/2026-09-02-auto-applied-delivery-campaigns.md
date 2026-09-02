@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/autoAppliedCampaignPolicy.unit.test.j
 rollback_note: The single new vouchers column (auto_apply, TINYINT(1) NOT NULL DEFAULT 0) and its composite index (idx_vouchers_auto_apply) are additive, defaulted, and cleanly droppable -- this migration has NO enum widening at all (unlike Phase 240's own migration), so down() is a plain guarded index-drop then column-drop with no rollback-blocked-by-live-data case to throw on. Dropping auto_apply reverts every campaign to code-entered-only; no money column is touched and no persisted order is recomputed -- only future auto-apply resolution stops, retroactively nothing. There is no rollback mechanism for the container deploy path (#495 open), unchanged by this phase.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-02T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1332-AUTO-APPLIED-DELIVERY-CAMPAIGNS
+preflight_run_at: 2026-09-02T03:56:16.395Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-09-02-AUTO-APPLIED-DELIVERY-CAMPAIGNS
 ---
 
 # Auto-applied free-delivery campaigns (Phase 244, #1332)

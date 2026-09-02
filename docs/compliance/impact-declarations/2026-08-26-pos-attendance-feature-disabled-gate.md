@@ -11,8 +11,8 @@ verification_evidence: npm run build:pos,npm run build:skupervisor,vitest run te
 rollback_note: Revert this commit. `isPosOperatorFeatureDisabledReason` and its two call sites are additive and read-only over the existing `checkoutOperatorLocked` derivation; reverting restores the single-code equality check exactly as it was, re-introducing the reported defect but changing no schema, migration, or persisted state.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-26T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1045-POS-ATTENDANCE-FEATURE-DISABLED-GATE
+preflight_run_at: 2026-09-02T03:56:16.393Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-26-POS-ATTENDANCE-FEATURE-DISABLED-GATE
 ---
 
 # POS Checkout Wrongly Gated on an Unrecognised Feature-Disabled Reason Code
