@@ -141,6 +141,9 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     syncMobilePosVoidsUseCase: jest.fn(),
     updateDeliveryRunUseCase: jest.fn(),
     updateOnlineOrderDeliveryAddressUseCase: jest.fn(),
+    claimOnlineOrderReceiptAutoPrintUseCase: jest.fn(),
+    overrideDeliveryFeeUseCase: jest.fn(),
+    syncMobilePosRefundsUseCase: jest.fn(),
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
