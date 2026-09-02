@@ -4,8 +4,8 @@
  * Builds a `jest.unstable_mockModule()` stub object from the REAL exported shape of an ES
  * module, instead of a hand-enumerated literal key list that silently rots the moment the real
  * module gains or loses an export (#1432 Phase 249: this recurred twice within 24h against
- * `src/modules/pos/index.js` / `src/controllers/posController.js`; #1441 Phase 250 flagged both
- * files as the only two in the suite that still hand-enumerate; #1450 Phase 251 is this fix).
+ * `src/modules/pos/index.js` / `src/controllers/posController.js`; #1441 Phase 252 flagged both
+ * files as the only two in the suite that still hand-enumerate; #1450 Phase 253 is this fix).
  *
  * Every function here is a STATIC SOURCE-TEXT PARSER -- none of them `import()`/`require()` the
  * target module. The real POS barrel (`src/modules/pos/index.js`) transitively pulls in

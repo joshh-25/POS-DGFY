@@ -17734,16 +17734,16 @@ PR's own touched files; PR-B/C/D tracking issues (Phases 253-255).
 253 (planned — PR-B, static-parse POS barrel-mock helper). 254 and 255 (PR-C, PR-D) follow in
 sequence, each cut from the previous PR's head.
 
-## Phase 251 - Derive POS mocks from the real module instead of hand-enumerated stub lists (#1441/#1450, PR-B)
+## Phase 253 - Derive POS mocks from the real module instead of hand-enumerated stub lists (#1441/#1450, PR-B)
 
 ### Initiative and release
 
-Closes Phase 250's (#1441 PR-A) unfiled `pm` hand-off and #1450: the audit found exactly two files
+Closes Phase 252's (#1441 PR-A) unfiled `pm` hand-off and #1450: the audit found exactly two files
 still hand-enumerating the real POS export surface inside a `jest.unstable_mockModule` factory
 (`posHandlers.transport.test.js`, 135 keys of `src/modules/pos/index.js`;
 `posVoid.route.transport.test.js`, ~120 keys of `src/controllers/posController.js`'s `export
 default {}`) — the exact rot that recurred twice within 24h during Phase 249 (#1432). PR-B of the
-four-PR sequence started in Phase 250; cut from PR-A's head (`pat/test-dgfy-api-audit-backend-test-
+four-PR sequence started in Phase 252; cut from PR-A's head (`pat/test-dgfy-api-audit-backend-test-
 suite-for-value`), branch `test/1441-esm-barrel-mock`, against `develop`.
 
 ### Objective and scope
@@ -17826,9 +17826,14 @@ version imports the real barrel, so no import-graph-driven heap difference was e
 
 ### Dependencies
 
-Phase 250 (#1441 PR-A, merged into `pat/test-dgfy-api-audit-backend-test-suite-for-value`) — this
-PR is cut from that branch's head, not `develop`. PR-C (Phase 252) and PR-D (Phase 253) are cut from
+Phase 252 (#1441 PR-A, merged into `pat/test-dgfy-api-audit-backend-test-suite-for-value`) — this
+PR is cut from that branch's head, not `develop`. PR-C (Phase 254) and PR-D (Phase 255) are cut from
 this PR's head in sequence and depend on it merging first.
+
+**Numbering note (corrected 2026-09-03)**: originally numbered Phase 251, following the parked
+#1441 plan's reserved 250-253. Renumbered to 253 once Phase 252 (#1441 PR-A) itself had to move
+off its original 250 slot — see that entry's own numbering note; #1431's Phase 250/251 entries
+claimed those numbers first on `develop`.
 
 ### Acceptance and validation evidence
 
@@ -17851,10 +17856,10 @@ this PR's head in sequence and depend on it merging first.
 
 ### Links
 
-Issue #1441, #1450. Refs Phase 250 (#1441 PR-A) as the prior phase this is cut from and continues.
-PR-C (Phase 252, #1451) and PR-D (Phase 253) follow in sequence.
+Issue #1441, #1450. Refs Phase 252 (#1441 PR-A) as the prior phase this is cut from and continues.
+PR-C (Phase 254, #1451) and PR-D (Phase 255) follow in sequence.
 
 ### Next eligible phase
 
-252 (planned — PR-C, trim transport and source-text tests to what they uniquely prove). Cut from
+254 (planned — PR-C, trim transport and source-text tests to what they uniquely prove). Cut from
 this PR's head once merged/pushed.

@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-02T18:28:39.057Z",
-  "totalFiles": 637,
+  "generatedAt": "2026-09-02T18:32:48.533Z",
+  "totalFiles": 638,
   "byClassification": {
-    "keep": 576,
+    "keep": 578,
     "delete": 18,
-    "consolidate": 35,
+    "consolidate": 34,
     "trim": 3,
     "demote": 5
   },
@@ -45,6 +45,7 @@
     "invitation": 1,
     "repository": 9,
     "loggingPolicy": 1,
+    "helper": 1,
     "route": 1,
     "routes": 1,
     "qa": 1,
@@ -7223,6 +7224,41 @@
       "findings": []
     },
     {
+      "path": "tests/esmBarrelMock.helper.test.js",
+      "lines": 153,
+      "caseCount": 12,
+      "describeTitles": [
+        "esmBarrelMock helper self-test"
+      ],
+      "expectCount": 18,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 4,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "helper",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: helper)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/executeConfirmedActionUseCase.test.js",
       "lines": 135,
       "caseCount": 3,
@@ -13291,7 +13327,7 @@
     },
     {
       "path": "tests/posHandlers.transport.test.js",
-      "lines": 1366,
+      "lines": 1324,
       "caseCount": 27,
       "describeTitles": [
         "posHandlers transport contracts"
@@ -13301,7 +13337,7 @@
       "toHaveBeenCalledCount": 100,
       "readFileSyncCount": 0,
       "textRatio": 0,
-      "maxMockStubCount": 47,
+      "maxMockStubCount": 0,
       "isSupertest": false,
       "isSnapshot": false,
       "onDbManifest": false,
@@ -13346,9 +13382,9 @@
         ],
         "hardcoded": []
       },
-      "classification": "consolidate",
-      "reason": "hand-enumerated-barrel (47 factory stubs)",
-      "rule": "R4-hand-enumerated-barrel",
+      "classification": "keep",
+      "reason": "default keep (suffix: transport)",
+      "rule": "R5-default",
       "findings": []
     },
     {
@@ -14521,6 +14557,7 @@
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-06-28-pos-optional-compliance-operation.md",
           "docs/compliance/impact-declarations/2026-07-11-pos-cash-collection-and-terminal-safety.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/releases/batches/2026-07-02-pos-logical-terminal-shift-open.json"
         ],
@@ -15757,7 +15794,7 @@
     },
     {
       "path": "tests/posVoid.route.transport.test.js",
-      "lines": 460,
+      "lines": 436,
       "caseCount": 9,
       "describeTitles": [
         "POS transaction void route transport contract"

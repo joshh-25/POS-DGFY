@@ -103,16 +103,16 @@ the db manifest does, for delete/consolidate entries once the cut is actually ap
 
 ### Summary
 
-Total active test files: **637** | db-manifest members: **30** | findings: **4**
+Total active test files: **638** | db-manifest members: **30** | findings: **4**
 
 ### By classification
 
 | Classification | Count |
 | --- | --- |
-| consolidate | 35 |
+| consolidate | 34 |
 | delete | 18 |
 | demote | 5 |
-| keep | 576 |
+| keep | 578 |
 | trim | 3 |
 
 ### By suffix
@@ -163,6 +163,7 @@ Total active test files: **637** | db-manifest members: **30** | findings: **4**
 | companyApproved | 1 |
 | invitation | 1 |
 | loggingPolicy | 1 |
+| helper | 1 |
 | route | 1 |
 | routes | 1 |
 | qa | 1 |
@@ -439,6 +440,7 @@ Total active test files: **637** | db-manifest members: **30** | findings: **4**
 | tests/engagementIntegrityHealthService.test.js | 67 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/engagementService.test.js | 103 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/errorHandler.loggingPolicy.test.js | 115 | 7 | keep | R5-default | default keep (suffix: loggingPolicy) |
+| tests/esmBarrelMock.helper.test.js | 153 | 12 | keep | R5-default | default keep (suffix: helper) |
 | tests/executeConfirmedActionUseCase.test.js | 135 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/externalProductImageImport.test.js | 107 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/externalProductLookup.test.js | 183 | 6 | keep | R5-default | default keep (suffix: (none)) |
@@ -607,7 +609,7 @@ Total active test files: **637** | db-manifest members: **30** | findings: **4**
 | tests/posDrawerAuthorization.unit.test.js | 79 | 3 | keep | R5-default | default keep (suffix: unit) |
 | tests/posExternalRefund.usecase.test.js | 267 | 7 | keep | R5-default | default keep (suffix: usecase) |
 | tests/posGovernedDiscountLineId.contract.test.js | 23 | 1 | delete | R3-source-text-only | source-text-only (text_ratio=1) |
-| tests/posHandlers.transport.test.js | 1366 | 27 | consolidate | R4-hand-enumerated-barrel | hand-enumerated-barrel (47 factory stubs) |
+| tests/posHandlers.transport.test.js | 1324 | 27 | keep | R5-default | default keep (suffix: transport) |
 | tests/posItemDiscountPolicy.unit.test.js | 56 | 2 | keep | R5-default | default keep (suffix: unit) |
 | tests/posMerchantTenderReconciliation.route.contract.test.js | 33 | 2 | keep | R5-default | default keep (suffix: route.contract) |
 | tests/posMerchantTenderReconciliation.usecases.test.js | 127 | 4 | keep | R5-default | default keep (suffix: usecases) |
@@ -673,7 +675,7 @@ Total active test files: **637** | db-manifest members: **30** | findings: **4**
 | tests/posValidator.reportsOverviewQuery.test.js | 167 | 9 | keep | R5-default | default keep (suffix: reportsOverviewQuery) |
 | tests/posValidator.terminalShiftIdentity.test.js | 100 | 6 | keep | R5-default | default keep (suffix: terminalShiftIdentity) |
 | tests/posValidator.transactionsQuery.test.js | 78 | 4 | keep | R5-default | default keep (suffix: transactionsQuery) |
-| tests/posVoid.route.transport.test.js | 460 | 9 | keep | R5-default | default keep (suffix: route.transport) |
+| tests/posVoid.route.transport.test.js | 436 | 9 | keep | R5-default | default keep (suffix: route.transport) |
 | tests/posVoidFinancialOutcome.test.js | 94 | 6 | keep | R5-default | default keep (suffix: (none)) |
 | tests/posVoucherDiscountCalculator.unit.test.js | 135 | 6 | keep | R5-default | default keep (suffix: unit) |
 | tests/prepareChatPayloadUseCase.test.js | 88 | 3 | keep | R5-default | default keep (suffix: (none)) |
