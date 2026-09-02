@@ -1,6 +1,6 @@
 ---
 name: promoter
-description: Run a develop -> main promotion end to end on dgfy-platform, cutting the release branch itself — the Promoter/Release role from issue #331/#512. Use when asked to promote develop to production, cut a release branch, or run a "review, merge, and deploy" composite instruction's deploy leg. An optional staging soak (develop -> staging -> main) is still available per batch, not the default. Dispatches DEV/STAGING deploys unattended; never merges main and never dispatches a main/PROD deploy without an explicit go each time, except a narrow phrase-gated expedited override (#1007). First live run is report-only.
+description: Run a develop -> staging -> main promotion end to end on dgfy-platform, cutting the release branch(es) itself — the Promoter/Release role from issue #331/#512. Use when asked to promote develop to production, cut a release branch, or run a "review, merge, and deploy" composite instruction's deploy leg. The develop -> staging -> main soak is the default again since #1404 (2026-09-02); a direct develop -> main promotion is available only as #1007's phrase-gated exception, not a routine choice. Dispatches DEV/STAGING deploys unattended; never merges main and never dispatches a main/PROD deploy without an explicit go each time, except a narrow phrase-gated expedited override (#1007). First live run is report-only.
 ---
 
 # Promoter/Release
@@ -8,14 +8,14 @@ description: Run a develop -> main promotion end to end on dgfy-platform, cuttin
 **Portability**: this is the canonical definition of this role (#442).
 `.claude/skills/promoter/SKILL.md` is a thin pointer back here — edit here, not there.
 
-Runs a branch promotion end to end — `develop` → `main` by default since #980/ADR 0074
-(2026-08-25), or `develop` → `staging` → `main` when a promoter chooses the optional soak — including
-cutting the promotion branch(es) each leg needs. This is the "Release/Deploy captain" candidate
-named in #331, built out by #512 after PR #510 was blocked because `staging` had been deleted as a
-side effect of using it directly as a PR head (full incident:
-`docs/ops/STAGING_TO_MAIN_PROMOTION_INCIDENT_2026-07-28.md`). The branch-per-promotion mechanism
-that incident produced is what makes the optional soak safe to still offer — nothing about dropping
-`staging` from the default path changes that mechanism.
+Runs a branch promotion end to end — `develop` → `staging` → `main` by default again since #1404
+(2026-09-02, reversing ADR 0074/#980's 2026-08-25 two-stage default), or `develop` → `main`
+directly only as #1007's phrase-gated exception — including cutting the promotion branch(es) each
+leg needs. This is the "Release/Deploy captain" candidate named in #331, built out by #512 after PR
+#510 was blocked because `staging` had been deleted as a side effect of using it directly as a PR
+head (full incident: `docs/ops/STAGING_TO_MAIN_PROMOTION_INCIDENT_2026-07-28.md`). The
+branch-per-promotion mechanism that incident produced is what makes the #1007 exception safe to
+still offer — nothing about restoring `staging` to the default path changes that mechanism.
 
 **Read rule sources at runtime. Never embed their contents here.**
 `docs/ops/RELEASE_CANDIDATE_POLICY.md` (authoritative) owns the flow and branch-naming convention;
@@ -34,18 +34,25 @@ role rather than bending either existing one past its charter.
 
 ## The flow
 
-**Default, since #980/ADR 0074 (2026-08-25):** `feature → develop → release/<label> → main`.
-`release/<label>` is cut fresh from `origin/develop`, carries no commits of its own, used once as a
-PR head, never reused.
+**Default, since #1404 (2026-09-02) — reverses ADR 0074/#980's 2026-08-25 two-stage default; see
+ADR 0074's 2026-09-02 Amendment and `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching entry:**
+`feature → develop → to-staging/<label> → staging → release/<label> → main`. `to-staging/<label>`
+cuts fresh from `origin/develop`; `release/<label>` then cuts fresh from `origin/staging`. Every
+promotion branch is a throwaway — cut fresh, no commits of its own, used once as a PR head, never
+reused. Because this leg runs on every ordinary promotion again, `staging` gets refreshed as a
+routine side effect of shipping — it is no longer relying only on the manual on-demand refresh ADR
+0074 Decision 4 describes, though that gap (no *guaranteed* anti-rot mechanism) still stands for a
+run of consecutive #1007 exceptions in a row.
 
-**Optional, non-default, per batch:** `feature → develop → to-staging/<label> → staging →
-release/<label> → main`. Choose this when a specific batch is risky enough to want a `staging` soak
-first (e.g. schema-shaping migrations, a large bundle, anything resembling the #860 precedent) —
-this is a judgment call each promotion, not a standing policy switch. When chosen, `to-staging/<label>`
-cuts from `origin/develop` and `release/<label>` cuts from `origin/staging` instead of
-`origin/develop`. `staging` is not kept automatically current — if it's been a while, either refresh
-it first (`git push --force-with-lease origin origin/develop:staging`) or just take the default
-two-stage path instead; a stale soak is worse than no soak.
+**Optional, non-default: the #1007-gated expedited exception.** `feature → develop →
+release/<label> → main` — skips the `staging` soak, cutting `release/<label>` fresh from
+`origin/develop` instead of `origin/staging`. This is **not** a routine per-batch judgment call
+(that framing applied 2026-08-25 through 2026-09-02, while this was the default) — it is invoked
+**only** as #1007's own phrase-gated, logged override, defined in full in "Expedited `develop →
+main` override (#1007)" below. Nothing about that mechanism changes here: same checkpoint table,
+same never-skippable list (production tenant-schema report, `AGENTS.md` Merge Safety, never-
+`--squash`, the `release/<label>` head-cut rule), same every-invocation restate-and-log requirement.
+Only which path it is an exception *to* has flipped.
 
 Either way, every promotion branch is a throwaway: cut fresh, carries no commits of its own, used
 once as a PR head, never reused. This is **one** mechanism for however many legs a given promotion
@@ -73,7 +80,8 @@ be a head; that's the mechanism the `to-staging/`/`release/` prefixes exist to p
 ## Pre-`main` gates
 
 Everything below runs once per promotion batch, before `release/<label>` merges into `main` —
-whether that PR came directly off `develop` (the default) or off `staging` (the optional soak). See
+whether that PR came directly off `staging` (the default flow's final leg) or directly off
+`develop` (the #1007-gated exception). See
 `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment for the full ladder this collapses
 from three stages into one.
 
@@ -209,7 +217,7 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 
 | Trigger | What "stop" means |
 |---|---|
-| Pre-flight, branch cut, PR open, merge into `develop`, or into `staging` (the optional soak) | Unattended — proceed |
+| Pre-flight, branch cut, PR open, merge into `develop`, or into `staging` (the default soak leg) | Unattended — proceed |
 | Dispatching `deploy.yml` for environment `DEV` or `STAGING` | Unattended — proceed. Pat's 2026-08-16 call: this leg of "review, merge, and deploy" runs end to end without a per-dispatch ask, matching #543's "Promoter cuts/promotes staging (unattended)" framing |
 | Dispatching `verify-deployment.yml` (any environment) | Unattended — every remote command it runs is read-only |
 | Dispatching `tenant-schema-report.yml` (any environment, including PROD) | Unattended — read-only, `--mode report` only, no write path exists |
@@ -258,6 +266,6 @@ This role owns no `Status` lane — a promotion PR isn't a per-issue card. `pr-r
 
 ## Reference files
 
-- `references/promotion-runbook.md` — the copy-pasteable command sequence for the default two-stage
-  flow and the optional `staging` soak: pre-flight, branch cut, PR create, checks, merge, deploy
-  dispatch, verify dispatch.
+- `references/promotion-runbook.md` — the copy-pasteable command sequence for the default
+  three-stage flow and the #1007-gated two-stage exception: pre-flight, branch cut, PR create,
+  checks, merge, deploy dispatch, verify dispatch.

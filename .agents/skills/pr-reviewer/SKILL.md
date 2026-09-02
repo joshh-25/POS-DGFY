@@ -46,7 +46,8 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    `docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs," the
    sweep runs continuously (triggered on every `develop` push touching a declaration) rather than at
    a promotion leg, since ADR 0074/#980 (2026-08-25) retired `staging` from the default promotion
-   path and #1163/#1248 (2026-08-31) made the sweep continuous instead of promotion-time-only. It
+   path (reversed 2026-09-02 by #1404 — see below) and #1163/#1248 (2026-08-31) made the sweep
+   continuous instead of promotion-time-only. It
    reconciles and pushes a branch automatically, but clearing the ref is a **supervised handoff, not
    an auto-merge** (#1295/#1374, 2026-09-02): `github-actions[bot]` is org-blocked from creating or
    approving pull requests, so in the ordinary case a human or credentialed AI session still has to
@@ -54,11 +55,13 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    and a filed/updated `compliance:preflight-handoff` GitHub issue with the exact commands). Do not
    raise it as a should-fix on a `develop`-targeting PR — the sweep having merely reconciled-and-
    pushed rather than fully merged is expected, not a defect to flag. On a promotion PR (head
-   `release/*`, or `to-staging/*` if the optional soak is chosen for that batch), the opposite
-   applies: a surviving `NOT-EXECUTED-*` in the bundled diff **is** a finding — `should-fix` for a
-   `to-staging/*` PR (the continuous sweep, once its own handoff PR is merged, should have cleared it
-   well before this PR was opened — worth checking whether an open `compliance:preflight-handoff`
-   issue explains the miss), **blocker** for a `release/*` PR (per the policy, none may reach `main`).
+   `to-staging/*` — the default soak leg since #1404, 2026-09-02 — or `release/*`, whether that's
+   the default flow's final leg off `staging` or the #1007-gated direct exception off `develop`),
+   the opposite applies: a surviving `NOT-EXECUTED-*` in the bundled diff **is** a finding —
+   `should-fix` for a `to-staging/*` PR (the continuous sweep, once its own handoff PR is merged,
+   should have cleared it well before this PR was opened — worth checking whether an open
+   `compliance:preflight-handoff` issue explains the miss), **blocker** for a `release/*` PR
+   regardless of what it was cut from (per the policy, none may reach `main`).
    A `NOT-APPLICABLE-*` `preflight_request_ref` (#1396) is a distinct, legitimate reconciled state —
    not a finding on any PR — recording a `minor` declaration whose surfaces the live endpoint cannot
    evaluate at all; a `major`/`regulatory` declaration reaching this state instead of a real
