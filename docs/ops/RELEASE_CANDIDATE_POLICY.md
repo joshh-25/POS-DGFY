@@ -682,3 +682,44 @@ precondition below is satisfied by that reading, not violated by it (see the rej
 note in the #1431 Phase 1 PR-B plan for why a third `run_mode` value was considered and rejected).
 
 PR: (this PR). Refs #1431, #1063, #1066, #1147, #1435 (PR-A).
+
+### 2026-09-03: `gate:release:local` fully delegated, required-locally is 0 (#1431 Phase C/D) —
+closes the umbrella (#1147)
+
+Not rewritten in place, same convention as every amendment above. This is the closing entry: every
+gate `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` still listed as locally required is now delegated
+to `promotion-quality-gate.yml`, and every row in that mapping doc has a documented, closed
+resolution.
+
+**What changed.** Five more steps flipped from advisory to blocking on real evidence (workflow_
+dispatch fault-probe runs plus one throwaway PR against `main`, deleted unmerged — run IDs and the
+clean/fault table are in `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "Evidence behind the Phase C
+flips"): `run_dependency_audit_prod`, `run_compliance_contracts` (`repository-quality`),
+`run_runtime_doctor` (`dgfy-api-quality`), `run_shared_fnb_contract_tests`
+(`frontend-ims-quality`), `check_frontend_budgets` (`frontend-budgets-quality`). All 9 gates that
+remained locally required (2, 3, 6, 7, 8, 10, 14, 16, 17 in the mapping doc's numbering) joined
+`gate-release-local.js`'s `CI_ENFORCED_GATES` (7 → 16 entries), bringing `required_gate_count` to
+**0** on a default run. `scripts/check-pr-quality-workflow.js` gained a two-name
+`ADVISORY_CI_ENFORCED_GATES` allowlist (`dependencies.audit.full`, `backend.test_matrix`) so
+`checkCiEnforcedGatesAreBlocking()` doesn't demand blocking coverage for the two gates that are
+delegated but deliberately not blocking — every other delegated gate still must have real blocking
+coverage or that check fails loudly.
+
+**The two deliberate exceptions, settled this phase, not left pending.** `dependencies.audit.full`
+is now **permanently** advisory (Pat's call) — Phase A/C evidence confirmed it real-failing on both
+the clean and fault-probe runs for a pre-existing, registry-dependent reason unrelated to any code
+defect, and its findings never ship. `backend.test_matrix` stays **temporarily** advisory, tracked
+by #1469 (filed this phase), gated on #1015 (fast/DB tier split) and #925 (hanging `beforeAll`) —
+Phase A/C's own evidence runs reconfirmed it genuinely failing, not just slow, consistent with
+#1432's prior root-cause finding.
+
+**Consequence for this policy's own tables above.** Every `develop → main` and `staging → main` row
+that named `npm run gate:release:local` as a required step is now stale in that specific respect —
+`promotion-quality-gate.yml`'s own check-run is the enforcement mechanism, full stop.
+`docs/testing/release-go-no-go-checklist.md` and `.agents/skills/promoter/SKILL.md` have been
+updated to stop citing the local script as a promotion gate; this entry is the policy-side record of
+why. The #1007 expedited-override row's mention of `gate:release:local` as something skippable is
+now moot in substance (there is nothing local left to skip under the override or otherwise) — see
+`AGENTS.md`'s own note on this.
+
+PR: (this PR, `ci/1431-phase-cde-zero-local-gates`). Refs #1431, #1147, #1469, #1015, #925.
