@@ -69,6 +69,25 @@ const PATH_FILTERS = {
   migration_runner: /^(apps\/dgfy-migration-runner\/|infrastructure\/docker\/dgfy-migration-runner\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)/,
 };
 
+// #1454: NOT part of PATH_FILTERS. PATH_FILTERS is the verbatim port of
+// shared-changed-paths.yml and pr-checks.test.js asserts every entry in it still
+// appears in that workflow -- this filter has no workflow counterpart (no CI job runs
+// audit:backend-tests:check today) and would fail that anti-drift test if folded in.
+//
+// Wider than the issue's literal `apps/dgfy-api/tests/**` on purpose. The committed
+// inventory is derived from four inputs, not one: the tests tree, the rule engine, its
+// per-file overrides, and the db-tier manifest -- plus the two committed outputs it
+// diffs itself against. Narrower than PATH_FILTERS.dgfy_api either way, which is the
+// property #1454 actually needs.
+//
+// Known gap, accepted: the inventory's `citations` come from a repo-wide `git ls-files`
+// scan (audit-backend-test-inventory.js:154-178), so an unrelated tracked file adding a
+// mention of a test basename drifts it without matching here -- exactly what
+// 6f6aa1f5c (a ledger entry) did to edaf32464 on 2026-09-03. Covering that means firing
+// on every PR for a ~15s check whose fix is one command; the durable answer is a
+// scheduled/develop-push gate, which is #1147/#1431 territory, not this file's.
+const BACKEND_TEST_INVENTORY_FILTER = /^(apps\/dgfy-api\/tests\/|scripts\/(audit-backend-test-inventory|backend-test-audit-overrides|backend-db-dependent-tests)\.js$|docs\/testing\/backend-test-suite-(inventory\.json|value-audit\.md)$)/;
+
 const NOT_REPRODUCED_LOCALLY = [
   'Dockerfile runtime/nginx stages (only the builder/deps stage is approximated)',
   'npm ci under the Dockerfiles’ node:22-alpine (this host is whatever `node -v` reports below)',
@@ -289,6 +308,31 @@ function runChecks(options, changedFiles, components) {
     addCheck(checks, 'dgfy-api architecture guardrails', 'npm run check:architecture:dgfy-api', archResult.ok ? 'pass' : 'fail');
   }
 
+  // #1454: the committed backend-test inventory is derived data -- it rots the moment
+  // the tests tree or the audit tool's own inputs move, the same way #1432's fixtures
+  // did. Top-level rather than nested in the dgfy-api block above: half the trigger
+  // paths live under scripts/ and docs/testing/ and never set components.dgfy_api.
+  //
+  // Non-blocking on purpose. This tool's PASS is what authorizes an outage-time merge
+  // under AGENTS.md's Merge Safety carve-out; failing that closed on derived-doc drift
+  // forces a regeneration commit, which moves headRefOid and invalidates the
+  // `## Local CI` comment's own SHA binding (#725 RF-2), restarting the cycle during an
+  // active CI outage. A stale inventory is a `npm run audit:backend-tests` + commit
+  // chore, not a build or correctness failure. There is no CI counterpart to promote
+  // this against today; a blocking version belongs in promotion-quality-gate.yml's
+  // CI_ENFORCED_GATES on #1431's axis. Refs #1441, #1147, #1431.
+  const backendTestInventoryTouched = changedFiles.some((f) => BACKEND_TEST_INVENTORY_FILTER.test(f));
+  if (backendTestInventoryTouched) {
+    const inventoryResult = runCommand('npm', ['run', 'audit:backend-tests:check']);
+    addCheck(
+      checks,
+      'backend test inventory freshness (local-only — no CI counterpart today)',
+      'npm run audit:backend-tests:check',
+      inventoryResult.ok ? 'pass' : 'warn',
+      false
+    );
+  }
+
   if (components.migration_runner) {
     const ciResult = runCommand('npm', ['ci', '--omit=dev', '--dry-run', '--prefix', 'apps/dgfy-migration-runner']);
     const jsFiles = changedFiles.filter((f) => f.startsWith('apps/dgfy-migration-runner/') && f.endsWith('.js'));
@@ -481,6 +525,7 @@ if (require.main === module) {
 module.exports = {
   PrChecksError,
   PATH_FILTERS,
+  BACKEND_TEST_INVENTORY_FILTER,
   parseArgs,
   detectComponents,
   classifyCiUnavailability,
