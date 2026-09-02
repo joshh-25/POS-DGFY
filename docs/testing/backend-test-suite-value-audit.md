@@ -120,7 +120,7 @@ the db manifest does, for delete/consolidate entries once the cut is actually ap
 
 ### Summary
 
-Total active test files: **636** | db-manifest members: **30** | findings: **4**
+Total active test files: **636** | db-manifest members: **29** | findings: **4**
 
 ### By classification
 
@@ -136,7 +136,7 @@ Total active test files: **636** | db-manifest members: **30** | findings: **4**
 
 | Suffix | Count |
 | --- | --- |
-| (none) | 219 |
+| (none) | 218 |
 | unit | 62 |
 | usecase | 52 |
 | transport | 39 |
@@ -175,6 +175,7 @@ Total active test files: **636** | db-manifest members: **30** | findings: **4**
 | parity.unit | 1 |
 | invitationSchema | 1 |
 | slotEnforcement.unit | 1 |
+| redis | 1 |
 | deliveryLog | 1 |
 | deliveryProvider | 1 |
 | companyApproved | 1 |
@@ -432,6 +433,7 @@ Total active test files: **636** | db-manifest members: **30** | findings: **4**
 | tests/dispatchOrderHandlers.transport.test.js | 223 | 5 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/dispatchOrderToolRegistry.test.js | 143 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dispatchOrderUsecases.applicationResult.test.js | 85 | 5 | keep | R5-default | default keep (suffix: applicationResult) |
+| tests/distributedLock.redis.test.js | 40 | 1 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/downpaymentPolicy.unit.test.js | 283 | 23 | keep | R5-default | default keep (suffix: unit) |
 | tests/downpaymentSettingsRepository.unit.test.js | 75 | 3 | keep | R5-default | default keep (suffix: unit) |
 | tests/downpaymentSettingsUseCases.unit.test.js | 212 | 15 | keep | R5-default | default keep (suffix: unit) |
@@ -739,7 +741,7 @@ Total active test files: **636** | db-manifest members: **30** | findings: **4**
 | tests/routeCalculatorRepository.test.js | 120 | 7 | keep | R5-default | default keep (suffix: (none)) |
 | tests/routeCalculatorUseCase.test.js | 93 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/routeCalculatorValidator.test.js | 80 | 4 | keep | R5-default | default keep (suffix: (none)) |
-| tests/rtr_verification.test.js | 222 | 4 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
+| tests/rtr_verification.test.js | 276 | 6 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/runtimeSchemaAuditService.test.js | 937 | 11 | keep | R5-default | default keep (suffix: (none)) |
 | tests/salesHandlers.transport.test.js | 242 | 8 | keep | R5-default | default keep (suffix: transport) |
 | tests/salesRepositoryPromoReadModel.test.js | 66 | 1 | keep | R5-default | default keep (suffix: (none)) |
@@ -835,7 +837,7 @@ Total active test files: **636** | db-manifest members: **30** | findings: **4**
 | tests/storefrontTenantResolver.test.js | 158 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/storefrontVouchersDiscoveryIndexPersistence.contract.test.js | 33 | 2 | consolidate | R4-source-text-mixed | source-text-mixed (text_ratio=0.75) |
 | tests/subscriptionIntegration.test.js | 52 | 2 | keep | R5-default | default keep (suffix: (none)) |
-| tests/supertest_security.test.js | 171 | 4 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
+| tests/supertest_security.test.js | 147 | 3 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/supplierHandlers.transport.test.js | 160 | 3 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/supplierSoftDeletePolicy.test.js | 76 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/supplierToolRegistry.test.js | 94 | 4 | keep | R5-default | default keep (suffix: (none)) |
@@ -874,7 +876,6 @@ Total active test files: **636** | db-manifest members: **30** | findings: **4**
 | tests/tenantSchemaRegistryCoverageScript.unit.test.js | 245 | 17 | keep | R5-default | default keep (suffix: unit) |
 | tests/tenantSchemaSyncScripts.test.js | 571 | 27 | keep | R5-default | default keep (suffix: (none)) |
 | tests/toctou_integration.test.js | 224 | 2 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
-| tests/token_refresh_race.test.js | 194 | 4 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/updateTenantCapabilitiesFulfillmentGuard.usecases.test.js | 172 | 3 | keep | R5-default | default keep (suffix: usecases) |
 | tests/updateTenantCapabilitiesUseCase.rollback.test.js | 163 | 2 | keep | R5-default | default keep (suffix: rollback) |
 | tests/uploadCachePolicy.test.js | 31 | 3 | keep | R5-default | default keep (suffix: (none)) |
@@ -886,7 +887,7 @@ Total active test files: **636** | db-manifest members: **30** | findings: **4**
 | tests/userSoftDeletePolicy.test.js | 217 | 7 | keep | R5-default | default keep (suffix: (none)) |
 | tests/userUsecases.applicationResult.test.js | 135 | 8 | keep | R5-default | default keep (suffix: applicationResult) |
 | tests/userValidator.posDayClosePin.test.js | 43 | 3 | keep | R5-default | default keep (suffix: posDayClosePin) |
-| tests/voidMovement.supertest.test.js | 666 | 15 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
+| tests/voidMovement.supertest.test.js | 615 | 13 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/voidMovement.test.js | 475 | 10 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/voucherBenefitPolicy.unit.test.js | 174 | 14 | keep | R5-default | default keep (suffix: unit) |
 | tests/voucherBenefitPolicyDeliveryTarget.unit.test.js | 306 | 15 | keep | R5-default | default keep (suffix: unit) |
@@ -913,12 +914,19 @@ Generated by `npm run audit:backend-tests`. Do not edit by hand.
 for each removed/trimmed file's pre-cut content, cross-checked against the generated inventory's
 post-cut sums):
 
-| Metric | Before (`c16cc6b50`) | After (this PR) | Delta |
-|---|---|---|---|
-| Active test files | 652 | 637 | −15 (11 deleted + 4 folded into siblings) |
-| Total cases | 4,536 | 4,520 | −16 (14 from the 11 deletions, 2 from the `employeeCreditMigration` trim; the 4 consolidations moved 7 cases with zero net loss) |
-| Total lines | 138,704 | 137,883 | −821 |
-| db-manifest members | 36 | 30 | −6 (1 removed with its file, 5 demoted to the fast tier — see below) |
+| Metric | Before (`c16cc6b50`) | After (this PR) | After PR-D (#1452) | Delta (PR-A → PR-D) |
+|---|---|---|---|---|
+| Active test files | 652 | 637 | **636** | −1 net (PR-B/PR-C together removed 1; PR-D deletes `token_refresh_race.test.js` and adds `tests/distributedLock.redis.test.js`, net 0) |
+| Total cases | 4,536 | 4,520 | not re-totaled | PR-B and PR-C never appended a row to this table (confirmed: `PR-B\|PR-C` greps this doc for prose hits only), so there is no tracked PR-C-exit baseline to diff PR-D's own case deltas against repo-wide. PR-D's own scoped delta (the 4 files it touches) is in that PR's own body: 25 → 21 cases (−4) — see #1452's PR description, not this table |
+| Total lines | 138,704 | 137,883 | not re-totaled | same caveat as Total cases above |
+| db-manifest members | 36 | 30 | **29** | −1 (`token_refresh_race.test.js`'s entry removed; the new `distributedLock.redis.test.js` fast-tier file is deliberately NOT added — see PR-D's own commit) |
+
+**Note on this table's gaps (added by PR-D, #1452):** PR-B (Phase 253) and PR-C (Phase 254) each
+shipped real file/case changes but neither appended an "after" column here — confirmed by grepping
+this doc for `PR-B|PR-C`, which returns only prose references, no table rows. The 637/4,520/137,883
+column above is PR-A's exit state only, already stale by the time PR-D runs. Rather than backfill
+numbers PR-B/PR-C never measured, PR-D adds only the two rows it can state precisely from its own
+diff (file count, manifest count) and is explicit about not fabricating the other two.
 
 **Wall-clock and peak-memory — could not be completed in this session's environment**, despite
 three separate attempts, and that is itself a finding worth recording rather than glossing over:
@@ -1002,8 +1010,8 @@ is measuring the db-tier tenant-sync consolidation's wall-clock impact.
 | Compliance-cited transport cases | `posHandlers.transport.test.js` (`checkout returns 201…`, day-close/reading cases), `reportHandlers.transport.test.js` (compliance books package cases), `complianceActivation*.transport.test.js`, `rbacRouteCoverage.contract.test.js` | Cited by name in `docs/compliance/DGFY Compliance Certification Checklist.md` and the compliance evidence matrices — keep-by-policy regardless of shape |
 | ADR-cited store-profile guards | `storeConfigurationTemplateUseCases.test.js`, `tenantProvisioningStoreProfileProvenance.test.js`, `storeProfile.equivalence.contract.test.js` | ADR 0056 cl.2 `[binding]`/cl.4 `[default]` name these as the proof that editing a published template changes zero tenants |
 | Hardcoded-gate files | `fnbMode.usecases.test.js`, `fnbModifierCondition.migration.test.js`, `storeValidator.fnbModifiers.test.js`, `effectiveFnbModifierGroups.test.js`, `fnbFolderModifierAssignments.migration.test.js`, `fnbOperationalReadiness.qa.test.js` | Named directly in `scripts/run-fnb-readiness-gate.js` and/or `.github/workflows/promotion-quality-gate.yml` |
-| db-manifest members | all 29 (post-demotion) files on `scripts/backend-db-dependent-tests.js` | Need a real MySQL connection; not a value question this audit answers, that's #1015/PR-D's territory |
-| `token_refresh_race.test.js` | — | Distinct from the deleted `_integration` sibling: runs against the mocked Redis in the fast/db tier and its 4 cases don't fully overlap with `rtr_verification` |
+| db-manifest members | all 30 (pre-PR-D)/**29 (post-PR-D)** files on `scripts/backend-db-dependent-tests.js` | Need a real MySQL connection; not a value question this audit answers, that's #1015/PR-D's territory. (Corrected by PR-D, #1452: this row previously said "29 (post-demotion)" while §5 said 30 and the live file had 30 — a pre-existing off-by-one, fixed here as a drive-by rather than left to compound) |
+| `token_refresh_race.test.js` | **folded into `rtr_verification.test.js` by PR-D (#1452), not kept** | This row's original claim — "distinct from the deleted `_integration` sibling... its 4 cases don't fully overlap with `rtr_verification`" — is now self-contradictory: PR-D re-examined the overlap case-by-case (not just by file-level shape) and found case 1.2 an exact duplicate of an existing `rtr_verification` assertion and case 1.3 unique only in one `expiresIn` assertion (ported as a one-line addition to an existing case). Cases 1.1 and 1.4 were ported as new cases. The file itself was deleted; see PR-D's own body for the full case-by-case disposition |
 
 ## 7. Stale/dead correctness findings
 
@@ -1019,6 +1027,18 @@ is fixed in PR-A — see the "Correctness fix" commit):
    blacklisted) is covered by `rtr_verification.test.js`'s "RT1 used twice"; case 1.5 (6 concurrent
    refresh calls, no distributed lock, real Redis) has **no equivalent coverage anywhere that
    runs** — flagged for PR-D.
+   **PR-D (#1452) re-evaluation: still uncovered, not resolved.** PR-D found `tests/setup.js`'s
+   Redis mock is a real stateful in-memory store (NX/EX honored, gets persist), not the fail-open
+   stub both `token_refresh_race.test.js`'s header and `rtr_verification.test.js`'s dead
+   `REDIS_URL` assignment claimed — which is what made folding `token_refresh_race.test.js`'s case
+   1.1 (6 concurrent refreshes) into `rtr_verification.test.js` safe. But the ported case still runs
+   against that same single-process in-memory mock, not a real Redis — it proves "no crash + valid
+   response structure for whichever requests win," not "exactly one wins under real distributed-lock
+   contention." Case 1.5's actual scenario (6 concurrent refreshes, no lock, **real** Redis) remains
+   uncovered by anything that runs. The cheapest partial answer — extending the ported case 1.4 to
+   also assert `isTokenBlacklisted(session1.refreshCookie) === true` *after* a rotation, newly
+   covering the blacklist-**write** path — was offered as a follow-up in PR-D's body, not applied
+   unilaterally (scope growth); pull it in on review if wanted.
 3. **`jest.integration.cjs` dead — deleted in this PR.** Its own `testMatch` only ever pointed at
    `supertest_security.test.js`, but nothing invoked this config file; `test:integration` used
    `jest.config.cjs` directly. Confirmed via a repo-wide grep before deletion.
@@ -1111,9 +1131,21 @@ Filed via `pm` after this PR (Refs #1441; not implemented here):
     oversight): `tests/auditRoute.contract.test.js` and
     `tests/dgfyAdminAccountRoutes.contract.test.js` are the same shape (a route file's source text
     grepped for its authorization middleware) and are the obvious next two to fold in.
-- PR-D (Phase 255) — db-tier tenant-sync consolidation (`token_refresh_race`,
-  `supertest_security`, `voidMovement.supertest`); this is where matrix wall-clock actually moves,
-  and where case 1.5's uncovered scenario (finding 2 above) should be re-evaluated.
+- **PR-D (Phase 255, shipped)** — db-tier tenant-sync consolidation
+  (`token_refresh_race`/`rtr_verification`, `supertest_security`, `voidMovement.supertest`):
+  `createTestTenant()` call sites went **12 → 9** (not the issue's original "12 → 8" or this audit's
+  earlier pre-corrected "14 → 10" — both wrong; see PR-D's own body for the counting-method
+  correction). Re-scope recorded here so a future pass doesn't re-propose it: **the
+  `supertest_security` → `auth.test.js` fold in #1452's original scope is impossible.**
+  `supertest_security.test.js` module-mocks *all* of `src/services/authService.js` via
+  `jest.unstable_mockModule` (`comparePassword`/`generateToken`/`hashPassword` all stubbed);
+  `auth.test.js` exercises the real register/login/refresh path and would break under that mock
+  (`should return 401 for invalid password`, `should return 401 for non-existent user`, the whole
+  refresh-token describe). `jest.unstable_mockModule` is file-scoped with no per-describe escape,
+  and no other file in the `createTestTenant`-using set also mocks `authService`, so there is no
+  alternative fold target either. That file's distributed-lock case was extracted to a new fast-tier
+  file instead (`tests/distributedLock.redis.test.js`); its other 3 cases (2 named security
+  regression tests, 1 validation case) stay in `supertest_security.test.js` on the db manifest.
 - #1453/#1454 each get **no** ledger entry (Phase 254's own decision, not an oversight): neither is
   a governed multi-phase initiative, both are recorded as follow-ups here, and every stray ledger
   entry is another collision surface with #1431's concurrently-active phase numbering. #1451 and
