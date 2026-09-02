@@ -430,6 +430,32 @@ jobs:
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
+      # #1431 Phase 2 (gate 8, runtime.doctor): dgfy-api-quality, not migration-runner-quality --
+      # that job never runs `npm ci` in apps/dgfy-api, so doctor-runtime.js (ESM, imports
+      # sequelize + dotenv from the API tree) cannot run there; this job already installs the API
+      # deps and already migrates the same mysql:8.0 container ("Prepare test schema" above).
+      # NODE_ENV: test is required -- doctor-runtime.js defaults it to development, which would
+      # send resolveDatabaseName() at sku_inventory_manager instead of DB_NAME_TEST. Advisory: one
+      # workflow_dispatch run is enough to prove it, since it has no PR-context dependency (unlike
+      # gate 6).
+      - name: Run runtime schema doctor
+        id: run_runtime_doctor
+        if: steps.wait_services.outcome == 'success'
+        working-directory: apps/dgfy-api
+        run: npm run doctor:runtime
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          NODE_ENV: test
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
       - name: Enforce modular architecture guardrails
         id: enforce_arch_guardrails
         working-directory: apps/dgfy-api
@@ -622,6 +648,7 @@ jobs:
             Install API dependencies|${{ steps.install_api_deps.outcome }}
             Install migration-runner dependencies|${{ steps.install_migration_runner_deps.outcome }}
             Prepare test schema|${{ steps.prepare_test_schema.outcome }}
+            Run runtime schema doctor|${{ steps.run_runtime_doctor.outcome }}
             Enforce modular architecture guardrails|${{ steps.enforce_arch_guardrails.outcome }}
             Enforce controller architecture boundaries|${{ steps.enforce_controller_boundaries.outcome }}
             Run API lint|${{ steps.run_api_lint.outcome }}
@@ -821,20 +848,39 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
 
-      - name: Run shared F&B contract tests
+      # #1431 Phase 2 (gate 14, frontend.contracts): replaces the old hand-picked 7-file list with
+      # the local gate's own `contract.test`/`integration.test` vitest path filters -- 107 files /
+      # 552 tests, essentially all under packages/web-core/src, vs. the ~6.5% the old list covered.
+      # Runs from the job's own root (not `working-directory: apps/dgfy-ims`, unlike its neighbors)
+      # because the npm script itself does `cd apps/dgfy-ims && ...`. Step id kept stable
+      # (run_shared_fnb_contract_tests) per the Phase 2 plan so STEP_OUTCOMES/BLOCKING_STEP_IDS
+      # wiring doesn't need to move; name changed to match, so BLOCKING_STEP_NAMES in
+      # report-advisory-failures is updated to match too when this flips to blocking (P2-3). Do NOT
+      # broaden further to the full IMS suite (327 files, ~2min, flaky under 2-vCPU CPU contention
+      # per the plan's finding 3) -- this 107-file pattern is deliberately narrower and green.
+      # Advisory for one run first (P2-1), then blocking (P2-3) -- a 15x coverage increase over a
+      # step nobody has ever seen red is worth one insurance-premium advisory run.
+      - name: Run frontend contract tests
         id: run_shared_fnb_contract_tests
-        working-directory: apps/dgfy-ims
         continue-on-error: true
+        timeout-minutes: 15
+        run: npm run test:frontend:contracts
+
+      # #1431 Phase 2 (gate 17, scroll.contracts): mirrors the local gate's exact two-file list.
+      # Kept as its own step rather than folded into the contract-tests step above: it costs ~1s,
+      # it keeps the gate->step mapping 1:1 for GATE_RELEASE_LOCAL_CI_MAPPING.md, and a future edit
+      # to gate 14's pattern can't silently drop the second file here (only
+      # scrollKeyControls.behavior.test.js is genuinely outside gate 14's 107-file pattern --
+      # terminalResponsiveScroll.contract.test.js already matches it via its `contract.test` name).
+      # Blocking from its first PR: 2 files, ~1s, green, no external dependency.
+      - name: Run scroll contracts
+        id: run_scroll_contracts
+        working-directory: apps/dgfy-ims
         timeout-minutes: 5
         run: >-
           npx vitest run
-          ../../packages/web-core/src/features/fnb/__tests__/kitchenQueueDisplay.test.js
-          ../../packages/web-core/src/features/fnb/__tests__/fnbMode.contract.test.js
-          ../../packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js
-          ../../packages/web-core/src/features/pos/__tests__/FnbModifierPickerDialog.test.jsx
-          ../../packages/web-core/src/features/pos/__tests__/posFnbModifierManager.session.test.jsx
-          ../../packages/web-core/src/features/pos/__tests__/serviceOptionsModal.contract.test.jsx
-          ../../packages/web-core/src/config/__tests__/permissionsFrontendParity.test.js
+          ../../packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js
+          ../../packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js
 
       - name: Record real per-step outcomes for advisory-failure reporting
         id: record_outcomes
@@ -847,7 +893,8 @@ jobs:
             Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
             Run dgfy-ims lint|${{ steps.run_ims_lint.outcome }}
             Run web-core lint|${{ steps.run_web_core_lint.outcome }}
-            Run shared F&B contract tests|${{ steps.run_shared_fnb_contract_tests.outcome }}
+            Run frontend contract tests|${{ steps.run_shared_fnb_contract_tests.outcome }}
+            Run scroll contracts|${{ steps.run_scroll_contracts.outcome }}
         run: |
           FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
           {
@@ -1036,6 +1083,139 @@ jobs:
             echo "GHA_EOF_1066"
           } >> "$GITHUB_OUTPUT"
 
+  # #1431 Phase 2 (gate 16, frontend.budgets): the mapping doc's original recommendation ("add
+  # builds to frontend-ims-quality/frontend-pos-quality first") does not work -- check-frontend-
+  # budgets.js needs all three dist/assets dirs in ONE job's workspace, and a build step added to
+  # a different job is invisible here. This job owns all three builds itself, SEQUENTIALLY (not
+  # check:frontend-budgets's own default concurrent build) -- pr-checks.yml's own comment records
+  # #923's measurement of 3 concurrent vite builds in one job on this box: ~3.7min median, with a
+  # documented exit-137 OOM (#662). Sequential steps are what avoid that, and they also deliver the
+  # "ims/pos need real builds" prerequisite, just inside this one job instead of two others.
+  # `--skip-build --built-after "$BUILD_STARTED_AT"` keeps the freshness guarantee real (the floor
+  # is recorded in this job, before these builds) -- do NOT instead download dists from other jobs
+  # as artifacts; extraction resets mtimes and the freshness check becomes meaningless.
+  frontend-budgets-quality:
+    needs: gate
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. See gate/
+    # dgfy-api-quality's comments above for the release/* -> main-leg-only
+    # reasoning (F-3) -- same logic applies here.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
+    timeout-minutes: 30
+    outputs:
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
+    steps:
+      - id: checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 5
+
+      - name: Setup Node.js
+        id: setup_node
+        uses: actions/setup-node@v4
+        continue-on-error: true
+        timeout-minutes: 5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            apps/dgfy-ims/package-lock.json
+            apps/dgfy-pos/package-lock.json
+            apps/dgfy-storefront/package-lock.json
+
+      - name: Install dgfy-ims dependencies
+        id: install_ims_deps
+        working-directory: apps/dgfy-ims
+        run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
+
+      - name: Install dgfy-pos dependencies
+        id: install_pos_deps
+        working-directory: apps/dgfy-pos
+        run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
+
+      - name: Install dgfy-storefront dependencies
+        id: install_storefront_deps
+        working-directory: apps/dgfy-storefront
+        run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
+
+      - name: Record build floor
+        id: record_build_floor
+        run: echo "BUILD_STARTED_AT=$(date -u +%s000)" >> "$GITHUB_ENV"
+        continue-on-error: true
+        timeout-minutes: 1
+
+      - name: Build dgfy-ims
+        id: build_ims
+        run: npm --prefix apps/dgfy-ims run build
+        continue-on-error: true
+        timeout-minutes: 10
+
+      - name: Build dgfy-pos
+        id: build_pos
+        run: npm --prefix apps/dgfy-pos run build
+        continue-on-error: true
+        timeout-minutes: 10
+
+      - name: Build dgfy-storefront
+        id: build_storefront
+        run: npm --prefix apps/dgfy-storefront run build
+        continue-on-error: true
+        timeout-minutes: 10
+
+      - name: Check frontend budgets
+        id: check_frontend_budgets
+        run: >-
+          npm run check:frontend-budgets --
+          --skip-build --built-after "$BUILD_STARTED_AT"
+          --report .tmp/frontend-budgets-report.json
+        continue-on-error: true
+        timeout-minutes: 5
+
+      - name: Upload frontend budgets report
+        id: upload_frontend_budgets_report
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: frontend-budgets-report-${{ github.sha }}
+          path: .tmp/frontend-budgets-report.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record real per-step outcomes for advisory-failure reporting
+        id: record_outcomes
+        if: always()
+        continue-on-error: true
+        env:
+          STEP_OUTCOMES: |
+            Checkout|${{ steps.checkout.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
+            Install dgfy-pos dependencies|${{ steps.install_pos_deps.outcome }}
+            Install dgfy-storefront dependencies|${{ steps.install_storefront_deps.outcome }}
+            Record build floor|${{ steps.record_build_floor.outcome }}
+            Build dgfy-ims|${{ steps.build_ims.outcome }}
+            Build dgfy-pos|${{ steps.build_pos.outcome }}
+            Build dgfy-storefront|${{ steps.build_storefront.outcome }}
+            Check frontend budgets|${{ steps.check_frontend_budgets.outcome }}
+            Upload frontend budgets report|${{ steps.upload_frontend_budgets_report.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
+
   repository-quality:
     needs: gate
     # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
@@ -1076,6 +1256,50 @@ jobs:
         run: npm ci
         continue-on-error: true
         timeout-minutes: 10
+
+      # #1431 Phase 2 (gate 2, dependencies.audit.prod): runs without node_modules -- lockfile +
+      # network only -- but placed after the install step above for readability, matching this
+      # file's existing convention. Advisory (P2-1): a leg-agnostic remediation PR
+      # (security/audit-allowlist.json entries for express/body-parser/qs, #1444) unblocks it, but
+      # it stays continue-on-error until a real release/*->main run shows it green (P2-3).
+      - name: Run production dependency audit
+        id: run_dependency_audit_prod
+        run: npm run audit:dependencies:prod
+        continue-on-error: true
+        timeout-minutes: 10
+
+      # #1431 Phase 2 (gate 3, dependencies.audit.full): dev-inclusive variant. Recommended
+      # (Phase 2 plan section 5, exception 2) to stay advisory in CI permanently, not just until
+      # P2-3 -- this is the only Phase-2 gate whose verdict depends on the npm registry rather than
+      # the repo (a new dev-only advisory can flip it red with zero code change here), and its
+      # findings never ship. Flag for Pat's confirmation before P2-3 decides otherwise.
+      - name: Run full dependency audit
+        id: run_dependency_audit_full
+        run: npm run audit:dependencies
+        continue-on-error: true
+        timeout-minutes: 10
+
+      # #1431 Phase 2 (gate 6, compliance.contracts): this job's checkout already carries
+      # fetch-depth: 0, which resolveChangedFiles()'s `git merge-base HEAD origin/$GITHUB_BASE_REF`
+      # needs. PR-context only -- under workflow_dispatch/workflow_call there is no
+      # GITHUB_BASE_REF, so this passes trivially (empty diff, early exit); a dispatch run is not
+      # evidence this gate works, only a real promotion PR is. Advisory until one real
+      # release/*->main PR shows it green (P2-3) -- this is the gate worth pushing hardest on, since
+      # it mechanically enforces a rule the promoter otherwise holds by hand.
+      - name: Run compliance contract checks
+        id: run_compliance_contracts
+        run: npm run check:compliance
+        continue-on-error: true
+        timeout-minutes: 5
+
+      # #1431 Phase 2 (gate 7, production.env.fixtures): a pure function over checked-in constants
+      # -- 4 synthetic env fixtures against validateProductionEnv(), no DB, no network, no SOPS, no
+      # real secret. No prerequisite, no flake surface, no external dependency, so this one is
+      # blocking from its first PR rather than an advisory round first.
+      - name: Run production env fixture checks
+        id: run_production_env_fixtures
+        run: npm run check:production-env
+        timeout-minutes: 5
 
       # Name corrected 2026-08-26 (#1066 follow-up): this workflow's own quality checks stopped
       # being blocking under #1063, so "blocking" in this step's name was stale -- the contract it
@@ -1163,6 +1387,10 @@ jobs:
             Checkout|${{ steps.checkout.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install repository dependencies|${{ steps.install_repo_deps.outcome }}
+            Run production dependency audit|${{ steps.run_dependency_audit_prod.outcome }}
+            Run full dependency audit|${{ steps.run_dependency_audit_full.outcome }}
+            Run compliance contract checks|${{ steps.run_compliance_contracts.outcome }}
+            Run production env fixture checks|${{ steps.run_production_env_fixtures.outcome }}
             Validate PR quality workflow contract|${{ steps.validate_pr_quality_workflow.outcome }}
             Validate runner routing contract|${{ steps.validate_runner_routing.outcome }}
             Validate compliance sweep contract|${{ steps.validate_compliance_sweep.outcome }}
@@ -1223,6 +1451,7 @@ jobs:
       - frontend-pos-quality
       - frontend-storefront-quality
       - repository-quality
+      - frontend-budgets-quality
     # 2026-08-31 (#1253): restores the is_staging_leg exclusion #1124/#1165 item 4 dropped -- this
     # job has nothing to report when every job it depends on was itself skipped on the staging leg,
     # and skipping it too is what makes the staging leg's "no runner time spent" claim true again.
@@ -1267,6 +1496,7 @@ jobs:
           POS_FAILURES: ${{ needs.frontend-pos-quality.outputs.real_failures }}
           STOREFRONT_FAILURES: ${{ needs.frontend-storefront-quality.outputs.real_failures }}
           REPOSITORY_FAILURES: ${{ needs.repository-quality.outputs.real_failures }}
+          FRONTEND_BUDGETS_FAILURES: ${{ needs.frontend-budgets-quality.outputs.real_failures }}
         with:
           github-token: ${{ github.token }}
           script: |
@@ -1295,6 +1525,9 @@ jobs:
               'Run dgfy-storefront lint',
               'Run storefront vitest suite',
               'Run governed documentation lint',
+              // #1431 Phase 2 (2026-09-02), P2-1: gates 7 and 17 land blocking on their first PR.
+              'Run production env fixture checks',
+              'Run scroll contracts',
             ]);
 
             const lines = [];
@@ -1329,6 +1562,7 @@ jobs:
             addIfPresent('frontend-pos-quality', process.env.POS_FAILURES);
             addIfPresent('frontend-storefront-quality', process.env.STOREFRONT_FAILURES);
             addIfPresent('repository-quality', process.env.REPOSITORY_FAILURES);
+            addIfPresent('frontend-budgets-quality', process.env.FRONTEND_BUDGETS_FAILURES);
 
             if (lines.length === 0) {
               console.log('No real step failures or dead job envelopes reported by any quality job this run -- nothing to report.');
@@ -1350,7 +1584,7 @@ jobs:
               `<!-- promotion-quality-gate-advisory-failure ${marker} run=${runId} -->`,
               `### promotion-quality-gate advisory failure(s) -- \`${headSha}\``,
               '',
-              'Since #1431 Phase 1 (PR-A), 8 steps across these jobs are blocking (no step-level',
+              'Since #1431 Phase 1 (PR-A) and Phase 2 (P2-1), 10 steps across these jobs are blocking (no step-level',
               '`continue-on-error`) on the release/*->main leg and workflow_dispatch/workflow_call',
               'runs -- a failure there already reds out the job and this workflow\'s check-run',
               '(`AGENTS.md` Merge Safety hard stop). Every other step stays advisory',

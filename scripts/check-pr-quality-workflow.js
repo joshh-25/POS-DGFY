@@ -70,6 +70,16 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // alongside checkStagingLegSkipShape. checkAdvisoryFailureReportingShape and
 // checkReporterHasNoShellBinaryDependency are unaffected by this and still revert as described
 // above once #1063 closes.
+//
+// 2026-09-02 (#1431 Phase 2, P2-1): the same pattern, for two more of the 8 remaining
+// `gate:release:local`-covered steps -- `run_production_env_fixtures` (repository-quality, gate 7)
+// and `run_scroll_contracts` (frontend-ims-quality, gate 17) join BLOCKING_STEP_IDS as blocking
+// from their first PR (no prerequisite, no flake surface, no external dependency). The other 4
+// gates this PR adds -- `run_dependency_audit_prod`/`run_dependency_audit_full`/
+// `run_compliance_contracts` (repository-quality, gates 2/3/6) and the renamed
+// `run_shared_fnb_contract_tests` step now running `npm run test:frontend:contracts` (frontend-ims-
+// quality, gate 14) -- stay advisory pending real-promotion evidence (P2-3), same as every other
+// still-advisory step here.
 const REQUIRED_PR_CHECKS_MARKERS = [
   'runner_labels_json: *runner_heavy'
 ];
@@ -99,8 +109,18 @@ const REQUIRED_QUALITY_MARKERS = [
   'npm run check:compat-seams',
   'npm run report:frontend-split-sync:post-merge',
   'npx vitest run',
-  'fnbMode.contract.test.js',
-  'posFnbModifierManager.session.test.jsx',
+  // #1431 Phase 2 (2026-09-02), P2-1: replaces the old hand-picked 7-file marker pair
+  // ('fnbMode.contract.test.js' / 'posFnbModifierManager.session.test.jsx') now that
+  // frontend-ims-quality's contract-tests step runs the local gate's own 107-file pattern
+  // (gate 14) instead. 'scrollKeyControls.behavior.test.js' anchors gate 17's own new step (the
+  // one file genuinely outside gate 14's pattern -- see that step's comment in the workflow).
+  'npm run test:frontend:contracts',
+  'scrollKeyControls.behavior.test.js',
+  // #1431 Phase 2 (2026-09-02), P2-1: gates 2/3/6/7 (repository-quality).
+  'npm run audit:dependencies:prod',
+  'npm run audit:dependencies',
+  'npm run check:compliance',
+  'npm run check:production-env',
   'npm run build',
   'npx playwright install --with-deps chromium',
   'npm run test:e2e:fnb-contract',
@@ -249,7 +269,10 @@ const QUALITY_JOB_NAMES = [
   'frontend-ims-quality',
   'frontend-pos-quality',
   'frontend-storefront-quality',
-  'repository-quality'
+  'repository-quality',
+  // #1431 Phase 2 (2026-09-02), P2-2: gate 16 (frontend.budgets) -- see this job's own header
+  // comment in promotion-quality-gate.yml for why it needs to be its own job.
+  'frontend-budgets-quality'
 ];
 
 // 2026-08-26 (#1066 follow-up): `gate` legitimately has a different `if:` shape than the six
@@ -286,12 +309,20 @@ const REPORTER_JOB_NAME = 'report-advisory-failures';
 // than adjusting checkStepLevelAdvisory's old count comparison, so a future edit that silently
 // blocks the wrong step (or un-blocks one of these 8) still fails this check even when the totals
 // happen to still line up.
+//
+// #1431 Phase 2 (2026-09-02), P2-1: two more of the 8 remaining gates land blocking on their first
+// PR rather than an advisory round first -- `run_production_env_fixtures` (gate 7,
+// production.env.fixtures: a pure function over checked-in constants, no prerequisite, no flake
+// surface) and `run_scroll_contracts` (gate 17, scroll.contracts: 2 files, ~1s, green, no external
+// dependency). The other 4 gates landed this PR (2, 3, 6, 14 -- `run_dependency_audit_prod`,
+// `run_dependency_audit_full`, `run_compliance_contracts`, `run_shared_fnb_contract_tests`) stay
+// advisory until P2-3 shows them green on a real release/*->main promotion.
 const BLOCKING_STEP_IDS = {
   'dgfy-api-quality': ['enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint'],
-  'frontend-ims-quality': ['run_ims_lint'],
+  'frontend-ims-quality': ['run_ims_lint', 'run_scroll_contracts'],
   'frontend-pos-quality': ['run_pos_lint'],
   'frontend-storefront-quality': ['run_storefront_lint', 'run_storefront_vitest'],
-  'repository-quality': ['run_docs_lint']
+  'repository-quality': ['run_docs_lint', 'run_production_env_fixtures']
 };
 
 /**
