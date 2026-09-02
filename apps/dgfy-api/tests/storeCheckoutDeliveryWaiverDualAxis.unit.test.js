@@ -119,6 +119,13 @@ const buildFakeVoucherRepository = (vouchers) => {
             const row = findVoucher(id);
             return row ? { ...row } : null;
         },
+        // #1332 (Phase 244): the auto-apply candidate query. No fixture in this file sets
+        // `auto_apply: true`, so this always returns empty -- exercising the auto-apply branch's own
+        // determinism/exhaustion/precedence behavior is storeCheckoutAutoAppliedDelivery*'s job, not
+        // this file's (this file's own headline case predates auto-apply and stays code-entered-only).
+        async listAutoApplyDeliveryCampaigns() {
+            return state.vouchers.filter((v) => v.auto_apply === true).map((v) => ({ ...v }));
+        },
         async listScopes() {
             return [];
         },
@@ -641,6 +648,14 @@ describe('cart quote: the delivery waiver is visible at quote time', () => {
         expect(result.data.delivery_fee).toBe(0);
         expect(result.data.delivery_fee_waiver).toBe(100);
         expect(result.data.voucher_feedback).toEqual({ applied: true, voucher_code: 'SAVE10' });
-        expect(result.data.delivery_voucher_feedback).toEqual({ applied: true, voucher_code: 'FREEDEL' });
+        // #1332 (Phase 244): delivery_voucher_feedback now sources its code from
+        // deliveryWaiverApplication (not the request payload) and carries auto_applied/label --
+        // see storeUseCases.js's own comment on why. This is code-entered, so auto_applied is false.
+        expect(result.data.delivery_voucher_feedback).toEqual({
+            applied: true,
+            voucher_code: 'FREEDEL',
+            auto_applied: false,
+            label: 'Free Delivery'
+        });
     });
 });
