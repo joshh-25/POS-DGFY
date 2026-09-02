@@ -1,11 +1,7 @@
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { registerCrashDetection } from './helpers/assertions.js';
 
 const DASHBOARD_ADDRESSES_PATH = '/map-dgfy/account/addresses';
-const AUTH_STORAGE_STATE_PATH = path.resolve(process.cwd(), 'playwright/.auth/user.json');
-const HAS_AUTH_STORAGE_STATE = existsSync(AUTH_STORAGE_STATE_PATH);
 
 const VIEWPORTS = {
   desktop: { width: 1280, height: 720 },
@@ -33,11 +29,13 @@ async function closeWithoutChanges(page, dialog) {
   await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('');
 }
 
-test.describe('customer address editor authenticated responsive QA @address-modal', () => {
-  test.beforeEach(async ({ page }, testInfo) => {
-    testInfo.skip(!HAS_AUTH_STORAGE_STATE, 'Provide an existing local playwright/.auth/user.json to run authenticated dashboard QA. No credentials are generated or stored by this suite.');
-  });
+async function expectGridColumnCount(locator, expectedCount) {
+  await expect.poll(() => locator.evaluate((element) => (
+    getComputedStyle(element).gridTemplateColumns.split(/\s+/).filter(Boolean).length
+  ))).toBe(expectedCount);
+}
 
+test.describe('customer address editor authenticated responsive QA @address-modal', () => {
   test('keeps create mode compact and usable on desktop and tablet', async ({ page }) => {
     const crashChecker = registerCrashDetection(page);
 
@@ -49,7 +47,7 @@ test.describe('customer address editor authenticated responsive QA @address-moda
       await expect(dialog).toHaveAttribute('aria-modal', 'true');
       await expect(dialog).toHaveAttribute('aria-labelledby', /.+/);
       await expect(dialog).toHaveAttribute('aria-describedby', /.+/);
-      await expect(fields).toHaveCSS('grid-template-columns', 'repeat(2, minmax(0px, 1fr))');
+      await expectGridColumnCount(fields, 2);
       await expect(page.getByTestId('address-editor-scroll-region')).toHaveCSS('overflow-y', 'auto');
       await expect(actions).toHaveCSS('flex-wrap', 'nowrap');
       await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeVisible();
@@ -69,7 +67,7 @@ test.describe('customer address editor authenticated responsive QA @address-moda
 
     await expect(dialog).toHaveCSS('width', '390px');
     await expect(dialog).toHaveCSS('border-top-left-radius', '20px');
-    await expect(page.getByTestId('address-editor-fields')).toHaveCSS('grid-template-columns', '1fr');
+    await expectGridColumnCount(page.getByTestId('address-editor-fields'), 1);
     await expect(actions).toHaveCSS('flex-wrap', 'nowrap');
     await expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveCSS('flex', '1 1 0%');
     await expect(dialog.getByRole('button', { name: 'Save Address' })).toHaveCSS('flex', '1 1 0%');
@@ -126,20 +124,18 @@ test.describe('customer address editor authenticated responsive QA @address-moda
     await crashChecker.assertNoCrashes();
   });
 
-  test('prefills edit mode and preserves the persisted default state', async ({ page }, testInfo) => {
+  test('prefills edit mode and preserves the persisted default state', async ({ page }) => {
     const crashChecker = registerCrashDetection(page);
     await openAddresses(page, VIEWPORTS.mobile);
 
     const addressCards = page.getByTestId('customer-address-card');
-    const editButtons = page.getByRole('button', { name: 'Edit' });
-    if (await editButtons.count() === 0) {
-      testInfo.skip(true, 'The authenticated account has no saved address to exercise edit mode.');
-      return;
-    }
-
     const firstCard = addressCards.first();
-    const persistedDefault = await firstCard.getByText('Default', { exact: true }).count() > 0;
-    await editButtons.first().click();
+    const firstCardEditButton = firstCard.getByRole('button', { name: 'Edit' });
+    await expect(firstCardEditButton, 'The authenticated E2E account must contain at least one saved address for edit-mode QA.').toBeVisible();
+    await expect(firstCard).toBeVisible();
+
+    const persistedDefault = await firstCard.getByText(/Default/, { exact: false }).count() > 0;
+    await firstCardEditButton.click();
 
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { name: 'Edit Address' })).toBeVisible();
