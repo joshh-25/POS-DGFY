@@ -14,6 +14,12 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5175';
 const apiURL = process.env.E2E_API_URL || 'http://localhost:5000';
 const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(baseURL);
+const authStorageState = path.resolve(__dirname, 'playwright/.auth/user.json');
+// Keep private-account coverage out of the default public suite. The
+// authenticated runner sets this explicitly before Playwright loads config;
+// relying on process.argv is unsafe because Playwright workers do not retain
+// the original CLI arguments.
+const authenticatedRunRequested = process.env.E2E_AUTHENTICATED === 'true';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -45,21 +51,25 @@ export default defineConfig({
         channel: 'chrome',
       },
     },
-    {
-      name: 'setup',
-      testMatch: /.*\.setup\.js/,
-      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
-    },
-    {
-      name: 'authenticated-google-chrome',
-      testMatch: /.*\.authenticated\.spec\.js/,
-      dependencies: ['setup'],
-      use: {
-        ...devices['Desktop Chrome'],
-        channel: 'chrome',
-        storageState: 'playwright/.auth/user.json',
+    ...(authenticatedRunRequested ? [
+      {
+        name: 'setup',
+        testMatch: /.*\.authenticated\.setup\.js/,
+        use: { ...devices['Desktop Chrome'], channel: 'chrome' },
       },
-    },
+      {
+        name: 'authenticated-google-chrome',
+        testMatch: /.*\.authenticated\.spec\.js/,
+        dependencies: ['setup'],
+        use: {
+          ...devices['Desktop Chrome'],
+          channel: 'chrome',
+          // The setup project creates this ignored file before the dependent
+          // project creates its browser contexts.
+          storageState: authStorageState,
+        },
+      },
+    ] : []),
   ],
   webServer: isLocalRun ? [
     {

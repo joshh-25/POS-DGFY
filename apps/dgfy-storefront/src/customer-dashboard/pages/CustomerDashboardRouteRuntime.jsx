@@ -56,6 +56,7 @@ function buildRuntimeSourcesFallback({ state, actions, resolvers }) {
     accountPayoutActionId: state?.accountPayoutActionId,
     accountCashoutActionId: state?.accountCashoutActionId,
     handleLoadAccountPanel: actions?.onRefresh,
+    handleGetCustomerOrderDetails: actions?.onGetOrderDetails,
     handleTrackCustomerReference: actions?.onTrackReference,
     handleMarkNotificationRead: actions?.onMarkNotificationRead,
     handleMarkAllNotificationsRead: actions?.onMarkAllNotificationsRead,

@@ -969,7 +969,7 @@ describe('inventory itemRepository', () => {
     const ProductComposition = { findAll: jest.fn().mockResolvedValue([]) };
     const POLineItem = { findAll: jest.fn().mockResolvedValue([]) };
     const JOIngredient = { findAll: jest.fn().mockResolvedValue([]) };
-    const transaction = {};
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
     const sequelize = {
       transaction: jest.fn(async (callback) => callback(transaction))
     };

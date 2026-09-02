@@ -7,13 +7,16 @@ describe('useCustomerDashboardStorefrontBridge', () => {
   it('keeps selected-company Day Close actions available to route bindings', () => {
     const getOwnBusinessDayCloseStatus = vi.fn();
     const configureOwnBusinessDayClosePin = vi.fn();
+    const handleGetCustomerOrderDetails = vi.fn();
 
     const { result } = renderHook(() => useCustomerDashboardStorefrontBridge({
       getOwnBusinessDayCloseStatus,
-      configureOwnBusinessDayClosePin
+      configureOwnBusinessDayClosePin,
+      handleGetCustomerOrderDetails
     }));
 
     expect(result.current.sources.getOwnBusinessDayCloseStatus).toBe(getOwnBusinessDayCloseStatus);
     expect(result.current.sources.configureOwnBusinessDayClosePin).toBe(configureOwnBusinessDayClosePin);
+    expect(result.current.sources.handleGetCustomerOrderDetails).toBe(handleGetCustomerOrderDetails);
   });
 });

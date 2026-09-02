@@ -62,6 +62,24 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // chain end to end, per quality job, to close that gap.
 // Revert all three checks alongside checkStagingLegSkipShape once #1063 closes -- everything this
 // comment describes goes back to nothing at the same time.
+//
+// 2026-09-02 (#1431 Phase 1, PR-A): correction to the paragraph above -- checkStepLevelAdvisory no
+// longer reverts to nothing when #1063 closes for 8 named steps (BLOCKING_STEP_IDS). Those steps
+// are deliberately, permanently blocking now (a real failure must red out the job), so
+// checkStepLevelAdvisory's job is to keep asserting that shape going forward, not to be deleted
+// alongside checkStagingLegSkipShape. checkAdvisoryFailureReportingShape and
+// checkReporterHasNoShellBinaryDependency are unaffected by this and still revert as described
+// above once #1063 closes.
+//
+// 2026-09-02 (#1431 Phase 2, P2-1): the same pattern, for two more of the 8 remaining
+// `gate:release:local`-covered steps -- `run_production_env_fixtures` (repository-quality, gate 7)
+// and `run_scroll_contracts` (frontend-ims-quality, gate 17) join BLOCKING_STEP_IDS as blocking
+// from their first PR (no prerequisite, no flake surface, no external dependency). The other 4
+// gates this PR adds -- `run_dependency_audit_prod`/`run_dependency_audit_full`/
+// `run_compliance_contracts` (repository-quality, gates 2/3/6) and the renamed
+// `run_shared_fnb_contract_tests` step now running `npm run test:frontend:contracts` (frontend-ims-
+// quality, gate 14) -- stay advisory pending real-promotion evidence (P2-3), same as every other
+// still-advisory step here.
 const REQUIRED_PR_CHECKS_MARKERS = [
   'runner_labels_json: *runner_heavy'
 ];
@@ -91,8 +109,18 @@ const REQUIRED_QUALITY_MARKERS = [
   'npm run check:compat-seams',
   'npm run report:frontend-split-sync:post-merge',
   'npx vitest run',
-  'fnbMode.contract.test.js',
-  'posFnbModifierManager.session.test.jsx',
+  // #1431 Phase 2 (2026-09-02), P2-1: replaces the old hand-picked 7-file marker pair
+  // ('fnbMode.contract.test.js' / 'posFnbModifierManager.session.test.jsx') now that
+  // frontend-ims-quality's contract-tests step runs the local gate's own 107-file pattern
+  // (gate 14) instead. 'scrollKeyControls.behavior.test.js' anchors gate 17's own new step (the
+  // one file genuinely outside gate 14's pattern -- see that step's comment in the workflow).
+  'npm run test:frontend:contracts',
+  'scrollKeyControls.behavior.test.js',
+  // #1431 Phase 2 (2026-09-02), P2-1: gates 2/3/6/7 (repository-quality).
+  'npm run audit:dependencies:prod',
+  'npm run audit:dependencies',
+  'npm run check:compliance',
+  'npm run check:production-env',
   'npm run build',
   'npx playwright install --with-deps chromium',
   'npm run test:e2e:fnb-contract',
@@ -241,7 +269,10 @@ const QUALITY_JOB_NAMES = [
   'frontend-ims-quality',
   'frontend-pos-quality',
   'frontend-storefront-quality',
-  'repository-quality'
+  'repository-quality',
+  // #1431 Phase 2 (2026-09-02), P2-2: gate 16 (frontend.budgets) -- see this job's own header
+  // comment in promotion-quality-gate.yml for why it needs to be its own job.
+  'frontend-budgets-quality'
 ];
 
 // 2026-08-26 (#1066 follow-up): `gate` legitimately has a different `if:` shape than the six
@@ -268,6 +299,31 @@ const ADVISORY_JOB_NAMES = [...QUALITY_JOB_NAMES, 'gate', 'salvage-api-evidence'
 // *absent* from STEP_OUTCOMES, not missing.
 const REPORTING_EXCLUDED_STEP_ID = 'stop_services';
 const REPORTER_JOB_NAME = 'report-advisory-failures';
+
+// #1431 Phase 1 (2026-09-02), PR-A: 7 of the 8 `gate:release:local`-covered steps are now blocking
+// on the `release/*->main` leg (and workflow_dispatch/workflow_call) -- step-level
+// `continue-on-error: true` removed from exactly these step ids, per job. `backend.test_matrix`
+// (`run_test_matrix`) stays advisory (confirmed still failing for real, #10, deferred to a follow-up
+// track gated on #1015) and so does `run_web_core_lint` (separate lint-debt issue, no local gate
+// covers packages/web-core yet) -- neither appears here. Kept as an explicit per-job id map rather
+// than adjusting checkStepLevelAdvisory's old count comparison, so a future edit that silently
+// blocks the wrong step (or un-blocks one of these 8) still fails this check even when the totals
+// happen to still line up.
+//
+// #1431 Phase 2 (2026-09-02), P2-1: two more of the 8 remaining gates land blocking on their first
+// PR rather than an advisory round first -- `run_production_env_fixtures` (gate 7,
+// production.env.fixtures: a pure function over checked-in constants, no prerequisite, no flake
+// surface) and `run_scroll_contracts` (gate 17, scroll.contracts: 2 files, ~1s, green, no external
+// dependency). The other 4 gates landed this PR (2, 3, 6, 14 -- `run_dependency_audit_prod`,
+// `run_dependency_audit_full`, `run_compliance_contracts`, `run_shared_fnb_contract_tests`) stay
+// advisory until P2-3 shows them green on a real release/*->main promotion.
+const BLOCKING_STEP_IDS = {
+  'dgfy-api-quality': ['enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint'],
+  'frontend-ims-quality': ['run_ims_lint', 'run_scroll_contracts'],
+  'frontend-pos-quality': ['run_pos_lint'],
+  'frontend-storefront-quality': ['run_storefront_lint', 'run_storefront_vitest'],
+  'repository-quality': ['run_docs_lint', 'run_production_env_fixtures']
+};
 
 /**
  * #1063 (2026-08-26), temporary: replaces the old blanket "continue-on-error anywhere in this
@@ -331,17 +387,20 @@ function checkStagingLegSkipShape(qualityWorkflowText) {
 
 /**
  * #1066 follow-up (2026-08-26): job-level `continue-on-error` (checked above) doesn't change a
- * job's own check-run conclusion -- only step-level `continue-on-error: true` on every step in the
- * job does (see this file's own top-of-file comment, and promotion-quality-gate.yml's, for the
- * full "why"). This asserts the shape: every step-start (`      - ` at 6-space indent) in an
- * advisory job block (the six quality jobs, plus `gate` itself -- see ADVISORY_JOB_NAMES) has
- * exactly one matching step-level `continue-on-error: true` line (`        ` at 8-space indent)
- * before the next step starts -- a mismatch means at least one step is missing it (the exact
- * regression this guard exists to catch before it ships), or, less likely, a copy/paste duplicated
- * the line inside one step.
+ * job's own check-run conclusion -- only step-level `continue-on-error: true` on every advisory
+ * step in the job does (see this file's own top-of-file comment, and promotion-quality-gate.yml's,
+ * for the full "why"). This asserts the shape per step-start (`      - ` at 6-space indent) in an
+ * advisory job block (the six quality jobs, plus `gate` itself -- see ADVISORY_JOB_NAMES):
+ *
+ * #1431 Phase 1 (2026-09-02), PR-A, replaces the original "every step must carry it" count
+ * comparison: 8 named steps (BLOCKING_STEP_IDS, keyed by job) are now deliberately blocking and
+ * must carry **zero** step-level `continue-on-error: true` lines; every other step in these job
+ * blocks must still carry **exactly one**, unchanged from before. Both directions matter -- a
+ * blocking step silently regaining `continue-on-error` is the exact regression #1066 fixed, and an
+ * unlisted step silently losing it would make it blocking without anyone deciding that.
  *
  * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
- * @returns {string[]} human-readable problems found; empty when every step is covered
+ * @returns {string[]} human-readable problems found; empty when every step's blocking/advisory shape matches
  */
 function checkStepLevelAdvisory(qualityWorkflowText) {
   const problems = [];
@@ -361,19 +420,48 @@ function checkStepLevelAdvisory(qualityWorkflowText) {
       continue;
     }
     const stepsBlock = block.slice(stepsIndex);
-    const stepStarts = stepsBlock.match(/^ {6}-/gm) || [];
-    const stepLevelCoeLines = stepsBlock.match(/^ {8}continue-on-error: true$/gm) || [];
-    if (stepStarts.length === 0) {
+    const stepChunks = stepsBlock.split(/\n(?= {6}- )/).slice(1);
+    if (stepChunks.length === 0) {
       problems.push(`promotion-quality-gate.yml: "${name}" has a \`steps:\` block but no steps were found -- checkStepLevelAdvisory needs updating to match.`);
       continue;
     }
-    if (stepLevelCoeLines.length !== stepStarts.length) {
-      problems.push(
-        `promotion-quality-gate.yml: "${name}" has ${stepStarts.length} step(s) but only ` +
-        `${stepLevelCoeLines.length} step-level \`continue-on-error: true\` line(s) -- #1066 requires ` +
-        'every step in a quality job to carry its own, not just the job-level line (job-level alone ' +
-        "doesn't keep the job's check-run conclusion green when a step fails)."
-      );
+
+    const blockingIds = BLOCKING_STEP_IDS[name] || [];
+    const seenBlockingIds = new Set();
+
+    for (const chunk of stepChunks) {
+      const idMatch = chunk.match(/\bid:\s*(\S+)/);
+      const id = idMatch ? idMatch[1] : null;
+      const coeCount = (chunk.match(/^ {8}continue-on-error: true$/gm) || []).length;
+      const isBlocking = id !== null && blockingIds.includes(id);
+
+      if (isBlocking) {
+        seenBlockingIds.add(id);
+        if (coeCount !== 0) {
+          problems.push(
+            `promotion-quality-gate.yml: "${name}"'s "${id}" step is listed in BLOCKING_STEP_IDS ` +
+            `but still carries ${coeCount} step-level \`continue-on-error: true\` line(s) -- #1431 ` +
+            'Phase 1 requires this step to have none, so a real failure actually reds out the job.'
+          );
+        }
+      } else if (coeCount !== 1) {
+        const label = id ? `"${id}"` : '(no id)';
+        problems.push(
+          `promotion-quality-gate.yml: "${name}"'s ${label} step has ${coeCount} step-level ` +
+          '`continue-on-error: true` line(s), expected exactly 1 -- #1066 requires every advisory ' +
+          "step to carry its own (job-level alone doesn't keep the job's check-run conclusion green " +
+          'when a step fails), and it is not one of the 8 steps #1431 Phase 1 made blocking.'
+        );
+      }
+    }
+
+    for (const id of blockingIds) {
+      if (!seenBlockingIds.has(id)) {
+        problems.push(
+          `promotion-quality-gate.yml: "${name}" is expected to have a blocking step with id ` +
+          `"${id}" (BLOCKING_STEP_IDS) but no step with that id was found -- was it renamed or removed?`
+        );
+      }
     }
   }
   return problems;
@@ -670,6 +758,45 @@ function checkReportingJobsRespectStagingLeg(qualityWorkflowText) {
   return problems;
 }
 
+// 2026-09-0X (#1431 Phase 1, PR-B): the compensating control for gate-release-local.js's new
+// delegation mechanism. Once a gate stops running locally (CI_ENFORCED_GATES,
+// gate-release-local.js), CI is its only remaining signal -- nothing before this check stopped a
+// future edit from re-adding `continue-on-error: true` (or renaming/removing a step id) for one of
+// these steps and silently reopening a coverage hole on both sides at once: not enforced in CI
+// *and* not run locally. Requiring `./gate-release-local` is safe here -- that module is guarded by
+// `if (require.main === module)` and exports no side effects on require.
+//
+// @param {Map} [ciEnforcedGates] defaults to gate-release-local.js's real CI_ENFORCED_GATES;
+// injectable so tests can assert the failure path without editing the real script.
+// @returns {string[]} human-readable problems found; empty when every CI_ENFORCED_GATES step id is
+// still present in BLOCKING_STEP_IDS for its named job.
+function checkCiEnforcedGatesAreBlocking(ciEnforcedGates) {
+  const problems = [];
+  const gates = ciEnforcedGates || require('./gate-release-local').CI_ENFORCED_GATES;
+  for (const [gateName, enforcement] of gates) {
+    const blockingIds = BLOCKING_STEP_IDS[enforcement.job];
+    if (!blockingIds) {
+      problems.push(
+        `gate-release-local.js: CI_ENFORCED_GATES["${gateName}"] names job "${enforcement.job}", ` +
+        'which has no entry in BLOCKING_STEP_IDS -- was the job renamed, or does ' +
+        'BLOCKING_STEP_IDS need a new entry for it?'
+      );
+      continue;
+    }
+    for (const stepId of enforcement.steps) {
+      if (!blockingIds.includes(stepId)) {
+        problems.push(
+          `gate-release-local.js: CI_ENFORCED_GATES["${gateName}"] names step "${stepId}" in job ` +
+          `"${enforcement.job}", but that step id is missing from BLOCKING_STEP_IDS["${enforcement.job}"] ` +
+          '-- it may have regained continue-on-error in promotion-quality-gate.yml, been renamed, ' +
+          'or been removed. A gate delegated locally must stay genuinely blocking in CI.'
+        );
+      }
+    }
+  }
+  return problems;
+}
+
 function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWorkflowText }) {
   const missing = [
     ...REQUIRED_PR_CHECKS_MARKERS.filter((marker) => !prChecksText.includes(marker)).map((marker) => `pr-checks.yml:${marker}`),
@@ -680,7 +807,8 @@ function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWor
     ...checkStepLevelAdvisory(qualityWorkflowText),
     ...checkAdvisoryFailureReportingShape(qualityWorkflowText),
     ...checkReporterHasNoShellBinaryDependency(qualityWorkflowText),
-    ...checkReportingJobsRespectStagingLeg(qualityWorkflowText)
+    ...checkReportingJobsRespectStagingLeg(qualityWorkflowText),
+    ...checkCiEnforcedGatesAreBlocking()
   ];
 
   return missing;
@@ -717,6 +845,8 @@ module.exports = {
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
   checkReportingJobsRespectStagingLeg,
+  checkCiEnforcedGatesAreBlocking,
+  BLOCKING_STEP_IDS,
   STAGING_LEG_RESPECTING_JOBS,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,

@@ -95,157 +95,45 @@
     },
     {
       "tree": "apps/dgfy-api",
-      "package": "brace-expansion",
-      "severity": "high",
-      "reason": "Root cause of this tree's whole jest/nodemon devDependency chain (GHSA-3jxr-9vmj-r5cp / GHSA-mh99-v99m-4gvg / GHSA-rgw5-rvv9-x895, ReDoS/OOM DoS). DevDependency-only -- apps/dgfy-api's production tree (`audit:dependencies:prod`, --omit-dev) already reports 0 vulnerabilities, so nothing in this chain ships. `npm audit fix` (non-breaking) does not resolve it; only `npm audit fix --force` does, which bumps babel-jest to 30.5.0 and pulls jest along with it -- a breaking test-framework upgrade npm's own resolver flags, not appropriate to force mid-promotion. Found during the 2026-09-01 develop->staging->main promotion's gate:release:local run. Same shape as the existing @lhci/cli suppression above: dev-tooling-only, upstream-gated, no prod exposure.",
-      "reviewBy": "2026-09-15"
+      "package": "express",
+      "severity": "moderate",
+      "reason": "npm audit's only fixAvailable path is express@5.2.1, a semver-major framework upgrade -- out of proportion to bundle into #1431 Phase 2's CI-gate PR. Tracked in #1444 (apps/dgfy-api: migrate Express 4 -> 5); remove this entry once that lands.",
+      "reviewBy": "2026-10-15"
     },
     {
       "tree": "apps/dgfy-api",
-      "package": "minimatch",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
+      "package": "body-parser",
+      "severity": "moderate",
+      "reason": "Transitive via express; fixAvailable only through express@5.2.1. See the express entry above; tracked in #1444.",
+      "reviewBy": "2026-10-15"
     },
     {
       "tree": "apps/dgfy-api",
-      "package": "glob",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
+      "package": "qs",
+      "severity": "moderate",
+      "reason": "Transitive via express/body-parser; fixAvailable only through express@5.2.1. See the express entry above; tracked in #1444.",
+      "reviewBy": "2026-10-15"
     },
     {
-      "tree": "apps/dgfy-api",
-      "package": "editorconfig",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
+      "tree": "tests/frontend-cross-app",
+      "package": "express",
+      "severity": "moderate",
+      "reason": "Transitive dependency of this tree's own devDependency graph, same underlying express@4.22.2 finding as apps/dgfy-api. fixAvailable only through express@5.2.1; tracked in #1444.",
+      "reviewBy": "2026-10-15"
     },
     {
-      "tree": "apps/dgfy-api",
-      "package": "nodemon",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
+      "tree": "tests/frontend-cross-app",
+      "package": "body-parser",
+      "severity": "moderate",
+      "reason": "Transitive via express; see that entry. Tracked in #1444.",
+      "reviewBy": "2026-10-15"
     },
     {
-      "tree": "apps/dgfy-api",
-      "package": "test-exclude",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "babel-plugin-istanbul",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "babel-jest",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "@jest/transform",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "@jest/core",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "@jest/reporters",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "@jest/expect",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "@jest/globals",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "jest",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "jest-cli",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "jest-config",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "create-jest",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "jest-runner",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "jest-runtime",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "jest-circus",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "jest-snapshot",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
-      "package": "jest-resolve-dependencies",
-      "severity": "high",
-      "reason": "Transitive via brace-expansion; see that entry.",
-      "reviewBy": "2026-09-15"
+      "tree": "tests/frontend-cross-app",
+      "package": "qs",
+      "severity": "moderate",
+      "reason": "Transitive via express/body-parser; see that entry. Tracked in #1444.",
+      "reviewBy": "2026-10-15"
     }
   ]
 }

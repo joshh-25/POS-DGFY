@@ -10,6 +10,7 @@ jest.unstable_mockModule('../src/modules/dgfy/index.js', () => ({
     createDgfyCustomerAddressUseCase: jest.fn(),
     deleteDgfyCustomerAddressUseCase: jest.fn(),
     getDgfyCustomerDashboardUseCase: jest.fn(),
+    getDgfyCustomerOrderDetailsUseCase: jest.fn(),
     getDgfyCustomerLoyaltyUseCase: jest.fn(),
     listDgfyCustomerReviewsForModerationUseCase: jest.fn(),
     listDgfyCustomerAddressesUseCase: jest.fn(),
@@ -40,15 +41,51 @@ const createRes = () => {
     return res;
 };
 
+let getDgfyCustomerOrderDetails;
 let setDefaultDgfyCustomerAddress;
 
 beforeAll(async () => {
-    ({ setDefaultDgfyCustomerAddress } = await import('../src/modules/dgfy/controllers/dgfyCustomerHandlers.js'));
+    ({ getDgfyCustomerOrderDetails, setDefaultDgfyCustomerAddress } = await import('../src/modules/dgfy/controllers/dgfyCustomerHandlers.js'));
 });
 
 describe('dgfyCustomerHandlers transport contracts', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+    });
+
+    it('passes the authenticated account and route reference to the order-details use case', async () => {
+        const { getDgfyCustomerOrderDetailsUseCase } = await import('../src/modules/dgfy/index.js');
+        getDgfyCustomerOrderDetailsUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                order: { reference: 'SK-ABC123' },
+                details_available: true
+            }
+        });
+
+        const req = {
+            dgfyAccount: { id: 'dgfy-account-1' },
+            params: { reference: 'sk-abc123' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await getDgfyCustomerOrderDetails(req, res, next);
+
+        expect(getDgfyCustomerOrderDetailsUseCase).toHaveBeenCalledWith({
+            account: req.dgfyAccount,
+            reference: 'sk-abc123'
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: {
+                order: { reference: 'SK-ABC123' },
+                details_available: true
+            },
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
     });
 
     it('maps the default-address alias to an is_default update for the authenticated DGFY account', async () => {

@@ -274,6 +274,7 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir) {
     '--config',
     JEST_CONFIG,
     '--runInBand',
+    '--ci',
     '--runTestsByPath',
     ...tests.map(relativeTestPath),
   ];
@@ -312,12 +313,23 @@ function runFastTier(tests, evidenceDir) {
   const maxWorkersArgs = process.env.BACKEND_TEST_MATRIX_FAST_MAX_WORKERS
     ? [`--maxWorkers=${process.env.BACKEND_TEST_MATRIX_FAST_MAX_WORKERS}`]
     : [];
+  // #1432: on a 2-vCPU hosted runner, Jest's own getMaxWorkers() resolves to 1, which flips
+  // shouldRunInBand() to true -- the entire fast tier (616 files) then runs in one in-band
+  // process whose single V8 heap accumulates every file's ESM module registry until it OOMs.
+  // BACKEND_TEST_MATRIX_FAST_MAX_WORKERS>=2 (set in CI) forces real worker-process parallelism
+  // instead; --workerIdleMemoryLimit bounds each worker's heap so it recycles before growing
+  // unbounded across ~300 files.
+  const workerMemoryArgs = process.env.BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT
+    ? [`--workerIdleMemoryLimit=${process.env.BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT}`]
+    : [];
   const args = [
     '--experimental-vm-modules',
     JEST_BIN,
     '--config',
     JEST_CONFIG,
     ...maxWorkersArgs,
+    ...workerMemoryArgs,
+    '--ci',
     '--runTestsByPath',
     ...tests.map(relativeTestPath),
   ];

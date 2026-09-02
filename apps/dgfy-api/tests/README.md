@@ -30,7 +30,7 @@ The project uses **Native ES Modules** (defined by `"type": "module"` in package
 **How to run only this pack**:
 ```bash
 cd backend
-npm test -- --runInBand --testPathPattern="tests/(schemaIndexAuditService|csvExportFolderFilter|healthSchemaIndexAudit|healthService|auditIndexesScript\\.integration)\\.test\\.js"
+npm test -- --runInBand --testPathPatterns="tests/(schemaIndexAuditService|csvExportFolderFilter|healthSchemaIndexAudit|healthService|auditIndexesScript\\.integration)\\.test\\.js"
 ```
 
 **Included suites**:
@@ -292,7 +292,7 @@ CREATE DATABASE IF NOT EXISTS sku_test CHARACTER SET utf8mb4 COLLATE utf8mb4_uni
 **How to run**:
 ```bash
 cd backend
-npm test -- --testPathPattern=token_refresh_race.test
+npm test -- --testPathPatterns=token_refresh_race.test
 ```
 
 **What is tested (4 tests)**:

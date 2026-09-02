@@ -6,6 +6,7 @@ import { copyTextToClipboard } from '../../shared/utils/clipboard.js';
 import { buildStorefrontQrExportImage, downloadDataUrl } from '../../features/qr/utils/storefrontQrExport.js';
 import { PayoutMethodsSection } from './PayoutMethodsSection.jsx';
 import { CashoutsSection } from './CashoutsSection.jsx';
+import { AffiliateAccessState } from './AffiliateAccessState.jsx';
 import { CUSTOMER_DASHBOARD_TYPOGRAPHY } from '../model/customerDashboardPresentation.jsx';
 
 const centavosToPesos = (value) => Number(value || 0) / 100;
@@ -111,6 +112,8 @@ export function AffiliateSection({
   onRequestCashout,
   onCancelCashout,
   accountCashoutActionId,
+  affiliateAccessStatus = 'unknown',
+  isAccountPanelLoading = false,
   isMobileViewport,
   EmptyState,
   StatusBadge,
@@ -126,13 +129,57 @@ export function AffiliateSection({
     { id: 'payout_methods', label: 'Payout Methods' },
     { id: 'cashouts', label: 'Cashouts' }
   ];
+  const pageIntro = (
+    <div>
+      <h2 style={{ fontSize: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitle.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitle.desktop, fontWeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitleWeight, color: theme.text, margin: 0 }}>Affiliate Program</h2>
+      <p style={{ margin: '8px 0 0', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.pageSubtitle, color: theme.muted }}>Share your QR code or link and earn a commission when someone buys from a business that added you as an affiliate.</p>
+    </div>
+  );
+
+  const resolvedAccessStatus = isAccountPanelLoading ? 'loading' : affiliateAccessStatus;
+  const displayAccessStatus = resolvedAccessStatus !== 'ready' ? resolvedAccessStatus : enrollments.length === 0 ? 'unavailable' : 'ready';
+  if (displayAccessStatus !== 'ready') {
+    if (displayAccessStatus === 'unavailable') {
+      return (
+        <div data-testid="customer-affiliate-restricted-page" style={{ position: 'relative', minHeight: isMobileViewport ? 'calc(100dvh - 88px)' : 'calc(100dvh - 104px)', overflow: 'hidden', borderRadius: 18 }}>
+          <div
+            data-testid="customer-affiliate-page-blur"
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: -16,
+              overflow: 'hidden',
+              borderRadius: 18,
+              background: 'linear-gradient(135deg, rgba(234, 244, 255, 0.9), rgba(249, 250, 251, 0.92))',
+              filter: 'blur(8px)',
+              opacity: 0.72,
+              transform: 'scale(1.02)',
+              pointerEvents: 'none',
+              userSelect: 'none'
+            }}
+          >
+            <div data-testid="customer-affiliate-page-blur-content" style={{ padding: isMobileViewport ? '20px 16px' : '24px 0' }}>
+              {pageIntro}
+            </div>
+          </div>
+          <div aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'rgba(249, 250, 251, 0.36)', pointerEvents: 'none' }} />
+          <div style={{ position: 'relative', zIndex: 1, minHeight: 'inherit', display: 'grid', placeItems: 'center', padding: isMobileViewport ? 12 : 20, boxSizing: 'border-box' }}>
+            <AffiliateAccessState status={displayAccessStatus} isMobileViewport={isMobileViewport} theme={theme} />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div style={{ display: 'grid', gap: isMobileViewport ? 18 : 24 }}>
+        {pageIntro}
+        <AffiliateAccessState status={displayAccessStatus} isMobileViewport={isMobileViewport} theme={theme} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'grid', gap: 24 }}>
-      <div>
-        <h2 style={{ fontSize: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitle.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitle.desktop, fontWeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitleWeight, color: theme.text, margin: 0 }}>Affiliate Program</h2>
-        <p style={{ margin: '8px 0 0', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.pageSubtitle, color: theme.muted }}>Share your QR code or link and earn a commission when someone buys from a business that added you as an affiliate.</p>
-      </div>
+      {pageIntro}
 
       <div style={{ background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, padding: isMobileViewport ? 20 : 32, display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
         <div style={{ width: 64, height: 64, borderRadius: 16, background: theme.successBg, color: theme.success, display: 'grid', placeItems: 'center', flexShrink: 0 }}><Percent size={32} /></div>

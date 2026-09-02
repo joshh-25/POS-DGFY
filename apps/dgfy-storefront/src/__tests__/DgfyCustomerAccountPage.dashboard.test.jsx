@@ -53,6 +53,7 @@ const accountPanel = {
     balance: 8,
     transactions: []
   },
+  affiliateAccessStatus: 'ready',
   businessCompanies: [
     {
       membership_id: 'membership-1',
@@ -114,6 +115,99 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getByText('Reorder Items')).toBeTruthy();
     expect(screen.getByText('Update Profile')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Edit Profile' })).toBeTruthy();
+  });
+
+  it('uses the compact account profile row and branded discovery header actions', () => {
+    const onFeedback = vi.fn();
+    const onGoDiscovery = vi.fn();
+    renderDashboard({ onFeedback, onGoDiscovery });
+
+    expect(screen.getByRole('banner').style.padding).toBe('0px 28px');
+    const profileButton = screen.getByRole('button', { name: 'Open My Account' });
+    expect(within(profileButton).getByText('Sam Paul')).toBeTruthy();
+    expect(within(profileButton).getByText('My Account')).toBeTruthy();
+    expect(profileButton.style.gridTemplateColumns).toBe('40px minmax(0, 1fr)');
+    expect(profileButton.querySelector('svg')).toBeNull();
+
+    const discoveryButton = screen.getByRole('button', { name: 'Go to DGFY discovery map' });
+    expect(within(discoveryButton).getByAltText('DGFY')).toBeTruthy();
+    expect(within(discoveryButton).getByText('Discover Goods For You')).toBeTruthy();
+    fireEvent.click(discoveryButton);
+    expect(onGoDiscovery).toHaveBeenCalledTimes(1);
+
+    const feedbackButton = screen.getByRole('button', { name: 'Send feedback' });
+    expect(feedbackButton.style.borderStyle).toBe('none');
+    expect(feedbackButton.style.background).toBe('transparent');
+    expect(feedbackButton.style.flexShrink).toBe('0');
+    expect(within(feedbackButton).getByTestId('feedback-icon').getAttribute('src')).toContain('feedback%20icon.jpg');
+    expect(within(feedbackButton).getByTestId('feedback-icon').style.width).toBe('32px');
+    expect(screen.getByRole('button', { name: 'Notifications' }).style.flexShrink).toBe('0');
+    fireEvent.click(feedbackButton);
+    expect(onFeedback).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog', { name: 'Feedback' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close feedback' }));
+  });
+
+  it('keeps the branded header and account profile accessible in the mobile drawer', () => {
+    renderDashboard({ isMobileViewport: true });
+
+    expect(screen.getByRole('banner').style.padding).toBe('0px 16px');
+    const feedbackButton = screen.getByRole('button', { name: 'Send feedback' });
+    expect(feedbackButton.style.minWidth).toBe('40px');
+    expect(feedbackButton.style.borderStyle).toBe('none');
+    expect(feedbackButton.style.background).toBe('transparent');
+    expect(feedbackButton.style.flexShrink).toBe('0');
+    expect(within(feedbackButton).getByTestId('feedback-icon').getAttribute('src')).toContain('feedback%20icon.jpg');
+    expect(within(feedbackButton).getByTestId('feedback-icon').style.width).toBe('32px');
+    expect(screen.getByRole('button', { name: 'Notifications' }).style.flexShrink).toBe('0');
+    const discoveryButton = screen.getByRole('button', { name: 'Go to DGFY discovery map' });
+    expect(within(discoveryButton).getByAltText('DGFY').getAttribute('src')).toContain('dgfy-logo.png');
+    expect(within(discoveryButton).getByAltText('DGFY').style.width).toBe('82px');
+    expect(within(discoveryButton).queryByText('Discover Goods For You')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+
+    const profileButton = screen.getByRole('button', { name: 'Open My Account' });
+    expect(within(profileButton).getByText('Sam Paul')).toBeTruthy();
+    expect(within(profileButton).getByText('My Account')).toBeTruthy();
+    expect(profileButton.querySelector('svg')).toBeNull();
+  });
+
+  it('opens a compact frontend-only feedback form with a horizontally scrollable topic rail', () => {
+    const onFeedback = vi.fn();
+    renderDashboard({ isMobileViewport: true, onFeedback });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send feedback' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Feedback' });
+    const topicRail = within(dialog).getByTestId('feedback-topic-scroll');
+    expect(onFeedback).toHaveBeenCalledTimes(1);
+    expect(within(dialog).getByTestId('feedback-modal-icon').getAttribute('src')).toBe('/feedback-2.jpg');
+    expect(dialog.style.width).toBe('100%');
+    expect(dialog.parentElement.style.padding).toBe('0px');
+    expect(document.documentElement.style.overflow).toBe('hidden');
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(within(dialog).getByText('1. How was your experience?').style.fontSize).toBe('15px');
+    expect(topicRail.style.overflowX).toBe('auto');
+    expect(topicRail.style.overflowY).toBe('hidden');
+    expect(within(topicRail).getAllByRole('button')).toHaveLength(8);
+    const suggestionTopic = within(topicRail).getByRole('button', { name: 'Suggestion' });
+    expect(suggestionTopic).toBeTruthy();
+    expect(suggestionTopic.querySelector('svg')).toBeTruthy();
+    expect(within(dialog).queryByPlaceholderText('What would you like us to know?')).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Good' }));
+    fireEvent.click(suggestionTopic);
+    expect(within(dialog).getByRole('button', { name: 'Good' }).getAttribute('aria-pressed')).toBe('true');
+    expect(suggestionTopic.getAttribute('aria-pressed')).toBe('true');
+    expect(within(dialog).getByPlaceholderText('What would you like us to know?')).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send Feedback' }));
+    expect(within(dialog).getByRole('status').textContent).toContain('Submission will be connected in a later step.');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close feedback' }));
+    expect(screen.queryByRole('dialog', { name: 'Feedback' })).toBeNull();
+    expect(document.documentElement.style.overflow).toBe('');
+    expect(document.body.style.overflow).toBe('');
   });
 
   it('selects the Business section from its canonical dashboard route', () => {
@@ -440,11 +534,66 @@ describe('DGFY customer account dashboard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     fireEvent.click(screen.getByRole('button', { name: 'Affiliate', exact: true }));
-    const affiliateTabs = screen.getByTestId('customer-affiliate-tabs');
-    const businessesTab = within(affiliateTabs).getByRole('button', { name: /Businesses0/ });
-    expect(businessesTab.style.borderBottom).toContain('2px solid');
-    expect(businessesTab.style.background).toBe('transparent');
-    expect(businessesTab.style.borderRadius).toBe('0px');
+    const affiliateAccessState = screen.getByTestId('customer-affiliate-access-state');
+    expect(affiliateAccessState.getAttribute('data-state')).toBe('unavailable');
+    expect(screen.getByText('Affiliate access is not available yet')).toBeTruthy();
+    expect(screen.getByText('No active affiliate enrollment is linked to your DGFY account.')).toBeTruthy();
+    expect(screen.queryByTestId('customer-affiliate-tabs')).toBeNull();
+    expect(screen.getByTestId('customer-affiliate-page-blur').getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByTestId('customer-affiliate-restricted-page').style.minHeight).toBe('calc(100dvh - 88px)');
+    expect(screen.getByTestId('customer-affiliate-page-blur').style.filter).toBe('blur(8px)');
+    expect(screen.getByTestId('customer-affiliate-access-copy').style.backdropFilter).toBe('');
+  });
+
+  it('shows affiliate tools only after an active enrollment is confirmed', () => {
+    renderDashboard({
+      accountPanel: {
+        ...accountPanel,
+        affiliateAccessStatus: 'ready',
+        affiliateEnrollments: [{
+          enrollment_id: 'enrollment-1',
+          tenant_id: 'tenant-1',
+          tenant: { name: 'Space Bar' },
+          status: 'active',
+          short_code: 'ABC123',
+          share_path: '/s/space-bar?p=ABC123',
+          share_url: 'http://localhost:5175/s/space-bar?p=ABC123'
+        }]
+      }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Affiliate', exact: true }));
+
+    expect(screen.queryByTestId('customer-affiliate-access-state')).toBeNull();
+    expect(screen.getByTestId('customer-affiliate-tabs')).toBeTruthy();
+    expect(screen.getByText('Space Bar')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeTruthy();
+  });
+
+  it('keeps affiliate access messaging responsive and honest while data is loading or unavailable', () => {
+    renderDashboard({
+      isMobileViewport: true,
+      accountPanel: { ...accountPanel, loading: true, affiliateAccessStatus: 'loading' }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    fireEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: 'Affiliate', exact: true }));
+
+    const loadingState = screen.getByTestId('customer-affiliate-access-state');
+    expect(loadingState.getAttribute('data-state')).toBe('loading');
+    expect(loadingState.getAttribute('aria-busy')).toBe('true');
+    expect(loadingState.style.gridTemplateColumns).toBe('1fr');
+    expect(screen.getByText('Checking affiliate access')).toBeTruthy();
+
+    cleanup();
+    window.history.replaceState({}, '', '/');
+    renderDashboard({ accountPanel: { ...accountPanel, affiliateAccessStatus: 'error' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Affiliate', exact: true }));
+
+    const errorState = screen.getByTestId('customer-affiliate-access-state');
+    expect(errorState.getAttribute('data-state')).toBe('error');
+    expect(screen.getByText('Affiliate access could not be verified')).toBeTruthy();
+    expect(screen.queryByText('No active affiliate enrollment is linked to your DGFY account.')).toBeNull();
   });
 
   it('renders four business cards per row on desktop', () => {
@@ -549,6 +698,260 @@ describe('DGFY customer account dashboard', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Track Order' })[0]);
     expect(onTrackReference).toHaveBeenCalledTimes(1);
     expect(onTrackReference.mock.calls[0][0]).toMatchObject({ reference: 'SK-M3SGQA' });
+  });
+
+  it('renders the redesigned past-order and review states without changing their actions', () => {
+    renderDashboard({
+      accountPanel: {
+        ...accountPanel,
+        orders: [
+          accountPanel.orders[0],
+          {
+            activity_id: 'order-completed',
+            reference: 'SK-COMPLETE',
+            store_name: 'Space Bar',
+            occurred_at: '2026-05-17T09:00:00Z',
+            total_amount: 99.5,
+            status: 'completed',
+            status_label: 'Completed',
+            allowed_actions: { review: true },
+            review_targets: [{ target_type: 'fnb_item', target_id: 'item-1' }]
+          }
+        ],
+        reviews: [{
+          review_id: 'review-1',
+          store_name: 'Space Bar',
+          target_type: 'fnb_item',
+          status: 'published',
+          rating: 4,
+          comment: 'Great order.'
+        }]
+      },
+      activeOrders: [accountPanel.orders[0]]
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Orders' }));
+    fireEvent.click(screen.getByRole('button', { name: /Past Orders1/ }));
+
+    expect(screen.getByTestId('customer-order-card').style.gridTemplateColumns).toContain('minmax(220px, 1.2fr)');
+    expect(screen.getByText('PHP 99.50')).toBeTruthy();
+    expect(screen.getByText('Completed')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Review Order' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Reviews1/ }));
+    expect(screen.getByTestId('customer-review-card')).toBeTruthy();
+    expect(screen.getByLabelText('4 out of 5 stars')).toBeTruthy();
+    expect(screen.getByText('Great order.')).toBeTruthy();
+  });
+
+  it('stacks redesigned order cards and keeps mobile actions touch-sized', () => {
+    const completedOrder = {
+      ...accountPanel.orders[0],
+      activity_id: 'order-completed-mobile',
+      reference: 'SK-COMPLETE-MOBILE',
+      status: 'completed',
+      status_label: 'Completed'
+    };
+    renderDashboard({
+      isMobileViewport: true,
+      accountPanel: { ...accountPanel, orders: [...accountPanel.orders, completedOrder] },
+      activeOrders: accountPanel.orders
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    fireEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: 'Orders', exact: true }));
+
+    const orderCard = screen.getAllByTestId('customer-order-card')[0];
+    expect(orderCard.style.gridTemplateColumns).toBe('1fr');
+    const transactionDateTime = within(orderCard).getByTestId('customer-transaction-date-time');
+    expect(transactionDateTime.style.display).toBe('grid');
+    expect(transactionDateTime.style.gridTemplateColumns).toBe('minmax(0, 1fr)');
+    expect(within(transactionDateTime).getByTestId('customer-transaction-date')).toBeTruthy();
+    expect(within(transactionDateTime).getByTestId('customer-transaction-time')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Track Order' })[0].style.minHeight).toBe('44px');
+    expect(screen.getAllByRole('button', { name: 'View Order' })[0].style.minHeight).toBe('44px');
+
+    fireEvent.click(screen.getByRole('button', { name: /Past Orders1/ }));
+    const pastOrderCard = screen.getByTestId('customer-order-card');
+    expect(pastOrderCard.style.gridTemplateColumns).toBe('1fr');
+    expect(within(pastOrderCard).getByRole('button', { name: 'Track Order' }).style.minHeight).toBe('44px');
+    expect(within(pastOrderCard).getByRole('button', { name: 'View Order' }).style.minHeight).toBe('44px');
+  });
+
+  it('uses the compact mobile booking card and keeps the order-style booking grid on larger viewports', () => {
+    const bookings = [
+      { reference: 'BK-ACTIVE-MOBILE', store_name: 'Active Service', status: 'confirmed', occurred_at: '2026-08-10T09:00:00Z', total_amount: 450 },
+      { reference: 'BK-PAST-MOBILE', store_name: 'Past Service', status: 'completed', occurred_at: '2026-07-10T09:00:00Z', total_amount: 350 }
+    ];
+    renderDashboard({ isMobileViewport: true, accountPanel: { ...accountPanel, bookings } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    fireEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: 'Bookings', exact: true }));
+
+    const activeBookingCard = screen.getByTestId('customer-booking-card');
+    expect(activeBookingCard.style.gridTemplateColumns).toBe('1fr');
+    expect(within(activeBookingCard).getByRole('button', { name: 'View Details' }).style.minHeight).toBe('44px');
+
+    fireEvent.click(screen.getByRole('button', { name: /Past Bookings 1/ }));
+    const pastBookingCard = screen.getByTestId('customer-booking-card');
+    expect(pastBookingCard.style.gridTemplateColumns).toBe('1fr');
+    expect(within(pastBookingCard).getByRole('button', { name: 'View Details' }).style.minHeight).toBe('44px');
+
+    cleanup();
+    window.history.replaceState({}, '', '/');
+    renderDashboard({ isMobileViewport: false, accountPanel: { ...accountPanel, bookings } });
+    fireEvent.click(screen.getByRole('button', { name: 'Bookings', exact: true }));
+    expect(screen.getByTestId('customer-booking-card').style.gridTemplateColumns).toContain('minmax(220px, 1.2fr)');
+  });
+
+  it('opens complete order details from View Order without navigating to tracking', () => {
+    const onTrackReference = vi.fn();
+    const detailedOrder = {
+      ...accountPanel.orders[0],
+      payment_status: 'paid',
+      display: {
+        order_method: 'delivery',
+        receipt_number: 'REC-1001',
+        delivery_address: 'Atria Park District, Iloilo City',
+        lines: [{ item_id: 1, name: 'Iced coffee', quantity: 2, price: 85 }]
+      }
+    };
+
+    renderDashboard({
+      onTrackReference,
+      accountPanel: { ...accountPanel, orders: [detailedOrder] },
+      activeOrders: [detailedOrder]
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Orders' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View Order' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Order details' });
+    expect(dialog).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Track Order' }).parentElement.style.gridTemplateColumns).toBe('auto auto');
+    expect(within(dialog).getByText(/Placed \w+ \d{1,2}, \d{4}/)).toBeTruthy();
+    expect(within(dialog).queryByTestId('order-details-summary')).toBeNull();
+    expect(within(dialog).getByRole('heading', { name: 'Items' }).style.fontSize).toBe('18px');
+    expect(within(dialog).getByText('Iced coffee').style.fontWeight).toBe('700');
+    expect(within(dialog).queryByText('Fees and discounts are available below.')).toBeNull();
+    expect(Array.from(within(dialog).getByTestId('order-details-scroll-region').querySelectorAll('section')).map((section) => section.getAttribute('data-testid'))).toEqual([
+      'order-details-information-section',
+      'order-details-items-section',
+      'order-details-payment-section'
+    ]);
+    expect(within(dialog).getByText('Iced coffee')).toBeTruthy();
+    expect(within(dialog).getByRole('heading', { name: 'Order information' })).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: 'More order information' })).toBeNull();
+    expect(within(dialog).getByTestId('order-details-information-grid').style.gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))');
+    expect(within(dialog).getByText('Delivery')).toBeTruthy();
+    expect(within(dialog).getByText('REC-1001')).toBeTruthy();
+    expect(within(dialog).getByText('Atria Park District, Iloilo City')).toBeTruthy();
+    expect(within(dialog).getByText('Placed')).toBeTruthy();
+    expect(onTrackReference).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Track Order' }));
+    expect(onTrackReference).toHaveBeenCalledTimes(1);
+    expect(onTrackReference.mock.calls[0][0]).toMatchObject({ reference: 'SK-M3SGQA' });
+    expect(screen.queryByRole('dialog', { name: 'Order details' })).toBeNull();
+  });
+
+  it('keeps long order details compact with in-place disclosures and a persistent action footer', async () => {
+    const detailedOrder = {
+      ...accountPanel.orders[0],
+      display: {
+        lines: [
+          { item_id: 1, name: 'Iced coffee', quantity: 2, price: 85 },
+          { item_id: 2, name: 'Chicken sandwich', quantity: 1, price: 120 },
+          { item_id: 3, name: 'French fries', quantity: 1, price: 75 },
+          { item_id: 4, name: 'Chocolate cake with a long descriptive item name', quantity: 1, price: 140 }
+        ],
+        order_method: 'delivery',
+        receipt_number: 'REC-COMPACT',
+        delivery_address: 'Atria Park District, Mandurriao, Iloilo City',
+        subtotal_amount: 590,
+        delivery_fee: 50
+      },
+      payment_status: 'paid'
+    };
+
+    renderDashboard({ isMobileViewport: true, accountPanel: { ...accountPanel, orders: [detailedOrder] }, activeOrders: [detailedOrder] });
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    fireEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: 'Orders', exact: true }));
+    const viewOrderButton = screen.getByRole('button', { name: 'View Order' });
+    viewOrderButton.focus();
+    fireEvent.click(viewOrderButton);
+
+    const dialog = screen.getByRole('dialog', { name: 'Order details' });
+    const scrollRegion = within(dialog).getByTestId('order-details-scroll-region');
+    expect(dialog.style.gridTemplateRows).toBe('auto minmax(0, 1fr) auto');
+    expect(scrollRegion.style.overflowY).toBe('auto');
+    expect(within(dialog).getByRole('heading', { name: 'Items' }).style.fontSize).toBe('16px');
+    expect(within(dialog).getByText('Iced coffee').style.fontWeight).toBe('700');
+    expect(within(dialog).queryByText('Fees and discounts are available below.')).toBeNull();
+    expect(within(dialog).getByTestId('order-details-total-and-breakdown').contains(within(dialog).getByRole('button', { name: 'View payment breakdown' }))).toBe(true);
+    expect(within(dialog).getByTestId('order-details-information-grid').style.gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))');
+    expect(within(dialog).getByTestId('order-details-information-delivery-address').style.gridColumn).toBe('1 / -1');
+    expect(within(dialog).getByRole('button', { name: 'Track Order' }).parentElement.style.gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))');
+    const itemsScroll = within(dialog).getByTestId('order-details-items-scroll');
+    expect(itemsScroll.style.maxHeight).toBe('196px');
+    expect(itemsScroll.style.overflowY).toBe('auto');
+    expect(itemsScroll.getAttribute('role')).toBe('region');
+    expect(itemsScroll.getAttribute('tabindex')).toBe('0');
+    expect(within(dialog).getByText('Chocolate cake with a long descriptive item name')).toBeTruthy();
+    expect(within(dialog).getByText('REC-COMPACT')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'View payment breakdown' }));
+    expect(within(dialog).getByText('Subtotal')).toBeTruthy();
+
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Close order details' })));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Order details' })).toBeNull();
+    expect(document.activeElement).toBe(viewOrderButton);
+  });
+
+  it('fetches complete order details through the authenticated account route', async () => {
+    const onGetOrderDetails = vi.fn().mockResolvedValue({
+      details_available: true,
+      order: {
+        reference: 'SK-M3SGQA',
+        status: 'completed',
+        payment_status: 'paid',
+        display: {
+          order_method: 'pickup',
+          receipt_number: 'REC-FETCHED',
+          lines: [{ item_id: 9, name: 'Fetched item', quantity: 1, price: 125 }]
+        }
+      }
+    });
+
+    renderDashboard({ onGetOrderDetails });
+    fireEvent.click(screen.getByRole('button', { name: 'Orders' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'View Order' })[0]);
+
+    const dialog = screen.getByRole('dialog', { name: 'Order details' });
+    expect(within(dialog).getByRole('status').textContent).toContain('Loading complete order details');
+    await waitFor(() => expect(onGetOrderDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ reference: 'SK-M3SGQA' }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    ));
+    expect(await within(dialog).findByText('Fetched item')).toBeTruthy();
+    expect(within(dialog).getByText('REC-FETCHED')).toBeTruthy();
+  });
+
+  it('keeps the account snapshot and offers retry when detail loading fails', async () => {
+    const onGetOrderDetails = vi.fn()
+      .mockRejectedValueOnce(new Error('Order detail service unavailable'))
+      .mockResolvedValueOnce({ details_available: false, order: accountPanel.orders[0] });
+
+    renderDashboard({ onGetOrderDetails });
+    fireEvent.click(screen.getByRole('button', { name: 'Orders' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'View Order' })[0]);
+
+    const dialog = screen.getByRole('dialog', { name: 'Order details' });
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('Order detail service unavailable');
+    expect(within(dialog).getByText('Item details are not available in this account snapshot.')).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(onGetOrderDetails).toHaveBeenCalledTimes(2));
+    expect((await within(dialog).findByRole('status')).textContent).toContain('Some saved order details are unavailable');
   });
 
   it('accepts a pending DGFY cashier invitation without requesting an OTP', async () => {
@@ -673,6 +1076,12 @@ describe('DGFY customer account dashboard', () => {
 
     expect(screen.getByText('Order confirmed')).toBeTruthy();
     expect(screen.getByText('Mark all read')).toBeTruthy();
+    const notificationBadge = screen.getByTestId('customer-notification-badge');
+    expect(notificationBadge.textContent).toBe('1');
+    expect(notificationBadge.style.top).toBe('0px');
+    expect(notificationBadge.style.right).toBe('0px');
+    expect(notificationBadge.style.minWidth).toBe('18px');
+    expect(notificationBadge.style.height).toBe('18px');
 
     fireEvent.click(screen.getByText('SK-M3SGQA - Track Order'));
     expect(onMarkNotificationRead).toHaveBeenCalledWith(expect.objectContaining({ notification_id: 77 }));
@@ -683,17 +1092,41 @@ describe('DGFY customer account dashboard', () => {
     expect(onMarkAllNotificationsRead).toHaveBeenCalledTimes(1);
   });
 
-  it('shows Set Default only for non-default addresses while keeping edit and delete available', () => {
+  it('keeps the unread notification badge fully inside the mobile notification control', () => {
+    renderDashboard({
+      isMobileViewport: true,
+      accountPanel: {
+        ...accountPanel,
+        notifications: [],
+        unreadNotificationCount: 12
+      }
+    });
+
+    const notificationBadge = screen.getByTestId('customer-notification-badge');
+    expect(notificationBadge.textContent).toBe('9+');
+    expect(notificationBadge.style.top).toBe('0px');
+    expect(notificationBadge.style.right).toBe('0px');
+    expect(notificationBadge.style.minWidth).toBe('18px');
+    expect(notificationBadge.style.height).toBe('18px');
+    expect(notificationBadge.getAttribute('aria-label')).toBe('12 unread notifications');
+  });
+
+  it('shows Set Default only for non-default addresses while keeping edit and menu actions available', () => {
     const onSetDefaultAddress = vi.fn();
     renderDashboard({ onSetDefaultAddress });
 
     fireEvent.click(screen.getByRole('button', { name: 'Addresses' }));
 
     expect(screen.getAllByText('Default').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Home').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Office').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Iloilo Business Park').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(2);
-    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /More actions for/ })).toHaveLength(2);
     expect(screen.getAllByRole('button', { name: 'Set Default' })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Office' }));
+    expect(screen.getByRole('menuitem', { name: 'Delete address' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Set Default' }));
     expect(onSetDefaultAddress).toHaveBeenCalledWith(expect.objectContaining({ address_id: 'addr-2' }));
