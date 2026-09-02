@@ -17358,17 +17358,24 @@ observation that the regenerated `storeProfile` `laundry` snapshot entry keeps a
 
 250 (none named yet).
 
-## Phase 254 - Promotion quality gate: 8 remaining gates wired into CI, P2-0/P2-1/P2-2 (#1431 Phase 2)
+## Phase 251 - Promotion quality gate: 8 remaining gates wired into CI, P2-0/P2-1/P2-2 (#1431 Phase 2)
 
 ### Initiative and release
 
 #1431's Phase 2: wires the 8 gates `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` still listed "(b) CI
-job to add" into `promotion-quality-gate.yml`. **Numbering note**: the ledger's highest entry before
-this one is Phase 249 (#1432); 250 is nominally next, but the parked #1441 plan
-(`~/.claude/plans/this-is-heavy-ask-functional-bubble.md`) already reserves Phases 250-253, and this
-repo already had to fix exactly this class of collision once (`20f098a62`, "fix Phase-248 collision
-with #1433"). Re-checked at PR time (2026-09-02/03): still no entry exists in 250-253, so this phase
-claims **254** per the Phase 2 plan's own recommendation, leaving 250-253 for #1441 when it lands.
+job to add" into `promotion-quality-gate.yml`. **Numbering note (corrected 2026-09-03, RF-1 on
+PR #1447's review)**: the ledger's highest *merged* entry is Phase 249 (#1432). This entry
+originally claimed **254**, reasoning from the parked #1441 plan
+(`~/.claude/plans/this-is-heavy-ask-functional-bubble.md`) reserving Phases 250-253 on disk outside
+this repo — that reasoning was wrong per `AGENTS.md`'s Continuous Phase Numbering rule: **the
+repository ledger is the authoritative phase sequence; a plan file, parked or not, reserves
+nothing.** The actual constraint is simpler and entirely in-repo: sibling PR #1446 (#1431 Phase 3,
+open, not yet merged) already claims **Phase 250** for its own scope (retiring gates #1, #18, #19).
+This entry claims **251**, the next number after that, coordinating with the visible sibling claim
+rather than an external file. If #1446 merges first, 251 stays free and correct; if this PR merges
+first, whichever lands second must re-check the ledger at merge/PR time per the same rule, same as
+`20f098a62`'s prior fix for the Phase-248/#1433 collision. #1441's own plan is not otherwise
+authoritative here and needs no ledger stub — it is not yet a filed, in-progress PR.
 
 ### Objective and scope
 
@@ -17483,4 +17490,6 @@ not a new compliance-sensitive code path.
 
 ### Next eligible phase
 
-255 (P2-3/P2-4, once real promotion evidence exists — handed to a separate follow-up task).
+252 (P2-3/P2-4, once real promotion evidence exists — handed to a separate follow-up task). Re-check
+the ledger's actual highest merged entry at that time rather than assuming — both this phase and
+Phase 250 (#1446) may or may not have merged by then.
