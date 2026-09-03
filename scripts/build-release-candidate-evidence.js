@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+const { validatePromotionCandidate, PromotionCandidateError } = require('./check-promotion-candidate');
+
 class CandidateEvidenceError extends Error {
   constructor(code, message) {
     super(message);
@@ -16,7 +18,7 @@ function parseArgs(argv) {
   const options = { projectRoot: process.cwd() };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (['--phase', '--target-sha', '--inventory', '--documentation-closure', '--regression-risk-notice', '--pr-evidence', '--qa-proof', '--local-qualification', '--master-audit', '--github-actions-unavailability', '--emergency-qa-report', '--output'].includes(arg)) {
+    if (['--phase', '--target-sha', '--inventory', '--documentation-closure', '--regression-risk-notice', '--pr-evidence', '--qa-proof', '--local-qualification', '--master-audit', '--github-actions-unavailability', '--emergency-qa-report', '--candidate-manifest', '--output'].includes(arg)) {
       options[arg.slice(2).replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = argv[++index] || '';
     } else if (arg === '--project-root') {
       options.projectRoot = path.resolve(argv[++index] || '');
@@ -30,6 +32,7 @@ function parseArgs(argv) {
   if (!['promotion', 'production'].includes(options.phase)) throw new CandidateEvidenceError('INVALID_ARGS', '--phase must be promotion or production');
   if (!/^[0-9a-f]{40}$/.test(options.targetSha)) throw new CandidateEvidenceError('INVALID_ARGS', '--target-sha must be a lowercase 40-character SHA');
   if (options.phase === 'production' && !options.masterAudit) throw new CandidateEvidenceError('INVALID_ARGS', 'Production evidence requires --master-audit');
+  if (!options.candidateManifest) throw new CandidateEvidenceError('INVALID_ARGS', 'Release evidence requires --candidate-manifest');
   return options;
 }
 
@@ -50,6 +53,7 @@ function buildCandidateEvidence(options) {
   const pr = readJson(options.projectRoot, options.prEvidence, 'PR evidence');
   const qa = readJson(options.projectRoot, options.qaProof, 'QA proof');
   const localQualification = readJson(options.projectRoot, options.localQualification, 'local qualification');
+  const candidateManifest = readJson(options.projectRoot, options.candidateManifest, 'candidate manifest');
   const masterAudit = options.masterAudit ? readJson(options.projectRoot, options.masterAudit, 'master audit') : null;
   const actionsUnavailability = options.githubActionsUnavailability
     ? readJson(options.projectRoot, options.githubActionsUnavailability, 'GitHub Actions unavailability')
@@ -57,6 +61,21 @@ function buildCandidateEvidence(options) {
   const emergencyQa = options.emergencyQaReport
     ? readJson(options.projectRoot, options.emergencyQaReport, 'emergency QA report')
     : null;
+  let candidate;
+  try {
+    candidate = validatePromotionCandidate(candidateManifest);
+  } catch (error) {
+    if (error instanceof PromotionCandidateError) {
+      throw new CandidateEvidenceError('CANDIDATE_MANIFEST_INVALID', error.message);
+    }
+    throw error;
+  }
+  if (!candidate.release_revision) {
+    throw new CandidateEvidenceError('RELEASE_REVISION_MISSING', 'Release evidence requires a candidate manifest with a release revision');
+  }
+  if (candidate.current_staging_sha !== options.targetSha) {
+    throw new CandidateEvidenceError('CANDIDATE_SHA_MISMATCH', 'Candidate manifest current_staging_sha does not match release evidence target');
+  }
   if (inventory.head_sha !== options.targetSha) throw new CandidateEvidenceError('INVENTORY_SHA_MISMATCH', 'Inventory target does not match candidate');
   if (inventory.review_status !== 'reviewed') throw new CandidateEvidenceError('INVENTORY_NOT_REVIEWED', 'Candidate evidence requires reviewed inventory');
   const inventoryHash = hashFile(options.projectRoot, options.inventory);
@@ -118,6 +137,16 @@ function buildCandidateEvidence(options) {
     repository: pr.repository,
     phase: options.phase,
     target_sha: options.targetSha,
+    candidate: {
+      schema: candidateManifest.schema,
+      candidate_id: candidate.candidate_id,
+      status: candidate.status,
+      source_develop_sha: candidate.source_develop_sha,
+      current_staging_sha: candidate.current_staging_sha,
+      repair_count: candidate.repair_count,
+      release_revision: candidate.release_revision,
+      manifest_sha256: hashFile(options.projectRoot, options.candidateManifest),
+    },
     pr: {
       number: pr.number,
       base: pr.base,
