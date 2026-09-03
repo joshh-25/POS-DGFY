@@ -44,7 +44,9 @@ export {
   getFolders,
   createFolder,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  listItemFolders,
+  replaceItemFolders
 } from '../modules/inventory/controllers/itemHandlers.js';
 
 import {
@@ -89,7 +91,9 @@ import {
   getFolders,
   createFolder,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  listItemFolders,
+  replaceItemFolders
 } from '../modules/inventory/controllers/itemHandlers.js';
 
 export default {
@@ -134,5 +138,7 @@ export default {
   getFolders,
   createFolder,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  listItemFolders,
+  replaceItemFolders
 };
