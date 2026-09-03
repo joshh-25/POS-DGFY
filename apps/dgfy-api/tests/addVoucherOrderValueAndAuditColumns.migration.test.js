@@ -1,4 +1,4 @@
-// Unit tests for Phase 257 (#1490 + #1494)'s migration:
+// Unit tests for Phase 259 (#1490 + #1494)'s migration:
 //   - 20260906000002-add-voucher-order-value-and-audit-columns.cjs (tenant fan-out: three
 //     additive columns on `vouchers` -- max_order_value_centavos, created_by, updated_by).
 //

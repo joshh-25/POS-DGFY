@@ -18461,3 +18461,118 @@ and was drafted by this session per the user's standing preference, rather than 
 
 259. Re-check the ledger's actual highest merged entry and open `develop` PRs at plan time rather
 than assuming.
+
+## Phase 259 - Voucher max_order_value_centavos + created_by/updated_by audit columns (#1490 + #1494)
+
+### Initiative and release
+
+**Numbering note, re-confirmed after a rebase.** The governing plan doc
+(`~/.claude/plans/phase-257-voucher-max-order-value-audit-columns.md`) was written when the
+ledger's tip was Phase 256 and claimed **257**. Re-checked immediately before this branch's first
+commit (per `AGENTS.md`'s Continuous Phase Numbering rule -- the ledger and visible in-flight PR
+claims are authoritative, not a parked plan file): two other open PRs already claimed the numbers
+immediately above the then-tip of 256 -- #1502 (later merged as #1318's Phase 257) and #1500
+(later merged as #1491's Phase 258), both created before this build started -- so this entry took
+**259** instead. Re-confirmed again at rebase time onto the actually-merged `origin/develop`
+(Phase 257 = #1318 "Item multi-category membership: foundation", Phase 258 = #1491 "Queue+Run:
+iPad portrait split-view fix"): 259 is still free, and stays this entry's number.
+
+### Objective and scope
+
+Batched into one migration/one PR per #1496's "Wave 1 -- batch the migrations" instruction (both
+issues add columns to `vouchers`):
+
+- **#1490** -- an optional `max_order_value_centavos` eligibility cap, the mirror image of the
+  existing `min_spend_centavos`, compared against the same item subtotal
+  (`context.subtotalCentavos`, excludes the delivery fee). New `VOUCHER_MAX_ORDER_VALUE_EXCEEDED`
+  reason code; verified (not added) that it stays correctly excluded from
+  `voucherDisplayUseCases.js`'s `DISPLAY_RELEVANT_REASON_CODES` and
+  `finalizePaidCommerceSession.js`'s `VOUCHER_REDEMPTION_UNAVAILABLE_REASON_CODES`. A new
+  `assertOrderValueRangeInvariant` guard refuses `max_order_value_centavos < min_spend_centavos`
+  when both are set, checked against the merged row on create and update.
+- **#1494** -- `created_by`/`updated_by`, plain nullable `INTEGER` columns with no DB-level FK
+  anywhere (model, migration, or `sync-tenant-schemas.js`'s repair registry) -- see the migration's
+  own header comment for the full reasoning (cross-tenant-DB ALTER risk via the migration runner's
+  landlord-only connection, plus the repair registry's column-presence-only gate that would
+  otherwise permanently starve already-active tenants of a constraint added after the fact).
+  Stamped from the authenticated actor inside the create/update use cases, which now hard-fail 401
+  (`VOUCHER_ACTOR_REQUIRED`) on a missing actor -- matching `deliveryRunUseCases.js`'s stricter
+  behavior rather than silently persisting a `null` actor. Display-side: an opt-in `includeActors`
+  join on the repository (two `LEFT JOIN`s to `User`), always requested by get/list (staff-admin-
+  only, capped at 100 rows/page) and never by the hot transactional paths (create/update/redeem).
+
+Four open questions from the plan resolved at build time, not left to a silent default: (1) a
+missing `req.user` hard-fails 401, not a silent null actor; (2) `includeActors` is always-on for
+get/list, not client-controlled; (3) `validateFormLocally`'s pre-existing min-spend gap (only
+validated under `isDeliveryCampaign`, not `promo_code`) is flagged, not fixed here -- handed to
+`pm` as a separate follow-up issue to keep this phase's scope tight; (4) the "Created by / Last
+modified by" line's placement (near the top of the edit form, plus a compact list-card suffix) is
+this phase's own call, per the plan's suggested-default markup.
+
+Files touched: `apps/dgfy-api/src/models/Voucher.js`, `apps/dgfy-api/src/models/index.js`,
+`apps/dgfy-migration-runner/migrations/20260906000002-add-voucher-order-value-and-audit-columns.cjs`
+(new), `apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+`apps/dgfy-api/src/validators/voucherValidator.js`,
+`apps/dgfy-api/src/modules/vouchers/domain/voucherEligibilityPolicy.js`,
+`apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js`,
+`apps/dgfy-api/src/modules/vouchers/controllers/voucherHandlers.js`,
+`apps/dgfy-api/tests/addVoucherOrderValueAndAuditColumns.migration.test.js` (new),
+`apps/dgfy-api/tests/voucherEligibilityPolicy.unit.test.js`,
+`apps/dgfy-api/tests/voucherValidator.test.js`, `apps/dgfy-api/tests/voucherUseCases.usecases.test.js`,
+`apps/dgfy-api/tests/voucherDisplayUseCases.usecases.test.js`,
+`packages/web-core/src/features/pos/components/voucherFormModel.js`,
+`packages/web-core/src/features/pos/components/VoucherManagementPanel.jsx`,
+`packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js`,
+`docs/compliance/impact-declarations/2026-09-06-voucher-max-order-value-and-audit-columns.md` (new).
+
+### Status
+
+`completed`
+
+### Dependencies
+
+None on Phase 257 (#1318) or Phase 258 (#1491) -- different files, coordinated only by
+phase-number spacing, per the same convention Phase 256's own entry documents. Depends on the
+existing voucher domain introduced by epic #1321/ADR 0066 and extended through Phase 244/245
+(auto-apply, delivery-campaign authoring) and Phase 239-241 (delivery-targeted benefit axis).
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/added `apps/dgfy-api` file -- 0 errors.
+- [x] `apps/dgfy-api/tests/addVoucherOrderValueAndAuditColumns.migration.test.js` (new) -- all
+  passing; asserts DDL-string identity between the migration and `sync-tenant-schemas.js`.
+- [x] `apps/dgfy-api/tests/voucherEligibilityPolicy.unit.test.js`,
+  `voucherValidator.test.js`, `voucherUseCases.usecases.test.js`,
+  `voucherDisplayUseCases.usecases.test.js` (extended) -- 249 tests, all passing.
+- [x] Broader regression run across 16 voucher-adjacent test files (264 tests) -- all passing,
+  zero edits.
+- [x] `npm run build:pos` -- clean build (`packages/web-core` is mounted there via
+  `TerminalOperationsWorkspace.jsx`).
+- [x] `packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js` (extended,
+  run via `apps/dgfy-ims`'s vitest config per `docs/architecture/frontend-split-sync.md`) -- 12
+  tests, all passing.
+- [x] `npm run check:compliance` -- PASS; declaration:
+  `docs/compliance/impact-declarations/2026-09-06-voucher-max-order-value-and-audit-columns.md`.
+- [x] `npm run lint:docs` / `check:adr` -- OK (pre-commit hook, docs-sensitive change).
+- [ ] `npm run gate:release:local` -- not run; delegated to `promotion-quality-gate.yml` at
+  promotion time per Phase 256's own closeout, not a PR-time step.
+
+### Links
+
+- Tracking issues: #1490, #1494 (both `Closes`, per #1496's own batching instruction to resolve
+  both in one PR).
+- Follow-up filed: #1506 (`validateFormLocally`'s pre-existing min-spend gap, open question 3
+  above), via `pm`'s search-before-filing discipline.
+- PR: `feature/1490-1494-voucher-max-order-value-audit-columns` → `develop`.
+- Modified/added: see "Objective and scope" above for the full file list.
+
+### Next eligible phase
+
+**260.** Re-check the ledger's actual highest merged entry and every open PR's phase claim at
+plan time rather than assuming -- Phase 258's own entry (#1491) also names 259 as its guess at the
+next eligible number, written before this entry existed; that guidance is now superseded by this
+entry's own actual claim, not retroactively edited there, matching this file's established
+precedent (e.g. Phase 256's entry re-confirming its own number after a rebase rather than editing
+an earlier entry's stale forward guidance).

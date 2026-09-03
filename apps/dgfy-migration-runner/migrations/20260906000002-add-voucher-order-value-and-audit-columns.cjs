@@ -1,6 +1,6 @@
 'use strict';
 
-// Phase 257 (#1490 + #1494, batched per #1496's "Wave 1 -- batch the migrations"). Three additive,
+// Phase 259 (#1490 + #1494, batched per #1496's "Wave 1 -- batch the migrations"). Three additive,
 // nullable columns on `vouchers`:
 //   - max_order_value_centavos (#1490): eligibility cap, mirrors min_spend_centavos's own shape.
 //   - created_by / updated_by (#1494): accountable officer, no DB-level FK -- see this phase's plan

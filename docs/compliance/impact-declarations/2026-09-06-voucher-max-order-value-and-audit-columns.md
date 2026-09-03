@@ -22,7 +22,7 @@ preflight_run_at: 2026-09-06T00:00:00.000Z
 preflight_request_ref: NOT-EXECUTED-1490-1494-VOUCHER-ORDER-VALUE-AUDIT-COLUMNS
 ---
 
-# Voucher `max_order_value_centavos` + `created_by`/`updated_by` audit columns (Phase 257, #1490 + #1494)
+# Voucher `max_order_value_centavos` + `created_by`/`updated_by` audit columns (Phase 259, #1490 + #1494)
 
 ## Compliance Impact Classification
 
@@ -42,7 +42,7 @@ reconciles it to a real run within minutes of merge, not at PR time.
 
 Batched into one migration/one phase per #1496's "Wave 1 -- batch the migrations" instruction (both
 #1490 and #1494 add columns to `vouchers`). Full file list and design rationale:
-`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 257 entry (to be added on merge) and this
+`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 259 entry (to be added on merge) and this
 PR's own body.
 
 - `apps/dgfy-api/src/models/Voucher.js` -- 3 new columns (`max_order_value_centavos`, `created_by`,
