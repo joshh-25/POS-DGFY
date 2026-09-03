@@ -493,6 +493,55 @@ describe('inventory itemRepository', () => {
     expect(result.location_scope).toEqual({ location_id: 2, resolved: false });
   });
 
+  it('returns a soft-deleted, inactive item under include_inactive=true (#1495 Part A, RF-1)', async () => {
+    // Regression test for PR #1502's pr-reviewer RF-1 finding: the include_inactive branch used
+    // to call buildVisibleWhere without includeDeleted, which always forced deleted_at: null onto
+    // the query -- since deleteItem sets deleted_at, a real DB could never return the deleted rows
+    // this "show inactive" list is meant to surface, even though a mocked findAndCountAll would
+    // happily hand one back regardless of the where clause. Assert on the where clause itself, not
+    // just the mocked result, so this actually catches the defect the way an unfiltered mock can't.
+    const ProductComposition = {};
+    const ItemFolder = {};
+    const Item = {
+      findAndCountAll: jest.fn().mockResolvedValue({
+        count: 1,
+        rows: [
+          {
+            toJSON: () => ({
+              item_id: 9,
+              sku_code: 'DEL-009',
+              name: 'Discontinued Syrup',
+              category: 'raw_material',
+              status: 'inactive',
+              deleted_at: new Date('2026-08-20T00:00:00Z'),
+              current_stock: 0
+            })
+          }
+        ]
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ProductComposition') return ProductComposition;
+      if (name === 'ItemFolder') return ItemFolder;
+      return {};
+    });
+
+    const result = await itemRepository.getItems({ page: '1', limit: '20', include_inactive: true });
+
+    const args = Item.findAndCountAll.mock.calls[0][0];
+    expect(args.where).not.toHaveProperty('deleted_at');
+    expect(args.where.status).toBeUndefined();
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      item_id: 9,
+      status: 'inactive',
+      deleted_at: new Date('2026-08-20T00:00:00Z')
+    });
+  });
+
   it('maps item detail payload to wizard contract in getItemById', async () => {
     const ItemNutrition = {};
     const ItemAllergen = {};

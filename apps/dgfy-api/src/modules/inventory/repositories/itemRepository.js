@@ -913,10 +913,12 @@ export const itemRepository = {
         const offset = (parsedPage - 1) * parsedLimit;
         // #1495 Part A: include_inactive is already coerced to a real boolean and permission-gated
         // by getItemsUseCase before it reaches here -- this only decides the where-clause shape.
-        // Still excludes deleted_at-set rows either way (buildVisibleWhere always forces that);
-        // this only stops excluding status: 'inactive' rows.
+        // includeDeleted: true (RF-1 fix, PR #1502 review) drops the deleted_at: null constraint
+        // entirely -- without it buildVisibleWhere always forces deleted_at: null, so a deleted
+        // row (the exact state deleteItem leaves a row in) could never come back through this
+        // "show inactive" path, defeating the restore feature's own list view.
         const where = queryParams.include_inactive
-            ? buildVisibleWhere({}, { statusField: 'status', excludeInactiveStatus: false })
+            ? buildVisibleWhere({}, { statusField: 'status', excludeInactiveStatus: false, includeDeleted: true })
             : visibleItemWhere({});
 
         let semanticIds = [];
