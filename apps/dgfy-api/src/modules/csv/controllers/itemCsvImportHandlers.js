@@ -7,6 +7,8 @@ import {
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import { publishCatalogChange } from '../../shared/services/catalogChangeEventBus.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
+import { PERMISSIONS } from '../../../config/permissions.js';
 
 const readCsvContentFromRequest = async (req) => {
 
@@ -51,6 +53,30 @@ const publishCatalogInvalidation = async (req, itemIds = []) => {
     itemIds
   });
 };
+// Only ever 'append' or 'sync' leaves this function; anything else is passed through untouched so
+// the use case can reject it as a 400 rather than this helper silently normalizing a typo away.
+const normalizeRequestedImportMode = (req) => req.body?.mode;
+
+// #1495 Part B: sync mode deactivates items that are absent from the uploaded file, so it needs
+// the item-*delete* permission on top of the import permission the route already checks. Without
+// this, anyone who can import could deactivate the whole catalog through a CSV -- a strictly wider
+// blast radius than the single-item deactivate route (`DELETE /items/:item_id`), which is gated on
+// DELETE_ITEMS. Append mode is unaffected and stays on IMPORT_ITEMS alone.
+const denySyncModeWithoutDeletePermission = (req, res) => {
+  if (normalizeRequestedImportMode(req) !== 'sync') return false;
+  if (hasEffectivePermission(req.user, PERMISSIONS.INVENTORY.actions.DELETE_ITEMS)) return false;
+
+  res.status(403).json({
+    success: false,
+    data: null,
+    message: 'Sync-mode import deactivates items and requires the item delete permission.',
+    error_code: 'SYNC_IMPORT_FORBIDDEN',
+    request_id: requestId(req, res),
+    timestamp: timestamp()
+  });
+  return true;
+};
+
 const defaultErrorPayload = (req, res, failure) => ({
   success: false,
   data: null,
@@ -63,8 +89,10 @@ const defaultErrorPayload = (req, res, failure) => ({
 
 export const previewImport = async (req, res) => {
   try {
+    if (denySyncModeWithoutDeletePermission(req, res)) return undefined;
     const csvContent = await readCsvContentFromRequest(req);
-    const result = await previewItemsImportUseCase({ csvContent });
+    const mode = normalizeRequestedImportMode(req);
+    const result = await previewItemsImportUseCase({ csvContent, mode });
     await trackProductUsageFromResult({
       req,
       user: req.user,
@@ -74,7 +102,9 @@ export const previewImport = async (req, res) => {
       result,
       successMetadataResolver: (data) => ({
         valid_rows: data?.validRows ?? null,
-        invalid_rows: data?.invalidRows ?? null
+        invalid_rows: data?.invalidRows ?? null,
+        mode: data?.mode ?? null,
+        deactivate_count: data?.deactivateCount ?? null
       })
     });
 
@@ -89,7 +119,9 @@ export const previewImport = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: previewData,
-      message: `Preview complete: ${previewData.validRows} valid rows, ${previewData.invalidRows} with errors`
+      message: previewData.mode === 'sync'
+        ? `Preview complete: ${previewData.validRows} valid rows, ${previewData.invalidRows} with errors, ${previewData.deactivateCount} item(s) to deactivate`
+        : `Preview complete: ${previewData.validRows} valid rows, ${previewData.invalidRows} with errors`
     });
   } catch (error) {
     console.error('CSV preview error:', error);
@@ -105,8 +137,14 @@ export const previewImport = async (req, res) => {
 
 export const confirmImport = async (req, res) => {
   try {
+    if (denySyncModeWithoutDeletePermission(req, res)) return undefined;
     const userId = req.user?.user_id;
-    const result = await confirmItemsImportUseCase({ rows: req.body.rows, userId });
+    const result = await confirmItemsImportUseCase({
+      rows: req.body.rows,
+      userId,
+      mode: normalizeRequestedImportMode(req),
+      deactivateSkus: req.body.deactivateSkus
+    });
     await trackProductUsageFromResult({
       req,
       user: req.user,
@@ -117,7 +155,11 @@ export const confirmImport = async (req, res) => {
       successMetadataResolver: (data) => ({
         created_count: data?.createdCount ?? null,
         updated_count: data?.updatedCount ?? null,
-        failed_count: data?.failedCount ?? null
+        failed_count: data?.failedCount ?? null,
+        mode: data?.mode ?? null,
+        reactivated_count: data?.reactivatedCount ?? null,
+        deactivated_count: data?.deactivatedCount ?? null,
+        deactivation_skipped_count: data?.deactivationSkippedCount ?? null
       })
     });
 
@@ -128,9 +170,14 @@ export const confirmImport = async (req, res) => {
     }
 
     const importData = result.data || {};
+    // #1495 Part B: reactivated and deactivated items change catalog visibility just as much as a
+    // create or update does -- a deactivated item left in the storefront's cached catalog is
+    // exactly the stale-listing bug this invalidation exists to prevent.
     const importedItemIds = [
       ...(importData.results?.created || []),
-      ...(importData.results?.updated || [])
+      ...(importData.results?.updated || []),
+      ...(importData.results?.reactivated || []),
+      ...(importData.results?.deactivated || [])
     ]
       .map((entry) => entry?.item_id)
       .filter(Boolean);
@@ -139,7 +186,11 @@ export const confirmImport = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: importData,
-      message: `Import complete: ${importData.createdCount} created, ${importData.updatedCount} updated, ${importData.failedCount} failed`
+      message: `Import complete: ${importData.createdCount} created, ${importData.updatedCount} updated`
+        + `, ${importData.reactivatedCount || 0} reactivated`
+        + (importData.mode === 'sync' ? `, ${importData.deactivatedCount || 0} deactivated` : '')
+        + (importData.deactivationSkippedCount ? `, ${importData.deactivationSkippedCount} deactivation(s) skipped` : '')
+        + `, ${importData.failedCount} failed`
     });
   } catch (error) {
     console.error('CSV import error:', error);
