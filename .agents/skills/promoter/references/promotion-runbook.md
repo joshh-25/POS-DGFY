@@ -29,11 +29,12 @@ git diff --name-only origin/main origin/develop -- docs/compliance/impact-declar
 ```
 
 Once that's clear, cut `release/<label>` and open its PR into `main` right away — **do not wait on
-`gate:release:local` or the production tenant-schema report first.** Those two have no dependency on
-the compliance sweep, on each other, or on the branch cut/PR-open step below: start them
-**concurrently** with it (a backgrounded command, a second terminal — whatever fits), not serially
-before it. This was caught live on the 2026-09-01/02 promotion (#1359), where the ~25min local gate
-was run to completion before the branch was even cut.
+the production tenant-schema report first.** It has no dependency on the compliance sweep or on the
+branch cut/PR-open step below: start it **concurrently** with it (a backgrounded command, a second
+terminal — whatever fits), not serially before it. (Historical note: this section used to also name
+`gate:release:local` here — it was caught live on the 2026-09-01/02 promotion, #1359, running to
+completion before the branch was even cut. Since 2026-09-03, #1431 Phase C/D, `gate:release:local`
+is no longer part of this procedure at all — see `../SKILL.md`'s own note.)
 
 ```bash
 git fetch origin
@@ -53,38 +54,27 @@ Promotes \`develop\` to \`main\` at $(git rev-parse --short origin/develop).
 
 ## Testing Evidence
 
-\`npm run gate:release:local\`: <paste result — 12 required gates as of PR-B>. \`promotion-quality-gate\`
-check-run for the 7 CI-delegated gates: <link>. Tenant-schema sync checked against production: <result>.
+\`promotion-quality-gate\` check-run: <link> (14 blocking gates + 2 deliberately advisory since
+2026-09-03, #1431 Phase C/D -- gate:release:local no longer runs as part of this procedure, see
+docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md). Tenant-schema sync checked against production: <result>.
 Aggregate promotion — see \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the compliance exemption."
 
 # Merging this PR is Pat's action, always — see ../SKILL.md's checkpoint table.
 ```
 
-Run these two alongside (or immediately after) the branch cut/PR open above — not before it:
+Run this alongside (or immediately after) the branch cut/PR open above — not before it:
 
 ```bash
-npm run gate:release:local   # Covers 12 required gates locally since 2026-09-03 (#1431 Phase 1,
-                              # PR-B; historically ~25min for the full 19-gate set) -- 7 gates
-                              # (docs.lint, architecture.guardrails, backend.lint, frontend.ims.lint,
-                              # frontend.pos.lint, frontend.storefront.lint,
-                              # frontend.storefront.contracts) delegate to promotion-quality-gate.yml
-                              # instead and show status: "delegated_to_ci" in the artifact -- read
-                              # their result off the release/<label> PR's own promotion-quality-gate
-                              # check (gh pr checks <N> or per-job conclusions, NEVER the workflow
-                              # run's rollup conclusion -- see GATE_RELEASE_LOCAL_CI_MAPPING.md's
-                              # "Critical caveat"). Background it or use a separate terminal, then
-                              # post BOTH the local artifact result AND the promotion-quality-gate
-                              # check-run link as a comment on the release/<label> PR once it finishes
-
 gh workflow run tenant-schema-report.yml -f environment=PROD
 # poll:
 gh run list --workflow=tenant-schema-report.yml -L1 --json databaseId,status
 gh run view <id> --json conclusion   # expect "success" and failed_tenant_count: 0 in the step summary
 ```
 
-**Only the merge into `main` waits on all three** — the compliance sweep (already confirmed clear
-above), `gate:release:local` (`run_mode: "full"`), and the tenant-schema report. Do not merge past a
-failing gate.
+**Only the merge into `main` waits on both** — the compliance sweep (already confirmed clear above)
+and the tenant-schema report — **plus** the promotion PR's own `promotion-quality-gate` check-run
+(`gh pr checks <N>` or per-job conclusions, NEVER the workflow run's rollup conclusion — see
+`GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "Current state" section). Do not merge past a failing gate.
 
 ## Default: `develop` → `staging` → `main`
 
@@ -135,9 +125,11 @@ Then cut `release/<label>` from `origin/staging` instead of `origin/develop` in 
 
 ## Expedited override (#1007) — only on Pat's explicit real-time phrase
 
-Skips `gate:release:local` and/or the compliance preflight sweep. Never skips the tenant-schema
-report, `AGENTS.md` Merge Safety, never-`--squash`, or the `release/` head-cut rule. Full definition:
-`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment; checkpoint-table row in `../SKILL.md`.
+Skips the compliance preflight sweep. Never skips the tenant-schema report, `AGENTS.md` Merge
+Safety, never-`--squash`, or the `release/` head-cut rule. Full definition:
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment (see its 2026-09-03 #1431 Phase C/D
+entry for why `gate:release:local` no longer appears in the skippable list — there is nothing local
+left to skip); checkpoint-table row in `../SKILL.md`.
 
 ```bash
 # Still mandatory even under the override:
@@ -148,7 +140,7 @@ gh run view <id> --json conclusion   # must be "success" and failed_tenant_count
 gh pr comment <N> --body "## #1007 expedited promotion override
 
 Authorized by Pat, $(date -u +%Y-%m-%dT%H:%M:%SZ). Phrase given: \"<verbatim phrase>\".
-Skipped: <gate:release:local | compliance preflight sweep | both>. Not skipped: production
+Skipped: compliance preflight sweep. Not skipped: production
 tenant-schema report (run <id>, conclusion success), AGENTS.md Merge Safety, never-squash,
 release/ head-cut rule."
 
@@ -158,8 +150,6 @@ gh pr merge <N> --merge   # never --squash
 Retro-verification afterward, same run — not a separate follow-up:
 
 ```bash
-# If gate:release:local was skipped, run it against the merged SHA and file/annotate real failures:
-npm run gate:release:local
 # If staging is now stale relative to main, note it rather than silently leaving it:
 git fetch origin
 git rev-list --count origin/staging..origin/main
@@ -168,11 +158,13 @@ git rev-list --count origin/staging..origin/main
 ## Deploy dispatch, after either leg merges
 
 ```bash
-# DEV/STAGING — unattended, per ../SKILL.md's checkpoint table
+# STAGING — unattended, per ../SKILL.md's checkpoint table. DEV dispatch is dropped from this
+# default flow entirely (#982) — use `--ref develop` only when DEV is specifically wanted, never
+# as a routine step here.
 # (#1050, 2026-08-25: the old single-select `components` input is gone; the
 # four build_* booleans below all default true, so omitting them builds/pushes
 # everything, same as the old components=all)
-gh workflow run deploy.yml -f deploy=true --ref develop   # or staging
+gh workflow run deploy.yml -f deploy=true --ref staging
 
 # PROD — ask Pat first, every time
 gh workflow run deploy-main.yml -f deploy=true --ref main

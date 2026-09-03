@@ -21,7 +21,7 @@ const getModifierIcon = (name) => {
 export const formatModifierPriceDelta = (value, formatMoney) => {
   const amount = Number(value || 0) || 0;
   const sign = amount < 0 ? '-' : amount > 0 ? '+' : '';
-  return `${sign}${formatMoney(Math.abs(amount)).replace('PHP ', '')}`;
+  return `${sign}${formatMoney(Math.abs(amount))}`;
 };
 
 /**

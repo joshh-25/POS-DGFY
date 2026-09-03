@@ -120,4 +120,8 @@ describe('Services handoff schedule resolver', () => {
     expect(getDatePartFromAppointment('2026-08-16')).toBe('2026-08-16');
     expect(formatServiceAppointmentSummary('2026-08-16')).toBe('Schedule needed');
   });
+
+  it('labels an empty appointment as not selected yet', () => {
+    expect(formatServiceAppointmentSummary('')).toBe('Not selected yet');
+  });
 });

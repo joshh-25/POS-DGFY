@@ -1,1 +1,1 @@
-export const formatFnbCurrency = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
+export { money as formatFnbCurrency } from '../../../../shared/utils/storefrontFormatters.js';

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-04
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -267,7 +267,7 @@ Retire staging..." amendment below for history**:
 |---|---|---|---|
 | `feature → develop` | merge gate | `pr-checks.yml` (build checks) + pre-commit statics, including `npm run check:compliance` (a static, sub-second document-shape check — see `docs/compliance/request-time-preflight-protocol.md`). A `major`/`regulatory` declaration may carry a disclosed `NOT-EXECUTED-*` preflight placeholder at this stage — that is the accepted norm, not a defect | none |
 | `develop → main` promotion | merge gate for the promotion PR, plus a **preflight sweep** and the **production tenant-schema report** | `npm run gate:release:local` (`run_mode: "full"`, per `docs/testing/release-go-no-go-checklist.md`) against the exact target SHA; the CI-side `promotion-quality-gate.yml` run triggered automatically by the `release/*` PR itself (#1018) — **temporarily `continue-on-error` as of 2026-08-26, see the amendment below (#1063): it runs and records real failures as a comment on #1063, but does not block, and (since the #1066 correction below) does not show red in the Checks tab either**; a real `POST /api/v1/compliance/preflight` run against a deployed non-production host (DEV suffices) for every `NOT-EXECUTED-*` declaration in the batch, reconciled via a small cut branch and PR into `develop` — same pattern as the hotfix back-port below, never a direct commit — merged before `release/<label>` is cut (a **supervised handoff, not an auto-merge**, #1295/#1374, 2026-09-02: the workflow pushes and attempts the PR, but `github-actions[bot]` is org-blocked from creating/approving it, so a human or credentialed AI session opens/merges it in the ordinary case — `.agents/skills/promoter/SKILL.md`'s "Compliance preflight sweep" section owns the fast-signal check for a stuck handoff); **and** `sync-tenant-schemas.js --mode report` (`tenant-schema-report.yml`, #1017) checked against **production** tenant databases. **No `NOT-EXECUTED-*` declaration may reach this leg.** (A `NOT-APPLICABLE-*` ref is a reconciled state, not an outstanding one — `scripts/is-preflight-outstanding.js` already treats it as reconciled; see #1396.) All four run once per promotion batch, before `release/<label>` merges. `.agents/skills/promoter/SKILL.md` owns the executable form. See the 2026-08-25 amendment below for which of these may be skipped under #1007's expedited override (never the tenant-schema report) | DEV (or STAGING) for the preflight sweep — production for the tenant-schema report |
-| `develop → staging` (optional, non-default soak) | merge gate for the `to-staging/<label>` PR, if a promoter chooses to route through it | Same `pr-checks.yml`/`promotion-quality-gate.yml` checks any promotion PR gets (the CI gate triggers on this shape too) — **skipped entirely as of 2026-08-26, see the amendment below (#1063)**. **`npm run gate:release:local` does NOT run on this leg** — stated explicitly here (#1097) rather than left implicit by its absence from this row, after a live promotion attempt ran it here anyway and stopped a `develop → staging` promotion on findings that were never this leg's gate to fail on. Does **not** substitute for anything in the row above — the preflight sweep and tenant-schema report still run at the `develop → main` leg regardless of whether this optional soak happened | DEV (or STAGING) |
+| `develop → staging` (optional, non-default soak) | merge gate for the `to-staging/<label>` PR, if a promoter chooses to route through it | Same `pr-checks.yml`/`promotion-quality-gate.yml` checks any promotion PR gets (the CI gate triggers on this shape too) — **skipped entirely as of 2026-08-26, see the amendment below (#1063)**. **`npm run gate:release:local` does NOT run on this leg** — stated explicitly here (#1097) rather than left implicit by its absence from this row, after a live promotion attempt ran it here anyway and stopped a `develop → staging` promotion on findings that were never this leg's gate to fail on. Does **not** substitute for anything in the row above — the preflight sweep and tenant-schema report still run at the `develop → main` leg regardless of whether this optional soak happened | STAGING |
 | post-`deploy-main.yml` | release verification, never a merge gate | `verify-deployment.yml` (PROD infra health — BETA dropped from its environment list 2026-08-23, #329/#895, once beta.dgfy.ph was retired), the credential-free PayMongo webhook probe (`verify:paymongo:webhook`, asserts `401` on an unsigned payload), and — only once PayMongo's Linked Accounts blocker clears — a live low-value payment canary per `docs/ops/PAYMONGO_PRODUCTION_ACTIVATION.md` | production |
 
 This resolves the apparent circularity for the compliance preflight specifically: the endpoint
@@ -682,3 +682,107 @@ precondition below is satisfied by that reading, not violated by it (see the rej
 note in the #1431 Phase 1 PR-B plan for why a third `run_mode` value was considered and rejected).
 
 PR: (this PR). Refs #1431, #1063, #1066, #1147, #1435 (PR-A).
+
+### 2026-09-03: `gate:release:local` fully delegated, required-locally is 0 (#1431 Phase C/D) —
+closes the umbrella (#1147)
+
+Not rewritten in place, same convention as every amendment above. This is the closing entry: every
+gate `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` still listed as locally required is now delegated
+to `promotion-quality-gate.yml`, and every row in that mapping doc has a documented, closed
+resolution.
+
+**What changed.** Five more steps flipped from advisory to blocking on real evidence (workflow_
+dispatch fault-probe runs plus one throwaway PR against `main`, deleted unmerged — run IDs and the
+clean/fault table are in `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "Evidence behind the Phase C
+flips"): `run_dependency_audit_prod`, `run_compliance_contracts` (`repository-quality`),
+`run_runtime_doctor` (`dgfy-api-quality`), `run_shared_fnb_contract_tests`
+(`frontend-ims-quality`), `check_frontend_budgets` (`frontend-budgets-quality`). All 9 gates that
+remained locally required (2, 3, 6, 7, 8, 10, 14, 16, 17 in the mapping doc's numbering) joined
+`gate-release-local.js`'s `CI_ENFORCED_GATES` (7 → 16 entries), bringing `required_gate_count` to
+**0** on a default run. `scripts/check-pr-quality-workflow.js` gained a two-name
+`ADVISORY_CI_ENFORCED_GATES` allowlist (`dependencies.audit.full`, `backend.test_matrix`) so
+`checkCiEnforcedGatesAreBlocking()` doesn't demand blocking coverage for the two gates that are
+delegated but deliberately not blocking — every other delegated gate still must have real blocking
+coverage or that check fails loudly.
+
+**The two deliberate exceptions, settled this phase, not left pending.** `dependencies.audit.full`
+is now **permanently** advisory (Pat's call) — Phase A/C evidence confirmed it real-failing on both
+the clean and fault-probe runs for a pre-existing, registry-dependent reason unrelated to any code
+defect, and its findings never ship. `backend.test_matrix` stays **temporarily** advisory, tracked
+by #1469 (filed this phase), gated on #1015 (fast/DB tier split) and #925 (hanging `beforeAll`) —
+Phase A/C's own evidence runs reconfirmed it genuinely failing, not just slow, consistent with
+#1432's prior root-cause finding.
+
+**Consequence for this policy's own tables above.** Every `develop → main` and `staging → main` row
+that named `npm run gate:release:local` as a required step is now stale in that specific respect —
+`promotion-quality-gate.yml`'s own check-run is the enforcement mechanism, full stop.
+`docs/testing/release-go-no-go-checklist.md` and `.agents/skills/promoter/SKILL.md` have been
+updated to stop citing the local script as a promotion gate; this entry is the policy-side record of
+why. The #1007 expedited-override row's mention of `gate:release:local` as something skippable is
+now moot in substance (there is nothing local left to skip under the override or otherwise) — see
+`AGENTS.md`'s own note on this.
+
+### 2026-09-04: DEV deploy environment made optional/intentionally-outdated (#982)
+
+Decision record: issue #982 (Pat, 2026-08-25, superseding #980's original "remove `staging`"
+framing — that framing was already retracted before this doc's own 2026-08-25 ADR-0074 amendment
+above, unrelated to this entry). Branch/promotion topology is unchanged by this entry — `develop →
+to-staging/<label> → staging → release/<label> → main` (or the #1007-gated direct exception) stays
+exactly as documented above.
+
+**What changed:** the `DEV` deploy environment (`dev.dgfy.ph`) stops being a routine, expected part
+of the promotion cadence. It is now optional and intentionally allowed to go stale — deployed to
+opportunistically or manually if useful, never as a default step of a promotion or of a "review,
+merge, and deploy" composite instruction. STAGING and PROD deploys are unaffected — both stay
+mandatory, exactly as before. The environment itself is kept, not decommissioned, preserving the
+option to revive it later.
+
+**Why:** DEV deploys added a routine step with no clear payoff — the environment is rarely tested
+directly, and mobile (`apps/dgfy-android-bridge`, the strongest reason DEV would matter) isn't under
+active development right now. Full reasoning: issue #982.
+
+**Executable consequence:** `.agents/skills/promoter/SKILL.md`'s checkpoint table splits its single
+"Dispatching `deploy.yml` for environment `DEV` or `STAGING`" row into two — STAGING dispatch stays
+the unattended default; DEV dispatch is dropped entirely, not kept as an ask-first fallback.
+`.agents/skills/promoter/references/promotion-runbook.md`'s deploy-dispatch command drops the
+`--ref develop` option from its default copy-paste sequence.
+
+**The compliance preflight sweep's host requirement — already resolved, not by this entry.** #982
+also asked to re-anchor the preflight sweep from "DEV (or STAGING)" to "STAGING" explicitly (it had
+never actually been exercised against staging — every real declaration checked so far used DEV).
+That re-anchoring turned out to be unnecessary: the `### 2026-08-31: The compliance preflight sweep
+is continuous...` amendment above (#1163/#1248) already moved the sweep off any deployed host
+entirely — it provisions its own ephemeral CI instance and needs neither DEV nor STAGING. This entry
+records that #982's concern here is already satisfied, by different, earlier work, rather than
+re-editing that section's text (matching this doc's own convention of not rewriting prior entries in
+place).
+
+**The `develop → staging` (optional, non-default soak) row's "Environment needed" cell** (the
+compliance-verification-ladder table under the 2026-08-22 amendment above) is corrected from
+`DEV (or STAGING)` to `STAGING` — nothing in that row's own "What runs" column implies DEV as an
+acceptable environment for anything, and #982's decision removes DEV as an implied default anywhere
+in this flow.
+
+**Staging reachability, checked as part of this decision (#982's own scope item):** #304
+(2026-08-08, closed diagnosed-not-fixed) found `stage.dgfy.ph` truncating large responses above
+~109 KB the same way `dev.dgfy.ph` did, root cause never identified beyond "somewhere on the office
+network path." Re-checked live 2026-09-04 (three reads of the same 2.26 MB entry bundle, plus the
+exact `vendor-maplibre-*.js` asset class that truncated in #304's own finding, at 1,055,621 bytes):
+all responses came back complete, no truncation observed. This is a point-in-time confirmation, not
+proof the underlying office-network issue was fixed — #304's root cause was never resolved, only
+diagnosed. Relying on `staging` more heavily (as this decision does) doesn't newly introduce this
+risk; it was already the pre-prod gate. Worth a spot-check again if staging-targeted checks start
+failing unexplained.
+
+**Not affected:** `docs/testing/release-go-no-go-checklist.md`, the `staging → main` gate itself,
+and the tenant-schema report — none of these depended on DEV.
+
+**Deferred, not urgent:** `apps/dgfy-android-bridge`'s `dev` build flavor
+(`apps/dgfy-android-bridge/imin-wrapper/README.md`) points at `pos.dev.dgfy.ph`. An
+intentionally-outdated DEV means a `dev`-flavored mobile build now tests against stale backend code.
+Not a problem today since mobile isn't under active development — flagged so it isn't rediscovered
+as a surprise if/when mobile work resumes.
+
+PR: (this PR). Refs #982, #304.
+
+PR: (this PR, `ci/1431-phase-cde-zero-local-gates`). Refs #1431, #1147, #1469, #1015, #925.

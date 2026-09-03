@@ -3,9 +3,9 @@ import { PaymentElectionSelector } from '../../../../shared/components/checkout/
 import { SimpleCheckoutPaymentActions } from './SimpleCheckoutPaymentActions.jsx';
 import { SimpleCheckoutReviewItemsList } from './SimpleCheckoutReviewItemsList.jsx';
 import { requiresBillingEmail } from '../../../../checkout/checkoutValidation.js';
+import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 export function SimpleCheckoutPaymentStep({
-  bodyFont,
   cart = [],
   cartImageErrors,
   checkoutError = '',
@@ -38,15 +38,14 @@ export function SimpleCheckoutPaymentStep({
   const guestCheckoutVerificationRequired = !isDgfyCustomerSignedIn && !guestCheckoutOtpVerified;
   // #963: see RetailOrderPaymentStep.jsx for the rationale -- same gate, same shared helper.
   const billingEmailRequired = requiresBillingEmail({ paymentType, customerEmail });
+  const typography = getCheckoutStepTypography();
 
   return (
-    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14 }}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Step 3: Review & Payment</div>
-      <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Review the cart and calculated order total, then choose payment and submit the order.</div>
+    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14, fontFamily: CHECKOUT_FONT_FAMILY }}>
+      <div style={{ ...typography.title, color: '#1e293b' }}>Step 3: Review & Payment</div>
       <PaymentElectionSelector
         accentColor="#176B3A"
         active={isCustomerChoiceStore}
-        bodyFont={bodyFont}
         onChange={onPaymentElectionChange}
         value={paymentElection}
       />
@@ -56,10 +55,8 @@ export function SimpleCheckoutPaymentStep({
         onChange={onPaymentTypeChange}
         options={paymentOptions}
         DropdownComponent={DropdownComponent}
-        triggerStyle={{ minHeight: 44, borderRadius: 12 }}
-        showCashInfo={!isDownpaymentActive && paymentType === 'cash'}
-        cashInfoAccent="#176B3A"
-        bodyFont={bodyFont}
+        labelStyle={{ ...typography.sectionTitle, color: '#1e293b', fontFamily: CHECKOUT_FONT_FAMILY }}
+        triggerStyle={{ ...typography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, fontFamily: CHECKOUT_FONT_FAMILY }}
         downpaymentCallout={downpaymentCallout}
         notice={billingEmailRequired && typeof renderBillingEmailPrompt === 'function'
           ? renderBillingEmailPrompt({ invalid: Boolean(String(customerEmail || '').trim()) })

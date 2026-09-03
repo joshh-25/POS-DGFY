@@ -1,18 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildServicesCatalogPresentation,
-  buildServicesRetailHeroSectionModel
+  buildServicesRetailHeroSectionModel,
+  deriveServicesHeroTheme
 } from './servicesHeroPresentation.js';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 describe('buildServicesCatalogPresentation', () => {
-  it('derives laundry-specific catalog copy from the merchant mode without hardcoding card data', () => {
+  it('uses neutral catalog copy for every service business', () => {
     const result = buildServicesCatalogPresentation({
       modeLabel: 'Laundry Service',
       modeAdapter: {
-        catalogEyebrow: 'Service Catalog',
-        catalogHeading: 'Choose the care you need',
+        catalogEyebrow: 'Services',
+        catalogHeading: 'Choose the service you need',
         catalogSubtitle: '',
         catalogSearchPlaceholder: 'Search services...',
+        catalogPriceAllLabel: 'All Price',
+        catalogCategoryLabel: 'Service Categories',
+        catalogCategoryAllLabel: 'All services',
+        catalogCategoryIconToken: 'menu',
         catalogAddActionLabel: 'Add service',
         catalogUnavailableLabel: 'Unavailable',
         catalogMissingImageLabel: 'No service image',
@@ -21,10 +27,14 @@ describe('buildServicesCatalogPresentation', () => {
     });
 
     expect(result).toEqual({
-      eyebrow: 'Laundry Services',
-      heading: 'Choose the care you need',
+      eyebrow: 'Services',
+      heading: 'Choose the service you need',
       subtitle: '',
-      searchPlaceholder: 'Search laundry services...',
+      priceAllLabel: 'All Price',
+      categoryLabel: 'Service Categories',
+      categoryAllLabel: 'All services',
+      categoryIconToken: 'menu',
+      searchPlaceholder: 'Search services...',
       addActionLabel: 'Add service',
       unavailableLabel: 'Unavailable',
       missingImageLabel: 'No service image',
@@ -101,5 +111,25 @@ describe('buildServicesRetailHeroSectionModel', () => {
     expect(result.galleryPreview).toEqual(['/base-preview.png']);
     expect(result.galleryFull).toEqual(['/base-preview.png', '/base-full.png']);
     expect(result.galleryTotalCount).toBe(2);
+  });
+});
+
+describe('deriveServicesHeroTheme', () => {
+  it('keeps Services colors on the Services palette even when an inherited theme is supplied', () => {
+    const result = deriveServicesHeroTheme({
+      accent: '#0f766e',
+      accentDark: '#134e4a',
+      accentSoft: '#ecfeff',
+      taglineColor: '#bfe8e4',
+      bodyFont: 'Arial'
+    });
+
+    expect(result).toMatchObject({
+      servicesPrimary: SERVICES_PALETTE.primary,
+      servicesPrimaryDark: SERVICES_PALETTE.primaryDark,
+      servicesPrimarySoft: SERVICES_PALETTE.primarySoft,
+      servicesTaglineColor: SERVICES_PALETTE.primaryLight,
+      servicesBodyFont: 'Arial'
+    });
   });
 });

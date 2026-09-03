@@ -106,3 +106,7 @@ services:
 networks:
   dgfy_internal:
     driver: bridge
+  # The external edge is declared in docker-compose.proxy.yml and must be
+  # created by the deployment owner before enabling laundry.dgfy.ph routing.
+  dgfy-dglaundry-edge:
+    external: true

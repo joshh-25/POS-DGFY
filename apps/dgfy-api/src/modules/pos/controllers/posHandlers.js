@@ -11,6 +11,7 @@ import {
     listPosTransactionsUseCase,
     getPosReportsOverviewUseCase,
     exportPosReportsUseCase,
+    exportProcurementCsvUseCase,
     getPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase,
     voidPosTransactionUseCase,
@@ -577,6 +578,25 @@ export const exportReports = async (req, res, next) => {
     try {
         const query = req.validatedQuery || req.query || {};
         const result = await exportPosReportsUseCase({ query, user: req.user });
+        if (!result?.success) {
+            return sendUseCaseResult(res, result, {
+                errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+            });
+        }
+        res.setHeader('Content-Type', result.data.content_type);
+        res.setHeader('Content-Disposition', `attachment; filename="${result.data.filename}"`);
+        return res.status(200).send(result.data.content);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Phase 261 (#1488): pre-run procurement CSV export. No shift_id -- deliberately usable before a
+// run is built.
+export const exportProcurementCsv = async (req, res, next) => {
+    try {
+        const query = req.validatedQuery || req.query || {};
+        const result = await exportProcurementCsvUseCase({ query, user: req.user });
         if (!result?.success) {
             return sendUseCaseResult(res, result, {
                 errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -2787,6 +2807,7 @@ export default {
     listTransactions,
     getReportsOverview,
     exportReports,
+    exportProcurementCsv,
     getTransactionById,
     getDayCloseReadiness,
     closeDayZReading,

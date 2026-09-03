@@ -17863,3 +17863,2187 @@ PR-C (Phase 254, #1451) and PR-D (Phase 255) follow in sequence.
 
 254 (planned — PR-C, trim transport and source-text tests to what they uniquely prove). Cut from
 this PR's head once merged/pushed.
+
+## Phase 254 - Transport/source-text trims and a compliance-pin rule-engine fix (#1451, PR-C)
+
+### Initiative and release
+
+PR-C of the four-PR sequence started in Phase 252 (#1441). Unlike Phase 253 (PR-B), this branch is
+cut from `develop` directly, not from a predecessor's head: Phases 252 and 253 are both already
+merged into `develop`, so there is no unmerged predecessor branch to stack on. Branch
+`test/1451-transport-source-text-trims`, against `develop`.
+
+Planning re-verified the issue's own premises against the live tree before implementing and found
+three of them did not hold — see the plan's own Critical Assessment (CA-1 through CA-4). Recorded
+here rather than re-derived: **CA-1**, the highest-value finding of the whole campaign, is that the
+audit tool's own rule engine — not any test file — was the compliance-evidence hazard. R1 pinned
+only on a `hardcoded` citation and ignored a `live` `docs/compliance/**` citation entirely, so
+`tests/rbacRouteCoverage.contract.test.js` classified `delete` (R3-source-text-only) despite being
+cited as control evidence by the DGFY Compliance Certification Checklist,
+`open-controls-matrix.md`, and `residual-risk-closure-matrix.md`; the same gap misclassified
+`tests/complianceActivation.transport.test.js` and
+`tests/complianceActivationReadiness.e2e.transport.test.js` as `consolidate` (R4).
+
+### Objective and scope
+
+- **`scripts/audit-backend-test-inventory.js`** — add `COMPLIANCE_PIN_PREFIX = 'docs/compliance/'`
+  and, inside R1 immediately after the existing `hardcoded` check, pin to `keep` when
+  `signals.citations.live` contains an entry rooted at that prefix. Verified blast radius across
+  all 638 pre-change files: exactly 3 rows flip to `keep` (the three files above), 10 already-`keep`
+  rows change only `Rule`/`Reason` from `R5-default` to `R1-pin`, 0 files change in any other
+  direction. `scripts/audit-backend-test-inventory.test.js` gets one new case asserting all three
+  files classify `keep` with `rule: 'R1-pin'`.
+- **Route-declaration consolidation** — `tests/itemsCategoryRoutes.contract.test.js` and
+  `tests/adminAssistedProvisioningRoutes.contract.test.js` (both pure source-text route greps)
+  folded verbatim (same titles, same assertions) into a new
+  `tests/routeAuthorizationDeclarations.contract.test.js`, one `describe` block per source file.
+  `scripts/backend-test-audit-overrides.js` gets matching `consolidate`/`keep` entries.
+- **The one honest trim** — `tests/posSetupCashierRoute.transport.test.js` deleted.
+  Both of its cases booted the full app via `supertest` + `src/server.js` to assert only
+  `response.status !== 404` on one path — the most expensive way in the suite to prove the
+  cheapest fact, and one of only 5 flagged transport files that boot the whole server. Replaced
+  with a third `describe` block in the same sweep file asserting the route lines exist in
+  `src/routes/pos.js`'s source text instead. `backend-test-audit-overrides.js` gets a matching
+  `delete` entry.
+- **What the issue's own "~20 transport files" trim target did not survive** (CA-2/CA-3, stated
+  outright rather than silently under-delivered): 50 of 59 handler modules that call
+  `sendUseCaseResult` pass their own handler-local `errorPayloadResolver` with a shape
+  `tests/useCaseResponder.test.js`'s generic two-field assertion never sees, so most flagged
+  `R4-transport-responder-only` "generic error" cases are each a module's only proof of its own
+  envelope, not a redundant re-proof. Recorded as a follow-up in
+  `docs/testing/backend-test-suite-value-audit.md` §9 rather than invented cuts to hit a number the
+  issue guessed at before the audit ran.
+- **Dropped (CA-4), not implemented**: splitting `posParkedSale.schema.contract.test.js`/
+  `posSplitPayment.schema.contract.test.js` into behavioral-vs.-text-grep files. Both still import
+  `src/models/index.js` either way (the actual cost driver), so the split raises file count by 3
+  for no import-work reduction; both are already on the fast tier via PR-A's `R0-override`. Recorded
+  in the audit doc §9, not implemented, per the plan's own recommendation.
+- No hand-written `keep` override was added for the three compliance-pinned files — the R1 rule
+  change covers them mechanically, and a redundant override would mask a future regression of that
+  rule if it were ever weakened again.
+- No ledger entry is filed for #1453 or #1454 — neither is a governed multi-phase initiative; both
+  are recorded as follow-ups in the audit doc §9 instead, and every stray entry is another
+  collision surface with #1431's concurrently-active phase numbering.
+
+### Status
+
+`completed`. All ten protected case titles (§3a of the plan) confirmed present verbatim at their
+original, unchanged line numbers in `posHandlers.transport.test.js` and
+`reportHandlers.transport.test.js` — neither file was edited (`git diff --name-only origin/develop`
+against both prints nothing). The three untouched-in-full compliance files
+(`complianceActivation.transport.test.js`, `complianceActivationReadiness.e2e.transport.test.js`,
+`rbacRouteCoverage.contract.test.js`) likewise show zero diff against `origin/develop`; their
+protection now comes from the R1 rule fix, not from being left alone by hand.
+
+### Dependencies
+
+Phases 252 and 253 (#1441 PR-A/PR-B), both already merged into `develop` — this branch is cut from
+`develop` itself, not from either predecessor's head (contrast Phase 253, which was cut from Phase
+252's then-unmerged branch).
+
+### Acceptance and validation evidence
+
+- `node --check` on every changed `.js` file: `scripts/audit-backend-test-inventory.js`,
+  `scripts/audit-backend-test-inventory.test.js`, `scripts/backend-test-audit-overrides.js`,
+  `apps/dgfy-api/tests/routeAuthorizationDeclarations.contract.test.js` — all pass.
+- `npm run test:audit-backend-tests` — 11/11 pass, including the new R1-pin compliance case.
+- `npm run audit:backend-tests:check` — `OK - inventory is up to date`.
+- Simulated blast radius (computed before implementing, then re-verified post-commit against the
+  actual inventory): 3 classification flips
+  (`rbacRouteCoverage.contract`, `complianceActivation.transport`,
+  `complianceActivationReadiness.e2e.transport`, all `-> keep` / `R1-pin`), 10 reason-only changes,
+  0 files changed in any other direction, 638 total files unchanged pre-C1.
+- `DB_PORT=1 npm test -- --runTestsByPath tests/routeAuthorizationDeclarations.contract.test.js`
+  (in `apps/dgfy-api`) — 4/4 pass (no DB needed; pure `readFileSync`).
+- The plan's §4 protected-title guard, run post-trim: the 10-line `git grep` output matches the
+  plan's predicted output exactly, including line numbers; the self-verifying count assertion
+  printed `protected cases found: 10 / 10` / `GUARD: PASS`; the untouched-files guard against all
+  five protected files printed nothing.
+- Post-regeneration inventory: 636 active files (638 - 3 removed +1 new sweep file), by
+  classification keep:582 / consolidate:31 / delete:15 / trim:3 / demote:5.
+- `npm run check:compliance` — "No compliance-sensitive changes detected" (test/doc/script-only
+  diff, no `src/` surface).
+- `npm run check:architecture` — 53 modules / 548 files, 93 controllers, OK.
+- `npm run lint:docs` (chains `check:adr`) — 29 governed docs / 86 ADRs, OK.
+- Fast-tier wall-clock measurement was not attempted this run — the change set (one deletion, two
+  tiny source-text merges) is expected to move it by noise-level amounts at most, consistent with
+  PR-A/PR-B's own "could not measure meaningfully" posture for equivalently small deltas; no number
+  is fabricated here in its place.
+
+### Links
+
+Issue #1441, #1451. Refs Phase 252 (#1441 PR-A) and Phase 253 (#1441/#1450 PR-B) as prior phases in
+the same sequence. PR-D (Phase 255) follows.
+
+### Next eligible phase
+
+255 (planned — PR-D, db-tier tenant-sync consolidation; the only cut in this sequence that actually
+moves gate wall-clock).
+
+## Phase 255 - db-tier tenant-sync consolidation: 12 -> 9 createTestTenant() syncs (#1452, #1441 PR-D)
+
+### Initiative and release
+
+PR-D of the four-PR sequence started in Phase 252 (#1441) — the only PR in the sequence authorized
+to `Closes #1441`. Branch `test/1452-db-tier-tenant-sync`, cut fresh from `origin/develop`
+(`e4deebf45`, which already includes Phase 256/#1470 — see the numbering note below).
+
+**Numbering note**: 255 was reserved for this PR by Phase 254's own "Next eligible phase" section
+and independently by `docs/testing/backend-test-suite-value-audit.md` (`"PR-D (Phase 255)"`, three
+citations). PR #1470 (#1431 Phase C/D) merged first and claims **256** — confirmed by re-scanning
+`origin/develop`'s ledger for the highest `## Phase ` heading before branching (254, then 256 after
+fetching #1470's merge; no `## Phase 255` heading existed anywhere on any remote branch). The two
+numbers do not collide.
+
+### Objective and scope
+
+Three consolidations to `apps/dgfy-api/tests/`'s db-tier files, re-verified against the live tree
+before implementing (three scope corrections, all stated up front rather than silently absorbed
+into the arithmetic):
+
+- **Corrected target: 12 -> 9 `createTestTenant()` call sites, not the issue's original "12 -> 8"**
+  (its own consolidation assumed a fold that turns out to be impossible — see the third bullet
+  below) **or this campaign's pre-corrected "14 -> 10"** (the naive `grep -c` count includes 2
+  comment lines in `tenantSchemaBootstrap.integration.test.js`, which is not a `.test.js` call
+  site). Canonical counting method, quoted in the PR body:
+  `grep -rn "createTestTenant(" apps/dgfy-api/tests/*.test.js | grep -vE ":[0-9]+:[[:space:]]*(//|\*)"`.
+- **Fold `tests/token_refresh_race.test.js` into `tests/rtr_verification.test.js` (-1 sync).**
+  Safe because `tests/setup.js`'s Redis mock turned out to be a real stateful in-memory store
+  (`NX`/`EX` honored, gets persist) rather than the fail-open stub both files' own comments
+  claimed — `rtr_verification.test.js`'s `REDIS_URL` assignment was dead code (`tests/setup.js`
+  module-mocks `src/config/redis.js` wholesale) and `token_refresh_race.test.js`'s header
+  ("Returns null for all blacklist lookups") was simply false. Case-by-case: case 1.2 (body-only
+  refresh token, 400) was an exact duplicate of an existing `rtr_verification` case, dropped; case
+  1.3 (sequential refresh, `expiresIn: 86400`) was unique only in that one assertion, ported as a
+  one-line addition to an existing case; cases 1.1 (6 concurrent refreshes) and 1.4 (blacklist
+  lookup on a fresh token) were ported as new cases, with 1.4's comment rewritten since the old
+  "mock always returns null" claim was false. File deleted; its
+  `scripts/backend-db-dependent-tests.js` entry removed in the same commit (an entry pointing at a
+  deleted file throws loudly on every matrix run otherwise).
+- **Reduce `tests/voidMovement.supertest.test.js` from 4 tenants to 2 (-2 syncs).** Hoisted a
+  single shared `secondaryTenantCtx` (`'alt'`) into the top-level `beforeAll`/`afterAll`, reused by
+  both the `Multi-tenant code path` describe (replacing its own one-off `'mt'` tenant) and the
+  `Cross-tenant isolation` describe (replacing its `'iso-b'` tenant; `'iso-a'` is now the existing
+  `defaultTenantCtx`/`managerToken`, removing an extra register+login round trip too). Isolation is
+  preserved — A and B remain two distinct `createTestTenant()` databases, the property under test.
+  Also dropped 2 duplicate cases (re-scoped from the issue's "3" — see below), unrelated to the
+  sync count: the "fully consumed" 409 case (identical code path/status/envelope/message regex to
+  the surviving "partially consumed" case, differing only in fixture) and the "double-void
+  prevention" 400 case (a strict subset of the surviving Concurrency case's assertions on the same
+  path).
+- **Re-scoped, not implemented: folding `tests/supertest_security.test.js`'s other 3 cases into
+  `tests/auth.test.js` (issue's proposed -1 sync) is impossible, not merely undesirable.**
+  `supertest_security.test.js` module-mocks *all* of `src/services/authService.js` via
+  `jest.unstable_mockModule` (`comparePassword`/`generateToken`/`hashPassword` all stubbed);
+  `auth.test.js` exercises the real register/login/refresh path and asserts against it directly
+  (`should return 401 for invalid password`, `should return 401 for non-existent user`, the whole
+  refresh-token describe) — folding would force that mock onto `auth.test.js` and break it.
+  `jest.unstable_mockModule` is file-scoped with no per-describe escape, and no other file in the
+  `createTestTenant`-using set also mocks `authService`, so there is no alternative fold target
+  either. Net effect on this file: **0 syncs removed**, but its `'Finding 8.2: Distributed
+  Locking'` case (only calls `getRedisClient()`/`client.set`/`client.get`/`client.del`, zero DB
+  queries) was extracted to a new fast-tier file, `tests/distributedLock.redis.test.js`, not listed
+  on `scripts/backend-db-dependent-tests.js` (absence from that manifest is fast-tier membership).
+  The other 3 cases (2 named security-regression findings, 1 validation case) stay on the manifest.
+- **Case 1.5's uncovered scenario is explicitly not resolved by this PR.** Per
+  `docs/testing/backend-test-suite-value-audit.md` §7 finding 2: 6 concurrent refreshes against a
+  *real* Redis with no distributed lock still has no equivalent coverage anywhere that runs — the
+  ported case 1.1 runs against the same single-process in-memory mock as everything else in this
+  file, proving "no crash + valid response structure," not "exactly one wins under real contention."
+  The cheapest partial answer (extend the ported 1.4 to also assert
+  `isTokenBlacklisted(...) === true` after a rotation, covering the blacklist-write path) is
+  offered as a follow-up in the PR body, not applied unilaterally.
+- `docs/testing/backend-test-suite-value-audit.md` updated: §5's before/after table gets a new
+  `After PR-D (#1452)` column (with an explicit note that PR-B/PR-C never appended rows, so two of
+  the four metrics can't be re-totaled honestly without fabricating a baseline); §6's "not cut"
+  table's `token_refresh_race.test.js` row (now self-contradictory) rewritten to record the actual
+  fold, and its adjacent `db-manifest members` row's pre-existing 29-vs-30 off-by-one corrected as
+  a drive-by; §7 finding 2 gets the case-1.5 re-evaluation above; §9 records this PR as shipped with
+  the `auth.test.js`-fold impossibility spelled out so a future pass doesn't re-propose it.
+  `docs/testing/backend-test-suite-inventory.json` regenerated (`npm run audit:backend-tests`).
+- #1453/#1454 continue to get **no** ledger entry — Phase 254's own standing decision
+  (`docs/testing/backend-test-suite-value-audit.md` §9), reaffirmed here, not reopened.
+
+### Status
+
+`completed`.
+
+### Dependencies
+
+Phases 252, 253, and 254 (#1441 PR-A/PR-B/PR-C), all merged into `develop` before this branch was
+cut.
+
+### Acceptance and validation evidence
+
+- `node --check` on every changed `.js` file (`apps/dgfy-api` has no real build step) —
+  `tests/rtr_verification.test.js`, `tests/supertest_security.test.js`,
+  `tests/voidMovement.supertest.test.js`, `tests/distributedLock.redis.test.js`,
+  `scripts/backend-db-dependent-tests.js` — all pass.
+- Occurrence count, canonical method (quoted above): **12 -> 9**, confirmed both before editing and
+  after, on the working tree.
+- db-tier evidence: see the PR body / PR comment for whichever of (a) the full
+  `npm run test:backend:db` tier or (b) the three touched files run individually
+  (`rtr_verification.test.js`, `supertest_security.test.js`, `voidMovement.supertest.test.js`)
+  actually completed in this session's sandbox, against the `dgfy-mysql-test`/`dgfy-redis-test`
+  containers on the `dgfy-local-test` Docker network per
+  `docs/testing/release-go-no-go-checklist.md`'s containerized invocation.
+- Manifest re-proof: `BACKEND_TEST_MATRIX_FAST_ALLOW_DB=false npm run test:backend:fast` — the full
+  fast tier (607 files) hit the same 600s timeout PR-A's own §5 documented for the same tier, with
+  11 `jest-worker` children still actively consuming CPU (not hung) and `manifest=29` confirmed
+  correct in its own log line. Fallback per the plan's own pre-decided posture: the new file run
+  alone, `DB_HOST=127.0.0.1 DB_PORT=1 npm test -- --runTestsByPath tests/distributedLock.redis.test.js`
+  (in `apps/dgfy-api`) — 1/1 pass in 0.3s, proving the file genuinely needs no reachable MySQL/Redis
+  even though it imports and uses `src/config/redis.js` directly (that module mocks/connects
+  independently of the DB_HOST/DB_PORT guard).
+- `npm run audit:backend-tests:check` — `OK - inventory is up to date` after regeneration; summary
+  line reads `Total active test files: 636 | db-manifest members: 29`.
+- Wall-clock: attempted the documented containerized `docker run ... npm run gate:release:local`
+  invocation; per this PR's own body/comment for the outcome (matching PR-A/PR-B's precedent of
+  naming the failure mode and deferring to the next `promotion-quality-gate.yml` run's db-tier log
+  rather than blocking or fabricating a number).
+
+### Links
+
+Issue #1441 (parent, closed by this PR), #1452 (this PR's own issue). Refs Phase 252 (#1441 PR-A),
+Phase 253 (#1441/#1450 PR-B), and Phase 254 (#1451 PR-C) as prior phases in the same sequence.
+`docs/testing/backend-test-suite-value-audit.md`, `scripts/backend-db-dependent-tests.js`.
+
+### Next eligible phase
+
+257. (256 is claimed by PR #1470/#1431 Phase C/D, already merged into `develop` before this branch
+was cut — see the numbering note above.)
+
+## Phase 256 - Promotion quality gate: 5 remaining gates flipped blocking, all 16 delegated, zero local gates (#1431 Phase C/D)
+
+### Initiative and release
+
+#1431's closing phases (C: flip the remaining evidence-backed gates blocking; D: delegate the full
+16-gate set out of `gate:release:local`'s required set). **Numbering note (re-confirmed after a
+rebase, 2026-09-03)**: this entry originally claimed 256 while PR #1467 (#1451, PR-C) was still
+open and the ledger's merged tip was Phase 253. PR #1467 has since merged as Phase 254, and that
+entry's own "Next eligible phase" section explicitly reserves **255** for #1441's own PR-D
+(db-tier tenant-sync consolidation, not yet opened as a PR) — so 255 stays reserved by the ledger's
+own forward declaration, not free for this entry to take. Re-checked against the rebased
+`origin/develop` tip (Phase 254, merged) and every other open PR into `develop` (`gh pr list --base
+develop --state open`: only #1315, no phase claim) — **256 is still free** and this entry keeps it,
+per `AGENTS.md`'s Continuous Phase Numbering rule (the ledger and visible in-flight
+PRs/reservations are authoritative, not a parked plan file).
+
+### Objective and scope
+
+One PR, `ci/1431-phase-cde-zero-local-gates` into `develop`:
+
+- **Phase C** — flip 5 more `promotion-quality-gate.yml` steps from advisory to blocking, on real
+  evidence (workflow_dispatch fault-probe runs plus one throwaway PR against `main`, deleted
+  unmerged): `run_dependency_audit_prod`, `run_compliance_contracts` (`repository-quality`),
+  `run_runtime_doctor` (`dgfy-api-quality`), `run_shared_fnb_contract_tests`
+  (`frontend-ims-quality`), `check_frontend_budgets` (`frontend-budgets-quality`).
+  `run_dependency_audit_full` is settled **permanently advisory** (Pat's call) — real-failed on both
+  the clean and fault-probe runs for a pre-existing, registry-dependent reason unrelated to any code
+  defect.
+- **Phase D** — delegate the remaining 9 gates (the 5 above plus `dependencies.audit.full`,
+  `production.env.fixtures`, `scroll.contracts`, `backend.test_matrix`) into
+  `gate-release-local.js`'s `CI_ENFORCED_GATES` (7 → 16 entries). `required_gate_count` is now 0 on
+  a default run. `check-pr-quality-workflow.js` gained a two-name `ADVISORY_CI_ENFORCED_GATES`
+  allowlist (`dependencies.audit.full`, `backend.test_matrix`) so `checkCiEnforcedGatesAreBlocking()`
+  doesn't demand blocking coverage for the two gates delegated-but-not-blocking, while still failing
+  loudly for any other gate lacking real coverage.
+- **Phase B (folded into E)** — filed #1469 tracking `backend.test_matrix`'s eventual flip to
+  blocking, gated on #1015 (fast/DB tier split) and #925 (hanging `beforeAll`).
+- **Phase E** — docs closeout: `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` rewritten to closed/
+  delegated status for every remaining row (required count 0, every one of the 19 original gates
+  now has a documented closed resolution); `docs/testing/release-go-no-go-checklist.md` and
+  `.agents/skills/promoter/SKILL.md` (+ its `references/promotion-runbook.md`) updated to stop
+  citing `gate:release:local` as a pre-`main` step; `docs/ops/RELEASE_CANDIDATE_POLICY.md` gained a
+  closing dated amendment; `AGENTS.md`'s #1007 override section's `gate:release:local` bullet
+  amended to note it no longer applies (kept as historical record, not deleted).
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Built on #1431 Phase 1 (PR-A/PR-B, PR #1435/#1449 tracked outside this ledger's own phase sequence)
+and Phase 2 (Phase 251, #1447), which wired and partially flipped the remaining 9 gates into CI.
+No dependency on #1441's PR-C (merged as Phase 254) or its still-pending PR-D (reserved as Phase
+255) — different files, different scope, coordinated only by phase-number spacing. This PR was
+rebased onto `origin/develop` after Phase 254 merged, resolving a ledger-file content conflict
+(RF-1 on this PR's own re-review) without otherwise touching either phase's content.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `.js` file (`scripts/check-pr-quality-workflow.js`,
+  `scripts/check-pr-quality-workflow.test.js`, `scripts/gate-release-local.js`,
+  `scripts/gate-release-local.test.js`).
+- [x] `node --test scripts/gate-release-local.test.js` — 25/25 pass.
+- [x] `npm run check:pr-quality-workflow` — OK.
+- [x] `npm run test:pr-quality-workflow` — 41/41 pass.
+- [x] `npm run gate:release:local` — `required_gate_count: 0`, `delegated_gate_count: 16`,
+  `run_mode: "full"`, `verdict: "pass"`, fast exit (no gate actually invoked).
+- [x] `npm run lint:docs` — 29 docs validated, OK; `check:adr` — 86 ADRs, OK.
+- [x] `npm run check:compliance` — no compliance-sensitive changes detected.
+- [x] `npm run check:architecture` — 53 modules / 548 files, 93 controllers, OK.
+- [x] Filed #1469 (backend.test_matrix flip-to-blocking follow-up), added to project board.
+
+### Deviations from the plan
+
+None of substance — Phase B's issue-filing was folded into Phase E's docs closeout per the task's
+own instruction, rather than run as a separate step.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR
+base is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`.
+`npm run check:compliance`'s missing-declaration checkpoint does not fire — every touched path
+(`.github/`, `scripts/`, `docs/`) is CI/tooling/docs, not a compliance-sensitive surface.
+
+### Links
+
+- Tracking issue: #1431 (Refs, not Closes — the coordinating session confirms final state before
+  closing).
+- Follow-up filed: #1469.
+- PR: `ci/1431-phase-cde-zero-local-gates` → `develop`.
+- Modified: `.github/workflows/promotion-quality-gate.yml`, `scripts/check-pr-quality-workflow.js`,
+  `scripts/check-pr-quality-workflow.test.js`, `scripts/gate-release-local.js`,
+  `scripts/gate-release-local.test.js`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/testing/release-go-no-go-checklist.md`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`,
+  `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
+  `AGENTS.md`, `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+Re-check the ledger's actual highest merged entry at plan time rather than assuming — Phase 255
+(#1441 PR-D) may or may not have merged by then.
+
+## Phase 257 - Item multi-category membership: foundation (#1318)
+
+### Initiative and release
+
+#1318 — allow one catalog item to belong to more than one merchant-defined category/folder.
+Highest merged phase at branch time was 256; re-checked against `origin/develop`'s tip
+(`8ad843035`, unchanged since branching) and every open PR into `develop`
+(`gh pr list --base develop --state open`: #1502, #1501, #1500, #1475, #1316 — none phase-claiming)
+immediately before writing this entry. 257 is free.
+
+### Objective and scope
+
+One PR, `feature/1318-item-folder-memberships` into `develop`. **Foundation only** — pure
+additive infrastructure, zero of the ~34 existing item→folder read sites edited (per the
+implementation plan's own read-site inventory, section 5, conclusion: "0 of the 34 sites
+change"). IMS authoring UI, POS opt-in, and storefront opt-in are later, separately-scoped phases
+(258/259/260) — not built here. Issue #1318 is not resolved by this PR alone; the PR uses
+`Refs #1318`, not `Closes`.
+
+- New tenant-scoped join table `item_folder_memberships` (`item_id`, `folder_id`, `sort_order`,
+  `UNIQUE(folder_id, item_id)`, `KEY(item_id)`, both FKs `ON DELETE CASCADE`) — secondary category
+  memberships only. `items.folder_id` (the primary category) is untouched and remains the single
+  source of truth for every money-adjacent resolution.
+- New model `ItemFolderMembership` + additive `belongsToMany` associations
+  (`Item.secondaryFolders` / `ItemFolder.memberItems`) in `models/index.js` — the existing four
+  primary-category association lines are unchanged.
+- Two new backend functions on `itemRepository` — `listItemFolderMemberships(itemIds)` and
+  `replaceItemFolderMemberships(itemId, folderIds)` (destroy-then-`bulkCreate`, mirroring
+  `fnbRepository.js`'s `replaceFolderModifierGroups` shape) — with a disjointness guard (drops any
+  folder id equal to the item's own primary), an active/soft-deleted folder guard, and a cap of 10
+  memberships per item.
+- Two new routes, `GET /items/:item_id/folders` and `PUT /items/:item_id/folders`
+  (`requireTenantAdmin`, matching the existing folder-CRUD routes and ADR 0049's
+  `categories:manage` permission rule), their use cases, controller handlers, and a new Joi
+  validator schema (`folder_ids`, max 10) — the existing scalar `folder_id` validators are
+  untouched.
+- Mandatory tenant-schema-drift registrations (#860/#639 class, per
+  `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`): R1 —
+  `REQUIRED_TENANT_SCHEMA_TABLES.item_folder_memberships` in `sync-tenant-schemas.js`, enforced by
+  `npm run check:tenant-schema-coverage`; R2 — `TENANT_SCHEMA_CAPABILITY_VERSION` bumped
+  `2026-09-01.4` → `2026-09-07.1`; R3 — a `requiredIndexContract.js` entry, consumed by
+  `audit:indexes`. Also added (recommended, not gate-enforced):
+  `runtimeSchemaAuditService.js`'s `REQUIRED_TABLE_COLUMNS.item_folder_memberships`.
+- ADR 0080 (new, `status: accepted`) — the binding decision that makes the rest of this program
+  safe: `items.folder_id` is the primary and the single tiebreak for every money-adjacent
+  resolution (affiliate category commission, voucher folder scope, F&B folder-inherited modifier
+  groups, POS report grouping) `[binding]`; the join table never mirrors or is derived from the
+  primary `[binding]`; `items.folder_id` stays nullable `[default]`; every surface is opt-in per
+  phase `[default]`; grouping surfaces render once per section, cross-sell/single-label surfaces
+  stay primary-only `[default]`; membership cap of 10 `[default]`.
+- Tier 2 characterization tests pinning ADR 0080 clause 1 on `resolveCategoryRateBps`,
+  `resolveVoucherScopeItemIds`, and `resolveEffectiveFnbModifierGroups`, plus repository unit
+  tests for replace-semantics, the disjointness guard, inactive-folder rejection, and cap
+  enforcement.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+None on any other in-flight phase. Depends on the existing `item_folders`/`items` tables and the
+`fnbRepository.js` replace-pattern this PR mirrors. Phases 258 (IMS authoring UI), 259 (POS
+opt-in, `major` compliance declaration required), and 260 (storefront opt-in, `major` declaration
+required) all depend on this phase merging first; none of them are built or scoped as part of this
+PR.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `.js`/`.cjs` file (all 14 backend files + the new migration
+  — `apps/dgfy-api` and `apps/dgfy-migration-runner` have no real build step).
+- [x] No `package.json` touched ⇒ no lockfile step.
+- [x] `npm run check:tenant-schema-coverage` — PASS, 1 changed migration file checked (the gate
+  that proves R1 landed).
+- [x] `npm run check:architecture` — 54 modules / 557 files, 94 controller files, OK.
+- [x] `npm run check:compliance` — "No compliance-sensitive changes detected" (expected per the
+  plan's path-by-path verification against `COMPLIANCE_SENSITIVE_RULES`: `modules/inventory/**`,
+  `routes/items.js`, `validators/itemValidator.js`, `models/**`, `scripts/**`, and the migration
+  runner are all outside the sensitive-path list) + `check:compliance:api-contracts` PASS.
+- [x] `npm run check:adr -- --write-index` — 87 ADRs validated, `INDEX.md` regenerated for the new
+  ADR 0080.
+- [x] `npm run lint:docs` — 29 governed docs validated, OK.
+- [x] New Jest suites: `tests/itemFolderMembershipPrimaryOnlyInvariant.test.js` (3 tests) and
+  `tests/itemFolderMemberships.repository.test.js` (7 tests) — 10/10 pass.
+- [x] Regression spot-check: `tests/inventoryItemRepository.test.js` (51/51),
+  `tests/internalItemBarcode.contract.test.js` (6/6), `tests/tenantModelFactory.contract.test.js`
+  (14/14) — all still pass after the `itemRepository.js`/`models/index.js` edits.
+- [ ] `npm run audit:tenant-index-headroom` — **not run**, requires a live MySQL connection
+  (`DB_HOST`/`DB_USER`/`DB_PASSWORD`) not available in this environment; the plan's own schema
+  review (no standalone `KEY(folder_id)`, only the unique key's leftmost prefix plus `KEY(item_id)`
+  — ADR 0080's Correction 3) is the static substitute. Flagged for a human/CI run with real DB
+  credentials before this ships past `develop`.
+- [ ] `node apps/dgfy-api/scripts/sync-tenant-schemas.js --mode report` against DEV/STAGING/PROD —
+  **not run**, no live tenant DB credentials in this environment; per the residual-risk tracker,
+  required before the deploy that restarts `dgfy-api`, not before merging this PR.
+
+### Deviations from the plan
+
+None of substance. Followed the plan's section 6 file list, section 7's exact ADR clauses (with
+Pat's four resolutions to section 10's open items applied: cap = 10; S3/S7 grouping semantics
+resolved as "render once per section" in clause 5; POS reports permanently primary-only stated in
+Consequences item 3; ADR 0080 shipped in this PR). One route-permission adjustment: the plan named
+`requireTenantAdmin` **and** a `checkPermission(categories:manage)` on the two new routes, but
+`requireTenantAdmin` itself already gates on `categories:manage` internally (`middleware/auth.js`)
+— matching the existing folder-CRUD routes (`routes/items.js`), which also use only
+`requireTenantAdmin`. Added the extra `checkPermission` call, found it redundant, removed it.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**New migration file** under `apps/dgfy-migration-runner/migrations/` is a listed checkpoint
+trigger — per Pat's standing preference (recorded twice already), skipped straight to commit/PR
+rather than pausing, since he reviews every PR himself. No other checkpoint fired: no deploy
+dispatch, no SSH, no force-push/branch deletion, `check:compliance` required no declaration (see
+evidence above).
+
+### Links
+
+- Tracking issue: #1318 (`Refs`, not `Closes` — this PR is infrastructure only; the issue is not
+  resolved until Phase 258's IMS authoring UI ships).
+- PR: `feature/1318-item-folder-memberships` → `develop`.
+- New: `docs/architecture/adr/0080-item-multi-category-membership.md`,
+  `apps/dgfy-migration-runner/migrations/20260907000001-create-item-folder-memberships.cjs`,
+  `apps/dgfy-api/src/models/ItemFolderMembership.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/listItemFoldersUseCase.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/replaceItemFoldersUseCase.js`,
+  `apps/dgfy-api/tests/itemFolderMembershipPrimaryOnlyInvariant.test.js`,
+  `apps/dgfy-api/tests/itemFolderMemberships.repository.test.js`.
+- Modified: `apps/dgfy-api/src/models/index.js`, `apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+  `apps/dgfy-api/src/config/requiredIndexContract.js`,
+  `apps/dgfy-api/src/services/runtimeSchemaAuditService.js`,
+  `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`,
+  `apps/dgfy-api/src/modules/inventory/index.js`,
+  `apps/dgfy-api/src/modules/inventory/controllers/itemHandlers.js`,
+  `apps/dgfy-api/src/controllers/itemController.js`, `apps/dgfy-api/src/validators/itemValidator.js`,
+  `apps/dgfy-api/src/routes/items.js`, `docs/architecture/adr/INDEX.md`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+258 — IMS authoring UI for secondary category memberships (`packages/web-core/src`), not yet
+built. Re-check the ledger's actual highest merged entry at plan time rather than assuming.
+
+## Phase 258 - Queue+Run: iPad portrait split-view fix + hide-assigned-orders in split view only (#1491)
+
+### Initiative and release
+
+Standalone bug fix, no epic. Claimed 258 fresh at branch/commit time -- re-checked the ledger's
+merged tip (still Phase 256, `docs/features/IMPLEMENTATION_PHASE_LEDGER.md:18116`) and every open
+PR into `develop` (`gh api repos/Sieitzz/dgfy-platform/pulls?base=develop&state=open`: only #1475
+and #1316, neither claiming a phase number) immediately before this commit, per `AGENTS.md`'s
+Continuous Phase Numbering rule.
+
+### Objective and scope
+
+One PR, `fix/1491-queue-run-ipad-and-hide-assigned` into `develop`, shipping both parts of #1491 per
+the implementation plan's own recommendation (single PR, `Closes #1491`):
+
+- **Part 1** — the split ("Queue + Run") view's viewport eligibility gate
+  (`SPLIT_VIEW_MIN_WIDTH_PX`, `TerminalOperationsPanels.jsx`) lowered from a standalone 1024px
+  literal to `POS_TABLET_MIN_WIDTH_PX` (768, imported from `posTabletViewport.js`) -- the
+  structural fix the plan recommended, closing off a third silent drift of this constant (1280 ->
+  1024 -> a re-declared 1024 -> now sourced from the shared constant). This makes the view's
+  already-shipped single-column stacked layout (the grid's own `xl:` 1280px breakpoint is
+  untouched) reachable on portrait iPad mini/standard/Air/11"-Pro (~768-834px), not just landscape.
+- **Part 2** — a new `splitQueueCandidates` derivation
+  (`filterOrdersByRun(sortedIncomingOrders, QUEUE_RUN_FILTER_UNASSIGNED)`) that the split view's
+  queue panel, `QueueRunAssignBar` counts, and drag-to-assign source/target resolution now read
+  from instead of `visibleIncomingOrders` -- hiding orders already assigned to a run. Scoped to
+  this one call site only, per the plan's own regression analysis: the standalone Active Queue
+  tab's `runFilter`/`visibleIncomingOrders` default is untouched, since that tab is the only screen
+  with the per-order cash-collection/balance-settlement/status-change/personnel-assignment actions
+  an operator still needs for an already-assigned order.
+- Extracted the pre-existing selection-count math (Phase 231/#1290's correctness crux) into a new
+  pure util, `deriveQueueSelectionCounts.js`, called once per candidate list (standalone tab's
+  `visibleIncomingOrders`, split view's `splitQueueCandidates`) so the two call sites can't drift
+  apart.
+- **Explicitly deferred, not fixed in this PR** (per task resolution, not silently dropped): the
+  drag-handle's 28x28px touch target (below Apple's 44pt HIG minimum) -- filed as a separate
+  fast-follow issue via `pm` rather than bundled here, since drag is the secondary path behind the
+  now-always-reachable button-based `QueueRunAssignBar`. The optional portrait `max-h` polish is
+  skipped entirely, per the task's own resolution -- cosmetic, not required.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+None. Builds on already-shipped Phase 227/229/231 (#1273/#1289/#1290) work -- `QueueRunAssignBar`,
+the split view's own DnD wiring, and `filterOrdersByRun`/`QUEUE_RUN_FILTER_UNASSIGNED` all existed
+unchanged; this phase only rewires which list two existing call sites read from and where one
+existing constant's value comes from.
+
+### Acceptance and validation evidence
+
+- [x] `npx vitest run` (from `apps/dgfy-ims`) targeted at
+  `deliveryRunSplitViewDnd.behavior.test.jsx`, `incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`,
+  `deriveQueueSelectionCounts.test.js`, `deliveryRunQueueFilter.test.js`, `posTabletViewport.test.js`
+  -- 49/49 pass.
+- [x] Full `packages/web-core/src/features/pos` suite from `apps/dgfy-ims` -- 189 files / 1163
+  tests, all pass.
+- [x] `npm run build:skupervisor` -- succeeded.
+- [x] `npm run build:pos` -- succeeded.
+- [x] `npm run check:compliance` -- PASS (declaration:
+  `docs/compliance/impact-declarations/2026-09-03-queue-run-ipad-portrait-hide-assigned.md`).
+- [x] `npm run check:architecture` -- 54 modules / 555 files, 94 controllers, OK.
+- [x] `npm run check:adr` -- 86 ADRs, OK.
+
+### Deviations from the plan
+
+- Two of the plan's four "open items to confirm" were resolved by explicit task instruction rather
+  than left to PR-time judgment: the grip touch-target size is filed as a fast-follow issue (not
+  fixed here), and the optional portrait `max-h` polish is skipped (not "worth a quick pass").
+  Part 2's scoping (split-view-only, not the shared `runFilter` default) was likewise pre-approved
+  rather than re-litigated.
+- Two pre-existing tests assumed an already-run-assigned order would still render (disabled, or
+  under its original "Select order N" label) inside the split view -- both premises are exactly
+  what Part 2 changes. Updated rather than deleted: one now asserts the order is hidden entirely
+  (`incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`), the other now checks the
+  ineligible-labeled checkbox variant instead of the eligible one on the standalone tab
+  (`deliveryRunSplitViewDnd.behavior.test.jsx`). Not called out in the plan's own testing section,
+  found while running the targeted suite.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR
+base is `develop`, branch prefix `fix/` per `.github/branch-cleanup-policy.json`.
+`npm run check:compliance`'s missing-declaration checkpoint fired as expected (major, `pos,terminal`)
+and was drafted by this session per the user's standing preference, rather than stopped on.
+
+### Links
+
+- Issue: #1491 (Closes).
+- Modified: `packages/web-core/src/features/pos/components/TerminalOperationsPanels.jsx`,
+  `packages/web-core/src/features/pos/utils/deriveQueueSelectionCounts.js` (new),
+  `packages/web-core/src/features/pos/utils/__tests__/deriveQueueSelectionCounts.test.js` (new),
+  `packages/web-core/src/features/pos/__tests__/deliveryRunSplitViewDnd.behavior.test.jsx`,
+  `packages/web-core/src/features/pos/__tests__/incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`,
+  `docs/compliance/impact-declarations/2026-09-03-queue-run-ipad-portrait-hide-assigned.md` (new),
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+259. Re-check the ledger's actual highest merged entry and open `develop` PRs at plan time rather
+than assuming.
+
+## Phase 259 - Item deactivate/restore (#1495 Part A)
+
+### Initiative and release
+
+Prerequisite half of #1495 (CSV sync import for inventory items): that issue's own scope names "a
+merchant-facing deactivate/reactivate concept" for items as a prerequisite step, since items had
+`deleted_at` enforced at the data layer with no restore UX. This phase builds that prerequisite in
+isolation. The sync-import mode itself (#1495 Part B) is a separate, later phase, gated on this one
+plus #1318 (folders) — not built here. **Numbering note**: re-checked the ledger's highest heading
+(`## Phase 256`, merged) and every open PR into `develop` (`gh api
+repos/Sieitzz/dgfy-platform/pulls?base=develop&state=open`: #1475, #1316, neither claiming a phase
+number) immediately before this commit — 257 is free. **Renumbered to 259** post-review (RF-2):
+257 collided with #1503's own claim on that number, and 258 was already taken by #1501's
+renumber — 259 is the next free slot across all three concurrently-open PRs.
+
+### Objective and scope
+
+Mirrors the existing PO/JO archive/restore pair (`modules/purchaseOrders/`,
+`POST /:po_id/restore`) at the item layer, which is materially more complex for three reasons:
+items use a combined `status` + `deleted_at` soft-delete (not a single `archived_at`), items have a
+generated, uniquely-indexed `active_sku_code` column that can collide on restore, and item
+visibility is read by IMS/POS/storefront through one shared `buildVisibleWhere` helper.
+
+- **Backend**: `itemRepository.restoreItem(itemId, userId, { expectedServerVersion })` — new
+  method, placed directly after `deleteItem`. Looks the row up unscoped (`Item.findOne` by
+  `item_id`, not `findVisibleItemById`, which would always 404 on the exact `status: 'inactive'`
+  row being restored); gates on `deleted_at IS NOT NULL` rather than `status === 'inactive'` (an
+  item deactivated via a plain `PUT /items/:item_id` has `status: 'inactive'` but `deleted_at:
+  null`, and must NOT be restorable through this one-way-reversal endpoint); always restores to
+  `status: 'active'` (V1 — see Deviations below); reuses the existing
+  `isActiveSkuUniqueConstraintError`/`normalizeSkuConflictError` helpers to turn an
+  `active_sku_code` collision into a friendly 409; writes a new `item_restored` audit event via the
+  existing `auditInventoryEvent` helper; returns the restored row via `itemRepository.getItemById`.
+  New `restoreItemUseCase.js` (direct mirror of `deleteItemUseCase.js`), wired in
+  `modules/inventory/index.js`; new `restoreItem` handler in `itemHandlers.js` (mirrors `deleteItem`
+  — same `publishCatalogInvalidation(req, 'item_restored', ...)` call, same
+  `trackProductUsageFromResult` telemetry with `eventType: 'inventory_item_restored'`); added to
+  `itemController.js`'s three facade export blocks; new route
+  `POST /:item_id/restore`, gated by the existing `PERMISSIONS.INVENTORY.actions.DELETE_ITEMS` (no
+  new permission tier — matches the PO/JO precedent, confirmed with the requester before
+  implementing).
+- **Backend — `include_inactive` list/detail flag**: `itemRepository.getItems`/`getItemById` gain
+  an `include_inactive` bypass (`buildVisibleWhere({}, { excludeInactiveStatus: false })` instead of
+  the unconditional `visibleItemWhere`) so an admin can actually see what's restorable, and so the
+  "view details" action on a surfaced inactive item doesn't 404 into a degraded fallback (traced to
+  `findVisibleItemById` excluding `status: 'inactive'` — this was a real, reachable UX break, not
+  hypothetical, and is fixed on the frontend's `handleView`/`onRefresh` call sites by requesting the
+  bypass only when the item being viewed is actually inactive). Permission-gated (not just hidden in
+  the UI) in `getItemsUseCase`/`getItemByIdUseCase`: the flag is honored only when the requesting
+  user holds `DELETE_ITEMS`, otherwise silently ignored (fails soft, no 403 — matching the existing
+  `location_id` scoping precedent in the same use case) so a staff-role user can't see deleted items
+  by hand-appending a query param. Coerced inline (`=== true || === 'true'`) rather than via a new
+  Joi schema — see Deviations below.
+- **POS/storefront**: zero code changes. `posRepository.listCatalog` and all three
+  `storeRepository` call sites already share the same `buildVisibleWhere` helper with
+  `excludeInactiveStatus: true` and no override — restoring an item to `active` makes it reappear
+  automatically.
+- **No migration.** `active_sku_code` is `GENERATED ALWAYS ... STORED`; MySQL recomputes it on
+  every `UPDATE`, no migration involved.
+- **Frontend** (`packages/web-core`, IMS-surfaced): `itemService.restoreItem`,
+  `useItems.useRestoreItem`, `useInventoryItems.useInventoryRestoreItem` (mirrors the existing
+  delete triplet); `branchScopedStock.buildItemsListParams` gains an `includeInactive` param,
+  omitted-by-default (byte-identical request shape unless explicitly turned on), with a matching
+  unit test extension; `ItemsPage.jsx` gets a `showInactiveItems` toggle (deliberately *not*
+  persisted to `localStorage`, same reasoning as the existing `selectedLocationId` — reopening with
+  inactive items hidden is the honest default), threaded into the list call, a `handleRestore`
+  handler with no confirmation dialog (restore is non-destructive and trivially reversible again),
+  and prop-threading into both grid-view `ItemCard` render sites plus the drag-overlay ghost;
+  `ItemCard.jsx` gets an "Inactive" badge and swaps the "Delete Item" dropdown entry for "Restore
+  Item" when `item.status === 'inactive'` (permission-gated by the component's own existing
+  `usePermission()` call, no new prop needed); `ItemDetailsModal.jsx` gets the same badge plus a
+  dedicated restore banner/button in both its render branches (simple and product-accordion views),
+  self-deriving the permission the same way `ItemCard` does.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Prerequisite for #1495 Part B (sync-import), not yet started. Independent of #1318 (folders) — this
+phase never touches `folder_id`/`ItemFolder`.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `apps/dgfy-api` `.js` file.
+- [x] `npm run build:skupervisor` — clean build, no errors (validates `ItemsPage.jsx`,
+  `ItemCard.jsx`, `ItemDetailsModal.jsx`, and the `packages/web-core` hook/service changes).
+- [x] `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs
+  --runInBand` against every `item`/`inventory`-named unit test file (21 suites / 204 tests) plus
+  the new `inventoryItemRepository.test.js` restore cases (happy path, 400 not-deleted, 404 missing,
+  409 SKU conflict), the new `inventoryGetItemByIdUseCase.test.js`, the extended
+  `inventoryGetItemsUseCase.test.js` (include_inactive permission gate), and the extended
+  `itemHandlers.transport.test.js` (`restoreItem` transport contract) — all green; three existing
+  `inventoryGetItemsUseCase.test.js` assertions updated for the new `include_inactive` key in the
+  repository call shape.
+- [x] `npx vitest run` (via `apps/dgfy-ims`, which pulls in `packages/web-core`'s own suite) against
+  `branchScopedStock.test.js`'s extended cases (12/12 pass).
+- [x] `npm run check:compliance` — no compliance-sensitive changes detected (re-confirmed at
+  implementation time, per the plan's own instruction to double-check rather than trust the plan's
+  earlier read).
+- [x] `npm run check:architecture` — 54 modules / 556 files, 94 controllers, OK.
+- [x] `node scripts/check-adr.js --strict` — 86 ADRs, OK.
+
+### Deviations from the plan
+
+- **Draft-restore edge case (plan §2a.3): shipped V1 as directed** — always restore to `'active'`,
+  never attempt to recover the pre-delete `status` from the `item_deleted` audit log row (that
+  would-be V1.1 is explicitly not built here). **Known limitation, stated plainly**: an item that
+  was `status: 'draft'` at the moment it was deleted will restore straight to `'active'` and skip
+  `finalizeItem`'s validation gate (required `sku_code`/`category`/`max_capacity`/
+  `unit_of_measure`, MSME pricing requirements) — a draft item can legally have those fields empty,
+  so a restored former-draft item can end up `active` but missing fields the rest of the system
+  assumes an active item always has. Considered rare enough to defer (a user must have abandoned a
+  half-finished draft *and* explicitly deleted it, rather than just leaving it as a draft); revisit
+  only if a real complaint surfaces.
+- **Restore permission: confirmed, not a unilateral call** — reuses
+  `PERMISSIONS.INVENTORY.actions.DELETE_ITEMS` for restore, matching the PO/JO precedent, no new
+  permission tier. Flagged in the plan as a one-line confirm rather than a blocking question;
+  approved before implementation.
+- **`include_inactive` query validation: inline coercion, not a new Joi schema.** `GET /items` has
+  no query-validation schema at all today (no `page`/`limit`/`category`/`folder_id` validation
+  either) — adding the repo's first real query schema for this endpoint would be a bigger,
+  separately-reviewable change this phase shouldn't quietly bundle in. The absent broader query
+  validation is handed off to `pm` as a separate follow-up issue rather than fixed here.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion.
+`npm run check:compliance`'s missing-declaration checkpoint does not fire (no compliance-sensitive
+path touched). PR base is `develop`, branch prefix `feature/`.
+
+### Links
+
+- Tracking issue: #1495 (Refs, not Closes — Part B remains open and this change is user-facing/
+  behavior-changing, so per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule the issue stays open
+  through merge for QA rather than auto-closing).
+- Follow-up handed to `pm`: absent `GET /items` query-validation schema (plan §3/§10).
+- PR: `feature/1495-item-restore` → `develop`.
+- Modified: `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/restoreItemUseCase.js` (new),
+  `apps/dgfy-api/src/modules/inventory/usecases/getItemsUseCase.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/getItemByIdUseCase.js`,
+  `apps/dgfy-api/src/modules/inventory/index.js`,
+  `apps/dgfy-api/src/modules/inventory/controllers/itemHandlers.js`,
+  `apps/dgfy-api/src/controllers/itemController.js`, `apps/dgfy-api/src/routes/items.js`,
+  `apps/dgfy-api/tests/inventoryItemRepository.test.js`,
+  `apps/dgfy-api/tests/inventoryGetItemByIdUseCase.test.js` (new),
+  `apps/dgfy-api/tests/inventoryGetItemsUseCase.test.js`,
+  `apps/dgfy-api/tests/itemHandlers.transport.test.js`,
+  `packages/web-core/src/services/itemService.js`, `packages/web-core/src/hooks/useItems.js`,
+  `packages/web-core/src/features/inventory/hooks/useInventoryItems.js`,
+  `packages/web-core/src/features/inventory/index.js`,
+  `packages/web-core/src/features/inventory/utils/branchScopedStock.js` (+ its `__tests__` file),
+  `packages/web-core/src/features/inventory/pages/ItemsPage.jsx`,
+  `packages/web-core/Components/items/ItemCard.jsx`,
+  `packages/web-core/Components/items/ItemDetailsModal.jsx`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+Re-check the ledger's actual highest merged entry at plan/branch time rather than assuming — Phase
+255 (#1441 PR-D) may still be unmerged, and #1495 Part B is not yet scoped as a numbered phase.
+
+## Phase 260 - DeliveryRun date-range scheduling (#1489)
+
+### Initiative and release
+
+Standalone task, not part of a multi-PR sequence. Branch `feature/1489-delivery-run-date-range`,
+cut fresh from `origin/develop`. **Numbering note**: the ledger's highest merged entry at branch
+time was Phase 256; 257 was reported already claimed by a concurrently in-flight PR for #1488 (not
+yet visible in the ledger or as an open PR against `develop` at the time of this check), so this
+entry originally claimed **258**, re-verified immediately before commit per `AGENTS.md`'s Continuous
+Phase Numbering rule (`grep -n "^## Phase" docs/features/IMPLEMENTATION_PHASE_LEDGER.md | tail -1`
+and `gh pr list --repo Sieitzz/dgfy-platform --base develop --state open` both re-run at commit
+time). **Renumbered 258 -> 260** during PR review (pr-reviewer RF-2, PR #1500) after a separate
+concurrently-merged PR also landed as Phase 258 -- the coordinator resolved the collision by
+reassigning this entry to the next free number rather than re-deriving history for either side.
+
+### Objective and scope
+
+Issue #1489 (child of epic #1178): a Delivery Run's `scheduled_date` (Phase 224 schema) becomes a
+date **range** (`scheduled_date`/`scheduled_date_end`) instead of a single day, since Surebiz's
+actual delivery runs aren't always same-day. Full plan:
+`PHASE-257-PLAN-delivery-run-date-range.md` (planned as 257 before #1488's claim was known; the
+plan's own content and reasoning are otherwise unaffected by the renumbering). Three corrections the
+plan's own Critical Assessment made to the task's literal wording, all implemented as corrected:
+
+- **A new migration, not an edit to the already-shipped `20260901000005-create-delivery-runs.cjs`**
+  -- that migration id is already recorded in `SequelizeMeta` on every environment that has run it;
+  editing it in place would be silently inert everywhere except a from-scratch database.
+- **The range invariant on `PATCH` is enforced in the use case, not the validator** --
+  `updateDeliveryRunSchema`'s Joi rule can only see fields present in one request, so a `PATCH`
+  sending only one of `scheduled_date`/`scheduled_date_end` needs the check run against the merged
+  (existing locked row + patch) effective state instead.
+- **The `listRuns` filter becomes a range-overlap predicate**, not a straight rename of
+  `Op.gte`/`Op.lte` -- a run with `scheduled_date_end = NULL` is a single-day run whose effective
+  end equals its start, via `sequelize.where(sequelize.fn('COALESCE', ...), { [Op.gte]: ... })`.
+
+Resolutions given at implementation start for the plan's own open questions (§13):
+
+1. `MAX_DELIVERY_RUN_SPAN_DAYS = 31` (placeholder -- #1489's text specifies no number) shipped
+   as-is.
+2. No same-day-run "detection" UI was built -- #1489's "range collapses to one day" requirement is
+   satisfied by the `COALESCE`/serializer/`formatRunScheduleLabel` treatment of a `NULL`/
+   equal-to-start end date as a single-day run; no "Today" badge or similar affordance exists in
+   this codebase and none was asked for beyond that collapse behavior.
+3. Issue #1489 was read in full via `gh api repos/Sieitzz/dgfy-platform/issues/1489` (the `gh`
+   GraphQL CLI was rate-limited; the REST API was not) before deciding linkage -- its three scope
+   bullets (schema range, same-day collapse, create/edit UI) are all fully covered by this one PR,
+   so `Closes #1489` is used.
+4. No DB-level CHECK constraint was added -- the migration adds only the nullable column and the
+   composite index; the app-level start<=end checks in the use cases are sufficient, per
+   implementation decision.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Phase 225 (#1273/#1081, delivery run API) and Phase 224 (delivery run schema) -- this phase extends
+both without modifying Phase 224's own migration file.
+
+### Acceptance and validation evidence
+
+- `node --check` on every changed/new `.js`/`.cjs` file (`apps/dgfy-migration-runner`'s and
+  `apps/dgfy-api`'s own `build` scripts are no-ops, so this is the real Tier 0 check for those two
+  apps).
+- `npm run build:pos` -- OK, a real Vite build (this app owns `DeliveryRunsWorkspacePanel.jsx`/
+  `DeliveryRunFormDialog.jsx` via `packages/web-core`).
+- Backend: `apps/dgfy-api/tests/deliveryRun.usecase.test.js`,
+  `apps/dgfy-api/tests/posValidator.deliveryRun.test.js`, plus the three unchanged sibling suites
+  (`deliveryRunDispatch.usecase.test.js`, `deliveryRunRoutes.transport.test.js`,
+  `deliveryRunWriteThrough.usecase.test.js`) -- 5 suites, 78 tests, all passing (Jest).
+- Frontend: `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`
+  plus 7 other delivery-run-related suites -- 8 suites, 104 tests, all passing (Vitest, run from
+  `apps/dgfy-ims` per `docs/architecture/frontend-split-sync.md` -- `packages/web-core` tests do not
+  run from `apps/dgfy-pos` despite that app owning the build).
+- `npm run check:architecture` -- OK, 54 modules / 555 files, 94 controllers, zero new allowlist
+  entries.
+- `npm run check:adr` -- OK, 86 ADRs validated.
+- `npm run lint:docs` -- OK, 29 governed docs validated.
+- `npm run check:compliance` -- confirmed to fail first (listing 7 sensitive files), then pass once
+  `docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md` was added.
+- **Known gap, stated rather than hidden**: no delivery-run test in this codebase exercises a real
+  MySQL query planner (local MySQL/Redis were not reachable in this environment) -- the `listRuns`
+  overlap predicate is syntactically correct per Sequelize's own documented pattern but unverified
+  against a live tenant database. See the compliance declaration's "Residual Risks" section.
+
+### Deviations from the plan
+
+None of substance. The plan itself was planned under a working phase number of 257; it is filed here
+as 260 per the numbering note above. The plan's claim that the `sequelize.where(sequelize.fn(
+'COALESCE', ...))` idiom was "already used" in `posRepository.js`/`dashboardService.js`/
+`reportService.js`/`stockMovementService.js` did not hold on inspection -- those files only use
+`sequelize.where(col, Op, col)` two-column comparisons, not `sequelize.fn('COALESCE', ...)` inside
+`sequelize.where(...)`. The syntax itself was independently verified correct against Sequelize v6's
+own documentation (`sequelize.where(sequelize.fn(...), value-or-operator)`) before shipping; the
+code comment introducing it does not repeat the plan's inaccurate precedent claim.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired**: new file under `apps/dgfy-migration-runner/migrations/` -- per Pat's standing preference
+(given directly in this task's brief: draft, self-verify, then go straight to commit/push/PR rather
+than pausing for a checkpoint confirmation he reviews on every PR anyway), proceeded straight to
+commit/push/PR without pausing to ask, since the migration is additive/nullable-only (new column +
+index, no data rewrite, no drop) and was reviewed against the already-shipped sibling migration's
+own idempotent-helper convention before writing it.
+**Also fired**: `check:compliance`'s missing-declaration checkpoint (major classification) -- the
+declaration was drafted and the checkpoint satisfied without pausing to ask, per the same standing
+preference.
+**Not fired**: no deploy dispatch, no SSH, no force-push/branch deletion, no `staging`/`main` base.
+PR base is `develop`, branch prefix `feature/` per `.github/branch-cleanup-policy.json`.
+
+### Links
+
+- Issue: #1489 (Closes). Child of epic #1178.
+- PR: `feature/1489-delivery-run-date-range` → `develop`.
+- Plan: `PHASE-257-PLAN-delivery-run-date-range.md` (scratchpad artifact, not committed to the repo).
+- Modified/added:
+  `apps/dgfy-migration-runner/migrations/20260907000001-add-delivery-run-scheduled-date-end.cjs`
+  (new), `apps/dgfy-api/src/models/DeliveryRun.js`, `apps/dgfy-api/src/validators/posValidator.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/deliveryRunUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/deliveryRunRepository.js`,
+  `apps/dgfy-api/src/modules/pos/serializers/deliveryRunSerializer.js`,
+  `apps/dgfy-api/tests/deliveryRun.usecase.test.js`,
+  `apps/dgfy-api/tests/posValidator.deliveryRun.test.js`,
+  `apps/dgfy-api/tests/testHelpers/deliveryRunTestHarness.js`,
+  `packages/web-core/src/features/pos/components/DeliveryRunFormDialog.jsx`,
+  `packages/web-core/src/features/pos/components/DeliveryRunsWorkspacePanel.jsx`,
+  `packages/web-core/src/features/pos/utils/deliveryRunQueueFilter.js`,
+  `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+  `docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md` (new),
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+Re-check the ledger's actual highest merged entry at plan time rather than assuming -- both Phase
+257 (#1488, claimed but not yet confirmed merged as of this entry) and this entry may or may not
+have merged by then.
+
+## Phase 261 - Pre-run procurement CSV export (#1488)
+
+### Initiative and release
+
+#1178 (Retail order handling and delivery fulfillment — Surebiz). A manual, scope-deliberately-small
+CSV dump of pending online orders for use before a procurement run is built -- no new data model, no
+tracked worklist. **Numbering note**: the approved implementation plan reserved Phase 257 (ledger tip
+at plan time was Phase 256), but re-checked against open `develop` PRs at commit time
+(`gh pr list --base develop --state open`) found PR #1503
+(`feature/1318-item-folder-memberships`, "... Phase 257") already claiming 257 -- opened
+2026-09-03T07:02:27Z, after the plan was produced. Re-checked the ledger's own merged tip again
+(still Phase 256) and every other open PR (`gh pr list`: #1503 Phase 257, #1502/#1501/#1500/#1475/
+#1316 none claiming a phase number) -- **258 was the next free number at PR-open time** and this
+entry originally took it. **Re-numbered 258 → 261** during PR #1504's fix-step (this PR's own
+RF-1 fix, alongside pr-reviewer's separate RF-2 finding): PR #1491
+(`fix/1491-queue-run-ipad-and-hide-assigned`, "Phase 258 - Queue+Run...") also claimed 258 and
+merged into `develop` before this PR did, so the coordinator arbitrated merge order across the
+colliding phase claims and assigned this entry 261 -- confirmed by resolving this file's own merge
+conflict against `develop`'s tip, which by then already carried both Phase 257 (PR #1503,
+item-folder-memberships) and Phase 258 (PR #1491, queue+run iPad fix) as merged entries above. No
+other content in this entry changed as a result -- purely a numbering correction per `AGENTS.md`'s
+Continuous Phase Numbering rule, not a re-scope.
+
+### Objective and scope
+
+One PR, `feature/1488-procurement-csv-export` into `develop`:
+
+- **Backend** -- new `GET /pos/reports/procurement-export` endpoint (`VIEW_POS` permission, no
+  `shift_id` requirement, unlike the shift-bound incoming-orders queue): a new Joi validator
+  (`validateProcurementExportQuery`), a new usecase (`buildExportProcurementCsvUseCase`, calling
+  the existing `posRepository.listIncomingOnlineOrders()` unchanged -- no new repository method),
+  a new controller handler (`exportProcurementCsv`, same buffered-CSV-response shape as
+  `exportReports`), a new route, and their composition-root wiring in
+  `apps/dgfy-api/src/modules/pos/index.js`.
+- **Frontend** -- `exportProcurementCsv` service function in `packages/web-core`'s `posService.js`
+  and a new "Procurement CSV" button + `handleExportProcurementCsv` handler in
+  `PosReportsAnalyticsWorkspace.jsx`, independent of the currently-loaded report section/date range.
+- **Tests** -- usecase unit tests (empty-orders, multi-line-item flattening, guest-buyer fallback,
+  `location_id` passthrough, validation failures), a transport test for the new handler, and a
+  source-contract test asserting the new button/handler exist and aren't gated on `reportData`.
+- **Compliance** -- new declaration
+  `docs/compliance/impact-declarations/2026-09-03-procurement-csv-export.md` (classification
+  `major`, per the classification matrix's floor for the touched `pos`/`terminal` surfaces; this is
+  the first endpoint to expose customer PII -- name, phone, delivery address, all pre-existing
+  `PosTransaction` fields, no new capture -- as a downloadable CSV file).
+
+Deliberately does **not** reuse `buildListIncomingOnlineOrdersUseCase` (requires an open shift and
+pins to one shift's location) -- modeled instead on the shift-independent reports read path
+(`buildGetPosReportsOverviewUseCase`/`buildExportPosReportsUseCase`). Full reasoning in the approved
+implementation plan's section 1.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+None on any other in-flight phase -- new files/exports only, no shared file touched by Phase
+251-256's work. Reuses `posRepository.listIncomingOnlineOrders()` and `buildTransactionInclude()`
+as-is, with no changes to either.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `apps/dgfy-api` `.js` file (`posValidator.js`,
+  `posUseCases.js`, `posHandlers.js`, `pos.js`, `modules/pos/index.js`).
+- [x] `tests/posReports.usecase.test.js` + `tests/posHandlers.transport.test.js` (Jest,
+  `--runInBand`) -- 40/40 pass at PR-open time, 45/45 after the RF-1 fix-step added the
+  location-scope resolver tests below.
+- [x] `packages/web-core/src/features/pos/__tests__/posReportsAnalyticsWorkspace.contract.test.js`
+  (Vitest, run from `apps/dgfy-ims` per `docs/architecture/frontend-split-sync.md`) -- 6/6 pass.
+- [x] `npm run build:pos` -- succeeded.
+- [x] `npm run build:skupervisor` -- succeeded.
+- [x] `npm run check:compliance` -- PASS (7 sensitive files, 1 declaration file, both check scripts
+  green).
+
+### Deviations from the plan
+
+Phase number: plan reserved 257, claimed 258 at PR-open time, re-numbered to 261 during the
+fix-step per the coordinator's merge-order arbitration -- see "Numbering note" above. No other
+deviation; implemented exactly as the approved plan specified (validator, repository reuse, usecase,
+controller, route, frontend service+button, tests, this ledger entry).
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired**: `npm run check:compliance`'s missing-declaration checkpoint fired (new customer PII --
+name, phone, delivery address -- newly leaving the system via a downloadable CSV). Per this task's
+explicit dispatch instruction, escalated to the coordinator before committing; the coordinator
+confirmed Pat's standing preference (recorded in project memory, stated twice previously) to skip
+the ask-before-committing step for this batch and draft the declaration directly. Declaration
+written (`docs/compliance/impact-declarations/2026-09-03-procurement-csv-export.md`, classification
+`major`, `preflight_request_ref: NOT-EXECUTED-1488` -- the standard PR-open-time placeholder the
+continuous compliance-preflight sweep reconciles post-merge); `check:compliance` re-run and PASSes.
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR base
+is `develop`, branch prefix `feature/` per `.github/branch-cleanup-policy.json`.
+
+### Fix-step (pr-reviewer RF-1, PR #1504)
+
+pr-reviewer's review of the PR posted a `BLOCK` verdict: `buildExportProcurementCsvUseCase`
+authenticated the caller but never checked the mandatory POS read-location scope the sibling
+`buildListOnlineOrderHistoryUseCase`/reports read path already enforces, so a `VIEW_POS` user could
+export pending-order customer PII (name, phone, delivery address) across every location, or for an
+arbitrary location, with no authorization check. Fixed by injecting the same
+`resolvePosReadLocationScope` helper (matching `buildListOnlineOrderHistoryUseCase`'s own shape --
+default-injected in `modules/pos/index.js`'s composition root, mockable in tests): the caller's
+`query.location_id` is resolved against their `UserLocationGrant` rows before touching the
+repository, and only `locationScope.location_id` -- never the raw query value -- reaches
+`posRepository.listIncomingOnlineOrders()`. Added two new usecase tests proving an unscoped request
+resolves to the caller's own authorized location and a request for an unauthorized location is
+rejected (`AUTHORIZATION_FAILED`/403) without ever calling the repository; all 5
+`buildExportProcurementCsvUseCase` tests that predated the fix were updated to inject a
+`resolveLocationScope` mock. RF-2 (this entry's phase-number collision, 258 → 261) was handled
+separately by the coordinator in the same fix-step -- see "Numbering note" above.
+
+### Links
+
+- Tracking issue: #1488 (Closes).
+- PR: `feature/1488-procurement-csv-export` → `develop`.
+- Modified: `apps/dgfy-api/src/validators/posValidator.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`,
+  `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/routes/pos.js`,
+  `apps/dgfy-api/tests/posReports.usecase.test.js`,
+  `apps/dgfy-api/tests/posHandlers.transport.test.js`,
+  `packages/web-core/src/features/pos/services/posService.js`,
+  `packages/web-core/src/features/pos/components/PosReportsAnalyticsWorkspace.jsx`,
+  `packages/web-core/src/features/pos/__tests__/posReportsAnalyticsWorkspace.contract.test.js`,
+  `docs/compliance/impact-declarations/2026-09-03-procurement-csv-export.md`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+262. At this entry's merge time, `develop`'s tip already carries Phase 257 (PR #1503) and Phase
+258 (PR #1491) as merged; 259 and 260 were reserved by other in-flight `develop` PRs per the
+coordinator's own merge-order arbitration at the time this entry was renumbered to 261 (see
+"Numbering note" above) -- re-check the ledger's actual highest merged entry and every open
+
+## Phase 262 - Voucher max_order_value_centavos + created_by/updated_by audit columns (#1490 + #1494)
+
+### Initiative and release
+
+**Numbering note, renumbered 259 → 262 during the fix-step for pr-reviewer's RF-1 (PR #1507).**
+The governing plan doc (`~/.claude/plans/phase-257-voucher-max-order-value-audit-columns.md`) was
+written when the ledger's tip was Phase 256 and claimed **257**. Re-checked immediately before this
+branch's first commit (per `AGENTS.md`'s Continuous Phase Numbering rule -- the ledger and visible
+in-flight PR claims are authoritative, not a parked plan file): two other open PRs already claimed
+the numbers immediately above the then-tip of 256 -- #1502 (later merged as #1318's Phase 257) and
+#1500 (later merged as #1491's Phase 258), both created before this build started -- so this entry
+took **259** instead. Re-confirmed again at rebase time onto the actually-merged `origin/develop`
+(Phase 257 = #1318 "Item multi-category membership: foundation", Phase 258 = #1491 "Queue+Run:
+iPad portrait split-view fix"): 259 was still free at that point, and stayed this entry's number
+through PR #1507's own review.
+
+pr-reviewer's review of PR #1507 posted a `BLOCK` verdict (RF-1): the branch had gone stale against
+`develop` and, separately, its Phase 259 claim now collided with #1502
+(`feature/1495-item-restore`, still open, also claiming 259) and #1500
+(`feature/1489-delivery-run-date-range`, still open, claiming 260) -- neither visible when this
+entry's number was last confirmed. Merging fresh `origin/develop` for this fix-step found Phase 257
+(#1318, PR #1503) and Phase 258 (#1491, PR #1501) both merged as expected, plus Phase 261 (#1488,
+PR #1504, itself renumbered 258 → 261 during its own fix-step for the same reason) also merged and
+explicitly naming **262** as the next eligible number in its own "Next eligible phase" section --
+so this entry takes **262**, the actual next-eligible number confirmed against `origin/develop`'s
+merged tip at fix-step time, not a parked guess.
+
+### Objective and scope
+
+Batched into one migration/one PR per #1496's "Wave 1 -- batch the migrations" instruction (both
+issues add columns to `vouchers`):
+
+- **#1490** -- an optional `max_order_value_centavos` eligibility cap, the mirror image of the
+  existing `min_spend_centavos`, compared against the same item subtotal
+  (`context.subtotalCentavos`, excludes the delivery fee). New `VOUCHER_MAX_ORDER_VALUE_EXCEEDED`
+  reason code; verified (not added) that it stays correctly excluded from
+  `voucherDisplayUseCases.js`'s `DISPLAY_RELEVANT_REASON_CODES` and
+  `finalizePaidCommerceSession.js`'s `VOUCHER_REDEMPTION_UNAVAILABLE_REASON_CODES`. A new
+  `assertOrderValueRangeInvariant` guard refuses `max_order_value_centavos < min_spend_centavos`
+  when both are set, checked against the merged row on create and update.
+- **#1494** -- `created_by`/`updated_by`, plain nullable `INTEGER` columns with no DB-level FK
+  anywhere (model, migration, or `sync-tenant-schemas.js`'s repair registry) -- see the migration's
+  own header comment for the full reasoning (cross-tenant-DB ALTER risk via the migration runner's
+  landlord-only connection, plus the repair registry's column-presence-only gate that would
+  otherwise permanently starve already-active tenants of a constraint added after the fact).
+  Stamped from the authenticated actor inside the create/update use cases, which now hard-fail 401
+  (`VOUCHER_ACTOR_REQUIRED`) on a missing actor -- matching `deliveryRunUseCases.js`'s stricter
+  behavior rather than silently persisting a `null` actor. Display-side: an opt-in `includeActors`
+  join on the repository (two `LEFT JOIN`s to `User`), always requested by get/list (staff-admin-
+  only, capped at 100 rows/page) and never by the hot transactional paths (create/update/redeem).
+
+Four open questions from the plan resolved at build time, not left to a silent default: (1) a
+missing `req.user` hard-fails 401, not a silent null actor; (2) `includeActors` is always-on for
+get/list, not client-controlled; (3) `validateFormLocally`'s pre-existing min-spend gap (only
+validated under `isDeliveryCampaign`, not `promo_code`) is flagged, not fixed here -- handed to
+`pm` as a separate follow-up issue to keep this phase's scope tight; (4) the "Created by / Last
+modified by" line's placement (near the top of the edit form, plus a compact list-card suffix) is
+this phase's own call, per the plan's suggested-default markup.
+
+Files touched: `apps/dgfy-api/src/models/Voucher.js`, `apps/dgfy-api/src/models/index.js`,
+`apps/dgfy-migration-runner/migrations/20260906000002-add-voucher-order-value-and-audit-columns.cjs`
+(new), `apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+`apps/dgfy-api/src/validators/voucherValidator.js`,
+`apps/dgfy-api/src/modules/vouchers/domain/voucherEligibilityPolicy.js`,
+`apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js`,
+`apps/dgfy-api/src/modules/vouchers/controllers/voucherHandlers.js`,
+`apps/dgfy-api/tests/addVoucherOrderValueAndAuditColumns.migration.test.js` (new),
+`apps/dgfy-api/tests/voucherEligibilityPolicy.unit.test.js`,
+`apps/dgfy-api/tests/voucherValidator.test.js`, `apps/dgfy-api/tests/voucherUseCases.usecases.test.js`,
+`apps/dgfy-api/tests/voucherDisplayUseCases.usecases.test.js`,
+`packages/web-core/src/features/pos/components/voucherFormModel.js`,
+`packages/web-core/src/features/pos/components/VoucherManagementPanel.jsx`,
+`packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js`,
+`docs/compliance/impact-declarations/2026-09-06-voucher-max-order-value-and-audit-columns.md` (new).
+
+### Status
+
+`completed`
+
+### Dependencies
+
+None on Phase 257 (#1318), Phase 258 (#1491), or Phase 261 (#1488) -- different files, coordinated
+only by phase-number spacing, per the same convention Phase 256's own entry documents. Depends on
+the existing voucher domain introduced by epic #1321/ADR 0066 and extended through Phase 244/245
+(auto-apply, delivery-campaign authoring) and Phase 239-241 (delivery-targeted benefit axis).
+
+No deploy-order dependency on any open entry in
+`docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` -- checked per pr-reviewer's should-fix
+(RF-2, PR #1507): the tracker's one open item (`OPS-TSYNC-001`/#539, the F&B modifier-group
+`CREATE TABLE` gap, "Reopened") is scoped entirely to `fnb_modifier_groups`,
+`fnb_modifier_options`, and `fnb_item_modifier_groups` on tenant DBs already provisioned before
+`20260505000002-create-fnb-restaurant-mode-tables.cjs`; this phase's migration only adds three
+additive, nullable columns to the pre-existing `vouchers` table and touches none of those tables or
+`sync-tenant-schemas.js`'s F&B repair entries. No blocking or ordering relationship either way.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/added `apps/dgfy-api` file -- 0 errors.
+- [x] `apps/dgfy-api/tests/addVoucherOrderValueAndAuditColumns.migration.test.js` (new) -- all
+  passing; asserts DDL-string identity between the migration and `sync-tenant-schemas.js`.
+- [x] `apps/dgfy-api/tests/voucherEligibilityPolicy.unit.test.js`,
+  `voucherValidator.test.js`, `voucherUseCases.usecases.test.js`,
+  `voucherDisplayUseCases.usecases.test.js` (extended) -- 249 tests, all passing.
+- [x] Broader regression run across 16 voucher-adjacent test files (264 tests) -- all passing,
+  zero edits.
+- [x] `npm run build:pos` -- clean build (`packages/web-core` is mounted there via
+  `TerminalOperationsWorkspace.jsx`).
+- [x] `packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js` (extended,
+  run via `apps/dgfy-ims`'s vitest config per `docs/architecture/frontend-split-sync.md`) -- 12
+  tests, all passing.
+- [x] `npm run check:compliance` -- PASS; declaration:
+  `docs/compliance/impact-declarations/2026-09-06-voucher-max-order-value-and-audit-columns.md`.
+- [x] `npm run lint:docs` / `check:adr` -- OK (pre-commit hook, docs-sensitive change).
+- [ ] `npm run gate:release:local` -- not run; delegated to `promotion-quality-gate.yml` at
+  promotion time per Phase 256's own closeout, not a PR-time step.
+
+### Links
+
+- Tracking issues: #1490, #1494 (both `Closes`, per #1496's own batching instruction to resolve
+  both in one PR).
+- Follow-up filed: #1506 (`validateFormLocally`'s pre-existing min-spend gap, open question 3
+  above), via `pm`'s search-before-filing discipline.
+- PR: `feature/1490-1494-voucher-max-order-value-audit-columns` → `develop`.
+- Modified/added: see "Objective and scope" above for the full file list.
+
+### Fix-step (pr-reviewer RF-1/RF-2, PR #1507)
+
+pr-reviewer's review of PR #1507 posted a `BLOCK` verdict. **RF-1 (blocker)**: the PR was
+DIRTY/CONFLICTING against `develop` -- four sibling PRs in the same batch (#1501, #1503, #1504, and
+the still-open #1502/#1500) had merged or changed since this branch was cut, all touching this
+ledger file near the same location, and this entry's Phase 259 claim collided with #1502's own
+Phase 259 claim. Fixed by merging fresh `origin/develop`, resolving the ledger conflict to keep
+every phase entry already on `develop` (through Phase 261) plus this entry, and renumbering this
+entry 259 → **262** (259/260/261 all claimed or merged by #1502/#1500/#1488 respectively) --
+updated consistently in this entry's own "Numbering note" above, the migration's header comment,
+the migration test's header comment, `sync-tenant-schemas.js`'s two inline phase references, and
+the compliance declaration's title and ledger cross-reference. **RF-2 (should-fix)**: added the
+explicit tenant-schema deploy-order check above ("Dependencies") -- no open entry in
+`docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` blocks or orders against this migration.
+
+### Next eligible phase
+
+**263.** Re-check the ledger's actual highest merged entry and every open PR's phase claim at plan
+time rather than assuming -- this entry's own history (257 → guessed at 259, then collided and
+renumbered to 262) is itself the cautionary example for why that check has to happen fresh each
+time, not be trusted from an earlier confirmation.
+
+## Phase 263 - Accounting role + voucher management restricted to Admin + Accounting (#1493)
+
+### Initiative and release
+
+Child of epic #453 (vouchers). Continues the RBAC line from ADR 0020 (Phase 88-era mode-aware role
+presets) and the voucher-permission line from #655 (Phase 103's `PERMISSIONS.VOUCHERS` group) and
+#732 (Vouchers/Pricelists promoted to top-level POS nav modes).
+
+**Numbering.** Phase 262 (#1490/#1494, PR #1507) names **263** as next eligible in its own
+"Next eligible phase" section. Re-verified at PR time per `AGENTS.md`'s Continuous Phase Numbering
+rule rather than trusted from that note: 262 is the ledger's highest merged entry, and the only
+open PR at branch time (#1513, `fix/1506-min-spend-validation-promo-code`) claims no ledger phase
+at all and touches no file this phase touches. 263 was free.
+
+### Objective and scope
+
+#1493 asks for two things that only work together: a fixed Accounting role, and voucher-campaign
+management restricted to Admin + that role.
+
+**The Accounting role is a preset, not a `users.role` ENUM value.** ADR 0020's Decision keeps
+authorization on granular permissions rather than role labels, which is exactly what makes a new
+fixed role expressible with no migration and no change to `USER_ROLES` (which is duplicated in
+`models/User.js` and `dgfyAccountRepository.js`, so an ENUM addition would have cost a migration
+plus two enum syncs). `hospitality_finance_billing` is the existing precedent: an accounting-shaped
+preset on compatibility role `manager` at rank 5. One `*_accounting` preset is added per mode
+family (`msme`, `generic`, `food_manufacturing`, `services`, `fnb`, `hospitality`), each granting
+exactly `vouchers:view`, `vouchers:manage`, `reports:view`, `reports:export` at tenant location
+scope. Reports ride along because an accounting user who can issue campaigns but cannot read their
+redemption cost is not a usable role.
+
+**Three things had to change for the restriction to be real, not just declared.** The first two
+were each independently sufficient to defeat it:
+
+1. `routes/vouchers.js`'s `canManageVouchers` accepted `SYSTEM.EDIT_SETTINGS` as a second arm.
+   `settings:edit` is a permission every manager holds by default, so restricting `vouchers:manage`
+   alone would have changed nothing. This retires #655's dual-gate **on the management routes
+   only**. #655 set its own retirement condition -- a full deploy cycle for
+   `scripts/backfill-role-permissions.js` -- and it is met: commits 33bd92646 (the
+   `PERMISSIONS.VOUCHERS` group the backfill reads) and 34224d4c3 (the dual-gate) landed 2026-08-18
+   and have been on `origin/main` across several releases since.
+2. `DEFAULT_ROLE_PERMISSIONS.manager` carried `vouchers:manage` outright. Removed; `vouchers:view`
+   kept, since #1493 restricts management, not read access. `food_manufacturing_manager` inherits
+   this through `managerPermissions`.
+3. The POS client's `canManageVouchers` mirrored the old backend dual-gate. Left alone, every
+   manager would keep seeing the create/edit controls and discover the restriction as a 403 on
+   submit.
+
+**Two deliberate non-changes, both load-bearing.** `canViewVouchers` keeps both legacy `SYSTEM.*`
+arms on backend and client -- a settings-capable manager losing the ability to *see* campaigns is a
+regression this issue never asked for. And `routes/pricelists.js` is untouched: Pricelists (#732)
+share the `VOUCHERS.*` permission group but are a separate capability #1493 does not restrict. That
+sharing is why the POS client's single `canManageVouchers` flag had to be **split** into
+`canManageVouchers` (mirrors `routes/vouchers.js`) and `canManagePricelists` (mirrors
+`routes/pricelists.js`) and threaded through `TerminalPageLayout` to `TerminalOperationsWorkspace`;
+narrowing the one shared flag would have silently taken pricelist management away from every
+manager.
+
+**The data half, shipped but deliberately not executed.** A config change cannot revoke a
+permission already written to a row: `resolveEffectivePermissions` re-derives role defaults only
+when a user's stored `users.permissions` array is empty, and `scripts/backfill-role-permissions.js`
+is additive, so managers on long-running tenants may already carry `vouchers:manage` in that array.
+`apps/dgfy-api/scripts/revoke-manager-voucher-manage.js` is the remedy -- dry-run by default,
+printing every row it would touch, writing nothing without `--apply`, never touching admin rows,
+`is_master_admin` rows, or `*_accounting`-preset rows. **This PR does not run it.** Until an
+operator does, those managers retain voucher management: a known, stated residual, not an
+oversight.
+
+`ROLE_CATALOG_VERSION` is bumped `2026-05-19.mode-aware-rbac-v3` → `2026-09-03.mode-aware-rbac-v4`,
+since a client holding v3 would offer neither the new preset nor the corrected manager permission
+set.
+
+Scope explicitly declined, per the dispatch brief: nothing under
+`apps/dgfy-api/src/modules/vouchers/` is touched (a parallel phase, #788, owns that tree), and
+`PERMISSION_GROUP_VISIBILITY` needs no change -- it already lists `VOUCHERS` in every mode family
+as of #655, so #789's AFFILIATES gap is a different group and out of scope here.
+
+Files touched: `apps/dgfy-api/src/config/modeRolePresets.js`,
+`apps/dgfy-api/src/config/permissions.js`, `apps/dgfy-api/src/routes/vouchers.js`,
+`apps/dgfy-api/scripts/revoke-manager-voucher-manage.js` (new),
+`apps/dgfy-api/tests/modeRolePresets.test.js`,
+`apps/dgfy-api/tests/voucherManagementGating.test.js` (new),
+`apps/dgfy-api/tests/pricelistRoutePermissionParity.test.js` (header comment only -- records that
+parity with `routes/vouchers.js` now holds on the view gates and deliberately not on the manage
+gates; no assertion changed),
+`packages/web-core/src/features/pos/pages/TerminalPage.jsx`,
+`packages/web-core/src/features/pos/components/TerminalPageLayout.jsx`,
+`packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`,
+`docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md`,
+`docs/compliance/impact-declarations/2026-09-03-accounting-role-voucher-management-gating.md` (new),
+`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Depends on #655 (Phase 103's `PERMISSIONS.VOUCHERS` group) having reached `main` and had a deploy
+cycle -- verified above, and the precondition for retiring the legacy `settings:edit` arm. Depends
+on ADR 0020's preset catalog. No dependency on Phase 262 (#1490/#1494) beyond phase-number spacing;
+different files entirely.
+
+No migration, no schema change, so no deploy-order dependency on any open entry in
+`docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` -- that tracker governs tenant-DB schema
+drift, and this phase writes no DDL and touches no tenant schema.
+
+No collision with the sibling phases in this batch: #1513 (`fix/1506-...`) touches
+`voucherFormModel.js` and `deliveryCampaignPayload.test.js`, neither of which this phase touches;
+#788 is backend `modules/vouchers/**` only.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/added `apps/dgfy-api` file, including the new script -- 0
+  errors.
+- [x] Runtime assertion of the rebuilt role catalog across all 7 workflow-mode inputs (`msme`,
+  `retail`, `healthcare`, `food_manufacturing`, `services`, `fnb`, `hospitality`) -- each family
+  resolves exactly one `*_accounting` preset, `role=manager rank=5 scope=tenant`, permissions
+  `vouchers:view,vouchers:manage,reports:view,reports:export`.
+- [x] Runtime assertion that `DEFAULT_ROLE_PERMISSIONS.manager` no longer contains
+  `vouchers:manage`, still contains `vouchers:view` and `settings:edit`; that
+  `DEFAULT_ROLE_PERMISSIONS.admin` still contains `vouchers:manage`; and that
+  `food_manufacturing_manager` (which inherits `managerPermissions`) lost it too.
+- [x] `apps/dgfy-api/tests/modeRolePresets.test.js` (extended) -- 8 new cases covering preset
+  presence/shape/permissions per family, the manager narrowing, the admin retention, the
+  `managerPermissions` propagation, a sweep asserting no non-admin/non-accounting preset holds
+  `vouchers:manage`, and the catalog-version bump.
+- [x] `apps/dgfy-api/tests/voucherManagementGating.test.js` (new) -- 6 cases: `settings:edit` alone
+  is refused management but still granted view, `vouchers:view` alone is view-only,
+  `vouchers:manage` passes both, the `is_master_admin` bypass still works, and a source-text
+  assertion binding all of it to `routes/vouchers.js` so a silently re-added legacy arm fails here.
+- [x] Broad regression run across every voucher/pricelist/permission/userService test file --
+  26 suites, 498 tests, all passing, with no edits beyond the two test files this phase extends.
+- [x] `npm run check:architecture` -- OK (54 modules, 560 code files, 94 controller files).
+- [x] `npm run lint:docs` / `check:adr` -- OK (29 governed docs, 87 ADRs).
+- [x] `npm run build:pos` -- clean.
+- [x] `npm run build:skupervisor` -- clean (`apps/dgfy-ims` also mounts `TerminalPage.jsx`).
+- [x] `npm run check:compliance` -- PASS; declaration:
+  `docs/compliance/impact-declarations/2026-09-03-accounting-role-voucher-management-gating.md`.
+- [ ] `revoke-manager-voucher-manage.js` -- **not run against any environment, by design.** See
+  "Objective and scope" above; it needs an operator's deliberate `--apply` after reading its dry-run
+  output.
+- [ ] `npm run gate:release:local` -- not run; delegated to `promotion-quality-gate.yml` at
+  promotion time per Phase 256's closeout, not a PR-time step.
+
+### Links
+
+- Tracking issue: #1493 (`Closes`), child of epic #453.
+- ADR: `docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md`, 2026-09-03 `## Amendments`
+  block (ADR 0039 `[default]`-tier route -- amend in the same PR, do not supersede).
+- Prior art relied on: #655 (voucher permission group + dual-gate), #732 (Vouchers/Pricelists as
+  top-level POS nav modes), ADR 0066 (voucher price resolution).
+- PR: `feature/1493-accounting-role-voucher-gating` → `develop`.
+
+### Next eligible phase
+
+**264.** Re-check the ledger's highest merged entry and every open PR's phase claim at plan time
+rather than trusting this note -- Phase 262's own history (claimed 257, guessed 259, collided,
+renumbered to 262) is the standing cautionary example.
+
+## Phase 264 - Conduct campaign routing and shared-worktree topology (#1511)
+
+### Initiative and release
+
+Conduct orchestration workflow hardening. This is a documentation and agent-procedure phase; it
+does not change application runtime behavior or any dispatched feature phase.
+
+### Objective and scope
+
+Define the full `/conduct` contract for issue campaigns, PR reviews, prepared waves, and prepared
+phases. The canonical Conduct skill now specifies target routing, current Orca context resolution,
+single-target shared-worktree execution, one-worktree-per-phase wave execution with a three-worker
+parallelism cap, model overrides, structured reviewer-feedback handoffs, retained Builder and
+Reviewer terminals across feedback loops, review-only Builder ownership by the conducting session,
+and delegation to the existing PR Reviewer merge policy.
+
+Automatic Orca worktree removal is deliberately deferred. Conduct leaves campaign worktrees for
+manual operator cleanup; the existing cleanup policy and pure decision tests remain unchanged.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Depends on the current Orca orchestration guide's supervised Run, task, worker-start, structured
+message, and worker-release commands. No application architecture boundary, API, database, or
+deployment surface is changed, so no ADR or compliance declaration is required.
+
+### Acceptance and validation evidence
+
+- [x] Canonical Conduct skill defines issue/PR/campaign/wave/phase routing and fail-closed context
+  resolution.
+- [x] Single-target roles and feedback loops reuse one exact child worktree; wave phases use one
+  child worktree each and never create sibling Reviewer worktrees.
+- [x] Wave concurrency is capped at three and sequential execution is supported.
+- [x] Builder and Reviewer retention across feedback loops is explicit.
+- [x] Review-only Conduct runs keep PR feedback ownership in the conducting session and do not
+  spawn a second Builder worker.
+- [x] `npm run lint:docs` passes.
+- [x] `npm run test:conduct-model-slot` passes.
+- [x] `npm run test:conduct-cleanup-policy` passes unchanged.
+
+Completion date: 2026-09-03.
+
+### Links
+
+- Tracking issue: #1511.
+- Canonical procedure: `.agents/skills/conduct/SKILL.md`.
+- Orca procedure source: freshly loaded `orca skills get orchestration --full` guide.
+
+### Next eligible phase
+
+**270.** Re-check the ledger's highest merged entry and every open phase claim at plan/branch time;
+do not rely on this reservation if another phase lands first.
+
+## Phase 265 - Show which voucher was applied on the order list/detail (#1492)
+
+### Initiative and release
+
+Standalone task, not part of a multi-PR sequence. Branch `feature/1492-order-voucher-visibility`,
+cut fresh from `origin/develop` (merge-base `c7e601c17`, one merge past this ledger's own Phase 262
+entry -- #1513 "fix(pos): run min_spend_centavos validation for promo_code vouchers too", unrelated
+to this diff). **Numbering note**: this entry's own "Next eligible phase" note above states 263;
+this phase was dispatched as **265** by a multi-agent coordinator running several phases in parallel
+against this repo, which reserves phase numbers via its own claim ledger external to this file
+(263/264 reserved for other concurrently in-flight work, not yet visible here since neither has
+merged -- PR #1514 "feat(pos): delivery run summary" on `feature/1487-delivery-run-summary`, still
+open at branch time, is one such phase). Re-verified immediately before this entry was written that
+this file's own merged tip was still 262 and no open PR had yet claimed 263, 264, or 265 by landing
+a ledger entry -- per `AGENTS.md`'s Continuous Phase Numbering rule, this file and visible in-flight
+PRs are authoritative, not an external claim alone; if 263-264 land with different content than
+assumed here before this PR merges, this entry's number may need the same kind of renumbering
+Phase 262's own history above already documents.
+
+**Resolved at merge time** (this branch's conflict fix against fresh `origin/develop`, per the
+sibling task that also produced this merge): 263 landed as the Accounting-role phase (#1493, PR
+#1516), not #1514 as guessed above -- #1514 ("feat(pos): delivery run summary", PR #1514) merged
+into `develop` without adding its own ledger entry, so 264 is currently unclaimed. This entry keeps
+its dispatched number, **265**, rather than renumbering down to fill that gap: unlike Phase 262's
+collision (a real duplicate claim on the same number), 265 does not collide with anything actually
+on `develop`, so there is nothing forcing a renumber here -- only a now-confirmed gap at 264 for a
+future phase (or a back-filled #1514 entry) to close.
+
+### Objective and scope
+
+Issue #1492 (child of epic #453): show which voucher (if any) was applied to an order, on the
+authenticated order list/detail surfaces (POS transaction history, the incoming online-order queue,
+and the online-order detail modal -- all three live under `packages/web-core/src/features/pos/`,
+the shared trunk `apps/dgfy-pos` and `apps/dgfy-ims` both mount, per
+`docs/architecture/apps-layout-migration.md`). Deliberately **not** the public, PIN-addressable
+customer tracking page -- see the compliance declaration's "Affected Surfaces" §3 for why that
+withholding is preserved rather than incidentally undone.
+
+Corrections the task's own pre-brief exploration made to the ticket's literal wording, verified
+against the actual code before implementing (re-verification, not blind trust, per the brief's own
+"re-verify tip is free at PR time" instruction) -- one of the four corrections did not hold and was
+dropped rather than implemented anyway:
+
+- **Confirmed still true**: no item-axis voucher column exists on `PosTransaction` -- only
+  `delivery_fee_waiver_voucher_id`/`_label_snapshot`; the item-axis voucher rides the generic
+  `discount_label_snapshot`/`discount_amount`/`discount_rate_snapshot` columns (shared with any
+  other POS discount type), and `voucher_redemptions` is the real, unambiguous source of truth
+  (ADR 0066 Decision 4).
+- **Did NOT hold, dropped**: the brief stated no `PosTransaction`⟷`VoucherRedemption` Sequelize
+  association existed and instructed adding one to `models/index.js`. `git blame` on the exact line
+  showed `PosTransaction.hasMany(VoucherRedemption, { foreignKey: 'pos_transaction_id', as:
+  'voucherRedemptions' })` already committed 2026-08-18 (unrelated Phase 240/#1331 work, well before
+  this phase). No association was added -- adding a second one would have thrown a duplicate-alias
+  error at Sequelize init.
+- **Confirmed still true**: the three named backend seams (`storeUseCases.js`'s order serializers,
+  `posRepository.js`'s `listTransactions`, `posUseCases.js`'s per-row decoration) and the three named
+  frontend render targets were all real and each needed the described widening -- detailed file-list
+  in the compliance declaration's "Scope" section, not repeated here.
+- **Refined, not overturned**: the brief pointed at `serializeOrderBase` for "the authenticated order
+  list" widening. Tracing every call site showed `serializeOrderBase` is *only* ever consumed via two
+  wrapper functions, `serializeOrderForCustomer` (authenticated) and `serializeOrderForPublicTracking`
+  (public) -- so the actual authenticated-only widening point is `serializeOrderForCustomer`, which
+  is what the brief's own forbidding language ("never the public tracking endpoint") already implied
+  once traced through; widening `serializeOrderBase` itself would have leaked the new field onto the
+  public page the same brief explicitly forbade touching.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Phase 240/#1331 (delivery-axis voucher benefit + the `PosTransaction`⟷`VoucherRedemption`
+association this phase reads from, unmodified) and Phase 105/#455 + Phase 242/#1390 (the storefront
+voucher redemption ledger and its `pos_transaction_id` attachment, which is what populates the data
+this phase now surfaces).
+
+### Acceptance and validation evidence
+
+- `node --check` on every changed `apps/dgfy-api` file (0 errors) -- that app's own `build` script is
+  a no-op, so this is the real Tier 0 check there.
+- `npm run build:pos` -- OK, real Vite build (this app mounts `POSTransactionHistoryPanel.jsx`/
+  `IncomingQueueOrderList.jsx`/`OnlineOrderDetailsModal.jsx`/`orderFulfillmentUi.js` via
+  `packages/web-core`).
+- `npm run build:skupervisor` -- OK, real Vite build (same shared trunk, mounted by `apps/dgfy-ims`).
+- `npm run check:compliance` -- confirmed to fail first (listing 8 sensitive files), then pass once
+  `docs/compliance/impact-declarations/2026-09-08-order-voucher-visibility.md` was added; also runs
+  `check-compliance-api-contracts.js`, which passed unmodified.
+- `npm run lint:docs` (chains `check:adr --strict`) -- OK, 29 governed docs / 87 ADRs validated (the
+  new compliance declaration's `related_adr` citation included).
+- `npm run check:architecture` (`check-architecture-guardrails` + `check-controller-boundaries`,
+  run directly from `apps/dgfy-api` since neither script has an external dependency) -- OK, 54
+  modules / 560 files, 94 controllers, zero new allowlist entries or unauthorized model imports.
+- **Known gap, stated rather than hidden**: no automated test was added for this phase (a pure
+  display/read-path widening with no new business logic) -- see the compliance declaration's own
+  "Verification Evidence" section for the full reasoning and what a future extension should add.
+
+### Deviations from the plan
+
+None of substance beyond the one dropped correction (the already-existing model association) named
+under "Objective and scope" above.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration, no new/changed Sequelize association, no deploy dispatch, no SSH, no
+force-push/branch deletion, no `staging`/`main` base. PR base is `develop`, branch prefix `feature/`
+per `.github/branch-cleanup-policy.json`.
+**Fired**: `check:compliance`'s missing-declaration checkpoint (major classification) -- the
+declaration was drafted and the checkpoint satisfied without pausing to ask, per Pat's standing
+preference (draft + self-verify, then straight to commit/push/PR, recorded from prior sessions).
+
+### Links
+
+- Issue: #1492 (Closes). Child of epic #453.
+- PR: `feature/1492-order-voucher-visibility` → `develop`.
+- Modified/added: `apps/dgfy-api/src/modules/store/repositories/storeRepository.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `packages/web-core/src/features/pos/components/orderFulfillmentUi.js`,
+  `packages/web-core/src/features/pos/components/POSTransactionHistoryPanel.jsx`,
+  `packages/web-core/src/features/pos/components/OnlineOrderDetailsModal.jsx`,
+  `packages/web-core/src/features/pos/components/IncomingQueueOrderList.jsx`,
+  `docs/compliance/impact-declarations/2026-09-08-order-voucher-visibility.md` (new),
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+**266.** 263 (#1493) and 265 (this entry) are both now merged into `develop`; 264 is confirmed free
+(see the Numbering note above). Re-check the ledger's actual highest merged entry and every open
+PR's phase claim at plan time regardless -- per this ledger's own recurring caution, don't trust
+this note alone.
+
+## Phase 266 - voucherFormModel: min_spend_centavos validation for promo_code vouchers (#1506)
+
+### Initiative and release
+
+Follow-up filed against #1490/Phase 259's `voucherFormModel.js` work, discovered by a builder
+during this same batch. Filed retroactively -- see Phase 270's "Numbering note" for the fuller
+account of why: this phase's own builder never actually committed the ledger entry it reported as
+changed, and by restoration time an unrelated PR had also claimed the number (264) this entry's
+sibling originally targeted.
+
+### Objective and scope
+
+`validateFormLocally` in `packages/web-core/src/features/pos/components/voucherFormModel.js`
+validated `min_spend_centavos` (a non-negative check) only when `form.voucherKind ===
+'delivery_campaign'` -- a `promo_code` voucher with a negative `min_spend_centavos` value never got
+a client-side error. Lifted the check out of the `isDeliveryCampaign`-only branch so it runs
+unconditionally for both voucher kinds, matching the pattern the sibling
+`max_order_value_centavos` check already uses (#1490/Phase 259).
+
+The server-side Joi validator (`voucherValidator.js`) already rejected the same bad value on submit
+for both voucher kinds -- this is a pure client-side UX fix, not a data-integrity change. Nothing
+persisted, no reason code, and no eligibility logic changes.
+
+Pinned with 4 new test cases in `deliveryCampaignPayload.test.js`, alongside the existing
+`delivery_campaign` assertion (kept, to confirm it stayed unchanged).
+
+**A separate, pre-existing bug was found and deliberately not fixed in this PR**, to keep it scoped:
+`deliveryCampaignPayload.test.js`'s own `#1334 buildVoucherPayload -- promo_code regression` case
+fails on `origin/develop` at HEAD too, unrelated to this change -- `buildVoucherPayload` has carried
+`max_order_value_centavos` since #1490/Phase 259 but that test's expected literal was never updated.
+Filed separately as #1512.
+
+Files touched: `packages/web-core/src/features/pos/components/voucherFormModel.js`,
+`packages/web-core/src/features/pos/__tests__/deliveryCampaignPayload.test.js`,
+`docs/compliance/impact-declarations/2026-09-03-min-spend-validation-promo-code.md`.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Depends on #1490/Phase 259's `min_spend_centavos` and `max_order_value_centavos` fields already
+existing on the voucher form model. No migration, no schema change, so no deploy-order dependency
+on any open entry in `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`.
+
+### Acceptance and validation evidence
+
+- [x] `node --check packages/web-core/src/features/pos/components/voucherFormModel.js` -- 0 errors.
+- [x] `npx vitest run src/features/pos/__tests__/deliveryCampaignPayload.test.js` (from
+  `packages/web-core`) -- 24 tests, 23 passed, 1 pre-existing failure unrelated to this change (the
+  #1334/#1512 gap described above). The 4 new cases (negative value flagged for `promo_code`, valid
+  value not flagged, empty value never flags either kind, `delivery_campaign` coverage unchanged)
+  all pass.
+- [x] `npm run build:skupervisor` -- succeeded.
+- [x] `npm run build:pos` -- succeeded. Both apps bundle `TerminalOperationsWorkspace.jsx`, which
+  mounts `VoucherManagementPanel.jsx` (the only production importer of `validateFormLocally`,
+  confirmed by grep; `apps/dgfy-storefront` does not import `features/pos` at all).
+- [x] `npm run check:architecture` -- OK (54 modules, 560 code files, 94 controller files).
+- [x] `npm run lint:docs` / `check:adr` -- OK (29 governed docs, 87 ADRs).
+- [x] `npm run check:compliance` -- PASS; declaration:
+  `docs/compliance/impact-declarations/2026-09-03-min-spend-validation-promo-code.md`.
+- [x] `validateFormLocally`'s return shape confirmed unchanged (array of `{ field, message }`) and
+  `VoucherManagementPanel.jsx`'s only consumption point has no dependency on which fields can appear.
+
+### Links
+
+- Tracking issue: #1506 (`Closes`).
+- Related: #1512 (the pre-existing, unrelated test-literal gap found and filed separately).
+- PR: `fix/1506-min-spend-validation-promo-code` → `develop`, merged as `c7e601c17e5376878918d6a4d9a4033046d3e903`.
+
+### Next eligible phase
+
+Not applicable -- this entry fills an interior gap (263/265/267/268/269 all already merged around
+it). See Phase 270 (#1487), filed alongside this entry, for the ledger's actual next-eligible-phase
+note at restoration time.
+
+## Phase 267 - CSV sync import: upsert + deactivate-not-delete (#1495 Part B)
+
+### Initiative and release
+
+Part B of #1495, the sync-mode half. Part A (the merchant-facing deactivate/restore concept #1495's
+own scope names as a prerequisite) shipped as **Phase 259**; this entry consumes it rather than
+rebuilding it.
+
+**Numbering note.** The ledger's highest merged entry on `origin/develop` at branch time was
+**Phase 262** (#1490/#1494, PR #1507), and `gh pr list --state open` returned zero open PRs, so no
+phase claim was visible above it. **263-266 are claimed by four sibling phases in the same
+coordinated batch**, none of which had opened a PR when this branch was cut -- hence **267**, not
+263. Re-verify against `origin/develop`'s actual tip at PR time; Phase 262's own history (257 →
+259 → 262) is the standing cautionary example for why a phase number is confirmed fresh rather than
+trusted from an earlier check.
+
+### Objective and scope
+
+Two genuinely separate deliverables landed together, because the first is a prerequisite for the
+second being safe:
+
+**1. The existing-SKU lookup bug (a live data-corruption defect, fixed in BOTH modes).**
+`csvImportService.js`'s existing-SKU lookup was scoped
+`buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })`, and `buildVisibleWhere` also pins
+`deleted_at: null`. A deactivated item was therefore invisible to the lookup and its SKU classified
+`CREATE`. Because `active_sku_code` is a generated STORED column that is NULL whenever
+`deleted_at IS NOT NULL OR status IN ('draft','inactive')`
+(`20260418000002-add-active-sku-unique-constraint.cjs`), `uq_items_active_sku_code` never fired on
+the insert either -- so **re-importing a previously deactivated SKU silently created a second,
+duplicate item row**. This is worse than #1495's "append-only" framing suggests: today's importer
+actively corrupts data on re-import, it does not merely fail to reconcile.
+
+Fixed by loading the lookup **unscoped** (`loadExistingItemIndex`) and partitioning in JS, with
+explicit, deterministic precedence (`existingItemPrecedence`: active > draft > inactive > deleted)
+so an active row always wins over an inactive row holding the same SKU -- a pairing that already
+exists in production data *because of this bug*, and whose winner was previously whatever order
+`findAll` happened to return. A matched-but-deactivated SKU is now classified **`REACTIVATE`**, a
+third action alongside CREATE/UPDATE, and routed through a conflict-safe status flip before its
+CSV fields are written. **This half is deliberately not gated on sync mode** -- it is the
+correctness fix for a live defect on the default (append) path, and it also applies to the PDF
+menu-import path, which shares `confirmItemsImportUseCase`.
+
+`itemRepository.reactivateItem` (new) is a sibling of Phase 259's `restoreItem`, not a replacement:
+`restoreItem` gates on `deleted_at` and rejects a row merely deactivated by a plain PUT
+(`status: 'inactive'`, `deleted_at` still null) as "not deleted", which is an ordinary match target
+for a CSV row. `reactivateItem` gates on the *effective* deactivated state and clears both fields.
+It reuses `normalizeSkuConflictError` -- the exact guard Phase 259's `restoreItem` applies -- because
+reactivation re-materializes `active_sku_code` and can collide with a different currently-active
+item holding that SKU; that surfaces as the same 409 every other write path produces, reported as a
+row failure rather than a silent no-op.
+
+**2. Sync mode (`mode: 'sync' | 'append'`, default `append`).** Deactivates currently-active items
+whose SKU is absent from the uploaded file, via the **existing** `deleteItem` path (reused, not
+reimplemented -- which is what brings its referential-integrity guards along: an item still used as
+an ingredient in an active product, or referenced by a non-archived PO/JO, is reported as
+`deactivationSkipped` with the reason, never force-deactivated). Never a hard delete.
+
+Six safety properties, each a deliberate decision rather than a default:
+
+- **The preview gate is server-enforced.** A sync-mode confirm with no `deactivateSkus` array is
+  refused (`SYNC_DEACTIVATION_NOT_ACKNOWLEDGED`). An empty array is a valid acknowledgement meaning
+  "nothing to deactivate"; a *missing* one means this confirm never went through a preview.
+- **Intersection semantics.** Confirm re-derives the absent set server-side from a pre-write
+  snapshot AND intersects it with the acknowledged list. The server-derived set caps a client
+  asking for more than is actually absent; the acknowledged set caps anything that became absent
+  between preview and confirm (TOCTOU) and was therefore never shown to the user. Only a SKU in
+  BOTH is deactivated -- the acknowledged list can narrow, never widen.
+- **Presence, not validity, spares an item.** The present-SKU set is built from every row in the
+  file including rows that failed validation. A typo'd row is still a row the merchant intends to
+  keep; deactivating it over a validation error would be silent data loss.
+- **Drafts and SKU-less rows are excluded** from the deactivation candidate set. An unpublished
+  draft was never expected to appear in the spreadsheet (and `deleteItem` would destroy its draft
+  state); a row with no SKU cannot be represented in the file at all, so its absence proves nothing.
+- **Sync requires `items:delete` on top of `items:import`** (403 `SYNC_IMPORT_FORBIDDEN`, checked on
+  both preview and confirm). Without this, anyone who could import could deactivate the whole
+  catalog through a CSV -- a strictly wider blast radius than the single-item deactivate route.
+- **Deactivation runs last**, after every create/update/reactivate in the import has been attempted,
+  against a snapshot taken before any write -- so an item this same import created can never be
+  caught by it.
+
+Frontend: an explicit import-mode radio on the upload step (append preselected), a fifth preview
+tile plus the full deactivation table and a required acknowledgement checkbox that gates the Confirm
+button, and reactivated/deactivated/skipped buckets on the result step. Changing mode after a
+preview invalidates it and returns to step 1 -- a stale deactivation list is the one thing this flow
+must never let a user confirm against.
+
+**Deliberately out of scope, stated rather than implied:**
+- Per-item "blocked by an active reference" flags in the *preview*. Detecting them would mean
+  duplicating `deleteItem`'s three include-heavy guard queries in the CSV service, and that
+  duplicate would drift. `deleteItem` stays authoritative at execute time and blocked items are
+  reported as skipped, with the preview stating plainly that this can happen.
+- Folder memberships. Phase 257 (#1318) did not wire CSV import to `ItemFolderMembership`, and this
+  phase does not either -- that surface belongs to #1318's own follow-up.
+- Any percentage/absolute cap on how much of a catalog one sync may deactivate. The preview gate
+  plus intersection already prevent an unseen deactivation, and a cap would block a legitimate
+  full-catalog replacement. Flagged here as a possible future guard, not silently omitted.
+
+Files touched: `apps/dgfy-api/src/services/csvImportService.js`,
+`apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`,
+`apps/dgfy-api/src/modules/inventory/usecases/reactivateItemUseCase.js` (new),
+`apps/dgfy-api/src/modules/inventory/usecases/itemCommandUseCases.js`,
+`apps/dgfy-api/src/modules/inventory/index.js`, `apps/dgfy-api/src/services/itemService.js`,
+`apps/dgfy-api/src/modules/csv/usecases/csvUseCases.js`,
+`apps/dgfy-api/src/modules/csv/controllers/itemCsvImportHandlers.js`,
+`apps/dgfy-api/tests/csvImportService.syncMode.test.js` (new),
+`packages/web-core/src/hooks/useCSVImport.js`,
+`packages/web-core/Components/items/CSVImportModal.jsx`.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+- **Phase 259 (#1495 Part A)** -- required, and merged. `reactivateItem` is modelled directly on its
+  `restoreItem`, reuses its `normalizeSkuConflictError` guard, and `deleteItem`/`restoreItem` are
+  the deactivate/reactivate concept #1495's scope named as a prerequisite for this half.
+- **Phase 257 (#1318)** -- no dependency; folder memberships are explicitly out of scope above.
+- No migration and no model change, so **no deploy-order dependency on any open entry in**
+  `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`. This phase reads
+  `items.active_sku_code`/`items.status`/`items.deleted_at`, all long-established columns, and adds
+  no DDL of any kind.
+- No compliance impact declaration required: no changed path matches
+  `check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES` (the frontend changes are in
+  `packages/web-core/Components/` and `src/hooks/`, not `src/features/pos/`).
+
+### Acceptance and validation evidence
+
+See the PR's `## Testing Evidence` section for the run output.
+
+### Links
+
+- Tracking issue: #1495 (`Refs`, not `Closes` -- Part A already shipped against the same issue and
+  the change needs deployed verification per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+- PR: `feature/1495-csv-sync-import` → `develop`.
+
+### Next eligible phase
+
+**268**, assuming siblings 263-266 land as claimed. Re-check the ledger's highest merged entry and
+every open PR's phase claim fresh at plan time rather than trusting this line.
+
+## Phase 268 - Item multi-category membership: IMS authoring UI (#1318)
+
+### Initiative and release
+
+#1318 — the IMS authoring UI follow-up to Phase 257's backend foundation. Phase number
+pre-assigned at dispatch time; re-verified free immediately before opening the PR: ledger's
+highest merged entry was 262 (this file), `gh pr list --base develop --state open` returned three
+PRs (#1516 "Accounting role voucher gating", #1515 this PR, #1514 "delivery run summary") with no
+phase-number collision in any title, and `git log origin/develop --oneline -100 | grep -iE "phase
+26[3-8]"` returned nothing. 263–267 are not yet present in this ledger — presumably other
+concurrently-dispatched, still-in-flight phases from the same round — but none of them collide with
+268 specifically. 268 was free. **Confirmed at merge time (this fix-step)**: 263 landed on `develop`
+via PR #1516 while this branch was open; no collision with 268 either way.
+
+### Objective and scope
+
+One PR, `feat/1318-item-multi-category-ui` into `develop`. **Frontend only** — the backend API
+(`GET`/`PUT /items/:item_id/folders`, validator, use cases, repository functions) already shipped
+in Phase 257 (PR #1503, merged) and is not rebuilt here.
+
+- `ItemFormModal.jsx` (packages/web-core): a new "Additional Categories" section — a checkbox grid
+  (max 10) with its own explicit Save action, modeled on `PosFnbModifiersWorkspace.jsx`'s
+  folder-modifier-group checkbox grid, not a token/chip multiselect. Self-contained load/save cycle
+  (own `listItemFolders`/`replaceItemFolders` calls, not folded into the main form's `onSave`),
+  since the API is item-scoped and only exists once the item itself has been created — the section
+  renders in edit mode only. Gated by a `canManageFolders` prop (`categories:manage` permission),
+  matching the backend's `requireTenantAdmin` on this route. The item's own primary category is
+  excluded from the checkbox list (the API's disjointness guard would silently drop it anyway).
+- `itemService.js`: two new client functions, `listItemFolders(itemId)` /
+  `replaceItemFolders(itemId, folderIds)`, modeled on the existing `replaceItemSuppliers`
+  item-scoped replace-set client. No existing export changed.
+- `ItemsPage.jsx`: passes the tenant's persisted category list (real `folder_id` + `name`,
+  excluding transient/unsaved categories the API can't validate yet) and the `categories:manage`
+  permission flag down to the modal.
+- **Backend bug fix, in scope for this phase**: `replaceItemFoldersUseCase` never opened a
+  transaction around `itemRepository.replaceItemFolderMemberships`'s destroy-then-`bulkCreate`
+  pair, so a mid-failure could leave an item with zero secondary memberships. Fixed by wrapping the
+  call in a transaction (mirroring `fnbUseCases.js`'s `buildReplaceFolderModifierGroupsUseCase`),
+  and threading that transaction through `listItemFolderMemberships`'s own read-after-write call —
+  otherwise that final read runs on a separate, non-transactional connection and can't see the
+  not-yet-committed rows it just wrote (MVCC), returning stale `memberships` in the response.
+- **Verified, no action needed**: `apps/dgfy-api/src/services/tenantSchemaBootstrap.js` does not
+  maintain its own tenant-table list — it only orchestrates `repairItemFolderCategoryLifecycleSchema`
+  (legacy `item_folders` column repairs, unrelated to this join table) and the Phase 157 migration
+  manifest. `item_folder_memberships` is already registered in `sync-tenant-schemas.js`'s
+  `REQUIRED_TENANT_SCHEMA_TABLES` (Phase 257), which both a new tenant's `Sequelize.sync()` (via the
+  registered `ItemFolderMembership` model) and the existing-tenant drift-repair sweep
+  (`inspectRequiredTenantSchemaTables`/`buildTenantSchemaTableRepairSql`) already rely on. No
+  #860/#639-class gap found — no follow-up filed.
+- Did not touch `apps/dgfy-api/src/services/csvImportService.js` (owned by the parallel phase P-E2,
+  #1495 Part B, per its own scope).
+
+Issue #1318 is not resolved by this PR. It uses `Refs #1318`, not `Closes` — two of its four
+acceptance criteria remain unmet: POS and Storefront category listings still don't render an item
+under its secondary categories (the "34 existing read sites" wiring Phase 257 deliberately
+deferred, one surface at a time, to later phases), and no regression suite exists yet for that
+rendering surface, since it isn't built.
+
+### Fix-step (merge conflicts against `origin/develop`, PR #1515)
+
+This branch was cut before every sibling phase in this batch merged. Two rounds of conflict
+resolution were needed, both against this same ledger file, no other file:
+
+1. **Round 1** — cut before Phase 263 (#1493, PR #1516) and Phase 262's other siblings (#1514,
+   #1487 delivery run summary) merged. PR reported `mergeable: false`, `mergeable_state: dirty`,
+   3 ahead / 13 behind `develop`. `git merge-tree` confirmed the only real conflict was this ledger
+   file (both this entry and Phase 263's appended after the same Phase 262 base). Resolved by
+   merging fresh `origin/develop`, keeping **both** entries in full, Phase 263 placed before this
+   entry to match merge order.
+2. **Round 2** — while round 1's push was still waiting on CI, Phase 267 (#1495 Part B CSV sync
+   import, PR #1517) also merged into `develop`, again appending a ledger entry after the same base
+   and reintroducing `mergeable_state: dirty`. `git merge-tree` this time showed an additional
+   clean auto-merge in `itemRepository.js` (Phase 267 added `reactivateItem`, a different function
+   from this phase's `replaceItemFolderMemberships` changes — no real collision) plus the same
+   ledger conflict shape. Resolved the same way: merged fresh `origin/develop` again, kept **both**
+   entries in full, Phase 267 placed before this entry (267 < 268, and it was already on `develop`).
+
+Re-ran this phase's Tier 0 checks (`node --check` on the touched backend files, `npm run
+build:skupervisor`, `npm run build:pos`) against the fully merged tree after each round before
+pushing — no dropped ledger entry on either side, either round.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Depends on Phase 257 (#1318 foundation), already merged. No dependency on any other in-flight
+phase — Phase 263 (#1493) and Phase 267 (#1495 Part B) are both now confirmed merged ahead of this
+entry, touching unrelated file sets (RBAC/vouchers; CSV import), with the one incidental
+`itemRepository.js` overlap against Phase 267 auto-merging cleanly (different functions). A future
+phase (POS/storefront read-site opt-in) depends on this one for the admin UI to exist, but none of
+that is built or scoped here.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on all three modified backend `.js` files (`apps/dgfy-api` has no real build
+  step).
+- [x] No `package.json` touched ⇒ no lockfile step.
+- [x] Backend Jest: `tests/itemFolderMemberships.repository.test.js` (extended with a
+  transaction-threading regression test) + new `tests/replaceItemFoldersUseCase.test.js`
+  (commit/rollback wiring) — 10/10 pass.
+- [x] `npm run check:architecture` (`apps/dgfy-api`) — `check:architecture-guardrails`: "OK. Checked
+  54 modules and 560 code files."; `check:controller-boundaries`: "OK. Checked 94 controller files
+  with no unauthorized model imports."
+- [x] `npm run check:compliance` — "No compliance-sensitive changes detected" (inventory/catalog
+  admin UI, not `modules/pos` or `modules/vouchers`) + `check:compliance:api-contracts --staged`
+  PASS (both pre-commit hook runs).
+- [x] New Vitest contract test `itemService.folders.contract.test.js` (3/3 pass) covering the two
+  new client functions' HTTP method/path/payload shape.
+- [x] `npm run build:skupervisor` (apps/dgfy-ims full production build) — passes, re-run on the
+  final diff after the last edit (`✓ built in 3m 59s`, exit 0). Confirmed via `grep -rl
+  "ItemFormModal"`/`"ItemsPage"` across `apps/*/src` that `dgfy-pos`/`dgfy-storefront` don't import
+  either changed file, so IMS is the only app build this change needs.
+- [x] Re-verified after each `origin/develop` merge (this fix-step, both rounds): `node --check` on
+  the three modified backend `.js` files, `npm run build:skupervisor`, and `npm run build:pos`
+  (shared `web-core` components touched by sibling phases 263/267 are consumed by both apps) all
+  re-run clean against the fully merged tree.
+
+### Deviations from the plan
+
+None of substance — this session planned and built in one pass rather than against a separately
+authored plan doc.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+No checkpoint trigger fired: no migration file (backend change is a use-case/repository edit only,
+no schema change), `check:compliance` required no declaration, no deploy dispatch, no SSH, no
+force-push/branch deletion. Branched from a worktree already sitting at `origin/develop`'s tip
+(`pat/pf-multi-category-ui`, 0 ahead/0 behind) and cut a properly-prefixed
+`feat/1318-item-multi-category-ui` branch from there rather than committing onto the unprefixed
+worktree branch directly.
+
+### Links
+
+- Tracking issue: #1318 (`Refs`, not `Closes` — see "Objective and scope" above for the two
+  acceptance criteria this PR doesn't satisfy).
+- PR: `feat/1318-item-multi-category-ui` → `develop` (#1515).
+- Modified: `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/replaceItemFoldersUseCase.js`,
+  `apps/dgfy-api/tests/itemFolderMemberships.repository.test.js`,
+  `packages/web-core/Components/items/ItemFormModal.jsx`,
+  `packages/web-core/src/features/inventory/pages/ItemsPage.jsx`,
+  `packages/web-core/src/services/itemService.js`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+- New: `apps/dgfy-api/tests/replaceItemFoldersUseCase.test.js`,
+  `packages/web-core/src/services/__tests__/itemService.folders.contract.test.js`.
+
+### Next eligible phase
+
+**269**, pending a fresh re-check of the ledger's actual highest merged entry and every open PR's
+phase claim at plan time — do not assume 264–266 are still open just because they weren't visible
+in this entry's own check. (263 and 267 are now confirmed merged as of this fix-step; 264-266
+remain unverified. **Correction, same fix-step**: 269 landed first, claimed by sibling #788 below
+-- next eligible is actually **270**, per that entry's own numbering note.)
+
+## Phase 269 - Account-restricted voucher issuance (#788)
+
+### Initiative and release
+
+Epic #453 (Vouchers), governed by ADR 0066. Part of the deferred-decision batch #783 rounds up;
+#788 itself postdates that round-up and is not listed in it.
+
+**Numbering, verified live at build time** per `AGENTS.md`'s Continuous Phase Numbering rule and
+Phase 262's own closing warning (item 263 above: re-check the merged tip *and* every open PR's
+claim fresh, never trust an earlier confirmation). Checked against `origin/develop` and the open-PR
+list on 2026-09-03: merged tip is **Phase 262**; open PRs claim **263** (#1516,
+`feature/1493-accounting-role-voucher-gating`), **265** (#1519,
+`feature/1492-order-voucher-visibility`), **267** (#1517, `feature/1495-csv-sync-import`), and
+**268** (#1515, `feat/1318-item-multi-category-ui`). **269** was assigned to this phase by the
+batch plan and was still unclaimed on that check, so it is taken as-is rather than compacted down
+into the 264/266 gaps -- renumbering into a gap would collide with whichever parallel phase in the
+same batch has not opened its PR yet.
+
+### Objective and scope
+
+**#788's own stated non-goal is "Not implementing anything here -- a decision/scope record."
+Pat explicitly overrode that: this phase builds it.**
+
+Restrict a voucher's redemption to one or more named DGFY accounts, so that holding the code is no
+longer sufficient. Two motivations from the issue, both preserved: anti-misuse of a leaked or
+shared code (#454 decision 4 makes every voucher a shared code today), and a B2B roadmap signal -- a
+voucher assignable to a specific business's account.
+
+The open design question the issue left -- *where the allowlist lives* -- is resolved as a **child
+table**, `voucher_account_grants`, structurally a twin of the existing `voucher_scopes`. That is the
+shape #454 decision 4 already anticipated ("a `voucher_codes` child table can be added later
+without migrating the campaign table"), arriving keyed on the **account** rather than on a
+per-recipient code. Per-recipient unique-code issuance stays unbuilt.
+
+Design decisions taken at build time, each recorded rather than left implicit:
+
+1. **`vouchers.is_account_restricted`, a derived gate.** `NOT NULL DEFAULT false`, written from the
+   grants array in the same transaction as the child rows, in `FORBIDDEN_FIELDS`, absent from
+   `WRITABLE_VOUCHER_COLUMNS`. Two jobs: an unrestricted voucher (nearly all of them) pays no extra
+   query on the checkout hot path, and a restricted voucher whose allowlist a caller forgot to
+   hydrate is *detectable* and fails closed rather than silently evaluating as unrestricted.
+2. **Three reason codes, not one.** `VOUCHER_ACCOUNT_REQUIRED` (guest, or a native store_customer
+   with no linked DGFY account -- actionable), `VOUCHER_ACCOUNT_NOT_ELIGIBLE` (signed in, not on the
+   list -- telling them to sign in would loop them), `VOUCHER_ACCOUNT_GRANTS_UNRESOLVED` (a caller
+   defect, never a buyer state). The no-buyer check runs **first**, so the display surfaces -- which
+   legitimately have no buyer identity and do not hydrate -- report the accurate first code rather
+   than the server-defect one.
+3. **The #622 guest-checkout interaction, answered explicitly** (the issue asks and does not
+   decide): an account-restricted voucher effectively requires login for its own redemption even on
+   a store where guest checkout is enabled. It does **not** require #622's toggle to be on. A guest
+   gets a clear 422 naming the missing sign-in, with dedicated storefront copy beside the existing
+   `GUEST_CHECKOUT_DISABLED` branch -- never a silent failure.
+4. **POS stays out of scope, verified against current code rather than inherited.** #454 decision 6
+   ("POS captures no buyer identity") was re-checked: `posUseCases.js`'s `redeemVoucher` binding
+   still passes `storeCustomerId: null` and no account identity, and ADR 0066's 2026-08-20
+   amendment narrowed that decision only as far as a free-typed customer *name*
+   (`posDiscountPolicy.js`'s `DISCOUNT_CUSTOMER_NAME_REQUIRED`). A name is not an authenticated
+   account. POS therefore fails closed through the shared check with **zero POS files changed**.
+5. **Account-restricted and publicly-listed are mutually exclusive**, refused at authoring
+   (`VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE`) on create, update, and activate, *and*
+   independently omitted from the public snapshot by the display filter. Not cosmetic:
+   `storefrontDiscoveryIndexService.js`'s projection publishes each listed voucher's literal `code`.
+6. **A latent type bug found and repaired.** `voucher_redemptions.dgfy_account_id` has been declared
+   `INTEGER` since #455/Phase 102 while `DgfyAccount.id` is a UUID -- it could never have held a real
+   account id. Verified nothing has ever written the column, so every row is NULL and the retype to
+   `CHAR(36)` is lossless. This phase is its first writer, on every storefront redemption (restricted
+   or not -- the per-customer half of #586's two-tier tracking model).
+7. **No cross-database FK, and no existence check.** `dgfy_accounts` is landlord-side (ADR 0052);
+   format validation only. An existence check via the tenant-local `store_customers` proxy was
+   considered and rejected -- it would wrongly reject a B2B account that has never ordered from the
+   store, which is #788's motivating case.
+
+**No route, permission, or role-preset file is touched.** `account_grant_ids` rides the existing
+`POST /vouchers` and `PUT /vouchers/:id` bodies exactly as `scopes` does, so `routes/vouchers.js`'s
+existing `VOUCHERS.MANAGE` gate covers it unchanged -- which also keeps this diff clear of the three
+files Phase 263 (#1493) owns in parallel.
+
+Files touched: `apps/dgfy-api/src/models/VoucherAccountGrant.js` (new),
+`apps/dgfy-api/src/models/Voucher.js`, `apps/dgfy-api/src/models/VoucherRedemption.js`,
+`apps/dgfy-api/src/models/index.js`,
+`apps/dgfy-migration-runner/migrations/20260908000001-add-voucher-account-restriction.cjs` (new),
+`apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+`apps/dgfy-api/src/modules/vouchers/domain/voucherEligibilityPolicy.js`,
+`apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js`,
+`apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherAutoApplyUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherDisplayUseCases.js`,
+`apps/dgfy-api/src/validators/voucherValidator.js`,
+`apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+`apps/dgfy-storefront/src/shared/model/storefrontErrorMessages.js`,
+`packages/web-core/src/features/pos/utils/posCheckoutErrorMessages.js`,
+`packages/web-core/src/features/pos/components/voucherFormModel.js`,
+`packages/web-core/src/features/pos/components/VoucherManagementPanel.jsx`,
+`apps/dgfy-api/tests/addVoucherAccountRestriction.migration.test.js` (new),
+`apps/dgfy-api/tests/voucherEligibilityPolicy.unit.test.js`,
+`apps/dgfy-api/tests/voucherUseCases.usecases.test.js`,
+`apps/dgfy-api/tests/voucherRedemptionUseCases.usecases.test.js`,
+`apps/dgfy-api/tests/voucherValidator.test.js`,
+`apps/dgfy-api/tests/voucherDisplayUseCases.usecases.test.js`,
+`packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js`,
+`docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (dated Amendments block),
+`docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md` (new).
+
+### Status
+
+`in_progress`
+
+### Dependencies
+
+Depends on the voucher domain from epic #453/ADR 0066 (Phase 101-110), extended through Phase
+239-245 (delivery-targeted benefit axis, auto-apply) and Phase 262 (#1490/#1494).
+
+**Deliberately disjoint from the parallel phases in the same batch.** Phase 263 (#1493) owns
+`apps/dgfy-api/src/config/modeRolePresets.js`, `apps/dgfy-api/src/config/permissions.js`, and
+`apps/dgfy-api/src/routes/vouchers.js`; none of the three is touched here, and the feature was
+designed so none needs to be -- see "Objective and scope" above.
+
+No deploy-order dependency on any open entry in
+`docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`: the tracker's one open item
+(`OPS-TSYNC-001`/#539) is scoped to `fnb_modifier_groups`, `fnb_modifier_options`, and
+`fnb_item_modifier_groups`, none of which this migration touches.
+
+**One migration step warrants a human's eyes before it reaches a tenant DB**, and is flagged rather
+than treated as routine: the `voucher_redemptions.dgfy_account_id` INT → CHAR(36) retype. It is
+guarded on the column's current data type (so it is idempotent and a no-op on an already-CHAR(36)
+tenant), and is lossless because nothing has ever written the column -- but
+`sync-tenant-schemas.js`'s repair pass is column-*presence* based and structurally cannot repair a
+type change, so a tenant that misses this migration keeps the pre-#788 INT column. The new write
+fails loudly there rather than silently mis-recording an account.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/added `apps/dgfy-api` and `apps/dgfy-migration-runner` file
+  -- 0 errors.
+- [x] `apps/dgfy-api/tests/addVoucherAccountRestriction.migration.test.js` (new) -- 14 tests, all
+  passing; covers tenant fan-out, retype idempotence in both directions, DDL-string identity with
+  `sync-tenant-schemas.js` for the new column/table/index, and the corrected `char(36)` ledger
+  snapshot.
+- [x] `voucherEligibilityPolicy.unit.test.js` (+14), `voucherUseCases.usecases.test.js` (+14),
+  `voucherRedemptionUseCases.usecases.test.js` (+10), `voucherValidator.test.js` (+10),
+  `voucherDisplayUseCases.usecases.test.js` (+3) -- all passing.
+- [x] Broad voucher-adjacent regression run -- 40 suites, 729 tests, all passing.
+- [x] `npm run check:tenant-schema-coverage` against the new migration -- PASS.
+- [x] `npm run check:compliance` -- PASS; declaration
+  `docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md`.
+- [x] `npm run lint:docs` / `npm run check:adr` -- OK (87 ADRs, 29 governed docs).
+- [x] `packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js` (+9, 21
+  total) and the full `packages/web-core/src/features/pos` vitest run (172 files, 1079 tests) --
+  all passing, run via `apps/dgfy-ims`'s vitest config per
+  `docs/architecture/frontend-split-sync.md`.
+- [x] `npm run build:skupervisor` and `npm run build:pos` -- both clean.
+- [ ] `npm run gate:release:local` -- not run; delegated to `promotion-quality-gate.yml` at
+  promotion time per Phase 256's closeout, not a PR-time step.
+- [ ] Migration not executed against any live database -- covered by unit tests against a
+  `queryInterface` double only. See "Dependencies" above for the one step worth a human's review.
+
+### Links
+
+- Tracking issue: #788 (`Refs`, not `Closes` -- the account-restriction path needs deployed
+  verification against a real DGFY-authenticated storefront session before it can be called done,
+  so the issue stays open through `For QA` per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+- Epic: #453. Related, explicitly NOT conflated: #606 (per-customer voucher *limits* -- a quantity
+  cap, orthogonal to this audience allowlist; the `idx_voucher_redemptions_account` index added here
+  is the one it will need), #622 (guest checkout -- interaction answered in scope item 3 above),
+  #569 (B2C-now/B2B-later, not reopened -- this serves a B2B-shaped need through the existing B2C
+  mechanism, the same carve-out #454 decision 2 already makes), #586 (two-tier tracking, whose
+  per-customer half this finally populates), #446/#447 (Affiliate v2 -- #454 decision 5's
+  "affiliate identifies the affiliate; voucher identifies the campaign" question narrows slightly
+  now that a voucher can also identify a party; noted for whoever works Affiliate v2, not resolved
+  here).
+- ADR: 0066, dated `## Amendments` block added in this PR (Decisions 9 and 10, both `[default]` --
+  the cheapest correct route per ADR 0039; Decisions 3 and 4 inherited unchanged).
+- PR: `feature/788-account-restricted-vouchers` → `develop`.
+
+### Next eligible phase
+
+**270**, unless a parallel PR in this batch claims it first -- 264 and 266 are currently unclaimed
+gaps left by this batch's own number assignment and should be re-checked against the live open-PR
+list before being reused, exactly as this entry's "Numbering" note above did.
+
+## Phase 270 - Delivery Run summary: total expected, total settled, delivered-order count (#1487)
+
+### Initiative and release
+
+Child of the Delivery Run entity work started at Phase 260 (#1489, date-range scheduling). Adds a
+per-run money/delivery summary to the run detail response.
+
+**Numbering note, filed retroactively.** This entry was never actually committed by the phase's own
+builder despite PR #1514 reporting it as changed -- confirmed via `git show <branch-tip>` and `git
+diff <merge-base>..<branch-tip>` on `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`, both empty.
+Phase 266 (#1506) had the identical gap, for the same reason, and is filed alongside this entry.
+This entry originally targeted **264**, the number both #1487's own phase-263 predecessor note and
+Phase 265's note predicted as free -- but by the time this restoration PR was opened, an unrelated,
+concurrently-merged PR (#1522, `docs(conduct): define campaign topology and retention`, closing
+#1511) had already claimed 264 for itself. Rather than renumber #1522's already-merged, already-
+published entry -- `AGENTS.md`'s Continuous Phase Numbering rule 5 forbids renumbering a completed
+phase without an explicit migration -- this entry is filed as **270**, the ledger's actual next-free
+number at restoration time, re-verified against both open PRs (`gh api .../pulls?state=open`) at
+that moment. No code change accompanies this entry -- PR #1514 is already merged and functioning;
+this is a documentation-completeness fix only.
+
+### Objective and scope
+
+No backend "settled" helper existed anywhere in this codebase before this phase -- every other call
+site inlines `balance_due <= 0` for a single order. This phase defines the run-level equivalent from
+scratch, explicitly deciding how a partial or unpaid order counts rather than leaving it ambiguous:
+
+- `total_expected_amount` sums every member order's `total_amount`.
+- `total_settled_amount` sums `amount_paid` -- a `partially_paid` downpayment order counts only what
+  has actually been collected so far, not its full total; an `unpaid` COD order counts `0` until its
+  collection is recorded through the existing payment path.
+- `total_outstanding_amount` is the derived difference.
+- `delivered_order_count` / `total_order_count` read `DeliveryJob.status === 'delivered'` -- the
+  delivery job's own status, not the order's separate `fulfillment_status`.
+
+Backend: widened `getRunDetail`'s `PosTransaction` attribute allowlist
+(`deliveryRunRepository.js`) with `total_amount`/`amount_paid`/`balance_due`/`payment_status`,
+mirrored onto `serializeDeliveryRunMember`'s `order` object, and added `buildDeliveryRunSummary` --
+an in-JS reduce with `round4` rounding, the same pattern `posRepository.js`'s
+`buildReportShiftMoney` already uses -- wired into `serializeDeliveryRun` as a `summary` block,
+present only when member orders were actually hydrated (never on the list endpoint).
+
+Frontend: new `DeliveryRunSummary.jsx` renders the four totals plus the delivered/total count,
+mounted in `DeliveryRunsWorkspacePanel.jsx`'s run detail pane above the existing
+`DeliveryRunDispatchSummary`.
+
+Files touched: `apps/dgfy-api/src/modules/pos/repositories/deliveryRunRepository.js`,
+`apps/dgfy-api/src/modules/pos/serializers/deliveryRunSerializer.js`,
+`apps/dgfy-api/tests/deliveryRunSerializer.test.js`,
+`packages/web-core/src/features/pos/components/DeliveryRunSummary.jsx` (new),
+`packages/web-core/src/features/pos/components/DeliveryRunsWorkspacePanel.jsx`,
+`packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+`docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md`.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Depends on Phase 260 (#1489)'s date-range scheduling having landed -- the run detail shape this
+phase extends. No migration, no schema change, so no deploy-order dependency on any open entry in
+`docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `apps/dgfy-api` file -- 0 errors.
+- [x] `apps/dgfy-api/tests/deliveryRunSerializer.test.js` (extended, 6 new cases) --
+  `86 passed, 6 suites passed` across the full delivery-run backend test set.
+- [x] `deliveryRunsWorkspace.behavior.test.jsx` (extended, 1 new case) -- `109 passed, 8 files
+  passed` across the full delivery-run frontend test set.
+- [x] `npm run check:architecture` -- OK (54 modules, 560 code files, 94 controller files).
+- [x] `npm run lint:docs` / `check:adr` -- OK (29 governed docs, 87 ADRs).
+- [x] `npm run build:pos` -- clean (real Vite build; owns `DeliveryRunsWorkspacePanel.jsx`).
+- [x] `npm run build:skupervisor` -- clean (`apps/dgfy-ims` also mounts the same panel via
+  `packages/web-core`).
+- [x] `npm run check:compliance` -- confirmed to fail first (all 5 touched sensitive files listed),
+  then pass once the declaration was added:
+  `docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md`.
+- [ ] Manual verification against a live query planner -- not possible in the build environment (no
+  reachable MySQL/Redis); the declaration's own "Known gap" note states this explicitly. Everything
+  else is exercised directly.
+
+### Links
+
+- Tracking issue: #1487 (`Closes`).
+- PR: `feature/1487-delivery-run-summary` → `develop`, merged as `70dae9d55c15ab7520f0a5a070058ba628237307`.
+
+### Next eligible phase
+
+**271.** Confirmed by re-reading the ledger's actual highest merged entry (270, this entry) plus
+every open PR's phase claim at plan time, per this ledger's own recurring caution against trusting a
+stale note -- this entry and Phase 266 are both filed retroactively after 263 through 269, plus the
+unrelated Phase 264 (#1511), had already claimed and merged their numbers around this gap.

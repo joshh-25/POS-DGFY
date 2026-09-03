@@ -1,11 +1,16 @@
 import { Plus } from 'lucide-react';
 
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
+import { getCheckoutAddLocationActionStyle } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_BORDER = '#5eead4';
 const SIMPLE_BRAND_SHADOW = 'rgba(23,107,58,0.16)';
 const SIMPLE_BRAND_TINT = '#FFF8E7';
+const SIMPLE_ADD_LOCATION_ACTION_STYLE = {
+  accentColor: SIMPLE_BRAND,
+  accentShadow: 'rgba(23,107,58,0.18)'
+};
 
 /**
  * MSME fulfillment saved-address selector. Mirrors FnbCheckoutSavedAddressSelector's
@@ -53,8 +58,8 @@ export function SimpleCheckoutSavedAddressSelector({
           Delivery address
         </div>
         {activeAddress ? renderAddress(activeAddress) : (
-          <button type="button" aria-label="Add New Location" onClick={onOpenMobileAddressList} style={{ minHeight: 44, borderRadius: 14, border: `1.5px solid ${SIMPLE_BRAND_BORDER}`, background: SIMPLE_BRAND_TINT, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, color: SIMPLE_BRAND, cursor: 'pointer', flexShrink: 0, boxShadow: `0 10px 20px ${SIMPLE_BRAND_SHADOW}`, transition: 'all 200ms ease', fontSize: 13 }}>
-            <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: SIMPLE_BRAND, background: SIMPLE_BRAND_TINT, transition: 'all 200ms ease' }}><Plus size={18} /></span>
+          <button type="button" aria-label="Add New Location" onClick={onOpenMobileAddressList} style={getCheckoutAddLocationActionStyle(SIMPLE_ADD_LOCATION_ACTION_STYLE)}>
+            <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: '#fff', background: 'rgba(255,255,255,.16)' }}><Plus size={18} /></span>
             Add New Location
           </button>
         )}
@@ -71,8 +76,9 @@ export function SimpleCheckoutSavedAddressSelector({
     <div style={{ display: 'grid', gap: 12 }}>
       {locations.length > 0 ? (
         <div
-          className={locations.length > 3 ? 'fnb-saved-locations-scroll' : undefined}
-          style={{ maxHeight: locations.length > 3 ? 240 : 'none', overflowY: locations.length > 3 ? 'auto' : 'visible', display: 'grid', gap: 8, paddingRight: locations.length > 3 ? 4 : 0 }}
+          className="fnb-saved-locations-scroll"
+          data-testid="saved-locations-list"
+          style={{ maxHeight: 240, overflowY: 'auto', overscrollBehavior: 'contain', display: 'grid', gap: 8, paddingRight: 4 }}
         >
           {locations.map(renderAddress)}
         </div>
@@ -84,25 +90,9 @@ export function SimpleCheckoutSavedAddressSelector({
         aria-label="Add New Location"
         title="Please pin your location in the map. Use maximize to enlarge the map."
         onClick={onStartMapPin}
-        style={{
-          minHeight: 44,
-          borderRadius: 12,
-          border: `1.5px solid ${deliveryLocationAction === 'map' ? SIMPLE_BRAND_BORDER : '#dbe5ee'}`,
-          background: deliveryLocationAction === 'map' ? SIMPLE_BRAND_TINT : '#fff',
-          padding: isMobileViewport ? '0 12px' : '0 14px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          fontWeight: 700,
-          color: '#1e293b',
-          cursor: 'pointer',
-          flexShrink: 0,
-          boxShadow: deliveryLocationAction === 'map' ? `0 10px 20px ${SIMPLE_BRAND_SHADOW}` : 'none',
-          transition: 'all 200ms ease',
-          fontSize: 13
-        }}
+        style={getCheckoutAddLocationActionStyle(SIMPLE_ADD_LOCATION_ACTION_STYLE)}
       >
-        <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: deliveryLocationAction === 'map' ? SIMPLE_BRAND : '#94a3b8', background: deliveryLocationAction === 'map' ? '#FFF7E6' : 'transparent', transition: 'all 200ms ease' }}>
+        <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: '#fff', background: 'rgba(255,255,255,.16)' }}>
           <Plus size={18} />
         </span>
         Add New Location

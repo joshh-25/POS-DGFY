@@ -42,14 +42,36 @@ const STRUCTURALLY_CANNOT_FAIL = new Set([
 // names the job and step id that enforces it. scripts/check-pr-quality-workflow.js asserts every
 // step id below is still in that file's BLOCKING_STEP_IDS -- a gate cannot be dropped locally
 // and silently regain continue-on-error in CI without failing that checker.
+//
+// #1431 Phase C/D (2026-09-03), evidence-backed re-arm: all 9 remaining gates join this map,
+// bringing required-locally to zero. `dependencies.audit.full` and `backend.test_matrix` are the
+// two deliberate exceptions -- their step in promotion-quality-gate.yml stays advisory
+// (`continue-on-error: true`) on purpose, so they have no corresponding entry in that file's
+// BLOCKING_STEP_IDS. check-pr-quality-workflow.js's checkCiEnforcedGatesAreBlocking() carries a
+// narrow ADVISORY_CI_ENFORCED_GATES allowlist naming exactly these two -- every other entry below
+// must have real blocking coverage or that check fails loudly. See
+// docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md for the Phase A run-ID evidence behind each one.
 const CI_ENFORCED_GATES = new Map([
+  ['dependencies.audit.prod',        { job: 'repository-quality',          steps: ['run_dependency_audit_prod'] }],
+  // Permanently advisory in CI (registry-dependent, findings never ship) -- see the
+  // ADVISORY_CI_ENFORCED_GATES comment in check-pr-quality-workflow.js.
+  ['dependencies.audit.full',        { job: 'repository-quality',          steps: ['run_dependency_audit_full'] }],
   ['docs.lint',                      { job: 'repository-quality',          steps: ['run_docs_lint'] }],
   ['architecture.guardrails',        { job: 'dgfy-api-quality',            steps: ['enforce_arch_guardrails', 'enforce_controller_boundaries'] }],
+  ['compliance.contracts',           { job: 'repository-quality',          steps: ['run_compliance_contracts'] }],
+  ['production.env.fixtures',        { job: 'repository-quality',          steps: ['run_production_env_fixtures'] }],
+  ['runtime.doctor',                 { job: 'dgfy-api-quality',            steps: ['run_runtime_doctor'] }],
   ['backend.lint',                   { job: 'dgfy-api-quality',            steps: ['run_api_lint'] }],
+  // Temporarily advisory in CI, pending #1015/#925/fixture-rot fixes (tracked: #1469) -- see the
+  // ADVISORY_CI_ENFORCED_GATES comment in check-pr-quality-workflow.js.
+  ['backend.test_matrix',            { job: 'dgfy-api-quality',            steps: ['run_test_matrix'] }],
   ['frontend.ims.lint',              { job: 'frontend-ims-quality',        steps: ['run_ims_lint'] }],
   ['frontend.pos.lint',              { job: 'frontend-pos-quality',        steps: ['run_pos_lint'] }],
   ['frontend.storefront.lint',       { job: 'frontend-storefront-quality', steps: ['run_storefront_lint'] }],
+  ['frontend.contracts',             { job: 'frontend-ims-quality',        steps: ['run_shared_fnb_contract_tests'] }],
   ['frontend.storefront.contracts',  { job: 'frontend-storefront-quality', steps: ['run_storefront_vitest'] }], // CI superset: unfiltered `npx vitest run`
+  ['frontend.budgets',               { job: 'frontend-budgets-quality',    steps: ['check_frontend_budgets'] }],
+  ['scroll.contracts',               { job: 'frontend-ims-quality',        steps: ['run_scroll_contracts'] }],
 ]);
 
 class GateSelectionError extends Error {
@@ -199,7 +221,7 @@ function main() {
   }
   const { onlyGates, skipGates } = selection;
   if (selection.includeCiEnforced) {
-    console.log('[gate:release:local] --include-ci-enforced -- running all 7 CI-delegated gates locally too');
+    console.log(`[gate:release:local] --include-ci-enforced -- running all ${CI_ENFORCED_GATES.size} CI-delegated gates locally too`);
   }
 
   const targetSha = (process.env.RELEASE_TARGET_SHA || captureStdout('git', ['rev-parse', 'HEAD'])).toLowerCase();

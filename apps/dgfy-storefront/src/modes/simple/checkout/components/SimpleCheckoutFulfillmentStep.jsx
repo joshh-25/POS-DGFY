@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Info, Maximize, MapPin, Navigation } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize, MapPin, Navigation, Plus } from 'lucide-react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
 import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { SimpleCheckoutExpandedMapModal } from './SimpleCheckoutExpandedMapModal.jsx';
@@ -8,6 +8,7 @@ import { SimpleCheckoutSavedAddressSelector } from './SimpleCheckoutSavedAddress
 import { SimpleSpecialInstructionsField } from './SimpleSpecialInstructionsField.jsx';
 import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
 import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
+import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_DARK = '#0F5A30';
@@ -82,11 +83,11 @@ export function SimpleCheckoutFulfillmentStep({
     showTimingStep: resolvedOrderTimingPolicy.showTimingStep,
     isDeliveryOrder
   });
+  const typography = getCheckoutStepTypography();
 
   return (
-    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16 }}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Step 2: Fulfillment</div>
-      <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Choose how and when the customer will receive the order, then add optional notes.</div>
+    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16, fontFamily: CHECKOUT_FONT_FAMILY }}>
+      <div style={{ ...typography.title, color: '#1e293b' }}>Step 2: Fulfillment</div>
 
       <SimpleCheckoutFulfillmentChoices
         fnbScheduleMode={fnbScheduleMode}
@@ -104,7 +105,7 @@ export function SimpleCheckoutFulfillmentStep({
       {isDeliveryOrder && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.address}. Where should we deliver your order?</div>
+            <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.address}. Where should we deliver your order?</div>
             <div style={{ fontSize: 12, color: '#64748b', textTransform: isMobileViewport ? 'none' : 'uppercase', letterSpacing: isMobileViewport ? 'normal' : '0.04em' }}>
               {isMobileViewport ? 'Select or pin your location on the map.' : 'Saved locations'}
             </div>
@@ -165,7 +166,7 @@ export function SimpleCheckoutFulfillmentStep({
                 />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                <div style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? SIMPLE_BRAND_SOFT : '#dbe5ee'}`, background: '#fff', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8', fontSize: 13, lineHeight: 1.4, minWidth: 0 }}>
+                <div style={{ minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? SIMPLE_BRAND_SOFT : '#dbe5ee'}`, background: '#fff', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8', ...typography.control, minWidth: 0 }}>
                   {isMobileViewport ? (
                     <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#FFF8E7', color: SIMPLE_BRAND, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
                       <MapPin size={13} />
@@ -177,19 +178,13 @@ export function SimpleCheckoutFulfillmentStep({
                     onChange={(event) => onCustomerAddressChange(event.target.value)}
                     placeholder="Pinned delivery address will appear here."
                     aria-label="Delivery address"
-                    style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, fontSize: 13, color: 'inherit', minHeight: 38 }}
+                    style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...typography.control, color: 'inherit', minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, fontFamily: CHECKOUT_FONT_FAMILY }}
                   />
                 </div>
-                <button type="button" onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${SIMPLE_BRAND}`, background: canAddPinnedLocation ? SIMPLE_BRAND : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(23,107,58,0.15)' : 'none' }}>
-                  {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}
+                <button type="button" aria-label={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} title={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${SIMPLE_BRAND}`, background: canAddPinnedLocation ? SIMPLE_BRAND : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: isMobileViewport ? 0 : '0 14px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? CHECKOUT_CONTROL_MIN_HEIGHT : 132, width: isMobileViewport ? CHECKOUT_CONTROL_MIN_HEIGHT : 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(23,107,58,0.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY, display: 'inline-grid', placeItems: 'center' }}>
+                  {isMobileViewport ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? SIMPLE_BRAND : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
                 </button>
               </div>
-              {isMobileViewport ? (
-                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Info size={15} color="#64748b" />
-                  <span>This is the address where your order will be delivered.</span>
-                </div>
-              ) : null}
               {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
             </div>
           </div>
@@ -262,7 +257,7 @@ export function SimpleCheckoutFulfillmentStep({
       )}
 
       <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.notes}. Anything else we should know?</div>
+        <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.notes}. Anything else we should know?</div>
         <SimpleSpecialInstructionsField
           specialInstructions={specialInstructions}
           onSpecialInstructionsChange={onSpecialInstructionsChange}
@@ -271,8 +266,8 @@ export function SimpleCheckoutFulfillmentStep({
 
       {!isMobileViewport && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <button type="button" onClick={onBack} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
-          <button type="button" onClick={onContinue} disabled={!simpleStepOneReady} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: simpleStepOneReady ? `linear-gradient(180deg, ${SIMPLE_BRAND} 0%, ${SIMPLE_BRAND_DARK} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, cursor: simpleStepOneReady ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
+          <button type="button" onClick={onBack} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: CHECKOUT_FONT_FAMILY }}><ChevronLeft size={18} /> Back</button>
+          <button type="button" onClick={onContinue} disabled={!simpleStepOneReady} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: 'none', background: simpleStepOneReady ? `linear-gradient(180deg, ${SIMPLE_BRAND} 0%, ${SIMPLE_BRAND_DARK} 100%)` : '#cbd5e1', color: '#fff', cursor: simpleStepOneReady ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: CHECKOUT_FONT_FAMILY }}>Continue <ChevronRight size={18} /></button>
         </div>
       )}
       {selectedLocation?.is_open === false && (

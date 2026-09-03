@@ -9,18 +9,22 @@ topic: pre_promotion_local_gate
 
 # Release Go/No-Go Checklist
 
-## This is the pre-promotion gate
+## This is no longer a pre-`main` step (updated 2026-09-03, #1431 Phase C/D)
 
-`npm run gate:release:local` (`scripts/gate-release-local.js`) **is** the pre-promotion quality
-gate for this repository. The working model: junior-dev PRs get the cheap, path-filtered checks in
-`pr-checks.yml`; Pat runs this full pass himself, on his own machine or VM, post-merge, before
-promoting `develop` work to `main` — or to `staging` first, if a promoter chooses the optional soak
-(ADR 0074, 2026-08-25; `staging` is no longer the default promotion leg).
+`npm run gate:release:local` (`scripts/gate-release-local.js`) was the pre-promotion quality gate
+for this repository through 2026-09-02. As of #1431 Phase C/D (2026-09-03), every one of its 16
+remaining gates is delegated to `promotion-quality-gate.yml`'s own quality jobs
+(`CI_ENFORCED_GATES`, 16 entries — `required_gate_count: 0` on a default run). **A promoter no
+longer runs this script before a `develop -> main` (or `staging -> main`) promotion** — the
+workflow's own blocking check-runs (14 of the 16 gates) plus its two deliberately advisory ones
+(`dependencies.audit.full`, permanently; `backend.test_matrix`, temporarily, tracked by #1469) are
+the enforcement mechanism now. `docs/ops/RELEASE_CANDIDATE_POLICY.md` and
+`.agents/skills/promoter/SKILL.md` no longer list this script as a promotion gate.
 
-**Invoke this gate. Do not reinvent test execution or rebuild a parallel gate for this purpose.**
-This document exists so that doesn't happen again — see #345 and #330, which is exactly the
-proposal-to-rebuild failure mode this doc is meant to close off. #372 (a testing agent/skill) should
-*invoke* this gate, not reimplement it.
+This document stays as **a runbook for what the 16 gates mean and how to run one manually** — via
+`--only <name>`/`--include-ci-enforced` (see "How to run it" below) — for local debugging of a
+specific check, not as a mandatory promotion step. #372 (a testing agent/skill), if built, should
+still prefer invoking a gate's own command over reimplementing it.
 
 This gate is one rung of a larger verification ladder — the compliance preflight sweep and the
 live-credential-dependent payment checks are separate rungs with their own placement and are not
@@ -105,72 +109,67 @@ Three gates (`release.target_sha`, `observability.evidence.report`, `release.ver
 — formerly #1, #18, #19) were retired 2026-09-02 by #1431 Phase 3. Their closeout records are
 in `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, "Retired gates — closed resolutions."
 
-**Delegation, added 2026-09-03 (#1431 Phase 1, PR-B): 7 of the 16 gates below no longer "run" here
-by default.** Gates 3, 4, 8, 10, 11, 12, 14 (marked **[CI]** below) run an identical command as a
-blocking step in `promotion-quality-gate.yml` on the `release/*→main` leg (PR-A, 2026-09-02); once
-that was verified trustworthy and genuinely blocking (evidence: the #1431 Phase 1 PR-B plan's V1/V2′
-V3), this script stopped running them by default — each is instead recorded `status:
-"delegated_to_ci"`, `ok: true`, `duration_ms: 0`, and logged as
+**Delegation, completed 2026-09-03 (#1431 Phase 1 PR-B through Phase C/D): all 16 gates below no
+longer "run" here by default.** Every one runs an identical command as a step in
+`promotion-quality-gate.yml`; 14 are blocking on the `release/*→main` leg, and 2
+(`dependencies.audit.full`, `backend.test_matrix`) are deliberately advisory (see
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "Current state" section for exactly which and why).
+Each is recorded `status: "delegated_to_ci"`, `ok: true`, `duration_ms: 0`, and logged as
 `[CI] <gate> :: enforced by promotion-quality-gate.yml / <job> / <step(s)>`. This does **not** flip
-`run_mode` to `"partial"` — a default run that delegates all 7 is still `"full"`; `run_mode` tracks
+`run_mode` to `"partial"` — a default run that delegates all 16 is still `"full"`; `run_mode` tracks
 whether the caller passed `--only`/`--skip`, not whether a gate ran locally or in CI. Two escape
-hatches: `--include-ci-enforced` runs all 7 locally anyway; naming a delegated gate explicitly via
-`--only` also runs it (an explicit `--only` is an explicit request, never silently delegated). A
-delegated gate's `ok: true` must not be over-read as "this ran and passed" — see the artifact's new
+hatches: `--include-ci-enforced` runs every gate locally anyway; naming a delegated gate explicitly
+via `--only` also runs it (an explicit `--only` is an explicit request, never silently delegated).
+A delegated gate's `ok: true` must not be over-read as "this ran and passed" — see the artifact's
 `required_gate_count`/`delegated_gate_count`/`ci_enforced_gates` fields below, which exist
 specifically so a reader doesn't have to infer delegation from an unusually-fast `duration_ms: 0`.
 `scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` is the compensating
 control that keeps `CI_ENFORCED_GATES` and `promotion-quality-gate.yml`'s actual blocking-step ids
-in sync — a future edit that silently regains `continue-on-error` on one of these 7 steps fails that
-check rather than silently reopening a coverage hole on both sides at once. Combined with the 3
-gates retired by Phase 3 above, `gate:release:local`'s own required set is now 9 of the original 19
-(19 − 3 retired − 7 delegated).
-
-**Open, tracked residual gap (not closed by PR-B):** no real `release/*→main` promotion PR has yet
-exercised these 7 steps as a blocking check on an actual PR's `mergeStateStatus` — the evidence
-above substitutes a `workflow_dispatch` run (command- and runner-identical, but not a PR). See
-`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "Critical caveat" section for the full evidence and
-this gap's own writeup; close it out against #1431 once a real promotion PR demonstrates the
-`mergeStateStatus: UNSTABLE` transition.
+in sync (via a two-name `ADVISORY_CI_ENFORCED_GATES` allowlist for the 2 deliberately-advisory
+gates) — a future edit that silently regains `continue-on-error` on one of the other 14 steps fails
+that check rather than silently reopening a coverage hole on both sides at once. Combined with the
+3 gates retired by Phase 3 above, `gate:release:local`'s own required set is now **0** of the
+original 19 (19 − 3 retired − 16 delegated) — see `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` for
+the full gate-by-gate closeout.
 
 | # | Gate name | Command | Notes |
 |---|---|---|---|
-| 1 | `dependencies.audit.prod` | `npm run audit:dependencies:prod` | `scripts/audit-dependencies.js --omit-dev` audits every tree unconditionally and independently: root, `apps/dgfy-api`, `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`, `apps/dgfy-migration-runner`. `packages/web-core` has no lockfile and no `node_modules`, so it is not an audit tree of its own — its dependencies are audited through whichever app links it. |
-| 2 | `dependencies.audit.full` | `npm run audit:dependencies` | Same runner and same six trees, including dev dependencies. |
-| 3 | `docs.lint` | `npm run lint:docs` | Validates every doc in `docs/_meta/document-registry.json` (this doc included) plus `check:adr`. **[CI, delegated 2026-09-03 PR-B]** |
-| 4 | `architecture.guardrails` | `npm run check:architecture` | `check:architecture-guardrails` + `check:controller-boundaries` inside `apps/dgfy-api`. **[CI, delegated 2026-09-03 PR-B]** |
-| 5 | `compliance.contracts` | `npm run check:compliance` | `check-compliance-impact.js` + `check-compliance-api-contracts.js`. |
-| 6 | `production.env.fixtures` | `npm run check:production-env` | Validates production env-var fixture coverage (hosting profiles, PayMongo, etc.). |
-| 7 | `runtime.doctor` | `npm run doctor:runtime` | `apps/dgfy-api`'s migration/column drift check. |
-| 8 | `backend.lint` | `npm --prefix apps/dgfy-api run lint` | ESLint on `apps/dgfy-api/src`. **[CI, delegated 2026-09-03 PR-B]** |
-| 9 | `backend.test_matrix` | `npm run test:backend:matrix` | The full chunked Jest matrix (`scripts/run-backend-test-matrix.js`) — needs real MySQL + Redis. The expensive gate; see cost below. |
-| 10 | `frontend.ims.lint` | `npm --prefix apps/dgfy-ims run lint` | ESLint on `apps/dgfy-ims`. **[CI, delegated 2026-09-03 PR-B]** |
-| 11 | `frontend.pos.lint` | `npm --prefix apps/dgfy-pos run lint` | ESLint on `apps/dgfy-pos`. **[CI, delegated 2026-09-03 PR-B]** |
-| 12 | `frontend.storefront.lint` | `npm --prefix apps/dgfy-storefront run lint` | ESLint on `apps/dgfy-storefront`. Each app lints separately since the frontend split (ADR 0071); there is no single frontend lint gate anymore. **[CI, delegated 2026-09-03 PR-B]** |
-| 13 | `frontend.contracts` | `npm run test:frontend:contracts` | `vitest run` filtered to `contract.test`/`integration.test`, run from `apps/dgfy-ims`. Because that workspace's Vitest `include` also covers `packages/web-core/**`, this gate exercises the shared trunk's contract suites as well as IMS's own. It does **not** cover POS-only or Storefront-only contract specs — run those from their own workspaces. |
-| 14 | `frontend.storefront.contracts` | `npm run test:frontend:contracts:storefront` | The Storefront-workspace equivalent of gate 13 — added alongside the per-app lint fan-out (#322) but never added to this table (RF-3, PR #513); this row closes that gap. **[CI, delegated 2026-09-03 PR-B]** |
-| 15 | `frontend.budgets` | `npm run check:frontend-budgets -- --report <dir>/frontend-budgets/frontend_budget_report.json` | Defaults to `owned-build` mode — builds all three apps itself (`npm --prefix apps/dgfy-ims run build`, then `apps/dgfy-pos`, then `apps/dgfy-storefront`) and reads `apps/<app>/dist/assets`. This is why the gate is slow even beyond the test matrix. |
-| 16 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2 POS scroll-contract spec files>` | Narrow, named-file regression pin on `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js` and `packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`, invoked from the IMS workspace because `packages/web-core` has no test runner of its own. |
+| 1 | `dependencies.audit.prod` | `npm run audit:dependencies:prod` | `scripts/audit-dependencies.js --omit-dev` audits every tree unconditionally and independently: root, `apps/dgfy-api`, `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`, `apps/dgfy-migration-runner`, `tests/frontend-cross-app`. `packages/web-core` has no lockfile and no `node_modules`, so it is not an audit tree of its own. **[CI, delegated + blocking 2026-09-03, Phase C/D]** |
+| 2 | `dependencies.audit.full` | `npm run audit:dependencies` | Same runner and same seven trees, including dev dependencies. **[CI, delegated, PERMANENTLY advisory 2026-09-03, Phase C/D — registry-dependent, findings never ship]** |
+| 3 | `docs.lint` | `npm run lint:docs` | Validates every doc in `docs/_meta/document-registry.json` (this doc included) plus `check:adr`. **[CI, delegated + blocking 2026-09-03 PR-B]** |
+| 4 | `architecture.guardrails` | `npm run check:architecture` | `check:architecture-guardrails` + `check:controller-boundaries` inside `apps/dgfy-api`. **[CI, delegated + blocking 2026-09-03 PR-B]** |
+| 5 | `compliance.contracts` | `npm run check:compliance` | `check-compliance-impact.js` + `check-compliance-api-contracts.js`. **[CI, delegated + blocking 2026-09-03, Phase C/D]** |
+| 6 | `production.env.fixtures` | `npm run check:production-env` | Validates production env-var fixture coverage (hosting profiles, PayMongo, etc.). **[CI, delegated + blocking 2026-09-03, Phase C/D]** |
+| 7 | `runtime.doctor` | `npm run doctor:runtime` | `apps/dgfy-api`'s migration/column drift check. **[CI, delegated + blocking 2026-09-03, Phase C/D]** |
+| 8 | `backend.lint` | `npm --prefix apps/dgfy-api run lint` | ESLint on `apps/dgfy-api/src`. **[CI, delegated + blocking 2026-09-03 PR-B]** |
+| 9 | `backend.test_matrix` | `npm run test:backend:matrix` | The full chunked Jest matrix (`scripts/run-backend-test-matrix.js`) — needs real MySQL + Redis. The expensive gate; see cost below. **[CI, delegated, TEMPORARILY advisory 2026-09-03, Phase C/D — tracked by #1469, gated on #1015/#925]** |
+| 10 | `frontend.ims.lint` | `npm --prefix apps/dgfy-ims run lint` | ESLint on `apps/dgfy-ims`. **[CI, delegated + blocking 2026-09-03 PR-B]** |
+| 11 | `frontend.pos.lint` | `npm --prefix apps/dgfy-pos run lint` | ESLint on `apps/dgfy-pos`. **[CI, delegated + blocking 2026-09-03 PR-B]** |
+| 12 | `frontend.storefront.lint` | `npm --prefix apps/dgfy-storefront run lint` | ESLint on `apps/dgfy-storefront`. Each app lints separately since the frontend split (ADR 0071); there is no single frontend lint gate anymore. **[CI, delegated + blocking 2026-09-03 PR-B]** |
+| 13 | `frontend.contracts` | `npm run test:frontend:contracts` | `vitest run` filtered to `contract.test`/`integration.test`, run from `apps/dgfy-ims`. Because that workspace's Vitest `include` also covers `packages/web-core/**`, this gate exercises the shared trunk's contract suites as well as IMS's own. It does **not** cover POS-only or Storefront-only contract specs — run those from their own workspaces. **[CI, delegated + blocking 2026-09-03, Phase C/D]** |
+| 14 | `frontend.storefront.contracts` | `npm run test:frontend:contracts:storefront` | The Storefront-workspace equivalent of gate 13 — added alongside the per-app lint fan-out (#322) but never added to this table (RF-3, PR #513); this row closes that gap. **[CI, delegated + blocking 2026-09-03 PR-B]** |
+| 15 | `frontend.budgets` | `npm run check:frontend-budgets -- --report <dir>/frontend-budgets/frontend_budget_report.json` | Defaults to `owned-build` mode — builds all three apps itself (`npm --prefix apps/dgfy-ims run build`, then `apps/dgfy-pos`, then `apps/dgfy-storefront`) and reads `apps/<app>/dist/assets`. This is why the gate is slow even beyond the test matrix. **[CI, delegated + blocking 2026-09-03, Phase C/D — CI runs a different command shape (`--skip-build --built-after`, three separate serial build steps), see `GATE_RELEASE_LOCAL_CI_MAPPING.md`'s documented exceptions]** |
+| 16 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2 POS scroll-contract spec files>` | Narrow, named-file regression pin on `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js` and `packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`, invoked from the IMS workspace because `packages/web-core` has no test runner of its own. **[CI, delegated + blocking 2026-09-03, Phase C/D]** |
 
 One gate is structurally incapable of failing on a clean promotion checkout —
 `compliance.contracts` (no compliance-relevant diff to flag) — and the artifact marks it
-`structurally_cannot_fail: true` (#1016) so a green result on it is never cited as evidence.
-The other two that used to carry that flag (`observability.evidence.report`,
-`release.verdict.contract`) were retired outright by #1431 Phase 3 rather than left green and
-un-citable.
+`structurally_cannot_fail: true` (#1016) so a green result on it is never cited as evidence. This
+does not prevent it from being genuinely blocking in CI — a real diff (via a real promotion PR)
+*can* fail it, confirmed by PR #1458's fault-probe run. The other two gates that used to carry that
+flag (`observability.evidence.report`, `release.verdict.contract`) were retired outright by #1431
+Phase 3 rather than left green and un-citable.
 
 Evidence: `.tmp/release-gates/<sha>/local_readiness.json` — `generated_at`, `target_sha`, `run_mode`
 (`full`/`partial`), `selection` (`{only, skip}`), `verdict` (`pass`/`fail`), `gate_count` (16),
-`failed_gate_count`, `skipped_gate_count`, and, since 2026-09-03 (#1431 Phase 1, PR-B),
-`required_gate_count` (gates that actually ran locally, excluding delegated and skipped),
-`delegated_gate_count` (the 7 CI-enforced gates recorded `delegated_to_ci` by default), and
-`ci_enforced_gates` (the 7 gate names `CI_ENFORCED_GATES` covers) — plus each gate's
+`failed_gate_count`, `skipped_gate_count`, `required_gate_count` (gates that actually ran locally,
+excluding delegated and skipped — **0** on a default run since 2026-09-03, #1431 Phase C/D),
+`delegated_gate_count` (all 16 gates, recorded `delegated_to_ci` by default), and
+`ci_enforced_gates` (the 16 gate names `CI_ENFORCED_GATES` covers) — plus each gate's
 `{name, ok, status, detail, duration_ms, structurally_cannot_fail}` (`status` now also takes the
-value `"delegated_to_ci"`, alongside `"pass"`/`"fail"`/`"skipped"`). A promoter's evidence paste
-should cite this artifact **and** the promotion PR's own `promotion-quality-gate` check-run for the
-7 delegated gates — the artifact alone no longer proves they ran. `gate_count` (16) reflects Phase
-3's retirement only — it counts every entry in `GATE_NAMES`, delegated or not; `required_gate_count`
-is the number that separately reflects PR-B's delegation on top of that.
+value `"delegated_to_ci"`, alongside `"pass"`/`"fail"`/`"skipped"`). Since nothing runs locally by
+default any more, the promotion PR's own `promotion-quality-gate` check-run is the evidence a
+promoter cites — this artifact is now primarily useful for `--only`/`--include-ci-enforced` local
+debugging runs, not as promotion evidence.
 
 ## Measured cost (2026-08-12, target SHA `df5e72b0`, `develop`)
 
@@ -241,13 +240,15 @@ ordinary `develop`-bound PR is still gated only by path-filtered Docker build ch
 (2026-08-25)**, the full test matrix also runs automatically in CI — `promotion-quality-gate.yml`
 (renamed from `pr-quality-checks.yml`) triggers itself on `release/*` promotion PRs into `main`
 (the default path since ADR 0074), and still also on `to-staging/*` PRs into `staging` for anyone
-using the optional soak. This is **complementary** to `gate:release:local`, not a replacement for
-it — run `gate:release:local` against the exact target SHA before every `develop -> main` promotion
-regardless (before `staging -> main`, if the optional soak was used); it is not optional polish on
-top of CI, and it's the promoter's own pre-flight (runs before the promotion branch is even cut),
-which the CI run alone can't substitute for. The one exception is #1007's phrase-gated expedited
-override, which may skip this specific gate — see `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
-2026-08-25 amendment.
+using the optional soak (skipped entirely on that leg, per #1253 — see
+`GATE_RELEASE_LOCAL_CI_MAPPING.md`'s confirmation section). **As of 2026-09-03 (#1431 Phase C/D),
+this workflow is the sole enforcement mechanism** — `gate:release:local` is no longer run as part of
+a promotion; its `required_gate_count` is 0 by design. A promoter's evidence for the release
+go/no-go decision is `gh pr checks <N>` / `gh pr view <N> --json mergeStateStatus,mergeable` against
+the promotion PR (per `AGENTS.md`'s Merge Safety hard stop), not a locally-generated
+`local_readiness.json`. The #1007 phrase-gated expedited override, which used to name
+`gate:release:local` as one of the things it could skip, is unaffected by this change in substance
+(there is nothing local left to skip) — see `AGENTS.md`'s own amendment on this.
 
 ### Authorization boundary
 

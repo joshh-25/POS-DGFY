@@ -80,8 +80,15 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // `run_shared_fnb_contract_tests` step now running `npm run test:frontend:contracts` (frontend-ims-
 // quality, gate 14) -- stay advisory pending real-promotion evidence (P2-3), same as every other
 // still-advisory step here.
+// #1529: route-build-checks routes pr-checks.yml's build-check jobs to GitHub-hosted runners for a
+// release/*|hotfix/* PR into main; these three markers replace the old
+// 'runner_labels_json: *runner_heavy' marker (which lived in the 3 frontend build-check jobs'
+// with: blocks and no longer does -- that alias usage relocated into route-build-checks's own
+// env: block under this change) and additionally guard the new job/condition from silent removal.
 const REQUIRED_PR_CHECKS_MARKERS = [
-  'runner_labels_json: *runner_heavy'
+  'RUNNER_HEAVY_JSON: *runner_heavy',
+  'route-build-checks:',
+  'release/*|hotfix/*'
 ];
 const REQUIRED_QUALITY_MARKERS = [
   'workflow_call:',
@@ -317,13 +324,41 @@ const REPORTER_JOB_NAME = 'report-advisory-failures';
 // dependency). The other 4 gates landed this PR (2, 3, 6, 14 -- `run_dependency_audit_prod`,
 // `run_dependency_audit_full`, `run_compliance_contracts`, `run_shared_fnb_contract_tests`) stay
 // advisory until P2-3 shows them green on a real release/*->main promotion.
+//
+// #1431 Phase C (2026-09-03): P2-3's real-promotion evidence pass (workflow_dispatch faults +
+// one throwaway PR-context run, see docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md for run IDs) confirms
+// 5 more of the remaining advisory steps genuinely red-on-fault / green-on-clean:
+// `run_dependency_audit_prod`, `run_compliance_contracts`, `run_runtime_doctor`,
+// `run_shared_fnb_contract_tests`, `check_frontend_budgets`. All 5 flip blocking here, bringing the
+// total to 15. `run_dependency_audit_full` (registry-dependent, findings never ship) stays advisory
+// permanently -- not a P2-3 pending case any more, a settled decision (Pat's call). `run_web_core_lint`
+// and `run_test_matrix` are the only two steps still advisory-by-design; `run_test_matrix` is
+// deliberately delegated (gate-release-local.js's ADVISORY_CI_ENFORCED_GATES equivalent) rather than
+// locally required, pending #1015/#925/fixture-rot.
 const BLOCKING_STEP_IDS = {
-  'dgfy-api-quality': ['enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint'],
-  'frontend-ims-quality': ['run_ims_lint', 'run_scroll_contracts'],
+  'dgfy-api-quality': ['enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint', 'run_runtime_doctor'],
+  'frontend-ims-quality': ['run_ims_lint', 'run_scroll_contracts', 'run_shared_fnb_contract_tests'],
   'frontend-pos-quality': ['run_pos_lint'],
   'frontend-storefront-quality': ['run_storefront_lint', 'run_storefront_vitest'],
-  'repository-quality': ['run_docs_lint', 'run_production_env_fixtures']
+  'repository-quality': ['run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts'],
+  'frontend-budgets-quality': ['check_frontend_budgets']
 };
+
+// #1431 Phase C/D (2026-09-03): two of the 16 gates in gate-release-local.js's CI_ENFORCED_GATES
+// (Phase D delegates all 16 -- required-locally is now zero) are delegated to CI but deliberately
+// NEVER blocking there, so checkCiEnforcedGatesAreBlocking's normal "every delegated step must
+// appear in BLOCKING_STEP_IDS" rule would otherwise fail loudly on both of these, permanently:
+//   - 'dependencies.audit.full' -- registry-dependent (npm audit --include=dev); a fresh advisory
+//     can flip it red with zero code change in this repo, and its findings never ship. Settled
+//     permanently advisory (Pat's call, #1431 Phase 2 exception 2), not pending further evidence.
+//   - 'backend.test_matrix' -- confirmed still failing for real (fixture rot + hosted-runner OOM,
+//     pre-existing) on every #1431 Phase A/C evidence run. #1015 (fast/DB tier split), #925
+//     (hanging beforeAll), and the fixture rot itself are its prerequisites before it can flip
+//     blocking -- tracked by #1469, filed alongside this change.
+// This is a two-name allowlist, not a bypass: every OTHER CI_ENFORCED_GATES entry must still have
+// real BLOCKING_STEP_IDS coverage, and checkCiEnforcedGatesAreBlocking still fails loudly if one
+// doesn't.
+const ADVISORY_CI_ENFORCED_GATES = new Set(['dependencies.audit.full', 'backend.test_matrix']);
 
 /**
  * #1063 (2026-08-26), temporary: replaces the old blanket "continue-on-error anywhere in this
@@ -783,6 +818,11 @@ function checkCiEnforcedGatesAreBlocking(ciEnforcedGates) {
       );
       continue;
     }
+    if (ADVISORY_CI_ENFORCED_GATES.has(gateName)) {
+      // Deliberately, permanently or temporarily advisory in CI -- see this file's own comment on
+      // ADVISORY_CI_ENFORCED_GATES for why each of the two names in that set is exempt.
+      continue;
+    }
     for (const stepId of enforcement.steps) {
       if (!blockingIds.includes(stepId)) {
         problems.push(
@@ -847,6 +887,7 @@ module.exports = {
   checkReportingJobsRespectStagingLeg,
   checkCiEnforcedGatesAreBlocking,
   BLOCKING_STEP_IDS,
+  ADVISORY_CI_ENFORCED_GATES,
   STAGING_LEG_RESPECTING_JOBS,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,

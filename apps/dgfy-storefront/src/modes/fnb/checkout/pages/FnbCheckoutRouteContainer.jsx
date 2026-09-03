@@ -2,7 +2,6 @@ import React from 'react';
 import {
   ArrowLeft,
   ChevronRight,
-  Info,
   MapPin,
   Maximize,
   Navigation,
@@ -51,6 +50,7 @@ import {
 import { FnbCheckoutRouteMount } from './FnbCheckoutRouteMount.jsx';
 import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
 import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
+import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutAddLocationActionStyle, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the inline F&B order/checkout
@@ -203,6 +203,7 @@ export function FnbCheckoutRouteContainer({
     showTimingStep: resolvedFnbOrderTimingPolicy.showTimingStep,
     isDeliveryOrder
   });
+  const checkoutTypography = getCheckoutStepTypography();
   return (
   <FnbCheckoutRouteMount
       isActive={isFnbOrderSubpage && isFnbMode && checkoutTab !== 'track'}
@@ -274,8 +275,8 @@ export function FnbCheckoutRouteContainer({
             />                      {isDeliveryOrder && (
               <div style={{ display: 'grid', gap: 16 }}>
                 <div style={{ display: 'grid', gap: 4 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{fnbSectionNumbers.address}. Where should we deliver your order?</div>
-                  <div style={{ fontSize: isFnbOrderResponsiveFlow ? 13 : 12, fontWeight: isFnbOrderResponsiveFlow ? 400 : 600, color: '#64748b', textTransform: isFnbOrderResponsiveFlow ? 'none' : 'uppercase', letterSpacing: isFnbOrderResponsiveFlow ? 'normal' : '0.04em', lineHeight: 1.5, fontFamily: servicesBodyFont }}>
+                  <div style={{ ...checkoutTypography.sectionTitle, color: '#1e293b' }}>{fnbSectionNumbers.address}. Where should we deliver your order?</div>
+                  <div style={{ ...checkoutTypography.description, color: '#64748b', textTransform: isFnbOrderResponsiveFlow ? 'none' : 'uppercase', letterSpacing: isFnbOrderResponsiveFlow ? 'normal' : '0.04em', fontFamily: CHECKOUT_FONT_FAMILY }}>
                     {isFnbOrderResponsiveFlow ? 'Select or pin your location on the map.' : 'Saved locations'}
                   </div>
                 </div>
@@ -308,7 +309,7 @@ export function FnbCheckoutRouteContainer({
                   <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: '100%', minWidth: 0 }}>
                     <div style={{ display: 'none' }} aria-hidden="true">Delivery orders need a pinned map location.</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, fontFamily: servicesBodyFont, display: isFnbOrderResponsiveFlow ? 'none' : 'block' }}>
+                      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, fontFamily: CHECKOUT_FONT_FAMILY, display: isFnbOrderResponsiveFlow ? 'none' : 'block' }}>
                         {resolvingPinnedDeliveryAddress
                           ? 'Resolving address from your pinned location...'
                           : 'Tap anywhere on the map, drag the pin, or use your current location.'}
@@ -433,7 +434,7 @@ export function FnbCheckoutRouteContainer({
                         }}
                       >
                         <div style={{
-                          minHeight: 38,
+                          minHeight: CHECKOUT_CONTROL_MIN_HEIGHT,
                           borderRadius: 12,
                           border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? fnbOrderBrandSoft : '#dbe5ee'}`,
                           background: '#fff',
@@ -442,9 +443,8 @@ export function FnbCheckoutRouteContainer({
                           alignItems: 'center',
                           gap: 10,
                           color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8',
-                          fontSize: 13,
-                          lineHeight: 1.4,
-                          fontFamily: servicesBodyFont,
+                          ...checkoutTypography.control,
+                          fontFamily: CHECKOUT_FONT_FAMILY,
                           minWidth: 0
                         }}>
                           {isFnbOrderResponsiveFlow ? (
@@ -458,19 +458,13 @@ export function FnbCheckoutRouteContainer({
                             onChange={(event) => setCustomerAddress(event.target.value)}
                             placeholder="Pinned delivery address will appear here."
                             aria-label="Delivery address"
-                            style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, fontSize: 13, color: 'inherit', minHeight: 38, fontFamily: servicesBodyFont }}
+                            style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...checkoutTypography.control, color: 'inherit', minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, fontFamily: CHECKOUT_FONT_FAMILY }}
                           />
                         </div>
-                        <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isFnbOrderResponsiveFlow ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,78,141,0.15)' : 'none', fontFamily: servicesBodyFont }}>
-                          {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}
+                        <button type="button" aria-label={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} title={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ ...checkoutTypography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: isFnbOrderResponsiveFlow ? 0 : '0 14px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isFnbOrderResponsiveFlow ? CHECKOUT_CONTROL_MIN_HEIGHT : 132, width: isFnbOrderResponsiveFlow ? CHECKOUT_CONTROL_MIN_HEIGHT : 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,78,141,0.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY, display: 'inline-grid', placeItems: 'center' }}>
+                          {isFnbOrderResponsiveFlow ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
                         </button>
                       </div>
-                      {isFnbOrderResponsiveFlow ? (
-                        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, fontFamily: servicesBodyFont, display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <Info size={15} color="#64748b" />
-                          <span>This is the address where your order will be delivered.</span>
-                        </div>
-                      ) : null}
                     </div>
                     {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
                   </div>
@@ -567,8 +561,8 @@ export function FnbCheckoutRouteContainer({
                   />
             </FnbCheckoutExpandedMapModal>
             <div style={{ display: 'grid', gap: 12 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{fnbSectionNumbers.notes}. Anything else we should know?</div>
-              <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+              <div style={{ ...checkoutTypography.sectionTitle, color: '#1e293b' }}>{fnbSectionNumbers.notes}. Anything else we should know?</div>
+              <label style={{ display: 'grid', gap: 6, ...checkoutTypography.fieldLabel, color: '#475569', fontFamily: CHECKOUT_FONT_FAMILY }}>
                 Special Instructions (optional)
                 <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value.slice(0, 250))} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ minHeight: 96, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical', boxSizing: 'border-box' }} />
                 <span style={{ justifySelf: 'end', fontSize: 12, color: '#94a3b8' }}>{Math.min(String(fnbSpecialInstructions || '').length, 250)}/250</span>
@@ -576,8 +570,8 @@ export function FnbCheckoutRouteContainer({
             </div>
             {!isFnbOrderResponsiveFlow && (
               <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12, marginTop: 4 }}>
-                <button type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: 50, borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontFamily: servicesBodyFont }}><ArrowLeft size={17} strokeWidth={2.5} />Back</button>
-                <button type="button" onClick={() => setFnbOrderStep(4)} disabled={!fnbFulfillmentStepComplete} style={{ minHeight: 50, borderRadius: 14, border: 'none', background: fnbFulfillmentStepComplete ? `linear-gradient(135deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, boxShadow: fnbFulfillmentStepComplete ? `0 14px 28px ${fnbOrderBrandShadowStrong}` : 'none', cursor: fnbFulfillmentStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontFamily: servicesBodyFont }}>Continue <ChevronRight size={17} strokeWidth={2.5} /></button>
+                <button type="button" onClick={() => setFnbOrderStep(3)} style={{ ...checkoutTypography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', color: '#334155', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: CHECKOUT_FONT_FAMILY }}><ArrowLeft size={17} strokeWidth={2.5} />Back</button>
+                <button type="button" onClick={() => setFnbOrderStep(4)} disabled={!fnbFulfillmentStepComplete} style={{ ...checkoutTypography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 14, border: 'none', background: fnbFulfillmentStepComplete ? `linear-gradient(135deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)` : '#cbd5e1', color: '#fff', boxShadow: fnbFulfillmentStepComplete ? `0 14px 28px ${fnbOrderBrandShadowStrong}` : 'none', cursor: fnbFulfillmentStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: CHECKOUT_FONT_FAMILY }}>Continue <ChevronRight size={17} strokeWidth={2.5} /></button>
               </div>
             )}
           </FnbCheckoutFulfillmentStep>
@@ -633,7 +627,6 @@ export function FnbCheckoutRouteContainer({
             brandColor={fnbOrderBrand}
             brandDark={fnbOrderBrandDark}
             canContinue={fnbCustomerStepComplete}
-            customerNotice={isDgfyCustomerSignedIn ? 'Your account details are already linked. Only order-specific instructions remain editable here.' : 'Guest checkout uses the details you entered for this order only.'}
             guestEmailVerificationContent={!isDgfyCustomerSignedIn ? (
               <FnbGuestEmailVerification
                 bodyFont={servicesBodyFont}
@@ -660,7 +653,6 @@ export function FnbCheckoutRouteContainer({
             })}
             isMobileViewport={isMobileViewport}
             isResponsive={isFnbOrderResponsiveFlow}
-            mutedTextColor={fnbOrderMutedBlueText}
             onBack={goStoreCatalogPage}
             onContinue={() => setFnbOrderStep(2)}
           />
@@ -735,7 +727,6 @@ export function FnbCheckoutRouteContainer({
                 <PaymentElectionSelector
                   accentColor={fnbOrderBrand}
                   active={isCustomerChoiceStore(selectedStore)}
-                  bodyFont={servicesBodyFont}
                   onChange={onPaymentElectionChange}
                   value={paymentElection}
                 />
@@ -745,17 +736,15 @@ export function FnbCheckoutRouteContainer({
                   onChange={handlePaymentTypeChange}
                   options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
                   DropdownComponent={StorefrontDropdown}
-                  triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' } : { minHeight: 44, borderRadius: 12 }}
+                  labelStyle={{ ...checkoutTypography.sectionTitle, color: '#1e293b', fontFamily: CHECKOUT_FONT_FAMILY }}
+                  triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, ...checkoutTypography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, padding: '0 42px 0 14px', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY } : { ...checkoutTypography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, fontFamily: CHECKOUT_FONT_FAMILY }}
                   menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}
                   optionStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_OPTION_STYLE : undefined}
-                  selectedLabelStyle={isFnbOrderResponsiveFlow ? { fontSize: 15, fontWeight: 700 } : undefined}
-                  showCashInfo={!downpaymentDisplay.active && fnbPaymentType === 'cash'}
-                  cashInfoAccent={fnbOrderBrand}
-                  bodyFont={servicesBodyFont}
+                  selectedLabelStyle={{ ...checkoutTypography.control, fontFamily: CHECKOUT_FONT_FAMILY }}
                   downpaymentCallout={(
                     <DownpaymentPaymentCallout
                       accentColor={fnbOrderBrand}
-                      bodyFont={servicesBodyFont}
+                      bodyFont={CHECKOUT_FONT_FAMILY}
                       display={downpaymentDisplay}
                       money={money}
                       orderMethod={isDeliveryOrder ? 'delivery' : 'pickup'}
@@ -892,20 +881,7 @@ export function FnbCheckoutRouteContainer({
                     setCustomerAddress('');
                     setCustomerPin(null);
                   }}
-                  style={{
-                    height: 32,
-                    borderRadius: 999,
-                    border: 'none',
-                    background: fnbOrderBrandTint,
-                    padding: '0 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontWeight: 800,
-                    color: fnbOrderBrand,
-                    cursor: 'pointer',
-                    fontSize: 13
-                  }}
+                  style={getCheckoutAddLocationActionStyle({ compact: true })}
                 >
                   <Plus size={16} strokeWidth={2.5} />
                   Add New Location

@@ -102,6 +102,22 @@ behavior; whether the *parent* directory the salvage job writes to is included i
 window is the open question) — check the runner's own configured `--work` path and whether it
 gets torn down and recreated per job vs. per registration.
 
+## Step 4b — sparse-poisoned workspace
+
+A distinct, confirmed (not merely hypothesized) cause of a job failing on this box while an
+identical job succeeds elsewhere: a `sparse-checkout:` left behind by an earlier, unrelated job
+poisons `_work` in a way `actions/checkout` cannot self-heal, and `git status` reports the tree
+clean while most of it is missing from disk. If the symptom here is a missing file/directory
+rather than an OOM signature, check this before continuing down the resource-ceiling path below:
+
+```bash
+git -C "$RUNNER_WORKSPACE" config --local --list | grep -icE 'sparse|worktreeconfig'  # >0 = poisoned
+git -C "$RUNNER_WORKSPACE" ls-files -v | grep -c '^[Sa-z]'                            # >0 = poisoned
+```
+
+Full mechanism, diagnosis signature, and the manual clearing procedure:
+`docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md` (#1528).
+
 ## Step 5 — resource ceiling vs. actual usage
 
 ```bash

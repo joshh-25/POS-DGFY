@@ -1,5 +1,7 @@
 import { ChevronDown, ChevronLeft, ChevronRight, Lock, ShoppingBag, X } from 'lucide-react';
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { StorefrontMobileCheckoutFooter } from '../../../../shared/components/StorefrontMobileCheckoutFooter.jsx';
+import { CHECKOUT_FONT_FAMILY } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_DARK = '#0F5A30';
@@ -132,8 +134,7 @@ export function SimpleCheckoutMobileSummaryPanel({
         </div>
       )}
 
-      <div key={`simple-responsive-footer-step-${orderStep}`} style={{ position: 'fixed', left: 16, right: 16, bottom: 0, zIndex: 30, marginTop: 16, padding: '0 0 calc(env(safe-area-inset-bottom, 0px) + 14px)', background: 'transparent' }}>
-        <div style={{ borderRadius: 24, border: '1px solid #dbe5ee', background: '#fff', boxShadow: '0 -16px 36px rgba(15,23,42,0.14)', padding: '14px 14px 16px', display: 'grid', gap: 14, width: '100%', maxWidth: '100%', minWidth: 0, margin: '0 auto', boxSizing: 'border-box' }}>
+      <StorefrontMobileCheckoutFooter key={`simple-responsive-footer-step-${orderStep}`}>
           <button type="button" onClick={() => setSummaryOpen((previous) => !previous)} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', gap: 12, alignItems: 'center', border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
             <div style={{ width: 46, height: 46, borderRadius: 14, border: '1px solid #dbe5ee', background: '#f0fdfa', display: 'grid', placeItems: 'center', color: SIMPLE_BRAND }}><ShoppingBag size={20} /></div>
             <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
@@ -151,8 +152,7 @@ export function SimpleCheckoutMobileSummaryPanel({
               {orderStep === 3 ? <><Lock size={18} />{checkoutLoading ? 'Processing...' : submitLabel}</> : <>Continue<ChevronRight size={20} /></>}
             </button>
           </div>
-        </div>
-      </div>
+      </StorefrontMobileCheckoutFooter>
     </>
   );
 }
@@ -162,13 +162,14 @@ function SummaryRow({ label, value }) {
 }
 
 const secondaryButtonStyle = {
-  minHeight: 38,
+  minHeight: 44,
   borderRadius: 16,
   border: '1px solid #cbd5e1',
   background: '#fff',
   color: '#1e293b',
-  fontWeight: 800,
-  fontSize: 14,
+  fontWeight: 700,
+  fontSize: 13,
+  fontFamily: CHECKOUT_FONT_FAMILY,
   cursor: 'pointer',
   display: 'inline-flex',
   alignItems: 'center',
@@ -177,12 +178,13 @@ const secondaryButtonStyle = {
 };
 
 const primaryButtonStyle = {
-  minHeight: 38,
+  minHeight: 44,
   border: 'none',
   borderRadius: 16,
   color: '#fff',
-  fontWeight: 900,
-  fontSize: 14,
+  fontWeight: 700,
+  fontSize: 13,
+  fontFamily: CHECKOUT_FONT_FAMILY,
   cursor: 'pointer',
   display: 'inline-flex',
   alignItems: 'center',

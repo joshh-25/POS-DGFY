@@ -119,10 +119,10 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
 - **Promoter/Release** (#331/#512) — runs a `develop → staging → main` promotion end to end
   (default again since #1404, 2026-09-02, reversing ADR 0074/#980's 2026-08-25 two-stage default; a
   direct `develop → main` promotion is available only as #1007's phrase-gated exception, not a
-  routine choice), cutting the promotion branch(es) itself. Dispatches DEV/STAGING deploys
-  unattended; never merges `main` or dispatches a `main`/PROD deploy without an explicit go each
-  time, except a second, narrow, phrase-gated override (#1007) — see "The #1007 promoter override"
-  below.
+  routine choice), cutting the promotion branch(es) itself. Dispatches the STAGING deploy
+  unattended (DEV dropped from the default flow — #982); never merges `main` or dispatches a
+  `main`/PROD deploy without an explicit go each time, except a second, narrow, phrase-gated
+  override (#1007) — see "The #1007 promoter override" below.
   @.agents/skills/promoter/SKILL.md
 - **Incident Responder** (#331/#546) — autonomous production incident-response loop (monitor → PM
   files → Worker fixes → fast-track Reviewer → Promoter redeploys), also reachable manually via
@@ -153,8 +153,9 @@ Added 2026-08-16 (#543), resolving the open question of what a chained instructi
 merge, and deploy" concretely does and where it stops.
 
 **What the chain actually does.** `pr-reviewer` reviews and merges (`develop`/`staging`, unattended
-per its own merge policy) → `promoter` cuts/promotes and dispatches the DEV/STAGING deploy
-(unattended) → the moment `main` is the actual target, the chain **stops**, restates the
+per its own merge policy) → `promoter` cuts/promotes and dispatches the STAGING deploy, unattended
+(DEV dropped from the default flow — #982) → the moment `main` is the actual target, the chain
+**stops**, restates the
 never-merge-`main` rule out loud, and hands the physical merge to Pat — every time, not just until
 he says go once. This is unchanged from the standing rule already in `implement` and `pr-reviewer`,
 with **two** narrow exceptions, neither a standing pre-authorization: `incident-responder`'s
@@ -186,10 +187,15 @@ statement those two documents must conform to, not a summary that can drift from
   authorization — timestamp, the phrase given, exactly what's being skipped — **before** the merge,
   not after.
 - **Skippable, only under this override:**
-  - `npm run gate:release:local` for the promotion PR.
   - The live compliance preflight sweep (`docs/compliance/request-time-preflight-protocol.md`) —
     the one case where a `NOT-EXECUTED-*` declaration may legitimately reach `main`, logged and
     authorized, not silent.
+  - `npm run gate:release:local` **is no longer listed here as of 2026-09-03 (#1431 Phase C/D)** —
+    every gate it used to run locally is now delegated to `promotion-quality-gate.yml`
+    (`required_gate_count: 0` on a default run), so there is nothing local left to skip under this
+    override or otherwise. This bullet's shape is kept, not deleted, as the historical record of
+    what this override used to cover — see `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching
+    2026-09-03 amendment and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` for the full closeout.
 - **Never skippable, under this override or any other circumstance:**
   - The production tenant-schema-sync report (`tenant-schema-report.yml`, #1017), checked against
     **production** tenant databases specifically — the control that would have caught the

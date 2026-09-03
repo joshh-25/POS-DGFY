@@ -259,8 +259,20 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.SYSTEM.actions.VIEW_AUDIT,
         PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES,
         PERMISSIONS.DOWNPAYMENT.actions.VIEW_DOWNPAYMENT_SETTINGS,
-        PERMISSIONS.VOUCHERS.actions.VIEW,
-        PERMISSIONS.VOUCHERS.actions.MANAGE
+        // #1493: manager keeps read access to voucher campaigns but no longer manages them.
+        // `vouchers:manage` is now Admin plus the mode-native `*_accounting` presets only -- see
+        // modeRolePresets.js and ADR 0020's 2026-09-03 amendment.
+        //
+        // Two things this does NOT do, both deliberate:
+        //   1. It does not revoke `vouchers:manage` from managers who already have it baked into
+        //      their stored `users.permissions` array. `resolveEffectivePermissions` only re-derives
+        //      role defaults when that array is empty, and scripts/backfill-role-permissions.js is
+        //      additive, so #655's own backfill may have written it there. Revoking those rows is
+        //      scripts/revoke-manager-voucher-manage.js, run deliberately by an operator.
+        //   2. It does not cost managers pricelist management. `vouchers:manage` is shared with
+        //      Pricelists (#732), but routes/pricelists.js still accepts the `settings:edit` arm and
+        //      is untouched by this change -- only routes/vouchers.js retired it.
+        PERMISSIONS.VOUCHERS.actions.VIEW
     ],
     staff: [
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,

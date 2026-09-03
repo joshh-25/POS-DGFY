@@ -182,6 +182,33 @@ name: Promotion Quality Gate
 # enforcement (identical in kind to how `pr-checks.yml` has always been enforced), not a new
 # technical gate GitHub itself imposes. PR-B (dropping these 7 from `gate:release:local`'s required
 # set) is a separate, later PR gated on a real `release/*->main` promotion proving them green.
+#
+# 2026-09-02 (#1431 Phase 2, P2-1/P2-2): two more steps join the blocking set from their first PR
+# (no prerequisite, no flake surface, no external dependency): `run_production_env_fixtures`
+# (`repository-quality`, gate 7) and `run_scroll_contracts` (`frontend-ims-quality`, gate 17) --
+# see each step's own inline comment. The remaining 4 gates added this phase
+# (`run_dependency_audit_prod`, `run_dependency_audit_full`, `run_compliance_contracts`,
+# `run_shared_fnb_contract_tests`) stay advisory pending real-promotion evidence (P2-3).
+#
+# 2026-09-03 (#1431 Phase C): P2-3's evidence pass -- workflow_dispatch runs on scratch branches
+# plus one throwaway PR against `main` (deleted, never merged), read via each job's own
+# `record_outcomes`/`real_failures` mechanism (the pre-override `steps.<id>.outcome`, not the
+# Actions Jobs API's post-override `steps[].conclusion` -- see the #1066 RF-1 note above for why
+# that API can't be trusted here) -- confirms 5 more steps genuinely red-on-fault, green-on-clean:
+# `run_dependency_audit_prod`, `run_compliance_contracts` (`repository-quality`); `run_runtime_doctor`
+# (`dgfy-api-quality`); `run_shared_fnb_contract_tests` (`frontend-ims-quality`);
+# `check_frontend_budgets` (`frontend-budgets-quality`). All 5 flip blocking (step-level
+# `continue-on-error: true` removed), bringing the total to 15. `run_dependency_audit_full` is a
+# settled exception, not a P2-3-pending case: it real-failed on both the clean and fault-probe runs
+# (a pre-existing npm-registry finding, unrelated to any code defect) and its verdict depends on the
+# npm registry rather than the repo -- Pat's call to keep it permanently advisory. `backend.lint`'s
+# `run_test_matrix` also stays advisory, but for a different, still-open reason: it's genuinely
+# failing (fixture rot + hosted-runner OOM), tracked via #1469, gated on #1015/#925.
+# Full run-ID evidence table and gate-by-gate disposition: docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md.
+# Phase D (same PR): every one of the 16 `gate:release:local` gates -- the 15 now blocking here plus
+# `run_dependency_audit_full`/`run_test_matrix`'s permanent/temporary advisory exemptions -- is
+# delegated out of local execution (`gate-release-local.js`'s `CI_ENFORCED_GATES`); required-locally
+# is now 0. This workflow's own quality jobs are the sole enforcement mechanism.
 on:
   pull_request:
     branches:
@@ -375,12 +402,54 @@ jobs:
           done
           [ -n "${mysql_ready:-}" ] && [ -n "${redis_ready:-}" ]
 
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
         with:
           fetch-depth: 0
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -435,15 +504,15 @@ jobs:
       # sequelize + dotenv from the API tree) cannot run there; this job already installs the API
       # deps and already migrates the same mysql:8.0 container ("Prepare test schema" above).
       # NODE_ENV: test is required -- doctor-runtime.js defaults it to development, which would
-      # send resolveDatabaseName() at sku_inventory_manager instead of DB_NAME_TEST. Advisory: one
-      # workflow_dispatch run is enough to prove it, since it has no PR-context dependency (unlike
-      # gate 6).
+      # send resolveDatabaseName() at sku_inventory_manager instead of DB_NAME_TEST.
+      # #1431 Phase C (2026-09-03): blocking -- workflow_dispatch evidence (clean pass, fault-probe
+      # real fail, see docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md) confirmed this step fails for real
+      # on a genuine defect.
       - name: Run runtime schema doctor
         id: run_runtime_doctor
         if: steps.wait_services.outcome == 'success'
         working-directory: apps/dgfy-api
         run: npm run doctor:runtime
-        continue-on-error: true
         timeout-minutes: 5
         env:
           NODE_ENV: test
@@ -643,7 +712,9 @@ jobs:
           STEP_OUTCOMES: |
             Start service containers|${{ steps.start_services.outcome }}
             Wait for service containers|${{ steps.wait_services.outcome }}
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install API dependencies|${{ steps.install_api_deps.outcome }}
             Install migration-runner dependencies|${{ steps.install_migration_runner_deps.outcome }}
@@ -714,10 +785,52 @@ jobs:
           done
           [ -n "${mysql_ready:-}" ]
 
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -770,7 +883,9 @@ jobs:
           STEP_OUTCOMES: |
             Start service containers|${{ steps.start_services.outcome }}
             Wait for service containers|${{ steps.wait_services.outcome }}
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install migration-runner dependencies|${{ steps.install_migration_runner_deps.outcome }}
             Apply migrations against a fresh MySQL schema|${{ steps.apply_migrations.outcome }}
@@ -808,10 +923,52 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -860,9 +1017,10 @@ jobs:
       # per the plan's finding 3) -- this 107-file pattern is deliberately narrower and green.
       # Advisory for one run first (P2-1), then blocking (P2-3) -- a 15x coverage increase over a
       # step nobody has ever seen red is worth one insurance-premium advisory run.
+      # #1431 Phase C (2026-09-03): blocking -- workflow_dispatch fault-probe evidence confirmed
+      # this step fails for real on a genuine defect (see docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md).
       - name: Run frontend contract tests
         id: run_shared_fnb_contract_tests
-        continue-on-error: true
         timeout-minutes: 15
         run: npm run test:frontend:contracts
 
@@ -888,7 +1046,9 @@ jobs:
         continue-on-error: true
         env:
           STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
             Run dgfy-ims lint|${{ steps.run_ims_lint.outcome }}
@@ -921,10 +1081,52 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -956,7 +1158,9 @@ jobs:
         continue-on-error: true
         env:
           STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-pos dependencies|${{ steps.install_pos_deps.outcome }}
             Run dgfy-pos lint|${{ steps.run_pos_lint.outcome }}
@@ -986,10 +1190,52 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -1066,7 +1312,9 @@ jobs:
         continue-on-error: true
         env:
           STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-storefront dependencies|${{ steps.install_storefront_deps.outcome }}
             Run dgfy-storefront lint|${{ steps.run_storefront_lint.outcome }}
@@ -1108,10 +1356,52 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -1171,13 +1461,15 @@ jobs:
         continue-on-error: true
         timeout-minutes: 10
 
+      # #1431 Phase C (2026-09-03): blocking -- workflow_dispatch evidence (clean pass, fault-probe
+      # real fail, see docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md) confirmed this step fails for real
+      # on a genuine defect.
       - name: Check frontend budgets
         id: check_frontend_budgets
         run: >-
           npm run check:frontend-budgets --
           --skip-build --built-after "$BUILD_STARTED_AT"
           --report .tmp/frontend-budgets-report.json
-        continue-on-error: true
         timeout-minutes: 5
 
       - name: Upload frontend budgets report
@@ -1197,7 +1489,9 @@ jobs:
         continue-on-error: true
         env:
           STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
             Install dgfy-pos dependencies|${{ steps.install_pos_deps.outcome }}
@@ -1234,12 +1528,54 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
         with:
           fetch-depth: 0
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -1259,20 +1595,25 @@ jobs:
 
       # #1431 Phase 2 (gate 2, dependencies.audit.prod): runs without node_modules -- lockfile +
       # network only -- but placed after the install step above for readability, matching this
-      # file's existing convention. Advisory (P2-1): a leg-agnostic remediation PR
-      # (security/audit-allowlist.json entries for express/body-parser/qs, #1444) unblocks it, but
-      # it stays continue-on-error until a real release/*->main run shows it green (P2-3).
+      # file's existing convention.
+      # #1431 Phase C (2026-09-03): blocking -- the remediation PR (#1444) landed, and
+      # workflow_dispatch fault-probe evidence confirmed this step fails for real on a genuine
+      # defect (see docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md).
       - name: Run production dependency audit
         id: run_dependency_audit_prod
         run: npm run audit:dependencies:prod
-        continue-on-error: true
         timeout-minutes: 10
 
       # #1431 Phase 2 (gate 3, dependencies.audit.full): dev-inclusive variant. Recommended
       # (Phase 2 plan section 5, exception 2) to stay advisory in CI permanently, not just until
       # P2-3 -- this is the only Phase-2 gate whose verdict depends on the npm registry rather than
       # the repo (a new dev-only advisory can flip it red with zero code change here), and its
-      # findings never ship. Flag for Pat's confirmation before P2-3 decides otherwise.
+      # findings never ship.
+      # #1431 Phase C (2026-09-03), settled: confirmed permanently advisory (Pat's call) --
+      # real-failed on both the clean and fault-probe runs (a pre-existing npm-registry finding,
+      # not something this PR's changes caused). Delegated to CI via gate-release-local.js's
+      # CI_ENFORCED_GATES, but named in scripts/check-pr-quality-workflow.js's
+      # ADVISORY_CI_ENFORCED_GATES so it never has to appear in BLOCKING_STEP_IDS.
       - name: Run full dependency audit
         id: run_dependency_audit_full
         run: npm run audit:dependencies
@@ -1283,13 +1624,13 @@ jobs:
       # fetch-depth: 0, which resolveChangedFiles()'s `git merge-base HEAD origin/$GITHUB_BASE_REF`
       # needs. PR-context only -- under workflow_dispatch/workflow_call there is no
       # GITHUB_BASE_REF, so this passes trivially (empty diff, early exit); a dispatch run is not
-      # evidence this gate works, only a real promotion PR is. Advisory until one real
-      # release/*->main PR shows it green (P2-3) -- this is the gate worth pushing hardest on, since
-      # it mechanically enforces a rule the promoter otherwise holds by hand.
+      # evidence this gate works, only a real promotion PR is.
+      # #1431 Phase C (2026-09-03): blocking -- a real PR-context run (PR #1458, closed unmerged)
+      # confirmed clean-pass/fault-fail against an actual base ref, not just a trivial dispatch
+      # early-exit (see docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md).
       - name: Run compliance contract checks
         id: run_compliance_contracts
         run: npm run check:compliance
-        continue-on-error: true
         timeout-minutes: 5
 
       # #1431 Phase 2 (gate 7, production.env.fixtures): a pure function over checked-in constants
@@ -1321,6 +1662,16 @@ jobs:
       - name: Validate runner routing contract
         id: validate_runner_routing
         run: npm run check:runner-routing && npm run test:runner-routing
+        continue-on-error: true
+        timeout-minutes: 5
+
+      # #1528: authoring-time counterpart to the runtime workspace-hygiene steps added to every
+      # self-hosted-reachable checkout site. A `sparse-checkout:` on a self-hosted job permanently
+      # poisons the shared `_work` tree for every other job on that box -- this catches the PR that
+      # would (re)introduce one, or that adds a new self-hosted checkout site without the guard.
+      - name: Validate workspace hygiene contract
+        id: validate_workspace_hygiene
+        run: npm run check:workspace-hygiene && npm run test:workspace-hygiene
         continue-on-error: true
         timeout-minutes: 5
 
@@ -1384,7 +1735,9 @@ jobs:
         continue-on-error: true
         env:
           STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install repository dependencies|${{ steps.install_repo_deps.outcome }}
             Run production dependency audit|${{ steps.run_dependency_audit_prod.outcome }}
@@ -1393,6 +1746,7 @@ jobs:
             Run production env fixture checks|${{ steps.run_production_env_fixtures.outcome }}
             Validate PR quality workflow contract|${{ steps.validate_pr_quality_workflow.outcome }}
             Validate runner routing contract|${{ steps.validate_runner_routing.outcome }}
+            Validate workspace hygiene contract|${{ steps.validate_workspace_hygiene.outcome }}
             Validate compliance sweep contract|${{ steps.validate_compliance_sweep.outcome }}
             Run governed documentation lint|${{ steps.run_docs_lint.outcome }}
             Run compatibility-seam contract gate|${{ steps.run_compat_seams.outcome }}
@@ -1513,7 +1867,7 @@ jobs:
 
             // #1431 Phase 1 (2026-09-02), PR-A: step *names* (not ids -- real_failures is built from
             // STEP_OUTCOMES' human-readable names, see each job's own record_outcomes step) for the
-            // 8 steps scripts/check-pr-quality-workflow.js's BLOCKING_STEP_IDS now marks blocking on
+            // steps scripts/check-pr-quality-workflow.js's BLOCKING_STEP_IDS now marks blocking on
             // the release/*->main leg. Keep this list and that one in sync by hand -- there is no
             // shared source at runtime (this is workflow YAML embedded JS, that is a Node script).
             const BLOCKING_STEP_NAMES = new Set([
@@ -1528,6 +1882,15 @@ jobs:
               // #1431 Phase 2 (2026-09-02), P2-1: gates 7 and 17 land blocking on their first PR.
               'Run production env fixture checks',
               'Run scroll contracts',
+              // #1431 Phase C (2026-09-03): 5 more steps flip blocking on real-promotion evidence
+              // (see docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md for run IDs). 'Run full dependency
+              // audit' is deliberately NOT here -- settled permanently advisory, see that step's
+              // own comment above.
+              'Run production dependency audit',
+              'Run compliance contract checks',
+              'Run runtime schema doctor',
+              'Run frontend contract tests',
+              'Check frontend budgets',
             ]);
 
             const lines = [];
@@ -1584,9 +1947,10 @@ jobs:
               `<!-- promotion-quality-gate-advisory-failure ${marker} run=${runId} -->`,
               `### promotion-quality-gate advisory failure(s) -- \`${headSha}\``,
               '',
-              'Since #1431 Phase 1 (PR-A) and Phase 2 (P2-1), 10 steps across these jobs are blocking (no step-level',
-              '`continue-on-error`) on the release/*->main leg and workflow_dispatch/workflow_call',
-              'runs -- a failure there already reds out the job and this workflow\'s check-run',
+              'Since #1431 Phase 1 (PR-A), Phase 2 (P2-1), and Phase C, 15 steps across these jobs are',
+              'blocking (no step-level `continue-on-error`) on the release/*->main leg and',
+              'workflow_dispatch/workflow_call runs -- a failure there already reds out the job and',
+              'this workflow\'s check-run',
               '(`AGENTS.md` Merge Safety hard stop). Every other step stays advisory',
               '(`continue-on-error: true`, #1066 correction), so a failure there alone does not block',
               'the merge. Findings below are labelled `blocking (this run is red)` vs `advisory` per',

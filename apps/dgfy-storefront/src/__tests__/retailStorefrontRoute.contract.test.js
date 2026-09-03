@@ -7,6 +7,7 @@ describe('Retail storefront route boundary', () => {
   it('dispatches Retail catalog, checkout, and storefront sections to Retail owners', () => {
     const routeContainer = readSource('app/pages/StorefrontCatalogRouteContainer.jsx');
     const retailRouteContainer = readSource('modes/retail/storefront/pages/RetailStorefrontRouteContainer.jsx');
+    const retailProductDetailsRoute = readSource('modes/retail/storefront/pages/RetailProductDetailsRoute.jsx');
     const classicCatalog = readSource('shared/components/storefront/StorefrontClassicCatalog.jsx');
     const retailCatalog = readSource('modes/retail/storefront/pages/RetailCatalogRoutePage.jsx');
     const retailSections = readSource('modes/retail/storefront/pages/RetailStorefrontRoutePage.jsx');
@@ -19,6 +20,8 @@ describe('Retail storefront route boundary', () => {
     expect(retailRouteContainer).toContain('RetailStorefrontRoutePage');
     expect(retailRouteContainer).toContain('RetailOrderPage');
     expect(retailRouteContainer).toContain('RetailTrackingRouteContainer');
+    expect(retailProductDetailsRoute).toContain("mediaObjectFit: 'cover'");
+    expect(retailProductDetailsRoute).not.toContain("mediaObjectFit: 'contain'");
     expect(retailCatalog).toContain('RetailProductCard');
     expect(retailSections).toContain('palette="retail"');
     expect(classicCatalog).not.toContain('RetailProductCard');

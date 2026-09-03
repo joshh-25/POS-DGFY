@@ -15,6 +15,15 @@ const normalizeCode = (value) => String(value ?? '').trim().toUpperCase();
 
 const scopeKey = (scope) => `${scope.scope_type}:${Number(scope.scope_ref_id)}`;
 
+// #788: the persisted `dgfy_account_id` is a CHAR(36) UUID under a case-insensitive collation, so
+// the reconcile key below must be case-insensitive too -- otherwise `replaceAccountGrants` would
+// compute a spurious insert for a re-sent id whose casing changed, and the unique index would
+// reject the whole update with a 500-shaped duplicate-key error instead of a no-op.
+const normalizeAccountId = (value) => {
+    const text = String(value ?? '').trim().toLowerCase();
+    return text === '' ? null : text;
+};
+
 const LIST_SORT_COLUMNS = Object.freeze({
     created_at: 'created_at',
     code: 'code',
@@ -40,11 +49,21 @@ export const voucherRepository = {
         return sequelize.transaction();
     },
 
+    // #1494: `includeActors` is opt-in so the hot transactional paths (create/update/redeem, which
+    // call findById repeatedly inside a lock) don't pay for a join they never display. Get/list --
+    // the only staff-admin, low-QPS read paths -- always request it (voucherUseCases.js).
     async findById(voucherId, options = {}) {
         const Voucher = dbStore.get('Voucher');
+        const User = dbStore.get('User');
         const row = await Voucher.findByPk(voucherId, {
             transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined,
+            include: options.includeActors
+                ? [
+                    { model: User, as: 'createdByUser', attributes: ['user_id', 'username'], required: false },
+                    { model: User, as: 'updatedByUser', attributes: ['user_id', 'username'], required: false }
+                ]
+                : undefined
         });
         return toPlain(row);
     },
@@ -61,8 +80,9 @@ export const voucherRepository = {
         return toPlain(row);
     },
 
-    async listVouchers(filters = {}, pagination = {}) {
+    async listVouchers(filters = {}, pagination = {}, options = {}) {
         const Voucher = dbStore.get('Voucher');
+        const User = dbStore.get('User');
         const where = {};
 
         if (Array.isArray(filters.status) && filters.status.length > 0) {
@@ -90,7 +110,13 @@ export const voucherRepository = {
             where,
             order: [[sortColumn, direction], ['voucher_id', 'DESC']],
             offset: (page - 1) * limit,
-            limit
+            limit,
+            include: options.includeActors
+                ? [
+                    { model: User, as: 'createdByUser', attributes: ['user_id', 'username'], required: false },
+                    { model: User, as: 'updatedByUser', attributes: ['user_id', 'username'], required: false }
+                ]
+                : undefined
         });
 
         return { rows: rows.map(toPlain), count };
@@ -220,6 +246,92 @@ export const voucherRepository = {
             transaction: options.transaction
         });
         return rows.map(toPlain);
+    },
+
+    /**
+     * The account allowlist for one or more account-restricted vouchers (#788, Phase 269).
+     *
+     * Batched by design, mirroring `listScopes` above one for one: the auto-apply selector
+     * evaluates N candidates in a single pass and must not issue N queries to do it.
+     *
+     * Callers hydrate ONLY vouchers whose `is_account_restricted` is set -- an unrestricted voucher
+     * has no rows here by construction, so querying for it would be a guaranteed-empty round trip
+     * on the checkout hot path.
+     *
+     * @returns {Promise<Record<number, string[]>>} account ids keyed by voucher_id. A voucher with
+     *          no rows is ABSENT from the map rather than mapped to `[]`, so a caller can tell
+     *          "restricted, allowlist genuinely empty" from "not queried" -- the distinction
+     *          `voucherEligibilityPolicy.js`'s fail-closed VOUCHER_ACCOUNT_GRANTS_UNRESOLVED
+     *          branch depends on.
+     */
+    async listAccountGrants(voucherIds, options = {}) {
+        const ids = (Array.isArray(voucherIds) ? voucherIds : [voucherIds])
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0);
+        if (ids.length === 0) return {};
+
+        const VoucherAccountGrant = dbStore.get('VoucherAccountGrant');
+        const rows = await VoucherAccountGrant.findAll({
+            where: { voucher_id: { [Op.in]: ids } },
+            order: [['voucher_account_grant_id', 'ASC']],
+            transaction: options.transaction,
+            raw: true
+        });
+
+        return rows.reduce((accumulator, row) => {
+            const voucherId = Number(row.voucher_id);
+            if (!accumulator[voucherId]) accumulator[voucherId] = [];
+            accumulator[voucherId].push(String(row.dgfy_account_id));
+            return accumulator;
+        }, {});
+    },
+
+    /**
+     * Reconcile `voucher_account_grants` to the supplied account-id set: delete what is no longer
+     * granted, insert what is new, leave untouched rows alone. Not a delete-all-then-reinsert, so
+     * `created_at` stays truthful for a grant that survives an edit -- which matters here in a way
+     * it does not for scopes, since "when was this account granted access?" is an audit question a
+     * shared-code voucher never had to answer.
+     *
+     * Exactly the same shape as `replaceScopes` above otherwise.
+     */
+    async replaceAccountGrants(voucherId, accountIds = [], options = {}) {
+        const VoucherAccountGrant = dbStore.get('VoucherAccountGrant');
+        const desired = [...new Set(
+            (Array.isArray(accountIds) ? accountIds : [])
+                .map(normalizeAccountId)
+                .filter(Boolean)
+        )];
+        const desiredKeys = new Set(desired);
+
+        const existing = await VoucherAccountGrant.findAll({
+            where: { voucher_id: voucherId },
+            transaction: options.transaction,
+            raw: true
+        });
+
+        const staleIds = existing
+            .filter((row) => !desiredKeys.has(normalizeAccountId(row.dgfy_account_id)))
+            .map((row) => row.voucher_account_grant_id);
+
+        if (staleIds.length > 0) {
+            await VoucherAccountGrant.destroy({
+                where: { voucher_account_grant_id: { [Op.in]: staleIds } },
+                transaction: options.transaction
+            });
+        }
+
+        const existingKeys = new Set(existing.map((row) => normalizeAccountId(row.dgfy_account_id)));
+        const toInsert = desired.filter((accountId) => !existingKeys.has(accountId));
+
+        if (toInsert.length > 0) {
+            await VoucherAccountGrant.bulkCreate(
+                toInsert.map((accountId) => ({ voucher_id: voucherId, dgfy_account_id: accountId })),
+                { transaction: options.transaction }
+            );
+        }
+
+        return { deleted: staleIds.length, inserted: toInsert.length };
     },
 
     /**

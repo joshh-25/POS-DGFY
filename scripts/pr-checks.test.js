@@ -5,9 +5,11 @@ const path = require('path');
 
 const {
   PATH_FILTERS,
+  BACKEND_TEST_INVENTORY_FILTER,
   parseArgs,
   detectComponents,
   classifyCiUnavailability,
+  computeOverallResult,
   renderComment,
   findLatestLocalCiComment,
 } = require('./pr-checks');
@@ -91,6 +93,105 @@ test('detectComponents flags nothing for a docs-only change', () => {
     dgfy_api: false,
     migration_runner: false,
   });
+});
+
+// --- #1454: backend-test-inventory freshness trigger -----------------------
+// Narrower than PATH_FILTERS.dgfy_api by design (only the audit's own inputs and
+// outputs), and deliberately NOT a PATH_FILTERS entry -- see the constant's own comment.
+
+test('BACKEND_TEST_INVENTORY_FILTER fires for a change under apps/dgfy-api/tests/', () => {
+  assert.equal(BACKEND_TEST_INVENTORY_FILTER.test('apps/dgfy-api/tests/example.supertest.test.js'), true);
+});
+
+test('BACKEND_TEST_INVENTORY_FILTER fires for the audit tool and its two data inputs', () => {
+  assert.equal(BACKEND_TEST_INVENTORY_FILTER.test('scripts/audit-backend-test-inventory.js'), true);
+  assert.equal(BACKEND_TEST_INVENTORY_FILTER.test('scripts/backend-test-audit-overrides.js'), true);
+  assert.equal(BACKEND_TEST_INVENTORY_FILTER.test('scripts/backend-db-dependent-tests.js'), true);
+});
+
+test('BACKEND_TEST_INVENTORY_FILTER fires when the committed inventory outputs change', () => {
+  assert.equal(BACKEND_TEST_INVENTORY_FILTER.test('docs/testing/backend-test-suite-inventory.json'), true);
+  assert.equal(BACKEND_TEST_INVENTORY_FILTER.test('docs/testing/backend-test-suite-value-audit.md'), true);
+});
+
+test('BACKEND_TEST_INVENTORY_FILTER does NOT fire for an ordinary apps/dgfy-api/src change', () => {
+  const file = 'apps/dgfy-api/src/routes/pos.js';
+  assert.equal(BACKEND_TEST_INVENTORY_FILTER.test(file), false);
+  // The property #1454 actually needs: narrower than the dgfy_api component filter,
+  // not just "narrower in spirit".
+  assert.equal(detectComponents([file]).dgfy_api, true);
+});
+
+test('BACKEND_TEST_INVENTORY_FILTER does NOT fire for an unrelated docs or scripts change', () => {
+  assert.equal(BACKEND_TEST_INVENTORY_FILTER.test('docs/ops/RUNBOOK.md'), false);
+  assert.equal(BACKEND_TEST_INVENTORY_FILTER.test('scripts/pr-checks.js'), false);
+});
+
+test('BACKEND_TEST_INVENTORY_FILTER is deliberately not a PATH_FILTERS entry', () => {
+  // Guards the shared-changed-paths.yml anti-drift test at the top of this file against
+  // a future fold-in -- this filter has no workflow counterpart and would fail it.
+  assert.ok(
+    !Object.values(PATH_FILTERS).some((r) => r.source === BACKEND_TEST_INVENTORY_FILTER.source),
+    'BACKEND_TEST_INVENTORY_FILTER must stay a separate constant, never merged into PATH_FILTERS'
+  );
+});
+
+test('root package.json still defines the audit:backend-tests:check script this check invokes', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  assert.equal(typeof pkg.scripts['audit:backend-tests:check'], 'string');
+  assert.ok(pkg.scripts['audit:backend-tests:check'].length > 0);
+});
+
+// --- computeOverallResult / RF-1 (PR #1473 review) --------------------------
+// A `warn` on the non-blocking, `excludeFromOverallResult` inventory-freshness check must
+// NOT prevent a qualifying PASS -- that's the entire reason the check is non-blocking. A
+// `warn` on any other non-blocking check keeps degrading PASS to PARTIAL, unchanged.
+
+test('a warning, excludeFromOverallResult check does not prevent PASS (RF-1 fix)', () => {
+  const checks = [
+    { name: 'ordinary pass', result: 'pass', blocking: true, excludeFromOverallResult: false },
+    {
+      name: 'backend test inventory freshness (local-only — no CI counterpart today)',
+      result: 'warn',
+      blocking: false,
+      excludeFromOverallResult: true,
+    },
+  ];
+  assert.equal(computeOverallResult(checks), 'PASS');
+});
+
+test('a warning on an ordinary non-blocking check still degrades PASS to PARTIAL', () => {
+  const checks = [
+    { name: 'ordinary pass', result: 'pass', blocking: true, excludeFromOverallResult: false },
+    { name: 'PR title conventional-commit', result: 'warn', blocking: false, excludeFromOverallResult: false },
+  ];
+  assert.equal(computeOverallResult(checks), 'PARTIAL');
+});
+
+test('a failing blocking check is FAIL regardless of any excluded warn checks present', () => {
+  const checks = [
+    { name: 'compliance', result: 'fail', blocking: true, excludeFromOverallResult: false },
+    {
+      name: 'backend test inventory freshness (local-only — no CI counterpart today)',
+      result: 'warn',
+      blocking: false,
+      excludeFromOverallResult: true,
+    },
+  ];
+  assert.equal(computeOverallResult(checks), 'FAIL');
+});
+
+test('all checks passing, including the excluded one, is PASS', () => {
+  const checks = [
+    { name: 'ordinary pass', result: 'pass', blocking: true, excludeFromOverallResult: false },
+    {
+      name: 'backend test inventory freshness (local-only — no CI counterpart today)',
+      result: 'pass',
+      blocking: false,
+      excludeFromOverallResult: true,
+    },
+  ];
+  assert.equal(computeOverallResult(checks), 'PASS');
 });
 
 // --- classifyCiUnavailability ---------------------------------------------

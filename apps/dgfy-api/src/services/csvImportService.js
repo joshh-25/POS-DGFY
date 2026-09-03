@@ -3,7 +3,7 @@ import { Op } from 'sequelize';
 import crypto from 'crypto';
 import dbStore from '../utils/dbStore.js';
 import { createItemSchema, updateItemSchema } from '../validators/itemValidator.js';
-import { createItem, updateItem } from './itemService.js';
+import { createItem, updateItem, deleteItem, reactivateItem } from './itemService.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import { getAllSettingsUseCase } from '../modules/settings/index.js';
 import { unwrapApplicationResultOrThrow } from '../modules/shared/contracts/applicationResultHelpers.js';
@@ -37,6 +37,24 @@ const VALID_TEMPLATE_WORKFLOW_MODES = ['manufacturing', ...CORRECTED_ITEM_TAXONO
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 export const TEMPLATE_SCHEMA_VERSION = 'v1';
 export const CSV_IMPORT_ROW_CONCURRENCY = 3;
+
+// #1495 Part B. `append` is the historical, and still default, behaviour: rows in the CSV are
+// created or updated and nothing else in the catalog is touched. `sync` additionally deactivates
+// currently-active items whose SKU is absent from the uploaded file. Sync is destructive-adjacent,
+// so it is gated three ways and never inferred: the caller must opt in explicitly, the deactivation
+// list must have been shown in a preview and echoed back on confirm, and the acting user needs the
+// item-delete permission on top of the import permission (enforced at the controller).
+export const IMPORT_MODES = Object.freeze({
+    APPEND: 'append',
+    SYNC: 'sync'
+});
+export const IMPORT_MODE_VALUES = Object.freeze(Object.values(IMPORT_MODES));
+
+export const normalizeImportMode = (value) => (
+    String(value ?? '').trim().toLowerCase() === IMPORT_MODES.SYNC
+        ? IMPORT_MODES.SYNC
+        : IMPORT_MODES.APPEND
+);
 const BARCODE_TEMPLATE_HEADERS = Object.freeze([
     'barcode',
     'barcode_source',
@@ -403,11 +421,93 @@ const plainItem = (item) => (
         : item
 );
 
-const buildExistingItemLookup = (existingItems = []) => new Map(
-    existingItems
-        .map((item) => plainItem(item))
-        .map((item) => [normalizeSkuLookupKey(item?.sku_code), item])
-        .filter(([skuKey]) => Boolean(skuKey))
+// #1495 Part B. Attributes the lookup needs: `name` for the deactivation preview list, and
+// `deleted_at` so a soft-deleted row can be told apart from a merely-inactive one.
+const ITEM_LOOKUP_ATTRIBUTES = Object.freeze([
+    'item_id',
+    'sku_code',
+    'name',
+    'category',
+    'product_type',
+    'unit_of_measure',
+    'status',
+    'deleted_at'
+]);
+
+// An item is "deactivated" if it is inactive by either of the two mechanisms that exist:
+// deleteItem's soft delete (status 'inactive' + deleted_at set) or a plain PUT to status
+// 'inactive' with deleted_at still null. Both make active_sku_code NULL, so both are invisible to
+// uq_items_active_sku_code and both must be matched by the import lookup.
+const isDeactivatedItem = (item) => Boolean(item?.deleted_at) || item?.status === 'inactive';
+
+// Deactivation candidates for sync mode are *only* live, active, SKU-bearing rows. Drafts are
+// excluded on purpose (an unpublished draft was never expected to appear in the merchant's
+// spreadsheet, and deactivating it would also destroy the draft state), and so are rows whose
+// status is already inactive (nothing to do).
+const isDeactivationCandidate = (item) => (
+    !item?.deleted_at && item?.status === 'active'
+);
+
+// Higher wins. Production data can legitimately hold two rows with the same sku_code -- a draft
+// and an active one, or an active one plus the duplicate rows the pre-#1495-Part-B classification
+// bug created -- and which of them an import row binds to must be deterministic rather than
+// whatever order findAll happened to return. Ties keep the first row seen.
+const existingItemPrecedence = (item) => {
+    if (item?.deleted_at) return 0;
+    if (item?.status === 'inactive') return 1;
+    if (item?.status === 'draft') return 2;
+    return 3;
+};
+
+const buildExistingItemLookup = (existingItems = []) => {
+    const lookup = new Map();
+    for (const raw of existingItems) {
+        const item = plainItem(raw);
+        const skuKey = normalizeSkuLookupKey(item?.sku_code);
+        if (!skuKey) continue;
+        const incumbent = lookup.get(skuKey);
+        if (!incumbent || existingItemPrecedence(item) > existingItemPrecedence(incumbent)) {
+            lookup.set(skuKey, item);
+        }
+    }
+    return lookup;
+};
+
+// #1495 Part B: THE fix, and the reason this loader is shared instead of the two near-identical
+// inline blocks previewImport/confirmImport used to carry.
+//
+// The old query was scoped `buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })`, and
+// buildVisibleWhere also pins deleted_at: null. A deactivated item was therefore invisible to the
+// lookup and its SKU classified CREATE. Because active_sku_code is a generated column that is NULL
+// whenever deleted_at IS NOT NULL OR status IN ('draft','inactive'), uq_items_active_sku_code
+// never fired on the insert either -- so re-importing a previously deactivated SKU silently
+// created a second, duplicate item row rather than erroring. Loading unscoped and partitioning in
+// JS is what lets a matched-but-inactive SKU be routed to REACTIVATE instead.
+const loadExistingItemIndex = async (Item) => {
+    const existingItems = await Item.findAll({ attributes: [...ITEM_LOOKUP_ATTRIBUTES] });
+    const existingItemLookup = buildExistingItemLookup(existingItems);
+    const existingSkus = new Map(
+        Array.from(existingItemLookup.entries())
+            .map(([skuKey, item]) => [skuKey, item?.item_id])
+    );
+    return { existingItemLookup, existingSkus };
+};
+
+// The sync-mode deactivation set: live active items whose SKU appears nowhere in the uploaded
+// file. Shared verbatim by previewImport and confirmImport so the confirm can never derive a
+// *wider* set than the one the preview showed -- confirm then narrows it further by intersecting
+// with the list the caller explicitly acknowledged (see confirmImport).
+const buildDeactivationCandidates = ({ existingItemLookup, presentSkus }) => (
+    Array.from(existingItemLookup.entries())
+        .filter(([skuKey, item]) => isDeactivationCandidate(item) && !presentSkus.has(skuKey))
+        .map(([skuKey, item]) => ({
+            item_id: item.item_id,
+            sku_code: item.sku_code,
+            sku_lookup_key: skuKey,
+            name: item.name || '',
+            category: item.category || ''
+        }))
+        .sort((a, b) => String(a.sku_code).localeCompare(String(b.sku_code)))
 );
 
 const normalizeImportDataForTaxonomy = (itemData, validationResult) => {
@@ -477,9 +577,14 @@ const validateItem = async (itemData, rowIndex, existingSkus, workflowMode, exis
     // Check if SKU already exists
     const skuLookupKey = normalizeSkuLookupKey(itemData.sku_code);
     if (skuLookupKey && existingSkus.has(skuLookupKey)) {
-        action = 'UPDATE';
         existingItemId = existingSkus.get(skuLookupKey);
         existingItem = existingItemLookup.get(skuLookupKey) || { item_id: existingItemId };
+        // #1495 Part B: a matched row that is currently deactivated is REACTIVATE, not UPDATE.
+        // The plain UPDATE path writes fields but never clears status/deleted_at, and its own
+        // where clause (buildVisibleWhere + status IN ('active','draft')) would not even match the
+        // row -- so the status flip has to happen first, through the conflict-safe repository
+        // path, because it re-materializes the uniquely-indexed generated active_sku_code column.
+        action = isDeactivatedItem(existingItem) ? 'REACTIVATE' : 'UPDATE';
     }
 
     // Choose validator based on action
@@ -719,9 +824,15 @@ const buildWorkflowMismatchMessage = ({
 );
 
 /**
- * Preview CSV import - validate all rows and return preview data
+ * Preview CSV import - validate all rows and return preview data.
+ *
+ * `mode` (#1495 Part B) selects append (default) vs sync. In sync mode the preview additionally
+ * computes the deactivation list -- the currently-active, SKU-bearing items whose SKU does not
+ * appear anywhere in the uploaded file. That list is MANDATORY: confirmImport refuses a sync-mode
+ * import unless the caller echoes it back, so sync can never execute without having been shown.
  */
-export const previewImport = async (csvContent) => {
+export const previewImport = async (csvContent, { mode } = {}) => {
+    const importMode = normalizeImportMode(mode);
     // Parse CSV
     const parseResult = await parseCSV(csvContent);
     if (!parseResult.success) {
@@ -777,19 +888,9 @@ export const previewImport = async (csvContent) => {
         };
     }
 
-    // Get all existing SKUs for upsert detection
+    // Get all existing SKUs for upsert detection (unscoped -- see loadExistingItemIndex).
     const Item = dbStore.get('Item');
-    const existingItems = await Item.findAll({
-        attributes: ['item_id', 'sku_code', 'category', 'product_type', 'unit_of_measure', 'status'],
-        where: buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })
-    });
-    const existingItemLookup = buildExistingItemLookup(existingItems);
-    const existingSkus = new Map(
-        existingItems
-            .map((item) => plainItem(item))
-            .map((item) => [normalizeSkuLookupKey(item?.sku_code), item?.item_id])
-            .filter(([skuKey]) => Boolean(skuKey))
-    );
+    const { existingItemLookup, existingSkus } = await loadExistingItemIndex(Item);
     const seenSkuRows = new Map();
     const rowBarcodeAliases = records.map(parseBarcodeAliasesFromRow);
     const activeBarcodeMap = await loadActiveBarcodeMap(
@@ -802,6 +903,12 @@ export const previewImport = async (csvContent) => {
     let validCount = 0;
     let createCount = 0;
     let updateCount = 0;
+    let reactivateCount = 0;
+    // Every SKU that appears in the uploaded file, INCLUDING rows that failed validation. A row
+    // the merchant typed but got wrong is still a row they intend to keep -- deactivating it
+    // because of a validation error would be silent data loss, so presence, not validity, is what
+    // spares an item from the deactivation pass.
+    const presentSkus = new Set();
 
     for (let i = 0; i < records.length; i++) {
         const row = records[i];
@@ -871,12 +978,19 @@ export const previewImport = async (csvContent) => {
             existingItemId: validation.existingItemId
         });
 
+        if (skuLookupKey) presentSkus.add(skuLookupKey);
+
         if (validation.valid) {
             validCount++;
             if (validation.action === 'CREATE') createCount++;
+            else if (validation.action === 'REACTIVATE') reactivateCount++;
             else updateCount++;
         }
     }
+
+    const deactivateRows = importMode === IMPORT_MODES.SYNC
+        ? buildDeactivationCandidates({ existingItemLookup, presentSkus })
+        : [];
 
     return {
         success: true,
@@ -886,11 +1000,15 @@ export const previewImport = async (csvContent) => {
         tenantWorkflowModeFamily,
         tenantTemplateWorkflowMode,
         templateSchemaVersion: templateMetadata.schemaVersion || null,
+        mode: importMode,
         totalRows: records.length,
         validRows: validCount,
         invalidRows: records.length - validCount,
         createCount,
         updateCount,
+        reactivateCount,
+        deactivateCount: deactivateRows.length,
+        deactivateRows,
         rows: previewRows
     };
 };
@@ -903,15 +1021,31 @@ export const previewImport = async (csvContent) => {
  * - Simple items (raw_material, packaging, supplies): bulkCreate with upsert
  * - Products: Concurrent batch processing (10 at a time)
  */
-export const confirmImport = async (rows, userId) => {
+export const confirmImport = async (rows, userId, { mode, deactivateSkus } = {}) => {
+    const importMode = normalizeImportMode(mode);
     const results = {
         created: [],
         updated: [],
+        reactivated: [],
+        deactivated: [],
+        deactivationSkipped: [],
         failed: []
     };
 
     if (!rows || !Array.isArray(rows)) {
         return { success: false, error: 'Invalid rows data provided' };
+    }
+
+    // #1495 Part B -- the preview gate, enforced server-side rather than trusted to the UI.
+    // A sync-mode confirm MUST carry the deactivation list the preview produced. An empty array is
+    // a valid acknowledgement meaning "nothing to deactivate"; a missing one means this confirm
+    // never went through a preview, and is refused rather than defaulted to deactivating anything.
+    if (importMode === IMPORT_MODES.SYNC && !Array.isArray(deactivateSkus)) {
+        return {
+            success: false,
+            error: 'Sync-mode import requires the deactivation list from the preview step. Re-run the preview and confirm from it.',
+            details: { code: 'SYNC_DEACTIVATION_NOT_ACKNOWLEDGED' }
+        };
     }
 
     const templateMetadata = inferTemplateMetadataFromRows(rows);
@@ -954,19 +1088,12 @@ export const confirmImport = async (rows, userId) => {
         };
     }
 
-    // Get all existing SKUs for re-validation for efficiency
+    // Get all existing SKUs for re-validation for efficiency (unscoped -- see
+    // loadExistingItemIndex). This snapshot is taken BEFORE anything is written, so the
+    // deactivation pass below can never see -- and therefore never deactivate -- an item this
+    // same import created moments earlier.
     const Item = dbStore.get('Item');
-    const existingItems = await Item.findAll({
-        attributes: ['item_id', 'sku_code', 'category', 'product_type', 'unit_of_measure', 'status'],
-        where: buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })
-    });
-    const existingItemLookup = buildExistingItemLookup(existingItems);
-    const existingSkus = new Map(
-        existingItems
-            .map((item) => plainItem(item))
-            .map((item) => [normalizeSkuLookupKey(item?.sku_code), item?.item_id])
-            .filter(([skuKey]) => Boolean(skuKey))
-    );
+    const { existingItemLookup, existingSkus } = await loadExistingItemIndex(Item);
     const seenSkuRows = new Map();
     const allBarcodeAliases = rows.map((row) => (
         Array.isArray(row.barcode_aliases)
@@ -1028,10 +1155,55 @@ export const confirmImport = async (rows, userId) => {
         }
     }
 
+    // === PRE-PASS: reactivate matched-but-deactivated rows (#1495 Part B) ===
+    // Must run before the create/update split below. A REACTIVATE row is an UPDATE that first
+    // needs its status flipped back through the conflict-safe repository path -- once that lands,
+    // it is an ordinary active item and the normal update path writes its CSV fields unchanged.
+    // Rows whose flip fails (most commonly a 409 because a *different* currently-active item
+    // already holds that SKU, i.e. a duplicate the old classification bug created) are reported as
+    // failed and never reach the write path, rather than being silently downgraded to a no-op.
+    const toReactivate = validRows.filter((r) => r.action === 'REACTIVATE');
+    const reactivationFailedRows = new Set();
+    if (toReactivate.length > 0) {
+        const CONCURRENCY = CSV_IMPORT_ROW_CONCURRENCY;
+        for (let i = 0; i < toReactivate.length; i += CONCURRENCY) {
+            const batch = toReactivate.slice(i, i + CONCURRENCY);
+            const batchResults = await Promise.allSettled(batch.map(async (row) => {
+                await reactivateItem(row.existingItemId, userId);
+                return row;
+            }));
+            for (let idx = 0; idx < batchResults.length; idx += 1) {
+                const row = batch[idx];
+                const outcome = batchResults[idx];
+                if (outcome.status === 'fulfilled') {
+                    // Re-label so the existing update machinery picks it up untouched; `reactivated`
+                    // is what routes its result into the reactivated bucket instead of updated.
+                    row.action = 'UPDATE';
+                    row.reactivated = true;
+                } else {
+                    reactivationFailedRows.add(row);
+                    results.failed.push({
+                        rowNumber: row.rowNumber,
+                        sku_code: row.sku_code || row.data?.sku_code || 'Unknown',
+                        errors: [`Reactivation failed: ${formatCsvImportError(outcome.reason)}`]
+                    });
+                }
+            }
+        }
+    }
+    const writableRows = reactivationFailedRows.size > 0
+        ? validRows.filter((r) => !reactivationFailedRows.has(r))
+        : validRows;
+
+    // A reactivated row's outcome belongs in `reactivated`, not `updated` -- it took a different
+    // write path and the merchant needs to see it distinctly. One helper rather than branching at
+    // each of the four update result sites.
+    const updateBucketFor = (row) => (row?.reactivated ? results.reactivated : results.updated);
+
     // Separate by import path. Flat F&B menu/beverage rows use the same validated bulk path
     // as other core item rows; rich product rows still go through itemService for related data.
-    const simpleItems = validRows.filter(r => r.data.category !== 'product' || isFlatFnbProductImportRow(r, tenantWorkflowMode));
-    const productItems = validRows.filter(r => r.data.category === 'product' && !isFlatFnbProductImportRow(r, tenantWorkflowMode));
+    const simpleItems = writableRows.filter(r => r.data.category !== 'product' || isFlatFnbProductImportRow(r, tenantWorkflowMode));
+    const productItems = writableRows.filter(r => r.data.category === 'product' && !isFlatFnbProductImportRow(r, tenantWorkflowMode));
 
     // === BATCH 1: Process simple items (raw_material, packaging, supplies) ===
     // These can use bulkCreate for much better performance
@@ -1136,7 +1308,7 @@ export const confirmImport = async (rows, userId) => {
                                 userId
                             });
                         } catch (barcodeError) {
-                            results.updated.push({
+                            updateBucketFor(result.value.row).push({
                                 rowNumber: result.value.row.rowNumber,
                                 item_id: result.value.row.existingItemId,
                                 sku_code: result.value.row.sku_code,
@@ -1145,7 +1317,7 @@ export const confirmImport = async (rows, userId) => {
                             });
                             continue;
                         }
-                        results.updated.push({
+                        updateBucketFor(result.value.row).push({
                             rowNumber: result.value.row.rowNumber,
                             item_id: result.value.row.existingItemId,
                             sku_code: result.value.row.sku_code,
@@ -1235,7 +1407,7 @@ export const confirmImport = async (rows, userId) => {
                                 userId
                             });
                         } catch (barcodeError) {
-                            results.updated.push({
+                            updateBucketFor(row).push({
                                 rowNumber: row.rowNumber,
                                 item_id: row.existingItemId,
                                 sku_code: row.sku_code,
@@ -1244,7 +1416,7 @@ export const confirmImport = async (rows, userId) => {
                             });
                             continue;
                         }
-                        results.updated.push({
+                        updateBucketFor(row).push({
                             rowNumber: row.rowNumber,
                             item_id: row.existingItemId,
                             sku_code: row.sku_code,
@@ -1266,10 +1438,68 @@ export const confirmImport = async (rows, userId) => {
         }
     }
 
+    // === BATCH 3: sync-mode deactivation of items absent from the CSV (#1495 Part B) ===
+    // Runs last, deliberately: nothing is deactivated until every create/update/reactivate in this
+    // import has been attempted.
+    if (importMode === IMPORT_MODES.SYNC) {
+        // Presence is computed from the RAW rows argument, not validRows -- an invalid row is
+        // still a row the merchant put in their spreadsheet, and must not cost that item its
+        // active status. Same rule previewImport applies, so the two agree.
+        const presentSkus = new Set(
+            rows
+                .map((row) => normalizeSkuLookupKey(row?.data?.sku_code ?? row?.sku_code))
+                .filter(Boolean)
+        );
+        // Acknowledged = what the preview actually showed the user, echoed back on confirm.
+        const acknowledgedSkus = new Set(
+            (deactivateSkus || []).map((sku) => normalizeSkuLookupKey(sku)).filter(Boolean)
+        );
+        // The intersection is the whole safety property. The server-derived set caps a client that
+        // asks for more than is actually absent; the acknowledged set caps anything that became
+        // absent between preview and confirm and was therefore never shown to the user. Only a SKU
+        // in BOTH is deactivated.
+        const toDeactivate = buildDeactivationCandidates({ existingItemLookup, presentSkus })
+            .filter((candidate) => acknowledgedSkus.has(candidate.sku_lookup_key));
+
+        const CONCURRENCY = CSV_IMPORT_ROW_CONCURRENCY;
+        for (let i = 0; i < toDeactivate.length; i += CONCURRENCY) {
+            const batch = toDeactivate.slice(i, i + CONCURRENCY);
+            const batchResults = await Promise.allSettled(
+                // deleteItem is the existing single-item deactivate path, reused rather than
+                // reimplemented -- which is what brings its referential-integrity guards along:
+                // an item still used as an ingredient in an active product, or referenced by a
+                // non-archived PO/JO, throws and is reported as skipped instead of deactivated.
+                batch.map((candidate) => deleteItem(candidate.item_id, userId))
+            );
+            for (let idx = 0; idx < batchResults.length; idx += 1) {
+                const candidate = batch[idx];
+                const outcome = batchResults[idx];
+                if (outcome.status === 'fulfilled') {
+                    results.deactivated.push({
+                        item_id: candidate.item_id,
+                        sku_code: candidate.sku_code,
+                        name: candidate.name
+                    });
+                } else {
+                    results.deactivationSkipped.push({
+                        item_id: candidate.item_id,
+                        sku_code: candidate.sku_code,
+                        name: candidate.name,
+                        reason: formatCsvImportError(outcome.reason)
+                    });
+                }
+            }
+        }
+    }
+
     return {
         success: true,
+        mode: importMode,
         createdCount: results.created.length,
         updatedCount: results.updated.length,
+        reactivatedCount: results.reactivated.length,
+        deactivatedCount: results.deactivated.length,
+        deactivationSkippedCount: results.deactivationSkipped.length,
         failedCount: results.failed.length,
         results
     };

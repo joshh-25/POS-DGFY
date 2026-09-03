@@ -18,6 +18,7 @@ export function useSignedInCheckoutAddresses({
   customerPin,
   deliveryLocationAction,
   isDeliveryOrder,
+  isCustomerLocationFlow = false,
   isFnbMode,
   isSignedIn,
   landmarkNote,
@@ -73,11 +74,13 @@ export function useSignedInCheckoutAddresses({
   const hasPinnedDeliveryLocation = Number.isFinite(Number(customerPin?.latitude))
     && Number.isFinite(Number(customerPin?.longitude));
 
-  const canAddPinnedLocation = isDeliveryOrder
-    && hasPinnedDeliveryLocation
+  const locationSelectionEnabled = isDeliveryOrder || isCustomerLocationFlow;
+  const canAddPinnedLocation = locationSelectionEnabled
     && activePinnedDeliveryAddress.length > 0
+    && (isCustomerLocationFlow || hasPinnedDeliveryLocation)
     && !deliverySavedLocations.some((location) => (
-      Number(location.latitude).toFixed(6) === Number(customerPin?.latitude).toFixed(6)
+      hasPinnedDeliveryLocation
+      && Number(location.latitude).toFixed(6) === Number(customerPin?.latitude).toFixed(6)
       && Number(location.longitude).toFixed(6) === Number(customerPin?.longitude).toFixed(6)
     ));
 
@@ -113,53 +116,81 @@ export function useSignedInCheckoutAddresses({
     setPinLocationError('');
   }, [setCustomerAddress, setCustomerPin, setDeliveryLocationAction, setPinLocationError, setResolvedDeliveryAddress, setSelectedSavedLocationId]);
 
-  const handleAddPinnedLocation = useCallback(async () => {
-    if (!canAddPinnedLocation || !hasPinnedDeliveryLocation) return;
+  const handleAddPinnedLocation = useCallback(async ({ saveAsHome = false, selectAfterSave = true } = {}) => {
+    if (!canAddPinnedLocation) return;
 
+    const existingHomeLocation = saveAsHome
+      ? accountSavedDeliveryLocations.find((location) => String(location?.label || '').trim().toLowerCase() === 'home') || null
+      : null;
     const baseLocation = {
-      label: String(landmarkNote || '').trim() || extractSavedLocationLabel(activePinnedDeliveryAddress),
+      label: saveAsHome ? 'Home' : (String(landmarkNote || '').trim() || extractSavedLocationLabel(activePinnedDeliveryAddress)),
       landmarkNote: String(landmarkNote || '').trim(),
       fullAddress: activePinnedDeliveryAddress,
-      latitude: Number(Number(customerPin.latitude).toFixed(6)),
-      longitude: Number(Number(customerPin.longitude).toFixed(6)),
+      latitude: hasPinnedDeliveryLocation ? Number(Number(customerPin.latitude).toFixed(6)) : null,
+      longitude: hasPinnedDeliveryLocation ? Number(Number(customerPin.longitude).toFixed(6)) : null,
       recommended: false
     };
 
+    // Customer-location service bookings use the address as the handoff
+    // payload. They should not require a delivery pin or persist a service
+    // address as a F&B account address before the booking is submitted.
+    if (isCustomerLocationFlow && !hasPinnedDeliveryLocation && !saveAsHome) {
+      setDeliveryLocationAction('saved');
+      setSelectedSavedLocationId('');
+      setPinLocationError('');
+      toast.success('Service address added.');
+      return;
+    }
+
     if (isSignedIn) {
       try {
-        const created = await requestJson('/api/v1/dgfy/customer/addresses', {
-          method: 'POST',
+        const addressEndpoint = existingHomeLocation?.addressId
+          ? `/api/v1/dgfy/customer/addresses/${encodeURIComponent(existingHomeLocation.addressId)}`
+          : '/api/v1/dgfy/customer/addresses';
+        const saved = await requestJson(addressEndpoint, {
+          method: existingHomeLocation?.addressId ? 'PUT' : 'POST',
           authToken,
           body: {
             label: baseLocation.label,
             address_line: baseLocation.fullAddress,
             latitude: baseLocation.latitude,
             longitude: baseLocation.longitude,
-            is_default: accountSavedDeliveryLocations.length === 0
+            is_default: saveAsHome || accountSavedDeliveryLocations.length === 0
           }
         });
-        await refreshDgfyCheckoutAddresses();
-        const nextAddressId = created?.address?.address_id || created?.address_id || null;
-        if (nextAddressId) setSelectedSavedLocationId(`account-address-${nextAddressId}`);
+        const refreshedAddresses = await refreshDgfyCheckoutAddresses() || [];
+        const nextAddressId = saved?.address?.address_id
+          || saved?.address_id
+          || existingHomeLocation?.addressId
+          || refreshedAddresses.find((address) => String(address?.label || '').trim().toLowerCase() === 'home' && String(address?.address_line || '').trim() === String(baseLocation.fullAddress || '').trim())?.address_id
+          || null;
+        if (selectAfterSave && nextAddressId) setSelectedSavedLocationId(`account-address-${nextAddressId}`);
+        if (!selectAfterSave) setSelectedSavedLocationId('');
         setDeliveryLocationAction('saved');
-        toast.success('Address saved to your account.');
+        toast.success(saveAsHome ? (existingHomeLocation ? 'Home location updated.' : 'Home location saved.') : 'Address saved to your account.');
       } catch (error) {
-        toast.error(normalizeErrorMessage(error, 'Unable to save address.'));
+        toast.error(normalizeErrorMessage(error, saveAsHome ? 'Unable to save your Home location.' : 'Unable to save address.'));
       }
       return;
     }
 
     const newLocation = { id: `saved-location-${Date.now()}`, source: 'local', ...baseLocation };
-    setSavedPinnedLocations((previous) => [...previous, newLocation]);
-    setSelectedSavedLocationId(newLocation.id);
+    setSavedPinnedLocations((previous) => {
+      const withoutExistingHome = saveAsHome
+        ? previous.filter((location) => String(location?.label || '').trim().toLowerCase() !== 'home')
+        : previous;
+      return [...withoutExistingHome, newLocation];
+    });
+    if (selectAfterSave) setSelectedSavedLocationId(newLocation.id);
+    if (!selectAfterSave) setSelectedSavedLocationId('');
     setDeliveryLocationAction('saved');
     writeGuestDeliveryAddress({
       addressLine: baseLocation.fullAddress,
       latitude: baseLocation.latitude,
       longitude: baseLocation.longitude
     });
-    toast.success('Saved location added.');
-  }, [accountSavedDeliveryLocations.length, activePinnedDeliveryAddress, authToken, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation, isSignedIn, landmarkNote, normalizeErrorMessage, refreshDgfyCheckoutAddresses, requestJson, setDeliveryLocationAction, setSavedPinnedLocations, setSelectedSavedLocationId, toast]);
+    toast.success(saveAsHome ? 'Home location saved for this session.' : 'Saved location added.');
+  }, [accountSavedDeliveryLocations, activePinnedDeliveryAddress, authToken, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation, isCustomerLocationFlow, isSignedIn, landmarkNote, normalizeErrorMessage, refreshDgfyCheckoutAddresses, requestJson, setDeliveryLocationAction, setPinLocationError, setSavedPinnedLocations, setSelectedSavedLocationId, toast]);
 
   const handleSetDefaultDeliveryAddress = useCallback(async (location) => {
     if (!location?.addressId) return;
@@ -225,7 +256,7 @@ export function useSignedInCheckoutAddresses({
 
   useEffect(() => {
     if (!isDeliveryOrder) return;
-    if (isSignedIn && defaultAccountDeliveryLocation) {
+    if (isSignedIn && defaultAccountDeliveryLocation && !isCustomerLocationFlow) {
       if (deliveryLocationAction === 'map' || deliveryLocationAction === 'current') return;
       if (String(customerAddress || '').trim()) return;
       applySavedDeliveryLocation(defaultAccountDeliveryLocation);
@@ -235,7 +266,7 @@ export function useSignedInCheckoutAddresses({
     if (deliveryLocationAction === 'map' || deliveryLocationAction === 'current') return;
     if (hasPinnedDeliveryLocation || String(customerAddress || '').trim()) return;
     applySavedDeliveryLocation(FNB_RECOMMENDED_LOCATION);
-  }, [applySavedDeliveryLocation, customerAddress, defaultAccountDeliveryLocation, deliveryLocationAction, hasPinnedDeliveryLocation, isDeliveryOrder, isFnbMode, isSignedIn]);
+  }, [applySavedDeliveryLocation, customerAddress, defaultAccountDeliveryLocation, deliveryLocationAction, hasPinnedDeliveryLocation, isCustomerLocationFlow, isDeliveryOrder, isFnbMode, isSignedIn]);
 
   return {
     accountSavedDeliveryLocations,

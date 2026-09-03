@@ -17,6 +17,7 @@ import DeliveryRunFormDialog from './DeliveryRunFormDialog.jsx';
 import DeliveryRunPersonnelEditor from './DeliveryRunPersonnelEditor.jsx';
 import DeliveryRunMembersList from './DeliveryRunMembersList.jsx';
 import DeliveryRunDispatchSummary from './DeliveryRunDispatchSummary.jsx';
+import DeliveryRunSummary from './DeliveryRunSummary.jsx';
 import { getDeliveryRunDispatchReasonMessage } from '../utils/deliveryRunDispatchReasons.js';
 
 // Phase 226 (#1273). Self-contained master/detail panel over Phase 225's delivery-run API,
@@ -34,6 +35,15 @@ const RUN_STATUS_LABELS = Object.freeze({
 });
 
 const LOCKED_RUN_STATUSES = new Set(['dispatched', 'completed']);
+
+// Phase 260 (#1489): scheduled_date/scheduled_date_end is a range now, not a single point in
+// time. No end date (or an end equal to the start) still displays as a single-day run.
+const formatRunScheduleLabel = (run) => {
+  if (!run.scheduled_date) return 'No schedule set';
+  const start = String(run.scheduled_date).slice(0, 10);
+  const end = run.scheduled_date_end ? String(run.scheduled_date_end).slice(0, 10) : null;
+  return end && end !== start ? `${start} → ${end}` : start;
+};
 
 // Phase 228 (#1273/#1271). Distinct from LOCKED_RUN_STATUSES above -- `dispatched` is deliberately
 // absent here, matching buildDispatchDeliveryRunUseCase's own RUN_DISPATCH_BLOCKED_STATUSES: the
@@ -491,7 +501,7 @@ export default function DeliveryRunsWorkspacePanel({
                 </span>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                {run.scheduled_date ? String(run.scheduled_date).slice(0, 10) : 'No schedule set'}
+                {formatRunScheduleLabel(run)}
                 {' · '}
                 {Number.isFinite(Number(run.member_count)) ? run.member_count : 0} order(s)
               </p>
@@ -535,6 +545,8 @@ export default function DeliveryRunsWorkspacePanel({
                   {unpackedMembers.map((member) => `#${member.pos_transaction_id}`).join(', ')}.
                 </p>
               ) : null}
+
+              <DeliveryRunSummary summary={selectedRun.summary} />
 
               <DeliveryRunDispatchSummary result={dispatchResult} />
 

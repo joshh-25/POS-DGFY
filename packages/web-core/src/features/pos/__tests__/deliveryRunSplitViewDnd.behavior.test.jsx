@@ -1,10 +1,14 @@
 /** @vitest-environment jsdom */
 
-// Phase 229 (#1289). Covers the split ("Queue + Run") view: the retail + >=1280px viewport gate,
-// the mode-flip reset, drag-to-assign wiring (mocked dnd-kit per the plan's own risk table --
-// "the component test asserts wiring through mocked handlers rather than simulating a real
-// drag"), idempotency-key retention/regeneration on the drag path, drag disablement, and that the
-// checkbox + QueueRunAssignBar path still works unchanged inside the split panel.
+// Phase 229 (#1289), extended Phase 257 (#1491). Covers the split ("Queue + Run") view: the
+// retail + >=768px viewport gate (lowered from 1024px by #1491, sourced from
+// POS_TABLET_MIN_WIDTH_PX -- see TerminalOperationsPanels.jsx's SPLIT_VIEW_MIN_WIDTH_PX comment
+// for the full history), the mode-flip reset, drag-to-assign wiring (mocked dnd-kit per the
+// plan's own risk table -- "the component test asserts wiring through mocked handlers rather than
+// simulating a real drag"), idempotency-key retention/regeneration on the drag path, drag
+// disablement, that the checkbox + QueueRunAssignBar path still works unchanged inside the split
+// panel, and (#1491 Part 2) that the split view hides already-assigned orders while the
+// standalone Active Queue tab does not.
 
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -157,7 +161,7 @@ beforeEach(() => {
 });
 
 describe('Split tab visibility gate', () => {
-  it('shows the split tab only in retail mode and only at >=1280px', async () => {
+  it('shows the split tab only in retail mode and only at >=768px', async () => {
     installMatchMedia(true);
     const { unmount } = render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
     expect(await screen.findByRole('tab', { name: /Queue \+ Run/i })).toBeTruthy();
@@ -167,9 +171,36 @@ describe('Split tab visibility gate', () => {
     expect(screen.queryByRole('tab', { name: /Queue \+ Run/i })).toBeNull();
   });
 
-  it('does not show the split tab under 1280px even in retail mode', async () => {
+  it('does not show the split tab under 768px even in retail mode', async () => {
     installMatchMedia(false);
     render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
+    expect(await screen.findByRole('tab', { name: /Active Queue/i })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: /Queue \+ Run/i })).toBeNull();
+  });
+
+  // #1491: regression guard against the threshold drifting again (1280 -> 1024 -> 768) -- asserts
+  // the actual media-query string the gate builds, not just the mocked boolean the other tests in
+  // this describe block use (installMatchMedia ignores the query argument entirely).
+  it('queries matchMedia for exactly (min-width: 768px), not the old 1024px/1280px thresholds', async () => {
+    installMatchMedia(true);
+    render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
+    await screen.findByRole('tab', { name: /Queue \+ Run/i });
+    expect(window.matchMedia).toHaveBeenCalledWith('(min-width: 768px)');
+  });
+
+  // #1491: a portrait iPad (mini/standard/Air/11"-Pro, ~768-834px CSS width) narrowing further --
+  // e.g. entering split-screen multitasking -- must still force the reset effect out of the split
+  // view exactly as it already does above the old 1024px threshold.
+  it('force-navigates out of the split view when matchMedia flips to non-matching mid-session, at the new 768px threshold', async () => {
+    const mql = installMatchMedia(true);
+    render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Queue \+ Run/i }));
+    expect(await screen.findByLabelText('Split view target delivery run')).toBeTruthy();
+
+    mql.dispatchChange(false);
+
+    await waitFor(() => expect(screen.queryByLabelText('Split view target delivery run')).toBeNull());
     expect(await screen.findByRole('tab', { name: /Active Queue/i })).toBeTruthy();
     expect(screen.queryByRole('tab', { name: /Queue \+ Run/i })).toBeNull();
   });
@@ -289,5 +320,52 @@ describe('Checkbox + assign-bar path inside the split panel', () => {
     const [runId, payload] = addDeliveryRunMembers.mock.calls[0];
     expect(runId).toBe(501);
     expect(payload.pos_transaction_ids).toEqual([9001]);
+  });
+});
+
+// #1491 Part 2: the split view's own candidate list hides orders already assigned to a run --
+// scoped to this one call site (`splitQueueCandidates`), never the standalone Active Queue tab's
+// own `runFilter`/`visibleIncomingOrders`. This is the regression guard for that scoping decision
+// -- see TerminalOperationsPanels.jsx's `splitQueueCandidates` comment for the full analysis of
+// why a shared-default flip would have hidden, by default, every order an operator still needs
+// per-order actions (cash collection, balance settlement, status change) for.
+describe('Hide already-assigned orders in the split view only (#1491 Part 2)', () => {
+  it('omits an already-assigned order from the split view\'s rendered list and QueueRunAssignBar counts', async () => {
+    const unassigned = buildOrder({ pos_transaction_id: 9001 });
+    const alreadyAssigned = buildOrder({
+      pos_transaction_id: 9002,
+      deliveryJob: { provider: 'manual', status: 'assigned', delivery_run_id: 501 }
+    });
+
+    render(<IncomingQueueWorkspace {...baseProps({
+      incomingOrdersState: { orders: [unassigned, alreadyAssigned], accessState: 'allowed', errorMessage: '' }
+    })} />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Queue \+ Run/i }));
+    await waitFor(() => expect(fetchDeliveryRuns).toHaveBeenCalled());
+
+    expect(await screen.findByLabelText(/Select order 9001/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/Select order 9002/i)).toBeNull();
+    // The informational hint names the one hidden order.
+    expect(await screen.findByText(/1 order already assigned to a run is hidden here/i)).toBeTruthy();
+  });
+
+  it('leaves the standalone Active Queue tab\'s own list unaffected by the same fixture', async () => {
+    const unassigned = buildOrder({ pos_transaction_id: 9001 });
+    const alreadyAssigned = buildOrder({
+      pos_transaction_id: 9002,
+      deliveryJob: { provider: 'manual', status: 'assigned', delivery_run_id: 501 }
+    });
+
+    render(<IncomingQueueWorkspace {...baseProps({
+      incomingOrdersState: { orders: [unassigned, alreadyAssigned], accessState: 'allowed', errorMessage: '' }
+    })} />);
+
+    // Default tab is Active Queue -- never navigate into the split view in this test. The
+    // already-assigned order's checkbox is still present, just rendered ineligible (a different
+    // aria-label -- QueueOrderSelectCheckbox.jsx's own "not eligible" branch, ALREADY_IN_RUN) --
+    // it must still be there at all, unlike the split view above.
+    expect(await screen.findByLabelText(/Select order 9001/i)).toBeTruthy();
+    expect(await screen.findByLabelText(/order 9002 is not eligible for bulk add to run/i)).toBeTruthy();
   });
 });

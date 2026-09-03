@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FnbProductDesktopPurchasePanel } from '../modes/fnb/storefront/components/FnbProductDesktopPurchasePanel.jsx';
 import { FnbProductInfoHeader } from '../modes/fnb/storefront/components/FnbProductInfoHeader.jsx';
 import { FnbProductPriceQuantitySelector } from '../modes/fnb/storefront/components/FnbProductPriceQuantitySelector.jsx';
-import { FnbProductMediaGallery } from '../modes/fnb/storefront/components/FnbProductMediaGallery.jsx';
+import { StorefrontProductMediaGallery } from '../shared/components/storefront/StorefrontProductMediaGallery.jsx';
 
 const actionButtonBase = {
   minHeight: 46,
@@ -17,15 +17,15 @@ const actionButtonBase = {
 afterEach(cleanup);
 
 describe('retail product-details presentation', () => {
-  it('keeps large retail images contained inside the fixed media viewport', () => {
+  it('fills the retail media viewport with the shared cover treatment', () => {
     render(
-      <FnbProductMediaGallery
+      <StorefrontProductMediaGallery
         available
         availabilityLabel="Available"
         imageSources={{ src: '/large-product.png' }}
         imageUrl="/large-product.png"
         itemName="Tall product package"
-        objectFit="contain"
+        objectFit="cover"
         sectionLabel="Retail"
         standardImageHeight={450}
       />
@@ -34,7 +34,7 @@ describe('retail product-details presentation', () => {
     const image = screen.getByAltText('Tall product package');
     const gallery = image.parentElement.parentElement;
 
-    expect(image.style.objectFit).toBe('contain');
+    expect(image.style.objectFit).toBe('cover');
     expect(image.style.maxWidth).toBe('100%');
     expect(gallery.style.width).toBe('100%');
     expect(gallery.style.maxWidth).toBe('100%');

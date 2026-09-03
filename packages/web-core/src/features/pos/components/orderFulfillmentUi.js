@@ -147,6 +147,30 @@ export const getFulfillmentActionLabel = (status, order = {}) => {
   return FULFILLMENT_ACTION_LABELS[normalizedStatus] || FULFILLMENT_STATUS_LABELS[normalizedStatus] || status;
 };
 
+// #1492: which voucher(s), if any, an order applied. Handles two shapes so every consumer can call
+// this the same way regardless of which backend endpoint fed `order` --
+//   - `applied_vouchers`: already projected server-side (posUseCases.js's buildListPosTransactionsUseCase
+//     decoration, storeUseCases.js's serializeOrderForCustomer) -- passed through as-is.
+//   - `voucherRedemptions`: the raw Sequelize association (posRepository.js's buildTransactionInclude,
+//     used by the incoming-queue/order-detail/order-history reads, which have no per-row decoration
+//     step of their own) -- projected here to the same shape.
+// Both are already scoped to entry_type: 'redemption' at the query level, so no further filtering
+// on that axis is needed here.
+export const resolveAppliedVouchers = (order = {}) => {
+  if (Array.isArray(order?.applied_vouchers)) {
+    return order.applied_vouchers.filter((voucher) => voucher?.code);
+  }
+  const redemptions = Array.isArray(order?.voucherRedemptions) ? order.voucherRedemptions : [];
+  return redemptions
+    .map((redemption) => ({
+      voucher_id: redemption?.voucher_id ?? null,
+      code: redemption?.code_snapshot || null,
+      benefit_target: redemption?.benefit_config_snapshot?.benefit_target === 'delivery' ? 'delivery' : 'items',
+      discount_amount: redemption?.discount_centavos != null ? Number(redemption.discount_centavos) / 100 : null
+    }))
+    .filter((voucher) => voucher.code);
+};
+
 export const getIncomingOrderUtilityActions = (order = {}) => {
   const current = String(order.fulfillment_status || '').trim();
   const method = String(order.order_method || '').trim();

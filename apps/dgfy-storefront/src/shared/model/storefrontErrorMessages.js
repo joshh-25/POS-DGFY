@@ -63,6 +63,18 @@ export const normalizeStorefrontErrorMessage = (error, fallback = 'Request faile
     return 'Kitchen order could not be queued. Ask staff to refresh the F&B setup, then retry checkout.';
   }
 
+  // #788 (Phase 269): account-restricted vouchers. Handled here, ahead of the generic
+  // VALIDATION_FAILED branch below, for the same reason GUEST_CHECKOUT_DISABLED is: "you need to
+  // sign in" is a distinct, actionable outcome, not a form-validation complaint. Two codes, two
+  // different answers -- telling an already-signed-in shopper to sign in would send them in a
+  // loop, which is exactly why the API emits them separately.
+  if (reasonCode === 'VOUCHER_ACCOUNT_REQUIRED') {
+    return 'This voucher was issued to a specific DGFY account. Sign in with that account to use it.';
+  }
+  if (reasonCode === 'VOUCHER_ACCOUNT_NOT_ELIGIBLE') {
+    return 'This voucher was not issued to your DGFY account.';
+  }
+
   if (errorCode === 'RESOURCE_NOT_FOUND') {
     return 'Tracking PIN not found. Verify the latest PIN from your checkout confirmation.';
   }

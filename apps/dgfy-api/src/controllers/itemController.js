@@ -9,6 +9,7 @@ export {
   updateItem,
   finalizeItem,
   deleteItem,
+  restoreItem,
   getItemStockHistory,
   getItemBatches,
   getItemMovements,
@@ -44,7 +45,9 @@ export {
   getFolders,
   createFolder,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  listItemFolders,
+  replaceItemFolders
 } from '../modules/inventory/controllers/itemHandlers.js';
 
 import {
@@ -54,6 +57,7 @@ import {
   updateItem,
   finalizeItem,
   deleteItem,
+  restoreItem,
   getItemStockHistory,
   getItemBatches,
   getItemMovements,
@@ -89,7 +93,9 @@ import {
   getFolders,
   createFolder,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  listItemFolders,
+  replaceItemFolders
 } from '../modules/inventory/controllers/itemHandlers.js';
 
 export default {
@@ -99,6 +105,7 @@ export default {
   updateItem,
   finalizeItem,
   deleteItem,
+  restoreItem,
   getItemStockHistory,
   getItemBatches,
   getItemMovements,
@@ -134,5 +141,7 @@ export default {
   getFolders,
   createFolder,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  listItemFolders,
+  replaceItemFolders
 };

@@ -32,7 +32,9 @@ const VOUCHER_DEFAULTS = {
     redeemed_value_centavos: 0,
     redeemed_quantity: 0,
     status: 'active',
-    version: 0
+    version: 0,
+    // #788 (Phase 269): unrestricted by default.
+    is_account_restricted: false
 };
 
 const makeVoucher = (overrides = {}) => ({ ...VOUCHER_DEFAULTS, ...overrides });
@@ -112,6 +114,21 @@ describe('resolveVoucherDisplayPricesUseCase', () => {
         expect(result.badgeOnly).toBe(false);
         expect(result.pricesByItemId[1]).toEqual({ original_price: 100, voucher_price: 90 });
         expect(result.pricesByItemId[2]).toEqual({ original_price: 50, voucher_price: 45 });
+    });
+
+    // #1490: same reasoning already documented for min_spend_centavos (the comment block above
+    // DISPLAY_RELEVANT_REASON_CODES in voucherDisplayUseCases.js) -- a cart total is unknowable
+    // before a cart exists, so VOUCHER_MAX_ORDER_VALUE_EXCEEDED must stay absent from that
+    // allowlist. This is the regression the plan's own test-plan note names: fails loudly if
+    // someone later adds it, since evaluateVoucherEligibility's context here carries no
+    // subtotalCentavos (defaults to 0), so a real cap would otherwise never even fire -- this
+    // asserts the *allowlist* exclusion is what's actually load-bearing, not that default.
+    it('a voucher with a max_order_value_centavos cap still resolves as applied at display time', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher({ max_order_value_centavos: 1 })] });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(result.applied).toBe(true);
     });
 
     it('resolves fixed_price prices, clamped so a line never goes negative', async () => {
@@ -332,5 +349,44 @@ describe('resolveVoucherDisplayPricesUseCase', () => {
 
         expect(result.applied).toBe(false);
         expect(result.pricesByItemId).toEqual({});
+    });
+});
+
+// #788 (Phase 269): account-restricted vouchers at display time.
+//
+// The three VOUCHER_ACCOUNT_* codes ARE in DISPLAY_RELEVANT_REASON_CODES -- the opposite of the
+// basket-dependent codes above. That is deliberate and load-bearing, for two reasons at once:
+// this module falls back to the plain catalog price (ADR 0066 decision 3's fail-open half), and
+// storefrontDiscoveryIndexService.js imports the same set to decide what reaches the PUBLIC
+// snapshot -- which publishes each listed voucher's literal code.
+describe('account-restricted display (#788)', () => {
+    it('an account-restricted voucher resolves to the plain catalog price, never a voucher price', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher({ is_account_restricted: true })] });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+
+        const result = await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(result.applied).toBe(false);
+        expect(result.pricesByItemId).toEqual({});
+        // Fail-OPEN, not a throw: the browse page still renders, it just advertises nothing.
+        expect(result.reasonCode).toBe('VOUCHER_ACCOUNT_REQUIRED');
+    });
+
+    it('the display path never hydrates the allowlist -- it has no buyer identity to check against', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher({ is_account_restricted: true })] });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+
+        await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(repository.__state.calls).not.toContain('listAccountGrants');
+    });
+
+    it('an UNRESTRICTED voucher is unaffected -- the regression guard for the change above', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher()] });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+
+        const result = await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(result.applied).toBe(true);
     });
 });

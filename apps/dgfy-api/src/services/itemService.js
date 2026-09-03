@@ -20,6 +20,10 @@ export const replaceItemSuppliers = async (itemId, suppliers = []) => itemComman
 
 export const deleteItem = async (itemId, userId) => itemCommandUseCases.deleteItem(itemId, userId);
 
+// #1495 Part B: conflict-safe reactivation of a deactivated/soft-deleted item, used by the CSV
+// sync import to route a matched-but-inactive SKU away from a duplicate CREATE.
+export const reactivateItem = async (itemId, userId) => itemCommandUseCases.reactivateItem(itemId, userId);
+
 export const finalizeItem = async (itemId, itemData = {}, userId = null) => itemCommandUseCases.finalizeItem(itemId, itemData, userId);
 
 export const getItemStockHistory = async (itemId, queryParams = {}) => itemQueryUseCases.getItemStockHistory(itemId, queryParams);

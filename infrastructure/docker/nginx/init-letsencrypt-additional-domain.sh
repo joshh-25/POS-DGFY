@@ -13,7 +13,8 @@ set -euo pipefail
 #     the ACME webroot (/.well-known/acme-challenge/) for the prod domains on
 #     port 80. Both are true once the prod server blocks are deployed.
 #   * .env defines SKUPERVISOR_DOMAIN_PROD / POS_DOMAIN_PROD /
-#     STOREFRONT_DOMAIN_PROD / CERT_DOMAIN_PROD / CERTBOT_EMAIL.
+#     STOREFRONT_DOMAIN_PROD / DGLAUNDRY_DOMAIN / CERT_DOMAIN_PROD /
+#     CERTBOT_EMAIL.
 #
 # Usage (from the compose dir, e.g. /opt/dgfy-platform):
 #   ./nginx/init-letsencrypt-additional-domain.sh
@@ -27,6 +28,7 @@ cd "$COMPOSE_DIR"
 : "${SKUPERVISOR_DOMAIN_PROD:?Set SKUPERVISOR_DOMAIN_PROD in .env}"
 : "${POS_DOMAIN_PROD:?Set POS_DOMAIN_PROD in .env}"
 : "${STOREFRONT_DOMAIN_PROD:?Set STOREFRONT_DOMAIN_PROD in .env}"
+: "${DGLAUNDRY_DOMAIN:?Set DGLAUNDRY_DOMAIN in .env}"
 : "${CERT_DOMAIN_PROD:?Set CERT_DOMAIN_PROD in .env}"
 : "${CERTBOT_EMAIL:?Set CERTBOT_EMAIL in .env}"
 
@@ -39,10 +41,10 @@ docker compose run --rm --entrypoint "sh -c \"\
          /etc/letsencrypt/renewal/$CERT_DOMAIN_PROD.conf\"" certbot
 
 echo "### Requesting the real certificate for:"
-echo "###   $SKUPERVISOR_DOMAIN_PROD $POS_DOMAIN_PROD $STOREFRONT_DOMAIN_PROD"
+echo "###   $SKUPERVISOR_DOMAIN_PROD $POS_DOMAIN_PROD $STOREFRONT_DOMAIN_PROD $DGLAUNDRY_DOMAIN"
 docker compose run --rm --entrypoint "\
   certbot certonly --webroot -w /var/www/certbot \
-    -d $SKUPERVISOR_DOMAIN_PROD -d $POS_DOMAIN_PROD -d $STOREFRONT_DOMAIN_PROD \
+    -d $SKUPERVISOR_DOMAIN_PROD -d $POS_DOMAIN_PROD -d $STOREFRONT_DOMAIN_PROD -d $DGLAUNDRY_DOMAIN \
     --cert-name $CERT_DOMAIN_PROD \
     --email $CERTBOT_EMAIL \
     --rsa-key-size $RSA_KEY_SIZE \

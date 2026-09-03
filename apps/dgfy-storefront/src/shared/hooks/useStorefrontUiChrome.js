@@ -32,17 +32,34 @@ export function useStorefrontUiChrome({
     const previousHeight = document.body.style.height;
     const previousOverscrollBehavior = document.body.style.overscrollBehavior;
     const previousTouchAction = document.body.style.touchAction;
+    const previousPosition = document.body.style.position;
+    const previousTop = document.body.style.top;
+    const previousWidth = document.body.style.width;
+    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    const shouldPreserveCartScroll = isCheckoutOpen;
 
-    document.body.style.overflow = 'hidden';
-    document.body.style.height = '100vh';
     document.body.style.overscrollBehavior = 'none';
     document.body.style.touchAction = 'manipulation';
+    if (shouldPreserveCartScroll) {
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+      document.body.style.height = 'auto';
+      document.body.style.overflow = 'visible';
+    } else {
+      document.body.style.overflow = 'hidden';
+      document.body.style.height = '100vh';
+    }
 
     return () => {
       document.body.style.overflow = previousOverflow;
       document.body.style.height = previousHeight;
       document.body.style.overscrollBehavior = previousOverscrollBehavior;
       document.body.style.touchAction = previousTouchAction;
+      document.body.style.position = previousPosition;
+      document.body.style.top = previousTop;
+      document.body.style.width = previousWidth;
+      if (shouldPreserveCartScroll) window.scrollTo({ top: scrollY, behavior: 'auto' });
     };
   }, [isAccountDrawerOpen, isCheckoutOpen, isFnbOrderSubpage, isGuestTrackingDrawerOpen, isStandaloneAccountPage]);
 

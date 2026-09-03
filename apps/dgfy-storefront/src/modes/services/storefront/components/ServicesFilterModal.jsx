@@ -1,8 +1,8 @@
 import React from 'react';
 
-import { STYLES } from '../../../../shared/theme/storefrontStyleTokens.js';
 import { GhostButton, PrimaryButton } from '../../../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 /**
  * ServicesFilterModal — services-mode filter dialog (availability, service area,
@@ -45,10 +45,10 @@ export function ServicesFilterModal({
           zIndex: 1,
           width: '100%',
           maxWidth: 560,
-          background: '#ffffff',
+          background: SERVICES_PALETTE.surface,
           borderRadius: 22,
-          border: '1px solid #e5e7eb',
-          boxShadow: '0 24px 60px rgba(15,23,42,0.18)',
+          border: `1px solid ${SERVICES_PALETTE.border}`,
+          boxShadow: SERVICES_PALETTE.modalShadow,
           padding: isMobileViewport ? 18 : 22,
           display: 'grid',
           gap: 16
@@ -56,8 +56,8 @@ export function ServicesFilterModal({
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Filter Services</div>
-            <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
+            <div style={{ fontSize: 18, fontWeight: 900, color: SERVICES_PALETTE.textPrimary }}>Filter Services</div>
+            <div style={{ marginTop: 4, fontSize: 13, color: SERVICES_PALETTE.textMuted }}>
               Applies services-mode filters using storefront availability, service area, and duration fields from SKUpervisor-backed catalog records.
             </div>
           </div>
@@ -68,9 +68,9 @@ export function ServicesFilterModal({
               width: 36,
               height: 36,
               borderRadius: 999,
-              border: '1px solid #e5e7eb',
-              background: '#fff',
-              color: STYLES.colors.dark,
+              border: `1px solid ${SERVICES_PALETTE.border}`,
+              background: SERVICES_PALETTE.surface,
+              color: SERVICES_PALETTE.textPrimary,
               cursor: 'pointer',
               fontWeight: 800
             }}
@@ -80,7 +80,7 @@ export function ServicesFilterModal({
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
+          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: SERVICES_PALETTE.textMuted }}>
             Availability
             <StorefrontDropdown
               value={serviceAvailabilityFilter}
@@ -94,7 +94,7 @@ export function ServicesFilterModal({
               menuStyle={{ borderRadius: 18 }}
             />
           </label>
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
+          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: SERVICES_PALETTE.textMuted }}>
             Service area
             <StorefrontDropdown
               value={serviceAreaFilter}
@@ -108,7 +108,7 @@ export function ServicesFilterModal({
               menuStyle={{ borderRadius: 18 }}
             />
           </label>
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
+          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: SERVICES_PALETTE.textMuted }}>
             Duration
             <StorefrontDropdown
               value={serviceDurationFilter}

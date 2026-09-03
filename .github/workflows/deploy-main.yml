@@ -141,13 +141,59 @@ jobs:
       # before any build starts -- "hosted-runner unavailability fails clearly and permits only the
       # documented, logged fallback strategy" (#1365's own acceptance criterion). This step does
       # NOT flip any routing value itself, on any exit code -- it only reports.
+      #
+      # Plain full checkout, not sparse (#1528, 2026-09-03): a sparse checkout here was the sole
+      # sparse-checkout site in this repo's entire workflow set, and self-hosted runners persist
+      # their `_work` directory across every job that lands there -- not just this workflow's own.
+      # A later, unrelated job (any PR's build-check, on either shared self-hosted box) landing on
+      # the same runner after this step ran repeatedly inherited a half-checked-out tree, breaking
+      # unrelated PRs' CI (confirmed twice same-day against PR #1536). The perf saving sparse
+      # bought here (a ~1-5 minute control-plane job avoiding a full clone) isn't worth poisoning
+      # the shared runner pool for every other job on the repo. This job also keeps its own
+      # workspace-hygiene guard below (belt and braces, since it's the historical source of the
+      # poisoning): even a well-intentioned future sparse-checkout re-add here would still be
+      # caught pre-checkout rather than corrupting the shared workspace again.
+      #
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - name: Checkout for runner preflight
         uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            scripts
-            .github/workflows
-          sparse-checkout-cone-mode: false
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Runner availability preflight
         id: runner_preflight

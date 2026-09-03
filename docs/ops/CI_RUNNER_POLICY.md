@@ -37,6 +37,11 @@ Both self-hosted runners are online:
 | `vm-openproject` | 23 | `sieitz-sm`, `sieitz-runner` | Small box; also runs OpenProject, 3 buildx builders, cloudflared, yopass |
 | `vm-sieitzstaging` | 25 | `sieitz-lg`, `sieitz-runner` | Large box; **also the live DEV + STAGING docker-compose host** |
 
+A property of the self-hosted class that GitHub-hosted runners don't share: each box reuses one
+persistent `_work` git workspace across every job that lands on it, from every workflow. State one
+job leaves in that workspace can affect the next, unrelated job that lands there — see
+`CI_RUNNER_WORKSPACE_HYGIENE.md` for the mechanism and the standing defenses against it (#1528).
+
 Every workflow **without an explicit hosted exception** runs on one of these two labels today
 (`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`, "Status as of 2026-08-13") — this is not a blanket "zero
 hosted jobs" claim. One pre-existing exception already runs on `ubuntu-latest`, predates this
@@ -67,7 +72,8 @@ Per #1363's epic table, the default policy going forward:
 | PR checks, ordinary pushes to `develop` | Self-hosted (`sieitz-runner`/`sieitz-lg` per existing size split) | Frequent; conserve hosted minutes; #923's measured size-routing stays in force |
 | `develop` → `staging` promotion, staging deploy | Self-hosted | Normal release cadence; preserve current cost model |
 | `develop`/`staging` → production promotion, production deploy | GitHub-hosted (`ubuntu-latest`) | Infrequent; predictable clean environment; faster pacing |
-| **Hotfix to `main`** (`incident-responder`'s monitor loop or `/hotfix` manual entry) | **GitHub-hosted** | Same `deploy-main.yml`/production-deploy path as an ordinary promotion — a hotfix is still "anything that deploys to prod," so it gets the same isolation/predictability rationale, if anything more so given it's already running under incident pressure. No separate routing decision needed: it rides the same job, the same runner class, because it dispatches the same workflow |
+| **Hotfix to `main`** (`incident-responder`'s monitor loop or `/hotfix` manual entry), post-merge deploy dispatch | **GitHub-hosted** | Same `deploy-main.yml`/production-deploy path as an ordinary promotion — a hotfix is still "anything that deploys to prod," so it gets the same isolation/predictability rationale, if anything more so given it's already running under incident pressure. No separate routing decision needed: it rides the same job, the same runner class, because it dispatches the same workflow |
+| **`pr-checks.yml` build-check jobs, PR-time**, when the PR's head is `release/*` or `hotfix/*` **and** its base is `main` | **GitHub-hosted** (`route-build-checks` job, #1529) | Same promotion/hotfix-to-`main` rationale as the row above, applied one step earlier in the PR's lifecycle — not a blanket "any PR targeting `main`" rule, and not job-class-scoped (#1365's original shape, which #1529 corrects). Every other PR (develop/staging targets, or any other PR that happens to target `main` without one of these two head shapes) stays self-hosted |
 | Emergency/fallback | Explicit alternate strategy per the switch below | Never a silent, undocumented flip |
 
 **Why prod specifically, stated once:** blast radius (a self-hosted-box failure competes with the
@@ -81,7 +87,7 @@ which is exactly why that stays self-hosted).
 
 | Job / workflow | Current runner | Capabilities needed | Notes |
 |---|---|---|---|
-| `pr-*-build-checks.yml` (api/frontend/migration-runner) | `sieitz-runner`/`sieitz-lg` (per `RUNNER_LIGHT_JSON`/`RUNNER_HEAVY_JSON`) | Docker buildx; `frontend-build-check` is the one job with a measured size signal (OOM risk on the small box) | #923 measured split; `BUILD_CACHE_FROM` anchor disabled on self-hosted (#726 — `type=gha` cache costs 21x the build it's meant to skip at this pool's cache-service bandwidth) |
+| `pr-*-build-checks.yml` (api/frontend/migration-runner) | `sieitz-runner`/`sieitz-lg` (per `RUNNER_LIGHT_JSON`/`RUNNER_HEAVY_JSON`); **`ubuntu-latest`** when the PR's head is `release/*`/`hotfix/*` and base is `main` (`pr-checks.yml`'s `route-build-checks` job, #1529) | Docker buildx (present on `ubuntu-latest` by default — no setup gap on the hosted path); `frontend-build-check` is the one self-hosted-path job with a measured size signal (OOM risk on the small box) | #923 measured split governs the self-hosted default; #1529 adds the promotion/hotfix-to-`main` exception. `BUILD_CACHE_FROM` stays disabled (empty) even on the hosted path for now — #726's cache-backend flip isn't yet wired to this narrower condition, a follow-up, not a defect |
 | `pr-android-build-checks.yml` / `build-android-manual.yml` | `ubuntu-latest` (hardcoded, not via the label indirection) | Android SDK + Gradle | Stays hosted regardless of policy — neither self-hosted box has the Android SDK installed (explicit comment in the workflow file) |
 | `pr-migration-runner-build-checks.yml` | `sieitz-runner`/`sieitz-lg` | `docker/setup-qemu-action` for `linux/amd64,linux/arm64` — needs privileged Docker to register binfmt handlers | Flagged "not yet verified" in the migration handoff doc; re-confirm before relying on it |
 | `promotion-quality-gate.yml` (`dgfy-api-quality`, `frontend-quality` ×3, `repository-quality`) | `sieitz-lg` (pinned) | 2 service containers (MySQL/Redis), `--max-old-space-size=4096`, `playwright install chromium`; known AVX gap on this box (`@napi-rs/canvas` → SIGILL, gated behind a real capability probe since #1035) | Heaviest jobs in the repo; competes with the live DEV+STAGING stacks on the same box (already flagged in #1018) |
@@ -183,6 +189,22 @@ procedure. Wave 4 (a real production promotion exercising this path) and Wave 5 
 separate, gated, not-yet-run work — this doc's matrix and fallback-switch mechanism below are
 otherwise unchanged by the flip.
 
+## Amendments
+
+### 2026-09-03: `pr-checks.yml` build-check jobs route to GitHub-hosted runners for a release/*|hotfix/* PR into main (#1529)
+
+Per Pat's direct correction on #1529 (superseding #1527, closed): the "Hotfix to `main`" row above
+only ever covered `deploy-main.yml`'s post-merge deploy dispatch. It did not cover `pr-checks.yml`'s
+own PR-time build-check jobs, which stayed unconditionally self-hosted for every PR regardless of
+head/base shape -- including a `release/*`/`hotfix/*` PR into `main`, which should have gotten the
+same isolation/predictability rationale already given to the deploy path itself.
+
+Fixed in `pr-checks.yml` (new `route-build-checks` job, mirroring `promotion-quality-gate.yml`'s own
+`gate`-job `case "$HEAD_REF" in` pattern with an added `hotfix/*` arm) and reflected in the matrix
+and job-by-job inventory above. Not a blanket "any PR targeting `main`" rule, and not job-class-
+scoped either (#1365's original, narrower shape, which #1529 corrects) -- the split is specifically
+head-shape (`release/*`/`hotfix/*`) **and** base (`main`), together.
+
 ## Related
 
 #1363 (epic), #1365 (Phase 234 Wave 3 — live cutover shipped 2026-09-02), #1147 (gate umbrella),
@@ -191,4 +213,5 @@ prerequisite for the remaining DB-backed gates), #1124 (quality-gate trust, gate
 closure), #724/#662 (local-CI fallback evidence path), #715 (alternative CI provider exploration),
 #923 (runner size labeling), `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md` (full history), `AGENTS.md`
 (Merge Safety carve-out's four-way unavailability classification, reused here rather than
-duplicated).
+duplicated), `docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md` (#1528 — shared `_work` state hazards and
+their standing defenses, a distinct concern from this doc's own "which class runs a job" scope).

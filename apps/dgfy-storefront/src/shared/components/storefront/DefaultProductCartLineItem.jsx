@@ -1,4 +1,5 @@
 import { Minus, Package, Plus, Trash2 } from 'lucide-react';
+import { StorefrontCartQuantityInput } from './StorefrontCartQuantityInput.jsx';
 
 const DEFAULT_BRAND = '#1a4e8d';
 
@@ -67,20 +68,24 @@ export function DefaultProductCartLineItem({
             </button>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: 2 }}>
-            <div style={{ display: 'inline-grid', gridTemplateColumns: '32px minmax(24px, auto) 32px', alignItems: 'center', justifyItems: 'center', borderRadius: 999, border: '1px solid #e2e8f0', background: '#ffffff', boxShadow: '0 4px 10px rgba(15,23,42,0.04)', padding: '2px 4px', gap: 4 }}>
+            <div style={{ display: 'inline-grid', gridTemplateColumns: '32px 42px 32px', alignItems: 'center', justifyItems: 'center', borderRadius: 999, border: '1px solid #e2e8f0', background: '#ffffff', boxShadow: '0 4px 10px rgba(15,23,42,0.04)', padding: '2px 4px', gap: 4 }}>
               <button
                 type="button"
-                onClick={() => onUpdateQuantity(line.item_id, Math.max(0, Number(line.quantity || 1) - 1))}
+                onClick={() => onUpdateQuantity(line.item_id, Math.max(0, Number(line.quantity || 1) - 1), line.cart_line_id)}
                 style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1 }}
               >
                 <Minus size={14} strokeWidth={2.5} />
               </button>
-              <span style={{ minWidth: 24, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
-                {quantity}
-              </span>
+              <StorefrontCartQuantityInput
+                itemId={line.item_id}
+                lineName={line.name}
+                cartLineId={line.cart_line_id}
+                quantity={quantity}
+                onUpdateQuantity={onUpdateQuantity}
+              />
               <button
                 type="button"
-                onClick={() => onUpdateQuantity(line.item_id, Number(line.quantity || 1) + 1)}
+                onClick={() => onUpdateQuantity(line.item_id, Number(line.quantity || 1) + 1, line.cart_line_id)}
                 style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1 }}
               >
                 <Plus size={14} strokeWidth={2.5} />

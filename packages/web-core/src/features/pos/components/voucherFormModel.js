@@ -26,6 +26,27 @@ export const PAGE_SIZE = 20;
 // why (the fiscal audit-row column a voucher redemption now writes into is VARCHAR(40)).
 export const VOUCHER_CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{2,39}$/;
 
+// #788 (Phase 269): account-restricted issuance. Mirrors
+// apps/dgfy-api/src/validators/voucherValidator.js's `accountGrantIdsSchema` -- a DGFY account id
+// is `DgfyAccount.id`, a UUID. Format-only here as it is there; no existence check is possible
+// client-side (or server-side -- `dgfy_accounts` is a landlord-database table, see that schema's
+// own comment for why that is a decision rather than an omission).
+export const DGFY_ACCOUNT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const MAX_ACCOUNT_GRANTS = 200;
+
+// The textarea is one account id per line -- the plainest input for a list a merchant pastes from a
+// spreadsheet or a support ticket. Commas are accepted as a separator too, since a pasted CSV cell
+// is the other realistic source. Lowercased and de-duplicated so the outgoing payload matches
+// exactly what the server persists and compares against.
+export const parseAccountGrantIds = (text) => [...new Set(
+  String(text ?? '')
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+)];
+
+export const formatAccountGrantIds = (ids) => (Array.isArray(ids) ? ids : []).join('\n');
+
 // Bitmask <-> checkbox-triad conversion. Bit meanings mirror
 // `voucherEligibilityPolicy.js`'s VOUCHER_CHANNEL_BITS / VOUCHER_FULFILLMENT_BITS /
 // VOUCHER_ORDER_TIMING_BITS / VOUCHER_WEEKDAY_BITS exactly -- duplicated here (small, frozen,
@@ -106,6 +127,8 @@ export const blankForm = () => ({
   pricelistId: '',
   maxDiscountPesos: '',
   minSpendPesos: '',
+  // #1490: the mirror image of minSpendPesos above -- see buildVoucherPayload's own comment.
+  maxOrderValuePesos: '',
   minQuantity: '',
   allowBelowCost: false,
   stackableWithStatutory: false,
@@ -124,6 +147,11 @@ export const blankForm = () => ({
   maxTotalDiscountPesos: '',
   maxBenefitQuantity: '',
   scopes: [],
+  // #788/Phase 269: raw textarea text, not a parsed array -- keeping the merchant's literal input in
+  // state is what lets them fix a typo in place instead of having a malformed line silently vanish
+  // on every keystroke. Parsed exactly twice: once by validateFormLocally, once by
+  // buildVoucherPayload.
+  accountGrantIdsText: '',
   // #1334/Phase 245: delivery_campaign-only fields. Harmless no-ops for a promo_code form --
   // buildVoucherPayload never reads them outside the delivery_campaign branch.
   deliveryWaiverMode: 'whole', // 'whole' | 'partial' -- 'whole' means delivery_amount_off_centavos: null
@@ -131,7 +159,13 @@ export const blankForm = () => ({
   autoApply: false,
   redeemedCount: 0,
   redeemedValueCentavos: 0,
-  redeemedQuantity: 0
+  redeemedQuantity: 0,
+  // #1494: read-only display fields, never form-editable and never part of buildVoucherPayload's
+  // outgoing request body.
+  createdByUsername: null,
+  updatedByUsername: null,
+  createdAt: null,
+  updatedAt: null
 });
 
 // Resets the kind-dependent slice of the form when the merchant flips the voucher-type selector on
@@ -189,7 +223,7 @@ export const suggestVoucherCode = (title) => {
   return (truncated || 'DELIVERY').padEnd(3, '0').slice(0, 40);
 };
 
-export const voucherToForm = (voucher, scopes = []) => ({
+export const voucherToForm = (voucher, scopes = [], accountGrantIds = []) => ({
   voucherId: voucher.voucher_id,
   version: Number(voucher.version),
   status: voucher.status,
@@ -208,6 +242,7 @@ export const voucherToForm = (voucher, scopes = []) => ({
   pricelistId: voucher.pricelist_id != null ? String(voucher.pricelist_id) : '',
   maxDiscountPesos: voucher.max_discount_centavos != null ? centavosToPesoString(voucher.max_discount_centavos) : '',
   minSpendPesos: voucher.min_spend_centavos != null ? centavosToPesoString(voucher.min_spend_centavos) : '',
+  maxOrderValuePesos: voucher.max_order_value_centavos != null ? centavosToPesoString(voucher.max_order_value_centavos) : '',
   minQuantity: voucher.min_quantity != null ? String(voucher.min_quantity) : '',
   allowBelowCost: voucher.allow_below_cost === true,
   stackableWithStatutory: voucher.stackable_with_statutory === true,
@@ -227,6 +262,9 @@ export const voucherToForm = (voucher, scopes = []) => ({
     scope_type: scope.scope_type,
     scope_ref_id: Number(scope.scope_ref_id)
   })),
+  // #788/Phase 269: `GET /vouchers/:id` returns `account_grant_ids` as a sibling of `scopes`, so it
+  // arrives as its own argument rather than off the voucher row.
+  accountGrantIdsText: formatAccountGrantIds(accountGrantIds),
   // #1334/Phase 245: free_delivery's own benefit amount -- NULL (whole-fee waiver) is the common
   // case, unlike every sibling class where the benefit amount is mandatory.
   deliveryWaiverMode: voucher.delivery_amount_off_centavos != null ? 'partial' : 'whole',
@@ -234,7 +272,12 @@ export const voucherToForm = (voucher, scopes = []) => ({
   autoApply: voucher.auto_apply === true,
   redeemedCount: Number(voucher.redeemed_count || 0),
   redeemedValueCentavos: Number(voucher.redeemed_value_centavos || 0),
-  redeemedQuantity: Number(voucher.redeemed_quantity || 0)
+  redeemedQuantity: Number(voucher.redeemed_quantity || 0),
+  // #1494: display-only, carried through the same way redeemedCount etc. are above.
+  createdByUsername: voucher.created_by_username || null,
+  updatedByUsername: voucher.updated_by_username || null,
+  createdAt: voucher.created_at || null,
+  updatedAt: voucher.updated_at || null
 });
 
 // Builds the outgoing request body field-by-field from exactly the writable columns -- never a
@@ -255,6 +298,8 @@ export const buildVoucherPayload = (form) => {
     validity_text: form.validityText.trim() || null,
     benefit_class: isDeliveryCampaign ? 'free_delivery' : form.benefitClass,
     min_spend_centavos: form.minSpendPesos === '' ? null : pesoStringToCentavos(form.minSpendPesos),
+    // #1490: the mirror image of min_spend_centavos above -- an eligibility CAP, not a discount cap.
+    max_order_value_centavos: form.maxOrderValuePesos === '' ? null : pesoStringToCentavos(form.maxOrderValuePesos),
     min_quantity: form.minQuantity === '' ? null : Math.max(1, parseInt(form.minQuantity, 10) || 1),
     allow_below_cost: isDeliveryCampaign ? false : form.allowBelowCost === true,
     stackable_with_statutory: isDeliveryCampaign ? false : form.stackableWithStatutory === true,
@@ -288,7 +333,16 @@ export const buildVoucherPayload = (form) => {
     // has no per-line component regardless -- always empty for a delivery campaign.
     scopes: isDeliveryCampaign
       ? []
-      : form.scopes.map(({ scope_type, scope_ref_id }) => ({ scope_type, scope_ref_id: Number(scope_ref_id) }))
+      : form.scopes.map(({ scope_type, scope_ref_id }) => ({ scope_type, scope_ref_id: Number(scope_ref_id) })),
+    // #788/Phase 269: ALWAYS sent, including as an empty array. On update the server reads presence
+    // with hasOwnProperty -- omitting the key would leave the stored allowlist untouched, so a
+    // merchant who cleared the textarea would see their edit silently ignored. Sending `[]` is the
+    // explicit "remove the restriction" gesture the server's own contract defines.
+    //
+    // Sent for delivery campaigns too, unlike `scopes` above: an account-restricted free-delivery
+    // perk for a set of corporate accounts is a coherent product, and the auto-apply selector
+    // enforces the allowlist on that path (voucherAutoApplyUseCases.js hydrates it).
+    account_grant_ids: parseAccountGrantIds(form.accountGrantIdsText)
   };
 
   if (isDeliveryCampaign) {
@@ -345,10 +399,6 @@ export const validateFormLocally = (form) => {
         addError('delivery_amount_off_centavos', "Enter an amount greater than ₱0, or choose 'waive the whole fee'.");
       }
     }
-    if (form.minSpendPesos !== '') {
-      const centavos = pesoStringToCentavos(form.minSpendPesos);
-      if (!Number.isFinite(centavos) || centavos < 0) addError('min_spend_centavos', 'Minimum item subtotal cannot be negative.');
-    }
   } else if (form.benefitClass === 'percent_off') {
     const bps = percentStringToBps(form.percentOffPercent);
     if (!Number.isFinite(bps) || bps < 1 || bps > 10000) addError('percent_off_bps', 'Enter a percentage between 0.01% and 100%.');
@@ -365,12 +415,51 @@ export const validateFormLocally = (form) => {
     }
   }
 
+  // #788/Phase 269: mirrors the server's `assertAccountRestrictionNotPubliclyListed` (a 422) so the
+  // merchant is told which of the two settings to change before a round trip, not after. Public
+  // listing publishes the voucher's literal code to every storefront visitor -- the opposite of
+  // restricting who may redeem it.
+  const accountGrantIds = parseAccountGrantIds(form.accountGrantIdsText);
+  const invalidAccountIds = accountGrantIds.filter((id) => !DGFY_ACCOUNT_ID_PATTERN.test(id));
+  if (invalidAccountIds.length > 0) {
+    addError('account_grant_ids', `Not a valid DGFY account ID: ${invalidAccountIds.slice(0, 3).join(', ')}${invalidAccountIds.length > 3 ? '…' : ''}`);
+  }
+  if (accountGrantIds.length > MAX_ACCOUNT_GRANTS) {
+    addError('account_grant_ids', `A voucher may be granted to at most ${MAX_ACCOUNT_GRANTS} DGFY accounts.`);
+  }
+  if (accountGrantIds.length > 0 && form.isPubliclyListed === true) {
+    addError('account_grant_ids', 'An account-restricted voucher cannot be publicly listed — public listing shows its code to every storefront visitor.');
+  }
+
   if (form.weekdayFlags.every((flag) => !flag)) addError('weekday_mask', 'Select at least one day of the week.');
   if (!form.channelFlags.storefront && !form.channelFlags.pos) addError('channels_mask', 'Select at least one channel.');
   if (!isDeliveryCampaign && !form.fulfillmentFlags.delivery && !form.fulfillmentFlags.pickup) {
     addError('fulfillment_methods_mask', 'Select at least one fulfillment method.');
   }
   if (!form.orderTimingFlags.asap && !form.orderTimingFlags.scheduled) addError('order_timings_mask', 'Select at least one order timing.');
+
+  // #1506: runs unconditionally (both promo_code and delivery_campaign) -- previously nested inside
+  // the isDeliveryCampaign branch above, so a promo_code voucher with a negative min_spend_centavos
+  // never got client-side feedback (the server-side Joi validator still caught it on submit, but
+  // only after a round trip). Flagged during Phase 259 (#1490) and fixed here.
+  if (form.minSpendPesos !== '') {
+    const centavos = pesoStringToCentavos(form.minSpendPesos);
+    if (!Number.isFinite(centavos) || centavos < 0) addError('min_spend_centavos', 'Minimum item subtotal cannot be negative.');
+  }
+  // #1490: runs unconditionally (both promo_code and delivery_campaign) -- the new field never
+  // inherited the minSpendPesos asymmetry above, which is why that gap was visible enough to flag
+  // and (per #1506, just above) fix.
+  if (form.maxOrderValuePesos !== '') {
+    const centavos = pesoStringToCentavos(form.maxOrderValuePesos);
+    if (!Number.isFinite(centavos) || centavos < 0) addError('max_order_value_centavos', 'Maximum order value cannot be negative.');
+  }
+  if (form.minSpendPesos !== '' && form.maxOrderValuePesos !== '') {
+    const minCentavos = pesoStringToCentavos(form.minSpendPesos);
+    const maxCentavos = pesoStringToCentavos(form.maxOrderValuePesos);
+    if (Number.isFinite(minCentavos) && Number.isFinite(maxCentavos) && maxCentavos < minCentavos) {
+      addError('max_order_value_centavos', 'Maximum order value cannot be less than the minimum spend.');
+    }
+  }
 
   if (form.validFrom && form.validUntil && form.validUntil < form.validFrom) {
     addError('valid_until', 'End date cannot be earlier than the start date.');

@@ -39,10 +39,25 @@ export const VOUCHER_ELIGIBILITY_REASON_CODES = Object.freeze({
     VOUCHER_FULFILLMENT_NOT_ELIGIBLE: 'VOUCHER_FULFILLMENT_NOT_ELIGIBLE',
     VOUCHER_ORDER_TIMING_NOT_ELIGIBLE: 'VOUCHER_ORDER_TIMING_NOT_ELIGIBLE',
     VOUCHER_MIN_SPEND_NOT_MET: 'VOUCHER_MIN_SPEND_NOT_MET',
+    VOUCHER_MAX_ORDER_VALUE_EXCEEDED: 'VOUCHER_MAX_ORDER_VALUE_EXCEEDED',
     VOUCHER_MIN_QUANTITY_NOT_MET: 'VOUCHER_MIN_QUANTITY_NOT_MET',
     VOUCHER_REDEMPTION_LIMIT_REACHED: 'VOUCHER_REDEMPTION_LIMIT_REACHED',
     VOUCHER_BUDGET_EXHAUSTED: 'VOUCHER_BUDGET_EXHAUSTED',
-    VOUCHER_QUANTITY_LIMIT_REACHED: 'VOUCHER_QUANTITY_LIMIT_REACHED'
+    VOUCHER_QUANTITY_LIMIT_REACHED: 'VOUCHER_QUANTITY_LIMIT_REACHED',
+    // #788 (Phase 269): account-restricted issuance. Three codes, not one, because the three
+    // situations need three different answers from the storefront:
+    //   - ACCOUNT_REQUIRED       -> "sign in with the DGFY account this code was issued to". The
+    //                               buyer is a guest, or a native store_customer with no linked
+    //                               DGFY account -- an actionable, recoverable state.
+    //   - ACCOUNT_NOT_ELIGIBLE   -> "this code was not issued to your account". Signed in, just not
+    //                               on the list. Nothing the buyer can do; do NOT tell them to sign
+    //                               in again.
+    //   - ACCOUNT_GRANTS_UNRESOLVED -> a CALLER defect, never a buyer-facing state: the voucher is
+    //                               restricted but the caller never hydrated `account_grant_ids`.
+    //                               Fails closed. See the check itself for why this exists at all.
+    VOUCHER_ACCOUNT_REQUIRED: 'VOUCHER_ACCOUNT_REQUIRED',
+    VOUCHER_ACCOUNT_NOT_ELIGIBLE: 'VOUCHER_ACCOUNT_NOT_ELIGIBLE',
+    VOUCHER_ACCOUNT_GRANTS_UNRESOLVED: 'VOUCHER_ACCOUNT_GRANTS_UNRESOLVED'
 });
 
 const REASON = VOUCHER_ELIGIBILITY_REASON_CODES;
@@ -61,6 +76,16 @@ export const hasMaskBit = (mask, bit) => {
 const toMinutes = (value) => {
     const match = String(value ?? '').trim().match(TIME_24H_PATTERN);
     return match ? (Number(match[1]) * 60) + Number(match[2]) : null;
+};
+
+// DGFY account ids are UUID strings (`DgfyAccount.id`), so identity here is a trimmed,
+// case-insensitive string comparison -- NOT a numeric one. MySQL's own utf8mb4_general_ci collation
+// already matches CHAR(36) case-insensitively, so lowercasing here keeps this pure JS check
+// agreeing with what a `WHERE dgfy_account_id = ?` would have answered.
+const normalizeAccountId = (value) => {
+    if (value == null) return null;
+    const text = String(value).trim().toLowerCase();
+    return text === '' ? null : text;
 };
 
 const toDateOnly = (value) => {
@@ -148,7 +173,7 @@ export const deriveVoucherStatus = ({ voucher, now = new Date(), timezone = DEFA
 /**
  * Evaluate every eligibility condition on a voucher against a redemption context.
  *
- * Collect-all, never short-circuit. Checks 11-13 (the three exhaustion limits) are PREVIEW ONLY:
+ * Collect-all, never short-circuit. Checks 13-15 (the three exhaustion limits) are PREVIEW ONLY:
  * they read `vouchers.redeemed_*`, which ADR 0066 decision 4 makes a derived cache, not the source of
  * truth. Actual enforcement is Phase 105's single atomic conditional UPDATE against the ledger.
  *
@@ -284,14 +309,23 @@ export const evaluateVoucherEligibility = ({ voucher, context = {} } = {}) => {
         }
     }
 
-    // 9-10. Basket minimums. Both columns are legitimately nullable -- null means "no minimum" -- so
-    // the "absent must be unrepresentable" rule that governs the four masks does not apply here.
+    // 9-11. Basket bounds. min_spend/max_order_value are both legitimately nullable -- null means
+    // "no bound" -- so the "absent must be unrepresentable" rule that governs the four masks does
+    // not apply here. #1490: max_order_value_centavos is compared against the same ITEM subtotal
+    // min_spend_centavos already uses (excludes the delivery fee) -- same comprehension-bug guard
+    // VoucherManagementPanel.jsx's own R4 comment already documents for min_spend_centavos.
     const subtotalCentavos = Number(context.subtotalCentavos ?? 0) || 0;
     const quantity = Number(context.quantity ?? 0) || 0;
 
     if (voucher.min_spend_centavos != null && subtotalCentavos < Number(voucher.min_spend_centavos)) {
         addReason(REASON.VOUCHER_MIN_SPEND_NOT_MET, 'Order subtotal is below the voucher minimum spend.', {
             min_spend_centavos: Number(voucher.min_spend_centavos),
+            subtotal_centavos: subtotalCentavos
+        });
+    }
+    if (voucher.max_order_value_centavos != null && subtotalCentavos > Number(voucher.max_order_value_centavos)) {
+        addReason(REASON.VOUCHER_MAX_ORDER_VALUE_EXCEEDED, 'Order subtotal exceeds the voucher maximum order value.', {
+            max_order_value_centavos: Number(voucher.max_order_value_centavos),
             subtotal_centavos: subtotalCentavos
         });
     }
@@ -302,7 +336,62 @@ export const evaluateVoucherEligibility = ({ voucher, context = {} } = {}) => {
         });
     }
 
-    // 11-13. Exhaustion previews only. Phase 105 enforces these atomically against the ledger.
+    // 12. Account-restricted issuance (#788, Phase 269).
+    //
+    // Gated on the DERIVED `is_account_restricted` flag rather than on the presence of a hydrated
+    // allowlist, and that ordering is the whole point: an unrestricted voucher (the overwhelming
+    // majority) never reads `account_grant_ids` at all, so no caller pays a query for a feature it
+    // is not using -- while a restricted voucher whose allowlist was NOT hydrated blocks with
+    // VOUCHER_ACCOUNT_GRANTS_UNRESOLVED instead of silently evaluating as unrestricted.
+    //
+    // That third code is the structural half of this check. `voucher_account_grants` is a child
+    // table, so this pure module cannot fetch it; the alternative shape -- "treat a missing
+    // allowlist as empty/absent" -- is exactly the "eligible everywhere by omission" hazard ADR
+    // 0066 decision 10 exists to forbid, just relocated from a column default to a caller
+    // convention. A caller that forgets to hydrate gets a hard 422 on its first restricted
+    // voucher, not a silently unenforced restriction discovered later in an audit.
+    //
+    // POS reaches this check with no `dgfyAccountId` and therefore fails closed on
+    // VOUCHER_ACCOUNT_REQUIRED, with no POS-side code change: re-verified 2026-09-03 that
+    // posUseCases.js's `redeemVoucher` binding passes `storeCustomerId: null` and no account
+    // identity of any kind, and that ADR 0066's 2026-08-20 amendment narrowed #454 decision 6 only
+    // as far as a free-typed customer NAME. A name is not an authenticated account, so an
+    // account-restricted voucher is storefront-only by construction rather than by a POS-specific
+    // rule someone has to remember to keep in sync.
+    if (voucher.is_account_restricted === true || voucher.is_account_restricted === 1) {
+        const buyerAccountId = normalizeAccountId(context.dgfyAccountId);
+        const grantedAccountIds = voucher.account_grant_ids;
+        if (!buyerAccountId) {
+            // Checked BEFORE the hydration guard below, deliberately. With no authenticated buyer,
+            // the allowlist cannot change the answer -- a restricted voucher is refused whatever it
+            // contains -- so "no account" is the honest reason and hydration is genuinely
+            // unnecessary. This is what lets the two DISPLAY surfaces (voucherDisplayUseCases.js
+            // and storefrontDiscoveryIndexService.js), neither of which knows who is browsing,
+            // reach a correct verdict without querying a child table for an answer they already
+            // have -- and report it as "sign in" rather than as a server defect.
+            addReason(
+                REASON.VOUCHER_ACCOUNT_REQUIRED,
+                'This voucher is restricted to specific DGFY accounts. Sign in with the account it was issued to.',
+                {}
+            );
+        } else if (!Array.isArray(grantedAccountIds)) {
+            // A buyer IS present, so the allowlist is the only thing that decides -- and it was
+            // never hydrated. That is unambiguously a caller defect, and it fails closed.
+            addReason(
+                REASON.VOUCHER_ACCOUNT_GRANTS_UNRESOLVED,
+                'Voucher account restrictions could not be evaluated.',
+                { voucher_id: voucher.voucher_id ?? null }
+            );
+        } else if (!grantedAccountIds.map(normalizeAccountId).includes(buyerAccountId)) {
+            addReason(
+                REASON.VOUCHER_ACCOUNT_NOT_ELIGIBLE,
+                'This voucher was not issued to your DGFY account.',
+                {}
+            );
+        }
+    }
+
+    // 13-15. Exhaustion previews only. Phase 105 enforces these atomically against the ledger.
     if (voucher.max_redemptions != null
         && Number(voucher.redeemed_count ?? 0) >= Number(voucher.max_redemptions)) {
         addReason(REASON.VOUCHER_REDEMPTION_LIMIT_REACHED, 'Voucher has reached its redemption limit.', {

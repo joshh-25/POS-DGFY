@@ -8,7 +8,7 @@ repeatable procedure for the same four scenarios that file covers, run once per 
 this section — and, if the report-only calibration below is in force, this literally *is* the
 content of that first live run's report.
 
-**Report-only calibration** (SKILL.md section 1.8): the first live run of the cleanup lifecycle
+**Report-only calibration** (SKILL.md section 1.9): the first live run of the cleanup lifecycle
 reports what it *would* close/remove, but does not actually call `worker-release` or `worktree rm`
 — mirroring the calibration every other roster role carries
 (`implement`/`pr-reviewer`/`observer`/`verifier`/`promoter`/`incident-responder`/`notes`) before
