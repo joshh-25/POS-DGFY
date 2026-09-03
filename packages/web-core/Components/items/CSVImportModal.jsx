@@ -18,7 +18,10 @@ import {
     Loader2,
     ArrowLeft,
     ArrowRight,
-    RefreshCw
+    RefreshCw,
+    ArchiveX,
+    RotateCcw,
+    ShieldAlert
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { useCSVImport } from '../../src/hooks/useCSVImport.js';
@@ -33,11 +36,29 @@ const CSV_IMPORT_STEPS = Object.freeze([
     { id: 'result', number: 3, name: 'Result', description: 'Review created, updated, skipped, and failed rows.' }
 ]);
 
+// #1495 Part B. Append is the historical behaviour and stays the default; sync additionally
+// deactivates catalog items missing from the uploaded file, so it is opt-in and gated behind an
+// explicit acknowledgement of the deactivation list below.
+const IMPORT_MODES = Object.freeze([
+    {
+        id: 'append',
+        label: 'Add & update only',
+        description: 'Creates new items and updates matching ones. Nothing else in your catalog is touched.'
+    },
+    {
+        id: 'sync',
+        label: 'Full catalog sync',
+        description: 'Also deactivates active items whose SKU is missing from this file. Deactivated items are never deleted and can be reactivated by re-importing them.'
+    }
+]);
+
 export default function CSVImportModal({ open, onClose, onSuccess }) {
     const [step, setStep] = useState(1); // 1: Upload, 2: Preview, 3: Result
     const [file, setFile] = useState(null);
     const [fileName, setFileName] = useState('');
     const [importResult, setImportResult] = useState(null);
+    const [mode, setMode] = useState('append');
+    const [deactivationAcknowledged, setDeactivationAcknowledged] = useState(false);
 
     const {
         loading,
@@ -67,13 +88,38 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
         return entry;
     });
 
+    const isSyncMode = mode === 'sync';
+    const deactivateRows = previewData?.deactivateRows || [];
+    const deactivateCount = previewData?.deactivateCount || 0;
+    // The preview was computed for whichever mode was selected when it ran. If the mode changes
+    // afterwards, the deactivation list on screen no longer describes what confirm would do, so the
+    // preview is treated as stale rather than silently reused.
+    const previewMatchesMode = !previewData || previewData.mode === mode;
+    // The gate: sync mode cannot be confirmed until the user has ticked the acknowledgement for the
+    // exact deactivation list shown. Zero deactivations still needs a valid, mode-matched preview.
+    const syncConfirmBlocked = isSyncMode
+        && (!previewMatchesMode || (deactivateCount > 0 && !deactivationAcknowledged));
+
     const handleClose = () => {
         setStep(1);
         setFile(null);
         setFileName('');
         setImportResult(null);
+        setMode('append');
+        setDeactivationAcknowledged(false);
         reset();
         onClose();
+    };
+
+    const handleModeChange = (nextMode) => {
+        if (nextMode === mode) return;
+        setMode(nextMode);
+        setDeactivationAcknowledged(false);
+        // Force a fresh preview: a stale deactivation list is the one thing this flow must never
+        // let a user confirm against.
+        setStep(1);
+        setImportResult(null);
+        reset();
     };
 
     const handleFileSelect = useCallback((event) => {
@@ -113,7 +159,8 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
             return;
         }
 
-        const result = await previewCSV(file);
+        setDeactivationAcknowledged(false);
+        const result = await previewCSV(file, { mode });
         if (result.success) {
             setStep(2);
         } else {
@@ -134,16 +181,33 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
 
         // Only send valid rows
         const validRows = previewData.rows.filter(row => row.valid);
-        if (validRows.length === 0) {
+        // In sync mode a file of only-invalid rows still has work to do (the deactivation pass), so
+        // an empty valid set is only fatal for append mode.
+        if (validRows.length === 0 && !(isSyncMode && deactivateCount > 0)) {
             toast.error('No valid rows to import');
             return;
         }
 
-        const result = await confirmImport(previewData.rows);
+        if (syncConfirmBlocked) {
+            toast.error(previewMatchesMode
+                ? 'Confirm you understand which items will be deactivated before importing'
+                : 'Re-run the preview for the selected import mode before importing');
+            return;
+        }
+
+        const result = await confirmImport(previewData.rows, {
+            mode,
+            // Echo back exactly the list the preview rendered above -- the server intersects it
+            // with its own re-derived set, so this can only narrow the blast radius.
+            deactivateSkus: deactivateRows.map((entry) => entry.sku_code)
+        });
         if (result.success) {
             setImportResult(result.data);
             setStep(3);
-            toast.success(`Import complete: ${result.data.createdCount} created, ${result.data.updatedCount} updated`);
+            const deactivatedNotice = result.data.mode === 'sync'
+                ? `, ${result.data.deactivatedCount || 0} deactivated`
+                : '';
+            toast.success(`Import complete: ${result.data.createdCount} created, ${result.data.updatedCount} updated${deactivatedNotice}`);
         } else {
             toast.error(result.error);
         }
@@ -163,6 +227,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
         setFile(null);
         setFileName('');
         setImportResult(null);
+        setDeactivationAcknowledged(false);
         reset();
     };
 
@@ -224,6 +289,46 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                 </p>
             </div>
 
+            <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Import mode</p>
+                {IMPORT_MODES.map((option) => (
+                    <label
+                        key={option.id}
+                        className={cn(
+                            'flex gap-3 items-start p-3 rounded-lg border cursor-pointer transition-colors',
+                            mode === option.id
+                                ? (option.id === 'sync'
+                                    ? 'border-amber-400 bg-amber-50'
+                                    : 'border-teal-400 bg-teal-50/40')
+                                : 'border-slate-200 hover:border-slate-300'
+                        )}
+                    >
+                        <input
+                            type="radio"
+                            name="csv-import-mode"
+                            value={option.id}
+                            checked={mode === option.id}
+                            onChange={() => handleModeChange(option.id)}
+                            className="mt-1"
+                        />
+                        <span>
+                            <span className="block text-sm font-medium text-slate-800">{option.label}</span>
+                            <span className="block text-xs text-slate-500">{option.description}</span>
+                        </span>
+                    </label>
+                ))}
+            </div>
+
+            {isSyncMode && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm flex gap-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+                    <p className="text-amber-800">
+                        Full catalog sync deactivates active items missing from this file. You will see
+                        the exact list before anything is applied, and nothing is ever deleted.
+                    </p>
+                </div>
+            )}
+
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
                 <p className="font-medium text-amber-800 mb-1">📋 Import Order Reminder</p>
                 <p className="text-amber-700">
@@ -237,7 +342,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
     const renderPreviewStep = () => (
         <div className="space-y-4">
             {/* Summary */}
-            <div className="grid grid-cols-4 gap-4">
+            <div className={cn('grid gap-3', isSyncMode ? 'grid-cols-5' : 'grid-cols-4')}>
                 <div className="bg-slate-50 rounded-lg p-3 text-center">
                     <p className="text-2xl font-bold text-slate-700">{previewData?.totalRows || 0}</p>
                     <p className="text-xs text-slate-500">Total Rows</p>
@@ -247,14 +352,90 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                     <p className="text-xs text-green-600">New Items</p>
                 </div>
                 <div className="bg-blue-50 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold text-blue-600">{previewData?.updateCount || 0}</p>
-                    <p className="text-xs text-blue-600">Updates</p>
+                    <p className="text-2xl font-bold text-blue-600">
+                        {(previewData?.updateCount || 0) + (previewData?.reactivateCount || 0)}
+                    </p>
+                    <p className="text-xs text-blue-600">
+                        Updates{previewData?.reactivateCount ? ` (${previewData.reactivateCount} reactivated)` : ''}
+                    </p>
                 </div>
+                {isSyncMode && (
+                    <div className="bg-amber-50 rounded-lg p-3 text-center">
+                        <p className="text-2xl font-bold text-amber-700">{deactivateCount}</p>
+                        <p className="text-xs text-amber-700">To Deactivate</p>
+                    </div>
+                )}
                 <div className="bg-red-50 rounded-lg p-3 text-center">
                     <p className="text-2xl font-bold text-red-600">{previewData?.invalidRows || 0}</p>
                     <p className="text-xs text-red-600">Errors</p>
                 </div>
             </div>
+
+            {/* #1495 Part B: the mandatory deactivation gate. Sync mode is never confirmable
+                without this list on screen and its acknowledgement ticked. */}
+            {isSyncMode && !previewMatchesMode && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                    <AlertCircle className="w-4 h-4 inline mr-2" />
+                    Import mode changed since this preview ran. Go back and preview again before importing.
+                </div>
+            )}
+
+            {isSyncMode && previewMatchesMode && (
+                <div className="border border-amber-300 bg-amber-50/60 rounded-lg p-3 space-y-3">
+                    <div className="flex items-start gap-2">
+                        <ArchiveX className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+                        <div className="text-sm text-amber-900">
+                            <p className="font-medium">
+                                {deactivateCount === 0
+                                    ? 'No items will be deactivated'
+                                    : `${deactivateCount} item(s) will be deactivated`}
+                            </p>
+                            <p className="text-xs text-amber-800">
+                                These active items have no matching SKU in this file. They are deactivated,
+                                never deleted, and come back if you re-import them. Items still used by an
+                                active product, purchase order, or job order are reported as skipped instead.
+                            </p>
+                        </div>
+                    </div>
+
+                    {deactivateCount > 0 && (
+                        <>
+                            <div className="border border-amber-200 rounded-md bg-white max-h-40 overflow-y-auto">
+                                <table className="w-full text-xs">
+                                    <thead className="bg-amber-100/60 sticky top-0">
+                                        <tr>
+                                            <th className="text-left p-2 font-medium text-amber-900">SKU</th>
+                                            <th className="text-left p-2 font-medium text-amber-900">Name</th>
+                                            <th className="text-left p-2 font-medium text-amber-900">Category</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-amber-100">
+                                        {deactivateRows.map((entry) => (
+                                            <tr key={entry.item_id}>
+                                                <td className="p-2 font-mono">{entry.sku_code || '-'}</td>
+                                                <td className="p-2 text-slate-700">{entry.name || '-'}</td>
+                                                <td className="p-2 text-slate-600 capitalize">
+                                                    {entry.category?.replace('_', ' ') || '-'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <label className="flex items-start gap-2 text-sm text-amber-900 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={deactivationAcknowledged}
+                                    onChange={(event) => setDeactivationAcknowledged(event.target.checked)}
+                                    className="mt-0.5"
+                                />
+                                <span>I understand {deactivateCount} item(s) will be deactivated.</span>
+                            </label>
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* Table */}
             <div className="border rounded-lg overflow-hidden max-h-80 overflow-y-auto">
@@ -282,7 +463,9 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                                     <Badge variant="outline" className={cn(
                                         row.action === 'CREATE'
                                             ? 'bg-green-50 text-green-700 border-green-200'
-                                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                                            : row.action === 'REACTIVATE'
+                                                ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                : 'bg-blue-50 text-blue-700 border-blue-200'
                                     )}>
                                         {row.action}
                                     </Badge>
@@ -332,7 +515,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                 <p className="text-slate-600">Your items have been successfully imported.</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 max-w-md mx-auto">
+            <div className="grid grid-cols-3 gap-3 max-w-xl mx-auto">
                 <div className="bg-green-50 rounded-lg p-4">
                     <p className="text-3xl font-bold text-green-600">{importResult?.createdCount || 0}</p>
                     <p className="text-sm text-green-600">Created</p>
@@ -345,7 +528,36 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                     <p className="text-3xl font-bold text-red-600">{importResult?.failedCount || 0}</p>
                     <p className="text-sm text-red-600">Failed</p>
                 </div>
+                {importResult?.reactivatedCount > 0 && (
+                    <div className="bg-purple-50 rounded-lg p-4">
+                        <p className="text-3xl font-bold text-purple-600">{importResult.reactivatedCount}</p>
+                        <p className="text-sm text-purple-600 flex items-center justify-center gap-1">
+                            <RotateCcw className="w-3 h-3" /> Reactivated
+                        </p>
+                    </div>
+                )}
+                {importResult?.mode === 'sync' && (
+                    <div className="bg-amber-50 rounded-lg p-4">
+                        <p className="text-3xl font-bold text-amber-700">{importResult?.deactivatedCount || 0}</p>
+                        <p className="text-sm text-amber-700 flex items-center justify-center gap-1">
+                            <ArchiveX className="w-3 h-3" /> Deactivated
+                        </p>
+                    </div>
+                )}
             </div>
+
+            {importResult?.deactivationSkippedCount > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-left max-w-xl mx-auto">
+                    <p className="font-medium text-amber-900 mb-2">
+                        Not deactivated ({importResult.deactivationSkippedCount}) — still in use:
+                    </p>
+                    <div className="space-y-1 text-sm text-amber-800 max-h-32 overflow-y-auto">
+                        {importResult.results?.deactivationSkipped?.map((entry) => (
+                            <p key={entry.item_id}>{entry.sku_code} ({entry.name}): {entry.reason}</p>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {importResult?.failedCount > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-left max-w-md mx-auto">
@@ -418,13 +630,25 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                             </Button>
                             <Button
                                 onClick={handleConfirm}
-                                disabled={loading || (previewData?.validRows === 0)}
-                                className="bg-teal-600 hover:bg-teal-700"
+                                disabled={
+                                    loading
+                                    || syncConfirmBlocked
+                                    || (previewData?.validRows === 0 && !(isSyncMode && deactivateCount > 0))
+                                }
+                                className={cn(
+                                    isSyncMode && deactivateCount > 0
+                                        ? 'bg-amber-600 hover:bg-amber-700'
+                                        : 'bg-teal-600 hover:bg-teal-700'
+                                )}
                             >
                                 {loading ? (
                                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing...</>
                                 ) : (
-                                    <><CheckCircle2 className="w-4 h-4 mr-2" /> Confirm Import ({previewData?.validRows} items)</>
+                                    <>
+                                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                                        Confirm Import ({previewData?.validRows} items
+                                        {isSyncMode && deactivateCount > 0 ? `, ${deactivateCount} deactivated` : ''})
+                                    </>
                                 )}
                             </Button>
                         </>
