@@ -46,13 +46,30 @@
 
   /* Services keeps its own display/body pairing, but every Services screen
      must resolve it from the same runtime theme values. */
+  main[data-storefront-mode='services'] {
+    font-family: var(--services-body-font);
+  }
+
   main[data-storefront-mode='services'] :where(h1, h2, h3, h4, h5, h6) {
     font-family: var(--services-display-font);
   }
 
-  main[data-storefront-mode='services'] :where(button, input, select, textarea) {
+  main[data-storefront-mode='services'] :where(strong, b) {
     font-family: var(--services-body-font);
   }
+
+  main[data-storefront-mode='services'] :where(button, input, select, textarea, option, optgroup, [role='button']) {
+    font-family: var(--services-body-font);
+  }
+}
+
+.services-mobile-no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.services-mobile-no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Custom scrollbar for tabs */
@@ -1661,7 +1678,7 @@
   }
 }
 
-@keyframes fnbGalleryLightboxFade {
+@keyframes storefrontGalleryLightboxFade {
   from {
     opacity: 0;
     transform: scale(0.98);
@@ -1676,6 +1693,6 @@
   to { transform: rotate(360deg); }
 }
 
-.fnb-gallery-lightbox-image {
-  animation: fnbGalleryLightboxFade 180ms ease;
+.storefront-gallery-lightbox-image {
+  animation: storefrontGalleryLightboxFade 180ms ease;
 }

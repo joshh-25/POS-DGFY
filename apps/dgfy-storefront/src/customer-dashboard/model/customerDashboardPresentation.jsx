@@ -73,8 +73,8 @@ export const CUSTOMER_DASHBOARD_NAV_ITEMS = [
 
 export const formatCustomerMoney = (value) => {
   const amount = Number(value || 0);
-  if (!Number.isFinite(amount)) return 'PHP 0.00';
-  return `PHP ${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (!Number.isFinite(amount)) return '₱0.00';
+  return `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 export const formatCustomerDate = (value) => {

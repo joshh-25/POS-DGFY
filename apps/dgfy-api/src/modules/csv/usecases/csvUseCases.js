@@ -15,6 +15,11 @@ const parsePositiveInt = (value) => {
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const validTemplateTypes = ['items', 'products', 'master'];
 
+// #1495 Part B. Validated here rather than coerced silently in the service: a typo'd mode must be
+// a 400, not a quiet fall-back to append (which would look like it worked) or to sync (which would
+// be destructive).
+const validImportModes = ['append', 'sync'];
+
 const failWithValidation = (message) => fail(new DomainError(
   DomainErrorCode.VALIDATION_FAILED,
   message,
@@ -112,20 +117,24 @@ export const buildExportAllItemsUseCase = ({ csvExportService }) => {
 };
 
 export const buildPreviewItemsImportUseCase = ({ csvImportService }) => {
-  return async ({ csvContent }) => {
+  return async ({ csvContent, mode }) => {
     if (typeof csvContent !== 'string' || !csvContent.trim()) {
       return failWithValidation('csvContent must be a non-empty string');
     }
 
+    if (mode !== undefined && !validImportModes.includes(mode)) {
+      return failWithValidation(`Invalid import mode. Must be one of: ${validImportModes.join(', ')}`);
+    }
+
     return withServiceExecution(
-      () => csvImportService.previewImport(csvContent),
+      () => csvImportService.previewImport(csvContent, { mode }),
       'Failed to preview item CSV import'
     );
   };
 };
 
 export const buildConfirmItemsImportUseCase = ({ csvImportService }) => {
-  return async ({ rows, userId }) => {
+  return async ({ rows, userId, mode, deactivateSkus }) => {
     const normalizedUserId = parsePositiveInt(userId);
     if (!normalizedUserId) {
       return failWithValidation('userId must be a positive integer');
@@ -135,8 +144,21 @@ export const buildConfirmItemsImportUseCase = ({ csvImportService }) => {
       return failWithValidation('rows must be a non-empty array');
     }
 
+    if (mode !== undefined && !validImportModes.includes(mode)) {
+      return failWithValidation(`Invalid import mode. Must be one of: ${validImportModes.join(', ')}`);
+    }
+
+    // Undefined is allowed through so the service can produce the specific
+    // SYNC_DEACTIVATION_NOT_ACKNOWLEDGED refusal for a sync-mode confirm that skipped the preview;
+    // a *present but wrong-shaped* list is a plain validation error here.
+    if (deactivateSkus !== undefined && deactivateSkus !== null) {
+      if (!Array.isArray(deactivateSkus) || deactivateSkus.some((sku) => typeof sku !== 'string')) {
+        return failWithValidation('deactivateSkus must be an array of SKU strings');
+      }
+    }
+
     return withServiceExecution(
-      () => csvImportService.confirmImport(rows, normalizedUserId),
+      () => csvImportService.confirmImport(rows, normalizedUserId, { mode, deactivateSkus }),
       'Failed to confirm item CSV import'
     );
   };

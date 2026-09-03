@@ -17,6 +17,10 @@ import { buildServiceBookingSummaryModel } from '../model/serviceBookingSummary.
 import { resolveDeliveryAddress } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { trimAddressCountrySuffix } from '../../../../shared/model/storefrontCatalogModel.js';
 import { getServicesLocalFlowDefinition } from '../model/servicesLocalFlow.js';
+import {
+  resolveServiceFlowMethod,
+  resolveServiceFlowProfileMethod
+} from '../model/serviceFulfillmentProfile.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the service-booking derivations
@@ -40,6 +44,7 @@ export function useServiceBookingDerivations({
   customerName,
   customerPhone,
   customerPin,
+  serviceCatalog = [],
   hasServiceCart,
   isServicesMode = false,
   money,
@@ -51,10 +56,12 @@ export function useServiceBookingDerivations({
   serviceCartTotal,
   serviceDraftQuantity,
   serviceIntakeResponses,
-  serviceOrderMethod = 'delivery',
+  serviceOrderMethod = '',
   servicePaymentTiming,
   serviceUnitType,
-  storefrontHours
+  storefrontContext,
+  storefrontHours,
+  selectedLocationId
 }) {
   const [scheduleNow, setScheduleNow] = useState(() => new Date());
   useEffect(() => {
@@ -70,12 +77,27 @@ export function useServiceBookingDerivations({
   }, [firstServiceLine, hasServiceCart, selectedServiceCartLineId, serviceCartLines]);
   const servicePaymentPolicy = activeServiceCartLine?.service_detail?.payment_policy || 'customer_choice';
   const selectedServicePaymentPolicy = selectedServiceDetail?.service_detail?.payment_policy || 'customer_choice';
+  const findCurrentCatalogService = useCallback((serviceItem) => {
+    const itemId = String(serviceItem?.item_id || '').trim();
+    if (!itemId || !Array.isArray(serviceCatalog)) return null;
+    return serviceCatalog.find((item) => String(item?.item_id || '').trim() === itemId) || null;
+  }, [serviceCatalog]);
   const serviceIntakeFields = useMemo(() => {
-    return normalizeServiceFormFields(activeServiceCartLine?.service_detail?.intake_form_schema);
-  }, [activeServiceCartLine]);
-  const selectedServiceIntakeFields = useMemo(() => (
-    normalizeServiceFormFields(selectedServiceDetail?.service_detail?.intake_form_schema)
-  ), [selectedServiceDetail]);
+    const currentService = findCurrentCatalogService(activeServiceCartLine);
+    return normalizeServiceFormFields(
+      currentService
+        ? currentService.service_detail?.intake_form_schema
+        : activeServiceCartLine?.service_detail?.intake_form_schema
+    );
+  }, [activeServiceCartLine, findCurrentCatalogService]);
+  const selectedServiceIntakeFields = useMemo(() => {
+    const currentService = findCurrentCatalogService(selectedServiceDetail);
+    return normalizeServiceFormFields(
+      currentService
+        ? currentService.service_detail?.intake_form_schema
+        : selectedServiceDetail?.service_detail?.intake_form_schema
+    );
+  }, [findCurrentCatalogService, selectedServiceDetail]);
   const missingRequiredIntake = useMemo(() => (
     serviceIntakeFields.filter((field) => {
       if (!field.required) return false;
@@ -97,7 +119,18 @@ export function useServiceBookingDerivations({
     buildServicePaymentOptions(selectedServicePaymentPolicy)
   ), [selectedServicePaymentPolicy]);
   const activeBookingService = activeServiceCartLine || selectedServiceDetail || null;
-  const serviceFlow = getServicesLocalFlowDefinition(serviceOrderMethod);
+  const currentCatalogService = findCurrentCatalogService(activeBookingService);
+  const serviceProfileSource = currentCatalogService || activeBookingService || selectedServiceDetail;
+  const serviceFlowProfileMethod = resolveServiceFlowProfileMethod({
+    serviceItem: serviceProfileSource,
+    storefrontContext
+  });
+  const serviceFlowMethod = resolveServiceFlowMethod({
+    serviceItem: serviceProfileSource,
+    selectedMethod: serviceOrderMethod,
+    storefrontContext
+  });
+  const serviceFlow = getServicesLocalFlowDefinition(serviceFlowMethod || serviceOrderMethod);
   const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
   const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
   const bookingPagePaymentOptions = hasServiceCart ? servicePaymentOptions : selectedServicePaymentOptions;
@@ -139,15 +172,22 @@ export function useServiceBookingDerivations({
     if (bookingFieldPlan.emailField?.required && !String(customerEmail || '').trim()) missing.push('Email');
     return missing;
   }, [bookingFieldPlan.emailField?.required, customerEmail, customerName, customerPhone]);
-  // Delivery always needs a destination, and Services currently supports scheduled
-  // appointments only. Keep both requirements fail-closed before Review and Payment.
+  // Keep profile-specific location, branch, and schedule requirements fail-closed
+  // before Review and Payment without inventing a default selection.
   const missingScheduleAndServiceInfo = useMemo(() => {
     const missing = [];
+    const selectedTimeIsAvailable = bookingTimeSlotOptions.some((slot) => String(slot?.value || '') === String(selectedServiceTimePart || ''));
     if (serviceFlow.requiresAddress && !String(serviceLocationSummaryDraft || '').trim()) {
       missing.push('Service Location');
     }
+    if (serviceFlow.requiresBranch && selectedLocationId == null && storefrontContext?.location_id == null) {
+      missing.push('Service Branch');
+    }
     if (serviceFlow.requiresSchedule && !selectedServiceDatePart) missing.push('Preferred Date');
     if (serviceFlow.requiresSchedule && !selectedServiceTimePart) missing.push('Preferred Time Slot');
+    if (isServicesMode && serviceFlow.requiresSchedule && selectedServiceTimePart && !selectedTimeIsAvailable) {
+      missing.push('Preferred Time Slot');
+    }
     if (bookingFieldPlan.unitTypeField && bookingFieldPlan.unitTypeField.required && !String(serviceUnitType || '').trim()) {
       missing.push(bookingFieldPlan.unitTypeField.label);
     }
@@ -155,7 +195,7 @@ export function useServiceBookingDerivations({
       missing.push(bookingFieldPlan.unitCountField.label);
     }
     return missing;
-  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceFlow.requiresAddress, serviceFlow.requiresSchedule, serviceLocationSummaryDraft, serviceUnitType]);
+  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, bookingTimeSlotOptions, isServicesMode, selectedLocationId, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceFlow.requiresAddress, serviceFlow.requiresBranch, serviceFlow.requiresSchedule, serviceLocationSummaryDraft, serviceUnitType, storefrontContext?.location_id]);
   const accountStepComplete = missingCustomerInformation.length === 0;
   const fulfillmentStepComplete = missingScheduleAndServiceInfo.length === 0
     && missingStepOneAdditionalFields.length === 0;
@@ -171,7 +211,6 @@ export function useServiceBookingDerivations({
     serviceBookingSummaryRows,
     serviceBookingSummarySchedule,
     serviceBookingSummaryTitle
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- verbatim from StorefrontApp.jsx; `money` intentionally omitted there too
   } = useMemo(() => buildServiceBookingSummaryModel({
     activeBookingService,
     firstServiceLine,
@@ -182,17 +221,22 @@ export function useServiceBookingDerivations({
     serviceCartTotal,
     serviceDraftQuantity,
     serviceIntakeResponses,
-    serviceOrderMethod
+    serviceOrderMethod,
+    serviceFlowMethod,
+    serviceFlowProfileMethod
   }), [
     activeBookingService,
     firstServiceLine,
     hasServiceCart,
     serviceAppointmentAt,
+    money,
     serviceCartLines,
     serviceCartTotal,
     serviceDraftQuantity,
     serviceIntakeResponses,
-    serviceOrderMethod
+    serviceOrderMethod,
+    serviceFlowMethod,
+    serviceFlowProfileMethod
   ]);
 
   return {
@@ -232,6 +276,8 @@ export function useServiceBookingDerivations({
     serviceIntakeFields,
     serviceLocationSummaryDraft,
     serviceFlow,
+    serviceFlowMethod,
+    serviceFlowProfileMethod,
     getPreferredBookingTimeForDate,
     servicePaymentOptions,
     stepOneComplete

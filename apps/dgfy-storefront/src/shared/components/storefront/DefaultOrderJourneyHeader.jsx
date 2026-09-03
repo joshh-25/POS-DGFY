@@ -32,7 +32,6 @@ export function DefaultOrderJourneyHeader({
   return (
     <>
       <CheckoutHeroHeader
-        eyebrow="Order Journey"
         title="Complete Your Product Order"
         description="Set fulfillment first, provide one reliable contact, then review payment and totals before submitting."
         badges={[

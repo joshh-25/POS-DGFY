@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: engineering
-last_reviewed: 2026-08-18
+last_reviewed: 2026-09-03
 applies_to: issue_and_backlog_organization
 topic: issue_taxonomy
 ---
@@ -89,7 +89,9 @@ Every epic must have:
 
 - A **`## Definition of done`** section stating what "finished" means
 - The `epic` label
-- At least two children (one child is just an issue with extra steps)
+- At least two children, **or** at least two candidate tasks in its candidate slate comment (see
+  "Deferred decomposition" below) — one child, filed or candidate, is just an issue with extra
+  steps
 
 ### If two candidate epics share a dependency chain, they are one epic
 
@@ -113,6 +115,51 @@ migrating to a real **Epic** issue type is a clean upgrade.
 
 They span sprints by definition. Only leaf issues get an `Iteration` value. An epic sitting in a
 sprint is a sign it should have been an ordinary issue.
+
+### Deferred decomposition — candidate slates
+
+Added 2026-09-03 (#1509), after a measurement found 17 of 40 open epics with **zero completed
+children** — filed, fully decomposed, never started — accounting for roughly 17% of the entire
+open backlog. Filing every child the moment an epic is figured out produces exactly that: epics
+decomposed months before any of it is addressable, and a backlog too granular to work through.
+
+**The default for a newly filed epic is a `## Definition of done` plus a candidate slate comment,
+not filed children.** A candidate slate is a comment on the epic, not a body edit — but the epic
+body does carry one stable pointer line to it, e.g. `Candidate decomposition: see the latest
+## Candidate slate comment.` Add that line to the body the first time a slate is posted; on every
+later revisit, refresh/retain that one line rather than duplicating it — the pointer itself never
+grows into a body-held checklist, it just names where the current truth lives.
+
+```markdown
+## Candidate slate — 2026-09-03
+
+Not yet filed. Graduates to real issues wave-at-a-time when scheduled.
+
+- [ ] Voucher maximum order value cap
+- [ ] Voucher restricted to specific users
+- [ ] Accountable officer recorded on vouchers
+- ~~Voucher shown on order list~~ → filed as #1492 (2026-09-03)
+- ~~LLM area categorisation~~ → superseded by #1496 wave 3 (2026-09-03)
+
+Supersedes the slate of 2026-08-14.
+```
+
+- **The newest `## Candidate slate` comment is authoritative.** Earlier ones are immutable
+  history — never edited, never deleted.
+- **Graduation is wave-at-a-time, when scheduled** — a candidate becomes a real filed issue (with
+  its own parent link, `area:*` label, type, and fields) only when that slice is actually entering
+  an iteration or active work. An epic is never fully decomposed in one pass.
+- **On revisit**, post a fresh rolled-up slate — the full current list, graduated items struck
+  through with their issue number, superseded ones marked — rather than appending a fragment.
+  Readback should always be one comment, not a thread archaeology exercise. The body's pointer line
+  stays as-is (it already points at "the latest" slate comment, not a specific one) — nothing to
+  edit there on an ordinary revisit.
+- **This is not the "checklist of issue numbers" anti-pattern** (see Anti-patterns, below). That
+  rule bans a checklist of *filed* issue numbers, which drifts because the real sub-issue links are
+  a second source of truth. A candidate slate holds unfiled tasks with no issue numbers — nothing
+  else can be the truth, so there is nothing to drift from.
+- **Forward-looking only.** This does not apply retroactively to already-decomposed epics; existing
+  children are not re-collapsed.
 
 ---
 
@@ -175,10 +222,14 @@ These name the **product surface**, not the directory, so they survive the `apps
 
 1. **Search first.** The most common failure mode here has been the same work filed twice under
    different framing — at one point the privacy policy was scheduled in three separate issues.
+   Include an `in:body,comments` pass, not just the default title/body search — a candidate task
+   living only in a slate comment (see "Deferred decomposition" above) is invisible otherwise, and
+   that invisibility is exactly how a repeat of the triple-filing failure would recur.
 2. **Pick a parent, or deliberately don't.** Standalone is a legitimate outcome; roughly a quarter
    of open issues have no epic and should not be forced into one.
 3. **Apply an `area:*` label** and an issue type (Bug / Feature / Task).
-4. **If it is an epic**, write the definition of done before filing the children.
+4. **If it is an epic**, write the definition of done, then post the candidate slate comment. File
+   children only for the wave being scheduled now — see "Deferred decomposition" above.
 
 ### Linking a child to a parent
 
@@ -317,7 +368,8 @@ it.
 | Create a permanent "Payments" / "POS" epic | Domains are `area:*` labels. Epics that cannot close are dashboards. |
 | Nest three levels for neatness | Each level must be separately plannable. |
 | Put an epic in a sprint | Epics span sprints; that's what makes them epics. |
-| Maintain a checklist of issue numbers in an epic body | It drifts. Use sub-issue links. |
+| Maintain a checklist of *filed* issue numbers in an epic body | It drifts. Use sub-issue links. (A candidate slate of *unfiled* tasks in a comment is different — see "Deferred decomposition" above — nothing else is the source of truth for those, so nothing can drift.) |
+| Decompose an epic into filed issues before any of it is scheduled | Produces epics that sit at zero completed children for months; ~17% of the open backlog arrived this way. Post a candidate slate instead and graduate wave-at-a-time. |
 | Rewrite 25 issue bodies for a path rename | Write one decoder note and pin it — see #363. |
 | Close a stale issue because its file paths moved | Mis-addressed ≠ invalid. Fix the reference or leave a note. |
 

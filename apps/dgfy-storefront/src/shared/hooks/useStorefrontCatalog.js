@@ -18,7 +18,7 @@ import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
 import { getFoodBeverageStorefrontViewModel } from '../../modes/fnb/storefront/model/fnbStorefrontViewModel.js';
 import { buildFnbCommunityModel } from '../../modes/fnb/storefront/model/fnbCommunityModel.js';
 import { buildFnbPromoSectionModel } from '../../modes/fnb/promos/model/fnbPromoModel.js';
-import { buildServiceFallbackReasons, buildServicesCatalogPresentation } from '../../modes/services/storefront/model/servicesHeroPresentation.js';
+import { buildServiceFallbackReasons, buildServicesCatalogPresentation, formatServicesRatingSummary } from '../../modes/services/storefront/model/servicesHeroPresentation.js';
 import { buildSimpleFallbackReasons } from '../../modes/simple/storefront/model/simpleStorefrontPresentation.js';
 import {
   deriveStorefrontRegistrationYear,
@@ -142,8 +142,14 @@ export function useStorefrontCatalog({
         servicesViewModel,
         categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : []
       });
-    const ratingLabel = formatRatingSummary(reviewSummary);
-    const modeLabel = heroSectionModel?.primaryCategoryLabel || modeAdapter.heroEyebrow;
+    const ratingLabel = isServicesMode
+      ? formatServicesRatingSummary(reviewSummary)
+      : formatRatingSummary(reviewSummary);
+    const isOnSiteOnlyServices = Number(servicesViewModel?.totalServices || 0) > 0
+      && Number(servicesViewModel?.onSiteCount || 0) === Number(servicesViewModel?.totalServices || 0);
+    const modeLabel = isOnSiteOnlyServices
+      ? 'On-site'
+      : (heroSectionModel?.primaryCategoryLabel || modeAdapter.heroEyebrow);
     const catalogPresentation = buildServicesCatalogPresentation({ modeAdapter, modeLabel });
     const reviewCount = Number((reviewSummary?.total_count ?? reviewSummary?.totalCount) || 0);
     const serviceCounts = {

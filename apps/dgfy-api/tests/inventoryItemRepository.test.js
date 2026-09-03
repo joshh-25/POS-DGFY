@@ -493,6 +493,55 @@ describe('inventory itemRepository', () => {
     expect(result.location_scope).toEqual({ location_id: 2, resolved: false });
   });
 
+  it('returns a soft-deleted, inactive item under include_inactive=true (#1495 Part A, RF-1)', async () => {
+    // Regression test for PR #1502's pr-reviewer RF-1 finding: the include_inactive branch used
+    // to call buildVisibleWhere without includeDeleted, which always forced deleted_at: null onto
+    // the query -- since deleteItem sets deleted_at, a real DB could never return the deleted rows
+    // this "show inactive" list is meant to surface, even though a mocked findAndCountAll would
+    // happily hand one back regardless of the where clause. Assert on the where clause itself, not
+    // just the mocked result, so this actually catches the defect the way an unfiltered mock can't.
+    const ProductComposition = {};
+    const ItemFolder = {};
+    const Item = {
+      findAndCountAll: jest.fn().mockResolvedValue({
+        count: 1,
+        rows: [
+          {
+            toJSON: () => ({
+              item_id: 9,
+              sku_code: 'DEL-009',
+              name: 'Discontinued Syrup',
+              category: 'raw_material',
+              status: 'inactive',
+              deleted_at: new Date('2026-08-20T00:00:00Z'),
+              current_stock: 0
+            })
+          }
+        ]
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ProductComposition') return ProductComposition;
+      if (name === 'ItemFolder') return ItemFolder;
+      return {};
+    });
+
+    const result = await itemRepository.getItems({ page: '1', limit: '20', include_inactive: true });
+
+    const args = Item.findAndCountAll.mock.calls[0][0];
+    expect(args.where).not.toHaveProperty('deleted_at');
+    expect(args.where.status).toBeUndefined();
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      item_id: 9,
+      status: 'inactive',
+      deleted_at: new Date('2026-08-20T00:00:00Z')
+    });
+  });
+
   it('maps item detail payload to wizard contract in getItemById', async () => {
     const ItemNutrition = {};
     const ItemAllergen = {};
@@ -996,6 +1045,120 @@ describe('inventory itemRepository', () => {
     expect(updatePayload.deleted_at).toBeInstanceOf(Date);
     expect(itemRecord.update.mock.calls[0][1]).toEqual({ transaction });
     expect(sequelize.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores a deleted item to active and clears deleted_at/deleted_by (#1495 Part A)', async () => {
+    const itemRecord = {
+      item_id: 55,
+      name: 'Flour',
+      sku_code: 'FLOUR-001',
+      status: 'inactive',
+      deleted_at: new Date('2026-08-01T00:00:00Z'),
+      update: jest.fn().mockResolvedValue(true)
+    };
+    const Item = { findOne: jest.fn().mockResolvedValue(itemRecord) };
+    const AuditLog = { create: jest.fn().mockResolvedValue({}) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = { transaction: jest.fn(async (callback) => callback(transaction)) };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 55, name: 'Flour', status: 'active' });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-restore-item' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'AuditLog') return AuditLog;
+      return {};
+    });
+
+    const result = await itemRepository.restoreItem(55, 42);
+
+    expect(Item.findOne).toHaveBeenCalledWith({
+      where: { item_id: 55 },
+      transaction,
+      lock: 'UPDATE'
+    });
+    expect(itemRecord.update).toHaveBeenCalledWith({
+      status: 'active',
+      deleted_by: null,
+      deleted_at: null
+    }, { transaction });
+    expect(AuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'RESTORE',
+        event_type: 'item_restored',
+        changes: expect.objectContaining({
+          item_id: 55,
+          item_name: 'Flour',
+          sku_code: 'FLOUR-001',
+          previous_status: 'inactive',
+          status: 'active'
+        })
+      }),
+      { transaction }
+    );
+    expect(result).toEqual({ item_id: 55, name: 'Flour', status: 'active' });
+  });
+
+  it('rejects restore with 400 when the item is not currently deleted (#1495 Part A)', async () => {
+    // deleted_at is null even though status is 'inactive' -- e.g. deactivated via a plain PUT
+    // rather than through deleteItem. Gating on status alone would incorrectly accept this.
+    const itemRecord = { item_id: 56, name: 'Sugar', status: 'inactive', deleted_at: null, update: jest.fn() };
+    const Item = { findOne: jest.fn().mockResolvedValue(itemRecord) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = { transaction: jest.fn(async (callback) => callback(transaction)) };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-restore-not-deleted' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      return {};
+    });
+
+    await expect(itemRepository.restoreItem(56, 42)).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Item is not deleted'
+    });
+    expect(itemRecord.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects restore with 404 when the item does not exist (#1495 Part A)', async () => {
+    const Item = { findOne: jest.fn().mockResolvedValue(null) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = { transaction: jest.fn(async (callback) => callback(transaction)) };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-restore-missing' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      return {};
+    });
+
+    await expect(itemRepository.restoreItem(999, 42)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('normalizes an active_sku_code collision into a friendly 409 on restore (#1495 Part A)', async () => {
+    const itemRecord = {
+      item_id: 57,
+      name: 'Conflicting Item',
+      sku_code: 'DUP-001',
+      status: 'inactive',
+      deleted_at: new Date('2026-08-01T00:00:00Z'),
+      update: jest.fn().mockRejectedValue({
+        name: 'SequelizeUniqueConstraintError',
+        parent: { constraint: 'uq_items_active_sku_code' }
+      })
+    };
+    const Item = { findOne: jest.fn().mockResolvedValue(itemRecord) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = { transaction: jest.fn(async (callback) => callback(transaction)) };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-restore-sku-conflict' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      return {};
+    });
+
+    await expect(itemRepository.restoreItem(57, 42)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Item with this SKU code already exists'
+    });
   });
 
   it('creates item with fifo initial stock via stock movement', async () => {

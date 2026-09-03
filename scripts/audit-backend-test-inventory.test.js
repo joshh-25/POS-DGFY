@@ -81,6 +81,21 @@ test('a hardcoded-citation file is pinned to keep unless explicitly overridden',
   });
 });
 
+test('a live docs/compliance citation pins the file to keep', () => {
+  const inventory = buildInventory();
+  const byPath = new Map(inventory.files.map((f) => [f.path, f]));
+  [
+    'tests/rbacRouteCoverage.contract.test.js',
+    'tests/complianceActivation.transport.test.js',
+    'tests/complianceActivationReadiness.e2e.transport.test.js',
+  ].forEach((p) => {
+    const f = byPath.get(p);
+    assert.ok(f, `${p} should be present in the inventory`);
+    assert.equal(f.classification, 'keep', `${p} is cited by a live docs/compliance/** document and should be kept`);
+    assert.equal(f.rule, 'R1-pin', `${p} should be pinned by R1, not any other rule`);
+  });
+});
+
 test('deletion-override files are either still classified delete, or already applied (removed)', () => {
   const inventory = buildInventory();
   const overrides = loadOverrides();

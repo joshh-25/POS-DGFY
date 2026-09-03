@@ -1,9 +1,11 @@
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
+
 const CATEGORY_PRESETS = Object.freeze({
   laundry: Object.freeze({
     label: 'Laundry',
     iconToken: 'laundry',
-    accent: '#0f766e',
-    accentBg: '#f0fdfa',
+    accent: SERVICES_PALETTE.primary,
+    accentBg: SERVICES_PALETTE.primarySoft,
     howItWorks: [
       'Choose the laundry care type that matches the load.',
       'Share handling notes, garment count, or special fabric requests.',
@@ -18,8 +20,8 @@ const CATEGORY_PRESETS = Object.freeze({
   aircon_cleaning: Object.freeze({
     label: 'Aircon Cleaning',
     iconToken: 'aircon',
-    accent: '#134e4a',
-    accentBg: '#ecfeff',
+    accent: SERVICES_PALETTE.primaryDark,
+    accentBg: SERVICES_PALETTE.primarySoft,
     howItWorks: [
       'Choose the correct unit type and service size.',
       'Share the address, number of units, and preferred schedule.',
@@ -34,13 +36,13 @@ const CATEGORY_PRESETS = Object.freeze({
 });
 
 const CATEGORY_COLORS = Object.freeze([
-  { accent: '#0f766e', accentBg: '#f0fdfa' },
-  { accent: '#134e4a', accentBg: '#ecfeff' },
-  { accent: '#0f172a', accentBg: '#f8fafc' },
-  { accent: '#0f766e', accentBg: '#fffbeb' },
-  { accent: '#134e4a', accentBg: '#f8fafc' },
-  { accent: '#0f172a', accentBg: '#ecfeff' },
-  { accent: '#0f766e', accentBg: '#ecfeff' }
+  { accent: SERVICES_PALETTE.primary, accentBg: SERVICES_PALETTE.primarySoft },
+  { accent: SERVICES_PALETTE.primaryDark, accentBg: SERVICES_PALETTE.primarySoft },
+  { accent: SERVICES_PALETTE.primary, accentBg: SERVICES_PALETTE.primaryLight },
+  { accent: SERVICES_PALETTE.primaryDark, accentBg: SERVICES_PALETTE.primarySoft },
+  { accent: SERVICES_PALETTE.primary, accentBg: SERVICES_PALETTE.primaryLight },
+  { accent: SERVICES_PALETTE.primaryDark, accentBg: SERVICES_PALETTE.primarySoft },
+  { accent: SERVICES_PALETTE.primary, accentBg: SERVICES_PALETTE.primarySoft }
 ]);
 
 const AREA_META = Object.freeze({
@@ -71,8 +73,8 @@ const DEFAULT_CATEGORY_META = Object.freeze({
   eyebrow: 'Bookable service',
   description: 'Bookable services available in this storefront.',
   areaLabel: 'Service',
-  accent: '#0f766e',
-  accentBg: '#f0fdfa',
+  accent: SERVICES_PALETTE.primary,
+  accentBg: SERVICES_PALETTE.primarySoft,
   icon: null,
   iconToken: 'service',
   howItWorks: [

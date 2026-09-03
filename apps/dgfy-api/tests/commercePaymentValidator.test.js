@@ -1,6 +1,7 @@
 import {
   validateCommercePaymentRefundBody,
   validateCommercePaymentSessionParam,
+  validateCreateDglaundryBookingPaymentSessionBody,
   validateListCommercePaymentSessionsQuery,
   validateTenantPayMongoChildAccountActionParam,
   validateTenantPayMongoChildAccountBody,
@@ -112,5 +113,48 @@ describe('commerce payment validators', () => {
     expect(accepted.nextCalled).toBe(true);
     expect(rejected.nextCalled).toBe(false);
     expect(rejected.statusCode).toBe(422);
+  });
+
+  it('validates and sanitizes DGLaundry booking payment-session requests', async () => {
+    const result = await runMiddleware(validateCreateDglaundryBookingPaymentSessionBody, {
+      body: {
+        company_id: 'client-supplied-company',
+        location_id: 'location-a',
+        mode: 'mixed',
+        external_order_reference: 'DGL-ORDER-1',
+        external_tracking_reference: 'DGL-TRACK-1',
+        idempotency_key: 'booking-key-1',
+        lines: [
+          { mode: 'fixed', variantId: 'fixed-1', quantity: 1, externalLineReference: 'line-fixed', serviceInputs: { stainTreatment: true }, ignored: 'removed' },
+          { mode: 'per_kilo', variantId: 'kilo-1', quantity: 1, externalLineReference: 'line-kilo', measurementGrams: 2500 }
+        ],
+        fulfillment: { mode: 'pickup' },
+        customer: { displayName: ' Customer ', email: 'CUSTOMER@EXAMPLE.COM' },
+        ignored: 'removed'
+      }
+    });
+
+    expect(result.nextCalled).toBe(true);
+    expect(result.req.validatedBody).not.toHaveProperty('ignored');
+    expect(result.req.validatedBody.lines[0]).not.toHaveProperty('ignored');
+    expect(result.req.validatedBody.lines[0].serviceInputs).toEqual({ stainTreatment: true });
+    expect(result.req.validatedBody.customer).toEqual(expect.objectContaining({ displayName: 'Customer', email: 'customer@example.com' }));
+  });
+
+  it('rejects malformed DGLaundry booking payment-session shapes', async () => {
+    const result = await runMiddleware(validateCreateDglaundryBookingPaymentSessionBody, {
+      body: {
+        location_id: 'location-a',
+        mode: 'unknown',
+        external_order_reference: 'not valid',
+        external_tracking_reference: 'track-1',
+        idempotency_key: 'bad key',
+        lines: [],
+        fulfillment: { mode: 'pickup' }
+      }
+    });
+
+    expect(result.nextCalled).toBe(false);
+    expect(result.statusCode).toBe(422);
   });
 });

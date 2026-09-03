@@ -67,7 +67,7 @@ export function OrdersPage({ orders = [], loading = false }) {
                 </span>
               </div>
               <div style={{ fontSize: 13, color: '#475569' }}>
-                {order.total_amount ? `₱${Number(order.total_amount).toFixed(2)}` : '—'}
+                {order.total_amount ? `₱${Number(order.total_amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
               </div>
               <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
                 {order.created_at || 'Recent'}

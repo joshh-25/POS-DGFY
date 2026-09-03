@@ -16,6 +16,8 @@ const {
   summarizeGates,
 } = require('./gate-release-local');
 
+const { ADVISORY_CI_ENFORCED_GATES } = require('./check-pr-quality-workflow');
+
 // #1021 review, RF-1: an unknown --only gate name previously resolved to an empty selection,
 // which meant every gate was skipped, the run exited 0, and the artifact still said
 // verdict: "pass" -- a misspelled selection silently looked successful. These smoke tests pin
@@ -83,6 +85,57 @@ test('GATE_NAMES has no duplicates and matches the documented count of 16', () =
   assert.equal(new Set(GATE_NAMES).size, GATE_NAMES.length);
 });
 
+// #1431 Phase D (2026-09-03): every one of the 16 GATE_NAMES is now a CI_ENFORCED_GATES entry --
+// required-locally is 0 on a default run. This is the Definition of Done for Phase D, pinned
+// directly rather than left implicit in the individual delegation tests below.
+test('CI_ENFORCED_GATES.size === 16 -- every gate is delegated, required-locally is 0', () => {
+  assert.equal(CI_ENFORCED_GATES.size, 16);
+  for (const name of GATE_NAMES) {
+    assert.equal(CI_ENFORCED_GATES.has(name), true, `${name} must be in CI_ENFORCED_GATES`);
+  }
+});
+
+test('a default (no-flags) run selects zero required gates', () => {
+  const selection = resolveGateSelection(['node', 'gate-release-local.js'], GATE_NAMES);
+  const gates = [];
+  for (const name of GATE_NAMES) {
+    runGate(gates, selection, name, () => true, name);
+  }
+  const summary = summarizeGates(gates);
+  assert.equal(summary.required_gate_count, 0);
+  assert.equal(summary.delegated_gate_count, GATE_NAMES.length);
+});
+
+test('--include-ci-enforced still runs every gate locally as an escape hatch', () => {
+  const selection = resolveGateSelection(['node', 'gate-release-local.js', '--include-ci-enforced'], GATE_NAMES);
+  const gates = [];
+  for (const name of GATE_NAMES) {
+    runGate(gates, selection, name, () => true, name);
+  }
+  const summary = summarizeGates(gates);
+  assert.equal(summary.delegated_gate_count, 0);
+  assert.equal(summary.required_gate_count, GATE_NAMES.length);
+});
+
+test('--only still works as an escape hatch for a single delegated gate', () => {
+  const selection = resolveGateSelection(['node', 'gate-release-local.js', '--only', 'runtime.doctor'], GATE_NAMES);
+  const gates = [];
+  const ranCommand = { called: false };
+  runGate(gates, selection, 'runtime.doctor', () => { ranCommand.called = true; return true; }, 'npm run doctor:runtime');
+  assert.equal(gates[0].status, 'pass');
+  assert.equal(ranCommand.called, true);
+});
+
+// #1431 Phase D (2026-09-03): the two-name advisory-exemption allowlist (defined in
+// check-pr-quality-workflow.js, since that's where checkCiEnforcedGatesAreBlocking consumes it) --
+// pinned here too since it's the direct answer to "which of the 16 delegated gates stay advisory."
+test('the advisory-exemption set contains exactly dependencies.audit.full and backend.test_matrix', () => {
+  assert.deepEqual(new Set(ADVISORY_CI_ENFORCED_GATES), new Set(['dependencies.audit.full', 'backend.test_matrix']));
+  for (const name of ADVISORY_CI_ENFORCED_GATES) {
+    assert.equal(CI_ENFORCED_GATES.has(name), true, `${name} must still be delegated (CI_ENFORCED_GATES), just not blocking`);
+  }
+});
+
 test('retired gates stay retired (#1431 Phase 3)', () => {
   for (const retired of ['release.target_sha', 'observability.evidence.report', 'release.verdict.contract']) {
     assert.ok(!GATE_NAMES.includes(retired), `${retired} was retired and must not be re-added`);
@@ -101,10 +154,14 @@ test('shouldDelegate: a CI-enforced gate delegates on a default (unfiltered) sel
   assert.equal(CI_ENFORCED_GATES.has('docs.lint'), true);
 });
 
-test('shouldDelegate: a non-CI-enforced gate never delegates', () => {
+// #1431 Phase D (2026-09-03): all 16 GATE_NAMES are now CI_ENFORCED_GATES entries (required-locally
+// is 0), so there is no real gate name left to exercise the "not CI-enforced" path with -- this
+// pins shouldDelegate's own behavior directly against a name that simply isn't in the map, which
+// is all the function itself ever checks (it does not validate against GATE_NAMES).
+test('shouldDelegate: a name absent from CI_ENFORCED_GATES never delegates', () => {
   const selection = resolveGateSelection(['node', 'gate-release-local.js'], GATE_NAMES);
-  assert.equal(CI_ENFORCED_GATES.has('runtime.doctor'), false);
-  assert.equal(shouldDelegate('runtime.doctor', selection), false);
+  assert.equal(CI_ENFORCED_GATES.has('not.a.real.gate'), false);
+  assert.equal(shouldDelegate('not.a.real.gate', selection), false);
 });
 
 test('shouldDelegate: --only naming a CI-enforced gate runs it instead of delegating (explicit request wins)', () => {

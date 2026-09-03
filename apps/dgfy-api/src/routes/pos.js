@@ -34,6 +34,7 @@ import {
     validatePosReportsQuery,
     validatePosTransactionsQuery,
     validatePosReportsExportQuery,
+    validateProcurementExportQuery,
     validatePosTransactionIdParam,
     validateZReadingDateParam,
     validateZReadingQuery,
@@ -248,6 +249,9 @@ router.post('/terminal/shifts/:id/merchant-tender-reconciliation', checkPermissi
 router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalDashboardTodayQuery, posController.getTerminalTodayDashboard);
 router.get('/reports/overview', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsQuery, posController.getReportsOverview);
 router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsExportQuery, posController.exportReports);
+// Phase 261 (#1488): pre-run procurement CSV export, deliberately no shift_id requirement --
+// usable before a run is built, unlike the shift-bound incoming-orders queue below.
+router.get('/reports/procurement-export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateProcurementExportQuery, posController.exportProcurementCsv);
 router.get('/device/status', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getDeviceStatus);
 router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosDeviceReceiptPrint, posController.printReceipt);
 router.post('/device/online-order-receipt-claim', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validateOnlineOrderReceiptAutoPrintClaim, posController.claimOnlineOrderReceiptAutoPrint);

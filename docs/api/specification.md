@@ -4203,6 +4203,25 @@ The production server must use `PAYMONGO_MODE=live` and `PAYMONGO_LIVE_WEBHOOK_S
 
 The split checkout described by the older commerce-admin endpoints is deprecated by ADR 0040. `COMMERCE_PAYMONGO_SPLIT_ENABLED` must remain false when `TENANT_REVENUE_SHARING_ENABLED` is true.
 
+**DGLaundry booking payment target (stacked PR3)**
+
+`POST /api/v1/commerce-payments/dglaundry/booking-groups/payment-sessions`
+creates a DGFY-owned PayMongo QR Ph session from an explicit DGLaundry quote.
+The request carries immutable company/location/order references, booking mode
+(`fixed`, `per_kilo`, or `mixed`), lines, fulfillment, customer snapshot, and
+an idempotency key. Fixed lines are the only ones charged online; per-kilo
+lines remain provider reservations until an authenticated DGLaundry attendant
+records actual grams and a local tender. Mixed bookings submit the fixed child
+after `payment.paid` while retaining the per-kilo child reservation.
+
+This target is dark-disabled unless `DGLAUNDRY_BOOKING_PAYMENTS_ENABLED=true`,
+the global kill switch is false, and the branch is not in
+`DGLAUNDRY_BOOKING_PAYMENTS_DISABLED_BRANCHES`. DGFY never uses PayMongo split
+for this target. PayMongo failure/expiry emits explicit cancellation events;
+paid finalization emits one signed `dgfy.laundry_order.submitted.v1` event.
+Provider, hosted, approved-branch, and production gates remain separate from
+this source contract.
+
 **Auth**: Admin JWT (`/admin/login`)
 **Base Path**: `/api/v1/commerce-payments/admin`
 **Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`

@@ -59,7 +59,7 @@ const listPaymentSessionsQuerySchema = Joi.object({
     }),
     Joi.array().items(Joi.string().valid(...REPORT_STATUSES))
   ).optional(),
-  target_type: Joi.string().valid('store_checkout', 'service_booking').optional(),
+  target_type: Joi.string().valid('store_checkout', 'service_booking', 'dglaundry_booking').optional(),
   limit: Joi.number().integer().min(1).max(250).default(100),
   offset: Joi.number().integer().min(0).default(0)
 });
@@ -96,6 +96,65 @@ const tenantPayMongoChildAccountBodySchema = Joi.object({
   trade_name: Joi.string().trim().min(2).max(120).allow('', null).optional()
 });
 
+const bookingReferenceSchema = Joi.string()
+  .trim()
+  .min(1)
+  .max(200)
+  .pattern(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/);
+
+const bookingDateTimeSchema = Joi.string()
+  .trim()
+  .max(80)
+  .isoDate()
+  .messages({ 'string.isoDate': '{{#label}} must be a valid ISO date-time.' });
+
+const bookingServiceInputsSchema = Joi.object()
+  .pattern(/^[A-Za-z0-9_.:-]{1,80}$/, Joi.any())
+  .max(100)
+  .default({});
+
+const dglaundryBookingLineSchema = Joi.object({
+  mode: Joi.string().valid('fixed', 'per_kilo').optional(),
+  variantId: Joi.string().trim().min(1).max(160).required(),
+  quantity: Joi.number().integer().positive().max(100000).required(),
+  measurementGrams: Joi.number().integer().positive().max(1000000).allow(null).optional(),
+  externalLineReference: bookingReferenceSchema.required(),
+  serviceInputs: bookingServiceInputsSchema
+});
+
+const dglaundryBookingFulfillmentSchema = Joi.object({
+  mode: Joi.string().valid('pickup', 'delivery').required(),
+  scheduledAt: bookingDateTimeSchema.allow(null).optional(),
+  addressSnapshot: Joi.string().trim().max(1000).allow('', null).optional()
+});
+
+const dglaundryBookingCustomerSchema = Joi.object({
+  displayName: Joi.string().trim().max(160).allow('', null).optional(),
+  name: Joi.string().trim().max(160).allow('', null).optional(),
+  email: Joi.string().email({ tlds: { allow: false } }).trim().lowercase().max(255).allow('', null).optional(),
+  phone: Joi.string().trim().max(80).allow('', null).optional()
+}).allow(null);
+
+const dglaundryBookingPaymentSessionSchema = Joi.object({
+  // The controller replaces company_id and tenant_id with the authenticated
+  // tenant context. Keeping company_id optional preserves the context-only
+  // request shape without trusting a client-supplied company identifier.
+  company_id: Joi.string().trim().max(160).optional(),
+  location_id: Joi.string().trim().min(1).max(160).required(),
+  mode: Joi.string().valid('fixed', 'per_kilo', 'mixed').default('fixed'),
+  external_order_reference: bookingReferenceSchema.required(),
+  external_tracking_reference: bookingReferenceSchema.required(),
+  external_order_group_reference: bookingReferenceSchema.optional(),
+  external_tracking_group_reference: bookingReferenceSchema.optional(),
+  catalog_version: Joi.string().trim().min(1).max(120).optional(),
+  idempotency_key: Joi.string().trim().min(1).max(160).pattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/).required(),
+  store_slug: Joi.string().trim().lowercase().max(120).pattern(/^[a-z0-9][a-z0-9-]*$/).optional(),
+  return_url: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(1000).allow('', null).optional(),
+  lines: Joi.array().items(dglaundryBookingLineSchema).min(1).max(100).required(),
+  fulfillment: dglaundryBookingFulfillmentSchema.required(),
+  customer: dglaundryBookingCustomerSchema.optional()
+});
+
 const refundSourceSchema = Joi.object({
   merchant_id: Joi.string().trim().min(3).max(255).required(),
   split_type: Joi.string().valid('fixed').default('fixed'),
@@ -119,3 +178,4 @@ export const validateTenantPayMongoChildAccountActionParam = validateSchema(tena
 export const validateTenantPaymentAccountBody = validateSchema(tenantPaymentAccountBodySchema, 'body', 'validatedBody');
 export const validateTenantPayMongoChildAccountBody = validateSchema(tenantPayMongoChildAccountBodySchema, 'body', 'validatedBody');
 export const validateCommercePaymentRefundBody = validateSchema(refundBodySchema, 'body', 'validatedBody');
+export const validateCreateDglaundryBookingPaymentSessionBody = validateSchema(dglaundryBookingPaymentSessionSchema, 'body', 'validatedBody');

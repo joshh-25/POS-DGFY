@@ -270,6 +270,7 @@ export function DeliveryPinMap({
         maxWidth: '100%',
         height: resolvedHeight,
         minHeight: resolvedHeight,
+        scrollMarginBottom: 'var(--storefront-mobile-checkout-footer-reserve, 196px)',
         overflow: 'hidden',
         border: `1.5px solid ${highlighted ? highlightColor : '#dbe5ee'}`,
         borderRadius: 18,

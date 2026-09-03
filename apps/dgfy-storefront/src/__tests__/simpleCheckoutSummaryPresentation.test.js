@@ -23,7 +23,8 @@ describe('Simple checkout order summary presentation', () => {
     expect(actions).not.toContain('Refresh Quote');
     expect(actions).not.toContain('onQuote');
     expect(actions.indexOf('> Back')).toBeLessThan(actions.indexOf("'Place Order'"));
-    expect(paymentStep).toContain('calculated order total');
+    expect(paymentStep).not.toContain('calculated order total');
+    expect(paymentStep).toContain('labelStyle={{ ...typography.sectionTitle');
     expect(routeProps).not.toContain('handleQuote');
   });
 });

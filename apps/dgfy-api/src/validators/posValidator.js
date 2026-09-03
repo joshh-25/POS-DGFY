@@ -578,6 +578,10 @@ const incomingOnlineOrdersQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(500).default(200)
 });
 
+const procurementExportQuerySchema = Joi.object({
+    location_id: Joi.number().integer().positive().optional()
+});
+
 const onlineOrderHistoryQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional(),
     search: Joi.string().trim().allow('', null).optional(),
@@ -804,16 +808,26 @@ const assignDeliveryPersonnelSchema = Joi.object({
 // Phase 225 (#1273/#1081): delivery run CRUD + membership schemas.
 const DELIVERY_RUN_UPDATABLE_STATUSES = ['draft', 'scheduled', 'cancelled'];
 
+// Phase 260 (#1489): scheduled_date_end makes a run span a date RANGE instead of a single day.
+// `.min(Joi.ref('scheduled_date'))` rejects end < start within one create request; `.with(...)` is
+// one-directional -- an end date requires a start date, but a start date alone (today's single-day
+// shape) stays valid with no end.
 const createDeliveryRunSchema = Joi.object({
     label: Joi.string().trim().min(1).max(120).required(),
     scheduled_date: Joi.date().iso().optional(),
+    scheduled_date_end: Joi.date().iso().min(Joi.ref('scheduled_date')).optional(),
     location_id: Joi.number().integer().positive().optional(),
     notes: Joi.string().trim().max(2000).allow('', null).optional()
-});
+}).with('scheduled_date_end', 'scheduled_date');
 
+// Deliberately no Joi.ref cross-check between scheduled_date/scheduled_date_end here -- a PATCH
+// can touch either field alone, and Joi can only see fields present in this one request, not the
+// row's existing value for whichever field wasn't sent. The real start<=end invariant is enforced
+// in buildUpdateDeliveryRunUseCase against the merged (existing row + patch) effective state.
 const updateDeliveryRunSchema = Joi.object({
     label: Joi.string().trim().min(1).max(120).optional(),
     scheduled_date: Joi.date().iso().allow(null).optional(),
+    scheduled_date_end: Joi.date().iso().allow(null).optional(),
     notes: Joi.string().trim().max(2000).allow('', null).optional(),
     // dispatched/completed are deliberately excluded -- Phase 228 (#1271) owns those transitions.
     status: Joi.string().valid(...DELIVERY_RUN_UPDATABLE_STATUSES).optional()
@@ -1324,6 +1338,7 @@ export const validateTerminalShiftHistoryQuery = validateSchema(terminalShiftHis
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
+export const validateProcurementExportQuery = validateSchema(procurementExportQuerySchema, 'query', 'validatedQuery');
 export const validateOnlineOrderHistoryQuery = validateSchema(onlineOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateDeliveryPersonnelListQuery = validateSchema(deliveryPersonnelListQuerySchema, 'query', 'validatedQuery');
 export const validateAdminLocationMonitorQuery = validateSchema(adminLocationMonitorQuerySchema, 'query', 'validatedQuery');

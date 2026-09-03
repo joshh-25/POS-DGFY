@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Maximize, MapPin, Navigation, Plus, ShoppingBag, Truck, Zap } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Maximize, MapPin, Navigation, Plus, ShoppingBag, Truck, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
 import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
@@ -11,6 +11,7 @@ import { getUnavailableFulfillmentMessage } from '../../../../shared/model/store
 import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
 import { FulfillmentMethodNotice } from '../../../../shared/components/checkout/FulfillmentMethodNotice.jsx';
 import { buildLeadTimeExpectationMessage, resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
+import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutAddLocationActionStyle, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_DARK = '#1a4586';
@@ -91,17 +92,18 @@ export function RetailOrderFulfillmentStep({
     resolveFulfillmentSelectorPresentation(resolvedOrderMethodOptions);
   const activeAddress = deliverySavedLocations.find((location) => String(location.id) === String(selectedSavedLocationId)) || null;
   const { showSchedule, showImmediate, showTimingChooser, showTimingStep } = orderTimingPolicy;
-  const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep, isDeliveryOrder });
+  const showTimingSection = showTimingStep && (showTimingChooser || showSchedule);
+  const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep: showTimingSection, isDeliveryOrder });
+  const typography = getCheckoutStepTypography();
 
   return (
-    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16 }}>
-      <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 2: Fulfillment</div>
-      <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Choose how and when the customer will receive the order, then add optional notes.</div>
+    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16, fontFamily: CHECKOUT_FONT_FAMILY }}>
+      <div style={{ ...typography.title, color: '#1e293b' }}>Step 2: Fulfillment</div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, alignItems: 'start' }}>
         {showOrderMethodSelector ? (
         <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
+          <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>1. How would you like to receive your order?</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
             {resolvedOrderMethodOptions.map((option) => {
               const isAvailable = option.available !== false;
@@ -135,6 +137,7 @@ export function RetailOrderFulfillmentStep({
                 iconBoxSize={isMobileViewport ? 34 : 40}
                 iconSize={isMobileViewport ? 18 : 20}
                 unavailable={!isAvailable}
+                fontFamily={CHECKOUT_FONT_FAMILY}
               />
               );
             })}
@@ -145,14 +148,14 @@ export function RetailOrderFulfillmentStep({
           <FulfillmentMethodNotice
             accentColor={RETAIL_ACCENT}
             message={orderMethodNotice}
-            variant={soleOrderMethod ? 'info' : 'warning'}
+            variant={soleOrderMethod?.value === 'delivery' ? 'delivery-only' : soleOrderMethod?.value === 'pickup' ? 'pickup-only' : soleOrderMethod ? 'info' : 'warning'}
           />
         )}
 
         <div style={{ display: 'grid', gap: 12 }}>
-          {showTimingStep ? <>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.timing}. When would you like your order?</div>
-          {showTimingChooser ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
+          {showTimingSection ? <>
+          <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.timing}. When would you like your order?</div>
+          {showTimingChooser ? <div data-testid="order-timing-choice-grid" style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
             <SelectableOptionCard
               onClick={() => onScheduleModeChange('asap')}
               label="NOW"
@@ -173,6 +176,7 @@ export function RetailOrderFulfillmentStep({
               fontWeight={700}
               iconBoxSize={isMobileViewport ? 34 : 40}
               iconSize={isMobileViewport ? 18 : 20}
+              fontFamily={CHECKOUT_FONT_FAMILY}
             />
             <SelectableOptionCard
               onClick={() => onScheduleModeChange('schedule')}
@@ -194,24 +198,14 @@ export function RetailOrderFulfillmentStep({
               fontWeight={700}
               iconBoxSize={isMobileViewport ? 34 : 40}
               iconSize={isMobileViewport ? 18 : 20}
+              fontFamily={CHECKOUT_FONT_FAMILY}
             />
           </div> : null}
           {showSchedule && !showImmediate ? <>
             <FulfillmentMethodNotice accentColor={RETAIL_ACCENT} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" />
-            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>Scheduled date and time<input type="datetime-local" value={scheduledFor} onChange={(event) => onScheduledForChange(event.target.value)} style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 12, padding: '12px 14px', background: '#f8fafc', color: '#1e293b', fontSize: 14, fontWeight: 600, boxSizing: 'border-box' }} /></label>
+            <label style={{ display: 'grid', gap: 6, ...typography.fieldLabel, color: '#475569' }}>Scheduled date and time<input type="datetime-local" value={scheduledFor} onChange={(event) => onScheduledForChange(event.target.value)} style={{ width: '100%', ...typography.control, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px', background: '#f8fafc', color: '#1e293b', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY }} /></label>
           </> : null}
-          {showImmediate && !showSchedule ? (
-            <div style={{ borderRadius: 6, border: '1px solid #d1fae5', background: '#f0fdf4', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Clock3 size={11} color="#16a34a" style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#166534', lineHeight: 1.3 }}>{isDeliveryOrder ? 'Your order will be delivered NOW. You\'ll see the estimated time at checkout.' : 'Your order will be prepared NOW. You\'ll see the estimated time at checkout.'}</span>
-            </div>
-          ) : null}
-          {showTimingChooser ? (scheduleMode === 'asap' ? (
-            <div style={{ borderRadius: 6, border: '1px solid #d1fae5', background: '#f0fdf4', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Clock3 size={11} color="#16a34a" style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#166534', lineHeight: 1.3 }}>{isDeliveryOrder ? 'Your order will be delivered NOW. You\'ll see the estimated time at checkout.' : 'Your order will be prepared NOW. You\'ll see the estimated time at checkout.'}</span>
-            </div>
-          ) : (
+          {showTimingChooser && scheduleMode === 'schedule' ? (
             <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
               Scheduled date and time
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -229,7 +223,7 @@ export function RetailOrderFulfillmentStep({
                       // The native picker is optional and not supported by every browser.
                     }
                   }}
-                  style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 12, padding: '12px 14px 12px 42px', background: '#f8fafc', color: '#1e293b', fontSize: 14, fontWeight: 600, outline: 'none', boxShadow: 'inset 0 2px 4px rgba(15,23,42,0.02)', transition: 'all 200ms ease', cursor: 'pointer', boxSizing: 'border-box' }}
+                  style={{ width: '100%', ...typography.control, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px 0 42px', background: '#f8fafc', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 2px 4px rgba(15,23,42,0.02)', transition: 'all 200ms ease', cursor: 'pointer', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY }}
                   onMouseEnter={(event) => { event.target.style.borderColor = RETAIL_ACCENT; event.target.style.background = '#ffffff'; }}
                   onMouseLeave={(event) => { if (document.activeElement !== event.target) { event.target.style.borderColor = '#cbd5e1'; event.target.style.background = '#f8fafc'; } }}
                   onFocus={(event) => { event.target.style.borderColor = RETAIL_ACCENT; event.target.style.background = '#ffffff'; event.target.style.boxShadow = `0 0 0 3px ${RETAIL_ACCENT_SHADOW_STRONG}, inset 0 2px 4px rgba(15,23,42,0.02)`; }}
@@ -237,14 +231,14 @@ export function RetailOrderFulfillmentStep({
                 />
               </div>
             </label>
-          )) : null}</> : <FulfillmentMethodNotice accentColor={RETAIL_ACCENT} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
+          ) : null}</> : <FulfillmentMethodNotice accentColor={RETAIL_ACCENT} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
         </div>
       </div>
 
       {isDeliveryOrder && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.address}. Where should we deliver your order?</div>
+            <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.address}. Where should we deliver your order?</div>
             <div style={{ fontSize: 12, color: '#64748b', textTransform: isMobileViewport ? 'none' : 'uppercase', letterSpacing: isMobileViewport ? 'normal' : '0.04em' }}>
               {isMobileViewport ? 'Select or pin your location on the map.' : 'Saved locations'}
             </div>
@@ -270,8 +264,8 @@ export function RetailOrderFulfillmentStep({
                     themeShadowColorSoft="rgba(26,69,134,.12)"
                   />
                 ) : (
-                  <button type="button" aria-label="Add New Location" onClick={onOpenMobileAddressList} style={{ minHeight: 44, borderRadius: 14, border: `1.5px solid ${RETAIL_ACCENT_SOFT_BORDER}`, background: RETAIL_ACCENT_TINT, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, color: RETAIL_ACCENT, cursor: 'pointer', flexShrink: 0, fontSize: 13 }}>
-                    <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: RETAIL_ACCENT, background: RETAIL_ACCENT_TINT }}><Plus size={18} /></span>
+                  <button type="button" aria-label="Add New Location" onClick={onOpenMobileAddressList} style={getCheckoutAddLocationActionStyle()}>
+                    <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: '#fff', background: 'rgba(255,255,255,.16)' }}><Plus size={18} /></span>
                     Add New Location
                   </button>
                 )}
@@ -284,7 +278,7 @@ export function RetailOrderFulfillmentStep({
             ) : (
               <div style={{ display: 'grid', gap: 12 }}>
                 {deliverySavedLocations.length > 0 ? (
-                  <div style={{ display: 'grid', gap: 8 }}>
+                  <div data-testid="saved-locations-list" style={{ maxHeight: 240, overflowY: 'auto', overscrollBehavior: 'contain', display: 'grid', gap: 8, paddingRight: 4 }}>
                     {deliverySavedLocations.map((location) => (
                       <SavedAddressCard
                         key={`retail-saved-address-${location.id}`}
@@ -310,9 +304,9 @@ export function RetailOrderFulfillmentStep({
                   aria-label="Add New Location"
                   title="Please pin your location in the map. Use maximize to enlarge the map."
                   onClick={onStartMapPin}
-                  style={{ minHeight: 44, borderRadius: 12, border: `1.5px solid ${deliveryLocationAction === 'map' ? RETAIL_ACCENT_SOFT_BORDER : '#dbe5ee'}`, background: deliveryLocationAction === 'map' ? RETAIL_ACCENT_TINT : '#fff', padding: '0 14px', display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, color: '#1e293b', cursor: 'pointer', flexShrink: 0, fontSize: 13 }}
+                  style={getCheckoutAddLocationActionStyle()}
                 >
-                  <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: deliveryLocationAction === 'map' ? RETAIL_ACCENT : '#94a3b8' }}>
+                  <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: '#fff', background: 'rgba(255,255,255,.16)' }}>
                     <Plus size={18} />
                   </span>
                   Add New Location
@@ -365,7 +359,7 @@ export function RetailOrderFulfillmentStep({
                 />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                <div style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? RETAIL_ACCENT_SOFT_BORDER : '#dbe5ee'}`, background: '#fff', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8', fontSize: 13, lineHeight: 1.4, minWidth: 0 }}>
+                <div style={{ minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? RETAIL_ACCENT_SOFT_BORDER : '#dbe5ee'}`, background: '#fff', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8', ...typography.control, minWidth: 0 }}>
                   {isMobileViewport ? (
                     <span style={{ width: 24, height: 24, borderRadius: '50%', background: RETAIL_ACCENT_TINT, color: RETAIL_ACCENT, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
                       <MapPin size={13} />
@@ -377,19 +371,13 @@ export function RetailOrderFulfillmentStep({
                     onChange={(event) => onCustomerAddressChange(event.target.value)}
                     placeholder="Pinned delivery address will appear here."
                     aria-label="Delivery address"
-                    style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, fontSize: 13, color: 'inherit', minHeight: 38 }}
+                    style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...typography.control, color: 'inherit', minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, fontFamily: CHECKOUT_FONT_FAMILY }}
                   />
                 </div>
-                <button type="button" onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${RETAIL_ACCENT}`, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,69,134,.15)' : 'none' }}>
-                  {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}
+                <button type="button" aria-label={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} title={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${RETAIL_ACCENT}`, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: isMobileViewport ? 0 : '0 14px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? CHECKOUT_CONTROL_MIN_HEIGHT : 132, width: isMobileViewport ? CHECKOUT_CONTROL_MIN_HEIGHT : 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,69,134,.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY, display: 'inline-grid', placeItems: 'center' }}>
+                  {isMobileViewport ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? RETAIL_ACCENT : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
                 </button>
               </div>
-              {isMobileViewport ? (
-                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <MapPin size={15} color="#64748b" />
-                  <span>This is the address where your order will be delivered.</span>
-                </div>
-              ) : null}
               {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
             </div>
           </div>
@@ -449,8 +437,8 @@ export function RetailOrderFulfillmentStep({
       )}
 
       <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.notes}. Anything else we should know?</div>
-        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+        <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.notes}. Anything else we should know?</div>
+        <label style={{ display: 'grid', gap: 6, ...typography.fieldLabel, color: '#475569' }}>
           Special instructions (optional)
           <textarea
             value={specialInstructions}
@@ -464,8 +452,8 @@ export function RetailOrderFulfillmentStep({
 
       {!isMobileViewport && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <button type="button" onClick={onBack} style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
-          <button type="button" onClick={onContinue} style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: 'none', background: `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)`, color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
+          <button type="button" onClick={onBack} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: CHECKOUT_FONT_FAMILY }}><ChevronLeft size={18} /> Back</button>
+          <button type="button" onClick={onContinue} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: 'none', background: `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)`, color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: CHECKOUT_FONT_FAMILY }}>Continue <ChevronRight size={18} /></button>
         </div>
       )}
     </section>

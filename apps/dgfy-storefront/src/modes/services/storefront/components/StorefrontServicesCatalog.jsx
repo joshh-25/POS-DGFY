@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 
 import { STYLES } from '../../../../shared/theme/storefrontStyleTokens.js';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 import { Badge, GhostButton, PrimaryButton } from '../../../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { StorefrontReviewModal } from '../../../../shared/components/storefront/StorefrontReviewModal.jsx';
@@ -18,9 +19,8 @@ import { filterCatalogItems } from '../../../../shared/model/catalogSearch.js';
 import { isItemAvailable } from '../../../../shared/model/storefrontCatalogModel.js';
 import { STOREFRONT_CLOSED_TITLE } from '../../../../shared/model/storefrontClosedState.js';
 import { openStorefrontActionLink } from '../../../../shared/utils/externalLinks.js';
-import { money } from '../../../../shared/utils/storefrontFormatters.js';
+import { formatServiceMoney as money, formatServiceNumber } from '../../servicesFormatters.js';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
-import { getServicesFlowPresentation } from '../../booking/model/servicesLocalFlow.js';
 import {
   BOOKING_FIELD_STYLE,
   buildServicePaymentOptions,
@@ -58,6 +58,7 @@ export function StorefrontServicesCatalog({
   fulfillmentStepComplete,
   activeBookingService,
   addToCart,
+  updateServiceLineOptions,
   bookingCalendarDateOptions,
   bookingDateOptions,
   bookingFieldPlan,
@@ -124,6 +125,9 @@ export function StorefrontServicesCatalog({
   resolvedTab,
   reviewDraft,
   routeServiceItemId,
+  selectedLocation,
+  selectedLocationId,
+  storeLocations,
   selectedSavedLocationId,
   selectedServiceDatePart,
   selectedServiceDetail,
@@ -144,6 +148,8 @@ export function StorefrontServicesCatalog({
   setServiceSpecialInstructions,
   serviceLocationSummaryDraft,
   serviceOrderMethod,
+  serviceFlowMethod,
+  serviceFlowProfileMethod,
   setServiceOrderMethod,
   serviceScheduleMode,
   setServiceScheduleMode,
@@ -168,6 +174,7 @@ export function StorefrontServicesCatalog({
   setDeliveryLocationAction,
   setIsReviewModalOpen,
   setReviewDraft,
+  setSelectedLocationId,
   setSelectedSavedLocationId,
   setServiceAppointmentAt,
   setServiceAreaFilter,
@@ -256,22 +263,22 @@ export function StorefrontServicesCatalog({
           position: 'sticky',
           top: 0,
           zIndex: 100,
-          background: '#ffffff',
-          borderBottom: '1px solid #e5e7eb',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+          background: SERVICES_PALETTE.surface,
+          borderBottom: `1px solid ${SERVICES_PALETTE.border}`,
+          boxShadow: '0 1px 4px rgba(15,23,42,0.05)',
           width: '100vw',
           marginLeft: 'calc(50% - 50vw)'
         }}>
           <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '10px 16px' : '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 24, minWidth: 0, flex: 1 }}>
-              <button type="button" onClick={goStoreCatalogPage} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: '#0f172a' }}>
+              <button type="button" onClick={goStoreCatalogPage} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: SERVICES_PALETTE.textPrimary }}>
                 <ArrowLeft size={22} strokeWidth={2.5} />
               </button>
               <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
                 <div style={{ fontSize: 11, fontWeight: 900, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   Service details
                 </div>
-                <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: SERVICES_PALETTE.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   Review the service before booking
                 </div>
               </div>
@@ -286,10 +293,10 @@ export function StorefrontServicesCatalog({
                   width={34}
                   height={34}
                   fallbackLabel=""
-                  fallbackStyle={{ borderRadius: '50%', border: '1px solid #e2e8f0' }}
+                  fallbackStyle={{ borderRadius: '50%', border: `1px solid ${SERVICES_PALETTE.border}` }}
                   fallbackIcon={<ShoppingBag size={18} color={servicesPrimary} />}
                 />
-                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em' }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: SERVICES_PALETTE.textPrimary, letterSpacing: '-0.01em' }}>
                   {serviceHeroModel.name}
                 </div>
               </div>
@@ -297,7 +304,7 @@ export function StorefrontServicesCatalog({
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flex: 1 }}>
               {supportHref ? (
-                <button type="button" onClick={() => openStorefrontActionLink(supportHref)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 42, padding: isMobileViewport ? '0 12px' : '0 20px', borderRadius: 12, background: servicesPrimary, color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: `0 4px 12px ${servicesPrimaryShadow}`, whiteSpace: 'nowrap' }}>
+                <button type="button" onClick={() => openStorefrontActionLink(supportHref)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 42, padding: isMobileViewport ? '0 12px' : '0 20px', borderRadius: 12, background: servicesPrimary, color: SERVICES_PALETTE.surface, border: 'none', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: `0 4px 12px ${servicesPrimaryShadow}`, whiteSpace: 'nowrap' }}>
                   <MessageCircle size={18} fill="currentColor" fillOpacity={0.2} />
                   {isMobileViewport ? 'Message' : 'Message Us'}
                 </button>
@@ -306,13 +313,13 @@ export function StorefrontServicesCatalog({
           </div>
         </div>
 
-        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#f8fafc', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
+        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: SERVICES_PALETTE.page, padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
           <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
             {!detailPageServiceItem ? (
-              <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 28, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16, maxWidth: 760 }}>
+              <section style={{ border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 24, background: SERVICES_PALETTE.surface, padding: isMobileViewport ? 20 : 28, boxShadow: SERVICES_PALETTE.cardShadow, display: 'grid', gap: 16, maxWidth: 760 }}>
                 <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>No service details available</div>
-                  <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: SERVICES_PALETTE.textPrimary }}>No service details available</div>
+                  <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: SERVICES_PALETTE.textMuted }}>
                     Go back to the services page and choose a service to view its details.
                   </p>
                 </div>
@@ -327,21 +334,21 @@ export function StorefrontServicesCatalog({
                     <Badge background={servicesPrimarySoft} color={servicesPrimaryDark} border={servicesPrimaryBorder}>
                       {detailPageServiceItem.categoryMeta?.label || 'Service'}
                     </Badge>
-                    <Badge background="#ffffff" color={STYLES.colors.dark} border="#dbe5ee">
+                    <Badge background={SERVICES_PALETTE.surface} color={SERVICES_PALETTE.textPrimary} border={SERVICES_PALETTE.border}>
                       {detailPageServiceItem.serviceAreaLabel}
                     </Badge>
                   </div>
-                  <h1 style={{ margin: 0, fontSize: isMobileViewport ? 28 : 40, lineHeight: 1.05, fontWeight: 900, color: STYLES.colors.dark, letterSpacing: '-0.03em' }}>
+                  <h1 style={{ margin: 0, fontSize: isMobileViewport ? 28 : 40, lineHeight: 1.05, fontWeight: 900, color: SERVICES_PALETTE.textPrimary, letterSpacing: '-0.03em' }}>
                     {detailPageServiceItem.variantName || detailPageServiceItem.name}
                   </h1>
-                  <p style={{ margin: 0, maxWidth: 760, fontSize: 15, lineHeight: 1.7, color: STYLES.colors.muted }}>
+                  <p style={{ margin: 0, maxWidth: 760, fontSize: 15, lineHeight: 1.7, color: SERVICES_PALETTE.textMuted }}>
                     {detailPageServiceItem.description || 'Service details are synced from SKUpervisor. Review the service information below before continuing to booking.'}
                   </p>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(340px, 400px) minmax(0, 1fr)', gap: isMobileViewport ? 18 : 28, alignItems: 'start' }}>
-                  <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', overflow: 'hidden', boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 0, position: isMobileViewport ? 'static' : 'sticky', top: isMobileViewport ? 'auto' : 96 }}>
-                    <div style={{ width: '100%', height: isMobileViewport ? 260 : 240, background: '#f8fafc' }}>
+                  <section style={{ border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 24, background: SERVICES_PALETTE.surface, overflow: 'hidden', boxShadow: SERVICES_PALETTE.cardShadow, display: 'grid', gap: 0, position: isMobileViewport ? 'static' : 'sticky', top: isMobileViewport ? 'auto' : 96 }}>
+                    <div style={{ width: '100%', height: isMobileViewport ? 260 : 240, background: SERVICES_PALETTE.page }}>
                       <ServiceImage
                         item={detailPageServiceItem}
                         alt={detailPageServiceItem.variantName || detailPageServiceItem.name}
@@ -354,10 +361,10 @@ export function StorefrontServicesCatalog({
                     </div>
                     <div style={{ padding: isMobileViewport ? 18 : 22, display: 'grid', gap: 18 }}>
                       <div style={{ display: 'grid', gap: 6, paddingTop: 2 }}>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                           Starting at
                         </div>
-                        <div style={{ fontSize: 30, fontWeight: 900, color: STYLES.colors.dark }}>
+                        <div style={{ fontSize: 30, fontWeight: 900, color: SERVICES_PALETTE.textPrimary }}>
                           {money(detailPageServiceItem.default_sale_price ?? 0)}
                         </div>
                       </div>
@@ -373,38 +380,38 @@ export function StorefrontServicesCatalog({
                   </section>
 
                   <div style={{ display: 'grid', gap: 18 }}>
-                    <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16 }}>
+                    <section style={{ border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 24, background: SERVICES_PALETTE.surface, padding: isMobileViewport ? 20 : 24, boxShadow: SERVICES_PALETTE.cardShadow, display: 'grid', gap: 16 }}>
                       <div style={{ display: 'grid', gap: 6 }}>
-                        <div style={{ fontSize: 20, fontWeight: 900, color: STYLES.colors.dark }}>
+                        <div style={{ fontSize: 20, fontWeight: 900, color: SERVICES_PALETTE.textPrimary }}>
                           Service details
                         </div>
-                        <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                        <div style={{ fontSize: 14, lineHeight: 1.65, color: SERVICES_PALETTE.textMuted }}>
                           Core service information from SKUpervisor.
                         </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
-                        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Category</div>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.categoryMeta?.label || 'Service'}</div>
+                        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 18, background: SERVICES_PALETTE.primarySoft, minWidth: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Category</div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: SERVICES_PALETTE.textPrimary, lineHeight: 1.35 }}>{detailPageServiceItem.categoryMeta?.label || 'Service'}</div>
                         </div>
-                        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service area</div>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.serviceAreaLabel}</div>
+                        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 18, background: SERVICES_PALETTE.primarySoft, minWidth: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service area</div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: SERVICES_PALETTE.textPrimary, lineHeight: 1.35 }}>{detailPageServiceItem.serviceAreaLabel}</div>
                         </div>
-                        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated duration</div>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.durationLabel}</div>
+                        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 18, background: SERVICES_PALETTE.primarySoft, minWidth: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated duration</div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: SERVICES_PALETTE.textPrimary, lineHeight: 1.35 }}>{detailPageServiceItem.durationLabel}</div>
                         </div>
-                        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Payment options</div>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPagePaymentOptions.map((option) => option.label).join(' / ')}</div>
+                        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 18, background: SERVICES_PALETTE.primarySoft, minWidth: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Payment options</div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: SERVICES_PALETTE.textPrimary, lineHeight: 1.35 }}>{detailPagePaymentOptions.map((option) => option.label).join(' / ')}</div>
                         </div>
                       </div>
                     </section>
 
-                    <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 10 }}>
-                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Description</div>
-                      <div style={{ fontSize: 14, lineHeight: 1.7, color: '#334155' }}>
+                    <section style={{ border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 24, background: SERVICES_PALETTE.surface, padding: isMobileViewport ? 20 : 24, boxShadow: SERVICES_PALETTE.cardShadow, display: 'grid', gap: 10 }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: SERVICES_PALETTE.textPrimary }}>Description</div>
+                      <div style={{ fontSize: 14, lineHeight: 1.7, color: SERVICES_PALETTE.textSecondary }}>
                         {detailPageServiceItem.description || 'This service does not have a detailed description yet in SKUpervisor.'}
                       </div>
                     </section>
@@ -426,11 +433,21 @@ export function StorefrontServicesCatalog({
     const confirmationReference = String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
     const confirmationServiceName = confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle;
     const confirmationAmount = bookingConfirmation?.total_amount ?? ((Number(confirmationLine?.price ?? 0) || 0) * Math.max(1, Number(confirmationLine?.quantity || 1)));
-    const serviceLines = serviceBookingSummaryLineItems.map((line) => ({
-      key: line.key,
-      title: line.title,
-      hasAddOns: Boolean(line.notes)
-    }));
+    const serviceLines = serviceBookingSummaryLineItems.map((line) => {
+      const rawCartLine = serviceCartLines.find((cartLine) => String(cartLine.cart_line_id || cartLine.item_id || '') === line.key);
+      const catalogService = catalog.find((item) => Number(item?.item_id) === Number(line.itemId || rawCartLine?.item_id));
+      const serviceOptionGroups = Array.isArray(catalogService?.service_option_groups)
+        ? catalogService.service_option_groups
+        : line.serviceOptionGroups;
+      return {
+        key: line.key,
+        title: line.title,
+        selectedOptions: line.selectedOptions,
+        serviceOptionGroups,
+        hasAvailableAddOns: Array.isArray(serviceOptionGroups)
+          && serviceOptionGroups.some((group) => group.group_type === 'addon' && Array.isArray(group.options) && group.options.length > 0)
+      };
+    });
     const handleEditServiceLine = (line) => {
       if (hasServiceCart) {
         const rawCartLine = serviceCartLines.find((cartLine) => String(cartLine.cart_line_id || cartLine.item_id || '') === line.key);
@@ -444,8 +461,8 @@ export function StorefrontServicesCatalog({
           position: 'sticky',
           top: 0,
           zIndex: 100,
-          borderBottom: '1px solid #e2e8f0',
-          background: '#fff',
+          borderBottom: `1px solid ${SERVICES_PALETTE.border}`,
+          background: SERVICES_PALETTE.surface,
           width: '100vw',
           marginLeft: 'calc(50% - 50vw)',
           boxSizing: 'border-box',
@@ -467,11 +484,11 @@ export function StorefrontServicesCatalog({
                 type="button"
                 onClick={goStoreCatalogPage}
                 aria-label="Back to services"
-                style={{ width: isMobileViewport ? 44 : 40, height: isMobileViewport ? 44 : 40, borderRadius: 14, border: '1px solid #e2e8f0', background: '#fff', color: '#334155', cursor: 'pointer', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(15,23,42,0.06)' }}
+                style={{ width: isMobileViewport ? 44 : 40, height: isMobileViewport ? 44 : 40, borderRadius: 14, border: `1px solid ${SERVICES_PALETTE.border}`, background: SERVICES_PALETTE.surface, color: SERVICES_PALETTE.textSecondary, cursor: 'pointer', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(15,23,42,0.06)' }}
               >
                 <ArrowLeft size={18} />
               </button>
-              <div style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #dbe5ee', overflow: 'hidden', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', border: `1px solid ${SERVICES_PALETTE.border}`, overflow: 'hidden', background: SERVICES_PALETTE.page, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                 <ServiceImage
                   imageSources={serviceHeroModel.profileImageSources}
                   alt={`${serviceHeroModel.name} profile`}
@@ -484,10 +501,7 @@ export function StorefrontServicesCatalog({
                 />
               </div>
               <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  {getServicesFlowPresentation(serviceOrderMethod).shortLabel}
-                </div>
-                <div style={{ fontSize: isMobileViewport ? 18 : 20, fontWeight: 900, color: '#1e293b', lineHeight: 1.2, fontFamily: servicesDisplayFont, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: isMobileViewport ? 18 : 20, fontWeight: 900, color: SERVICES_PALETTE.textPrimary, lineHeight: 1.2, fontFamily: servicesDisplayFont, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {serviceHeroModel.name}
                 </div>
               </div>
@@ -496,7 +510,7 @@ export function StorefrontServicesCatalog({
               <button
                 type="button"
                 onClick={() => openStorefrontActionLink(supportHref)}
-                style={{ minHeight: 44, padding: '0 20px', borderRadius: 14, border: 'none', background: servicesPrimary, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: `0 8px 22px ${servicesPrimaryShadow}`, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 7 }}
+                style={{ minHeight: 44, padding: '0 20px', borderRadius: 14, border: 'none', background: servicesPrimary, color: SERVICES_PALETTE.surface, fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: `0 8px 22px ${servicesPrimaryShadow}`, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 7 }}
               >
                 <MessageCircle size={16} />
                 Message Us
@@ -505,7 +519,7 @@ export function StorefrontServicesCatalog({
           </div>
         </div>
 
-        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#fff' }}>
+        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: SERVICES_PALETTE.surface }}>
           <div style={{ maxWidth: 1264, margin: '0 auto', width: '100%', padding: isMobileViewport ? '40px 16px calc(env(safe-area-inset-bottom, 0px) + 196px)' : '80px 24px 80px', boxSizing: 'border-box' }}>
             {bookingConfirmation ? (
               <ServiceBookingConfirmation
@@ -520,6 +534,7 @@ export function StorefrontServicesCatalog({
                 servicesPrimarySoft={servicesPrimarySoft}
                 servicesPrimaryBorder={servicesPrimaryBorder}
                 servicesPrimaryShadow={servicesPrimaryShadow}
+                servicesDisplayFont={servicesDisplayFont}
                 onTrackBooking={() => goStoreTrackPage({ pin: confirmationReference, serviceHandoff: serviceOrderMethod })}
                 onResetAndBackToServices={() => {
                   setCheckoutResult(null);
@@ -533,6 +548,7 @@ export function StorefrontServicesCatalog({
                 servicesPrimary={servicesPrimary}
                 servicesPrimaryDark={servicesPrimaryDark}
                 servicesPrimaryShadow={servicesPrimaryShadow}
+                servicesDisplayFont={servicesDisplayFont}
               />
             ) : (
             <>
@@ -550,6 +566,8 @@ export function StorefrontServicesCatalog({
                 fulfillmentStepComplete={fulfillmentStepComplete}
                 isMobileViewport={isMobileViewport}
                 serviceOrderMethod={serviceOrderMethod}
+                serviceFlowMethod={serviceFlowMethod}
+                serviceFlowProfileMethod={serviceFlowProfileMethod}
               />
 
               <div style={{ display: 'grid', gap: isMobileViewport ? 20 : 20, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(300px, 358.8px)', alignItems: 'start' }}>
@@ -604,7 +622,9 @@ export function StorefrontServicesCatalog({
                       servicesPrimaryBorder={servicesPrimaryBorder}
                       servicesDisplayFont={servicesDisplayFont}
                       serviceLines={serviceLines}
+                      serviceOrderMethod={serviceOrderMethod}
                       onEditLine={handleEditServiceLine}
+                      onUpdateLineOptions={updateServiceLineOptions}
                       specialInstructions={serviceSpecialInstructions}
                       setSpecialInstructions={setServiceSpecialInstructions}
                       setServiceBookingStep={setServiceBookingStep}
@@ -636,6 +656,8 @@ export function StorefrontServicesCatalog({
                       selectedServiceDatePart={selectedServiceDatePart}
                       selectedServiceTimePart={selectedServiceTimePart}
                       serviceScheduleMode={serviceScheduleMode}
+                      serviceFlowMethod={serviceFlowMethod}
+                      serviceFlowProfileMethod={serviceFlowProfileMethod}
                       serviceDraftQuantity={serviceDraftQuantity}
                       serviceIntakeResponses={serviceIntakeResponses}
                       serviceUnitType={serviceUnitType}
@@ -650,13 +672,11 @@ export function StorefrontServicesCatalog({
                       setServiceIntakeResponses={setServiceIntakeResponses}
                       setServiceUnitType={setServiceUnitType}
                       shouldBookingFieldSpanFullWidth={shouldBookingFieldSpanFullWidth}
-                      serviceOrderMethod={serviceOrderMethod}
                       onOrderMethodChange={(nextMethod) => {
                         setServiceOrderMethod(nextMethod);
-                        setServiceScheduleMode('now');
                         if (nextMethod === 'quote') setServiceAppointmentAt('');
                       }}
-                      renderLocationSection={() => (
+                      renderLocationSection={({ compactLayout = false } = {}) => (
                         <ServiceBookingLocationSection
                           STYLES={STYLES}
                           servicesPrimary={servicesPrimary}
@@ -673,7 +693,7 @@ export function StorefrontServicesCatalog({
                           setDeliveryLocationAction={setDeliveryLocationAction}
                           customerPin={customerPin}
                           setCustomerPin={setCustomerPin}
-                          handlePinMyLocation={handlePinMyLocation}
+                           handlePinMyLocation={handlePinMyLocation}
                           pinLocationLoading={pinLocationLoading}
                           deliveryLocationAction={deliveryLocationAction}
                           deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
@@ -681,9 +701,15 @@ export function StorefrontServicesCatalog({
                           canAddPinnedLocation={canAddPinnedLocation}
                           isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
                           pinLocationError={pinLocationError}
-                          showExpandedDeliveryMap={showExpandedDeliveryMap}
+                           showExpandedDeliveryMap={showExpandedDeliveryMap}
                           setShowExpandedDeliveryMap={setShowExpandedDeliveryMap}
-                        />
+                          serviceFlowMethod={serviceFlowMethod}
+                          serviceFlowProfileMethod={serviceFlowProfileMethod}
+                          selectedLocationId={selectedLocationId}
+                          setSelectedLocationId={setSelectedLocationId}
+                          storeLocations={storeLocations}
+                          compactLayout={compactLayout}
+                         />
                       )}
                       missingScheduleAndServiceInfo={missingScheduleAndServiceInfo}
                       fulfillmentStepComplete={fulfillmentStepComplete}
@@ -709,7 +735,10 @@ export function StorefrontServicesCatalog({
                       registerBookingFieldRef={registerBookingFieldRef}
                       isMobileViewport={isMobileViewport}
                       serviceOrderMethod={serviceOrderMethod}
+                      serviceFlowMethod={serviceFlowMethod}
+                      serviceFlowProfileMethod={serviceFlowProfileMethod}
                       serviceLocationSummaryDraft={serviceLocationSummaryDraft}
+                      selectedLocation={selectedLocation}
                       groupedServiceLineItems={groupedServiceLineItems}
                       selectedServiceDatePart={selectedServiceDatePart}
                       selectedServiceTimePart={selectedServiceTimePart}
@@ -794,7 +823,7 @@ export function StorefrontServicesCatalog({
         style={{
           display: 'grid',
           gap: 18,
-          background: '#ffffff',
+          background: SERVICES_PALETTE.surface,
           borderRadius: 0,
           padding: isMobileViewport ? '24px 0 44px' : '34px 0 64px',
           marginLeft: 'calc(50% - 50vw)',
@@ -839,7 +868,7 @@ export function StorefrontServicesCatalog({
               <button
                 type="button"
                 onClick={refreshStorePageForTenantSetup}
-                style={{ borderRadius: 10, border: `1px solid ${servicesPrimary}`, background: '#fff', color: servicesPrimary, padding: '8px 12px', fontWeight: 700 }}
+                style={{ borderRadius: 10, border: `1px solid ${servicesPrimary}`, background: SERVICES_PALETTE.surface, color: servicesPrimary, padding: '8px 12px', fontWeight: 700 }}
               >
                 Check Again
               </button>
@@ -899,10 +928,10 @@ export function StorefrontServicesCatalog({
                   gridColumn: '1 / -1',
                   textAlign: 'center',
                   padding: isMobileViewport ? 24 : 48,
-                  color: STYLES.colors.muted,
-                  border: '1px dashed #cbd5e1',
+                  color: SERVICES_PALETTE.textMuted,
+                  border: `1px dashed ${SERVICES_PALETTE.border}`,
                   borderRadius: 18,
-                  background: '#f8fafc'
+                  background: SERVICES_PALETTE.page
                 }}
               >
                 {hasSearchQuery ? 'No services found. Try another keyword.' : 'No services available in this category yet.'}
@@ -928,7 +957,8 @@ export function StorefrontServicesCatalog({
         items={promoSectionModel}
         isMobileViewport={isMobileViewport}
         layoutVariant="compact"
-        palette="teal"
+        palette="services"
+        paletteTokens={SERVICES_PALETTE}
         titleFontFamily={servicesDisplayFont}
         bodyFontFamily={servicesBodyFont}
         sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
@@ -958,6 +988,7 @@ export function StorefrontServicesCatalog({
         titleSize={isMobileViewport ? 28 : 36}
         subtitleSize={isMobileViewport ? 14 : 16}
         starSymbol="*"
+        formatReviewCount={formatServiceNumber}
       />
 
       {isReviewModalOpen && (
@@ -965,9 +996,12 @@ export function StorefrontServicesCatalog({
           isMobileViewport={isMobileViewport}
           eyebrowColor={servicesPrimary}
           titleFontFamily={servicesDisplayFont}
-          starColor="#f59e0b"
-          starBg="#fffbeb"
-          starShadow="0 10px 20px rgba(245,158,11,0.16)"
+          starColor={SERVICES_PALETTE.warning}
+          starBg={SERVICES_PALETTE.warningSoft}
+          starShadow={`0 10px 20px ${SERVICES_PALETTE.warningShadow}`}
+          submitButtonAccentColor={servicesPrimary}
+          submitButtonAccentDarkColor={servicesPrimaryDark}
+          submitButtonShadowColor={servicesPrimaryShadow}
           keyPrefix="review-rating"
           messagePlaceholder="Tell customers what stood out about the service, response time, or booking experience."
           reviewDraft={reviewDraft}

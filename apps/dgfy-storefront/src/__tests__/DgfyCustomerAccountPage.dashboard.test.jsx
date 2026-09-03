@@ -690,8 +690,8 @@ describe('DGFY customer account dashboard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Orders' }));
 
     expect(screen.getByRole('heading', { name: 'Orders' })).toBeTruthy();
-    expect(screen.getByText('PHP 170.69')).toBeTruthy();
-    expect(screen.getByText('PHP 251.49')).toBeTruthy();
+    expect(screen.getByText('₱170.69')).toBeTruthy();
+    expect(screen.getByText('₱251.49')).toBeTruthy();
     expect(screen.getByText('Placed')).toBeTruthy();
     expect(screen.getByText('Confirmed')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'View Order' })).toHaveLength(2);
@@ -734,7 +734,7 @@ describe('DGFY customer account dashboard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Past Orders1/ }));
 
     expect(screen.getByTestId('customer-order-card').style.gridTemplateColumns).toContain('minmax(220px, 1.2fr)');
-    expect(screen.getByText('PHP 99.50')).toBeTruthy();
+    expect(screen.getByText('₱99.50')).toBeTruthy();
     expect(screen.getByText('Completed')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Review Order' })).toBeTruthy();
 

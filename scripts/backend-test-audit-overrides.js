@@ -82,6 +82,20 @@ module.exports = {
     mergeInto: 'tests/rateLimiterExemptionCoverage.contract.test.js',
     reason: 'limiter-presence assertions belong with rateLimiterExemptionCoverage',
   },
+  'tests/itemsCategoryRoutes.contract.test.js': {
+    classification: 'consolidate',
+    mergeInto: 'tests/routeAuthorizationDeclarations.contract.test.js',
+    reason: 'route-declaration grep; folded into the shared route-authorization sweep (#1451)',
+  },
+  'tests/adminAssistedProvisioningRoutes.contract.test.js': {
+    classification: 'consolidate',
+    mergeInto: 'tests/routeAuthorizationDeclarations.contract.test.js',
+    reason: 'route-declaration grep; folded into the shared route-authorization sweep (#1451)',
+  },
+  'tests/routeAuthorizationDeclarations.contract.test.js': {
+    classification: 'keep',
+    reason: 'merge target for the route-declaration sweep; real RBAC regression guards on route lines (#1451)',
+  },
 
   // -- Trims (keep the file, drop literal/duplicate assertions) ---------------------------------
   'tests/modeFinancialTracking.contract.test.js': {
@@ -126,6 +140,12 @@ module.exports = {
     classification: 'demote',
     newTier: 'fast',
     reason: 'import-only; no real query issued',
+  },
+
+  // -- Deletions (PR-C) --------------------------------------------------------------------------
+  'tests/posSetupCashierRoute.transport.test.js': {
+    classification: 'delete',
+    reason: 'both cases assert only "not 404" on GET/POST of one path, at the cost of a full supertest src/server.js boot; route existence re-proved as a cheap source-text assertion in routeAuthorizationDeclarations.contract (#1451)',
   },
 
   // -- Correctness fix (own commit, not a cut) --------------------------------------------------

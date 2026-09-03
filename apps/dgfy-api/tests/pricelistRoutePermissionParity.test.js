@@ -8,6 +8,14 @@
 // This mounts the real checkAnyPermission middleware with the exact permission constants
 // pricelists.js's own canViewPricelists/canManagePricelists build from (not raw strings), the same
 // pattern tenantCapabilityRouteGates.test.js already uses for a real Express route probe.
+//
+// #1493 (Phase 263) note -- this file's title is now only half true, and that is deliberate rather
+// than stale. routes/vouchers.js dropped its legacy `settings:edit` arm on the MANAGE routes when
+// voucher management was restricted to Admin + Accounting; routes/pricelists.js kept both arms,
+// because pricelists share the VOUCHERS.* permission group but are a separate capability #1493 does
+// not restrict. Parity therefore still holds on the VIEW gates and no longer holds on the MANAGE
+// gates, on purpose. Everything asserted below is about pricelists' own semantics and is unchanged;
+// tests/voucherManagementGating.test.js pins the voucher side's new, divergent behavior.
 
 import express from 'express';
 import request from 'supertest';

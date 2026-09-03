@@ -47,6 +47,14 @@ const FORBIDDEN_FIELDS = Object.freeze([
     'redeemed_count',
     'redeemed_value_centavos',
     'redeemed_quantity',
+    'created_by',
+    'updated_by',
+    // #788 (Phase 269): DERIVED server-side from `account_grant_ids` inside the same transaction
+    // that writes the child rows -- rejected outright here rather than silently stripped, matching
+    // how every other server-owned field on this validator is treated. A client that could set this
+    // directly could mark a voucher restricted with an empty allowlist (a dead code nobody can
+    // redeem) or unrestricted while grants still exist (a silently unenforced restriction).
+    'is_account_restricted',
     'created_at',
     'updated_at'
 ]);
@@ -65,6 +73,33 @@ const scopesSchema = Joi.array()
     .items(scopeSchema)
     .max(500)
     .unique((a, b) => a.scope_type === b.scope_type && a.scope_ref_id === b.scope_ref_id);
+
+// #788 (Phase 269): the DGFY-account allowlist for account-restricted issuance.
+//
+// Format-only validation, deliberately -- there is NO existence check against `dgfy_accounts`, and
+// that is a decision rather than an omission. That table lives in the LANDLORD database while every
+// `voucher*` table is tenant-scoped (ADR 0052), so an existence check would be a cross-database
+// read; and the B2B case #788 is aimed at is precisely a business account that has never ordered
+// from this store yet, so even the tenant-local proxy (`store_customers.dgfy_account_id`) would
+// wrongly reject the intended use. Same posture as `voucher_redemptions.dgfy_account_id`, which has
+// been an unconstrained landlord-side pointer since #455.
+//
+// `.guid()` rather than a hand-rolled pattern: `DgfyAccount.id` is `DataTypes.UUID` with a
+// `UUIDV4` default. Lowercased so the value the use case persists matches what it compares against
+// (the column's collation is case-insensitive, but the JS-side membership test is not).
+//
+// 200 is a deliberate ceiling, not a round number: an allowlist is for named recipients (a handful
+// of B2B accounts, a VIP cohort), and anything larger is an audience segment -- a different product
+// concept that would want its own mechanism rather than N rows per voucher.
+const accountGrantIdsSchema = Joi.array()
+    .items(Joi.string().trim().lowercase().guid({ version: ['uuidv1', 'uuidv4', 'uuidv5'] }))
+    .max(200)
+    .unique()
+    .messages({
+        'string.guid': 'account_grant_ids must contain DGFY account UUIDs',
+        'array.max': 'A voucher may be granted to at most 200 DGFY accounts',
+        'array.unique': 'account_grant_ids must not repeat the same DGFY account'
+    });
 
 // Deliberately carries NO `.default()` calls. Defaults belong to create only: injecting them into an
 // update would silently rewrite `weekday_mask` back to 127 on any PUT that did not resend it, which
@@ -89,6 +124,9 @@ const baseVoucherFields = {
     // since this validator can't see the merged row or the scopes array.
     auto_apply: Joi.boolean(),
     min_spend_centavos: Joi.number().integer().min(0).max(MAX_CENTAVOS).allow(null),
+    // #1490: eligibility cap, mirrors min_spend_centavos's own shape -- see Voucher.js's column
+    // comment and voucherEligibilityPolicy.js for the ITEM-subtotal comparison semantics.
+    max_order_value_centavos: Joi.number().integer().min(0).max(MAX_CENTAVOS).allow(null),
     min_quantity: Joi.number().integer().min(1).allow(null),
     allow_below_cost: Joi.boolean(),
     stackable_with_statutory: Joi.boolean(),
@@ -195,6 +233,11 @@ const createVoucherSchema = Joi.object({
             })
         }),
 
+    // #788: defaults to `[]` on create -- an unrestricted voucher, which is what every voucher
+    // authored before this phase already is. Unlike the four eligibility masks, "absent" here is
+    // genuinely safe: an empty allowlist means no restriction at all, not "restricted to nobody".
+    account_grant_ids: accountGrantIdsSchema.default([]),
+
     version: Joi.any().forbidden()
 });
 
@@ -213,6 +256,12 @@ const updateVoucherSchema = Joi.object({
     max_discount_centavos: Joi.number().integer().min(1).max(MAX_CENTAVOS).allow(null),
 
     scopes: scopesSchema,
+
+    // #788: NO `.default()`, for the same reason `scopes` above has none -- a defaulted `[]` would
+    // turn every PUT that did not resend the allowlist into a silent un-restriction. The use case
+    // reads presence with `hasOwnProperty`, so omitting the key leaves the allowlist alone and an
+    // explicit `[]` removes it.
+    account_grant_ids: accountGrantIdsSchema,
 
     // Mandatory optimistic-lock token. `version` is forbidden on create (the server owns it from 0)
     // and required on update.
@@ -255,6 +304,21 @@ const collectCrossFieldErrors = (value, { mode }) => {
 
     if (value.valid_from && value.valid_until && value.valid_until < value.valid_from) {
         errors.push({ field: 'valid_until', message: 'valid_until cannot be earlier than valid_from' });
+    }
+
+    // #1490: best-effort, same-request-only check. The authoritative check against the *merged*
+    // row (so a PATCH that only sends one of the two fields is still caught) lives in
+    // voucherUseCases.js's assertOrderValueRangeInvariant -- this one just gives faster feedback
+    // when both fields are present in the same payload.
+    if (
+        value.min_spend_centavos != null
+        && value.max_order_value_centavos != null
+        && value.max_order_value_centavos < value.min_spend_centavos
+    ) {
+        errors.push({
+            field: 'max_order_value_centavos',
+            message: 'max_order_value_centavos cannot be less than min_spend_centavos'
+        });
     }
 
     const startPresent = has(value, 'valid_time_start') && value.valid_time_start != null;

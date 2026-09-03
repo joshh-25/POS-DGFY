@@ -1,25 +1,27 @@
 import { SERVICES_BODY_FONT, SERVICES_DISPLAY_FONT } from '../../servicesTypography.js';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
+import { formatServiceNumber } from '../../servicesFormatters.js';
 
-const SERVICES_HERO_HIGHLIGHT = '#f59e0b';
-const SERVICES_HERO_PRIMARY_SHADOW = 'rgba(15,118,110,0.24)';
+const SERVICES_HERO_PRIMARY_SHADOW = SERVICES_PALETTE.primaryShadow;
 const SERVICES_HERO_MOBILE_INFO_CARD_WIDTH = 'calc(100% - 32px)';
 const SERVICES_CATALOG_MAX_WIDTH = 1216;
 const SERVICES_CATALOG_HORIZONTAL_PADDING = 24;
+const SERVICES_CATALOG_DEFAULT_COPY = Object.freeze({
+  eyebrow: 'Services',
+  heading: 'Choose the service you need',
+  searchPlaceholder: 'Search services...'
+});
 
-function buildServicesCatalogPresentation({ modeAdapter = {}, modeLabel = '' } = {}) {
-  const normalizedModeLabel = String(modeLabel || '')
-    .replace(/\b(?:service|services|storefront)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const fallbackEyebrow = String(modeAdapter.catalogEyebrow || modeAdapter.heroEyebrow || '').trim();
-
+function buildServicesCatalogPresentation({ modeAdapter = {} } = {}) {
   return {
-    eyebrow: normalizedModeLabel ? `${normalizedModeLabel} Services` : fallbackEyebrow,
-    heading: String(modeAdapter.catalogHeading || '').trim(),
+    eyebrow: SERVICES_CATALOG_DEFAULT_COPY.eyebrow,
+    heading: SERVICES_CATALOG_DEFAULT_COPY.heading,
     subtitle: String(modeAdapter.catalogSubtitle || '').trim(),
-    searchPlaceholder: normalizedModeLabel
-      ? `Search ${normalizedModeLabel.toLowerCase()} services...`
-      : String(modeAdapter.catalogSearchPlaceholder || '').trim(),
+    priceAllLabel: String(modeAdapter.catalogPriceAllLabel || 'All Prices').trim(),
+    categoryLabel: String(modeAdapter.catalogCategoryLabel || '').trim(),
+    categoryAllLabel: String(modeAdapter.catalogCategoryAllLabel || 'All').trim(),
+    categoryIconToken: String(modeAdapter.catalogCategoryIconToken || 'menu').trim(),
+    searchPlaceholder: SERVICES_CATALOG_DEFAULT_COPY.searchPlaceholder,
     addActionLabel: String(modeAdapter.catalogAddActionLabel || '').trim(),
     unavailableLabel: String(modeAdapter.catalogUnavailableLabel || '').trim(),
     missingImageLabel: String(modeAdapter.catalogMissingImageLabel || '').trim(),
@@ -30,6 +32,16 @@ function buildServicesCatalogPresentation({ modeAdapter = {}, modeLabel = '' } =
     usesOuterGutter: modeAdapter.catalogUseOuterGutter !== false,
     toolbarVariant: String(modeAdapter.catalogToolbarVariant || 'services-compact')
   };
+}
+
+function formatServicesRatingSummary(reviewSummary = null) {
+  const score = Number(reviewSummary?.score);
+  if (!Number.isFinite(score) || score <= 0) return '0.0';
+
+  const count = Number(reviewSummary?.total_count ?? reviewSummary?.totalCount);
+  return Number.isFinite(count) && count > 0
+    ? `${score.toFixed(1)} (${formatServiceNumber(count)})`
+    : score.toFixed(1);
 }
 
 function buildServicesRetailHeroSectionModel({ heroSectionModel, serviceHeroModel } = {}) {
@@ -83,12 +95,13 @@ function buildServicesRetailHeroSectionModel({ heroSectionModel, serviceHeroMode
 
 function deriveServicesHeroTheme(heroTheme) {
   return {
-    servicesPrimary: heroTheme?.accent || '#0f766e',
-    servicesPrimaryDark: heroTheme?.accentDark || '#134e4a',
-    servicesPrimarySoft: heroTheme?.accentSoft || '#ecfeff',
+    servicesPrimary: SERVICES_PALETTE.primary,
+    servicesPrimaryDark: SERVICES_PALETTE.primaryDark,
+    servicesPrimarySoft: SERVICES_PALETTE.primarySoft,
+    servicesTaglineColor: SERVICES_PALETTE.primaryLight,
+    servicesRatingColor: heroTheme?.ratingColor || SERVICES_PALETTE.warning,
     servicesBodyFont: heroTheme?.bodyFont || SERVICES_BODY_FONT,
     servicesDisplayFont: heroTheme?.displayFont || heroTheme?.bodyFont || SERVICES_DISPLAY_FONT,
-    servicesHighlight: SERVICES_HERO_HIGHLIGHT,
     servicesPrimaryShadow: SERVICES_HERO_PRIMARY_SHADOW,
     servicesMobileInfoCardWidth: SERVICES_HERO_MOBILE_INFO_CARD_WIDTH
   };
@@ -166,13 +179,13 @@ function buildServiceFallbackReasons({ serviceGroups = [], servicesViewModel = n
     serviceGroups.slice(0, 2).forEach((group) => {
       const count = Number(group?.items?.length || 0);
       if (count > 0) {
-        reasons.push(`${group.categoryMeta?.label || 'Service'} options (${count})`);
+        reasons.push(`${group.categoryMeta?.label || 'Service'} options (${formatServiceNumber(count)})`);
       }
     });
   }
   const totalServices = Number(servicesViewModel?.totalServices || 0);
   if (totalServices > 0) {
-    reasons.push(`${totalServices} services currently listed`);
+    reasons.push(`${formatServiceNumber(totalServices)} services currently listed`);
   }
   return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
 }
@@ -182,5 +195,6 @@ export {
   buildServicesRetailHeroSectionModel,
   buildServiceFallbackReasons,
   deriveServicesHeroContent,
-  deriveServicesHeroTheme
+  deriveServicesHeroTheme,
+  formatServicesRatingSummary
 };

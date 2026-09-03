@@ -5,6 +5,7 @@ import { getUnavailableFulfillmentMessage, resolveStorefrontFulfillmentOptions }
 import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
 import { FulfillmentMethodNotice } from '../../../../shared/components/checkout/FulfillmentMethodNotice.jsx';
 import { buildLeadTimeExpectationMessage, resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
+import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 const deliveryIcon = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Im0xOCAxNC0xLTMiLz48cGF0aCBkPSJtMyA5IDYgMmEyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDEuOTkgMS44MSIvPjxwYXRoIGQ9Ik04IDE3aDNhMSAxIDAgMCAwIDEtMSA2IDYgMCAwIDEgNi02IDEgMSAwIDAgMCAxLTF2LS43NUE1IDUgMCAwIDAgMTcgNSIvPjxjaXJjbGUgY3g9IjE5IiBjeT0iMTciIHI9IjMiLz48Y2lyY2xlIGN4PSI1IiBjeT0iMTciIHI9IjMiLz48L3N2Zz4=';
 
@@ -30,6 +31,7 @@ function buildChoiceCardProps({
     activeIconColor: brand,
     borderRadius: 14,
     checkColor: brand,
+    fontFamily: CHECKOUT_FONT_FAMILY,
     fontSize: mobileOptionTextSize,
     fontWeight: 700,
     gap: isResponsive ? 10 : 12,
@@ -75,8 +77,11 @@ export function FnbCheckoutFulfillmentChoices({
   const { showSelector: showOrderMethodSelector, notice: orderMethodNotice, soleOption: soleOrderMethod } =
     resolveFulfillmentSelectorPresentation(fulfillmentOptions);
   const choiceGridColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
+  const timingChoiceGridColumns = isResponsive ? '1fr' : choiceGridColumns;
   const { showSchedule, showImmediate, showTimingChooser, showTimingStep } = orderTimingPolicy;
-  const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep });
+  const showTimingSection = showTimingStep && (showTimingChooser || showSchedule);
+  const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep: showTimingSection });
+  const typography = getCheckoutStepTypography();
   const choiceProps = {
     brand: fnbOrderBrand,
     brandBorder: fnbOrderBrandBorder,
@@ -91,7 +96,7 @@ export function FnbCheckoutFulfillmentChoices({
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, alignItems: 'start' }}>
       {showOrderMethodSelector ? (
       <div style={{ display: 'grid', gap: 16 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
+        <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>1. How would you like to receive your order?</div>
         <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>
           {fulfillmentOptions.map((option) => {
             const isAvailable = option.available !== false;
@@ -119,14 +124,14 @@ export function FnbCheckoutFulfillmentChoices({
         <FulfillmentMethodNotice
           accentColor={fnbOrderBrand}
           message={orderMethodNotice}
-          variant={soleOrderMethod ? 'info' : 'warning'}
+          variant={soleOrderMethod?.value === 'delivery' ? 'delivery-only' : soleOrderMethod?.value === 'pickup' ? 'pickup-only' : soleOrderMethod ? 'info' : 'warning'}
         />
       )}
 
       <div style={{ display: 'grid', gap: 16 }}>
-        {showTimingStep ? <>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{sectionNumbers.timing}. When would you like your order?</div>
-        {showTimingChooser ? <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>
+        {showTimingSection ? <>
+        <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.timing}. When would you like your order?</div>
+        {showTimingChooser ? <div data-testid="order-timing-choice-grid" style={{ display: 'grid', gridTemplateColumns: timingChoiceGridColumns, gap: 16 }}>
           <SelectableOptionCard
             {...buildChoiceCardProps({
               ...choiceProps,
@@ -148,20 +153,9 @@ export function FnbCheckoutFulfillmentChoices({
           </div> : null}
         {showSchedule && !showImmediate ? <>
           <FulfillmentMethodNotice accentColor={fnbOrderBrand} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" />
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>Scheduled date and time<input type="datetime-local" value={fnbScheduledFor} onChange={(event) => onScheduledForChange(event.target.value)} style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 12, padding: '12px 14px', background: '#f8fafc', color: '#1e293b', fontSize: 14, fontWeight: 600, boxSizing: 'border-box' }} /></label>
+          <label style={{ display: 'grid', gap: 6, ...typography.fieldLabel, color: '#475569' }}>Scheduled date and time<input type="datetime-local" value={fnbScheduledFor} onChange={(event) => onScheduledForChange(event.target.value)} style={{ width: '100%', ...typography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px', background: '#f8fafc', color: '#1e293b', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY }} /></label>
         </> : null}
-        {showImmediate && !showSchedule ? (
-          <div style={{ borderRadius: 6, border: '1px solid #d1fae5', background: '#f0fdf4', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Clock3 size={11} color="#16a34a" style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#166534', lineHeight: 1.3 }}>{isDeliveryOrder ? 'Our rider will deliver your order NOW. You\'ll see the estimated time at checkout.' : 'Your order will be prepared NOW. You\'ll see the estimated time at checkout.'}</span>
-          </div>
-        ) : null}
-        {showTimingChooser ? (fnbScheduleMode === 'asap' ? (
-          <div style={{ borderRadius: 6, border: '1px solid #d1fae5', background: '#f0fdf4', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Clock3 size={11} color="#16a34a" style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#166534', lineHeight: 1.3 }}>{isDeliveryOrder ? 'Our rider will deliver your order NOW. You\'ll see the estimated time at checkout.' : 'Your order will be prepared NOW. You\'ll see the estimated time at checkout.'}</span>
-          </div>
-        ) : (
+        {showTimingChooser && fnbScheduleMode === 'schedule' ? (
           <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
             {scheduleHoursLabel && (
               <div style={{ minHeight: 46, borderRadius: 12, border: '1px solid #fde68a', background: '#fffbeb', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, boxSizing: 'border-box' }}>
@@ -185,7 +179,7 @@ export function FnbCheckoutFulfillmentChoices({
                     // The native picker is optional and not supported by every browser.
                   }
                 }}
-                style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 12, padding: '12px 14px 12px 42px', background: '#f8fafc', color: '#1e293b', fontSize: 14, fontWeight: 600, outline: 'none', boxShadow: 'inset 0 2px 4px rgba(15,23,42,0.02)', transition: 'all 200ms ease', cursor: 'pointer' }}
+                style={{ width: '100%', ...typography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px 0 42px', background: '#f8fafc', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 2px 4px rgba(15,23,42,0.02)', transition: 'all 200ms ease', cursor: 'pointer', fontFamily: CHECKOUT_FONT_FAMILY }}
                 onMouseEnter={(event) => { event.target.style.borderColor = fnbOrderBrand; event.target.style.background = '#ffffff'; }}
                 onMouseLeave={(event) => { if (document.activeElement !== event.target) { event.target.style.borderColor = '#cbd5e1'; event.target.style.background = '#f8fafc'; } }}
                 onFocus={(event) => { event.target.style.borderColor = fnbOrderBrand; event.target.style.background = '#ffffff'; event.target.style.boxShadow = `0 0 0 3px ${fnbOrderBrandShadowStrong}, inset 0 2px 4px rgba(15,23,42,0.02)`; }}
@@ -193,7 +187,7 @@ export function FnbCheckoutFulfillmentChoices({
               />
             </div>
           </label>
-        )) : null}</> : <FulfillmentMethodNotice accentColor={fnbOrderBrand} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
+        ) : null}</> : <FulfillmentMethodNotice accentColor={fnbOrderBrand} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
       </div>
     </div>
   );

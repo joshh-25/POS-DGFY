@@ -36,6 +36,27 @@ const PROFILE_STEPS = Object.freeze({
     { id: 'quoted', label: 'Quote prepared' },
     { id: 'accepted', label: 'Quote accepted' },
     { id: 'completed', label: 'Request completed' }
+  ]),
+  service_at_customer_address: Object.freeze([
+    { id: 'requested', label: 'Request received' },
+    { id: 'confirmed', label: 'Booking confirmed' },
+    { id: 'checked_in', label: 'Ready for your service visit' },
+    { id: 'in_service', label: 'Service in progress' },
+    { id: 'completed', label: 'Service completed' }
+  ]),
+  appointment_at_business: Object.freeze([
+    { id: 'requested', label: 'Request received' },
+    { id: 'confirmed', label: 'Appointment confirmed' },
+    { id: 'checked_in', label: 'Ready for your appointment' },
+    { id: 'in_service', label: 'Service in progress' },
+    { id: 'completed', label: 'Appointment completed' }
+  ]),
+  online_service: Object.freeze([
+    { id: 'requested', label: 'Request received' },
+    { id: 'confirmed', label: 'Appointment confirmed' },
+    { id: 'checked_in', label: 'Ready for your online appointment' },
+    { id: 'in_service', label: 'Session in progress' },
+    { id: 'completed', label: 'Appointment completed' }
   ])
 });
 

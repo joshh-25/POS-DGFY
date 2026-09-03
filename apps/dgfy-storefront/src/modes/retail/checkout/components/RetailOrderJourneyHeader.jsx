@@ -15,9 +15,7 @@ const RETAIL_PROGRESS_COMPLETE = '#1a4586';
  */
 export function RetailOrderJourneyHeader({
   activeStep,
-  cartCount,
   cartHasItems,
-  isDeliveryOrder,
   isMobileViewport,
   displayFont,
   onStepChange
@@ -31,13 +29,8 @@ export function RetailOrderJourneyHeader({
   return (
     <>
       <CheckoutHeroHeader
-        eyebrow="Order Journey"
         title="Complete Your Product Order"
         description="Set fulfillment first, provide one reliable contact, then review payment and totals before submitting."
-        badges={[
-          { label: `${cartCount} item${cartCount === 1 ? '' : 's'}`, tone: 'pill' },
-          { label: isDeliveryOrder ? 'Delivery order flow' : 'Pickup order flow' }
-        ]}
         isMobileViewport={isMobileViewport}
         accentColor={RETAIL_ACCENT}
         accentSoft={RETAIL_ACCENT_SOFT}

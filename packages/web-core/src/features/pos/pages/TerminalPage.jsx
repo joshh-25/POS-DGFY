@@ -896,18 +896,25 @@ export default function TerminalPage() {
   }, [permissions, terminalUser]);
   const canViewAudit = isMasterAdminOperator || normalizedTerminalRole === 'admin';
   // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
-  // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release
-  // (resolveEffectivePermissions only re-derives role defaults when a user's stored permissions
-  // array is empty, so a hard swap could lock out an admin/manager whose array predates the
-  // deploy-time backfill). Mirror that same dual-gate here rather than the backend accepting a
-  // request the UI itself wouldn't allow. This only gates create/edit/lifecycle actions inside
-  // the Vouchers/Pricelists panels; view access is `canViewVouchers`, below.
-  const canManageVouchers = hasPermission('vouchers:manage') || hasPermission('settings:edit');
+  // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release.
+  //
+  // #1493 (Phase 263) retires that legacy arm for voucher *management*: campaign management is now
+  // Admin + the mode-native `*_accounting` presets only, and `settings:edit` -- which every manager
+  // holds by default -- no longer grants it. This mirrors routes/vouchers.js's `canManageVouchers`
+  // exactly. Mirroring is the whole point: without it a manager keeps seeing the create/edit
+  // controls and only discovers the restriction as a 403 on submit.
+  const canManageVouchers = hasPermission('vouchers:manage');
+  // Pricelists (#732) share the VOUCHERS.* permission group with vouchers but are a separate
+  // capability, and #1493 restricts vouchers only. routes/pricelists.js still accepts the legacy
+  // `settings:edit` arm, so this stays the old dual-gate -- splitting it from canManageVouchers is
+  // what keeps managers managing pricelists after #1493. Do not re-merge these two.
+  const canManagePricelists = canManageVouchers || hasPermission('settings:edit');
   // #732: Vouchers/Pricelists moved out of the Settings tab strip to their own top-level nav
   // modes, so view access is no longer implied by "reached SettingsWorkspace at all" -- it needs
   // its own gate here, mirroring routes/pricelists.js's own dual-gate exactly:
   // VOUCHERS.VIEW/VOUCHERS.MANAGE OR the legacy SYSTEM.VIEW_SETTINGS/SYSTEM.EDIT_SETTINGS pair.
-  const canViewVouchers = canManageVouchers || hasPermission('vouchers:view') || hasPermission('settings:view');
+  // Read access is deliberately unchanged by #1493 -- it restricts management, not visibility.
+  const canViewVouchers = canManagePricelists || hasPermission('vouchers:view') || hasPermission('settings:view');
 
   const activeOperationsViewModes = useMemo(() => {
     const baseModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;
@@ -6610,6 +6617,7 @@ function PosRestorationLoadingScreen() {
           canDeleteItems={canDeleteItems}
           canManageCategories={canManageCategories}
           canManageVouchers={canManageVouchers}
+          canManagePricelists={canManagePricelists}
           canViewVouchers={canViewVouchers}
           showIncomingQueue={onlineOrderQueueEnabled}
           itemsStockFilterPreset={itemsStockFilterPreset}

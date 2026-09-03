@@ -137,7 +137,21 @@ export function StorefrontCheckoutDrawerFrame({
 
         {tabBarContent}
 
-        <div style={{ overflowY: 'auto', overflowX: 'hidden', padding: 0 }}>
+        <div
+          data-storefront-checkout-scroll-root="true"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+            touchAction: 'pan-y',
+            scrollPaddingBottom: 'var(--storefront-mobile-checkout-footer-reserve, 196px)',
+            padding: 0,
+            boxSizing: 'border-box'
+          }}
+        >
           {children}
         </div>
       </aside>

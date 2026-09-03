@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { RetailOrderGuestEmailVerification } from './RetailOrderGuestEmailVerification.jsx';
+import { GUEST_CHECKOUT_FONT_FAMILY, getGuestCheckoutTypography } from '../../../../shared/components/checkout/guestCheckoutTypography.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_DARK = '#1a4586';
@@ -27,7 +28,6 @@ export function RetailOrderAccountStep({
   isGuestCheckoutOtpCooldownActive = false,
   isMobileViewport = false,
   retailCustomerStepComplete = false,
-  servicesBodyFont,
   renderAccountOwnedIdentitySummary,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
@@ -38,6 +38,8 @@ export function RetailOrderAccountStep({
   onRequestGuestCheckoutOtp,
   onVerifyGuestCheckoutOtp
 }) {
+  const typography = getGuestCheckoutTypography(isMobileViewport);
+
   if (!isDgfyCustomerSignedIn && !canUseGuestCheckoutFlow) {
     return renderGuestCheckoutEntry({
       title: 'Continue to your order',
@@ -55,13 +57,8 @@ export function RetailOrderAccountStep({
   }
 
   return (
-    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14 }}>
-      <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 1: Customer Details</div>
-      <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>
-        {isDgfyCustomerSignedIn
-          ? 'Your account details are already linked. Only order-specific instructions remain editable here.'
-          : 'Guest checkout uses the details you entered for this order only.'}
-      </div>
+    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 24, display: 'grid', gap: isMobileViewport ? 16 : 24, fontFamily: GUEST_CHECKOUT_FONT_FAMILY }}>
+      <div style={{ ...typography.accountTitle, color: '#1e293b' }}>Step 1: Customer Details</div>
       {isDgfyCustomerSignedIn ? renderAccountOwnedIdentitySummary({
         title: 'Customer Account',
         subtitle: 'These account details will be used for this order.'
@@ -76,7 +73,6 @@ export function RetailOrderAccountStep({
       })}
       {!isDgfyCustomerSignedIn && (
         <RetailOrderGuestEmailVerification
-          bodyFont={servicesBodyFont}
           code={guestCheckoutOtpCode}
           cooldownActive={isGuestCheckoutOtpCooldownActive}
           cooldownLabel={guestCheckoutOtpCooldownLabel}
@@ -91,13 +87,8 @@ export function RetailOrderAccountStep({
       )}
       {!isMobileViewport && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <button type="button" onClick={onBackToCatalog} style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back to Catalog</button>
-          <button type="button" onClick={onContinue} disabled={!retailCustomerStepComplete} style={{ minHeight: isMobileViewport ? 44 : 46, borderRadius: 12, border: 'none', background: retailCustomerStepComplete ? `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, cursor: retailCustomerStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
-        </div>
-      )}
-      {!retailCustomerStepComplete && (
-        <div style={{ fontSize: 12, color: '#b45309' }}>
-          {isDgfyCustomerSignedIn ? 'Complete required fields to continue.' : 'Add your name and email, then verify your email to continue.'}
+          <button type="button" onClick={onBackToCatalog} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontSize: typography.action.fontSize, fontFamily: GUEST_CHECKOUT_FONT_FAMILY, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back to Catalog</button>
+          <button type="button" onClick={onContinue} disabled={!retailCustomerStepComplete} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: retailCustomerStepComplete ? `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)` : '#cbd5e1', color: '#fff', fontSize: typography.action.fontSize, fontFamily: GUEST_CHECKOUT_FONT_FAMILY, fontWeight: 700, cursor: retailCustomerStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
         </div>
       )}
     </section>

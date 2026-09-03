@@ -5,6 +5,36 @@ Living doc, not scoped to a single PR — promoted out of `.github/` on
 this doc's own original 2026-08-01 decision. Keep it updated; don't delete it
 on the next flip.
 
+## Status as of 2026-09-03 — sparse-checkout permanently poisoned the shared `_work` (#1528)
+
+`deploy-main.yml`'s `guard-branch` job (permanently self-hosted, one of the three anchor
+exceptions above) checked out with `sparse-checkout: scripts + .github/workflows`. Confirmed live,
+on both `vm-sieitzstaging` and `vm-openproject`, that this poisoned the shared `_work` workspace
+**permanently** for every later job on the box — `actions/checkout`'s own `sparse-checkout
+disable` writes into `.git/config.worktree`, then unsets `extensions.worktreeConfig`, which makes
+git stop reading that file; the stale `core.sparseCheckout=true` in `.git/config` stays
+authoritative, `git status` reports the tree clean, and downstream jobs fail with
+`docker/build-push-action`'s opaque `lstat infrastructure/docker/<app>: no such file or directory`.
+Full mechanism, diagnosis signature, and manual clearing procedure:
+`docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md`.
+
+Fixed by removing the sparse checkout (plain full checkout instead) and adding a runtime
+pre-checkout hygiene guard + post-checkout assertion at every self-hosted-reachable checkout site
+(10 sites: `guard-branch`, the three `pr-*-build-checks.yml`, `shared-changed-paths.yml`,
+`compliance-preflight-sweep.yml`, and the three `deploy-{api,frontend,migration-runner}.yml`
+`build-and-push` jobs, plus `publish-pos-receipt.yml`), enforced by
+`scripts/check-workspace-hygiene.js` (`npm run check:workspace-hygiene`) both in
+`promotion-quality-gate.yml` (advisory, same shape as its `validate_runner_routing` sibling) and as
+a hard local `.husky/pre-commit` gate on any workflow-file change.
+
+**Known residual window, deliberately not hotfixed**: the sparse-checkout removal landed on
+`develop` (PR #1536, alongside the back-port of #1525/#1526 and #1530/#1533), not as a fifth same-
+day `main` hotfix — PROD was already stable and deployed by the time this was found, so there was
+no same-day urgency. `deploy-main.yml`'s `guard-branch` executes from `main`'s copy, which still
+carries the sparse checkout until the next promotion; the runtime hygiene guard (which reached
+`develop` in the same PR) is what makes that window harmless in the meantime — the next PR job on a
+re-poisoned box clears the state before its own checkout runs, rather than inheriting it.
+
 ## Status as of 2026-09-02 — Phase 234 Wave 3, the live cutover (#1365)
 
 Worker/Implementer build stage of Phase 234 Wave 3 (#1365, child of epic #1363) — the flip this

@@ -116,6 +116,8 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     ],
     items: ['item_id', 'vat_type', 'tracking_mode', 'tracking_toggle_available'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter', 'is_active'],
+    // Phase 257 (#1318) — on the tenant-schema crash-loop critical path (#860/#639 class); see ADR 0080.
+    item_folder_memberships: ['item_folder_membership_id', 'item_id', 'folder_id', 'sort_order'],
     pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available', 'pos_best_seller_mode'],
     pos_transactions: [
         'pos_transaction_id',

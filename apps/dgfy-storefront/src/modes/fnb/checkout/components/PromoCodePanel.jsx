@@ -33,11 +33,15 @@ export function PromoCodePanel({
   statusTone = 'idle',
   appliedDiscountText = '',
   compact = false,
+  variant = 'default',
   accentColor = '#0f766e',
   bodyFont = "'Avenir Next', 'Segoe UI', sans-serif",
   isMobile = false,
   availablePromos = []
 }) {
+  const promoAccent = accentColor || '#0f766e';
+  const isServicesCartVariant = variant === 'services-cart';
+  const servicesCartBorder = String(promoAccent).startsWith('#') ? `${promoAccent}52` : promoAccent;
   const normalizedCode = normalizePromoCode(code);
   const hasCode = normalizedCode.length > 0;
 
@@ -75,18 +79,18 @@ export function PromoCodePanel({
           alignItems: 'center',
           justifyContent: 'space-between',
           width: '100%',
-          minHeight: compact ? 40 : 44,
-          padding: compact ? '0 12px' : '0 14px',
+          minHeight: isServicesCartVariant ? 40 : (compact ? 40 : 44),
+          padding: isServicesCartVariant ? '0 12px' : (compact ? '0 12px' : '0 14px'),
           borderRadius: 12,
-          border: `1px solid #16a34a`,
-          background: hasCode ? '#dcfce7' : '#ffffff',
+          border: isServicesCartVariant ? `1px dashed ${servicesCartBorder}` : `1px solid ${promoAccent}`,
+          background: hasCode ? `${promoAccent}14` : '#ffffff',
           cursor: 'pointer',
           fontFamily: bodyFont
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Tag size={18} color="#16a34a" />
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#15803d' }}>
+          <Tag size={18} color={promoAccent} />
+          <span style={{ fontSize: 14, fontWeight: 700, color: promoAccent }}>
             {hasCode ? normalizedCode : 'Apply a promo / discount'}
           </span>
         </div>

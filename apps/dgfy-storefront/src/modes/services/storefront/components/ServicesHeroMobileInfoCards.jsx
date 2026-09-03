@@ -12,6 +12,7 @@ import { StoresMap } from '../../../../discovery/components/StoresMapLazy.jsx';
 import { ServiceImage } from '../../ServiceImage.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { StorefrontDirectionsEta } from '../../../../shared/components/storefront/hero/StorefrontDirectionsEta.jsx';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 const ServicesHeroMobileInfoCards = ({
   aboutText,
@@ -32,10 +33,6 @@ const ServicesHeroMobileInfoCards = ({
   serviceHeroModel,
   servicesBodyFont,
   servicesMobileInfoCardWidth,
-  servicesPrimary,
-  servicesPrimaryDark,
-  servicesPrimaryShadow,
-  servicesPrimarySoft,
   setIsAboutExpanded,
   setIsExpandedMapOpen,
   setIsServiceGalleryExpanded,
@@ -45,11 +42,15 @@ const ServicesHeroMobileInfoCards = ({
 }) => {
   const [expandedMobileCard, setExpandedMobileCard] = useState(null);
   const addressRow = visibleContactRows.find((row) => row.label === 'Address');
+  const servicesThemePrimary = SERVICES_PALETTE.primary;
+  const servicesThemePrimaryDark = SERVICES_PALETTE.primaryDark;
+  const servicesThemePrimaryShadow = SERVICES_PALETTE.primaryShadow;
+  const servicesThemePrimarySoft = SERVICES_PALETTE.primarySoft;
 
   return (
     <div style={{ display: 'grid', gap: 0, paddingBottom: 24, marginTop: 24 }}>
       <div
-        className="no-scrollbar"
+        className="services-mobile-no-scrollbar"
         style={{
           width: '100%',
           maxWidth: '100%',
@@ -63,13 +64,15 @@ const ServicesHeroMobileInfoCards = ({
           scrollSnapType: 'x mandatory',
           scrollPaddingInline: 16,
           WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
           margin: 0,
           alignItems: 'stretch',
           boxSizing: 'border-box'
         }}
       >
         {(hasAboutSection || hasGallerySection) && (
-          <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesPrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesPrimaryShadow}`, boxSizing: 'border-box' }}>
+          <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesThemePrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesThemePrimaryShadow}`, boxSizing: 'border-box' }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 12, fontFamily: servicesBodyFont }}>
               {hasAboutSection ? 'About Us' : 'Store Details'}
             </div>
@@ -89,7 +92,7 @@ const ServicesHeroMobileInfoCards = ({
                   {aboutText}
                 </p>
                 {hasAboutToggle && (
-                  <button type="button" onClick={() => setIsAboutExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, justifySelf: 'start', marginTop: 8, fontFamily: servicesBodyFont }}>
+                  <button type="button" onClick={() => setIsAboutExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesThemePrimary, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, justifySelf: 'start', marginTop: 8, fontFamily: servicesBodyFont }}>
                     {isAboutExpanded ? 'See less' : 'See more'}
                   </button>
                 )}
@@ -98,7 +101,7 @@ const ServicesHeroMobileInfoCards = ({
             {hasGallerySection && (
               <div style={{ display: 'grid', gap: 10, marginTop: hasAboutSection ? 16 : 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Gallery</div>
-                <div className="no-scrollbar" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
+                <div className="services-mobile-no-scrollbar" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                   {previewImages.map((url, index) => (
                     <div key={`${url}-${index}`} style={{ width: 84, minWidth: 84, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
                       <ServiceImage imageSources={{ src: url }} alt="" sizes="120px" width={120} height={72} fallbackLabel="" />
@@ -106,7 +109,7 @@ const ServicesHeroMobileInfoCards = ({
                   ))}
                 </div>
                 {galleryImages.length > 4 && (
-                  <button type="button" onClick={() => setIsServiceGalleryExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
+                  <button type="button" onClick={() => setIsServiceGalleryExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesThemePrimary, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
                     {isServiceGalleryExpanded ? 'Show fewer photos' : 'View all photos'}
                   </button>
                 )}
@@ -116,14 +119,14 @@ const ServicesHeroMobileInfoCards = ({
         )}
 
         {(hasContactRows || hasMapData) && (
-          <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesPrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesPrimaryShadow}`, boxSizing: 'border-box' }}>
+          <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesThemePrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesThemePrimaryShadow}`, boxSizing: 'border-box' }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: servicesBodyFont }}>Contact & Location</div>
             <div style={{ display: 'grid', gap: 14 }}>
               {visibleContactRows.filter((row) => row.label !== 'Address' && row.label !== 'Hours').slice(0, expandedMobileCard === 'contact' ? 99 : 1).map((row) => {
                 const icon = getStorefrontContactIcon(row.label);
                 const content = (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#0f172a', fontFamily: servicesBodyFont, fontWeight: 600 }}>
-                    <div style={{ color: servicesPrimaryDark, display: 'flex' }}>{icon}</div>
+                    <div style={{ color: servicesThemePrimaryDark, display: 'flex' }}>{icon}</div>
                     <div>{row.value}</div>
                     <ChevronRight size={16} color="#94a3b8" style={{ marginLeft: 'auto' }} />
                   </div>
@@ -154,7 +157,7 @@ const ServicesHeroMobileInfoCards = ({
                     {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: servicesBodyFont }}>{storefrontCityLabel}</div> : null}
                   </div>
                   <div style={{ display: 'grid', gap: 2, justifyItems: 'end' }}>
-                    <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: servicesBodyFont }}>
+                    <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesThemePrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: servicesBodyFont }}>
                       Get directions
                     </button>
                     <StorefrontDirectionsEta latitude={addressRow?.destinationLatitude} longitude={addressRow?.destinationLongitude} bodyFont={servicesBodyFont} />
@@ -207,12 +210,12 @@ const ServicesHeroMobileInfoCards = ({
             )}
 
             {(hasMapData || visibleContactRows.length > 1) && expandedMobileCard !== 'contact' && (
-              <button type="button" onClick={() => setExpandedMobileCard('contact')} style={{ background: 'none', border: 'none', padding: 0, color: servicesPrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
+              <button type="button" onClick={() => setExpandedMobileCard('contact')} style={{ background: 'none', border: 'none', padding: 0, color: servicesThemePrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
                 See details & map <ChevronDown size={14} />
               </button>
             )}
             {expandedMobileCard === 'contact' && (
-              <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: servicesPrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
+              <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: servicesThemePrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
                 Hide details <ChevronUp size={14} />
               </button>
             )}
@@ -220,23 +223,23 @@ const ServicesHeroMobileInfoCards = ({
         )}
 
         {hasWhyChooseUs && (
-          <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesPrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesPrimaryShadow}`, boxSizing: 'border-box' }}>
+          <div style={{ width: servicesMobileInfoCardWidth, minWidth: servicesMobileInfoCardWidth, maxWidth: servicesMobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: `1px solid ${servicesThemePrimarySoft}`, borderRadius: 16, padding: 16, boxShadow: `0 8px 24px ${servicesThemePrimaryShadow}`, boxSizing: 'border-box' }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: servicesBodyFont }}>Why Choose Us</div>
             <div style={{ display: 'grid', gap: 14 }}>
               {visibleWhyChooseUs.slice(0, expandedMobileCard === 'why' ? 99 : 2).map((item, index) => (
                 <div key={`why-${index}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                  <div style={{ color: servicesPrimary, marginTop: 2 }}><CheckCircle2 size={16} /></div>
+                  <div style={{ color: servicesThemePrimary, marginTop: 2 }}><CheckCircle2 size={16} /></div>
                   <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.4, fontFamily: servicesBodyFont }}>{item}</div>
                 </div>
               ))}
             </div>
             {visibleWhyChooseUs.length > 2 && expandedMobileCard !== 'why' && (
-              <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: 'none', border: 'none', padding: 0, color: servicesPrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
+              <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: 'none', border: 'none', padding: 0, color: servicesThemePrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
                 View all <ChevronDown size={14} />
               </button>
             )}
             {expandedMobileCard === 'why' && (
-              <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: servicesPrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
+              <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: servicesThemePrimary, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content', fontFamily: servicesBodyFont }}>
                 Show less <ChevronUp size={14} />
               </button>
             )}

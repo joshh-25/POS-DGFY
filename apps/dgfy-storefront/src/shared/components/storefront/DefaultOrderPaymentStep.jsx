@@ -2,6 +2,7 @@ import { ChevronLeft } from 'lucide-react';
 import { StorefrontDropdown } from '../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { PaymentMethodSelectorBlock } from '../checkout/PaymentMethodSelectorBlock.jsx';
 import { DefaultOrderReviewItemsList } from './DefaultOrderReviewItemsList.jsx';
+import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutStepTypography } from '../checkout/checkoutUiTokens.js';
 
 // Placeholder payment options — not connected to the backend yet. See DefaultOrderPage.jsx's
 // doc comment.
@@ -25,21 +26,21 @@ export function DefaultOrderPaymentStep({
   money,
   onBack,
   onPaymentTypeChange,
-  paymentType = 'cash',
-  servicesBodyFont
+  paymentType = 'cash'
 }) {
+  const typography = getCheckoutStepTypography();
+
   return (
-    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14 }}>
-      <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 3: Review &amp; Payment</div>
-      <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Review the cart, then choose a payment method.</div>
+    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14, fontFamily: CHECKOUT_FONT_FAMILY }}>
+      <div style={{ ...typography.title, color: '#1e293b' }}>Step 3: Review &amp; Payment</div>
       <PaymentMethodSelectorBlock
         label="Payment Type"
         value={paymentType}
         onChange={onPaymentTypeChange}
         options={PLACEHOLDER_PAYMENT_OPTIONS}
         DropdownComponent={StorefrontDropdown}
-        triggerStyle={{ minHeight: 44, borderRadius: 12 }}
-        bodyFont={servicesBodyFont}
+        labelStyle={{ ...typography.sectionTitle, color: '#1e293b', fontFamily: CHECKOUT_FONT_FAMILY }}
+        triggerStyle={{ ...typography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, fontFamily: CHECKOUT_FONT_FAMILY }}
       />
       <DefaultOrderReviewItemsList cart={cart} isMobileViewport={isMobileViewport} money={money} />
       <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>

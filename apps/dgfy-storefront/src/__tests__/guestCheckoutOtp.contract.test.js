@@ -55,7 +55,7 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(fnbComponentSource).toContain('badgeLabel="Recommended"');
     expect(fnbComponentSource).toContain('resendLabel="Send code again"');
     expect(retailComponentSource).toContain('Verify your email');
-    expect(simpleComponentSource).toContain('Verify this guest checkout email');
+    expect(simpleComponentSource).toContain('Verify your email');
     expect(serviceComponentSource).toContain('badgeLabel="Required"');
     expect(serviceComponentSource).toContain('resendLabel="Send verification code"');
     expect(appSource).not.toContain('shared/components/checkout/GuestEmailVerification.jsx');

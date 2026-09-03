@@ -1,3 +1,5 @@
+import { SERVICES_PALETTE } from '../../modes/services/servicesPalette.js';
+
 const SHARED_STOREFRONT_SECTIONS = Object.freeze({
   navigation: true,
   hero: true,
@@ -66,11 +68,11 @@ const MODE_TEMPLATE_OVERRIDES = Object.freeze({
     journeyVariant: 'booking',
     sharedShellVariant: 'services_fnb_live_shell',
     tokens: Object.freeze({
-      navigationAccent: '#172033',
-      heroAccent: '#f97316',
-      promoAccent: '#f97316',
-      reviewAccent: '#0f766e',
-      footerAccent: '#172033'
+      navigationAccent: SERVICES_PALETTE.primaryDark,
+      heroAccent: SERVICES_PALETTE.primary,
+      promoAccent: SERVICES_PALETTE.primary,
+      reviewAccent: SERVICES_PALETTE.primary,
+      footerAccent: SERVICES_PALETTE.primaryDark
     })
   }),
   fnb: Object.freeze({

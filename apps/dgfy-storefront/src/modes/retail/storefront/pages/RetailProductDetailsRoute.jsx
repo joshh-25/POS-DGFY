@@ -19,7 +19,7 @@ export function RetailProductDetailsRoute({ isActive, presentation, ...productDe
         ...presentation,
         catalogLabel: 'Products',
         compactTypography: true,
-        mediaObjectFit: 'contain',
+        mediaObjectFit: 'cover',
       }}
     />
   );

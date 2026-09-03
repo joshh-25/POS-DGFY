@@ -29,6 +29,7 @@ import PendingAIAction from './PendingAIAction.js';
 import AIConversation from './AIConversation.js';
 import ItemEmbedding from './ItemEmbedding.js';
 import ItemFolder from './ItemFolder.js';
+import ItemFolderMembership from './ItemFolderMembership.js';
 import ItemBarcode from './ItemBarcode.js';
 import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
@@ -61,6 +62,7 @@ import EmployeeCreditAccount from './EmployeeCreditAccount.js';
 import EmployeeCreditLedgerEntry from './EmployeeCreditLedgerEntry.js';
 import Voucher from './Voucher.js';
 import VoucherScope from './VoucherScope.js';
+import VoucherAccountGrant from './VoucherAccountGrant.js';
 import VoucherRedemption from './VoucherRedemption.js';
 import VoucherRedemptionLine from './VoucherRedemptionLine.js';
 import Pricelist from './Pricelist.js';
@@ -473,6 +475,25 @@ ItemFolder.hasMany(ItemFolder, { foreignKey: 'parent_id', as: 'children' });
 ItemFolder.belongsTo(ItemFolder, { foreignKey: 'parent_id', as: 'parent' });
 Item.belongsTo(ItemFolder, { foreignKey: 'folder_id', as: 'folder' });
 
+// Phase 257 (#1318) — secondary item/category memberships. Additive only:
+// the four lines above (the primary-category pointer) are untouched. Aliases
+// are deliberately distinct from 'folder'/'items' to avoid collision. ADR
+// 0080 clause 1/2: `folder_id` is never mirrored into or derived from these.
+Item.belongsToMany(ItemFolder, {
+  through: ItemFolderMembership,
+  foreignKey: 'item_id',
+  otherKey: 'folder_id',
+  as: 'secondaryFolders'
+});
+ItemFolder.belongsToMany(Item, {
+  through: ItemFolderMembership,
+  foreignKey: 'folder_id',
+  otherKey: 'item_id',
+  as: 'memberItems'
+});
+ItemFolderMembership.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+ItemFolderMembership.belongsTo(ItemFolder, { foreignKey: 'folder_id', as: 'folder' });
+
 // Item associations
 Item.hasMany(FIFOBatch, { foreignKey: 'item_id', as: 'fifoBatches' });
 Item.hasOne(ItemNutrition, { foreignKey: 'item_id', as: 'nutrition' });
@@ -821,6 +842,11 @@ PosTransaction.hasMany(EmployeeCreditLedgerEntry, { foreignKey: 'pos_transaction
 // `scope_ref_id` is polymorphic across items/item_folders, so it gets no association here.
 Voucher.hasMany(VoucherScope, { foreignKey: 'voucher_id', as: 'scopes' });
 VoucherScope.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
+// #788 (Phase 269): the account allowlist for an account-restricted voucher. Same shape as
+// `scopes` above -- a real tenant-side FK with ON DELETE CASCADE, unlike the landlord-side
+// `dgfy_account_id` inside it, which is unconstrained by construction (see the model's header).
+Voucher.hasMany(VoucherAccountGrant, { foreignKey: 'voucher_id', as: 'accountGrants' });
+VoucherAccountGrant.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
 Voucher.hasMany(VoucherRedemption, { foreignKey: 'voucher_id', as: 'redemptions' });
 VoucherRedemption.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
 VoucherRedemption.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'posTransaction' });
@@ -832,6 +858,11 @@ VoucherRedemption.hasMany(VoucherRedemptionLine, { foreignKey: 'voucher_redempti
 VoucherRedemptionLine.belongsTo(VoucherRedemption, { foreignKey: 'voucher_redemption_id', as: 'redemption' });
 VoucherRedemptionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 PosTransaction.hasMany(VoucherRedemption, { foreignKey: 'pos_transaction_id', as: 'voucherRedemptions' });
+// #1494: accountable creating/modifying officer, value-link only -- constraints: false so
+// sequelize.sync() (new-tenant provisioning) never adds a DB-level FK the migration path can't
+// match (see Voucher.js's own column comment and this phase's migration header for the full reasoning).
+Voucher.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', constraints: false });
+Voucher.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser', constraints: false });
 
 // Pricelists (#696, extends #584/ADR 0066). Pricelist -> per-item price rows; a fixed_price voucher
 // may attach one instead of a single fixed_unit_price_centavos. draft_of_pricelist_id is a
@@ -1125,6 +1156,7 @@ const db = {
   AIConversation,
   ItemEmbedding,
   ItemFolder,
+  ItemFolderMembership,
   ItemBarcode,
   DispatchOrder,
   DispatchOrderLine,
@@ -1157,6 +1189,7 @@ const db = {
   EmployeeCreditLedgerEntry,
   Voucher,
   VoucherScope,
+  VoucherAccountGrant,
   VoucherRedemption,
   VoucherRedemptionLine,
   Pricelist,
@@ -1345,6 +1378,7 @@ export {
   AIConversation,
   ItemEmbedding,
   ItemFolder,
+  ItemFolderMembership,
   ItemBarcode,
   DispatchOrder,
   DispatchOrderLine,
@@ -1373,6 +1407,7 @@ export {
   EmployeeCreditLedgerEntry,
   Voucher,
   VoucherScope,
+  VoucherAccountGrant,
   VoucherRedemption,
   VoucherRedemptionLine,
   Pricelist,

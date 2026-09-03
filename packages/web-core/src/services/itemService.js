@@ -55,6 +55,11 @@ export const deleteItem = async (itemId) => {
   return response.data;
 };
 
+export const restoreItem = async (itemId) => {
+  const response = await api.post(`/items/${itemId}/restore`);
+  return response.data.data;
+};
+
 export const getItemBatches = async (itemId, params = {}) => {
   const response = await api.get(`/items/${itemId}/batches`, { params });
   return response.data.data.batches;
@@ -82,6 +87,25 @@ export const getItemSupplierCoverage = async () => {
 
 export const replaceItemSuppliers = async (itemId, suppliers = []) => {
   const response = await api.put(`/items/${itemId}/suppliers`, { suppliers });
+  return response.data.data;
+};
+
+/**
+ * List an item's secondary category (folder) memberships. Additive to the
+ * item's primary `folder_id`, never a substitute for it — see ADR 0080
+ * clause 1/2 (#1318).
+ */
+export const listItemFolders = async (itemId) => {
+  const response = await api.get(`/items/${itemId}/folders`);
+  return response.data.data;
+};
+
+/**
+ * Replace-set an item's secondary category memberships (max 10). Never
+ * touches the item's primary `folder_id` — see ADR 0080 clause 1/2 (#1318).
+ */
+export const replaceItemFolders = async (itemId, folderIds = []) => {
+  const response = await api.put(`/items/${itemId}/folders`, { folder_ids: folderIds });
   return response.data.data;
 };
 

@@ -385,7 +385,7 @@ describe('Simple Storefront online payment contract', () => {
     expect(route).toContain('downpaymentDisplay.active');
     expect(route).toContain("Pay downpayment (");
     expect(step).toContain("isDownpaymentActive ? 'Pay downpayment with' : 'Payment Type'");
-    expect(step).toContain('!isDownpaymentActive && paymentType');
+    expect(step).not.toContain('showCashInfo');
   });
 
   // Phase 150 (#866) RF-3: a customer_choice store never offers plain COD-in-full -- both its

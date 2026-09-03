@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FnbHeroGalleryLightbox } from './FnbHeroGalleryLightbox.jsx';
+import { StorefrontGalleryLightbox } from '../../../../shared/components/storefront/StorefrontGalleryLightbox.jsx';
 
 const FnbHeroDesktopAboutGallery = ({
   STYLES,
@@ -93,7 +93,7 @@ const FnbHeroDesktopAboutGallery = ({
         </div>
       )}
 
-      <FnbHeroGalleryLightbox
+      <StorefrontGalleryLightbox
         open={isGalleryLightboxOpen}
         images={lightboxImages}
         currentIndex={galleryLightboxIndex}

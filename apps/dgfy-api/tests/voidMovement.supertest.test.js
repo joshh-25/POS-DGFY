@@ -34,8 +34,54 @@ let managerId;
 let defaultTenantCtx;
 let previousLegacyRegistrationEnabled;
 
+// #1452 (Phase 255, PR-D): a single shared secondary tenant, reused by the
+// 'Multi-tenant code path' and 'Cross-tenant isolation' describes below (each
+// previously created its own tenant(s) — 3 in total). Hoisted to top level
+// because both sibling describes need it and Jest only runs a describe-level
+// beforeAll once that describe's first test runs.
+let secondaryTenantCtx;
+let secondaryManagerToken;
+let secondaryManagerId;
+
 const TIMESTAMP = Date.now();
 const TODAY = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+
+/**
+ * Register a manager for a given tenant context.
+ * Permissions are set in both the global DB and the tenant DB so that the
+ * checkPermission middleware resolves correctly regardless of which DB it reads from.
+ */
+async function setupTenantManager(ctx, label) {
+    const creds = {
+        username: `void_${label}_${TIMESTAMP}`,
+        email: `void_${label}_${TIMESTAMP}@tenant.test`,
+        phone_number: '+63 917 000 7005',
+        password: 'TenantMgr1!'
+    };
+    await request(app)
+        .post('/api/v1/auth/register')
+        .set('x-company-token', ctx.token)
+        .send(creds);
+
+    const permJson = JSON.stringify(DEFAULT_ROLE_PERMISSIONS.manager);
+    // Update global DB
+    await db.User.update(
+        { role: 'manager', permissions: permJson },
+        { where: { email: creds.email } }
+    );
+    // Update tenant DB if present
+    await ctx.models.User.update(
+        { role: 'manager', permissions: permJson },
+        { where: { email: creds.email } }
+    ).catch(() => { }); // may not exist in tenant DB if auth is global-only
+
+    const login = await request(app)
+        .post('/api/v1/auth/login')
+        .set('x-company-token', ctx.token)
+        .send({ email: creds.email, password: creds.password });
+
+    return { token: login.body.data?.token, userId: login.body.data?.user_id };
+}
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 beforeAll(async () => {
@@ -101,6 +147,16 @@ beforeAll(async () => {
         .send({ email: viewerCreds.email, password: viewerCreds.password });
 
     viewerToken = viewerLogin.body.data?.token;
+
+    // ------------------------------------------------------------------
+    // 3. Create the single shared secondary tenant (#1452, Phase 255, PR-D) —
+    //    reused by 'Multi-tenant code path' (as its tenant) and
+    //    'Cross-tenant isolation' (as tenant B).
+    // ------------------------------------------------------------------
+    secondaryTenantCtx = await createTestTenant('alt');
+    const secondaryManager = await setupTenantManager(secondaryTenantCtx, 'alt');
+    secondaryManagerToken = secondaryManager.token;
+    secondaryManagerId = secondaryManager.userId;
 });
 
 afterAll(async () => {
@@ -116,6 +172,9 @@ afterAll(async () => {
     }).catch(() => { });
     if (defaultTenantCtx) {
         await destroyTestTenant(defaultTenantCtx);
+    }
+    if (secondaryTenantCtx) {
+        await destroyTestTenant(secondaryTenantCtx);
     }
     if (previousLegacyRegistrationEnabled === undefined) {
         delete process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
@@ -283,20 +342,9 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
             expect(res.body.success).toBe(false);
             expect(res.body.message).toMatch(/Cannot void this movement.*batch.*already been.*used downstream/i);
         });
-
-        it('returns 409 when voiding a receipt whose batch was fully consumed', async () => {
-            const { receiptMovement } = await createReceiptWithBatch({ qty: 30, consumed: 30 });
-
-            const res = await request(app)
-                .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
-                .set('x-company-token', defaultTenantCtx.token)
-                .set('Authorization', `Bearer ${managerToken}`)
-                .send({ reason: 'Attempting to void fully consumed receipt' });
-
-            expect(res.status).toBe(409);
-            expect(res.body.success).toBe(false);
-            expect(res.body.message).toMatch(/Cannot void this movement.*batch.*already been.*used downstream/i);
-        });
+        // "fully consumed" case dropped (#1452, Phase 255, PR-D) -- identical code path, status,
+        // envelope, and message regex as the "partially consumed" case above; only the fixture
+        // differed, so it was two cases proving one mapping.
     });
 
     describe('Business logic: 404 for non-existent movement', () => {
@@ -312,28 +360,9 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
         });
     });
 
-    describe('Business logic: double-void prevention', () => {
-        it('returns 400 when trying to void an already-voided movement', async () => {
-            const { receiptMovement } = await createReceiptWithBatch({ qty: 20 });
-
-            const firstVoid = await request(app)
-                .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
-                .set('x-company-token', defaultTenantCtx.token)
-                .set('Authorization', `Bearer ${managerToken}`)
-                .send({ reason: 'First void' });
-            expect(firstVoid.status).toBe(200);
-
-            const secondVoid = await request(app)
-                .post(`/api/v1/stock-movements/${receiptMovement.movement_id}/void`)
-                .set('x-company-token', defaultTenantCtx.token)
-                .set('Authorization', `Bearer ${managerToken}`)
-                .send({ reason: 'Second void attempt' });
-
-            expect(secondVoid.status).toBe(400);
-            expect(secondVoid.body.success).toBe(false);
-            expect(secondVoid.body.message).toMatch(/already voided/i);
-        });
-    });
+    // "Business logic: double-void prevention" describe dropped (#1452, Phase 255, PR-D) -- the
+    // Concurrency case below (`statuses === [200, 400]` + `loser.body.message` matching
+    // `/already voided/i`) is a strict superset of this describe's assertions on the same code path.
 
     // ── Happy path ──────────────────────────────────────────────────────────────
 
@@ -369,47 +398,18 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
     // connection (not the global/default fallback) by sending x-company-token.
 
     describe('Multi-tenant code path (x-company-token header)', () => {
+        // #1452 (Phase 255, PR-D): reuses the module-level secondaryTenantCtx/secondaryManagerToken/
+        // secondaryManagerId (built once in the top-level beforeAll) instead of creating its own
+        // tenant — see the shared-state comment above. tenantCtx/tenantManagerToken/tenantManagerId
+        // are local aliases so the case bodies below are otherwise unchanged.
         let tenantCtx;
         let tenantManagerToken;
         let tenantManagerId;
 
-        beforeAll(async () => {
-            tenantCtx = await createTestTenant('mt');
-
-            const creds = {
-                username: `void_tmt_${TIMESTAMP}`,
-                email: `void_tmt_${TIMESTAMP}@tenant.test`,
-                phone_number: '+63 917 000 7002',
-                password: 'TenantMgr1!'
-            };
-
-            await request(app)
-                .post('/api/v1/auth/register')
-                .set('x-company-token', tenantCtx.token)
-                .send(creds);
-
-            // Grant permissions in both global and tenant DBs
-            const permJson = JSON.stringify(DEFAULT_ROLE_PERMISSIONS.manager);
-            await db.User.update(
-                { role: 'manager', permissions: permJson },
-                { where: { email: creds.email } }
-            );
-            await tenantCtx.models.User.update(
-                { role: 'manager', permissions: permJson },
-                { where: { email: creds.email } }
-            ).catch(() => { }); // may not exist in tenant DB if auth is global-only
-
-            const loginRes = await request(app)
-                .post('/api/v1/auth/login')
-                .set('x-company-token', tenantCtx.token)
-                .send({ email: creds.email, password: creds.password });
-
-            tenantManagerToken = loginRes.body.data?.token;
-            tenantManagerId = loginRes.body.data?.user_id;
-        });
-
-        afterAll(async () => {
-            if (tenantCtx) await destroyTestTenant(tenantCtx);
+        beforeAll(() => {
+            tenantCtx = secondaryTenantCtx;
+            tenantManagerToken = secondaryManagerToken;
+            tenantManagerId = secondaryManagerId;
         });
 
         it('routes the 409 guard through the real tenant DB (not the global DB)', async () => {
@@ -505,62 +505,17 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
     // The auth token comes from a user that has manager permissions in B's context.
 
     describe('Cross-tenant isolation', () => {
-        let tenantA;
-        let tenantB;
-        let tokenA;
-        let tokenB;
+        // #1452 (Phase 255, PR-D): tenant A is now the module-level defaultTenantCtx and tenant B is
+        // the shared secondaryTenantCtx (both built in the top-level beforeAll) instead of two
+        // one-off tenants created here — see the shared-state comment above. tokenA reuses the
+        // existing default-tenant manager (managerToken); tokenB reuses secondaryManagerToken.
+        // Isolation is preserved: A and B remain two distinct createTestTenant() databases, which
+        // is the property under test. Only a small item+movement fixture is seeded here now.
         let tenantAMovementId;
 
         beforeAll(async () => {
-            [tenantA, tenantB] = await Promise.all([
-                createTestTenant('iso-a'),
-                createTestTenant('iso-b')
-            ]);
-
-            /**
-             * Register a manager for a given tenant.
-             * Permissions are set in both the global DB and the tenant DB
-             * so that the checkPermission middleware resolves correctly regardless
-             * of which DB it reads from.
-             */
-            async function setupTenantManager(ctx, label) {
-                const creds = {
-                    username: `void_iso_${label}_${TIMESTAMP}`,
-                    email: `void_iso_${label}_${TIMESTAMP}@iso.test`,
-                    phone_number: label === 'a' ? '+63 917 000 7003' : '+63 917 000 7004',
-                    password: 'IsoManager1!'
-                };
-                await request(app)
-                    .post('/api/v1/auth/register')
-                    .set('x-company-token', ctx.token)
-                    .send(creds);
-
-                const permJson = JSON.stringify(DEFAULT_ROLE_PERMISSIONS.manager);
-                // Update global DB
-                await db.User.update(
-                    { role: 'manager', permissions: permJson },
-                    { where: { email: creds.email } }
-                );
-                // Update tenant DB if present
-                await ctx.models.User.update(
-                    { role: 'manager', permissions: permJson },
-                    { where: { email: creds.email } }
-                ).catch(() => { });
-
-                const login = await request(app)
-                    .post('/api/v1/auth/login')
-                    .set('x-company-token', ctx.token)
-                    .send({ email: creds.email, password: creds.password });
-                return login.body.data?.token;
-            }
-
-            [tokenA, tokenB] = await Promise.all([
-                setupTenantManager(tenantA, 'a'),
-                setupTenantManager(tenantB, 'b')
-            ]);
-
-            // Create a StockMovement in Tenant A's DB only
-            const itemA = await tenantA.models.Item.create({
+            // Create a StockMovement in Tenant A's (defaultTenantCtx's) DB only
+            const itemA = await defaultTenantCtx.models.Item.create({
                 sku_code: `VOID-ISO-A-${TIMESTAMP}`,
                 name: 'Tenant A Item',
                 category: 'raw_material',
@@ -569,7 +524,7 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
                 fifo_enabled: false,
                 cost_price: 1.00
             });
-            const mvA = await tenantA.models.StockMovement.create({
+            const mvA = await defaultTenantCtx.models.StockMovement.create({
                 item_id: itemA.item_id,
                 quantity: 10,
                 movement_type: 'purchase_receipt',
@@ -579,19 +534,13 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
             tenantAMovementId = mvA.movement_id;
         });
 
-        afterAll(async () => {
-            await Promise.all([
-                tenantA && destroyTestTenant(tenantA),
-                tenantB && destroyTestTenant(tenantB)
-            ]);
-        });
-
         it('returns 404 when Tenant B tries to void a movement that only exists in Tenant A', async () => {
-            // tokenB-user is a valid manager in Tenant B's context; Tenant B's DB has no such movement_id
+            // secondaryManagerToken-user is a valid manager in Tenant B's (secondaryTenantCtx's)
+            // context; Tenant B's DB has no such movement_id.
             const res = await request(app)
                 .post(`/api/v1/stock-movements/${tenantAMovementId}/void`)
-                .set('Authorization', `Bearer ${tokenB}`)
-                .set('x-company-token', tenantB.token)
+                .set('Authorization', `Bearer ${secondaryManagerToken}`)
+                .set('x-company-token', secondaryTenantCtx.token)
                 .send({ reason: 'Cross-tenant attack attempt' });
 
             // Must 404 — B's DB has no such movement
@@ -600,10 +549,10 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
         });
 
         it('confirms Tenant A CAN void the same movement from Tenant A context', async () => {
-            const itemA = await tenantA.models.Item.findOne({
+            const itemA = await defaultTenantCtx.models.Item.findOne({
                 where: { sku_code: `VOID-ISO-A-${TIMESTAMP}` }
             });
-            const batch = await seedBatch(tenantA.models, {
+            const batch = await seedBatch(defaultTenantCtx.models, {
                 item_id: itemA.item_id,
                 movement_id: tenantAMovementId,
                 original_quantity: 10,
@@ -612,15 +561,15 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
                 cost_per_unit: 1.00,
                 status: 'available'
             });
-            await tenantA.models.StockMovement.update(
+            await defaultTenantCtx.models.StockMovement.update(
                 { batch_id: batch.batch_id },
                 { where: { movement_id: tenantAMovementId } }
             );
 
             const res = await request(app)
                 .post(`/api/v1/stock-movements/${tenantAMovementId}/void`)
-                .set('Authorization', `Bearer ${tokenA}`)
-                .set('x-company-token', tenantA.token)
+                .set('Authorization', `Bearer ${managerToken}`)
+                .set('x-company-token', defaultTenantCtx.token)
                 .send({ reason: 'Legitimate A-context void' });
 
             expect(res.status).toBe(200);
