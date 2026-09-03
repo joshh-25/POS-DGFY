@@ -143,7 +143,7 @@ export function SimpleCheckoutRoutePage({
         withAssetOrigin={withAssetOrigin}
       />
 
-      <div style={{ display: 'grid', gap: 18, maxWidth: 1240, margin: '0 auto', width: '100%', padding: isMobileViewport ? (checkoutResult ? '0 16px' : '0 16px calc(env(safe-area-inset-bottom, 0px) + 196px)') : '0 40px', boxSizing: 'border-box' }}>
+      <div style={{ display: 'grid', gap: 18, maxWidth: 1240, margin: '0 auto', width: '100%', padding: isMobileViewport ? (checkoutResult ? '0 16px' : '0 16px var(--storefront-mobile-checkout-footer-reserve, 196px)') : '0 40px', boxSizing: 'border-box' }}>
       <SimpleCheckoutJourneyHeader
         activeStep={simpleOrderStep}
         cartCount={cartCount}
