@@ -9,14 +9,13 @@ import {
 import { buildPublicStorefrontUrl } from '../../../../app/runtime/storefrontRuntime.js';
 import { StorefrontExpandedMapModal } from '../../../../discovery/components/StorefrontExpandedMapModal.jsx';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
-import {
-  formatFollowersLabel
-} from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../shared/components/storefront/hero/StorefrontHeaderNav.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../shared/components/storefront/hero/StorefrontShareQr.jsx';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { ServiceImage } from '../../ServiceImage.jsx';
+import { formatServiceNumber } from '../../servicesFormatters.js';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 import { getServicesResponsiveLayout } from '../../../../shared/utils/storefrontViewport.js';
 import { ServicesHeroDesktopContactLocation } from './ServicesHeroDesktopContactLocation.jsx';
 import { ServicesHeroDesktopWhyChooseUs } from './ServicesHeroDesktopWhyChooseUs.jsx';
@@ -134,15 +133,17 @@ const ServicesHero = ({
   const {
     servicesBodyFont,
     servicesDisplayFont,
-    servicesHighlight,
     servicesMobileInfoCardWidth,
     servicesPrimary,
     servicesPrimaryDark,
+    servicesTaglineColor,
+    servicesRatingColor,
     servicesPrimaryShadow,
     servicesPrimarySoft
   } = useMemo(() => deriveServicesHeroTheme(modeAdapter?.heroTheme), [modeAdapter?.heroTheme]);
   const servicesResponsiveLayout = useMemo(() => getServicesResponsiveLayout(viewportWidth), [viewportWidth]);
-  const servicesFollowersLabel = formatFollowersLabel(followState?.followersCount);
+  const servicesFollowerCount = Math.max(0, Number(followState?.followersCount || 0));
+  const servicesFollowersLabel = `${formatServiceNumber(servicesFollowerCount)} ${servicesFollowerCount === 1 ? 'follower' : 'followers'}`;
   const storefrontSlug = selectedStore?.slug || '';
   const storefrontShareUrl = useMemo(() => {
     if (!storefrontSlug) return '';
@@ -232,7 +233,10 @@ const ServicesHero = ({
           background: serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
             ? `url(${serviceHeroModel.coverImageUrl}) center/cover`
             : 'linear-gradient(135deg,#172033 0%,#22324b 50%,#40516c 100%)',
-          boxShadow: STYLES.shadow.lg
+          // Keep the hero edge flush with the white storefront surface. The
+          // profile image retains its own shadow, so removing this shell
+          // shadow avoids a visible gray fade between the hero and catalog.
+          boxShadow: 'none'
         }}
         backgroundChildren={
           <>
@@ -259,7 +263,7 @@ const ServicesHero = ({
         />
         {servicesResponsiveLayout.isMobileViewport && (
           <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: servicesBodyFont, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{serviceHeroModel.statusLabel}</Badge>
+            <Badge background={selectedStore?.storefront_open ? SERVICES_PALETTE.success : SERVICES_PALETTE.warning} color={SERVICES_PALETTE.surface} style={{ fontFamily: servicesBodyFont, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{serviceHeroModel.statusLabel}</Badge>
           </div>
         )}
         {!servicesResponsiveLayout.isMobileViewport && (
@@ -276,7 +280,7 @@ const ServicesHero = ({
           }}>
             <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: servicesResponsiveLayout.isTabletViewport ? 24 : 35 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: servicesBodyFont }}>{serviceHeroModel.statusLabel}</Badge>
+                <Badge background={selectedStore?.storefront_open ? SERVICES_PALETTE.success : SERVICES_PALETTE.warning} color={SERVICES_PALETTE.surface} style={{ fontFamily: servicesBodyFont }}>{serviceHeroModel.statusLabel}</Badge>
                 {serviceHeroModel.hours && (
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)' }}>{serviceHeroModel.hours}</span>
                 )}
@@ -290,15 +294,17 @@ const ServicesHero = ({
                   followEnabled={followEnabled}
                   followState={followState}
                   handleFollowAction={handleFollowAction}
+                  followAccentColor={SERVICES_PALETTE.primary}
+                  followActiveColor={SERVICES_PALETTE.success}
                 />
                 {serviceHeroModel.tagline ? (
-                  <p style={{ margin: 0, color: '#ccfbf1', fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: servicesBodyFont }}>{serviceHeroModel.tagline}</p>
+                  <p style={{ margin: 0, color: servicesTaglineColor, fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: servicesBodyFont }}>{serviceHeroModel.tagline}</p>
                 ) : (
                   <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: servicesBodyFont }}>{modeAdapter.heroDescription}</p>
                 )}
               </div>
               <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 400, opacity: 0.95, marginBottom: 6, fontFamily: servicesBodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={16} fill={servicesHighlight} color={servicesHighlight} />{serviceHeroModel.ratingLabel}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={16} fill={servicesRatingColor} color={servicesRatingColor} />{serviceHeroModel.ratingLabel}</span>
                 <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span>
                 {followEnabled && (
                   <>
@@ -382,7 +388,13 @@ const ServicesHero = ({
                 </GhostButton>
               )}
               {serviceHeroModel.actions?.canCall && (
-                <PrimaryButton onClick={() => openStorefrontActionLink(serviceHeroModel.actions.callHref)} style={{ flex: 1, background: servicesPrimary, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, fontFamily: servicesBodyFont }}>
+                <PrimaryButton
+                  onClick={() => openStorefrontActionLink(serviceHeroModel.actions.callHref)}
+                  accentColor={servicesPrimary}
+                  accentDarkColor={servicesPrimaryDark}
+                  shadowColor={servicesPrimaryShadow}
+                  style={{ flex: 1, background: servicesPrimary, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, fontFamily: servicesBodyFont }}
+                >
                   <Phone size={16} />
                   Call
                 </PrimaryButton>
@@ -398,6 +410,8 @@ const ServicesHero = ({
                 followEnabled={followEnabled}
                 followState={followState}
                 handleFollowAction={handleFollowAction}
+                followAccentColor={SERVICES_PALETTE.primary}
+                followActiveColor={SERVICES_PALETTE.success}
               />
 
               {serviceHeroModel.tagline ? (
@@ -407,7 +421,7 @@ const ServicesHero = ({
               )}
 
               <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#475569', fontSize: 12, fontWeight: 600, marginTop: 4, fontFamily: servicesBodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={14} fill={servicesHighlight} color={servicesHighlight} />{serviceHeroModel.ratingLabel}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={14} fill={servicesRatingColor} color={servicesRatingColor} />{serviceHeroModel.ratingLabel}</span>
                 <span style={{ opacity: 0.3, flexShrink: 0 }}>|</span>
                 {followEnabled && (
                   <>

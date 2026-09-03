@@ -141,6 +141,16 @@ export function useServiceBookingViewModel({
       return;
     }
     const targetCartLineId = String(selectedServiceCartLineId || '');
+    const existingCartLine = targetCartLineId
+      ? cart.find((line) => String(line.cart_line_id || '') === targetCartLineId)
+      : null;
+    const selectedServiceOptions = Array.isArray(serviceItem.selected_options)
+      ? serviceItem.selected_options
+      : (Array.isArray(existingCartLine?.selected_options) ? existingCartLine.selected_options : []);
+    const serviceOptionGroups = Array.isArray(serviceItem.service_option_groups)
+      ? serviceItem.service_option_groups
+      : (Array.isArray(existingCartLine?.service_option_groups) ? existingCartLine.service_option_groups : []);
+    const basePrice = Number(serviceItem.base_price ?? existingCartLine?.base_price ?? serviceItem.default_sale_price ?? 0) || 0;
     const nextServiceLine = {
       item_id: serviceItem.item_id,
       cart_line_id: targetCartLineId || createStorefrontIdempotencyKey(`service-line-${serviceItem.item_id}`),
@@ -149,14 +159,18 @@ export function useServiceBookingViewModel({
       category: 'service',
       service_detail: serviceItem.service_detail || null,
       quantity: Math.max(1, Number(serviceDraftQuantity || 1)),
-      price: Number(serviceItem.default_sale_price ?? 0),
+      price: Number(existingCartLine?.price ?? serviceItem.default_sale_price ?? 0) || 0,
+      base_price: basePrice,
       image_url: withAssetOrigin(serviceItem.image_url) || null,
       unit_of_measure: serviceItem.unit_of_measure || '',
       max_stock: Number.POSITIVE_INFINITY,
       service_notes: String(serviceDraftNotes || '').trim(),
       service_schedule_at: serviceAppointmentAt,
       payment_timing: servicePaymentTiming,
-      intake_responses: selectedServiceIntakeFields.length > 0 ? serviceIntakeResponses : null
+      intake_responses: selectedServiceIntakeFields.length > 0 ? serviceIntakeResponses : null,
+      selected_option_ids: [...new Set(selectedServiceOptions.map((option) => Number(option?.option_id)).filter((optionId) => Number.isInteger(optionId) && optionId > 0))],
+      selected_options: selectedServiceOptions,
+      service_option_groups: serviceOptionGroups
     };
     setCart((previous) => {
       const hasExistingTarget = targetCartLineId

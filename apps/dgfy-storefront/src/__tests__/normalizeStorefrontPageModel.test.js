@@ -72,6 +72,27 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.sections.supporting.hasGallery).toBe(true);
   });
 
+  it('formats an unreviewed service storefront rating as 0.0', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: { workflow_mode: 'services' },
+      catalog: []
+    });
+
+    expect(model.hero.ratingLabel).toBe('0.0');
+  });
+
+  it('preserves a published service storefront rating and review count', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'services',
+        storefront_review_summary: { score: 4.7, total_count: 3 }
+      },
+      catalog: []
+    });
+
+    expect(model.hero.ratingLabel).toBe('4.7 (3)');
+  });
+
   it('builds AVIF/WebP hero image sources from cover/profile image_variants (issue #282)', () => {
     const model = normalizeStorefrontPageModel({
       selectedStore: {

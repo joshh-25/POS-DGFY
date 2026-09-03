@@ -102,9 +102,12 @@ const getScheduleOptions = (options = {}) => {
   };
 };
 
+export const SERVICE_BOOKING_NOT_SELECTED_LABEL = 'Not selected yet';
+
 export const formatServiceAppointmentSummary = (appointmentAt) => {
   const raw = String(appointmentAt || '').trim();
-  if (!raw || !raw.includes('T')) return 'Schedule needed';
+  if (!raw) return SERVICE_BOOKING_NOT_SELECTED_LABEL;
+  if (!raw.includes('T')) return 'Schedule needed';
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return 'Schedule needed';
   return parsed.toLocaleString('en-PH', {

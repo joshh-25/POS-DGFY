@@ -18216,6 +18216,252 @@ base is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`.
 Re-check the ledger's actual highest merged entry at plan time rather than assuming — Phase 255
 (#1441 PR-D) may or may not have merged by then.
 
+## Phase 257 - Item multi-category membership: foundation (#1318)
+
+### Initiative and release
+
+#1318 — allow one catalog item to belong to more than one merchant-defined category/folder.
+Highest merged phase at branch time was 256; re-checked against `origin/develop`'s tip
+(`8ad843035`, unchanged since branching) and every open PR into `develop`
+(`gh pr list --base develop --state open`: #1502, #1501, #1500, #1475, #1316 — none phase-claiming)
+immediately before writing this entry. 257 is free.
+
+### Objective and scope
+
+One PR, `feature/1318-item-folder-memberships` into `develop`. **Foundation only** — pure
+additive infrastructure, zero of the ~34 existing item→folder read sites edited (per the
+implementation plan's own read-site inventory, section 5, conclusion: "0 of the 34 sites
+change"). IMS authoring UI, POS opt-in, and storefront opt-in are later, separately-scoped phases
+(258/259/260) — not built here. Issue #1318 is not resolved by this PR alone; the PR uses
+`Refs #1318`, not `Closes`.
+
+- New tenant-scoped join table `item_folder_memberships` (`item_id`, `folder_id`, `sort_order`,
+  `UNIQUE(folder_id, item_id)`, `KEY(item_id)`, both FKs `ON DELETE CASCADE`) — secondary category
+  memberships only. `items.folder_id` (the primary category) is untouched and remains the single
+  source of truth for every money-adjacent resolution.
+- New model `ItemFolderMembership` + additive `belongsToMany` associations
+  (`Item.secondaryFolders` / `ItemFolder.memberItems`) in `models/index.js` — the existing four
+  primary-category association lines are unchanged.
+- Two new backend functions on `itemRepository` — `listItemFolderMemberships(itemIds)` and
+  `replaceItemFolderMemberships(itemId, folderIds)` (destroy-then-`bulkCreate`, mirroring
+  `fnbRepository.js`'s `replaceFolderModifierGroups` shape) — with a disjointness guard (drops any
+  folder id equal to the item's own primary), an active/soft-deleted folder guard, and a cap of 10
+  memberships per item.
+- Two new routes, `GET /items/:item_id/folders` and `PUT /items/:item_id/folders`
+  (`requireTenantAdmin`, matching the existing folder-CRUD routes and ADR 0049's
+  `categories:manage` permission rule), their use cases, controller handlers, and a new Joi
+  validator schema (`folder_ids`, max 10) — the existing scalar `folder_id` validators are
+  untouched.
+- Mandatory tenant-schema-drift registrations (#860/#639 class, per
+  `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`): R1 —
+  `REQUIRED_TENANT_SCHEMA_TABLES.item_folder_memberships` in `sync-tenant-schemas.js`, enforced by
+  `npm run check:tenant-schema-coverage`; R2 — `TENANT_SCHEMA_CAPABILITY_VERSION` bumped
+  `2026-09-01.4` → `2026-09-07.1`; R3 — a `requiredIndexContract.js` entry, consumed by
+  `audit:indexes`. Also added (recommended, not gate-enforced):
+  `runtimeSchemaAuditService.js`'s `REQUIRED_TABLE_COLUMNS.item_folder_memberships`.
+- ADR 0080 (new, `status: accepted`) — the binding decision that makes the rest of this program
+  safe: `items.folder_id` is the primary and the single tiebreak for every money-adjacent
+  resolution (affiliate category commission, voucher folder scope, F&B folder-inherited modifier
+  groups, POS report grouping) `[binding]`; the join table never mirrors or is derived from the
+  primary `[binding]`; `items.folder_id` stays nullable `[default]`; every surface is opt-in per
+  phase `[default]`; grouping surfaces render once per section, cross-sell/single-label surfaces
+  stay primary-only `[default]`; membership cap of 10 `[default]`.
+- Tier 2 characterization tests pinning ADR 0080 clause 1 on `resolveCategoryRateBps`,
+  `resolveVoucherScopeItemIds`, and `resolveEffectiveFnbModifierGroups`, plus repository unit
+  tests for replace-semantics, the disjointness guard, inactive-folder rejection, and cap
+  enforcement.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+None on any other in-flight phase. Depends on the existing `item_folders`/`items` tables and the
+`fnbRepository.js` replace-pattern this PR mirrors. Phases 258 (IMS authoring UI), 259 (POS
+opt-in, `major` compliance declaration required), and 260 (storefront opt-in, `major` declaration
+required) all depend on this phase merging first; none of them are built or scoped as part of this
+PR.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `.js`/`.cjs` file (all 14 backend files + the new migration
+  — `apps/dgfy-api` and `apps/dgfy-migration-runner` have no real build step).
+- [x] No `package.json` touched ⇒ no lockfile step.
+- [x] `npm run check:tenant-schema-coverage` — PASS, 1 changed migration file checked (the gate
+  that proves R1 landed).
+- [x] `npm run check:architecture` — 54 modules / 557 files, 94 controller files, OK.
+- [x] `npm run check:compliance` — "No compliance-sensitive changes detected" (expected per the
+  plan's path-by-path verification against `COMPLIANCE_SENSITIVE_RULES`: `modules/inventory/**`,
+  `routes/items.js`, `validators/itemValidator.js`, `models/**`, `scripts/**`, and the migration
+  runner are all outside the sensitive-path list) + `check:compliance:api-contracts` PASS.
+- [x] `npm run check:adr -- --write-index` — 87 ADRs validated, `INDEX.md` regenerated for the new
+  ADR 0080.
+- [x] `npm run lint:docs` — 29 governed docs validated, OK.
+- [x] New Jest suites: `tests/itemFolderMembershipPrimaryOnlyInvariant.test.js` (3 tests) and
+  `tests/itemFolderMemberships.repository.test.js` (7 tests) — 10/10 pass.
+- [x] Regression spot-check: `tests/inventoryItemRepository.test.js` (51/51),
+  `tests/internalItemBarcode.contract.test.js` (6/6), `tests/tenantModelFactory.contract.test.js`
+  (14/14) — all still pass after the `itemRepository.js`/`models/index.js` edits.
+- [ ] `npm run audit:tenant-index-headroom` — **not run**, requires a live MySQL connection
+  (`DB_HOST`/`DB_USER`/`DB_PASSWORD`) not available in this environment; the plan's own schema
+  review (no standalone `KEY(folder_id)`, only the unique key's leftmost prefix plus `KEY(item_id)`
+  — ADR 0080's Correction 3) is the static substitute. Flagged for a human/CI run with real DB
+  credentials before this ships past `develop`.
+- [ ] `node apps/dgfy-api/scripts/sync-tenant-schemas.js --mode report` against DEV/STAGING/PROD —
+  **not run**, no live tenant DB credentials in this environment; per the residual-risk tracker,
+  required before the deploy that restarts `dgfy-api`, not before merging this PR.
+
+### Deviations from the plan
+
+None of substance. Followed the plan's section 6 file list, section 7's exact ADR clauses (with
+Pat's four resolutions to section 10's open items applied: cap = 10; S3/S7 grouping semantics
+resolved as "render once per section" in clause 5; POS reports permanently primary-only stated in
+Consequences item 3; ADR 0080 shipped in this PR). One route-permission adjustment: the plan named
+`requireTenantAdmin` **and** a `checkPermission(categories:manage)` on the two new routes, but
+`requireTenantAdmin` itself already gates on `categories:manage` internally (`middleware/auth.js`)
+— matching the existing folder-CRUD routes (`routes/items.js`), which also use only
+`requireTenantAdmin`. Added the extra `checkPermission` call, found it redundant, removed it.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**New migration file** under `apps/dgfy-migration-runner/migrations/` is a listed checkpoint
+trigger — per Pat's standing preference (recorded twice already), skipped straight to commit/PR
+rather than pausing, since he reviews every PR himself. No other checkpoint fired: no deploy
+dispatch, no SSH, no force-push/branch deletion, `check:compliance` required no declaration (see
+evidence above).
+
+### Links
+
+- Tracking issue: #1318 (`Refs`, not `Closes` — this PR is infrastructure only; the issue is not
+  resolved until Phase 258's IMS authoring UI ships).
+- PR: `feature/1318-item-folder-memberships` → `develop`.
+- New: `docs/architecture/adr/0080-item-multi-category-membership.md`,
+  `apps/dgfy-migration-runner/migrations/20260907000001-create-item-folder-memberships.cjs`,
+  `apps/dgfy-api/src/models/ItemFolderMembership.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/listItemFoldersUseCase.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/replaceItemFoldersUseCase.js`,
+  `apps/dgfy-api/tests/itemFolderMembershipPrimaryOnlyInvariant.test.js`,
+  `apps/dgfy-api/tests/itemFolderMemberships.repository.test.js`.
+- Modified: `apps/dgfy-api/src/models/index.js`, `apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+  `apps/dgfy-api/src/config/requiredIndexContract.js`,
+  `apps/dgfy-api/src/services/runtimeSchemaAuditService.js`,
+  `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`,
+  `apps/dgfy-api/src/modules/inventory/index.js`,
+  `apps/dgfy-api/src/modules/inventory/controllers/itemHandlers.js`,
+  `apps/dgfy-api/src/controllers/itemController.js`, `apps/dgfy-api/src/validators/itemValidator.js`,
+  `apps/dgfy-api/src/routes/items.js`, `docs/architecture/adr/INDEX.md`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+258 — IMS authoring UI for secondary category memberships (`packages/web-core/src`), not yet
+built. Re-check the ledger's actual highest merged entry at plan time rather than assuming.
+
+## Phase 258 - Queue+Run: iPad portrait split-view fix + hide-assigned-orders in split view only (#1491)
+
+### Initiative and release
+
+Standalone bug fix, no epic. Claimed 258 fresh at branch/commit time -- re-checked the ledger's
+merged tip (still Phase 256, `docs/features/IMPLEMENTATION_PHASE_LEDGER.md:18116`) and every open
+PR into `develop` (`gh api repos/Sieitzz/dgfy-platform/pulls?base=develop&state=open`: only #1475
+and #1316, neither claiming a phase number) immediately before this commit, per `AGENTS.md`'s
+Continuous Phase Numbering rule.
+
+### Objective and scope
+
+One PR, `fix/1491-queue-run-ipad-and-hide-assigned` into `develop`, shipping both parts of #1491 per
+the implementation plan's own recommendation (single PR, `Closes #1491`):
+
+- **Part 1** — the split ("Queue + Run") view's viewport eligibility gate
+  (`SPLIT_VIEW_MIN_WIDTH_PX`, `TerminalOperationsPanels.jsx`) lowered from a standalone 1024px
+  literal to `POS_TABLET_MIN_WIDTH_PX` (768, imported from `posTabletViewport.js`) -- the
+  structural fix the plan recommended, closing off a third silent drift of this constant (1280 ->
+  1024 -> a re-declared 1024 -> now sourced from the shared constant). This makes the view's
+  already-shipped single-column stacked layout (the grid's own `xl:` 1280px breakpoint is
+  untouched) reachable on portrait iPad mini/standard/Air/11"-Pro (~768-834px), not just landscape.
+- **Part 2** — a new `splitQueueCandidates` derivation
+  (`filterOrdersByRun(sortedIncomingOrders, QUEUE_RUN_FILTER_UNASSIGNED)`) that the split view's
+  queue panel, `QueueRunAssignBar` counts, and drag-to-assign source/target resolution now read
+  from instead of `visibleIncomingOrders` -- hiding orders already assigned to a run. Scoped to
+  this one call site only, per the plan's own regression analysis: the standalone Active Queue
+  tab's `runFilter`/`visibleIncomingOrders` default is untouched, since that tab is the only screen
+  with the per-order cash-collection/balance-settlement/status-change/personnel-assignment actions
+  an operator still needs for an already-assigned order.
+- Extracted the pre-existing selection-count math (Phase 231/#1290's correctness crux) into a new
+  pure util, `deriveQueueSelectionCounts.js`, called once per candidate list (standalone tab's
+  `visibleIncomingOrders`, split view's `splitQueueCandidates`) so the two call sites can't drift
+  apart.
+- **Explicitly deferred, not fixed in this PR** (per task resolution, not silently dropped): the
+  drag-handle's 28x28px touch target (below Apple's 44pt HIG minimum) -- filed as a separate
+  fast-follow issue via `pm` rather than bundled here, since drag is the secondary path behind the
+  now-always-reachable button-based `QueueRunAssignBar`. The optional portrait `max-h` polish is
+  skipped entirely, per the task's own resolution -- cosmetic, not required.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+None. Builds on already-shipped Phase 227/229/231 (#1273/#1289/#1290) work -- `QueueRunAssignBar`,
+the split view's own DnD wiring, and `filterOrdersByRun`/`QUEUE_RUN_FILTER_UNASSIGNED` all existed
+unchanged; this phase only rewires which list two existing call sites read from and where one
+existing constant's value comes from.
+
+### Acceptance and validation evidence
+
+- [x] `npx vitest run` (from `apps/dgfy-ims`) targeted at
+  `deliveryRunSplitViewDnd.behavior.test.jsx`, `incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`,
+  `deriveQueueSelectionCounts.test.js`, `deliveryRunQueueFilter.test.js`, `posTabletViewport.test.js`
+  -- 49/49 pass.
+- [x] Full `packages/web-core/src/features/pos` suite from `apps/dgfy-ims` -- 189 files / 1163
+  tests, all pass.
+- [x] `npm run build:skupervisor` -- succeeded.
+- [x] `npm run build:pos` -- succeeded.
+- [x] `npm run check:compliance` -- PASS (declaration:
+  `docs/compliance/impact-declarations/2026-09-03-queue-run-ipad-portrait-hide-assigned.md`).
+- [x] `npm run check:architecture` -- 54 modules / 555 files, 94 controllers, OK.
+- [x] `npm run check:adr` -- 86 ADRs, OK.
+
+### Deviations from the plan
+
+- Two of the plan's four "open items to confirm" were resolved by explicit task instruction rather
+  than left to PR-time judgment: the grip touch-target size is filed as a fast-follow issue (not
+  fixed here), and the optional portrait `max-h` polish is skipped (not "worth a quick pass").
+  Part 2's scoping (split-view-only, not the shared `runFilter` default) was likewise pre-approved
+  rather than re-litigated.
+- Two pre-existing tests assumed an already-run-assigned order would still render (disabled, or
+  under its original "Select order N" label) inside the split view -- both premises are exactly
+  what Part 2 changes. Updated rather than deleted: one now asserts the order is hidden entirely
+  (`incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`), the other now checks the
+  ineligible-labeled checkbox variant instead of the eligible one on the standalone tab
+  (`deliveryRunSplitViewDnd.behavior.test.jsx`). Not called out in the plan's own testing section,
+  found while running the targeted suite.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR
+base is `develop`, branch prefix `fix/` per `.github/branch-cleanup-policy.json`.
+`npm run check:compliance`'s missing-declaration checkpoint fired as expected (major, `pos,terminal`)
+and was drafted by this session per the user's standing preference, rather than stopped on.
+
+### Links
+
+- Issue: #1491 (Closes).
+- Modified: `packages/web-core/src/features/pos/components/TerminalOperationsPanels.jsx`,
+  `packages/web-core/src/features/pos/utils/deriveQueueSelectionCounts.js` (new),
+  `packages/web-core/src/features/pos/utils/__tests__/deriveQueueSelectionCounts.test.js` (new),
+  `packages/web-core/src/features/pos/__tests__/deliveryRunSplitViewDnd.behavior.test.jsx`,
+  `packages/web-core/src/features/pos/__tests__/incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`,
+  `docs/compliance/impact-declarations/2026-09-03-queue-run-ipad-portrait-hide-assigned.md` (new),
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+259. Re-check the ledger's actual highest merged entry and open `develop` PRs at plan time rather
+than assuming.
+
 ## Phase 261 - Pre-run procurement CSV export (#1488)
 
 ### Initiative and release
@@ -18230,11 +18476,14 @@ at plan time was Phase 256), but re-checked against open `develop` PRs at commit
 (still Phase 256) and every other open PR (`gh pr list`: #1503 Phase 257, #1502/#1501/#1500/#1475/
 #1316 none claiming a phase number) -- **258 was the next free number at PR-open time** and this
 entry originally took it. **Re-numbered 258 → 261** during PR #1504's fix-step (this PR's own
-RF-1 fix, alongside pr-reviewer's separate RF-2 finding): another in-flight `develop` PR also ended
-up claiming 258 by the time of actual merge ordering, so the coordinator arbitrated merge order
-across the colliding phase claims and assigned this entry 261. No other content in this entry
-changed as a result -- purely a numbering correction per `AGENTS.md`'s Continuous Phase Numbering
-rule, not a re-scope.
+RF-1 fix, alongside pr-reviewer's separate RF-2 finding): PR #1491
+(`fix/1491-queue-run-ipad-and-hide-assigned`, "Phase 258 - Queue+Run...") also claimed 258 and
+merged into `develop` before this PR did, so the coordinator arbitrated merge order across the
+colliding phase claims and assigned this entry 261 -- confirmed by resolving this file's own merge
+conflict against `develop`'s tip, which by then already carried both Phase 257 (PR #1503,
+item-folder-memberships) and Phase 258 (PR #1491, queue+run iPad fix) as merged entries above. No
+other content in this entry changed as a result -- purely a numbering correction per `AGENTS.md`'s
+Continuous Phase Numbering rule, not a re-scope.
 
 ### Objective and scope
 
@@ -18344,6 +18593,8 @@ separately by the coordinator in the same fix-step -- see "Numbering note" above
 
 ### Next eligible phase
 
-Re-check the ledger's actual highest merged entry, and every open `develop` PR, at plan time --
-Phase 257 (PR #1503) may or may not have merged by then, and other phases may have been claimed by
-PRs opened after this one.
+262. At this entry's merge time, `develop`'s tip already carries Phase 257 (PR #1503) and Phase
+258 (PR #1491) as merged; 259 and 260 were reserved by other in-flight `develop` PRs per the
+coordinator's own merge-order arbitration at the time this entry was renumbered to 261 (see
+"Numbering note" above) -- re-check the ledger's actual highest merged entry and every open
+`develop` PR before trusting 262 still stands.
