@@ -158,11 +158,13 @@ git rev-list --count origin/staging..origin/main
 ## Deploy dispatch, after either leg merges
 
 ```bash
-# DEV/STAGING — unattended, per ../SKILL.md's checkpoint table
+# STAGING — unattended, per ../SKILL.md's checkpoint table. DEV dispatch is dropped from this
+# default flow entirely (#982) — use `--ref develop` only when DEV is specifically wanted, never
+# as a routine step here.
 # (#1050, 2026-08-25: the old single-select `components` input is gone; the
 # four build_* booleans below all default true, so omitting them builds/pushes
 # everything, same as the old components=all)
-gh workflow run deploy.yml -f deploy=true --ref develop   # or staging
+gh workflow run deploy.yml -f deploy=true --ref staging
 
 # PROD — ask Pat first, every time
 gh workflow run deploy-main.yml -f deploy=true --ref main
