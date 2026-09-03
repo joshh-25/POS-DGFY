@@ -46,4 +46,12 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain('Filtered Transactions');
     expect(workspaceSource).toContain('reportCashierLabel');
   });
+
+  // Phase 258 (#1488): pre-run procurement CSV export button, independent of the loaded report.
+  it('exposes a procurement CSV export button that is not gated on report data', () => {
+    expect(workspaceSource).toContain('exportProcurementCsv');
+    expect(workspaceSource).toContain('handleExportProcurementCsv');
+    expect(workspaceSource).toContain('Procurement CSV');
+    expect(workspaceSource).toContain('onClick={handleExportProcurementCsv}');
+  });
 });
