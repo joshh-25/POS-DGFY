@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-04
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path

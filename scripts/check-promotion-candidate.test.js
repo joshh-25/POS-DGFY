@@ -45,6 +45,10 @@ test('accepts a candidate that is still in staging before a release cut', () => 
   assert.equal(validatePromotionCandidate(manifest).release_revision, null);
 });
 
+test('rejects an early lifecycle status after a release cut', () => {
+  assert.throws(() => validatePromotionCandidate(candidate({ status: 'created' })), /must be qualified, repairing, promoted, verified, or blocked/);
+});
+
 test('rejects a malformed candidate ID', () => {
   assert.throws(() => validatePromotionCandidate(candidate({ candidate_id: 'release-1' })), /candidate_id must use YYYY-MM-DD-NN/);
 });

@@ -93,6 +93,7 @@ function validatePromotionCandidate(manifest) {
     };
   }
   assert(manifest.release_revision && typeof manifest.release_revision === 'object', 'release_revision is required', 'MISSING_RELEASE_REVISION');
+  assert(['qualified', 'repair_needed', 'repair_in_progress', 'promoted_main', 'production_verified', 'blocked'].includes(manifest.status), 'A candidate with a release revision must be qualified, repairing, promoted, verified, or blocked', 'INVALID_RELEASE_STATUS');
   const release = manifest.release_revision;
   assert(Number.isInteger(release.revision) && release.revision === repairRevision + 1, 'release_revision must immediately follow the latest staging revision', 'INVALID_RELEASE_REVISION');
   assertSha(release.source_staging_sha, 'release source_staging_sha');
