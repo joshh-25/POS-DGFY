@@ -50,14 +50,14 @@ export function ServiceBookingStepAccount({
   setServiceBookingStep,
 }) {
   const panelStyle = referenceStyle
-    ? { border: '1px solid #e2e8f0', borderRadius: 18, background: '#fff', padding: isMobileViewport ? 22 : 32, display: 'grid', gap: 24 }
-    : { border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 };
+    ? { border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 18, background: SERVICES_PALETTE.surface, padding: isMobileViewport ? 22 : 32, display: 'grid', gap: 24 }
+    : { border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 16, background: SERVICES_PALETTE.surface, padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 };
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       {isDgfyCustomerSignedIn || canUseGuestCheckoutFlow ? (
         <section style={panelStyle}>
-          <div style={{ fontSize: referenceStyle ? 20 : 18, fontWeight: referenceStyle ? 700 : 800, color: '#101010', fontFamily: servicesDisplayFont || 'inherit' }}>Customer details</div>
-          <div style={{ marginTop: -12, fontSize: referenceStyle ? 14.4 : 12, lineHeight: referenceStyle ? 1.6 : undefined, color: referenceStyle ? '#58717a' : '#64748b' }}>
+          <div style={{ fontSize: referenceStyle ? 20 : 18, fontWeight: referenceStyle ? 700 : 800, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont || 'inherit' }}>Customer details</div>
+          <div style={{ marginTop: -12, fontSize: referenceStyle ? 14.4 : 12, lineHeight: referenceStyle ? 1.6 : undefined, color: referenceStyle ? SERVICES_PALETTE.textSecondary : SERVICES_PALETTE.textMuted }}>
             {isDgfyCustomerSignedIn ? 'Your account details are already linked. Review them here before continuing.' : 'Use your details for this booking. No account is needed to continue.'}
           </div>
 
@@ -100,7 +100,7 @@ export function ServiceBookingStepAccount({
           )}
 
           {missingCustomerInformation.length > 0 && (
-            <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 13, color: SERVICES_PALETTE.error, border: `1px solid ${SERVICES_PALETTE.errorBorder}`, background: SERVICES_PALETTE.errorSoft, borderRadius: 14, padding: '10px 12px', lineHeight: 1.6 }}>
               Complete the required customer details before continuing.
             </div>
           )}

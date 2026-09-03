@@ -12,21 +12,21 @@ export function ServiceBookingEmptyState({
   return (
     <section
       style={{
-        border: '1px solid #dbe5ee',
+        border: `1px solid ${SERVICES_PALETTE.border}`,
         borderRadius: 24,
-        background: '#fff',
+        background: SERVICES_PALETTE.surface,
         padding: isMobileViewport ? 20 : 28,
-        boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)',
+        boxShadow: SERVICES_PALETTE.cardShadow,
         display: 'grid',
         gap: 16,
         maxWidth: 760,
       }}
     >
       <div style={{ display: 'grid', gap: 8 }}>
-        <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>
+        <div style={{ fontSize: 24, fontWeight: 900, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont }}>
           No service selected yet
         </div>
-        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: '#64748b' }}>
+        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: SERVICES_PALETTE.textMuted }}>
           Choose a service first so we can load its booking details and requirements here.
         </p>
       </div>
@@ -39,7 +39,7 @@ export function ServiceBookingEmptyState({
             borderRadius: 14,
             border: 'none',
             background: `linear-gradient(135deg, ${servicesPrimary}, ${servicesPrimaryDark})`,
-            color: '#fff',
+            color: SERVICES_PALETTE.surface,
             padding: '0 18px',
             fontWeight: 800,
             cursor: 'pointer',

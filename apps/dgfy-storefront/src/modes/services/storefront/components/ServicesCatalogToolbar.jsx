@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StorefrontCatalogToolbar } from '../../../../shared/components/storefront/StorefrontCatalogToolbar.jsx';
 import { STYLES } from '../../../../shared/theme/storefrontStyleTokens.js';
 import { SERVICE_CATEGORY_ICON_MAP } from '../model/serviceCategoryIconMap.jsx';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 import { formatServiceNumber } from '../../servicesFormatters.js';
 
 const NOOP = () => {};
@@ -86,8 +87,17 @@ function ServicesCatalogToolbar({
       borderSoft: servicesPrimaryBorder,
       accentShadow: servicesPrimaryShadow,
       surfaceInset: servicesPrimarySoft,
-      textPrimary: STYLES.colors.dark,
-      textMuted: STYLES.colors.muted,
+      textPrimary: SERVICES_PALETTE.textPrimary,
+      textMuted: SERVICES_PALETTE.textMuted,
+      surfaceShadow: SERVICES_PALETTE.cardShadow,
+      catalogPalette: {
+        primary: servicesPrimary,
+        primaryHover: servicesPrimaryDark,
+        accentSoft: servicesPrimarySoft,
+        surface: SERVICES_PALETTE.surface,
+        border: SERVICES_PALETTE.border,
+        borderStrong: servicesPrimary
+      },
       bodyFont: servicesBodyFont,
       displayFont: servicesDisplayFont
     }

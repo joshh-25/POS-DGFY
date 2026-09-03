@@ -8,15 +8,14 @@ import {
 } from '../../storefront/model/serviceOptionSelection.js';
 
 export function ServiceBookingAddOnsStep({
-  STYLES,
   GhostButton,
   PrimaryButton,
   primaryButtonProps,
   isMobileViewport,
   money,
-  servicesPrimary,
-  servicesPrimarySoft,
-  servicesPrimaryBorder,
+  servicesPrimary = SERVICES_PALETTE.primary,
+  servicesPrimarySoft = SERVICES_PALETTE.primarySoft,
+  servicesPrimaryBorder = SERVICES_PALETTE.primaryBorder,
   servicesDisplayFont,
   serviceLines,
   serviceOrderMethod,
@@ -40,11 +39,11 @@ export function ServiceBookingAddOnsStep({
 
   return (
     <div style={{ display: 'grid', gap: isMobileViewport ? 16 : 20 }}>
-      <section style={{ border: '1px solid #e2e8f0', borderRadius: referenceStyle ? 18 : (isMobileViewport ? 18 : 16), background: '#fff', padding: referenceStyle ? (isMobileViewport ? 22 : 32) : (isMobileViewport ? 16 : 18), display: 'grid', gap: referenceStyle ? 24 : (isMobileViewport ? 18 : 14), boxSizing: 'border-box' }}>
-        <div style={{ fontSize: referenceStyle ? 20 : (isMobileViewport ? 20 : 18), lineHeight: 1.2, fontWeight: referenceStyle ? 700 : 800, color: '#101010', fontFamily: servicesDisplayFont || 'inherit' }}>
+      <section style={{ border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: referenceStyle ? 18 : (isMobileViewport ? 18 : 16), background: SERVICES_PALETTE.surface, padding: referenceStyle ? (isMobileViewport ? 22 : 32) : (isMobileViewport ? 16 : 18), display: 'grid', gap: referenceStyle ? 24 : (isMobileViewport ? 18 : 14), boxSizing: 'border-box' }}>
+        <div style={{ fontSize: referenceStyle ? 20 : (isMobileViewport ? 20 : 18), lineHeight: 1.2, fontWeight: referenceStyle ? 700 : 800, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont || 'inherit' }}>
           {isMobileViewport && isCustomerLocationFlow ? 'Service Add-ons and Instructions' : 'Add-ons'}
         </div>
-        <div style={{ marginTop: isMobileViewport ? 0 : (referenceStyle ? -12 : -4), fontSize: referenceStyle ? 14.4 : (isMobileViewport ? 13 : 12), lineHeight: referenceStyle ? 1.6 : 1.5, color: referenceStyle ? '#58717a' : STYLES.colors.muted }}>
+        <div style={{ marginTop: isMobileViewport ? 0 : (referenceStyle ? -12 : -4), fontSize: referenceStyle ? 14.4 : (isMobileViewport ? 13 : 12), lineHeight: referenceStyle ? 1.6 : 1.5, color: SERVICES_PALETTE.textMuted }}>
           {isMobileViewport && isCustomerLocationFlow
             ? 'Review the selected service package and add any visit instructions.'
             : 'Review the service options selected from the catalog. Only options configured in Admin are shown.'}
@@ -87,9 +86,9 @@ export function ServiceBookingAddOnsStep({
               <div
                 key={line.key}
                 style={{
-                  border: `1px solid ${isExpanded ? servicesPrimary : '#e2e8f0'}`,
+                  border: `1px solid ${isExpanded ? servicesPrimary : SERVICES_PALETTE.border}`,
                   borderRadius: 18,
-                  background: '#fff',
+                  background: SERVICES_PALETTE.surface,
                   overflow: 'hidden',
                   position: 'relative',
                 }}
@@ -130,7 +129,7 @@ export function ServiceBookingAddOnsStep({
                     <div style={isMobileViewport
                       ? { minWidth: 0, display: 'grid', alignContent: 'start', justifyItems: 'start', gap: 6 }
                       : { minWidth: 0 }}>
-                      <div style={{ fontSize: referenceStyle ? 16 : (isMobileViewport ? 16 : 18), fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.25 }}>
+                      <div style={{ fontSize: referenceStyle ? 16 : (isMobileViewport ? 16 : 18), fontWeight: 900, color: SERVICES_PALETTE.textPrimary, lineHeight: 1.25 }}>
                         {line.title}
                       </div>
                       {isMobileViewport ? (
@@ -194,10 +193,10 @@ export function ServiceBookingAddOnsStep({
                 </div>
 
                 {isExpanded ? (
-                  <div style={{ borderTop: '1px solid #e2e8f0', background: '#fcfdff', padding: isMobileViewport ? 14 : 16, display: 'grid', gap: 10 }}>
+                  <div style={{ borderTop: `1px solid ${SERVICES_PALETTE.border}`, background: SERVICES_PALETTE.primarySoft, padding: isMobileViewport ? 14 : 16, display: 'grid', gap: 10 }}>
                     {availableAddOnGroups.length > 0 ? (
                       <>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark }}>Optional add-ons</div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: SERVICES_PALETTE.textPrimary }}>Optional add-ons</div>
                         <div style={{ display: 'grid', gap: 10 }}>
                           {availableAddOnGroups.map((group) => {
                             const groupKey = String(group.group_id);
@@ -227,7 +226,7 @@ export function ServiceBookingAddOnsStep({
                                         minHeight: 46,
                                         border: `1px solid ${checked ? servicesPrimary : servicesPrimaryBorder}`,
                                         borderRadius: 12,
-                                        background: checked ? servicesPrimarySoft : '#fff',
+                                        background: checked ? servicesPrimarySoft : SERVICES_PALETTE.surface,
                                         padding: '8px 12px',
                                         boxSizing: 'border-box',
                                         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -249,9 +248,9 @@ export function ServiceBookingAddOnsStep({
                                         }}
                                         style={{ width: 18, height: 18, margin: 0, accentColor: servicesPrimary }}
                                       />
-                                      <span style={{ minWidth: 0, display: 'grid', gap: 2, color: STYLES.colors.dark, fontSize: 13, fontWeight: 700 }}>
+                                      <span style={{ minWidth: 0, display: 'grid', gap: 2, color: SERVICES_PALETTE.textPrimary, fontSize: 13, fontWeight: 700 }}>
                                         <span>{option.name}</span>
-                                        {option.description ? <span style={{ color: STYLES.colors.muted, fontSize: 11, fontWeight: 500 }}>{option.description}</span> : null}
+                                        {option.description ? <span style={{ color: SERVICES_PALETTE.textMuted, fontSize: 11, fontWeight: 500 }}>{option.description}</span> : null}
                                       </span>
                                       {optionPrice ? <span style={{ color: servicesPrimary, fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap' }}>{optionPrice}</span> : null}
                                     </label>
@@ -262,11 +261,11 @@ export function ServiceBookingAddOnsStep({
                           })}
                         </div>
                         {selectedAddOns.length === 0 ? (
-                          <div style={{ color: STYLES.colors.muted, fontSize: 12 }}>No add-ons selected.</div>
+                          <div style={{ color: SERVICES_PALETTE.textMuted, fontSize: 12 }}>No add-ons selected.</div>
                         ) : null}
                       </>
                     ) : (
-                      <div style={{ color: STYLES.colors.muted, fontSize: 12 }}>
+                      <div style={{ color: SERVICES_PALETTE.textMuted, fontSize: 12 }}>
                         Selected add-ons are no longer available for this service.
                       </div>
                     )}
@@ -278,16 +277,16 @@ export function ServiceBookingAddOnsStep({
         </div>
 
         <label style={{ display: 'grid', gap: isMobileViewport ? 8 : 6 }}>
-          <span style={{ fontSize: isMobileViewport ? 12 : 13, lineHeight: 1.35, fontWeight: 800, color: STYLES.colors.dark }}>Special instructions (optional)</span>
+          <span style={{ fontSize: isMobileViewport ? 12 : 13, lineHeight: 1.35, fontWeight: 800, color: SERVICES_PALETTE.textPrimary }}>Special instructions (optional)</span>
           <textarea
             value={specialInstructions}
             onChange={(event) => setSpecialInstructions(event.target.value.slice(0, 250))}
             placeholder="e.g., Please call upon arrival"
             rows={3}
             maxLength={250}
-            style={{ minHeight: isMobileViewport ? 96 : 84, border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px', background: '#fff', resize: 'vertical', boxSizing: 'border-box', fontSize: 13, fontFamily: 'inherit', color: STYLES.colors.dark }}
+            style={{ minHeight: isMobileViewport ? 96 : 84, border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 12, padding: '10px 12px', background: SERVICES_PALETTE.surface, resize: 'vertical', boxSizing: 'border-box', fontSize: 13, fontFamily: 'inherit', color: SERVICES_PALETTE.textPrimary }}
           />
-          <span style={{ justifySelf: 'end', fontSize: 11, color: STYLES.colors.muted }}>
+          <span style={{ justifySelf: 'end', fontSize: 11, color: SERVICES_PALETTE.textMuted }}>
             {specialInstructions.length}/250 characters
           </span>
         </label>

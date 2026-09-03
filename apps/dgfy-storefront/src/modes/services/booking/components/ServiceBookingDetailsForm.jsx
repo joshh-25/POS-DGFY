@@ -189,7 +189,7 @@ function ScheduleOptionCard({ active, icon, label, description, onClick, buttonR
         <span style={{ color: active ? SERVICES_PALETTE.textPrimary : SERVICES_PALETTE.textSecondary, fontSize: 14, fontWeight: 800, lineHeight: 1.2 }}>{label}</span>
         <span style={{ color: SERVICES_PALETTE.textMuted, fontSize: 12, lineHeight: 1.35 }}>{description}</span>
       </div>
-      <div style={{ width: 22, height: 22, borderRadius: '50%', border: `1px solid ${active ? servicesPrimary : SERVICES_PALETTE.border}`, background: active ? servicesPrimary : SERVICES_PALETTE.surface, color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+      <div style={{ width: 22, height: 22, borderRadius: '50%', border: `1px solid ${active ? servicesPrimary : SERVICES_PALETTE.border}`, background: active ? servicesPrimary : SERVICES_PALETTE.surface, color: SERVICES_PALETTE.surface, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
         {active ? <Check data-testid="services-selected-check" size={12} strokeWidth={3.2} /> : null}
       </div>
     </button>
@@ -197,7 +197,6 @@ function ScheduleOptionCard({ active, icon, label, description, onClick, buttonR
 }
 
 export function ServiceBookingDetailsForm({
-  STYLES,
   BOOKING_FIELD_STYLE,
   StorefrontDropdown,
   registerBookingFieldRef,
@@ -395,14 +394,14 @@ export function ServiceBookingDetailsForm({
   const summaryDatePart = pickerDatePart || selectedServiceDatePart;
   const summaryTimePart = pickerTimePart || ((!isTimePickerOpen && !isOnSiteFlow) ? selectedServiceTimePart : '');
   const hasSelectedSchedule = Boolean(summaryDatePart && summaryTimePart);
-  const scheduleSurface = isOnSiteFlow ? SERVICES_PALETTE.surface : '#fff';
-  const scheduleBorder = isOnSiteFlow ? servicesPrimaryBorder : '#e2e8f0';
-  const scheduleControlBorder = isOnSiteFlow ? SERVICES_PALETTE.border : '#e2e8f0';
-  const scheduleTextPrimary = isOnSiteFlow ? SERVICES_PALETTE.textPrimary : '#0f172a';
-  const scheduleTextSecondary = isOnSiteFlow ? SERVICES_PALETTE.textSecondary : '#334155';
-  const scheduleTextMuted = isOnSiteFlow ? SERVICES_PALETTE.textMuted : '#64748b';
-  const scheduleDisabledText = isOnSiteFlow ? SERVICES_PALETTE.border : '#cbd5e1';
-  const scheduleControlSoft = isOnSiteFlow ? SERVICES_PALETTE.page : '#f8fafc';
+  const scheduleSurface = SERVICES_PALETTE.surface;
+  const scheduleBorder = servicesPrimaryBorder;
+  const scheduleControlBorder = SERVICES_PALETTE.border;
+  const scheduleTextPrimary = SERVICES_PALETTE.textPrimary;
+  const scheduleTextSecondary = SERVICES_PALETTE.textSecondary;
+  const scheduleTextMuted = SERVICES_PALETTE.textMuted;
+  const scheduleDisabledText = SERVICES_PALETTE.border;
+  const scheduleControlSoft = SERVICES_PALETTE.page;
   const onSiteTimingWorkspaceHeight = isOnSiteFlow && !isMobileViewport
     ? SERVICE_TIMING_DESKTOP_WORKSPACE_HEIGHT
     : undefined;
@@ -435,7 +434,7 @@ export function ServiceBookingDetailsForm({
             className="services-schedule-time-option"
             aria-pressed={isSelected}
             onClick={() => handleTimeSelection(slot.value)}
-            style={{ minHeight: 42, border: `1px solid ${isSelected ? servicesPrimary : servicesPrimaryBorder}`, borderRadius: 12, background: isSelected ? servicesPrimary : scheduleSurface, color: isSelected ? '#fff' : servicesPrimary, padding: '8px 10px', fontSize: 12, fontWeight: 800, lineHeight: 1.2, cursor: 'pointer', boxSizing: 'border-box' }}
+            style={{ minHeight: 42, border: `1px solid ${isSelected ? servicesPrimary : servicesPrimaryBorder}`, borderRadius: 12, background: isSelected ? servicesPrimary : scheduleSurface, color: isSelected ? SERVICES_PALETTE.surface : servicesPrimary, padding: '8px 10px', fontSize: 12, fontWeight: 800, lineHeight: 1.2, cursor: 'pointer', boxSizing: 'border-box' }}
           >
             {slot.label}
           </button>
@@ -448,7 +447,7 @@ export function ServiceBookingDetailsForm({
   const selectedHandoffSummary = (
     <div data-testid="selected-handoff-summary" role="status" aria-live="polite" style={{ display: 'grid', gap: 9, borderRadius: 14, border: `1px solid ${servicesPrimaryBorder}`, background: `linear-gradient(135deg, ${servicesPrimarySoft}, ${scheduleSurface})`, padding: '10px 11px', color: servicesPrimary, fontSize: 11, lineHeight: 1.25 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ width: 24, height: 24, borderRadius: 999, background: servicesPrimary, color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+        <span style={{ width: 24, height: 24, borderRadius: 999, background: servicesPrimary, color: SERVICES_PALETTE.surface, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
           <Check data-testid="services-selected-check" size={12} strokeWidth={3.2} />
         </span>
         <div style={{ display: 'grid', gap: 1, minWidth: 0 }}>
@@ -475,9 +474,9 @@ export function ServiceBookingDetailsForm({
     </div>
   );
   const scheduleActions = (
-    <div data-testid="service-schedule-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, paddingTop: 8, borderTop: `1px solid ${isOnSiteFlow ? servicesPrimaryBorder : '#eef2f7'}` }}>
+    <div data-testid="service-schedule-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, paddingTop: 8, borderTop: `1px solid ${servicesPrimaryBorder}` }}>
       <button type="button" aria-label="Change date" onClick={isOnSiteFlow ? changeOnSiteDate : () => { setIsTimeSelectionCommitted(false); setIsTimePickerOpen(false); }} style={{ minHeight: 40, width: '100%', margin: 0, border: `1px solid ${SERVICES_PALETTE.errorBorder}`, borderRadius: 10, background: SERVICES_PALETTE.errorSoft, color: SERVICES_PALETTE.error, fontWeight: 800, cursor: 'pointer', boxSizing: 'border-box' }}>Change date</button>
-      <button type="button" disabled={!hasCommittedSchedule} onClick={() => { scheduleBeforePickerRef.current = ''; closeSchedulePicker({ restore: false, preserveSelection: true }); }} style={{ minHeight: 40, width: '100%', border: 'none', borderRadius: 10, background: hasCommittedSchedule ? servicesPrimary : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: hasCommittedSchedule ? 'pointer' : 'not-allowed' }}>Use this schedule</button>
+      <button type="button" disabled={!hasCommittedSchedule} onClick={() => { scheduleBeforePickerRef.current = ''; closeSchedulePicker({ restore: false, preserveSelection: true }); }} style={{ minHeight: 40, width: '100%', border: 'none', borderRadius: 10, background: hasCommittedSchedule ? servicesPrimary : SERVICES_PALETTE.border, color: SERVICES_PALETTE.surface, fontWeight: 800, cursor: hasCommittedSchedule ? 'pointer' : 'not-allowed' }}>Use this schedule</button>
     </div>
   );
 
@@ -571,10 +570,10 @@ export function ServiceBookingDetailsForm({
                {!isOnSiteFlow ? (
                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                    <div style={{ display: 'grid', gap: 4 }}>
-                     <h3 id="service-schedule-dialog-title" style={{ margin: 0, color: '#0f172a', fontSize: 18, fontWeight: 800 }}>Schedule for later</h3>
-                     <p style={{ margin: 0, color: '#64748b', fontSize: 12, lineHeight: 1.4 }}>Choose a date and an available {scheduleSubject} time.</p>
+                     <h3 id="service-schedule-dialog-title" style={{ margin: 0, color: SERVICES_PALETTE.textPrimary, fontSize: 18, fontWeight: 800 }}>Schedule for later</h3>
+                     <p style={{ margin: 0, color: SERVICES_PALETTE.textMuted, fontSize: 12, lineHeight: 1.4 }}>Choose a date and an available {scheduleSubject} time.</p>
                    </div>
-                   <button type="button" aria-label="Close schedule picker" className="services-schedule-icon-button" onClick={() => closeSchedulePicker()} style={{ width: 34, height: 34, border: '1px solid #dbe5ee', borderRadius: 999, background: '#fff', color: '#334155', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                   <button type="button" aria-label="Close schedule picker" className="services-schedule-icon-button" onClick={() => closeSchedulePicker()} style={{ width: 34, height: 34, border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 999, background: SERVICES_PALETTE.surface, color: SERVICES_PALETTE.textSecondary, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
                      <X size={18} />
                    </button>
                  </div>
@@ -829,8 +828,8 @@ export function ServiceBookingDetailsForm({
         {extraFields.length > 0 && (
           <section style={{ display: 'grid', gap: 14, gridColumn: isOnSiteFlow && !isMobileViewport ? '1 / -1' : 'auto' }}>
             <div style={{ display: 'grid', gap: 4 }}>
-              <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Additional Service Details</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>Only fill in the extra details required for this service.</div>
+              <div style={{ fontSize: 13, fontWeight: 900, color: SERVICES_PALETTE.textPrimary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Additional Service Details</div>
+              <div style={{ fontSize: 12, color: SERVICES_PALETTE.textMuted }}>Only fill in the extra details required for this service.</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
               {extraFields.map((field) => (
@@ -840,7 +839,7 @@ export function ServiceBookingDetailsForm({
                   style={{
                     display: 'block',
                     fontSize: 12,
-                    color: '#475569',
+                    color: SERVICES_PALETTE.textSecondary,
                     minWidth: 0,
                     gridColumn: !isMobileViewport && shouldBookingFieldSpanFullWidth(field) ? '1 / -1' : 'auto',
                   }}
@@ -858,9 +857,9 @@ export function ServiceBookingDetailsForm({
                       menuStyle={{ borderRadius: 18 }}
                     />
                   ) : field.type === 'checkbox' ? (
-                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: isMobileViewport ? '10px 11px' : '11px 12px', border: '1px solid #cbd5e1', borderRadius: 14, background: '#fff' }}>
+                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: isMobileViewport ? '10px 11px' : '11px 12px', border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 14, background: SERVICES_PALETTE.surface }}>
                       <input type="checkbox" checked={serviceIntakeResponses[field.id] === true} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.checked }))} />
-                      <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
+                      <span style={{ fontSize: 13, color: SERVICES_PALETTE.textSecondary }}>Confirm</span>
                     </div>
                   ) : (
                     <input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={BOOKING_FIELD_STYLE} />

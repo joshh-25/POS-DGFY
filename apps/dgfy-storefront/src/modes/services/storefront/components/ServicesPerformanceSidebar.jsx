@@ -24,18 +24,18 @@ export function ServicesPerformanceSidebar({
 }) {
   return (
     <aside style={{ display: 'grid', gap: 24, alignContent: 'start' }}>
-      <div style={{ padding: 24, background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, boxShadow: STYLES.shadow.sm }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: STYLES.colors.dark, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 20 }}>Performance Summary</div>
+      <div style={{ padding: 24, background: SERVICES_PALETTE.surface, borderRadius: STYLES.radius.card, border: `1px solid ${SERVICES_PALETTE.border}`, boxShadow: SERVICES_PALETTE.cardShadow }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: SERVICES_PALETTE.textPrimary, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 20 }}>Performance Summary</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-          <div style={{ fontSize: 48, fontWeight: 900, color: STYLES.colors.dark }}>{selectedStore.storefront_review_summary?.score?.toFixed(1) || '0.0'}</div>
+          <div style={{ fontSize: 48, fontWeight: 900, color: SERVICES_PALETTE.textPrimary }}>{selectedStore.storefront_review_summary?.score?.toFixed(1) || '0.0'}</div>
           <div>
-            <div style={{ color: STYLES.colors.amber, fontSize: 18 }}>*****</div>
-            <div style={{ fontSize: 12, color: STYLES.colors.muted }}>from {formatServiceNumber(selectedStore.storefront_review_summary?.total_count || 0)} reviews</div>
+            <div style={{ color: SERVICES_PALETTE.warning, fontSize: 18 }}>*****</div>
+            <div style={{ fontSize: 12, color: SERVICES_PALETTE.textMuted }}>from {formatServiceNumber(selectedStore.storefront_review_summary?.total_count || 0)} reviews</div>
           </div>
         </div>
         {isMultiGroup && (
           <div style={{ display: 'grid', gap: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Service Families</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Service Families</div>
             {servicesViewModel.serviceGroups.map(group => {
               const GroupIcon = SERVICE_CATEGORY_ICON_MAP[group.categoryMeta?.iconToken] || Sparkles;
               return (
@@ -46,9 +46,9 @@ export function ServicesPerformanceSidebar({
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '10px 14px', borderRadius: 12,
-                    border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${STYLES.colors.border}`,
+                    border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${SERVICES_PALETTE.border}`,
                     background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || SERVICES_PALETTE.primarySoft : SERVICES_PALETTE.surface,
-                    color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : STYLES.colors.text,
+                    color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : SERVICES_PALETTE.textSecondary,
                     fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
                     transition: 'all 0.16s ease'
                   }}
@@ -70,8 +70,8 @@ export function ServicesPerformanceSidebar({
         if (!promo || !promo.active) return null;
         return (
           <div style={{
-            padding: 24, borderRadius: STYLES.radius.card, background: `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`,
-            color: '#fff', boxShadow: STYLES.shadow.md
+            padding: 24, borderRadius: STYLES.radius.card, background: `linear-gradient(135deg, ${SERVICES_PALETTE.primary}, ${SERVICES_PALETTE.primaryDark})`,
+            color: SERVICES_PALETTE.surface, boxShadow: SERVICES_PALETTE.cardShadow
           }}>
             <Badge background="rgba(255,255,255,0.2)" color="#fff">{promo.badge || 'PROMO'}</Badge>
             <div style={{ marginTop: 16, fontSize: 24, fontWeight: 900 }}>{promo.title}</div>

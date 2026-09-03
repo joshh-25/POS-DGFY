@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowRight } from 'lucide-react';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 export function ServiceBookingStepCards({
   bookingSteps,
@@ -23,7 +24,7 @@ export function ServiceBookingStepCards({
         {bookingSteps.map((item) => {
           const isActive = currentStep === item.step;
           const isDone = item.complete;
-          const tone = isDone ? '#16a34a' : isActive ? activeAccent : '#cbd5e1';
+          const tone = isDone ? SERVICES_PALETTE.success : isActive ? activeAccent : SERVICES_PALETTE.border;
           return (
             <button
               key={`booking-step-${item.step}`}
@@ -46,7 +47,7 @@ export function ServiceBookingStepCards({
                     height: 32,
                     borderRadius: 999,
                     background: tone,
-                    color: '#fff',
+                    color: SERVICES_PALETTE.surface,
                     display: 'grid',
                     placeItems: 'center',
                     fontWeight: 900,
@@ -60,8 +61,8 @@ export function ServiceBookingStepCards({
                 <div style={{ flex: 1, height: 2, borderRadius: 999, background: item.complete || currentStep > item.step ? activeAccent : '#dbe5ee' }} />
               </div>
               <div style={{ display: 'grid', gap: 2 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{item.label}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: isDone ? '#15803d' : isActive ? activeAccent : '#64748b' }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: SERVICES_PALETTE.textPrimary }}>{item.label}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: isDone ? SERVICES_PALETTE.success : isActive ? activeAccent : SERVICES_PALETTE.textMuted }}>
                   {isDone ? 'Done' : isActive ? 'In progress' : 'Pending'}
                 </div>
               </div>
@@ -84,7 +85,7 @@ export function ServiceBookingStepCards({
       {bookingSteps.map((item, index) => {
         const isActive = currentStep === item.step;
         const isDone = item.complete;
-        const tone = isDone ? '#16a34a' : isActive ? activeAccent : '#dbe5e1';
+        const tone = isDone ? SERVICES_PALETTE.success : isActive ? activeAccent : SERVICES_PALETTE.border;
         return (
           <React.Fragment key={`booking-step-${item.step}`}>
             <button
@@ -108,7 +109,7 @@ export function ServiceBookingStepCards({
                   height: 30,
                   borderRadius: 999,
                   background: tone,
-                  color: '#fff',
+                  color: SERVICES_PALETTE.surface,
                   display: 'grid',
                   placeItems: 'center',
                   fontWeight: 900,
@@ -120,8 +121,8 @@ export function ServiceBookingStepCards({
                 {item.step}
               </div>
               <div style={{ display: 'grid', gap: 2 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{item.label}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: isDone ? '#15803d' : isActive ? activeAccent : '#64748b' }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: SERVICES_PALETTE.textPrimary }}>{item.label}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: isDone ? SERVICES_PALETTE.success : isActive ? activeAccent : SERVICES_PALETTE.textMuted }}>
                   {isDone ? 'Done' : isActive ? 'In progress' : 'Pending'}
                 </div>
               </div>

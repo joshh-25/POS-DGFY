@@ -27,52 +27,52 @@ export function ServiceBookingConfirmation({
   return (
     <section
       style={{
-        border: '1px solid #dbe5ee',
+        border: `1px solid ${SERVICES_PALETTE.border}`,
         borderRadius: 28,
-        background: '#fff',
+        background: SERVICES_PALETTE.surface,
         padding: isMobileViewport ? 20 : 28,
-        boxShadow: '0 22px 56px rgba(15, 23, 42, 0.08)',
+        boxShadow: SERVICES_PALETTE.cardShadow,
         display: 'grid',
         gap: 20,
         maxWidth: 860,
       }}
     >
       <div style={{ display: 'grid', gap: 10 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content', padding: '8px 12px', borderRadius: 999, background: '#ecfdf5', color: '#15803d', fontSize: 12, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content', padding: '8px 12px', borderRadius: 999, background: `${SERVICES_PALETTE.success}18`, color: SERVICES_PALETTE.success, fontSize: 12, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
           <CheckCircle2 size={16} />
           Booking confirmed
         </div>
-        <div style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: '#0f172a', lineHeight: 1.08, fontFamily: servicesDisplayFont }}>
+        <div style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: SERVICES_PALETTE.textPrimary, lineHeight: 1.08, fontFamily: servicesDisplayFont }}>
           Your service booking is confirmed
         </div>
-        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: '#64748b', maxWidth: 680 }}>
+        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: SERVICES_PALETTE.textMuted, maxWidth: 680 }}>
           The request has been sent to the store team. They will message you using the contact details you provided to confirm the schedule and assist with the next steps.
         </p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
-        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Reference</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>{confirmationReference || 'Pending'}</div>
+        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 18, background: SERVICES_PALETTE.primarySoft }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Reference</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont }}>{confirmationReference || 'Pending'}</div>
         </div>
-        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>{confirmationServiceName}</div>
+        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 18, background: SERVICES_PALETTE.primarySoft }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont }}>{confirmationServiceName}</div>
         </div>
-        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated total</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>{money(confirmationAmount)}</div>
+        <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 18, background: SERVICES_PALETTE.primarySoft }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated total</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont }}>{money(confirmationAmount)}</div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gap: 8, fontSize: 14, color: '#334155', lineHeight: 1.65 }}>
+      <div style={{ display: 'grid', gap: 8, fontSize: 14, color: SERVICES_PALETTE.textSecondary, lineHeight: 1.65 }}>
         <div>Keep your booking reference in case you need to follow up with the team.</div>
         <div>You can return to the services page anytime to browse other services.</div>
       </div>
 
       {bookingReferences.length > 1 && (
-        <div style={{ display: 'grid', gap: 8, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking references</div>
+        <div style={{ display: 'grid', gap: 8, padding: '14px 16px', border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 18, background: SERVICES_PALETTE.primarySoft }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking references</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {bookingReferences.map((reference) => (
               <span key={reference} style={{ display: 'inline-flex', alignItems: 'center', minHeight: 34, borderRadius: 999, background: servicesPrimarySoft, color: servicesPrimaryDark, border: `1px solid ${servicesPrimaryBorder}`, padding: '0 12px', fontSize: 13, fontWeight: 800 }}>
@@ -92,7 +92,7 @@ export function ServiceBookingConfirmation({
               minHeight: 46,
               borderRadius: 14,
               border: `1px solid ${servicesPrimary}`,
-              background: '#fff',
+              background: SERVICES_PALETTE.surface,
               color: servicesPrimaryDark,
               padding: '0 18px',
               fontWeight: 800,
@@ -115,7 +115,7 @@ export function ServiceBookingConfirmation({
               minHeight: 46,
               borderRadius: 14,
               background: servicesPrimary,
-              color: '#fff',
+              color: SERVICES_PALETTE.surface,
               padding: '0 18px',
               fontWeight: 800,
               textDecoration: 'none',
@@ -132,7 +132,7 @@ export function ServiceBookingConfirmation({
             borderRadius: 14,
             border: 'none',
             background: `linear-gradient(135deg, ${servicesPrimary}, ${servicesPrimaryDark})`,
-            color: '#fff',
+            color: SERVICES_PALETTE.surface,
             padding: '0 18px',
             fontWeight: 800,
             cursor: 'pointer',

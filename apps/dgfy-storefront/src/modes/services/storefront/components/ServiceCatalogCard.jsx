@@ -4,6 +4,7 @@ import { ShoppingCart } from 'lucide-react';
 import { PrimaryButton } from '../../../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { ServiceImage } from '../../ServiceImage.jsx';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 import { SERVICES_BODY_FONT, SERVICES_DISPLAY_FONT } from '../../servicesTypography.js';
 import {
   buildDefaultServiceOptionSelection,
@@ -95,7 +96,7 @@ export function ServiceCatalogCard({
             const checked = selectedIds.includes(option.option_id);
             const reachedMaximum = !checked && selectedIds.length >= group.max_selections;
             return (
-              <label key={option.option_id} style={{ display: 'flex', alignItems: 'center', gap: compact ? 6 : 8, color: '#334155', fontSize: compact ? 11 : 13, cursor: reachedMaximum ? 'not-allowed' : 'pointer' }}>
+              <label key={option.option_id} style={{ display: 'flex', alignItems: 'center', gap: compact ? 6 : 8, color: SERVICES_PALETTE.textSecondary, fontSize: compact ? 11 : 13, cursor: reachedMaximum ? 'not-allowed' : 'pointer' }}>
                 <input
                   type="checkbox"
                   checked={checked}
@@ -141,16 +142,16 @@ export function ServiceCatalogCard({
             minHeight: compact ? 38 : 36,
             borderRadius: compact ? 8 : 6,
             border: `1px solid ${servicesPrimaryBorder}`,
-            background: '#ffffff',
-            color: '#0f172a',
+            background: SERVICES_PALETTE.surface,
+            color: SERVICES_PALETTE.textPrimary,
             padding: compact ? '0 34px 0 10px' : '0 40px 0 12px',
             fontFamily: servicesBodyFont,
             fontSize: compact ? 12 : 13,
             fontWeight: 700,
           }}
-          selectedLabelStyle={{ color: '#0f172a', fontSize: compact ? 12 : 13 }}
+          selectedLabelStyle={{ color: SERVICES_PALETTE.textPrimary, fontSize: compact ? 12 : 13 }}
           menuStyle={{ top: 'calc(100% + 6px)', width: '100%', minWidth: 0, boxSizing: 'border-box', whiteSpace: 'normal', borderRadius: compact ? 12 : 14, border: `1px solid ${servicesPrimaryBorder}`, boxShadow: `0 16px 34px ${servicesPrimaryShadow}` }}
-          optionStyle={{ color: '#0f172a', fontFamily: servicesBodyFont, fontSize: compact ? 12 : 13 }}
+          optionStyle={{ color: SERVICES_PALETTE.textPrimary, fontFamily: servicesBodyFont, fontSize: compact ? 12 : 13 }}
           selectedOptionStyle={{ background: servicesPrimarySoft, border: `1px solid ${servicesPrimaryBorder}` }}
           selectedOptionLabelStyle={{ color: servicesPrimaryDark }}
         />
@@ -176,14 +177,14 @@ export function ServiceCatalogCard({
           alignItems: 'center',
           padding: 10,
           minHeight: 120,
-          background: '#ffffff',
+          background: SERVICES_PALETTE.surface,
           border: `1px solid ${servicesPrimaryBorder}`,
           borderRadius: 20,
           boxShadow: '0 4px 16px rgba(15,23,42,0.04)',
           fontFamily: servicesBodyFont
         }}
       >
-        <div style={{ width: 88, height: 88, borderRadius: 14, overflow: 'hidden', background: '#f8fafc', position: 'relative', flexShrink: 0 }}>
+        <div style={{ width: 88, height: 88, borderRadius: 14, overflow: 'hidden', background: SERVICES_PALETTE.page, position: 'relative', flexShrink: 0 }}>
           <ServiceImage
             imageSources={imageSources}
             alt={title}
@@ -195,7 +196,7 @@ export function ServiceCatalogCard({
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
           />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0) 42%, rgba(15,23,42,0.16) 100%)', pointerEvents: 'none' }} />
-          <span style={{ position: 'absolute', right: 6, bottom: 6, minHeight: 24, display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: servicesPrimary, color: '#ffffff', padding: '4px 7px', fontSize: 11, lineHeight: 1, fontWeight: 800, fontFamily: servicesBodyFont, whiteSpace: 'nowrap', boxShadow: `0 4px 12px ${servicesPrimaryShadow}` }}>
+          <span style={{ position: 'absolute', right: 6, bottom: 6, minHeight: 24, display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: servicesPrimary, color: SERVICES_PALETTE.surface, padding: '4px 7px', fontSize: 11, lineHeight: 1, fontWeight: 800, fontFamily: servicesBodyFont, whiteSpace: 'nowrap', boxShadow: `0 4px 12px ${servicesPrimaryShadow}` }}>
             {money(adjustedPrice)}
           </span>
         </div>
@@ -223,7 +224,7 @@ export function ServiceCatalogCard({
               aria-label={`${available ? (addActionLabel || 'Add service') : (unavailableLabel || 'Unavailable')} ${title}`}
               disabled={!available || !optionSelectionValid}
               onClick={handleAdd}
-              style={{ width: hasVariationDropdown ? 38 : '100%', minWidth: hasVariationDropdown ? 38 : 0, minHeight: 38, height: 38, flexShrink: 0, border: 'none', borderRadius: 12, padding: hasVariationDropdown ? 0 : '0 12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: !available || !optionSelectionValid ? '#e2e8f0' : servicesPrimary, color: '#ffffff', cursor: !available || !optionSelectionValid ? 'not-allowed' : 'pointer', fontFamily: servicesBodyFont, fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}
+              style={{ width: hasVariationDropdown ? 38 : '100%', minWidth: hasVariationDropdown ? 38 : 0, minHeight: 38, height: 38, flexShrink: 0, border: 'none', borderRadius: 12, padding: hasVariationDropdown ? 0 : '0 12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: !available || !optionSelectionValid ? SERVICES_PALETTE.border : servicesPrimary, color: SERVICES_PALETTE.surface, cursor: !available || !optionSelectionValid ? 'not-allowed' : 'pointer', fontFamily: servicesBodyFont, fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}
             >
               <ShoppingCart size={17} strokeWidth={2.25} />
               {!hasVariationDropdown ? mobileActionLabel : null}
@@ -244,7 +245,7 @@ export function ServiceCatalogCard({
         position: 'relative',
         display: 'flex',
         flexDirection: 'column',
-        background: '#ffffff',
+        background: SERVICES_PALETTE.surface,
         border: `1px solid ${servicesPrimaryBorder}`,
         width: isMobileGridView ? 'calc(100% - 8px)' : undefined,
         maxWidth: isMobileGridView ? 'calc(100% - 8px)' : undefined,
@@ -254,7 +255,7 @@ export function ServiceCatalogCard({
         fontFamily: servicesBodyFont
       }}
     >
-      <div style={{ width: '100%', height: isMobileGridView ? 140 : undefined, aspectRatio: isMobileGridView ? undefined : '1.67 / 1', background: '#f8fafc', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ width: '100%', height: isMobileGridView ? 140 : undefined, aspectRatio: isMobileGridView ? undefined : '1.67 / 1', background: SERVICES_PALETTE.page, position: 'relative', overflow: 'hidden' }}>
         <ServiceImage
           imageSources={imageSources}
           alt={title}
@@ -271,7 +272,7 @@ export function ServiceCatalogCard({
               {categoryLabel}
             </span>
           ) : <span />}
-          <span style={{ minHeight: 30, display: 'inline-flex', alignItems: 'center', borderRadius: 6, background: servicesPrimary, color: '#ffffff', padding: '4px 10px', fontSize: 13.5, fontWeight: 800, fontFamily: servicesBodyFont, whiteSpace: 'nowrap' }}>
+          <span style={{ minHeight: 30, display: 'inline-flex', alignItems: 'center', borderRadius: 6, background: servicesPrimary, color: SERVICES_PALETTE.surface, padding: '4px 10px', fontSize: 13.5, fontWeight: 800, fontFamily: servicesBodyFont, whiteSpace: 'nowrap' }}>
             {money(adjustedPrice)}
           </span>
         </div>
@@ -284,11 +285,11 @@ export function ServiceCatalogCard({
       </div>
 
       <div style={{ minWidth: 0, minHeight: 190, boxSizing: 'border-box', flex: 1, padding: isMobileGridView ? 12 : 16, display: 'flex', flexDirection: 'column', gap: 8, fontFamily: servicesBodyFont }}>
-        <h3 style={{ margin: 0, color: '#0f172a', fontSize: 16, fontWeight: 800, lineHeight: '20px', letterSpacing: 0, fontFamily: servicesDisplayFont }}>
+        <h3 style={{ margin: 0, color: SERVICES_PALETTE.textPrimary, fontSize: 16, fontWeight: 800, lineHeight: '20px', letterSpacing: 0, fontFamily: servicesDisplayFont }}>
           {title}
         </h3>
         {description ? (
-          <p style={{ margin: 0, minHeight: 35, color: '#64748b', fontSize: 13, lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontFamily: servicesBodyFont }}>
+          <p style={{ margin: 0, minHeight: 35, color: SERVICES_PALETTE.textMuted, fontSize: 13, lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontFamily: servicesBodyFont }}>
             {description}
           </p>
         ) : null}

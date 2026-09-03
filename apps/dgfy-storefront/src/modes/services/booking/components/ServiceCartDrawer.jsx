@@ -500,7 +500,7 @@ export function ServiceCartDrawer({
             ) : null}
 
             {hasProductCartConflict ? (
-              <div style={{ border: '1px solid #fdba74', background: '#fff7ed', color: '#9a3412', borderRadius: 12, padding: '12px 14px', fontSize: 13, lineHeight: 1.6 }}>
+              <div style={{ border: `1px solid ${SERVICES_PALETTE.warning}66`, background: SERVICES_PALETTE.warningSoft, color: SERVICES_PALETTE.warning, borderRadius: 12, padding: '12px 14px', fontSize: 13, lineHeight: 1.6 }}>
                 Product items are not included in service booking. Continue with service booking only, or remove non-service items first.
               </div>
             ) : null}

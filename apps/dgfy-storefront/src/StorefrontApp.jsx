@@ -1198,8 +1198,8 @@ export default function StorefrontApp() {
     : (modeAdapter?.heroTheme?.borderSoft || SERVICES_PALETTE.primaryBorder);
   const servicesPrimaryShadow = SERVICES_PALETTE.primaryShadow;
   const servicesPrimaryShadowStrong = SERVICES_PALETTE.primaryShadowStrong;
-  const servicesHighlight = '#f59e0b';
-  const servicesHighlightSoft = '#fffbeb';
+  const servicesHighlight = SERVICES_PALETTE.warning;
+  const servicesHighlightSoft = SERVICES_PALETTE.warningSoft;
   const {
     isGlobalAccountPage,
     isTenantAccountPage,
@@ -4371,7 +4371,7 @@ export default function StorefrontApp() {
         '--services-body-font': servicesBodyFont,
         '--services-display-font': servicesDisplayFont,
         fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body),
-        background: isStorePage ? (isFnbMode ? '#fff' : (isServicesMode ? 'radial-gradient(circle at 20% 0%, #ecfeff 0%, #f8fafc 48%, #ffffff 100%)' : (isRetailMode ? 'radial-gradient(circle at 20% 0%, #EEF4FB 0%, #F8FAFC 42%, #EFF4F9 100%)' : (isSimpleMode ? 'radial-gradient(circle at 20% 0%, #FFFDF7 0%, #FFF7E6 42%, #F8FAFC 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')))) : '#ffffff',
+        background: isStorePage ? (isFnbMode ? '#fff' : (isServicesMode ? `radial-gradient(circle at 20% 0%, ${SERVICES_PALETTE.primarySoft} 0%, ${SERVICES_PALETTE.page} 48%, ${SERVICES_PALETTE.surface} 100%)` : (isRetailMode ? 'radial-gradient(circle at 20% 0%, #EEF4FB 0%, #F8FAFC 42%, #EFF4F9 100%)' : (isSimpleMode ? 'radial-gradient(circle at 20% 0%, #FFFDF7 0%, #FFF7E6 42%, #F8FAFC 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')))) : '#ffffff',
         minHeight: '100vh',
         color: '#0f172a',
         overflowX: 'clip'

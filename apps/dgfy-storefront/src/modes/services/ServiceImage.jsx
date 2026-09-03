@@ -3,6 +3,7 @@ import { ImageOff } from 'lucide-react';
 
 import { StorefrontResponsiveImage } from '../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../shared/utils/storefrontImageSources.js';
+import { SERVICES_PALETTE } from './servicesPalette.js';
 
 const DEFAULT_FALLBACK_LABEL = 'No service image';
 
@@ -49,8 +50,8 @@ export function ServiceImage({
           alignContent: 'center',
           gap: 6,
           boxSizing: 'border-box',
-          color: '#64748b',
-          background: '#f8fafc',
+          color: SERVICES_PALETTE.textMuted,
+          background: SERVICES_PALETTE.page,
           ...fallbackStyle
         }}
       >

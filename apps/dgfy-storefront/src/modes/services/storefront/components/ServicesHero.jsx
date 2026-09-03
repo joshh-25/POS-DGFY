@@ -15,6 +15,7 @@ import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../shared
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { ServiceImage } from '../../ServiceImage.jsx';
 import { formatServiceNumber } from '../../servicesFormatters.js';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 import { getServicesResponsiveLayout } from '../../../../shared/utils/storefrontViewport.js';
 import { ServicesHeroDesktopContactLocation } from './ServicesHeroDesktopContactLocation.jsx';
 import { ServicesHeroDesktopWhyChooseUs } from './ServicesHeroDesktopWhyChooseUs.jsx';
@@ -262,7 +263,7 @@ const ServicesHero = ({
         />
         {servicesResponsiveLayout.isMobileViewport && (
           <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: servicesBodyFont, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{serviceHeroModel.statusLabel}</Badge>
+            <Badge background={selectedStore?.storefront_open ? SERVICES_PALETTE.success : SERVICES_PALETTE.warning} color={SERVICES_PALETTE.surface} style={{ fontFamily: servicesBodyFont, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{serviceHeroModel.statusLabel}</Badge>
           </div>
         )}
         {!servicesResponsiveLayout.isMobileViewport && (
@@ -279,7 +280,7 @@ const ServicesHero = ({
           }}>
             <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: servicesResponsiveLayout.isTabletViewport ? 24 : 35 }}>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: servicesBodyFont }}>{serviceHeroModel.statusLabel}</Badge>
+                <Badge background={selectedStore?.storefront_open ? SERVICES_PALETTE.success : SERVICES_PALETTE.warning} color={SERVICES_PALETTE.surface} style={{ fontFamily: servicesBodyFont }}>{serviceHeroModel.statusLabel}</Badge>
                 {serviceHeroModel.hours && (
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)' }}>{serviceHeroModel.hours}</span>
                 )}
@@ -293,8 +294,8 @@ const ServicesHero = ({
                   followEnabled={followEnabled}
                   followState={followState}
                   handleFollowAction={handleFollowAction}
-                  followAccentColor={modeAdapter?.heroTheme?.followColor || servicesPrimary}
-                  followActiveColor={modeAdapter?.heroTheme?.followActiveColor}
+                  followAccentColor={SERVICES_PALETTE.primary}
+                  followActiveColor={SERVICES_PALETTE.success}
                 />
                 {serviceHeroModel.tagline ? (
                   <p style={{ margin: 0, color: servicesTaglineColor, fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: servicesBodyFont }}>{serviceHeroModel.tagline}</p>
@@ -409,8 +410,8 @@ const ServicesHero = ({
                 followEnabled={followEnabled}
                 followState={followState}
                 handleFollowAction={handleFollowAction}
-                followAccentColor={modeAdapter?.heroTheme?.followColor || servicesPrimary}
-                followActiveColor={modeAdapter?.heroTheme?.followActiveColor}
+                followAccentColor={SERVICES_PALETTE.primary}
+                followActiveColor={SERVICES_PALETTE.success}
               />
 
               {serviceHeroModel.tagline ? (
