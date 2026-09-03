@@ -21,7 +21,7 @@ const FnbHeroDesktopContactLocation = ({
   setIsExpandedMapOpen,
   visibleContactRows
 }) => {
-  const surfaceAccent = heroTheme.palette?.primary || '#f97316';
+  const surfaceAccent = heroTheme.directionsColor || heroTheme.accent || heroTheme.palette?.primary || '#f97316';
 
   return (
   <div style={{ display: 'grid', gap: 14, paddingLeft: hasAboutOrGallerySection ? 26 : 0, borderLeft: hasAboutOrGallerySection ? '1px solid #eef2f6' : 'none', alignContent: 'start' }}>

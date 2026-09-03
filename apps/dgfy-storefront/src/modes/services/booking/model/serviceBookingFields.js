@@ -86,7 +86,6 @@ export const buildServiceBookingFieldPlan = ({ fields, serviceItem }) => {
     || bookingFieldMatchesAny(field, ['preferred schedule', 'schedule', 'appointment date', 'booking date', 'preferred date', 'service date', 'date'])
   ));
   const preferredTimeField = takeField((field) => bookingFieldMatchesAny(field, ['preferred time slot', 'time slot', 'preferred time', 'time window', 'appointment time', 'service time']));
-  const unitTypeField = takeField((field) => bookingFieldMatchesAny(field, ['unit type', 'service type', 'appliance type', 'unit variant']));
   const unitCountField = takeField((field) => (
     field.type === 'number'
       ? bookingFieldMatchesAny(field, ['number of units', 'unit count', 'units', 'quantity', 'qty'])
@@ -102,7 +101,10 @@ export const buildServiceBookingFieldPlan = ({ fields, serviceItem }) => {
     addressField,
     preferredDateField,
     preferredTimeField,
-    unitTypeField,
+    // Service-specific fields such as "Equipment model" stay in the
+    // configured intake schema and render through the generic field list. The
+    // shared booking form does not reserve a platform-wide unit-type slot.
+    unitTypeField: null,
     unitCountField,
     instructionField,
     remainingFields,

@@ -1,8 +1,8 @@
 import React from 'react';
 
-import { STYLES } from '../../../../shared/theme/storefrontStyleTokens.js';
 import { GhostButton } from '../../../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 /**
  * ServicesPaginationBar — services catalog pager (page count, per-page selector,
@@ -22,10 +22,10 @@ export function ServicesPaginationBar({
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobileViewport ? 'center' : 'space-between', gap: 12, flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
+        <div style={{ fontSize: 13, color: SERVICES_PALETTE.textMuted }}>
           Page {resolvedServicePage} of {totalServicePages}
         </div>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 500, color: STYLES.colors.muted }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 500, color: SERVICES_PALETTE.textMuted }}>
           Per page
           <StorefrontDropdown
             value={servicePageSize}
@@ -57,9 +57,9 @@ export function ServicesPaginationBar({
                 minWidth: 38,
                 minHeight: 38,
                 borderRadius: 10,
-                border: `1px solid ${pageNumber === resolvedServicePage ? servicesPrimary : '#e5e7eb'}`,
-                background: pageNumber === resolvedServicePage ? servicesPrimary : '#fff',
-                color: pageNumber === resolvedServicePage ? '#fff' : STYLES.colors.dark,
+                border: `1px solid ${pageNumber === resolvedServicePage ? servicesPrimary : SERVICES_PALETTE.border}`,
+                background: pageNumber === resolvedServicePage ? servicesPrimary : SERVICES_PALETTE.surface,
+                color: pageNumber === resolvedServicePage ? SERVICES_PALETTE.surface : SERVICES_PALETTE.textPrimary,
                 fontWeight: 500,
                 cursor: 'pointer'
               }}

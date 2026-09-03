@@ -14,12 +14,13 @@ export function CheckoutStepProgressHeader({
   inactiveText = '#334155',
   mutedText = '#64748b',
   activeText = null,
-  referenceStyle = false
+  referenceStyle = false,
+  preventLabelWordBreaks = false
 }) {
   if (variant === 'connected') {
     if (referenceStyle) {
       return (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, padding: 0, width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, padding: 0, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
           {steps.map((item, index) => {
             const displayStep = Number(item.displayStep || index + 1);
             const isActive = activeStep === item.realStep;
@@ -35,27 +36,28 @@ export function CheckoutStepProgressHeader({
                     border: 'none',
                     background: 'transparent',
                     color: stepTextColor,
-                    padding: '0 0',
-                     minWidth: isMobileViewport ? 0 : 80,
-                     flex: isMobileViewport ? '1 1 0%' : '0 0 80px',
-                    fontSize: 12.8,
+                    padding: isMobileViewport ? '0 4px' : 0,
+                    minWidth: isMobileViewport ? 0 : 80,
+                    flex: isMobileViewport ? '1 1 0%' : '0 0 80px',
+                    fontSize: isMobileViewport ? 11.5 : 12.8,
                     fontWeight: 700,
                     cursor: !canContinue ? 'not-allowed' : 'pointer',
                     display: 'grid',
-                    justifyItems: displayStep === 1 ? 'start' : (displayStep === steps.length ? 'end' : 'center'),
+                    justifyItems: isMobileViewport ? 'center' : (displayStep === 1 ? 'start' : (displayStep === steps.length ? 'end' : 'center')),
                     gap: 8,
                     opacity: canContinue ? 1 : 0.72,
+                    boxSizing: 'border-box'
                   }}
                   disabled={!canContinue}
                 >
-                  <span style={{ width: 24, height: 24, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, lineHeight: '19.2px', fontWeight: 700, border: `1px solid ${isActive ? accentColor : (done || canContinue ? accentBorder : '#cce8ee')}`, background: isActive ? accentColor : (done ? accentSoft : (canContinue ? accentSoft : '#fff')), color: isActive ? '#fff' : (done || canContinue ? accentColor : mutedText) }}>
+                  <span style={{ width: 24, height: 24, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, lineHeight: '19.2px', fontWeight: 700, border: `1px solid ${isActive ? accentColor : (done || canContinue ? accentBorder : '#cce8ee')}`, background: isActive ? accentColor : (done ? accentSoft : (canContinue ? accentSoft : '#fff')), color: isActive ? '#fff' : (done || canContinue ? accentColor : mutedText), flexShrink: 0 }}>
                     {displayStep}
                   </span>
-                  <span style={{ textAlign: displayStep === 1 ? 'left' : (displayStep === steps.length ? 'right' : 'center'), lineHeight: 1.6, whiteSpace: displayStep === steps.length ? 'normal' : 'nowrap' }}>
+                  <span style={{ maxWidth: isMobileViewport ? 82 : 128, textAlign: isMobileViewport ? 'center' : (displayStep === 1 ? 'left' : (displayStep === steps.length ? 'right' : 'center')), lineHeight: isMobileViewport ? 1.25 : 1.6, whiteSpace: displayStep === steps.length ? 'normal' : 'nowrap', overflowWrap: isMobileViewport && !preventLabelWordBreaks ? 'anywhere' : 'normal', wordBreak: preventLabelWordBreaks ? 'normal' : undefined }}>
                     {item.label}
                   </span>
                 </button>
-                {index < steps.length - 1 ? <span aria-hidden="true" style={{ height: 2, flex: '1 1 0%', minWidth: 12, margin: '12px 8px 0', borderRadius: 999, background: done || isActive ? completeColor : '#bae6fd' }} /> : null}
+                {index < steps.length - 1 ? <span aria-hidden="true" data-checkout-step-connector="true" style={{ height: 2, flex: '1 1 0%', minWidth: isMobileViewport ? 4 : 12, margin: isMobileViewport ? '12px 4px 0' : '12px 8px 0', borderRadius: 999, background: done || isActive ? completeColor : '#bae6fd' }} /> : null}
               </React.Fragment>
             );
           })}

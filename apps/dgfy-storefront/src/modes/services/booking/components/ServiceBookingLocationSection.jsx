@@ -1,6 +1,65 @@
 import React, { useState } from 'react';
-import { Expand, MapPin, Navigation, Plus, X } from 'lucide-react';
+import { CheckCircle2, Expand, MapPin, Navigation, Plus, X } from 'lucide-react';
 import { SavedAddressCard } from '../../../../shared/components/checkout/SavedAddressCard.jsx';
+import { ServiceBookingSectionHeader } from './ServiceBookingSectionHeader.jsx';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
+
+function ProfileLocationCard({ icon, title, description, servicesPrimary, servicesPrimarySoft, servicesPrimaryBorder, servicesDisplayFont }) {
+  return (
+    <div role="status" style={{ border: `1px solid ${servicesPrimaryBorder}`, borderRadius: 16, background: servicesPrimarySoft, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ width: 38, height: 38, borderRadius: 12, display: 'grid', placeItems: 'center', background: SERVICES_PALETTE.primaryLight, color: servicesPrimary, flexShrink: 0 }}>{icon}</span>
+      <span style={{ display: 'grid', gap: 3, minWidth: 0 }}>
+        <strong style={{ fontSize: 14, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont || 'inherit' }}>{title}</strong>
+        <span style={{ fontSize: 12, lineHeight: 1.4, color: SERVICES_PALETTE.textSecondary }}>{description}</span>
+      </span>
+    </div>
+  );
+}
+
+function BranchLocationPicker({ isMobileViewport, selectedLocationId, setSelectedLocationId, storeLocations = [], servicesPrimary, servicesPrimarySoft, servicesPrimaryBorder, servicesDisplayFont }) {
+  const locations = Array.isArray(storeLocations) ? storeLocations : [];
+  if (locations.length === 0) {
+    return (
+      <ProfileLocationCard
+        icon={<MapPin size={19} />}
+        title="Branch not selected yet"
+        description="Choose a branch from the storefront before confirming this appointment."
+        servicesPrimary={servicesPrimary}
+        servicesPrimarySoft={servicesPrimarySoft}
+        servicesPrimaryBorder={servicesPrimaryBorder}
+        servicesDisplayFont={servicesDisplayFont}
+      />
+    );
+  }
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: SERVICES_PALETTE.textSecondary }}>Choose a branch</div>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+        {locations.map((location) => {
+          const locationId = location?.location_id;
+          const isSelected = selectedLocationId != null && String(selectedLocationId) === String(locationId);
+          const label = String(location?.name || location?.label || `Branch ${locationId || ''}`).trim();
+          const address = String(location?.full_address || location?.address_line || location?.address || '').trim();
+          return (
+            <button
+              key={String(locationId || label)}
+              type="button"
+              aria-pressed={isSelected}
+              onClick={() => setSelectedLocationId(locationId)}
+              style={{ minHeight: 72, borderRadius: 14, border: `1.5px solid ${isSelected ? servicesPrimary : SERVICES_PALETTE.border}`, background: isSelected ? servicesPrimarySoft : SERVICES_PALETTE.surface, padding: '11px 12px', display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left', cursor: 'pointer', boxShadow: isSelected ? `0 8px 18px ${SERVICES_PALETTE.primaryShadow}` : 'none' }}
+            >
+              <span style={{ width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center', color: isSelected ? servicesPrimary : SERVICES_PALETTE.textPrimary, background: isSelected ? SERVICES_PALETTE.primaryLight : SERVICES_PALETTE.page, flexShrink: 0 }}>{isSelected ? <CheckCircle2 size={16} /> : <MapPin size={16} />}</span>
+              <span style={{ display: 'grid', gap: 3, minWidth: 0 }}>
+                <strong style={{ color: SERVICES_PALETTE.textPrimary, fontSize: 13, lineHeight: 1.25, fontFamily: servicesDisplayFont || 'inherit' }}>{label}</strong>
+                {address ? <span style={{ color: SERVICES_PALETTE.textMuted, fontSize: 11, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{address}</span> : null}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function ServiceBookingLocationSection({
   STYLES,
@@ -30,8 +89,20 @@ export function ServiceBookingLocationSection({
   pinLocationError,
   showExpandedDeliveryMap,
   setShowExpandedDeliveryMap,
+  serviceFlowMethod = '',
+  serviceFlowProfileMethod = '',
+  selectedLocationId,
+  setSelectedLocationId,
+  storeLocations = [],
+  compactLayout = false,
 }) {
   const [showMobileAddressModal, setShowMobileAddressModal] = useState(false);
+
+  const normalizedFlowMethod = String(serviceFlowMethod || '').trim().toLowerCase();
+  const normalizedProfileMethod = String(serviceFlowProfileMethod || '').trim().toLowerCase();
+  const isOnlineFlow = normalizedFlowMethod === 'online' || normalizedProfileMethod === 'online';
+  const isBranchFlow = normalizedFlowMethod === 'appointment' || normalizedProfileMethod === 'appointment';
+  const isNeutralHybridFlow = normalizedProfileMethod === 'hybrid' && !['appointment', 'on_site'].includes(normalizedFlowMethod);
 
   const getLocationTitle = (location = {}) => {
     const fullAddress = String(location?.fullAddress || '').trim();
@@ -60,35 +131,156 @@ export function ServiceBookingLocationSection({
     if (note && note.toLowerCase() !== title.toLowerCase()) return note;
     return isDgfyCustomerSignedIn ? 'Saved address' : 'Saved location';
   };
-  const compactSavedLocationHeight = isMobileViewport ? 56 : 58;
-  const compactSecondaryButtonHeight = isMobileViewport ? 44 : 46;
   const compactRowControlHeight = isMobileViewport ? 46 : 48;
-  const mapHeight = isMobileViewport ? 'clamp(230px, 34svh, 280px)' : 260;
+  const mapHeight = isMobileViewport ? 'clamp(230px, 34svh, 280px)' : (compactLayout ? 220 : 260);
+  const homeLocation = compactLayout
+    ? deliverySavedLocations.find((location) => String(location?.label || '').trim().toLowerCase() === 'home')
+      || deliverySavedLocations.find((location) => location?.source === 'account' && location?.isDefault)
+      || deliverySavedLocations.find((location) => location?.source === 'account')
+      || null
+    : null;
+  const homeLocationCard = homeLocation ? { ...homeLocation, label: 'Home' } : null;
+  const isHomeLocationSelected = Boolean(
+    homeLocation
+    && String(selectedSavedLocationId) === String(homeLocation.id)
+    && deliveryLocationAction === 'saved'
+  );
+  const isAreaLocationSelected = compactLayout && ['map', 'current'].includes(deliveryLocationAction);
+  const normalizedHomeAddress = String(homeLocation?.fullAddress || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const normalizedCurrentAddress = String(deliveryLocationDisplayAddress || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const hasMatchingHomeCoordinates = Boolean(
+    homeLocation
+    && Number.isFinite(Number(homeLocation.latitude))
+    && Number.isFinite(Number(homeLocation.longitude))
+    && Number.isFinite(Number(customerPin?.latitude))
+    && Number.isFinite(Number(customerPin?.longitude))
+    && Number(homeLocation.latitude).toFixed(6) === Number(customerPin.latitude).toFixed(6)
+    && Number(homeLocation.longitude).toFixed(6) === Number(customerPin.longitude).toFixed(6)
+  );
+  const isCurrentLocationSavedAsHome = compactLayout
+    && Boolean(homeLocation)
+    && ((normalizedHomeAddress && normalizedHomeAddress === normalizedCurrentAddress) || hasMatchingHomeCoordinates);
+  const showHomeSaveAction = !compactLayout || !isCurrentLocationSavedAsHome;
   const stopMapOverlayInteraction = (event) => {
     event.preventDefault();
     event.stopPropagation();
   };
 
+  if (isOnlineFlow) return null;
+
+  if (isBranchFlow || isNeutralHybridFlow) {
+    return (
+      <section style={{ display: 'grid', gap: 14 }}>
+        <ServiceBookingSectionHeader
+          title={isNeutralHybridFlow ? 'Location' : 'Branch'}
+          showIcon={false}
+          servicesPrimary={servicesPrimary}
+          servicesPrimarySoft={servicesPrimarySoft}
+          servicesPrimaryBorder={servicesPrimaryBorder}
+          servicesDisplayFont={servicesDisplayFont}
+        />
+        {isNeutralHybridFlow ? (
+          <ProfileLocationCard
+            icon={<MapPin size={19} />}
+            title="Choose a service location"
+            description="Choose whether this service takes place at a branch or at your address."
+            servicesPrimary={servicesPrimary}
+            servicesPrimarySoft={servicesPrimarySoft}
+            servicesPrimaryBorder={servicesPrimaryBorder}
+            servicesDisplayFont={servicesDisplayFont}
+          />
+        ) : (
+          <BranchLocationPicker
+            isMobileViewport={isMobileViewport}
+            selectedLocationId={selectedLocationId}
+            setSelectedLocationId={setSelectedLocationId}
+            storeLocations={storeLocations}
+            servicesPrimary={servicesPrimary}
+            servicesPrimarySoft={servicesPrimarySoft}
+            servicesPrimaryBorder={servicesPrimaryBorder}
+            servicesDisplayFont={servicesDisplayFont}
+          />
+        )}
+      </section>
+    );
+  }
+
   return (
     <>
       <section style={{ display: 'grid', gap: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Location
-        </div>
+        <ServiceBookingSectionHeader
+          icon={<MapPin size={19} />}
+          title="Location"
+          showIcon={false}
+          servicesPrimary={servicesPrimary}
+          servicesPrimarySoft={servicesPrimarySoft}
+          servicesPrimaryBorder={servicesPrimaryBorder}
+          servicesDisplayFont={servicesDisplayFont}
+        />
 
         <div
           style={{
             border: '1px solid #e2e8f0',
             borderRadius: 20,
             background: '#fff',
-            padding: isMobileViewport ? 16 : 18,
+            padding: isMobileViewport ? 14 : (compactLayout ? 12 : 18),
             display: 'grid',
-            gap: 12,
+            gap: compactLayout ? 10 : 12,
+            boxSizing: 'border-box',
+            overflow: 'visible',
           }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '280px minmax(0, 1fr)', gap: 16, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-            <div style={{ display: 'grid', gap: 12 }}>
-              {isMobileViewport ? (
+          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport || compactLayout ? '1fr' : '280px minmax(0, 1fr)', gap: compactLayout ? 10 : 16, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+            <div style={{ display: 'grid', gap: compactLayout ? 8 : 12 }}>
+              {compactLayout ? (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {homeLocationCard ? (
+                    <SavedAddressCard
+                      key={`service-home-location-${homeLocationCard.id}`}
+                      address={homeLocationCard}
+                      isSelected={isHomeLocationSelected}
+                      isBusy={false}
+                      onSelect={() => applySavedDeliveryLocation(homeLocation)}
+                      showActions={false}
+                      themeColor={servicesPrimary}
+                      themeBg={servicesPrimarySoft}
+                      themeHoverBorder={servicesPrimaryBorder}
+                      themeHoverBg={servicesPrimarySoft}
+                      themeShadowColor="rgba(26,78,141,0.12)"
+                      themeShadowColorSoft="rgba(26,78,141,0.08)"
+                      compact
+                    />
+                  ) : (
+                    <div role="status" style={{ minHeight: 54, border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 14, background: SERVICES_PALETTE.surface, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'grid', placeItems: 'center', background: SERVICES_PALETTE.page, color: SERVICES_PALETTE.textMuted, flexShrink: 0 }}>
+                        <MapPin size={15} />
+                      </span>
+                      <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+                        <strong style={{ fontSize: 12, lineHeight: 1.25, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont || 'inherit' }}>Home</strong>
+                        <span style={{ fontSize: 10.5, lineHeight: 1.35, color: SERVICES_PALETTE.textMuted }}>No saved home location yet.</span>
+                      </span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    aria-pressed={isAreaLocationSelected}
+                    onClick={() => {
+                      setDeliveryLocationAction('map');
+                      setSelectedSavedLocationId('');
+                    }}
+                    style={{ minHeight: 54, borderRadius: 14, border: `1.5px solid ${isAreaLocationSelected ? servicesPrimary : SERVICES_PALETTE.border}`, background: isAreaLocationSelected ? servicesPrimarySoft : SERVICES_PALETTE.surface, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', color: SERVICES_PALETTE.textPrimary, cursor: 'pointer', boxShadow: isAreaLocationSelected ? '0 8px 18px rgba(26,78,141,0.12)' : 'none' }}
+                  >
+                    <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'grid', placeItems: 'center', background: isAreaLocationSelected ? SERVICES_PALETTE.primaryLight : SERVICES_PALETTE.page, color: servicesPrimary, flexShrink: 0 }}>
+                      <MapPin size={15} />
+                    </span>
+                    <span style={{ display: 'grid', gap: 2, minWidth: 0, flex: 1 }}>
+                      <strong style={{ fontSize: 12, lineHeight: 1.25, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont || 'inherit' }}>Choose an area</strong>
+                      <span style={{ fontSize: 10.5, lineHeight: 1.35, color: SERVICES_PALETTE.textMuted }}>Select the service area on the map.</span>
+                    </span>
+                    <span aria-hidden="true" style={{ width: 18, height: 18, borderRadius: '50%', border: `1px solid ${isAreaLocationSelected ? servicesPrimary : SERVICES_PALETTE.border}`, background: isAreaLocationSelected ? servicesPrimary : 'transparent', boxShadow: isAreaLocationSelected ? `inset 0 0 0 4px ${SERVICES_PALETTE.surface}` : 'none', flexShrink: 0 }} />
+                  </button>
+                </div>
+              ) : isMobileViewport ? (
                 <>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>
                     Service address
@@ -101,9 +293,9 @@ export function ServiceBookingLocationSection({
                         setDeliveryLocationAction('map');
                         setSelectedSavedLocationId('');
                       }}
-                      style={{ minHeight: 44, borderRadius: 14, border: `1.5px solid ${servicesPrimaryBorder}`, background: servicesPrimarySoft, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, color: servicesPrimary, cursor: 'pointer', flexShrink: 0, boxShadow: '0 10px 20px rgba(15,118,110,0.12)', transition: 'all 200ms ease', fontSize: 13 }}
+                      style={{ minHeight: 44, borderRadius: 14, border: `1.5px solid ${servicesPrimaryBorder}`, background: servicesPrimarySoft, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, color: servicesPrimary, cursor: 'pointer', flexShrink: 0, boxShadow: '0 10px 20px rgba(26,78,141,0.12)', transition: 'all 200ms ease', fontSize: 13 }}
                     >
-                      <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: servicesPrimary, background: '#ccfbf1', transition: 'all 200ms ease' }}>
+                      <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: servicesPrimary, background: SERVICES_PALETTE.primaryLight, transition: 'all 200ms ease' }}>
                         <Plus size={18} />
                       </span>
                       Add New Location
@@ -124,9 +316,10 @@ export function ServiceBookingLocationSection({
                             themeColor={servicesPrimary}
                             themeBg={servicesPrimarySoft}
                             themeHoverBorder={servicesPrimaryBorder}
-                            themeHoverBg="#f0fdfa"
-                            themeShadowColor="rgba(15,118,110,0.12)"
-                            themeShadowColorSoft="rgba(15,118,110,0.08)"
+                            themeHoverBg={servicesPrimarySoft}
+                            themeShadowColor="rgba(26,78,141,0.12)"
+                            themeShadowColorSoft="rgba(26,78,141,0.08)"
+                            compact={compactLayout}
                           />
                         );
                       })()}
@@ -141,11 +334,16 @@ export function ServiceBookingLocationSection({
                   <div
                     className={deliverySavedLocations.length > 3 ? 'fnb-saved-locations-scroll' : undefined}
                     style={{
-                      maxHeight: deliverySavedLocations.length > 3 ? 240 : 'none',
+                      maxHeight: deliverySavedLocations.length > 3 ? (compactLayout ? 208 : 240) : 'none',
                       overflowY: deliverySavedLocations.length > 3 ? 'auto' : 'visible',
                       display: 'grid',
-                      gap: 8,
-                      paddingRight: deliverySavedLocations.length > 3 ? 4 : 0
+                      gap: compactLayout ? 6 : 8,
+                      paddingRight: deliverySavedLocations.length > 3 ? 4 : 0,
+                      paddingTop: deliverySavedLocations.length > 3 ? 4 : 0,
+                      paddingBottom: deliverySavedLocations.length > 3 ? 4 : 0,
+                      scrollbarGutter: 'stable',
+                      scrollPaddingBlock: 4,
+                      boxSizing: 'border-box',
                     }}
                   >
                     {deliverySavedLocations.map((location) => {
@@ -161,9 +359,10 @@ export function ServiceBookingLocationSection({
                           themeColor={servicesPrimary}
                           themeBg={servicesPrimarySoft}
                           themeHoverBorder={servicesPrimaryBorder}
-                          themeHoverBg="#f0fdfa"
-                          themeShadowColor="rgba(15,118,110,0.12)"
-                          themeShadowColorSoft="rgba(15,118,110,0.08)"
+                          themeHoverBg={servicesPrimarySoft}
+                          themeShadowColor="rgba(26,78,141,0.12)"
+                          themeShadowColorSoft="rgba(26,78,141,0.08)"
+                          compact={compactLayout}
                         />
                       );
                     })}
@@ -176,11 +375,11 @@ export function ServiceBookingLocationSection({
                       setSelectedSavedLocationId('');
                     }}
                     style={{
-                      minHeight: 44,
-                      borderRadius: 12,
-                      border: `1.5px solid ${deliveryLocationAction === 'map' ? servicesPrimaryBorder : '#dbe5ee'}`,
+                      minHeight: compactLayout ? 42 : 44,
+                      borderRadius: compactLayout ? 11 : 12,
+                      border: `1.5px solid ${deliveryLocationAction === 'map' ? servicesPrimaryBorder : SERVICES_PALETTE.border}`,
                       background: deliveryLocationAction === 'map' ? servicesPrimarySoft : '#fff',
-                      padding: '0 14px',
+                      padding: compactLayout ? '0 12px' : '0 14px',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 12,
@@ -188,13 +387,13 @@ export function ServiceBookingLocationSection({
                       color: '#1e293b',
                       cursor: 'pointer',
                       flexShrink: 0,
-                      boxShadow: deliveryLocationAction === 'map' ? '0 10px 20px rgba(15,118,110,0.12)' : 'none',
+                      boxShadow: deliveryLocationAction === 'map' ? '0 10px 20px rgba(26,78,141,0.12)' : 'none',
                       transition: 'all 200ms ease',
-                      fontSize: 13,
-                      marginTop: 4
+                      fontSize: compactLayout ? 12 : 13,
+                      marginTop: compactLayout ? 2 : 4
                     }}
                   >
-                    <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: deliveryLocationAction === 'map' ? servicesPrimary : '#94a3b8', background: deliveryLocationAction === 'map' ? '#ccfbf1' : 'transparent', transition: 'all 200ms ease' }}>
+                    <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: deliveryLocationAction === 'map' ? servicesPrimary : '#94a3b8', background: deliveryLocationAction === 'map' ? SERVICES_PALETTE.primaryLight : 'transparent', transition: 'all 200ms ease' }}>
                       <Plus size={18} />
                     </span>
                     Add New Location
@@ -203,7 +402,7 @@ export function ServiceBookingLocationSection({
               )}
             </div>
 
-            <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gap: compactLayout ? 10 : 12 }}>
               <DeliveryPinMap
                 pin={customerPin}
                 onPinChange={(nextPin) => {
@@ -215,7 +414,7 @@ export function ServiceBookingLocationSection({
                 height={mapHeight}
                 highlighted
                 highlightColor={servicesPrimary}
-                highlightGlow="rgba(15,118,110,0.16)"
+                highlightGlow="rgba(26,78,141,0.16)"
                 overlayControls={(
                   <>
                     <button
@@ -234,9 +433,9 @@ export function ServiceBookingLocationSection({
                         left: 12,
                         minHeight: 38,
                         borderRadius: 999,
-                        border: `1px solid ${deliveryLocationAction === 'current' ? servicesPrimary : '#dbe5ee'}`,
-                        background: deliveryLocationAction === 'current' ? '#ecfeff' : '#ffffff',
-                        color: deliveryLocationAction === 'current' ? '#134e4a' : '#1e293b',
+                        border: `1px solid ${deliveryLocationAction === 'current' ? servicesPrimary : SERVICES_PALETTE.border}`,
+                        background: deliveryLocationAction === 'current' ? servicesPrimarySoft : SERVICES_PALETTE.surface,
+                        color: deliveryLocationAction === 'current' ? SERVICES_PALETTE.primaryDark : SERVICES_PALETTE.textPrimary,
                         padding: '0 14px',
                         fontSize: 12,
                         fontWeight: 700,
@@ -269,9 +468,9 @@ export function ServiceBookingLocationSection({
                         bottom: 12,
                         minHeight: 34,
                         borderRadius: 999,
-                        border: `1px solid ${deliveryLocationAction === 'map' ? servicesPrimary : '#dbe5ee'}`,
-                        background: deliveryLocationAction === 'map' ? '#ecfeff' : 'rgba(255,255,255,0.96)',
-                        color: deliveryLocationAction === 'map' ? '#134e4a' : '#334155',
+                        border: `1px solid ${deliveryLocationAction === 'map' ? servicesPrimary : SERVICES_PALETTE.border}`,
+                        background: deliveryLocationAction === 'map' ? servicesPrimarySoft : 'rgba(255,255,255,0.96)',
+                        color: deliveryLocationAction === 'map' ? SERVICES_PALETTE.primaryDark : SERVICES_PALETTE.textSecondary,
                         padding: '0 10px',
                         fontSize: 12,
                         fontWeight: 700,
@@ -324,7 +523,7 @@ export function ServiceBookingLocationSection({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) auto',
+                  gridTemplateColumns: isMobileViewport || !showHomeSaveAction ? '1fr' : 'minmax(0, 1fr) auto',
                   gap: 10,
                   alignItems: 'center',
                 }}
@@ -333,7 +532,7 @@ export function ServiceBookingLocationSection({
                   style={{
                     minHeight: compactRowControlHeight,
                     borderRadius: 16,
-                    border: `1px solid ${deliveryLocationDisplayAddress ? '#99f6e4' : '#dbe5ee'}`,
+                    border: `1px solid ${deliveryLocationDisplayAddress ? servicesPrimaryBorder : SERVICES_PALETTE.border}`,
                     background: '#fff',
                     padding: isMobileViewport ? '8px 11px' : '9px 12px',
                     display: 'flex',
@@ -351,26 +550,28 @@ export function ServiceBookingLocationSection({
                     {deliveryLocationDisplayAddress || 'Selected service address will appear here.'}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAddPinnedLocation}
-                  disabled={!canAddPinnedLocation}
-                  style={{
-                    minHeight: compactRowControlHeight,
-                    borderRadius: 16,
-                    border: `1px solid ${servicesPrimary}`,
-                    background: canAddPinnedLocation ? servicesPrimary : '#f8fafc',
-                    color: canAddPinnedLocation ? '#fff' : '#94a3b8',
-                    padding: '0 13px',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed',
-                    minWidth: isMobileViewport ? 104 : 120,
-                    boxShadow: canAddPinnedLocation ? '0 14px 28px rgba(15,118,110,0.18)' : 'none',
-                  }}
-                >
-                  {isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
-                </button>
+                {showHomeSaveAction ? (
+                  <button
+                    type="button"
+                    onClick={() => handleAddPinnedLocation({ saveAsHome: compactLayout, selectAfterSave: !compactLayout })}
+                    disabled={!canAddPinnedLocation}
+                    style={{
+                      minHeight: compactRowControlHeight,
+                      borderRadius: 16,
+                      border: `1px solid ${servicesPrimary}`,
+                      background: canAddPinnedLocation ? servicesPrimary : '#f8fafc',
+                      color: canAddPinnedLocation ? '#fff' : '#94a3b8',
+                      padding: '0 13px',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed',
+                      minWidth: isMobileViewport ? 104 : 120,
+                      boxShadow: canAddPinnedLocation ? '0 14px 28px rgba(26,78,141,0.18)' : 'none',
+                    }}
+                  >
+                    {compactLayout ? 'Save as Home' : (isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location')}
+                  </button>
+                ) : null}
               </div>
 
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -408,7 +609,7 @@ export function ServiceBookingLocationSection({
               height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}
               highlighted
               highlightColor={servicesPrimary}
-              highlightGlow="rgba(15,118,110,0.16)"
+              highlightGlow="rgba(26,78,141,0.16)"
               overlayControls={(
                 <>
                   <button
@@ -427,9 +628,9 @@ export function ServiceBookingLocationSection({
                       left: 12,
                       minHeight: 38,
                       borderRadius: 999,
-                      border: `1px solid ${deliveryLocationAction === 'current' ? servicesPrimary : '#dbe5ee'}`,
-                      background: deliveryLocationAction === 'current' ? '#ecfeff' : '#ffffff',
-                      color: deliveryLocationAction === 'current' ? '#134e4a' : '#1e293b',
+                      border: `1px solid ${deliveryLocationAction === 'current' ? servicesPrimary : SERVICES_PALETTE.border}`,
+                      background: deliveryLocationAction === 'current' ? servicesPrimarySoft : SERVICES_PALETTE.surface,
+                      color: deliveryLocationAction === 'current' ? SERVICES_PALETTE.primaryDark : SERVICES_PALETTE.textPrimary,
                       padding: '0 12px',
                       fontSize: 12,
                       fontWeight: 700,
@@ -462,9 +663,9 @@ export function ServiceBookingLocationSection({
                       bottom: 12,
                       minHeight: 34,
                       borderRadius: 999,
-                      border: `1px solid ${deliveryLocationAction === 'map' ? servicesPrimary : '#dbe5ee'}`,
-                      background: deliveryLocationAction === 'map' ? '#ecfeff' : 'rgba(255,255,255,0.96)',
-                      color: deliveryLocationAction === 'map' ? '#134e4a' : '#334155',
+                      border: `1px solid ${deliveryLocationAction === 'map' ? servicesPrimary : SERVICES_PALETTE.border}`,
+                      background: deliveryLocationAction === 'map' ? servicesPrimarySoft : 'rgba(255,255,255,0.96)',
+                      color: deliveryLocationAction === 'map' ? SERVICES_PALETTE.primaryDark : SERVICES_PALETTE.textSecondary,
                       padding: '0 10px',
                       fontSize: 12,
                       fontWeight: 700,
@@ -485,12 +686,12 @@ export function ServiceBookingLocationSection({
             />
 
             <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) auto', gap: 10, alignItems: 'center' }}>
-              <div style={{ minHeight: compactRowControlHeight, borderRadius: 14, border: `1px solid ${deliveryLocationDisplayAddress ? '#99f6e4' : '#dbe5ee'}`, background: '#fff', padding: '0 13px', display: 'flex', alignItems: 'center', color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8', fontSize: 13, minWidth: 0 }}>
+              <div style={{ minHeight: compactRowControlHeight, borderRadius: 14, border: `1px solid ${deliveryLocationDisplayAddress ? servicesPrimaryBorder : SERVICES_PALETTE.border}`, background: SERVICES_PALETTE.surface, padding: '0 13px', display: 'flex', alignItems: 'center', color: deliveryLocationDisplayAddress ? SERVICES_PALETTE.textSecondary : '#94a3b8', fontSize: 13, minWidth: 0 }}>
                 <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>
                   {deliveryLocationDisplayAddress || 'Selected service address will appear here.'}
                 </span>
               </div>
-              <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: compactRowControlHeight, borderRadius: 14, border: `1px solid ${servicesPrimary}`, background: canAddPinnedLocation ? servicesPrimary : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', boxShadow: canAddPinnedLocation ? '0 14px 28px rgba(15,118,110,0.18)' : 'none' }}>
+              <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: compactRowControlHeight, borderRadius: 14, border: `1px solid ${servicesPrimary}`, background: canAddPinnedLocation ? servicesPrimary : SERVICES_PALETTE.page, color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', boxShadow: canAddPinnedLocation ? '0 14px 28px rgba(26,78,141,0.18)' : 'none' }}>
                 {isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
               </button>
             </div>
@@ -555,9 +756,9 @@ export function ServiceBookingLocationSection({
                     themeColor={servicesPrimary}
                     themeBg={servicesPrimarySoft}
                     themeHoverBorder={servicesPrimaryBorder}
-                    themeHoverBg="#f0fdfa"
-                    themeShadowColor="rgba(15,118,110,0.12)"
-                    themeShadowColorSoft="rgba(15,118,110,0.08)"
+                    themeHoverBg={servicesPrimarySoft}
+                    themeShadowColor="rgba(26,78,141,0.12)"
+                    themeShadowColorSoft="rgba(26,78,141,0.08)"
                   />
                 );
               })}

@@ -28,10 +28,14 @@ export const FnbHeroBrandingSection = ({
   storefrontShareUrl,
   STYLES
 }) => {
-  const heroTaglineColor = heroTheme.palette?.secondary || '#fb923c';
-  const heroAccentShadow = heroTheme.palette?.primary
+  // Services keeps its template tokens on the hero theme itself, while the
+  // retail adapter also exposes a nested palette. Prefer the mode-owned flat
+  // token so Services cannot fall back to the legacy orange defaults.
+  const heroAccent = heroTheme.accent || heroTheme.palette?.primary || '#f97316';
+  const heroTaglineColor = heroTheme.taglineColor || heroTheme.accentMuted || heroTheme.palette?.secondary || heroAccent;
+  const heroAccentShadow = heroTheme.accentShadow || (heroTheme.palette?.primary
     ? 'rgba(26,78,141,0.3)'
-    : 'rgba(249,115,22,0.3)';
+    : 'rgba(249,115,22,0.3)');
 
   return (
   <StorefrontHeroShell
@@ -66,7 +70,7 @@ export const FnbHeroBrandingSection = ({
     <SharedStorefrontShareQr
       storeUrl={storefrontShareUrl}
       isMobileViewport={isMobileViewport}
-      accentColor={heroTheme.accent || '#f97316'}
+      accentColor={heroAccent}
       shareEnabled={shareEnabled}
     />
     {isMobileViewport && (
@@ -106,10 +110,12 @@ export const FnbHeroBrandingSection = ({
               textColor="#fff"
               fontSize={50}
               fontFamily={heroTheme.displayFont}
-              accentColor={heroTheme.accent || '#f97316'}
+              accentColor={heroAccent}
               followEnabled={followEnabled}
               followState={followState}
               handleFollowAction={handleFollowAction}
+              followAccentColor={heroTheme.followColor || heroAccent}
+              followActiveColor={heroTheme.followActiveColor}
             />
             {heroSectionModel.tagline ? (
               <p style={{ margin: 0, color: heroTaglineColor, fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
@@ -136,7 +142,7 @@ export const FnbHeroBrandingSection = ({
                 Call
               </GhostButton>
             )}
-            <PrimaryButton onClick={onBrowseMenu} style={{ minWidth: 150, background: heroTheme.accent || '#f97316', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: `0 10px 25px ${heroAccentShadow}`, border: 'none', fontWeight: 800, fontFamily: heroTheme.bodyFont }}>
+            <PrimaryButton onClick={onBrowseMenu} style={{ minWidth: 150, background: heroAccent, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: `0 10px 25px ${heroAccentShadow}`, border: 'none', fontWeight: 800, fontFamily: heroTheme.bodyFont }}>
               <MousePointer2 size={18} />
               {heroSectionModel.orderLabel}
             </PrimaryButton>
