@@ -18216,11 +18216,11 @@ base is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`.
 Re-check the ledger's actual highest merged entry at plan time rather than assuming — Phase 255
 (#1441 PR-D) may or may not have merged by then.
 
-## Phase 257 - Queue+Run: iPad portrait split-view fix + hide-assigned-orders in split view only (#1491)
+## Phase 258 - Queue+Run: iPad portrait split-view fix + hide-assigned-orders in split view only (#1491)
 
 ### Initiative and release
 
-Standalone bug fix, no epic. Claimed 257 fresh at branch/commit time -- re-checked the ledger's
+Standalone bug fix, no epic. Claimed 258 fresh at branch/commit time -- re-checked the ledger's
 merged tip (still Phase 256, `docs/features/IMPLEMENTATION_PHASE_LEDGER.md:18116`) and every open
 PR into `develop` (`gh api repos/Sieitzz/dgfy-platform/pulls?base=develop&state=open`: only #1475
 and #1316, neither claiming a phase number) immediately before this commit, per `AGENTS.md`'s
@@ -18317,5 +18317,5 @@ and was drafted by this session per the user's standing preference, rather than 
 
 ### Next eligible phase
 
-258. Re-check the ledger's actual highest merged entry and open `develop` PRs at plan time rather
+259. Re-check the ledger's actual highest merged entry and open `develop` PRs at plan time rather
 than assuming.
