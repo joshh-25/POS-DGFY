@@ -6,6 +6,7 @@ import {
   updateItemUseCase,
   finalizeItemUseCase,
   deleteItemUseCase,
+  restoreItemUseCase,
   getItemStockHistoryUseCase,
   getItemBatchesUseCase,
   getItemMovementsUseCase,
@@ -150,7 +151,7 @@ export const getItemById = async (req, res, next) => {
   try {
     const { item_id } = req.params;
     const result = await runInventoryUseCase(
-      () => getItemByIdUseCase({ itemId: item_id, query: req.query }),
+      () => getItemByIdUseCase({ itemId: item_id, query: req.query, user: req.user }),
       'Failed to retrieve item'
     );
     await trackProductUsageFromResult({
@@ -357,6 +358,45 @@ export const deleteItem = async (req, res, next) => {
         ...defaultErrorPayload(req, res, failure),
         details: failure.details
       })
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const restoreItem = async (req, res, next) => {
+  try {
+    const { item_id } = req.params;
+    const userId = req.user.user_id;
+
+    const result = await runInventoryUseCase(
+      () => restoreItemUseCase({ itemId: item_id, userId }),
+      'Failed to restore item'
+    );
+    if (result.success) {
+      await publishCatalogInvalidation(req, 'item_restored', [item_id]);
+    }
+    await trackProductUsageFromResult({
+      req,
+      user: req.user,
+      eventType: 'inventory_item_restored',
+      surface: 'inventory',
+      action: 'restore_item',
+      result,
+      successMetadataResolver: () => ({
+        item_id
+      })
+    });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Item restored successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
     });
   } catch (error) {
     next(error);
@@ -1306,6 +1346,7 @@ export default {
   updateItem,
   finalizeItem,
   deleteItem,
+  restoreItem,
   getItemStockHistory,
   getItemBatches,
   getItemMovements,
