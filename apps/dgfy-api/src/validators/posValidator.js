@@ -578,6 +578,10 @@ const incomingOnlineOrdersQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(500).default(200)
 });
 
+const procurementExportQuerySchema = Joi.object({
+    location_id: Joi.number().integer().positive().optional()
+});
+
 const onlineOrderHistoryQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional(),
     search: Joi.string().trim().allow('', null).optional(),
@@ -1324,6 +1328,7 @@ export const validateTerminalShiftHistoryQuery = validateSchema(terminalShiftHis
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
+export const validateProcurementExportQuery = validateSchema(procurementExportQuerySchema, 'query', 'validatedQuery');
 export const validateOnlineOrderHistoryQuery = validateSchema(onlineOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateDeliveryPersonnelListQuery = validateSchema(deliveryPersonnelListQuerySchema, 'query', 'validatedQuery');
 export const validateAdminLocationMonitorQuery = validateSchema(adminLocationMonitorQuerySchema, 'query', 'validatedQuery');

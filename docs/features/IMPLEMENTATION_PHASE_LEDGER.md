@@ -18461,3 +18461,140 @@ and was drafted by this session per the user's standing preference, rather than 
 
 259. Re-check the ledger's actual highest merged entry and open `develop` PRs at plan time rather
 than assuming.
+
+## Phase 261 - Pre-run procurement CSV export (#1488)
+
+### Initiative and release
+
+#1178 (Retail order handling and delivery fulfillment — Surebiz). A manual, scope-deliberately-small
+CSV dump of pending online orders for use before a procurement run is built -- no new data model, no
+tracked worklist. **Numbering note**: the approved implementation plan reserved Phase 257 (ledger tip
+at plan time was Phase 256), but re-checked against open `develop` PRs at commit time
+(`gh pr list --base develop --state open`) found PR #1503
+(`feature/1318-item-folder-memberships`, "... Phase 257") already claiming 257 -- opened
+2026-09-03T07:02:27Z, after the plan was produced. Re-checked the ledger's own merged tip again
+(still Phase 256) and every other open PR (`gh pr list`: #1503 Phase 257, #1502/#1501/#1500/#1475/
+#1316 none claiming a phase number) -- **258 was the next free number at PR-open time** and this
+entry originally took it. **Re-numbered 258 → 261** during PR #1504's fix-step (this PR's own
+RF-1 fix, alongside pr-reviewer's separate RF-2 finding): PR #1491
+(`fix/1491-queue-run-ipad-and-hide-assigned`, "Phase 258 - Queue+Run...") also claimed 258 and
+merged into `develop` before this PR did, so the coordinator arbitrated merge order across the
+colliding phase claims and assigned this entry 261 -- confirmed by resolving this file's own merge
+conflict against `develop`'s tip, which by then already carried both Phase 257 (PR #1503,
+item-folder-memberships) and Phase 258 (PR #1491, queue+run iPad fix) as merged entries above. No
+other content in this entry changed as a result -- purely a numbering correction per `AGENTS.md`'s
+Continuous Phase Numbering rule, not a re-scope.
+
+### Objective and scope
+
+One PR, `feature/1488-procurement-csv-export` into `develop`:
+
+- **Backend** -- new `GET /pos/reports/procurement-export` endpoint (`VIEW_POS` permission, no
+  `shift_id` requirement, unlike the shift-bound incoming-orders queue): a new Joi validator
+  (`validateProcurementExportQuery`), a new usecase (`buildExportProcurementCsvUseCase`, calling
+  the existing `posRepository.listIncomingOnlineOrders()` unchanged -- no new repository method),
+  a new controller handler (`exportProcurementCsv`, same buffered-CSV-response shape as
+  `exportReports`), a new route, and their composition-root wiring in
+  `apps/dgfy-api/src/modules/pos/index.js`.
+- **Frontend** -- `exportProcurementCsv` service function in `packages/web-core`'s `posService.js`
+  and a new "Procurement CSV" button + `handleExportProcurementCsv` handler in
+  `PosReportsAnalyticsWorkspace.jsx`, independent of the currently-loaded report section/date range.
+- **Tests** -- usecase unit tests (empty-orders, multi-line-item flattening, guest-buyer fallback,
+  `location_id` passthrough, validation failures), a transport test for the new handler, and a
+  source-contract test asserting the new button/handler exist and aren't gated on `reportData`.
+- **Compliance** -- new declaration
+  `docs/compliance/impact-declarations/2026-09-03-procurement-csv-export.md` (classification
+  `major`, per the classification matrix's floor for the touched `pos`/`terminal` surfaces; this is
+  the first endpoint to expose customer PII -- name, phone, delivery address, all pre-existing
+  `PosTransaction` fields, no new capture -- as a downloadable CSV file).
+
+Deliberately does **not** reuse `buildListIncomingOnlineOrdersUseCase` (requires an open shift and
+pins to one shift's location) -- modeled instead on the shift-independent reports read path
+(`buildGetPosReportsOverviewUseCase`/`buildExportPosReportsUseCase`). Full reasoning in the approved
+implementation plan's section 1.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+None on any other in-flight phase -- new files/exports only, no shared file touched by Phase
+251-256's work. Reuses `posRepository.listIncomingOnlineOrders()` and `buildTransactionInclude()`
+as-is, with no changes to either.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `apps/dgfy-api` `.js` file (`posValidator.js`,
+  `posUseCases.js`, `posHandlers.js`, `pos.js`, `modules/pos/index.js`).
+- [x] `tests/posReports.usecase.test.js` + `tests/posHandlers.transport.test.js` (Jest,
+  `--runInBand`) -- 40/40 pass at PR-open time, 45/45 after the RF-1 fix-step added the
+  location-scope resolver tests below.
+- [x] `packages/web-core/src/features/pos/__tests__/posReportsAnalyticsWorkspace.contract.test.js`
+  (Vitest, run from `apps/dgfy-ims` per `docs/architecture/frontend-split-sync.md`) -- 6/6 pass.
+- [x] `npm run build:pos` -- succeeded.
+- [x] `npm run build:skupervisor` -- succeeded.
+- [x] `npm run check:compliance` -- PASS (7 sensitive files, 1 declaration file, both check scripts
+  green).
+
+### Deviations from the plan
+
+Phase number: plan reserved 257, claimed 258 at PR-open time, re-numbered to 261 during the
+fix-step per the coordinator's merge-order arbitration -- see "Numbering note" above. No other
+deviation; implemented exactly as the approved plan specified (validator, repository reuse, usecase,
+controller, route, frontend service+button, tests, this ledger entry).
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired**: `npm run check:compliance`'s missing-declaration checkpoint fired (new customer PII --
+name, phone, delivery address -- newly leaving the system via a downloadable CSV). Per this task's
+explicit dispatch instruction, escalated to the coordinator before committing; the coordinator
+confirmed Pat's standing preference (recorded in project memory, stated twice previously) to skip
+the ask-before-committing step for this batch and draft the declaration directly. Declaration
+written (`docs/compliance/impact-declarations/2026-09-03-procurement-csv-export.md`, classification
+`major`, `preflight_request_ref: NOT-EXECUTED-1488` -- the standard PR-open-time placeholder the
+continuous compliance-preflight sweep reconciles post-merge); `check:compliance` re-run and PASSes.
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR base
+is `develop`, branch prefix `feature/` per `.github/branch-cleanup-policy.json`.
+
+### Fix-step (pr-reviewer RF-1, PR #1504)
+
+pr-reviewer's review of the PR posted a `BLOCK` verdict: `buildExportProcurementCsvUseCase`
+authenticated the caller but never checked the mandatory POS read-location scope the sibling
+`buildListOnlineOrderHistoryUseCase`/reports read path already enforces, so a `VIEW_POS` user could
+export pending-order customer PII (name, phone, delivery address) across every location, or for an
+arbitrary location, with no authorization check. Fixed by injecting the same
+`resolvePosReadLocationScope` helper (matching `buildListOnlineOrderHistoryUseCase`'s own shape --
+default-injected in `modules/pos/index.js`'s composition root, mockable in tests): the caller's
+`query.location_id` is resolved against their `UserLocationGrant` rows before touching the
+repository, and only `locationScope.location_id` -- never the raw query value -- reaches
+`posRepository.listIncomingOnlineOrders()`. Added two new usecase tests proving an unscoped request
+resolves to the caller's own authorized location and a request for an unauthorized location is
+rejected (`AUTHORIZATION_FAILED`/403) without ever calling the repository; all 5
+`buildExportProcurementCsvUseCase` tests that predated the fix were updated to inject a
+`resolveLocationScope` mock. RF-2 (this entry's phase-number collision, 258 → 261) was handled
+separately by the coordinator in the same fix-step -- see "Numbering note" above.
+
+### Links
+
+- Tracking issue: #1488 (Closes).
+- PR: `feature/1488-procurement-csv-export` → `develop`.
+- Modified: `apps/dgfy-api/src/validators/posValidator.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`,
+  `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/routes/pos.js`,
+  `apps/dgfy-api/tests/posReports.usecase.test.js`,
+  `apps/dgfy-api/tests/posHandlers.transport.test.js`,
+  `packages/web-core/src/features/pos/services/posService.js`,
+  `packages/web-core/src/features/pos/components/PosReportsAnalyticsWorkspace.jsx`,
+  `packages/web-core/src/features/pos/__tests__/posReportsAnalyticsWorkspace.contract.test.js`,
+  `docs/compliance/impact-declarations/2026-09-03-procurement-csv-export.md`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+262. At this entry's merge time, `develop`'s tip already carries Phase 257 (PR #1503) and Phase
+258 (PR #1491) as merged; 259 and 260 were reserved by other in-flight `develop` PRs per the
+coordinator's own merge-order arbitration at the time this entry was renumbered to 261 (see
+"Numbering note" above) -- re-check the ledger's actual highest merged entry and every open
+`develop` PR before trusting 262 still stands.
