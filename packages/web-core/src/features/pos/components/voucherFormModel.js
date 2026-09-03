@@ -106,6 +106,8 @@ export const blankForm = () => ({
   pricelistId: '',
   maxDiscountPesos: '',
   minSpendPesos: '',
+  // #1490: the mirror image of minSpendPesos above -- see buildVoucherPayload's own comment.
+  maxOrderValuePesos: '',
   minQuantity: '',
   allowBelowCost: false,
   stackableWithStatutory: false,
@@ -131,7 +133,13 @@ export const blankForm = () => ({
   autoApply: false,
   redeemedCount: 0,
   redeemedValueCentavos: 0,
-  redeemedQuantity: 0
+  redeemedQuantity: 0,
+  // #1494: read-only display fields, never form-editable and never part of buildVoucherPayload's
+  // outgoing request body.
+  createdByUsername: null,
+  updatedByUsername: null,
+  createdAt: null,
+  updatedAt: null
 });
 
 // Resets the kind-dependent slice of the form when the merchant flips the voucher-type selector on
@@ -208,6 +216,7 @@ export const voucherToForm = (voucher, scopes = []) => ({
   pricelistId: voucher.pricelist_id != null ? String(voucher.pricelist_id) : '',
   maxDiscountPesos: voucher.max_discount_centavos != null ? centavosToPesoString(voucher.max_discount_centavos) : '',
   minSpendPesos: voucher.min_spend_centavos != null ? centavosToPesoString(voucher.min_spend_centavos) : '',
+  maxOrderValuePesos: voucher.max_order_value_centavos != null ? centavosToPesoString(voucher.max_order_value_centavos) : '',
   minQuantity: voucher.min_quantity != null ? String(voucher.min_quantity) : '',
   allowBelowCost: voucher.allow_below_cost === true,
   stackableWithStatutory: voucher.stackable_with_statutory === true,
@@ -234,7 +243,12 @@ export const voucherToForm = (voucher, scopes = []) => ({
   autoApply: voucher.auto_apply === true,
   redeemedCount: Number(voucher.redeemed_count || 0),
   redeemedValueCentavos: Number(voucher.redeemed_value_centavos || 0),
-  redeemedQuantity: Number(voucher.redeemed_quantity || 0)
+  redeemedQuantity: Number(voucher.redeemed_quantity || 0),
+  // #1494: display-only, carried through the same way redeemedCount etc. are above.
+  createdByUsername: voucher.created_by_username || null,
+  updatedByUsername: voucher.updated_by_username || null,
+  createdAt: voucher.created_at || null,
+  updatedAt: voucher.updated_at || null
 });
 
 // Builds the outgoing request body field-by-field from exactly the writable columns -- never a
@@ -255,6 +269,8 @@ export const buildVoucherPayload = (form) => {
     validity_text: form.validityText.trim() || null,
     benefit_class: isDeliveryCampaign ? 'free_delivery' : form.benefitClass,
     min_spend_centavos: form.minSpendPesos === '' ? null : pesoStringToCentavos(form.minSpendPesos),
+    // #1490: the mirror image of min_spend_centavos above -- an eligibility CAP, not a discount cap.
+    max_order_value_centavos: form.maxOrderValuePesos === '' ? null : pesoStringToCentavos(form.maxOrderValuePesos),
     min_quantity: form.minQuantity === '' ? null : Math.max(1, parseInt(form.minQuantity, 10) || 1),
     allow_below_cost: isDeliveryCampaign ? false : form.allowBelowCost === true,
     stackable_with_statutory: isDeliveryCampaign ? false : form.stackableWithStatutory === true,
@@ -371,6 +387,22 @@ export const validateFormLocally = (form) => {
     addError('fulfillment_methods_mask', 'Select at least one fulfillment method.');
   }
   if (!form.orderTimingFlags.asap && !form.orderTimingFlags.scheduled) addError('order_timings_mask', 'Select at least one order timing.');
+
+  // #1490: runs unconditionally (both promo_code and delivery_campaign), unlike the pre-existing
+  // minSpendPesos check above which only runs under isDeliveryCampaign -- that asymmetry is a
+  // pre-existing gap, flagged but deliberately NOT fixed in this phase (kept out of scope; a
+  // follow-up issue tracks it). Not inheriting that gap for the new field.
+  if (form.maxOrderValuePesos !== '') {
+    const centavos = pesoStringToCentavos(form.maxOrderValuePesos);
+    if (!Number.isFinite(centavos) || centavos < 0) addError('max_order_value_centavos', 'Maximum order value cannot be negative.');
+  }
+  if (form.minSpendPesos !== '' && form.maxOrderValuePesos !== '') {
+    const minCentavos = pesoStringToCentavos(form.minSpendPesos);
+    const maxCentavos = pesoStringToCentavos(form.maxOrderValuePesos);
+    if (Number.isFinite(minCentavos) && Number.isFinite(maxCentavos) && maxCentavos < minCentavos) {
+      addError('max_order_value_centavos', 'Maximum order value cannot be less than the minimum spend.');
+    }
+  }
 
   if (form.validFrom && form.validUntil && form.validUntil < form.validFrom) {
     addError('valid_until', 'End date cannot be earlier than the start date.');
