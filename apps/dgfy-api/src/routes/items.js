@@ -256,4 +256,8 @@ router.patch('/:item_id/finalize', checkPermission(PERMISSIONS.INVENTORY.actions
 // Delete operations - admins only
 router.delete('/:item_id', checkPermission(PERMISSIONS.INVENTORY.actions.DELETE_ITEMS), itemController.deleteItem);
 
+// Restore operations - admins only. Reverses the one-way deactivate above; reuses the delete
+// permission rather than a separate grant, matching the PO/JO restore precedent.
+router.post('/:item_id/restore', checkPermission(PERMISSIONS.INVENTORY.actions.DELETE_ITEMS), validateItemIdParam, itemController.restoreItem);
+
 export default router;

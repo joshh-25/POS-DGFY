@@ -24,7 +24,8 @@ import {
   BoxIcon,
   DollarSign,
   ClipboardCheck,
-  Shield
+  Shield,
+  RotateCcw
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
@@ -33,6 +34,7 @@ import { formatNumber, formatPeso, formatQty } from '../../src/lib/numberUtils.j
 import { getCategoryConfig, getCategoryLabel, isManufactured } from '@/components/utils/categoryHelpers';
 import { calculateTotalProductCost } from './details/helpers';
 import { resolveItemFinancialPolicy } from '../../src/features/inventory/itemFinancialPolicy.js';
+import { usePermission } from '../../src/hooks/usePermission';
 
 // Import accordion components
 import {
@@ -75,10 +77,35 @@ const statusConfig = {
   surplus: { label: "Surplus", color: "bg-blue-100 text-blue-700" }
 };
 
-export default function ItemDetailsModal({ item, open, onClose, onRefresh, workflowMode }) {
+export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRestore, restoring = false, workflowMode }) {
   const [defaultOpenSections] = useState(['basic-info', 'stock-inventory', 'recipe']);
+  const { canDelete } = usePermission();
 
   if (!item) return null;
+
+  const isInactive = item.status === 'inactive';
+  const canRestore = canDelete('items') && typeof onRestore === 'function';
+
+  // #1495 Part A: a plain, undismissable-until-acted-on banner rather than folding into the
+  // existing badge row -- restoring is the one action on this modal that changes what every other
+  // section on the page means (POS/storefront visibility, stock actions), so it gets its own
+  // visual weight instead of blending in with the stock-status/category badges.
+  const restoreBanner = isInactive && canRestore ? (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+      <div className="flex items-center gap-2 text-sm text-emerald-800">
+        <RotateCcw className="w-4 h-4 shrink-0" />
+        <span>This item is inactive and hidden from POS/Storefront.</span>
+      </div>
+      <Button
+        size="sm"
+        className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
+        onClick={() => onRestore(item)}
+        disabled={restoring}
+      >
+        {restoring ? 'Restoring…' : 'Restore Item'}
+      </Button>
+    </div>
+  ) : null;
 
   const isProduct = isManufactured(item);
   const financialPolicy = resolveItemFinancialPolicy({
@@ -128,8 +155,14 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, workf
           </DialogHeader>
 
           <div className="space-y-4">
+            {restoreBanner}
             {/* Status and Category */}
             <div className="flex items-center gap-2 mb-6">
+              {isInactive && (
+                <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-300">
+                  Inactive
+                </Badge>
+              )}
               <Badge variant="outline" className={cn("font-medium", statusStyle.color)}>
                 {statusStyle.label}
               </Badge>
@@ -325,8 +358,15 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, workf
               <span className="text-xl">{item.name}</span>
               <p className="text-sm font-normal text-slate-500">{item.sku_code}</p>
             </div>
+            {isInactive && (
+              <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-300">
+                Inactive
+              </Badge>
+            )}
           </DialogTitle>
         </DialogHeader>
+
+        {restoreBanner && <div className="flex-shrink-0 pt-2">{restoreBanner}</div>}
 
         {/* Scrollable Accordion Content */}
         <div className="flex-1 overflow-y-auto py-2">

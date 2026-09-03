@@ -6,6 +6,7 @@ const mockCreateItemUseCase = jest.fn();
 const mockUpdateItemUseCase = jest.fn();
 const mockFinalizeItemUseCase = jest.fn();
 const mockDeleteItemUseCase = jest.fn();
+const mockRestoreItemUseCase = jest.fn();
 const mockGetItemStockHistoryUseCase = jest.fn();
 const mockGetItemBatchesUseCase = jest.fn();
 const mockGetItemMovementsUseCase = jest.fn();
@@ -50,6 +51,7 @@ jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   updateItemUseCase: mockUpdateItemUseCase,
   finalizeItemUseCase: mockFinalizeItemUseCase,
   deleteItemUseCase: mockDeleteItemUseCase,
+  restoreItemUseCase: mockRestoreItemUseCase,
   getItemStockHistoryUseCase: mockGetItemStockHistoryUseCase,
   getItemBatchesUseCase: mockGetItemBatchesUseCase,
   getItemMovementsUseCase: mockGetItemMovementsUseCase,
@@ -100,6 +102,7 @@ jest.unstable_mockModule('../src/workers/itemImageStatusStore.js', () => ({
 let getItems;
 let createItem;
 let deleteItem;
+let restoreItem;
 let validateComposition;
 let updateFolder;
 let replaceItemSuppliers;
@@ -114,6 +117,7 @@ beforeAll(async () => {
   getItems = mod.getItems;
   createItem = mod.createItem;
   deleteItem = mod.deleteItem;
+  restoreItem = mod.restoreItem;
   validateComposition = mod.validateComposition;
   updateFolder = mod.updateFolder;
   replaceItemSuppliers = mod.replaceItemSuppliers;
@@ -243,6 +247,63 @@ describe('itemHandlers transport contracts', () => {
       surface: 'inventory',
       action: 'delete_item'
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('restoreItem returns success payload and fires restore telemetry (#1495 Part A)', async () => {
+    mockRestoreItemUseCase.mockResolvedValue({ item_id: 10, name: 'Sugar', status: 'active' });
+
+    const req = {
+      params: { item_id: '10' },
+      user: { user_id: 2, tenant_id: 'tenant-1' },
+      requestId: 'req-item-restore'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await restoreItem(req, res, next);
+
+    expect(mockRestoreItemUseCase).toHaveBeenCalledWith({ itemId: '10', userId: 2 });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { item_id: 10, name: 'Sugar', status: 'active' },
+      message: 'Item restored successfully',
+      timestamp: expect.any(String)
+    });
+    expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'inventory_item_restored',
+      surface: 'inventory',
+      action: 'restore_item'
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('restoreItem returns standardized error payload when the item is not deleted (#1495 Part A)', async () => {
+    const error = new Error('Item is not deleted');
+    error.statusCode = 400;
+    mockRestoreItemUseCase.mockRejectedValue(error);
+
+    const req = {
+      params: { item_id: '10' },
+      user: { user_id: 2 },
+      requestId: 'req-item-restore-rejected'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await restoreItem(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      data: null,
+      message: 'Item is not deleted',
+      error_code: 'VALIDATION_FAILED',
+      errors: null,
+      request_id: 'req-item-restore-rejected',
+      timestamp: expect.any(String)
+    });
     expect(next).not.toHaveBeenCalled();
   });
 

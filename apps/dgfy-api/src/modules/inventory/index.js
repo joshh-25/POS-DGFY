@@ -13,6 +13,7 @@ import { buildCreateItemUseCase } from './usecases/createItemUseCase.js';
 import { buildUpdateItemUseCase } from './usecases/updateItemUseCase.js';
 import { buildFinalizeItemUseCase } from './usecases/finalizeItemUseCase.js';
 import { buildDeleteItemUseCase } from './usecases/deleteItemUseCase.js';
+import { buildRestoreItemUseCase } from './usecases/restoreItemUseCase.js';
 import { buildGetItemStockHistoryUseCase } from './usecases/getItemStockHistoryUseCase.js';
 import { buildGetItemBatchesUseCase } from './usecases/getItemBatchesUseCase.js';
 import { buildGetItemMovementsUseCase } from './usecases/getItemMovementsUseCase.js';
@@ -91,6 +92,7 @@ export const finalizeItemUseCase = buildFinalizeItemUseCase({
 });
 
 export const deleteItemUseCase = buildDeleteItemUseCase({ itemRepository });
+export const restoreItemUseCase = buildRestoreItemUseCase({ itemRepository });
 export const getItemStockHistoryUseCase = buildGetItemStockHistoryUseCase({ itemRepository });
 export const getItemBatchesUseCase = buildGetItemBatchesUseCase({ itemRepository });
 export const getItemMovementsUseCase = buildGetItemMovementsUseCase({ itemRepository });

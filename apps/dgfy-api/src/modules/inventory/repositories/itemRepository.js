@@ -927,7 +927,15 @@ export const itemRepository = {
         const parsedPage = parseInt(page, 10);
         const parsedLimit = parseInt(limit, 10);
         const offset = (parsedPage - 1) * parsedLimit;
-        const where = visibleItemWhere({});
+        // #1495 Part A: include_inactive is already coerced to a real boolean and permission-gated
+        // by getItemsUseCase before it reaches here -- this only decides the where-clause shape.
+        // includeDeleted: true (RF-1 fix, PR #1502 review) drops the deleted_at: null constraint
+        // entirely -- without it buildVisibleWhere always forces deleted_at: null, so a deleted
+        // row (the exact state deleteItem leaves a row in) could never come back through this
+        // "show inactive" path, defeating the restore feature's own list view.
+        const where = queryParams.include_inactive
+            ? buildVisibleWhere({}, { statusField: 'status', excludeInactiveStatus: false, includeDeleted: true })
+            : visibleItemWhere({});
 
         let semanticIds = [];
 
@@ -1109,7 +1117,7 @@ export const itemRepository = {
             hasLocationStocksAssociation && ItemLocationStock?.associations?.location && TenantLocation
         );
 
-        const item = await findVisibleItemById(Item, itemId, {
+        const itemQueryOptions = {
             include: [
                 { model: ItemNutrition, as: 'nutrition', required: false },
                 { model: ItemAllergen, as: 'allergens', required: false },
@@ -1157,7 +1165,19 @@ export const itemRepository = {
                 },
                 { model: ItemFolder, as: 'folder', required: false }
             ]
-        });
+        };
+
+        // #1495 Part A: include_inactive is already coerced to a real boolean and
+        // permission-gated by getItemByIdUseCase before it reaches here. findVisibleItemById would
+        // always 404 on an inactive item (it excludes status: 'inactive'), which is what made the
+        // "view details" action on a restore-list item silently fall back to degraded data --
+        // bypass it here the same way restoreItem's own lookup does.
+        const item = queryParams.include_inactive
+            ? await Item.findOne({
+                ...itemQueryOptions,
+                where: buildVisibleWhere({ item_id: itemId }, { statusField: 'status', excludeInactiveStatus: false })
+            })
+            : await findVisibleItemById(Item, itemId, itemQueryOptions);
 
         if (!item) {
             throw notFoundError('Item not found');
@@ -2141,6 +2161,72 @@ export const itemRepository = {
         });
 
         return true;
+    },
+    // #1495 Part A: the reverse of deleteItem above. Deliberately does NOT use
+    // findVisibleItemById -- that helper excludes status: 'inactive', which is exactly the state
+    // the row being restored is in, so using it here would always 404. Gate on deleted_at (not
+    // status) so an item merely deactivated via a plain PUT (status: 'inactive', deleted_at still
+    // null) is correctly rejected as "not deleted" rather than silently accepted as restorable.
+    async restoreItem(itemId, userId, { expectedServerVersion = null } = {}) {
+        const Item = dbStore.get('Item');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
+        await sequelize.transaction(async (transaction) => {
+            const item = await Item.findOne({
+                where: { item_id: itemId },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!item) {
+                throw notFoundError('Item not found');
+            }
+            assertExpectedItemServerVersion(item, expectedServerVersion);
+
+            if (!item.deleted_at) {
+                const error = new Error('Item is not deleted');
+                error.statusCode = 400;
+                throw error;
+            }
+
+            const previousStatus = item.status;
+            // V1 (#1495 Part A): always restore to 'active', the literal reverse of deleteItem's
+            // unconditional 'inactive' write. A draft item deleted while still a draft will restore
+            // to 'active' and skip finalizeItem's validation gate -- a deliberately deferred edge
+            // case (see the PR description); recovering the true pre-delete status would require
+            // reading it back out of the item_deleted AuditLog row, which this path intentionally
+            // does not depend on.
+            const targetStatus = 'active';
+
+            try {
+                await item.update({
+                    status: targetStatus,
+                    deleted_by: null,
+                    deleted_at: null
+                }, { transaction });
+            } catch (error) {
+                // active_sku_code is a generated, uniquely-indexed column -- restoring can collide
+                // with another currently-active item's SKU. Reuse the same detection/normalization
+                // already used by create/update/finalize.
+                throw normalizeSkuConflictError(error);
+            }
+
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'RESTORE',
+                eventType: 'item_restored',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    sku_code: item.sku_code,
+                    previous_status: previousStatus,
+                    status: targetStatus
+                },
+                transaction
+            });
+        });
+
+        return itemRepository.getItemById(itemId);
     },
     async getItemStockHistory(itemId, queryParams = {}) {
         const Item = dbStore.get('Item');
