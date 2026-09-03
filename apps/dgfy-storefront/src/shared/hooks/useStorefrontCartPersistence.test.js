@@ -27,6 +27,15 @@ const RETAIL_LINE = {
   price: 399
 };
 
+const SIMPLE_LINE = {
+  item_id: 309,
+  cart_line_id: '309:default',
+  name: 'Pan de Coco',
+  category: 'retail',
+  quantity: 1,
+  price: 25
+};
+
 function usePersistenceHarness({ mode, storeSlug, initialVoucherCode = '' }) {
   const [cart, setCart] = useState([LAUNDRY_LINE]);
   const [voucherCode, setVoucherCode] = useState(initialVoucherCode);
@@ -135,6 +144,24 @@ describe('useStorefrontCartPersistence', () => {
     await waitFor(() => expect(result.current.cart).toEqual([]));
     expect(readStorefrontCartSnapshot('another-retail-store', { mode: 'retail' })).toBeNull();
     expect(readStorefrontCartSnapshot('northline-retail', { mode: 'retail' })?.cart[0]).toMatchObject(RETAIL_LINE);
+  });
+
+  it('keeps unfinished Simple MSME carts isolated between storefronts', async () => {
+    writeStorefrontCartSnapshot({ storeSlug: 'simple-store-a', mode: 'simple', cart: [SIMPLE_LINE] });
+
+    const { result, rerender } = renderHook(
+      (props) => usePersistenceHarness(props),
+      { initialProps: { mode: 'simple', storeSlug: 'simple-store-a' } }
+    );
+    await waitFor(() => expect(result.current.cart[0]).toMatchObject(SIMPLE_LINE));
+
+    rerender({ mode: 'simple', storeSlug: 'simple-store-b' });
+    await waitFor(() => expect(result.current.cart).toEqual([]));
+    expect(readStorefrontCartSnapshot('simple-store-b', { mode: 'simple' })).toBeNull();
+    expect(readStorefrontCartSnapshot('simple-store-a', { mode: 'simple' })?.cart[0]).toMatchObject(SIMPLE_LINE);
+
+    rerender({ mode: 'simple', storeSlug: 'simple-store-a' });
+    await waitFor(() => expect(result.current.cart[0]).toMatchObject(SIMPLE_LINE));
   });
 
   it('clears only the matching retail store snapshot when the cart is emptied after checkout', async () => {
