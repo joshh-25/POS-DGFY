@@ -12,7 +12,8 @@ import {
     VoucherReasonCode,
     voucherConflict,
     voucherError,
-    voucherNotFound
+    voucherNotFound,
+    voucherUnauthorized
 } from '../domain/voucherErrors.js';
 
 /**
@@ -55,6 +56,8 @@ const WRITABLE_VOUCHER_COLUMNS = Object.freeze([
     'pricelist_id',
     'max_discount_centavos',
     'min_spend_centavos',
+    // #1490: the mirror image of min_spend_centavos above -- see Voucher.js's column comment.
+    'max_order_value_centavos',
     'min_quantity',
     'allow_below_cost',
     'stackable_with_statutory',
@@ -92,6 +95,7 @@ const NUMERIC_VOUCHER_COLUMNS = Object.freeze([
     'pricelist_id',
     'max_discount_centavos',
     'min_spend_centavos',
+    'max_order_value_centavos',
     'min_quantity',
     'weekday_mask',
     'channels_mask',
@@ -123,9 +127,24 @@ const presentVoucher = (voucher, { now, timezone }) => {
     const normalized = normalizeNumerics(voucher);
     return {
         ...normalized,
+        // #1494: display-only projection alongside the raw IDs, tolerant of the association being
+        // absent -- the repository's `includeActors` join is opt-in, so a row fetched without it
+        // (every hot transactional path) simply presents both usernames as null.
+        created_by_username: voucher.createdByUser?.username ?? null,
+        updated_by_username: voucher.updatedByUser?.username ?? null,
         derived_status: deriveVoucherStatus({ voucher: normalized, now, timezone })
     };
 };
+
+// #788 (Phase 269): the payload key is `account_grant_ids` (a flat array of DGFY account UUIDs) --
+// deliberately NOT the `scopes`-style array of objects, because there is exactly one field per
+// entry and an object wrapper would be ceremony. Normalized to lowercase for the same reason
+// voucherRepository.js does: the persisted column is CHAR(36) under a case-insensitive collation.
+const normalizeAccountGrantIds = (value) => [...new Set(
+    (Array.isArray(value) ? value : [])
+        .map((entry) => String(entry ?? '').trim().toLowerCase())
+        .filter(Boolean)
+)];
 
 const presentScope = (scope) => ({
     voucher_scope_id: scope.voucher_scope_id,
@@ -313,6 +332,26 @@ const assertValidityInvariants = (merged) => {
 };
 
 /**
+ * #1490: min_spend_centavos/max_order_value_centavos deadlock guard. Checked against the *merged*
+ * row (both in create and update), so a PATCH that only sends one of the two fields is still
+ * caught -- the validator's own same-request check (voucherValidator.js) is a faster, best-effort
+ * complement, not a substitute for this one.
+ */
+const assertOrderValueRangeInvariant = (merged) => {
+    if (merged.min_spend_centavos == null || merged.max_order_value_centavos == null) return;
+    if (Number(merged.max_order_value_centavos) < Number(merged.min_spend_centavos)) {
+        voucherError(
+            'max_order_value_centavos cannot be less than min_spend_centavos.',
+            VoucherReasonCode.VOUCHER_ORDER_VALUE_RANGE_INVALID,
+            {
+                min_spend_centavos: Number(merged.min_spend_centavos),
+                max_order_value_centavos: Number(merged.max_order_value_centavos)
+            }
+        );
+    }
+};
+
+/**
  * #696: a pricelist-backed voucher needs no `voucher_scopes` rows -- the pricelist's own item rows
  * ARE the scope. `pricelistId` is `applyBenefitConfig`'s already-resolved value (never both a
  * pricelist and a scalar price at this point), so this check runs after that one.
@@ -341,6 +380,30 @@ const assertAutoApplyHasNoScope = (autoApply, scopes) => {
         'auto_apply vouchers cannot carry item or item-folder scopes -- the auto-apply selector never consults voucher scope.',
         VoucherReasonCode.VOUCHER_BENEFIT_CONFIG_INVALID,
         { auto_apply: true, scope_count: scopes.length }
+    );
+};
+
+/**
+ * #788 (Phase 269): an account-restricted voucher may not also be publicly listed.
+ *
+ * `is_publicly_listed` publishes the voucher's literal `code` into the public storefront discovery
+ * snapshot (`storefrontDiscoveryIndexService.js`'s `buildPublicStorefrontVouchers`). Advertising
+ * the code of a voucher only three named accounts can redeem is worse than a no-op: it hands the
+ * code to everyone, which is precisely the leak #788 exists to close, while every recipient who
+ * tries it gets a 422. Refused at authoring time with a clear error rather than silently coerced,
+ * so the merchant learns which of the two settings they actually meant.
+ *
+ * The display-side filter (`DISPLAY_RELEVANT_REASON_CODES`) independently omits such a voucher from
+ * that snapshot even if a row somehow reached this state -- two guards, deliberately, because this
+ * one only covers rows written THROUGH this use case.
+ */
+const assertAccountRestrictionNotPubliclyListed = (isAccountRestricted, isPubliclyListed) => {
+    if (!isAccountRestricted) return;
+    if (isPubliclyListed !== true) return;
+    voucherError(
+        'An account-restricted voucher cannot be publicly listed -- public listing publishes its code to every storefront visitor.',
+        VoucherReasonCode.VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE,
+        { is_account_restricted: true, is_publicly_listed: true }
     );
 };
 
@@ -466,7 +529,11 @@ export const buildListVouchersUseCase = ({ repository }) => async ({
                 auto_apply: query.auto_apply,
                 search: query.search
             },
-            { page, limit, sort: query.sort, direction: query.direction }
+            { page, limit, sort: query.sort, direction: query.direction },
+            // #1494: always-on, not client-controlled -- this endpoint is staff-admin-only and
+            // capped at 100 rows/page (the `limit` clamp above), so the extra two LEFT JOINs are
+            // negligible against that ceiling.
+            { includeActors: true }
         );
 
         const refreshed = await materializeExpiry(repository, rows, { now, timezone });
@@ -505,18 +572,25 @@ export const buildGetVoucherUseCase = ({ repository }) => async ({
     timezone = DEFAULT_VOUCHER_TIMEZONE
 } = {}) => {
     try {
-        const stored = await repository.findById(voucherId);
+        // #1494: always-on, not client-controlled -- see listVouchers' own comment above.
+        const stored = await repository.findById(voucherId, { includeActors: true });
         if (!stored) voucherNotFound('Voucher not found', { voucher_id: voucherId });
 
         const [refreshed] = await materializeExpiry(repository, [stored], { now, timezone });
-        const [scopes, statsByVoucherId] = await Promise.all([
+        const [scopes, grantsByVoucherId, statsByVoucherId] = await Promise.all([
             repository.listScopes([refreshed.voucher_id]),
+            // #788: unconditional here, unlike the redemption path's `is_account_restricted` gate --
+            // this is the single staff-admin detail read, and the authoring UI needs the allowlist
+            // to round-trip an edit. Guarding it would save one indexed query on a route that is
+            // already doing three.
+            repository.listAccountGrants([refreshed.voucher_id]),
             repository.getRedemptionStats([refreshed.voucher_id])
         ]);
 
         return ok({
             voucher: presentVoucher(refreshed, { now, timezone }),
             scopes: scopes.map(presentScope),
+            account_grant_ids: grantsByVoucherId[refreshed.voucher_id] || [],
             redemption_stats: buildRedemptionStats(refreshed, statsByVoucherId[refreshed.voucher_id])
         });
     } catch (error) {
@@ -526,18 +600,36 @@ export const buildGetVoucherUseCase = ({ repository }) => async ({
 
 export const buildCreateVoucherUseCase = ({ repository }) => async ({
     payload = {},
+    user = {},
     now = new Date(),
     timezone = DEFAULT_VOUCHER_TIMEZONE
 } = {}) => {
     let transaction = null;
     try {
+        // #1494: hard-fail 401 on a missing actor, matching deliveryRunUseCases.js's stricter
+        // behavior -- the voucher routes already require `authenticate` ahead of the controller,
+        // so this should never actually trigger in practice.
+        const actorUserId = Number.parseInt(user?.user_id, 10) || null;
+        if (!actorUserId) voucherUnauthorized();
+
         const scopes = Array.isArray(payload.scopes) ? payload.scopes : [];
+        const accountGrantIds = normalizeAccountGrantIds(payload.account_grant_ids);
         const values = pickWritableColumns(payload);
         values.code = normalizeCode(values.code);
+        values.created_by = actorUserId;
+        values.updated_by = actorUserId;
+        // #788: DERIVED, never client-writable (`is_account_restricted` is in the validator's
+        // FORBIDDEN_FIELDS and absent from WRITABLE_VOUCHER_COLUMNS). Set from the grants array in
+        // the same transaction that writes the child rows, so the flag and the rows cannot drift --
+        // which is what lets voucherEligibilityPolicy.js trust `false` to mean "no rows exist"
+        // without a COUNT.
+        values.is_account_restricted = accountGrantIds.length > 0;
 
         assertValidityInvariants(values);
+        assertOrderValueRangeInvariant(values);
         assertFixedPriceHasScope(values.benefit_class, scopes, values.pricelist_id);
         assertAutoApplyHasNoScope(values.auto_apply, scopes);
+        assertAccountRestrictionNotPubliclyListed(values.is_account_restricted, values.is_publicly_listed);
         const preparedValues = applyBenefitConfig(values);
 
         transaction = await repository.beginTransaction();
@@ -562,14 +654,19 @@ export const buildCreateVoucherUseCase = ({ repository }) => async ({
         if (scopes.length > 0) {
             await repository.replaceScopes(created.voucher_id, scopes, { transaction });
         }
+        if (accountGrantIds.length > 0) {
+            await repository.replaceAccountGrants(created.voucher_id, accountGrantIds, { transaction });
+        }
         const persistedScopes = await repository.listScopes([created.voucher_id], { transaction });
+        const persistedGrants = await repository.listAccountGrants([created.voucher_id], { transaction });
 
         await transaction.commit();
         transaction = null;
 
         return ok({
             voucher: presentVoucher(created, { now, timezone }),
-            scopes: persistedScopes.map(presentScope)
+            scopes: persistedScopes.map(presentScope),
+            account_grant_ids: persistedGrants[created.voucher_id] || []
         });
     } catch (error) {
         await rollbackQuietly(transaction);
@@ -580,11 +677,16 @@ export const buildCreateVoucherUseCase = ({ repository }) => async ({
 export const buildUpdateVoucherUseCase = ({ repository }) => async ({
     voucherId,
     payload = {},
+    user = {},
     now = new Date(),
     timezone = DEFAULT_VOUCHER_TIMEZONE
 } = {}) => {
     let transaction = null;
     try {
+        // #1494: hard-fail 401 on a missing actor -- see buildCreateVoucherUseCase's own comment.
+        const actorUserId = Number.parseInt(user?.user_id, 10) || null;
+        if (!actorUserId) voucherUnauthorized();
+
         transaction = await repository.beginTransaction();
 
         const stored = await repository.findById(voucherId, { transaction, lock: true });
@@ -628,14 +730,28 @@ export const buildUpdateVoucherUseCase = ({ repository }) => async ({
 
         const merged = { ...stored, ...patch };
         assertValidityInvariants(merged);
+        assertOrderValueRangeInvariant(merged);
 
         const scopesProvided = Object.prototype.hasOwnProperty.call(payload, 'scopes');
         const nextScopes = scopesProvided
             ? (Array.isArray(payload.scopes) ? payload.scopes : [])
             : (await repository.listScopes([stored.voucher_id], { transaction }));
 
+        // #788: present/absent semantics, identical to `scopes` above -- an omitted key leaves the
+        // allowlist alone, so a PUT that only edits (say) the title cannot silently unrestrict a
+        // voucher. An EXPLICIT empty array is the deliberate "remove the restriction" gesture: it
+        // deletes every grant and clears the flag. That asymmetry is the point -- unrestricting a
+        // voucher opens it to everyone, so it must be something a merchant actively sent, never
+        // something that happens by omission (the same hazard ADR 0066 decision 10 binds against
+        // for the four eligibility masks).
+        const accountGrantsProvided = Object.prototype.hasOwnProperty.call(payload, 'account_grant_ids');
+        const nextAccountGrantIds = accountGrantsProvided
+            ? normalizeAccountGrantIds(payload.account_grant_ids)
+            : ((await repository.listAccountGrants([stored.voucher_id], { transaction }))[stored.voucher_id] || []);
+
         assertFixedPriceHasScope(merged.benefit_class, nextScopes, merged.pricelist_id);
         assertAutoApplyHasNoScope(merged.auto_apply, nextScopes);
+        assertAccountRestrictionNotPubliclyListed(nextAccountGrantIds.length > 0, merged.is_publicly_listed);
         const preparedMerged = applyBenefitConfig(merged);
 
         // Only the columns this request may write are handed to the UPDATE -- never the merged row,
@@ -644,10 +760,21 @@ export const buildUpdateVoucherUseCase = ({ repository }) => async ({
             accumulator[column] = preparedMerged[column] ?? null;
             return accumulator;
         }, {});
+        // #1494: server-owned, stamped directly rather than via WRITABLE_VOUCHER_COLUMNS -- never
+        // client-writable. `created_by` is deliberately left untouched on update.
+        values.updated_by = actorUserId;
+        // #788: same treatment -- derived from the resolved allowlist, never from the payload. Note
+        // this is written on EVERY update, not only when `account_grant_ids` was provided: when it
+        // was not, `nextAccountGrantIds` is the stored set re-read above, so the write is a no-op
+        // that also self-heals a row whose flag somehow disagreed with its child rows.
+        values.is_account_restricted = nextAccountGrantIds.length > 0;
 
         if (scopesProvided) {
             await assertScopeRefs(repository, nextScopes, transaction);
             await repository.replaceScopes(stored.voucher_id, nextScopes, { transaction });
+        }
+        if (accountGrantsProvided) {
+            await repository.replaceAccountGrants(stored.voucher_id, nextAccountGrantIds, { transaction });
         }
         await assertPricelistRef(repository, preparedMerged.pricelist_id, transaction);
 
@@ -667,13 +794,15 @@ export const buildUpdateVoucherUseCase = ({ repository }) => async ({
 
         const updated = await repository.findById(stored.voucher_id, { transaction });
         const persistedScopes = await repository.listScopes([stored.voucher_id], { transaction });
+        const persistedGrants = await repository.listAccountGrants([stored.voucher_id], { transaction });
 
         await transaction.commit();
         transaction = null;
 
         return ok({
             voucher: presentVoucher(updated, { now, timezone }),
-            scopes: persistedScopes.map(presentScope)
+            scopes: persistedScopes.map(presentScope),
+            account_grant_ids: persistedGrants[stored.voucher_id] || []
         });
     } catch (error) {
         await rollbackQuietly(transaction);
@@ -689,6 +818,14 @@ const assertActivationAllowed = ({ voucher, scopes, now, timezone }) => {
     applyBenefitConfig(voucher);
     assertFixedPriceHasScope(voucher.benefit_class, scopes, voucher.pricelist_id);
     assertAutoApplyHasNoScope(voucher.auto_apply, scopes);
+    // #788: re-checked here for the same reason the two guards above are -- a draft can be edited
+    // into an invalid combination after creation. Reads the STORED `is_account_restricted` flag
+    // rather than re-counting the child rows, since the two are written together and this is the
+    // cheap, already-loaded value.
+    assertAccountRestrictionNotPubliclyListed(
+        voucher.is_account_restricted === true || voucher.is_account_restricted === 1,
+        voucher.is_publicly_listed === true || voucher.is_publicly_listed === 1
+    );
 
     const validUntil = toDateOnly(voucher.valid_until);
     if (!validUntil) return;

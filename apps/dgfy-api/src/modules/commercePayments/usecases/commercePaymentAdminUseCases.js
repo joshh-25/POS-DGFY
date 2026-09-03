@@ -837,7 +837,7 @@ export const buildOperateTenantPayMongoChildAccountUseCase = ({
   }
 };
 
-export const buildRetryCommercePaymentFinalizationUseCase = ({ commercePaymentRepository }) => async ({ paymentSessionId }) => {
+export const buildRetryCommercePaymentFinalizationUseCase = ({ commercePaymentRepository, partnerClient }) => async ({ paymentSessionId }) => {
   try {
     const reference = normalizeReference(paymentSessionId);
     const session = await commercePaymentRepository.findSessionByPublicReference(reference);
@@ -849,7 +849,8 @@ export const buildRetryCommercePaymentFinalizationUseCase = ({ commercePaymentRe
       session,
       resource: session.provider_payload || {},
       providerEventId: session.provider_event_id,
-      commercePaymentRepository
+      commercePaymentRepository,
+      partnerClient
     });
     await writePaymentAudit({
       commercePaymentRepository,
@@ -869,7 +870,8 @@ export const buildRetryCommercePaymentFinalizationUseCase = ({ commercePaymentRe
 
 export const buildReconcileCommercePaymentSessionUseCase = ({
   commercePaymentRepository,
-  paymongoService
+  paymongoService,
+  partnerClient
 }) => async ({ paymentSessionId, actor = 'paymongo_admin_reconciliation' }) => {
   try {
     const reference = normalizeReference(paymentSessionId);
@@ -912,7 +914,8 @@ export const buildReconcileCommercePaymentSessionUseCase = ({
     }
 
     const processVerifiedPaidCommerceSession = buildProcessVerifiedPaidCommerceSessionUseCase({
-      commercePaymentRepository
+      commercePaymentRepository,
+      partnerClient
     });
     const processed = await processVerifiedPaidCommerceSession({
       session,

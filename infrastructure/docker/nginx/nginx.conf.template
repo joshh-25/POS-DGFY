@@ -79,7 +79,7 @@ server {
 # issuance and renewal), redirect everything else to HTTPS.
 server {
     listen 80;
-    server_name ${SKUPERVISOR_DOMAIN} ${POS_DOMAIN} ${STOREFRONT_DOMAIN} ${STOREFRONT_ALT_DOMAIN} ${DGFY_API_DOMAIN} ${SKUPERVISOR_DOMAIN_PROD} ${POS_DOMAIN_PROD} ${STOREFRONT_DOMAIN_PROD};
+    server_name ${SKUPERVISOR_DOMAIN} ${POS_DOMAIN} ${STOREFRONT_DOMAIN} ${STOREFRONT_ALT_DOMAIN} ${DGFY_API_DOMAIN} ${DGLAUNDRY_DOMAIN} ${SKUPERVISOR_DOMAIN_PROD} ${POS_DOMAIN_PROD} ${STOREFRONT_DOMAIN_PROD};
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -101,6 +101,30 @@ server {
     location / {
         set $dgfy_api_upstream dgfy-api:5100;
         proxy_pass http://$dgfy_api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# Staff operations are hosted by DGLaundry but terminate at this shared edge.
+# The nginx container reaches the gateway through dgfy-dglaundry-edge only;
+# DGLaundry's application/database network is never joined by DGFY services.
+server {
+    listen 443 ssl;
+    server_name ${DGLAUNDRY_DOMAIN};
+
+    ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/privkey.pem;
+
+    location / {
+        set $dglaundry_gateway_upstream ${DGLAUNDRY_GATEWAY_HOST}:${DGLAUNDRY_GATEWAY_PORT};
+        proxy_pass http://$dglaundry_gateway_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';

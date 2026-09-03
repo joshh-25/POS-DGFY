@@ -101,6 +101,14 @@ const Voucher = sequelize.define('Voucher', {
     type: DataTypes.BIGINT,
     allowNull: true
   },
+  // #1490: the mirror image of min_spend_centavos above -- an eligibility CAP, not a discount cap
+  // (that's max_discount_centavos, a different axis). Compared against the same ITEM subtotal
+  // min_spend_centavos already uses (excludes the delivery fee) -- see voucherEligibilityPolicy.js.
+  // Nullable: null means "no cap," matching every other optional voucher field's default.
+  max_order_value_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
   min_quantity: {
     type: DataTypes.INTEGER,
     allowNull: true
@@ -160,6 +168,24 @@ const Voucher = sequelize.define('Voucher', {
     allowNull: false,
     defaultValue: false
   },
+  // #788 (Phase 269): the indexable gate for account-restricted issuance. DERIVED, never
+  // client-writable -- `voucherUseCases.js` sets it from the `account_grant_ids` payload array in
+  // the same transaction that writes `voucher_account_grants`, so the flag and the child rows can
+  // never disagree. It exists (rather than deriving the restriction from a COUNT on every
+  // resolution) for two reasons: an unrestricted voucher -- the overwhelming majority -- pays no
+  // extra query on the checkout hot path, and a caller that forgets to hydrate the allowlist for a
+  // restricted voucher is detectable and fails CLOSED in voucherEligibilityPolicy.js rather than
+  // silently evaluating as unrestricted.
+  //
+  // Deliberately NOT indexed: it is a two-valued flag that no query ever filters on (the redemption
+  // path already holds the voucher row when it reads this), and a boolean index is near-useless to
+  // the optimizer anyway. `voucher_redemptions.dgfy_account_id` DOES get one -- that column is a
+  // high-cardinality UUID serving a real per-account audit read.
+  is_account_restricted: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
   fulfillment_methods_mask: {
     type: DataTypes.TINYINT.UNSIGNED,
     allowNull: false,
@@ -207,6 +233,19 @@ const Voucher = sequelize.define('Voucher', {
     type: DataTypes.ENUM('draft', 'active', 'paused', 'expired', 'archived'),
     allowNull: false,
     defaultValue: 'draft'
+  },
+  // #1494: accountable creating/modifying officer. Plain value-link INTEGER, no DB-level FK --
+  // see this phase's plan doc / migration header for why (cross-tenant-DB migration risk +
+  // sync-tenant-schemas.js's column-presence-only repair gate would silently starve already-active
+  // tenants of the constraint). Association declared in models/index.js with `constraints: false`
+  // so sequelize.sync() (new-tenant provisioning) stays byte-identical to the migration path.
+  created_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  updated_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true
   },
   // Manual optimistic locking, same convention as EmployeeCreditAccount.version.
   version: {

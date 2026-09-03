@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { mockBarrel } from './helpers/esmBarrelMock.js';
 
 const mockListPosCatalogUseCase = jest.fn();
 const mockScanPosBarcodeUseCase = jest.fn();
@@ -9,6 +10,7 @@ const mockVerifyPosDiscountApprovalUseCase = jest.fn();
 const mockListPosTransactionsUseCase = jest.fn();
 const mockGetPosReportsOverviewUseCase = jest.fn();
 const mockExportPosReportsUseCase = jest.fn();
+const mockExportProcurementCsvUseCase = jest.fn();
 const mockGetPosTransactionByIdUseCase = jest.fn();
 const mockRecordFiscalPrintEventUseCase = jest.fn();
 const mockVoidPosTransactionUseCase = jest.fn();
@@ -92,7 +94,7 @@ const mockEndPosCashierReliefDutyUseCase = jest.fn();
 const mockCorrectPosCashierAttendanceUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
-jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
+const posHandlersBarrelOverrides = {
     listPosCatalogUseCase: mockListPosCatalogUseCase,
     scanPosBarcodeUseCase: mockScanPosBarcodeUseCase,
     checkoutPosUseCase: mockCheckoutPosUseCase,
@@ -102,6 +104,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     listPosTransactionsUseCase: mockListPosTransactionsUseCase,
     getPosReportsOverviewUseCase: mockGetPosReportsOverviewUseCase,
     exportPosReportsUseCase: mockExportPosReportsUseCase,
+    exportProcurementCsvUseCase: mockExportProcurementCsvUseCase,
     getPosTransactionByIdUseCase: mockGetPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase: mockRecordFiscalPrintEventUseCase,
     voidPosTransactionUseCase: mockVoidPosTransactionUseCase,
@@ -116,7 +119,6 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     upsertFiscalTerminalRegistrationUseCase: mockUpsertFiscalTerminalRegistrationUseCase,
     listFiscalTerminalRegistrationsUseCase: mockListFiscalTerminalRegistrationsUseCase,
     closeDayZReadingUseCase: mockCloseDayZReadingUseCase,
-    getDayCloseReadinessUseCase: jest.fn(),
     getDailyZReadingUseCase: mockGetDailyZReadingUseCase,
     getCurrentXReadingUseCase: mockGetCurrentXReadingUseCase,
     incrementGovernedResetCounterUseCase: mockIncrementGovernedResetCounterUseCase,
@@ -144,8 +146,6 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     collectCashPickupOrderUseCase: mockCollectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase: mockCollectCashDeliveryOrderUseCase,
     recordOrderBalancePaymentUseCase: mockRecordOrderBalancePaymentUseCase,
-    attachOrderBalancePaymentProofUseCase: jest.fn(),
-    getOrderBalancePaymentProofUseCase: jest.fn(),
     assignDeliveryPersonnelUseCase: mockAssignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase: mockUpdateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase: mockUpdateOnlineOrderStatusUseCase,
@@ -183,49 +183,12 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     startPosCashierReliefDutyUseCase: mockStartPosCashierReliefDutyUseCase,
     endPosCashierReliefDutyUseCase: mockEndPosCashierReliefDutyUseCase,
     correctPosCashierAttendanceUseCase: mockCorrectPosCashierAttendanceUseCase,
-    enrollPosCashierPinUseCase: jest.fn(),
-    resetPosCashierPinUseCase: jest.fn(),
-    takeOverPosRegisterUseCase: jest.fn(),
-    returnPosRegisterUseCase: jest.fn(),
-    startPosSharedReliefUseCase: jest.fn(),
-    endPosSharedReliefUseCase: jest.fn(),
-    countedPosCustodyHandoffUseCase: jest.fn(),
-    getCurrentPosOperatorUseCase: jest.fn(),
-    listEligiblePosOperatorsUseCase: jest.fn(),
-    authorizePosOperatorMutationUseCase: jest.fn(),
-    releasePosOperatorMutationUseCase: jest.fn(),
-    endPosOperatorSessionUseCase: jest.fn(),
-    revokePosOperatorSessionsForTerminal: jest.fn(),
-    resumePosCashierUseCase: jest.fn(),
-    posTerminalPairingMaxAgeMs: 300000,
-    acknowledgeMobilePosCheckpointUseCase: jest.fn(),
-    addDeliveryRunMembersUseCase: jest.fn(),
-    createDeliveryRunUseCase: jest.fn(),
-    createPosCashierAttendanceRepository: jest.fn(),
-    dispatchDeliveryRunUseCase: jest.fn(),
-    getDeliveryRunUseCase: jest.fn(),
-    getMobilePosCatalogBootstrapUseCase: jest.fn(),
-    getMobilePosDevicePolicyUseCase: jest.fn(),
-    getMobilePosSettingsBootstrapUseCase: jest.fn(),
-    getMobilePosTransactionCheckpointUseCase: jest.fn(),
-    listDeliveryRunsUseCase: jest.fn(),
-    removeDeliveryRunMemberUseCase: jest.fn(),
-    revokePosOperatorSessionsForUser: jest.fn(),
-    serializeEmployeeAttendanceSession: jest.fn(),
-    serializeEmployeeBreakSegment: jest.fn(),
-    serializePosDrawerHandoffEvent: jest.fn(),
-    serializePosTerminalOperatorSession: jest.fn(),
-    serializePosTransactionOperatorAttribution: jest.fn(),
-    setDeliveryRunPersonnelUseCase: jest.fn(),
-    syncMobilePosCheckoutsUseCase: jest.fn(),
-    syncMobilePosHardwareEventsUseCase: jest.fn(),
-    syncMobilePosItemsUseCase: jest.fn(),
-    syncMobilePosOrderActionsUseCase: jest.fn(),
-    syncMobilePosShiftsUseCase: jest.fn(),
-    syncMobilePosVoidsUseCase: jest.fn(),
-    updateDeliveryRunUseCase: jest.fn(),
-    updateOnlineOrderDeliveryAddressUseCase: jest.fn(),
-}));
+};
+
+mockBarrel(jest, '../src/modules/pos/index.js', {
+    from: import.meta.url,
+    overrides: posHandlersBarrelOverrides
+});
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
     trackProductUsageFromResult: mockTrackProductUsageFromResult
@@ -237,6 +200,7 @@ let voidTransaction;
 let listTransactions;
 let getReportsOverview;
 let exportReports;
+let exportProcurementCsv;
 let closeDayZReading;
 let getCurrentXReading;
 let incrementGovernedResetCounter;
@@ -261,6 +225,7 @@ beforeAll(async () => {
     listTransactions = mod.listTransactions;
     getReportsOverview = mod.getReportsOverview;
     exportReports = mod.exportReports;
+    exportProcurementCsv = mod.exportProcurementCsv;
     closeDayZReading = mod.closeDayZReading;
     getCurrentXReading = mod.getCurrentXReading;
     incrementGovernedResetCounter = mod.incrementGovernedResetCounter;
@@ -795,6 +760,73 @@ describe('posHandlers transport contracts', () => {
         expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="pos-daily-report.csv"');
         expect(res.status).toHaveBeenCalledWith(200);
         expect(res.send).toHaveBeenCalledWith('"Metric","Value"\n"Gross Sales","1000"');
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('exportProcurementCsv writes CSV response headers and body', async () => {
+        mockExportProcurementCsvUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                filename: 'pos-procurement-export-2026-09-03.csv',
+                content_type: 'text/csv; charset=utf-8',
+                content: '"Order #","Order Date"\n"INV-001","2026-09-01T08:00:00.000Z"'
+            }
+        });
+
+        const req = {
+            validatedQuery: { location_id: 4 },
+            query: {},
+            user: { user_id: 11, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-procurement-export'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await exportProcurementCsv(req, res, next);
+
+        expect(mockExportProcurementCsvUseCase).toHaveBeenCalledWith({
+            query: { location_id: 4 },
+            user: expect.objectContaining({ user_id: 11 })
+        });
+        expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
+        expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="pos-procurement-export-2026-09-03.csv"');
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.send).toHaveBeenCalledWith('"Order #","Order Date"\n"INV-001","2026-09-01T08:00:00.000Z"');
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('exportProcurementCsv returns standardized error payload on failure', async () => {
+        mockExportProcurementCsvUseCase.mockResolvedValue({
+            success: false,
+            error: {
+                code: 'VALIDATION_FAILED',
+                message: 'location_id must be a positive integer',
+                details: null,
+                statusCode: 422
+            }
+        });
+
+        const req = {
+            query: {},
+            validatedQuery: { location_id: 'abc' },
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-procurement-export-error'
+        };
+        const res = createRes();
+        res.setHeader = jest.fn();
+        res.send = jest.fn();
+        const next = jest.fn();
+
+        await exportProcurementCsv(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(422);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            success: false,
+            message: 'location_id must be a positive integer',
+            error_code: 'VALIDATION_FAILED',
+            request_id: 'req-pos-procurement-export-error'
+        }));
+        expect(res.send).not.toHaveBeenCalled();
         expect(next).not.toHaveBeenCalled();
     });
 

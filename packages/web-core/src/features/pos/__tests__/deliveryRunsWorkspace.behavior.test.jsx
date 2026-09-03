@@ -15,7 +15,8 @@ import {
   fetchDeliveryRun,
   fetchDeliveryRuns,
   removeDeliveryRunMember,
-  setDeliveryRunPersonnel
+  setDeliveryRunPersonnel,
+  updateDeliveryRun
 } from '../services/deliveryRunService.js';
 
 vi.mock('../services/deliveryRunService.js', () => ({
@@ -128,6 +129,133 @@ describe('Creating a delivery run', () => {
   });
 });
 
+// Phase 260 (#1489): date-range scheduling.
+describe('Delivery run date range', () => {
+  it('sends both scheduled_date and scheduled_date_end when an end date is set on create', async () => {
+    createDeliveryRun.mockResolvedValue({ delivery_run_id: 501 });
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    fireEvent.click(await screen.findByRole('button', { name: /New run/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.change(within(dialog).getByPlaceholderText(/e\.g\. Afternoon Batch 1/i), { target: { value: 'Range Run' } });
+    const [startInput, endInput] = dialog.querySelectorAll('input[type="date"]');
+    fireEvent.change(startInput, { target: { value: '2026-09-05' } });
+    fireEvent.change(endInput, { target: { value: '2026-09-07' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /Create run/i }));
+
+    await waitFor(() => expect(createDeliveryRun).toHaveBeenCalledWith({
+      label: 'Range Run',
+      notes: null,
+      scheduled_date: '2026-09-05',
+      scheduled_date_end: '2026-09-07'
+    }));
+  });
+
+  it('blocks submission client-side when the end date precedes the start date', async () => {
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    fireEvent.click(await screen.findByRole('button', { name: /New run/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.change(within(dialog).getByPlaceholderText(/e\.g\. Afternoon Batch 1/i), { target: { value: 'Inverted Range' } });
+    const [startInput, endInput] = dialog.querySelectorAll('input[type="date"]');
+    fireEvent.change(startInput, { target: { value: '2026-09-07' } });
+    fireEvent.change(endInput, { target: { value: '2026-09-05' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /Create run/i }));
+
+    expect(await within(dialog).findByText(/End date must be on or after the start date/i)).toBeTruthy();
+    expect(createDeliveryRun).not.toHaveBeenCalled();
+  });
+
+  it('blocks submission client-side when an end date is set without a start date', async () => {
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    fireEvent.click(await screen.findByRole('button', { name: /New run/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.change(within(dialog).getByPlaceholderText(/e\.g\. Afternoon Batch 1/i), { target: { value: 'End Only' } });
+    const [, endInput] = dialog.querySelectorAll('input[type="date"]');
+    fireEvent.change(endInput, { target: { value: '2026-09-05' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /Create run/i }));
+
+    expect(await within(dialog).findByText(/An end date requires a start date/i)).toBeTruthy();
+    expect(createDeliveryRun).not.toHaveBeenCalled();
+  });
+
+  it('hydrates both date fields on edit and sends the updated range on save', async () => {
+    const run = {
+      delivery_run_id: 801,
+      label: 'Weekend Run',
+      status: 'draft',
+      scheduled_date: '2026-09-05',
+      scheduled_date_end: '2026-09-06',
+      notes: '',
+      personnel: [],
+      members: [],
+      member_count: 0
+    };
+    fetchDeliveryRuns.mockResolvedValue({ items: [run], pagination: { total: 1, page: 1, limit: 100 } });
+    fetchDeliveryRun.mockResolvedValue(run);
+    updateDeliveryRun.mockResolvedValue({ run });
+
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    fireEvent.click(await screen.findByText('Weekend Run'));
+    fireEvent.click(await screen.findByRole('button', { name: /Edit run/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    const [startInput, endInput] = dialog.querySelectorAll('input[type="date"]');
+    expect(startInput.value).toBe('2026-09-05');
+    expect(endInput.value).toBe('2026-09-06');
+
+    fireEvent.change(endInput, { target: { value: '2026-09-08' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Save changes/i }));
+
+    await waitFor(() => expect(updateDeliveryRun).toHaveBeenCalledWith(801, expect.objectContaining({
+      scheduled_date: '2026-09-05',
+      scheduled_date_end: '2026-09-08'
+    })));
+  });
+
+  it('shows a start→end range in the run list, and a single date when there is no end date', async () => {
+    const rangeRun = {
+      delivery_run_id: 901,
+      label: 'Multi-day Run',
+      status: 'draft',
+      scheduled_date: '2026-09-05',
+      scheduled_date_end: '2026-09-07',
+      notes: '',
+      personnel: [],
+      member_count: 0
+    };
+    const singleDayRun = {
+      delivery_run_id: 902,
+      label: 'Single Day Run',
+      status: 'draft',
+      scheduled_date: '2026-09-10',
+      scheduled_date_end: null,
+      notes: '',
+      personnel: [],
+      member_count: 0
+    };
+    fetchDeliveryRuns.mockResolvedValue({ items: [rangeRun, singleDayRun], pagination: { total: 2, page: 1, limit: 100 } });
+
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    expect(await screen.findByText((content) => content.startsWith('2026-09-05 → 2026-09-07'))).toBeTruthy();
+    expect(await screen.findByText((content) => content.startsWith('2026-09-10'))).toBeTruthy();
+  });
+});
+
 describe('Run personnel roster save', () => {
   it('sends exactly one is_accountable:true row with delivery_personnel_name (no registry match)', async () => {
     const run = {
@@ -203,6 +331,33 @@ describe('Run members list', () => {
 
     expect(await screen.findByText('INV-9001')).toBeTruthy();
     expect(screen.getByText(/Maria Santos/)).toBeTruthy();
+  });
+
+  // Phase 264 (#1487): renders serializeDeliveryRun's `summary` block -- total expected, total
+  // settled, and delivered-order count vs. total-order count.
+  it('renders the run-level summary block from the stubbed run detail', async () => {
+    const run = {
+      ...buildRunWithMember(),
+      summary: {
+        total_expected_amount: 500,
+        total_settled_amount: 200,
+        total_outstanding_amount: 300,
+        delivered_order_count: 0,
+        total_order_count: 1
+      }
+    };
+    fetchDeliveryRuns.mockResolvedValue({ items: [run], pagination: { total: 1, page: 1, limit: 100 } });
+    fetchDeliveryRun.mockResolvedValue(run);
+
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    fireEvent.click(await screen.findByText('Evening Run'));
+
+    expect(await screen.findByText('PHP 500.00')).toBeTruthy();
+    expect(screen.getByText('PHP 200.00')).toBeTruthy();
+    expect(screen.getByText('PHP 300.00')).toBeTruthy();
+    expect(screen.getByText('0 / 1')).toBeTruthy();
   });
 
   it('remove calls removeDeliveryRunMember; move calls remove then add, in that order', async () => {

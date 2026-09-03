@@ -28,6 +28,7 @@ export function StorefrontDropdown({
   placeholder = 'Select',
   disabled = false,
   label = '',
+  ariaLabel = '',
   leading = null,
   trailingMeta = null,
   triggerStyle = {},
@@ -35,6 +36,10 @@ export function StorefrontDropdown({
   menuStyle = {},
   menuPlacement = 'bottom-start',
   optionStyle = {},
+  selectedOptionStyle = {},
+  optionLabelStyle = {},
+  selectedOptionLabelStyle = {},
+  selectedOptionIconStyle = {},
   selectedLabelStyle = {},
   labelStyle = {},
   chevronSize = 18,
@@ -75,6 +80,8 @@ export function StorefrontDropdown({
       <button
         type="button"
         disabled={disabled}
+        role="combobox"
+        aria-label={ariaLabel || label || placeholder}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         onClick={() => {
@@ -180,6 +187,8 @@ export function StorefrontDropdown({
               <button
                 key={`${option.value}`}
                 type="button"
+                role="option"
+                aria-selected={isSelected}
                 onClick={() => {
                   onChange(option.value);
                   setIsOpen(false);
@@ -197,16 +206,17 @@ export function StorefrontDropdown({
                   display: 'grid',
                   gap: option.description ? 4 : 0,
                   boxSizing: 'border-box',
-                  ...optionStyle
+                  ...optionStyle,
+                  ...(isSelected ? selectedOptionStyle : {})
                 }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                   {option.icon ? (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: isSelected ? '#c2410c' : '#64748b', flexShrink: 0 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: isSelected ? '#c2410c' : '#64748b', flexShrink: 0, ...(isSelected ? selectedOptionIconStyle : {}) }}>
                       {React.createElement(option.icon, { size: 16 })}
                     </span>
                   ) : null}
-                  <span style={{ fontSize: 14, fontWeight: isSelected ? 800 : 700, lineHeight: 1.3, minWidth: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: isSelected ? 800 : 700, lineHeight: 1.3, minWidth: 0, ...optionLabelStyle, ...(isSelected ? selectedOptionLabelStyle : {}) }}>
                     {option.label}
                   </span>
                 </span>

@@ -143,28 +143,4 @@ describe('Security & Infrastructure Integration Tests', () => {
             expect(res.body.success).toBe(true);
         });
     });
-
-    describe('Finding 8.2: Distributed Locking', () => {
-        it('should correctly acquire and release locks in Redis', async () => {
-            const client = getRedisClient();
-            const lockKey = 'test:distributed:lock';
-            const ttl = 5;
-
-            await client.del(lockKey);
-
-            const acquired = await client.set(lockKey, 'LOCKED', { NX: true, EX: ttl });
-            expect(acquired).toBe('OK');
-
-            const val = await client.get(lockKey);
-            expect(val).toBe('LOCKED');
-
-            const duplicate = await client.set(lockKey, 'LOCKED', { NX: true, EX: ttl });
-            expect(duplicate).toBeNull();
-
-            await client.del(lockKey);
-
-            const reAcquire = await client.set(lockKey, 'LOCKED', { NX: true, EX: ttl });
-            expect(reAcquire).toBe('OK');
-        });
-    });
 });

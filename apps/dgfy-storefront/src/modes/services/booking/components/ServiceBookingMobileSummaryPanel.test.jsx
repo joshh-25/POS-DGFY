@@ -25,18 +25,18 @@ describe('ServiceBookingMobileSummaryPanel', () => {
         servicePaymentTiming="pay_later"
         servicesBodyFont="Source Sans 3, sans-serif"
         servicesDisplayFont="Lexend, sans-serif"
-        servicesPrimary="#0f766e"
+        servicesPrimary="#1A4E8D"
         servicesPrimaryDark="#115e59"
-        servicesPrimaryShadow="rgba(15,118,110,.2)"
+        servicesPrimaryShadow="rgba(26,78,141,.2)"
         summaryRows={[{ label: 'Fulfillment', value: 'Pick up and deliver' }]}
       />
     );
 
-    expect(screen.getByRole('button', { name: /View Booking Summary/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /View booking summary/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
     expect(screen.queryByText('Your booking')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /View Booking Summary/ }));
+    fireEvent.click(screen.getByRole('button', { name: /View booking summary/ }));
 
     expect(screen.getByRole('dialog', { name: 'Booking summary' })).toBeTruthy();
     expect(screen.getByText('Comforter Care')).toBeTruthy();

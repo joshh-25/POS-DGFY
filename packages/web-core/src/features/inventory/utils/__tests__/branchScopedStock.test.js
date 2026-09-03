@@ -69,4 +69,12 @@ describe('buildItemsListParams (#682)', () => {
   it('adds a numeric location_id when a branch is selected', () => {
     expect(buildItemsListParams({ limit: 1000, selectedLocationId: '2' })).toEqual({ limit: 1000, location_id: 2 });
   });
+
+  it('omits include_inactive by default (#1495 Part A)', () => {
+    expect(buildItemsListParams({ limit: 1000 })).toEqual({ limit: 1000 });
+  });
+
+  it('adds include_inactive: true only when explicitly requested (#1495 Part A)', () => {
+    expect(buildItemsListParams({ limit: 1000, includeInactive: true })).toEqual({ limit: 1000, include_inactive: true });
+  });
 });

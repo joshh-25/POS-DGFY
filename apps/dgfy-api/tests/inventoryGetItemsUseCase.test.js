@@ -10,7 +10,7 @@ describe('getItemsUseCase (#682 branch-scoped stock)', () => {
     const result = await useCase({ query: { page: 1 } });
 
     expect(resolveLocationScope).not.toHaveBeenCalled();
-    expect(getItems).toHaveBeenCalledWith({ page: 1 });
+    expect(getItems).toHaveBeenCalledWith({ page: 1, include_inactive: false });
     expect(result.location_scope).toEqual({ location_id: null, resolved: true });
   });
 
@@ -26,7 +26,7 @@ describe('getItemsUseCase (#682 branch-scoped stock)', () => {
       userId: 7,
       operationLabel: 'Items list read'
     }));
-    expect(getItems).toHaveBeenCalledWith({ location_id: '2' });
+    expect(getItems).toHaveBeenCalledWith({ location_id: '2', include_inactive: false });
   });
 
   it('propagates a grant-denied rejection without calling the repository (fail closed, no silent fallback)', async () => {
@@ -46,6 +46,38 @@ describe('getItemsUseCase (#682 branch-scoped stock)', () => {
 
     await useCase({ query: { location_id: '2' } });
 
-    expect(getItems).toHaveBeenCalledWith({ location_id: '2' });
+    expect(getItems).toHaveBeenCalledWith({ location_id: '2', include_inactive: false });
+  });
+});
+
+describe('getItemsUseCase include_inactive permission gate (#1495 Part A)', () => {
+  const DELETE_ITEMS_USER = { user_id: 9, permissions: ['items:delete'] };
+  const STAFF_USER = { user_id: 10, permissions: [] };
+
+  it('honors include_inactive when the requesting user holds DELETE_ITEMS', async () => {
+    const getItems = jest.fn().mockResolvedValue({ items: [] });
+    const useCase = buildGetItemsUseCase({ itemRepository: { getItems } });
+
+    await useCase({ query: { include_inactive: 'true' }, user: DELETE_ITEMS_USER });
+
+    expect(getItems).toHaveBeenCalledWith({ include_inactive: true });
+  });
+
+  it('silently ignores include_inactive for a user without DELETE_ITEMS (no 403, just unhonored)', async () => {
+    const getItems = jest.fn().mockResolvedValue({ items: [] });
+    const useCase = buildGetItemsUseCase({ itemRepository: { getItems } });
+
+    await useCase({ query: { include_inactive: 'true' }, user: STAFF_USER });
+
+    expect(getItems).toHaveBeenCalledWith({ include_inactive: false });
+  });
+
+  it('does not honor include_inactive when it was not actually requested, even for a privileged user', async () => {
+    const getItems = jest.fn().mockResolvedValue({ items: [] });
+    const useCase = buildGetItemsUseCase({ itemRepository: { getItems } });
+
+    await useCase({ query: {}, user: DELETE_ITEMS_USER });
+
+    expect(getItems).toHaveBeenCalledWith({ include_inactive: false });
   });
 });

@@ -13,10 +13,26 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const migration = require('../../dgfy-migration-runner/migrations/20260904000002-backfill-voucher-redemption-transaction-link.cjs');
 
-const buildQueryInterface = ({ tenantDbNames = [], tablesByDb = null } = {}) => {
-    const query = jest.fn((sql) => {
+const buildQueryInterface = ({
+    tenantDbNames = [],
+    tablesByDb = null,
+    collationsByDb = {},
+    defaultCollation = 'utf8mb4_0900_ai_ci'
+} = {}) => {
+    const query = jest.fn((sql, options) => {
         if (sql.includes('SELECT DATABASE()')) {
             return Promise.resolve([[{ dbName: 'landlord_db' }]]);
+        }
+        // Checked ABOVE the '.tables' branch below -- both fragments could otherwise match the same
+        // 'information_schema.' substring depending on branch ordering, and this one is #1464's own
+        // regression surface (per-db collation detection for the join's CONVERT/COLLATE fix).
+        if (sql.includes('information_schema.columns')) {
+            const [databaseName] = options?.replacements || [];
+            const collationName = Object.prototype.hasOwnProperty.call(collationsByDb, databaseName)
+                ? collationsByDb[databaseName]
+                : defaultCollation;
+            if (!collationName) return Promise.resolve([[]]); // simulates an unreadable/absent column
+            return Promise.resolve([[{ charsetName: 'utf8mb4', collationName }]]);
         }
         if (sql.includes('information_schema.tables')) {
             // The fixture's default: every candidate database has both tables, unless tablesByDb
@@ -72,6 +88,9 @@ describe('20260904000002-backfill-voucher-redemption-transaction-link up()', () 
         // Override the generic tables handler with the per-db fixture.
         queryInterface.sequelize.query.mockImplementation((sql, options) => {
             if (sql.includes('SELECT DATABASE()')) return Promise.resolve([[{ dbName: 'landlord_db' }]]);
+            if (sql.includes('information_schema.columns')) {
+                return Promise.resolve([[{ charsetName: 'utf8mb4', collationName: 'utf8mb4_0900_ai_ci' }]]);
+            }
             if (sql.includes('information_schema.tables')) {
                 const [databaseName, tableName] = options?.replacements || [];
                 const tables = databaseName === 'tenant_no_vouchers'
@@ -119,6 +138,99 @@ describe('20260904000002-backfill-voucher-redemption-transaction-link up()', () 
             expect(setIndex).toBeLessThan(whereIndex);
             expect(sql.slice(whereIndex)).toContain('vr.pos_transaction_id IS NULL');
         }
+    });
+
+    // #1464 regression: on real MySQL 8, vr.idempotency_key (utf8mb4_0900_ai_ci, pinned by PR #636's
+    // sync-tenant-schemas.js repair path) and CONCAT(...)'s connection-default collation
+    // (utf8mb4_unicode_ci on affected tenants, since pos_transactions has no repair-path pin of its
+    // own) don't match -- MySQL error 1267, "Illegal mix of collations". Every emitted UPDATE must
+    // pin the CONCAT(...) side to vr.idempotency_key's own detected collation via CONVERT(...USING...)
+    // COLLATE ....
+    it('pins CONCAT(...) to the detected collation via CONVERT(...USING utf8mb4) COLLATE ... -- regression for #1464 (illegal mix of collations)', async () => {
+        const queryInterface = buildQueryInterface({
+            tenantDbNames: ['tenant_a'],
+            defaultCollation: 'utf8mb4_0900_ai_ci'
+        });
+
+        await migration.up(queryInterface);
+
+        const statements = updateStatementsOf(queryInterface);
+        expect(statements.length).toBeGreaterThan(0);
+        for (const sql of statements) {
+            expect(sql).toContain(
+                "CONVERT(CONCAT('storefront:', pt.idempotency_key, ':', vr.voucher_id) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci"
+            );
+            expect(sql).toContain(
+                "CONVERT(CONCAT('storefront:', pt.idempotency_key, ':delivery:', vr.voucher_id) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci"
+            );
+        }
+    });
+
+    it('detects the collation per database, not a hardcoded value -- two tenants with different collations get different COLLATE clauses', async () => {
+        const queryInterface = buildQueryInterface({
+            tenantDbNames: ['tenant_a', 'tenant_b'],
+            collationsByDb: { tenant_a: 'utf8mb4_unicode_ci', tenant_b: 'utf8mb4_0900_ai_ci' }
+        });
+
+        await migration.up(queryInterface);
+
+        const calls = queryInterface.sequelize.query.mock.calls;
+        const updateCallFor = (databaseName) => calls
+            .map(([sql]) => sql)
+            .filter((sql) => sql.trim().startsWith('UPDATE'))
+            .find((sql) => sql.includes(`\`${databaseName}\`.\`voucher_redemptions\``));
+
+        const tenantASql = updateCallFor('tenant_a');
+        const tenantBSql = updateCallFor('tenant_b');
+        expect(tenantASql).toContain('COLLATE utf8mb4_unicode_ci');
+        expect(tenantASql).not.toContain('COLLATE utf8mb4_0900_ai_ci');
+        expect(tenantBSql).toContain('COLLATE utf8mb4_0900_ai_ci');
+        expect(tenantBSql).not.toContain('COLLATE utf8mb4_unicode_ci');
+    });
+
+    it('leaves vr.idempotency_key itself uncollated -- keeps uq_voucher_redemptions_idempotency usable on the join', async () => {
+        const queryInterface = buildQueryInterface({});
+
+        await migration.up(queryInterface);
+
+        const [sql] = updateStatementsOf(queryInterface);
+        expect(sql).toMatch(/ON vr\.idempotency_key IN \(/);
+        expect(sql).not.toMatch(/vr\.idempotency_key\s+COLLATE/i);
+    });
+
+    it('skips a database whose join-key collation cannot be read (empty information_schema.columns result)', async () => {
+        const queryInterface = buildQueryInterface({
+            tenantDbNames: ['tenant_unreadable'],
+            collationsByDb: { tenant_unreadable: '' }
+        });
+
+        await migration.up(queryInterface);
+
+        const calls = queryInterface.sequelize.query.mock.calls;
+        const tenantUnreadableUpdates = calls
+            .map(([sql]) => sql)
+            .filter((sql) => sql.trim().startsWith('UPDATE'))
+            .filter((sql) => sql.includes('`tenant_unreadable`.`voucher_redemptions`'));
+        expect(tenantUnreadableUpdates).toHaveLength(0);
+    });
+
+    it('never interpolates an unvalidated collation name into SQL -- SQL-injection guard', async () => {
+        const queryInterface = buildQueryInterface({
+            tenantDbNames: ['tenant_hostile'],
+            collationsByDb: { tenant_hostile: 'utf8mb4_x; DROP TABLE voucher_redemptions' }
+        });
+
+        await migration.up(queryInterface);
+
+        const calls = queryInterface.sequelize.query.mock.calls;
+        const tenantHostileUpdates = calls
+            .map(([sql]) => sql)
+            .filter((sql) => sql.trim().startsWith('UPDATE'))
+            .filter((sql) => sql.includes('`tenant_hostile`.`voucher_redemptions`'));
+        expect(tenantHostileUpdates).toHaveLength(0);
+
+        const allSql = calls.map(([sql]) => sql).join('\n');
+        expect(allSql).not.toMatch(/DROP/i);
     });
 });
 

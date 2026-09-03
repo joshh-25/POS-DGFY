@@ -22,9 +22,8 @@
     "test:frontend-ims-pos-sales-e2e:matrix": "cross-env RUN_BROWSER_E2E=true RUN_A11Y_MATRIX=true BROWSER_E2E_VIEWPORTS=desktop,mobile node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.imsPosSalesJourney.e2e.test.js",
     "test:hosting:shared": "cross-env HOSTING_PROFILE=shared REDIS_URL= AUTH_BLACKLIST_FAILURE_MODE=fail_open TEMP_FILE_STORAGE=local STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED=false node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/hostingProfilePreflight.test.js tests/tempFileService.local.test.js tests/healthService.test.js tests/rateLimiterStoreMode.test.js",
     "test:hosting:vps": "cross-env HOSTING_PROFILE=vps REDIS_URL=redis://127.0.0.1:6379 AUTH_BLACKLIST_FAILURE_MODE=fail_closed TEMP_FILE_STORAGE=auto STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED=true node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --runTestsByPath tests/hostingProfilePreflight.test.js tests/healthService.test.js tests/rateLimiterStoreMode.test.js",
-    "test:integration": "cross-env TEST_TYPE=integration node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --forceExit --testPathPattern=token_refresh_race_integration",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --coverage",
     "logs:view": "tail -f logs/combined.log",
     "validate:ai": "node scripts/validate-ai-tools.js",
     "generate:ai-docs": "node scripts/generate-ai-docs.js",
@@ -125,7 +124,7 @@
     "@eslint/config-array": {
       "minimatch": "10.2.5"
     },
-    "@xmldom/xmldom": "0.8.13",
+    "@xmldom/xmldom": "0.8.15",
     "ajv": "6.14.0",
     "dottie": "2.0.7",
     "eslint": {
@@ -153,12 +152,12 @@
     "@babel/preset-env": "^7.23.7",
     "@eslint/js": "^10.0.1",
     "@faker-js/faker": "^10.2.0",
-    "babel-jest": "^29.7.0",
+    "babel-jest": "^30.5.1",
     "babel-plugin-transform-import-meta": "^2.3.3",
     "cross-env": "^10.1.0",
     "eslint": "^10.0.0",
     "globals": "^17.3.0",
-    "jest": "^29.7.0",
+    "jest": "^30.5.1",
     "nodemon": "^3.0.2",
     "sequelize-cli": "^6.6.5",
     "supertest": "^6.3.4"

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { buildCartTotals } from '../model/storefrontCartModel.js';
+import { buildCartTotals, buildServiceCartLineKey } from '../model/storefrontCartModel.js';
 import {
   buildStockExceededMessage,
   isItemAvailable,
@@ -33,6 +33,25 @@ const buildCartModifierKey = (entries = []) => JSON.stringify(
       `${left.modifier_group_id}:${left.modifier_option_id}:${left.quantity}`
         .localeCompare(`${right.modifier_group_id}:${right.modifier_option_id}:${right.quantity}`)
     ))
+);
+
+const normalizeSelectedServiceOptions = (entries = []) => (
+  (Array.isArray(entries) ? entries : [])
+    .map((entry) => ({
+      option_id: Number(entry?.option_id),
+      group_id: Number(entry?.group_id),
+      group_name: String(entry?.group_name || '').trim(),
+      group_type: entry?.group_type === 'variation' ? 'variation' : 'addon',
+      name: String(entry?.name || '').trim(),
+      price_adjustment_centavos: Number(entry?.price_adjustment_centavos || 0) || 0,
+      duration_adjustment_minutes: Number(entry?.duration_adjustment_minutes || 0) || 0
+    }))
+    .filter((entry) => Number.isInteger(entry.option_id) && entry.option_id > 0 && entry.name)
+);
+
+const getServiceOptionAdjustmentsTotal = (selectedOptions = []) => (
+  normalizeSelectedServiceOptions(selectedOptions)
+    .reduce((total, option) => total + ((Number(option.price_adjustment_centavos) || 0) / 100), 0)
 );
 
 /**
@@ -163,17 +182,7 @@ export function useCartMutations({
     const requestedQuantity = Math.max(1, Number(options?.quantity || 1));
     const lineModifiers = normalizeCartLineModifiers(options?.line_modifiers);
     const modifierKey = buildCartModifierKey(lineModifiers);
-    const selectedServiceOptions = (Array.isArray(options?.selected_options) ? options.selected_options : [])
-      .map((entry) => ({
-        option_id: Number(entry?.option_id),
-        group_id: Number(entry?.group_id),
-        group_name: String(entry?.group_name || '').trim(),
-        group_type: entry?.group_type === 'variation' ? 'variation' : 'addon',
-        name: String(entry?.name || '').trim(),
-        price_adjustment_centavos: Number(entry?.price_adjustment_centavos || 0) || 0,
-        duration_adjustment_minutes: Number(entry?.duration_adjustment_minutes || 0) || 0
-      }))
-      .filter((entry) => Number.isInteger(entry.option_id) && entry.option_id > 0 && entry.name);
+    const selectedServiceOptions = normalizeSelectedServiceOptions(options?.selected_options);
     const selectedServiceOptionIds = [...new Set([
       ...(Array.isArray(options?.selected_option_ids) ? options.selected_option_ids : []),
       ...selectedServiceOptions.map((entry) => entry.option_id)
@@ -203,6 +212,7 @@ export function useCartMutations({
       service_detail: item.service_detail || null,
       quantity: requestedQuantity,
       price,
+      ...(isServiceItem ? { base_price: Number(item.default_sale_price ?? 0) || 0 } : {}),
       image_url: imageSources.largeUrl || imageSources.src || null,
       thumbnail_url: imageSources.thumbnailUrl || imageSources.src || null,
       image_variants: item?.image_variants && typeof item.image_variants === 'object'
@@ -223,7 +233,7 @@ export function useCartMutations({
     setCart((prev) => {
       if (isServiceItem) {
         const serviceCartLineId = options?.cart_line_id || createStorefrontIdempotencyKey(`service-line-${item.item_id}`);
-        return [...prev, {
+        const serviceCartLine = {
           ...baseLine,
           cart_line_id: serviceCartLineId,
           quantity: requestedQuantity,
@@ -233,7 +243,43 @@ export function useCartMutations({
           intake_responses: options?.intake_responses && typeof options.intake_responses === 'object'
             ? options.intake_responses
             : null
-        }];
+        };
+        const serviceCartLineKey = buildServiceCartLineKey(serviceCartLine);
+        const matchingServiceLines = prev.filter((line) => (
+          line.category === 'service'
+          && buildServiceCartLineKey(line) === serviceCartLineKey
+        ));
+        if (matchingServiceLines.length === 0) return [...prev, serviceCartLine];
+
+        const finiteMaxStocks = matchingServiceLines
+          .map((line) => Number(line.max_stock))
+          .filter((value) => Number.isFinite(value));
+        const matchingMaxStock = finiteMaxStocks.length > 0
+          ? Math.min(...finiteMaxStocks)
+          : Number.POSITIVE_INFINITY;
+        const requestedQty = matchingServiceLines.reduce((sum, line) => sum + Number(line.quantity || 0), requestedQuantity);
+        const safeQty = Math.max(0, Math.min(requestedQty, matchingMaxStock));
+        if (requestedQty > matchingMaxStock) {
+          stockWarning = buildStockExceededMessage({
+            item_name: item.name,
+            requested_qty: requestedQty,
+            available_stock: matchingMaxStock,
+            unit_of_measure: item.unit_of_measure || ''
+          });
+        }
+
+        let mergedLine = false;
+        return prev.reduce((next, line) => {
+          const isMatchingLine = line.category === 'service'
+            && buildServiceCartLineKey(line) === serviceCartLineKey;
+          if (!isMatchingLine) {
+            next.push(line);
+          } else if (!mergedLine) {
+            next.push({ ...line, quantity: safeQty, max_stock: matchingMaxStock });
+            mergedLine = true;
+          }
+          return next;
+        }, []);
       }
       const found = prev.find((l) => (
         Number(l.item_id) === Number(item.item_id)
@@ -413,6 +459,31 @@ export function useCartMutations({
     }
   };
 
+  const updateServiceLineOptions = (cartLineId, selectedOptions = [], serviceOptionGroups = null) => {
+    const targetLineId = String(cartLineId || '').trim();
+    if (!targetLineId) return false;
+    const normalizedOptions = normalizeSelectedServiceOptions(selectedOptions);
+    let didUpdate = false;
+    setCart((previous) => previous.map((line) => {
+      if (String(line.cart_line_id || '') !== targetLineId || line.category !== 'service') return line;
+      const storedBasePrice = Number(line.base_price);
+      const currentOptionAdjustments = getServiceOptionAdjustmentsTotal(line.selected_options);
+      const basePrice = Number.isFinite(storedBasePrice)
+        ? storedBasePrice
+        : (Number(line.price || 0) || 0) - currentOptionAdjustments;
+      didUpdate = true;
+      return {
+        ...line,
+        base_price: basePrice,
+        price: basePrice + getServiceOptionAdjustmentsTotal(normalizedOptions),
+        selected_option_ids: [...new Set(normalizedOptions.map((option) => option.option_id))],
+        selected_options: normalizedOptions,
+        ...(Array.isArray(serviceOptionGroups) ? { service_option_groups: serviceOptionGroups } : {})
+      };
+    }));
+    return didUpdate;
+  };
+
   return {
     addToCart,
     cartAddOnsTotal,
@@ -430,6 +501,7 @@ export function useCartMutations({
     serviceCartFlyAnimations,
     serviceCartLines,
     serviceCartTotal,
-    updateQty
+    updateQty,
+    updateServiceLineOptions
   };
 }

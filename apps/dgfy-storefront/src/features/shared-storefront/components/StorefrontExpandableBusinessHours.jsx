@@ -13,7 +13,7 @@ const formatMinutes = (time) => {
   return `${hour12}:${String(minute).padStart(2, '0')} ${meridiem}`;
 };
 
-export function StorefrontExpandableBusinessHours({ schedule, theme }) {
+export function StorefrontExpandableBusinessHours({ schedule, theme, stackedSchedule = false }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { weekly = {}, timezone = 'Asia/Manila' } = schedule || {};
 
@@ -151,15 +151,15 @@ export function StorefrontExpandableBusinessHours({ schedule, theme }) {
                 key={`${group.signature}-${group.days.join('-')}`}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'auto 1fr',
-                  gap: 8,
+                  gridTemplateColumns: stackedSchedule ? '1fr' : 'auto 1fr',
+                  gap: stackedSchedule ? 4 : 8,
                   fontSize: 12,
                   color: isToday ? (theme?.accentDark || '#0f172a') : '#475569',
                   fontWeight: isToday ? 700 : 500
                 }}
               >
                 <div>{group.days.join(', ')}</div>
-                <div style={{ textAlign: 'right' }}>{group.intervals}</div>
+                <div style={{ textAlign: stackedSchedule ? 'left' : 'right' }}>{group.intervals}</div>
               </div>
             );
           })}

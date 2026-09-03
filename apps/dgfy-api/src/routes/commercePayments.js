@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   confirmPaymentSessionSandbox,
+  createDglaundryBookingPaymentSession,
   createPaymentSessionRefund,
   createTenantPayMongoChildAccount,
   getPaymentSession,
@@ -15,10 +16,12 @@ import {
   upsertTenantPaymentAccount
 } from '../modules/commercePayments/controllers/commercePaymentHandlers.js';
 import { setNoStoreCacheControl } from '../middleware/cachePolicy.js';
+import { requireTenantContext } from '../middleware/requireTenantContext.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 import {
   validateCommercePaymentRefundBody,
   validateCommercePaymentSessionParam,
+  validateCreateDglaundryBookingPaymentSessionBody,
   validateListCommercePaymentSessionsQuery,
   validateTenantPayMongoChildAccountActionParam,
   validateTenantPaymentAccountBody,
@@ -30,6 +33,9 @@ import {
 const router = express.Router();
 
 router.post('/paymongo/webhook', setNoStoreCacheControl, handlePayMongoWebhook);
+// DGLaundry booking payments are dark-disabled until the provider, hosting,
+// branch allowlist, and controlled payment gates are approved together.
+router.post('/dglaundry/booking-groups/payment-sessions', setNoStoreCacheControl, requireTenantContext, validateCreateDglaundryBookingPaymentSessionBody, createDglaundryBookingPaymentSession);
 router.get('/admin/certification/paymongo-sandbox', setNoStoreCacheControl, authenticateAdmin, getPayMongoSandboxCertification);
 router.get('/admin/settlement-report', setNoStoreCacheControl, authenticateAdmin, validateListCommercePaymentSessionsQuery, getSettlementReport);
 router.get('/admin/payment-sessions', setNoStoreCacheControl, authenticateAdmin, validateListCommercePaymentSessionsQuery, listPaymentSessions);

@@ -28,6 +28,28 @@
 //   BACKEND_TEST_MATRIX_FAST_ALLOW_DB=false npm run test:backend:fast
 // -- with no reachable database (the default; see runFastTier()) and confirm it's still green.
 // To remove an entry: the same command must still be green with the entry gone.
+//
+// #1441 (Phase 250): demoted `engagementEventModel`, `tenantCredentialSurface.security`,
+// `posParkedSale.schema.contract`, `posSplitPayment.schema.contract`, and
+// `posCashierAttendanceSchema.contract` -- each imports `src/models/index.js` but issues no real
+// query, so `src/config/database.js`'s Sequelize construction (which never connects on its own)
+// lets them pass under the fast tier's DB_PORT=1 guard. Re-proved via the same command above.
+// `paymentAtomicity.test.js` was planned as a 6th demotion on the same "import-only" reasoning but
+// the empirical re-proof caught it as a false positive: it `jest.spyOn(db.sequelize,
+// 'transaction')` rather than mocking the module, so `handleWebhook`'s real
+// `sequelize.transaction(async (t) => ...)` call still tries to open a real transaction --
+// under DB_PORT=1 that rejects before the callback runs, so `Payment.create` is never called with
+// a transaction and the assertion fails. Kept on the manifest; not demoted.
+// Also removed `token_refresh_race_integration.test.js`'s entry -- the file itself was deleted
+// (never executed in any gate; see docs/testing/backend-test-suite-value-audit.md).
+//
+// #1452 (Phase 255, PR-D): removed 'tests/token_refresh_race.test.js' -- the file was folded
+// into tests/rtr_verification.test.js (cases 1.2/1.3 were duplicates; 1.1 and 1.4 were
+// ported). Its distributed-lock sibling case in supertest_security.test.js was extracted to
+// tests/distributedLock.redis.test.js, which is deliberately NOT listed here: it imports only
+// src/config/redis.js (module-mocked by tests/setup.js with stateful in-memory semantics) and
+// issues zero DB queries, so it belongs in the fast tier. Re-proved via
+// BACKEND_TEST_MATRIX_FAST_ALLOW_DB=false npm run test:backend:fast.
 module.exports = [
   'tests/adminTenantLifecycle.integration.test.js',
   'tests/ai_cost_control_e2e.test.js',
@@ -40,14 +62,10 @@ module.exports = [
   'tests/billingScheduler.db.integration.test.js',
   'tests/complianceDowngradeTrigger.db.integration.test.js',
   'tests/e2e-full-cycle.test.js',
-  'tests/engagementEventModel.test.js',
   'tests/lookup_v2.test.js',
   'tests/paymentAtomicity.test.js',
-  'tests/posCashierAttendanceSchema.contract.test.js',
   'tests/posCheckout.db.integration.test.js',
-  'tests/posParkedSale.schema.contract.test.js',
   'tests/posSalesReconciliation.db.integration.test.js',
-  'tests/posSplitPayment.schema.contract.test.js',
   'tests/purchaseOrder.test.js',
   'tests/race_condition_repro.test.js',
   'tests/reproduce_import_bypass.test.js',
@@ -55,7 +73,6 @@ module.exports = [
   'tests/securityTransport.middleware.test.js',
   'tests/storefrontPrimaryLocation.discovery.integration.test.js',
   'tests/supertest_security.test.js',
-  'tests/tenantCredentialSurface.security.test.js',
   'tests/tenantModelFactory.contract.test.js',
   'tests/tenantProvisioning.test.js',
   'tests/tenantProvisioningAdminUserId.test.js',
@@ -72,8 +89,6 @@ module.exports = [
   // exactly the empirical proof this file's own header describes for the three files heuristics
   // alone missed.
   'tests/toctou_integration.test.js',
-  'tests/token_refresh_race.test.js',
-  'tests/token_refresh_race_integration.test.js',
   'tests/voidMovement.supertest.test.js',
   'tests/voidMovement.test.js',
 ];

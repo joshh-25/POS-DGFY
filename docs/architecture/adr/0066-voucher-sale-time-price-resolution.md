@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-17
-last_reviewed: 2026-09-02
+last_reviewed: 2026-09-08
 review_by: 2027-02-17
 applies_to: vouchers, storefront, pos, commerce_payments, backend
 topic: voucher_sale_time_price_resolution
@@ -436,6 +436,77 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
   trusted to auto-apply.
 - PR: Phase 242 (#1390, epic #1321).
 
+### 2026-09-08 -- Account-restricted issuance: an allowlist child table, and a ledger-column type repair (Phase 269, #788)
+
+- Clauses amended: **Decision 9** and **Decision 10** (both `[default]` tier -- amendable in place
+  per ADR 0039, no invariant weakened, no `[binding]` clause changed). **Decisions 3 and 4 are
+  inherited exactly and are explicitly not modified**; this entry records how the new condition
+  routes through them rather than around them.
+- Change: a voucher may now be restricted to one or more named DGFY accounts, so that holding the
+  code is no longer sufficient to redeem it. This is the "later" #454 decision 4 deferred
+  (*"the schema is deliberately hedged so a `voucher_codes` child table can be added later without
+  migrating the campaign table"*) and Consequences item 5 above still records as unbuilt -- arriving
+  keyed on the **account** rather than on a per-recipient code, which is what #788 actually asks
+  for. Per-recipient unique-code issuance stays unbuilt and unaffected.
+  1. **Decision 9 extended, not contradicted.** That clause forbids putting an eligibility condition
+     in a JSON blob, on the grounds that anything appearing in a `WHERE` clause must stay indexable,
+     validatable, and auditable. An allowlist is a variable-length set, so it cannot be a column --
+     it is a child table, `voucher_account_grants`, structurally a twin of `voucher_scopes`
+     (`int` PK, `CASCADE` FK to `vouchers`, one composite unique key, `created_at` only). Every
+     property Decision 9 protects is preserved; only the arity changes. `vouchers.conditions`
+     remains reserved and empty, and no condition-plugin registry is introduced.
+  2. **Decision 10 applied to the derived gate.** `vouchers.is_account_restricted` is
+     `NOT NULL DEFAULT false` -- never nullable, so "unrestricted" cannot be produced by a NULL
+     nobody wrote. It is derived server-side from the grants array inside the same transaction that
+     writes the child rows, is in the validator's `FORBIDDEN_FIELDS`, and is absent from
+     `WRITABLE_VOUCHER_COLUMNS`, so flag and rows cannot drift. That is what lets the eligibility
+     policy trust `false` to mean "no rows exist" without a `COUNT` on every checkout.
+  3. **Fail-closed extends to an unevaluatable restriction.** `voucher_account_grants` is a child
+     table the pure policy module cannot read, so a restricted voucher whose allowlist a caller
+     never hydrated blocks (`VOUCHER_ACCOUNT_GRANTS_UNRESOLVED`) rather than evaluating as
+     unrestricted -- Decision 10's "absent must be unrepresentable" rule, relocated from a column
+     default to a caller convention. Checked *after* the no-authenticated-buyer case, so the two
+     display surfaces -- which legitimately have no buyer identity and therefore do not hydrate --
+     report the accurate `VOUCHER_ACCOUNT_REQUIRED` instead of a spurious server-defect code.
+  4. **Decision 3's asymmetry is inherited verbatim.** Checkout fails closed with a 422 and a
+     `reason_code`; catalog display falls back to the plain catalog price. The three account codes
+     join `DISPLAY_RELEVANT_REASON_CODES`, which is also what
+     `storefrontDiscoveryIndexService.js`'s public-listing projection consumes -- so an
+     account-restricted voucher is omitted from the public snapshot. That is load-bearing, not
+     cosmetic: the projection publishes each listed voucher's literal `code`, so a publicly-listed
+     restricted voucher would broadcast the very code this feature exists to withhold. Authoring
+     independently refuses that combination (`VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE`).
+  5. **Decision 4 is respected.** The eligibility check lives in the same domain layer that already
+     reads and writes `voucher_redemptions`; no second counter, cache, or parallel resolution path
+     is introduced, and the ledger stays authoritative.
+- **A type repair recorded here because it corrects this ADR's own lineage.**
+  `voucher_redemptions.dgfy_account_id` has been declared `INTEGER` since #455/Phase 102, while
+  `DgfyAccount.id` is and always has been a UUID -- the column could never have held a real account
+  id. Latent rather than live: nothing in the repository ever wrote it, so every row is NULL and the
+  retype to `CHAR(36)` is lossless on real data. Phase 269 is its first writer, on every storefront
+  redemption (restricted or not -- it is the per-customer half of #586's two-tier tracking model,
+  and gating it on the restriction would leave the same gap open). `sync-tenant-schemas.js`'s
+  repair pass is column-*presence* based and structurally cannot repair a type change, the same
+  limitation already recorded there for ENUM widenings; a tenant that misses the migration keeps the
+  pre-#788 INT column, where the new write fails loudly rather than silently mis-recording.
+- **POS: #454 decision 6 re-verified against current code, not inherited from a plan.**
+  `posUseCases.js`'s `redeemVoucher` binding still passes `storeCustomerId: null` and no account
+  identity of any kind; the 2026-08-20 amendment above narrowed that decision only as far as a
+  free-typed customer *name*. A name is not an authenticated account, so POS reaches the shared
+  check with no account and fails closed on the same path a storefront guest does -- **with no POS
+  file changed**, and with no POS-specific rule that could drift out of sync. This amendment does
+  not narrow #454 decision 6 any further than the 2026-08-20 entry already did.
+- **Named limitation, not a silent gap:** neither display surface receives a `storeCustomer`, so a
+  *granted* buyer also sees no display price on a browse page and learns the voucher applies only at
+  checkout. Conservative in the safe direction (a price is never advertised to someone who may not
+  get it); closing it means threading buyer identity into the two catalog read paths, which is a
+  separate change.
+- **Relationship to #606, stated so the two are not conflated:** #606 is a per-customer *quantity*
+  cap on a voucher a buyer may already use; this is an *audience allowlist* deciding who may redeem
+  at all. Orthogonal, and composable -- a voucher can carry both. The
+  `idx_voucher_redemptions_account` index added here is the one #606 will need unchanged.
+- PR: Phase 269 (#788, epic #453).
+
 ## Decision (continued)
 
 12. **A voucher redemption fails closed when it would sell an eligible, discounted line below that
@@ -460,7 +531,9 @@ plan live in #455 and the implementation phase ledger, and are linked rather tha
    (#454 decision 2 is the carve-out); #661 — the storefront voucher redemption PR both #667 and
    #668 are follow-ups to; #668 — the QRPh payment-then-redemption race amendment above; #1321 —
    Customer delivery pricing epic; #1331 — the item/delivery axis split, 2026-09-02 amendment above;
-   #1390 — storefront cancellation voucher-reversal amendment above, blocking prerequisite for #1332
+   #1390 — storefront cancellation voucher-reversal amendment above, blocking prerequisite for #1332;
+   #788 — account-restricted issuance, the 2026-09-08 amendment above; #606 — per-customer
+   voucher limits, orthogonal to #788 and explicitly not conflated with it
 6. [ADR 0078](0078-customer-delivery-fee-modes.md) — customer delivery fee modes
    (fixed/calculated/free) and the `finalFee = max(0, baseFee - waiverAmount)` formula the
    2026-09-02 amendment's waiver reduces; its own Related section anticipated this amendment

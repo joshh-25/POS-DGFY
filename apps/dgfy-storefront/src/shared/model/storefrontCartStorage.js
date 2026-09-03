@@ -112,6 +112,9 @@ export const normalizeStorefrontCartLine = (line) => {
     service_detail: line.service_detail && typeof line.service_detail === 'object' ? line.service_detail : null,
     quantity,
     price: Number(line.price || 0) || 0,
+    ...(optionalText(line.category).toLowerCase() === 'service' && Number.isFinite(Number(line.base_price))
+      ? { base_price: Number(line.base_price) }
+      : {}),
     image_url: optionalText(line.image_url) || null,
     thumbnail_url: optionalText(line.thumbnail_url) || optionalText(line.image_url) || null,
     image_variants: normalizeImageVariants(line.image_variants),

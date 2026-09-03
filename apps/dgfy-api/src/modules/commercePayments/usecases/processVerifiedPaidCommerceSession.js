@@ -47,7 +47,7 @@ const getPaidPaymentValidationFailure = ({ session, resource }) => {
   return null;
 };
 
-export const buildProcessVerifiedPaidCommerceSessionUseCase = ({ commercePaymentRepository }) => async ({
+export const buildProcessVerifiedPaidCommerceSessionUseCase = ({ commercePaymentRepository, partnerClient }) => async ({
   session,
   resource,
   providerEventId = null,
@@ -208,7 +208,8 @@ export const buildProcessVerifiedPaidCommerceSessionUseCase = ({ commercePayment
     session: paidSession,
     resource,
     providerEventId,
-    commercePaymentRepository
+    commercePaymentRepository,
+    partnerClient
   });
   return { handled: true, status: finalized.status, payment_session: finalized.public_reference };
 };

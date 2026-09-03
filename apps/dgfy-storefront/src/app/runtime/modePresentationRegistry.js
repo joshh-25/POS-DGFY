@@ -2,6 +2,7 @@ import { getBusinessModePinMeta, normalizeBusinessMode } from '../../discovery/m
 import { getStorefrontTemplateConfig } from './storefrontTemplateRegistry.js';
 import { hasServicesCapability as hasComposedServicesCapability } from '../../shared/model/workflowCapabilities.js';
 import { SERVICES_BODY_FONT, SERVICES_DISPLAY_FONT } from '../../modes/services/servicesTypography.js';
+import { SERVICES_PALETTE } from '../../modes/services/servicesPalette.js';
 
 export const ModePresentationRegistry = Object.freeze({
   default: Object.freeze({
@@ -57,10 +58,14 @@ export const ModePresentationRegistry = Object.freeze({
   services: Object.freeze({
     heroEyebrow: 'Services storefront',
     heroDescription: 'Book service families, answer intake questions, and keep one ticket for the full appointment journey.',
-    catalogEyebrow: 'Service Catalog',
-    catalogHeading: 'Choose the care you need',
+    catalogEyebrow: 'Services',
+    catalogHeading: 'Choose the service you need',
     catalogSubtitle: '',
     catalogSearchPlaceholder: 'Search services...',
+    catalogPriceAllLabel: 'All Price',
+    catalogCategoryLabel: 'Service Categories',
+    catalogCategoryAllLabel: 'All services',
+    catalogCategoryIconToken: 'menu',
     catalogAddActionLabel: 'Add service',
     catalogUnavailableLabel: 'Unavailable',
     catalogMissingImageLabel: 'No service image',
@@ -104,11 +109,18 @@ export const ModePresentationRegistry = Object.freeze({
     heroTheme: Object.freeze({
       displayFont: SERVICES_DISPLAY_FONT,
       bodyFont: SERVICES_BODY_FONT,
-      accent: '#0f766e',
-      accentDark: '#134e4a',
-      accentSoft: '#ecfeff',
-      surface: '#0f172a',
-      borderSoft: 'rgba(15,118,110,0.2)'
+      accent: SERVICES_PALETTE.primary,
+      accentDark: SERVICES_PALETTE.primaryDark,
+      accentSoft: SERVICES_PALETTE.primarySoft,
+      accentLight: SERVICES_PALETTE.primaryLight,
+      taglineColor: SERVICES_PALETTE.primaryLight,
+      ratingColor: SERVICES_PALETTE.warning,
+      accentShadow: SERVICES_PALETTE.primaryShadow,
+      followColor: SERVICES_PALETTE.primary,
+      followActiveColor: SERVICES_PALETTE.success,
+      directionsColor: SERVICES_PALETTE.primary,
+      surface: SERVICES_PALETTE.textPrimary,
+      borderSoft: SERVICES_PALETTE.primaryBorder
     })
   }),
   msme: Object.freeze({

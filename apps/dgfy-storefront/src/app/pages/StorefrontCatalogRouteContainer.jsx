@@ -35,6 +35,7 @@ export function StorefrontCatalogRouteContainer(props) {
     activeBookingService,
     activeServiceLocationSummary,
     addToCart,
+    updateServiceLineOptions,
     bookingCalendarDateOptions,
     bookingDateOptions,
     bookingFieldPlan,
@@ -62,6 +63,8 @@ export function StorefrontCatalogRouteContainer(props) {
     customerName,
     customerPhone,
     customerPin,
+    setCustomerAddress,
+    setResolvedDeliveryAddress,
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
     deliverySavedLocations,
@@ -110,6 +113,8 @@ export function StorefrontCatalogRouteContainer(props) {
     reviewServiceLines,
     routeServiceItemId,
     selectedLocation,
+    selectedLocationId,
+    storeLocations,
     selectedSavedLocationId,
     selectedServiceCartLineId,
     selectedServiceDatePart,
@@ -133,6 +138,8 @@ export function StorefrontCatalogRouteContainer(props) {
     serviceLocationLandmarkNote,
     serviceLocationSummaryDraft,
     serviceOrderMethod,
+    serviceFlowMethod,
+    serviceFlowProfileMethod,
     setServiceOrderMethod,
     serviceScheduleMode,
     setServiceScheduleMode,
@@ -157,6 +164,7 @@ export function StorefrontCatalogRouteContainer(props) {
     setCatalogSearch,
     setCheckoutResult,
     setCustomerPin,
+    setSelectedLocationId,
     setDeliveryLocationAction,
     setIsReviewModalOpen,
     setIsServiceFilterOpen,
@@ -293,6 +301,7 @@ export function StorefrontCatalogRouteContainer(props) {
         activeBookingService={activeBookingService}
         activeServiceLocationSummary={activeServiceLocationSummary}
         addToCart={addToCart}
+        updateServiceLineOptions={updateServiceLineOptions}
         bookingCalendarDateOptions={bookingCalendarDateOptions}
         bookingDateOptions={bookingDateOptions}
         bookingFieldPlan={bookingFieldPlan}
@@ -317,6 +326,8 @@ export function StorefrontCatalogRouteContainer(props) {
         customerName={customerName}
         customerPhone={customerPhone}
         customerPin={customerPin}
+        setCustomerAddress={setCustomerAddress}
+        setResolvedDeliveryAddress={setResolvedDeliveryAddress}
         deliveryLocationAction={deliveryLocationAction}
         deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
         deliverySavedLocations={deliverySavedLocations}
@@ -367,6 +378,9 @@ export function StorefrontCatalogRouteContainer(props) {
         reviewServiceLines={reviewServiceLines}
         routeServiceItemId={routeServiceItemId}
         selectedLocation={selectedLocation}
+        selectedLocationId={selectedLocationId}
+        storeLocations={storeLocations}
+        setSelectedLocationId={setSelectedLocationId}
         selectedSavedLocationId={selectedSavedLocationId}
         selectedServiceCartLineId={selectedServiceCartLineId}
         selectedServiceDatePart={selectedServiceDatePart}
@@ -390,6 +404,8 @@ export function StorefrontCatalogRouteContainer(props) {
         serviceLocationLandmarkNote={serviceLocationLandmarkNote}
         serviceLocationSummaryDraft={serviceLocationSummaryDraft}
         serviceOrderMethod={serviceOrderMethod}
+        serviceFlowMethod={serviceFlowMethod}
+        serviceFlowProfileMethod={serviceFlowProfileMethod}
         setServiceOrderMethod={setServiceOrderMethod}
         serviceScheduleMode={serviceScheduleMode}
         setServiceScheduleMode={setServiceScheduleMode}

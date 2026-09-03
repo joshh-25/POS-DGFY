@@ -13,6 +13,8 @@ import { buildCreateItemUseCase } from './usecases/createItemUseCase.js';
 import { buildUpdateItemUseCase } from './usecases/updateItemUseCase.js';
 import { buildFinalizeItemUseCase } from './usecases/finalizeItemUseCase.js';
 import { buildDeleteItemUseCase } from './usecases/deleteItemUseCase.js';
+import { buildRestoreItemUseCase } from './usecases/restoreItemUseCase.js';
+import { buildReactivateItemUseCase } from './usecases/reactivateItemUseCase.js';
 import { buildGetItemStockHistoryUseCase } from './usecases/getItemStockHistoryUseCase.js';
 import { buildGetItemBatchesUseCase } from './usecases/getItemBatchesUseCase.js';
 import { buildGetItemMovementsUseCase } from './usecases/getItemMovementsUseCase.js';
@@ -23,6 +25,8 @@ import { buildGetFoldersUseCase } from './usecases/getFoldersUseCase.js';
 import { buildCreateFolderUseCase } from './usecases/createFolderUseCase.js';
 import { buildUpdateFolderUseCase } from './usecases/updateFolderUseCase.js';
 import { buildDeleteFolderUseCase } from './usecases/deleteFolderUseCase.js';
+import { buildListItemFoldersUseCase } from './usecases/listItemFoldersUseCase.js';
+import { buildReplaceItemFoldersUseCase } from './usecases/replaceItemFoldersUseCase.js';
 import {
   buildListStorefrontCatalogOverridesUseCase,
   buildUpdateStorefrontCatalogOverrideUseCase,
@@ -89,6 +93,8 @@ export const finalizeItemUseCase = buildFinalizeItemUseCase({
 });
 
 export const deleteItemUseCase = buildDeleteItemUseCase({ itemRepository });
+export const restoreItemUseCase = buildRestoreItemUseCase({ itemRepository });
+export const reactivateItemUseCase = buildReactivateItemUseCase({ itemRepository });
 export const getItemStockHistoryUseCase = buildGetItemStockHistoryUseCase({ itemRepository });
 export const getItemBatchesUseCase = buildGetItemBatchesUseCase({ itemRepository });
 export const getItemMovementsUseCase = buildGetItemMovementsUseCase({ itemRepository });
@@ -99,6 +105,8 @@ export const getFoldersUseCase = buildGetFoldersUseCase({ itemRepository });
 export const createFolderUseCase = buildCreateFolderUseCase({ itemRepository });
 export const updateFolderUseCase = buildUpdateFolderUseCase({ itemRepository });
 export const deleteFolderUseCase = buildDeleteFolderUseCase({ itemRepository });
+export const listItemFoldersUseCase = buildListItemFoldersUseCase({ itemRepository });
+export const replaceItemFoldersUseCase = buildReplaceItemFoldersUseCase({ itemRepository });
 export const listStorefrontCatalogOverridesUseCase = buildListStorefrontCatalogOverridesUseCase({ itemRepository });
 export const updateStorefrontCatalogOverrideUseCase = buildUpdateStorefrontCatalogOverrideUseCase({ itemRepository });
 export const updateBulkStorefrontCatalogOverridesUseCase = buildUpdateBulkStorefrontCatalogOverridesUseCase({ itemRepository });

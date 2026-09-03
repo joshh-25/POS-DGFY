@@ -29,6 +29,7 @@ import {
   useInventoryCreateItem,
   useInventoryUpdateItem,
   useInventoryDeleteItem,
+  useInventoryRestoreItem,
   useInventoryCreateItemDraft,
   useInventoryFinalizeItem,
   useInventoryFolders,
@@ -138,17 +139,23 @@ export default function Items() {
     () => (Array.isArray(allLocations) ? allLocations.filter((loc) => loc?.is_active !== false) : []),
     [allLocations]
   );
+  // #1495 Part A: NOT persisted to localStorage, same reasoning as selectedLocationId above --
+  // always reopening with inactive items hidden is the honest default; a stale remembered "show
+  // inactive" flag from a prior session is exactly the kind of silent misleading-context bug that
+  // pattern exists to avoid.
+  const [showInactiveItems, setShowInactiveItems] = useState(false);
   const {
     items,
     loading,
     error,
     refetch,
     locationScope
-  } = useInventoryItems(buildItemsListParams({ limit: 1000, selectedLocationId }));
+  } = useInventoryItems(buildItemsListParams({ limit: 1000, selectedLocationId, includeInactive: showInactiveItems }));
   const { items: skuSeedItems = [] } = useInventoryItems({ fields: 'dropdown', limit: 10000 });
   const { createItem } = useInventoryCreateItem();
   const { updateItem } = useInventoryUpdateItem();
   const { deleteItem, loading: deleting } = useInventoryDeleteItem();
+  const { restoreItem, loading: restoring } = useInventoryRestoreItem();
   const { createItemDraft } = useInventoryCreateItemDraft();
   const {
     can,
@@ -1477,8 +1484,14 @@ export default function Items() {
 
   const handleView = async (item) => {
     try {
-      // Fetch complete item data with all associations for ALL item categories
-      const fullItemData = await getInventoryItemById(item.item_id);
+      // Fetch complete item data with all associations for ALL item categories.
+      // #1495 Part A: an inactive item is only reachable here via the include_inactive list --
+      // getItemById's own default lookup excludes status: 'inactive', so this would otherwise
+      // 404 into the catch below every time. Request the same bypass the list already used.
+      const fullItemData = await getInventoryItemById(
+        item.item_id,
+        item.status === 'inactive' ? { include_inactive: true } : {}
+      );
       setSelectedItem(fullItemData);
     } catch (error) {
       console.error('Failed to load item data:', error);
@@ -1794,6 +1807,23 @@ export default function Items() {
     setShowDeleteDialog(false);
     setItemToDelete(null);
     setDeleteErrors(null);
+  };
+
+  // #1495 Part A: restore is the reverse of delete, but non-destructive and trivially reversible
+  // again (restore -> delete -> restore ...) -- deliberately skips a confirmation dialog, unlike
+  // handleConfirmDelete above, since there's no destructive consequence to guard against.
+  const handleRestore = async (item) => {
+    if (!item) return;
+    try {
+      const restored = await restoreItem(item.item_id);
+      toast.success('Item restored successfully');
+      if (selectedItem?.item_id === item.item_id) {
+        setSelectedItem(restored || { ...selectedItem, status: 'active', deleted_at: null });
+      }
+      refetch();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || 'Failed to restore item');
+    }
   };
 
   // Folder handlers
@@ -2183,6 +2213,19 @@ export default function Items() {
                 </Select>
               </div>
 
+              {canDeletePermission('items') && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500">Inactive Items</span>
+                  <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm text-slate-600">
+                    <Checkbox
+                      checked={showInactiveItems}
+                      onCheckedChange={(checked) => setShowInactiveItems(checked === true)}
+                    />
+                    Show inactive
+                  </label>
+                </div>
+              )}
+
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-slate-500">FIFO</span>
                 <Select value={fifoFilter} onValueChange={setFifoFilter}>
@@ -2297,6 +2340,7 @@ export default function Items() {
                       onView={handleView}
                       onEdit={handleEdit}
                       onDelete={handleDeleteClick}
+                      onRestore={handleRestore}
                       onMoveToFolder={openMoveModal}
                       posReadiness={posReadinessByItemId[item.item_id || item.id]}
                       posVisible={posConfigResolved.pos_visible !== false}
@@ -2339,6 +2383,7 @@ export default function Items() {
                     onView={handleView}
                     onEdit={handleEdit}
                     onDelete={handleDeleteClick}
+                    onRestore={handleRestore}
                     onMoveToFolder={openMoveModal}
                     posReadiness={posReadinessByItemId[item.item_id || item.id]}
                     posVisible={posConfigResolved.pos_visible !== false}
@@ -2963,13 +3008,18 @@ export default function Items() {
           onRefresh={async () => {
             if (!selectedItem) return;
             try {
-              const refreshed = await getInventoryItemById(selectedItem.item_id);
+              const refreshed = await getInventoryItemById(
+                selectedItem.item_id,
+                selectedItem.status === 'inactive' ? { include_inactive: true } : {}
+              );
               setSelectedItem(refreshed);
             } catch (e) {
               console.error('Failed to refresh item after write-off:', e);
             }
             refetch();
           }}
+          onRestore={handleRestore}
+          restoring={restoring}
         />
         <ItemFormModal
           item={editingItem}
@@ -3161,6 +3211,7 @@ export default function Items() {
                 onView={() => { }}
                 onEdit={() => { }}
                 onDelete={() => { }}
+                onRestore={() => { }}
                 onMoveToFolder={() => { }}
                 posReadiness={posReadinessByItemId[activeDragItem.item_id || activeDragItem.id]}
                 showPosVisibilityControl={false}

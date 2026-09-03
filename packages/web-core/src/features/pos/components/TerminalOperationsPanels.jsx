@@ -22,7 +22,6 @@ import IncomingQueueOrderList from './IncomingQueueOrderList.jsx';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
 import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
 import { resolveRunDropAssignment } from '../utils/queueRunDropAssignment.js';
-import { IMIN_TABLET_MAX_WIDTH_PX } from '../utils/posTabletViewport.js';
 import { QUEUE_RUN_FILTER_ALL, QUEUE_RUN_FILTER_UNASSIGNED, filterOrdersByRun, getQueueRunFilterOptions } from '../utils/deliveryRunQueueFilter.js';
 import useDeliveryRunOptions from '../hooks/useDeliveryRunOptions.js';
 import {
@@ -36,6 +35,8 @@ import {
 import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActions.js';
 import { readQueueViewModePreference, writeQueueViewModePreference, QUEUE_VIEW_MODES } from '../utils/queueViewModePreference.js';
 import QueueOrderTableView from './QueueOrderTableView.jsx';
+import { deriveQueueSelectionCounts } from '../utils/deriveQueueSelectionCounts.js';
+import { POS_TABLET_MIN_WIDTH_PX } from '../utils/posTabletViewport.js';
 // Phase 211 (#1180)'s own precedent for this gate: orderFulfillmentUi.js:56 reuses this exact
 // normalizeWorkflowMode(...) === 'retail' pattern rather than the WORKFLOW_PAGE_CAPABILITIES nav
 // gate -- the delivery-runs tab is an in-page view over a mode-agnostic API (ADR 0034), not a
@@ -44,11 +45,33 @@ import { normalizeWorkflowMode } from '../../settings/workflowMode.js';
 
 const createIdempotencyKey = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
 
-// Phase 229 (#1289), §2.6. Split-tab viewport gate as a CSS media query, matching the primary POS
-// hardware constraint the plan documents against `posTabletViewport.js` (Falcon 1 @ 1280 landscape)
-// without reimplementing that util -- it answers a different question (is this a POS tablet at
-// all) than this gate does (is there *physically enough width* for two panels side by side).
-const SPLIT_VIEW_MEDIA_QUERY = `(min-width: ${IMIN_TABLET_MAX_WIDTH_PX}px)`;
+// Fixed 2026-09-02 (#1289 follow-up, reported live): this gate originally reused
+// IMIN_TABLET_MAX_WIDTH_PX (1280) as its *minimum* width -- but that constant is the Falcon 1 POS
+// tablet's own MAX landscape width (posTabletViewport.js's tablet-detection upper bound), so
+// requiring the split view's viewport to be >= the real hardware's own max width made it
+// structurally unable to render on that hardware at 100% zoom (confirmed live: it only appeared
+// after zooming out below 100%, which inflates the effective CSS viewport width past 1280).
+// SPLIT_VIEW_MIN_WIDTH_PX is a deliberately separate constant answering the actual question this
+// gate needs answered -- is there *physically enough width* for two panels side by side --
+// decoupled from tablet detection.
+//
+// Corrected again 2026-09-03 (#1491): 1024px excluded every iPad in PORTRAIT (mini/standard/Air/
+// 11"-Pro all sit at ~768-834px there; only the 12.9" Pro's 1024px portrait width cleared the old
+// gate) even though this gate was never actually gating the two-column grid -- the grid's own
+// `xl:` breakpoint (Tailwind's default, 1280px) is a separate, higher threshold
+// (TerminalOperationsPanels.jsx's split grid, still untouched by this fix) that already stacks the
+// two panels into a single column below it. So a working single-column layout already exists and
+// already renders for every iPad below 1280px; this gate only ever controlled whether that
+// existing layout was reachable at all, not which layout rendered. Lowered to
+// `POS_TABLET_MIN_WIDTH_PX` (768) -- this codebase's own established "tablet-sized viewport" floor
+// (posTabletViewport.js, also consumed by TerminalPage.jsx/usePosCatalogWorkflow.js/
+// POSTransactionHistoryPanel.jsx) -- imported directly rather than re-declared as a second literal,
+// so the two constants can't drift apart again the way this one already drifted twice (1280 -> 1024
+// -> this fix). Primary interaction stays button-based (QueueRunAssignBar, unconditionally
+// visible above the grid) at every eligible width; drag-to-assign is a secondary, opportunistic
+// path here, not something this fix had to redesign for touch.
+const SPLIT_VIEW_MIN_WIDTH_PX = POS_TABLET_MIN_WIDTH_PX;
+const SPLIT_VIEW_MEDIA_QUERY = `(min-width: ${SPLIT_VIEW_MIN_WIDTH_PX}px)`;
 
 function useSplitViewportEligible() {
   const [isEligible, setIsEligible] = React.useState(() => {
@@ -453,6 +476,14 @@ function IncomingQueueWorkspace({
     [deliveryRuns, queueLocationScopeId, sortedIncomingOrders]
   );
   const visibleIncomingOrders = filterOrdersByRun(sortedIncomingOrders, runFilter);
+  // Phase 257 (#1491) Part 2: the split ("Queue + Run") view's own candidate list -- always
+  // unassigned-only, independent of `runFilter` (which the split view doesn't even render a
+  // control for). Deliberately NOT a flip of `runFilter`'s own default: an order stays "assigned"
+  // to its run for its entire remaining lifecycle, and the standalone Active Queue tab is the only
+  // screen with the per-order cash-collection/balance-settlement/status-change/personnel-assignment
+  // buttons an operator still needs for an assigned order -- see the compliance impact
+  // declaration for the full regression analysis. Scoped to this one call site instead.
+  const splitQueueCandidates = filterOrdersByRun(sortedIncomingOrders, QUEUE_RUN_FILTER_UNASSIGNED);
   // Maps id -> label from the same already-loaded runs list the filter itself uses (F-3, the
   // Phase 227 declaration's own pattern) -- deliberately the unfiltered deliveryRuns list, not
   // runFilterOptions, so a card still shows a real label for a run outside the filter's own scope
@@ -521,24 +552,16 @@ function IncomingQueueWorkspace({
   // selection rather than being dropped from the Set. (handleSelectAllEligible below is a narrow
   // exception -- "Select all eligible" replaces the whole Set, so it does discard any
   // filter-hidden selection; that has always been select-all's behavior, not new here.)
-  const selectedEligibleOrders = visibleIncomingOrders.filter(
-    (order) => selectedOrderIds.has(Number(order?.pos_transaction_id))
-      && getRunAssignEligibility(order, {}).eligible
-  );
-  const visibleSelectedCount = visibleIncomingOrders.filter(
-    (order) => selectedOrderIds.has(Number(order?.pos_transaction_id))
-  ).length;
-  // Recomputed against the visible list only -- selectedOrderIds.size would count every
-  // filter-hidden selection as "ineligible drift" and show a wrong, alarming number.
-  const selectedDriftCount = Math.max(0, visibleSelectedCount - selectedEligibleOrders.length);
-  // Ids that are selected AND present in the full (unfiltered) list, but not in the currently
-  // visible (filtered) list -- these will silently NOT be submitted by the bulk-add unless the
-  // operator is told so.
-  const selectedHiddenCount = sortedIncomingOrders.filter((order) => {
-    const orderId = Number(order?.pos_transaction_id);
-    if (!selectedOrderIds.has(orderId)) return false;
-    return !visibleIncomingOrders.some((visible) => Number(visible?.pos_transaction_id) === orderId);
-  }).length;
+  const {
+    selectedEligibleOrders,
+    visibleSelectedCount,
+    selectedDriftCount,
+    selectedHiddenCount
+  } = deriveQueueSelectionCounts(sortedIncomingOrders, visibleIncomingOrders, selectedOrderIds);
+  // Phase 257 (#1491) Part 2: the same math, re-derived against the split view's own
+  // unassigned-only candidate list instead -- used only by the split branch below (its
+  // QueueRunAssignBar display counts and its checkbox-submit path), never the standalone tab.
+  const splitSelectionCounts = deriveQueueSelectionCounts(sortedIncomingOrders, splitQueueCandidates, selectedOrderIds);
 
   const toggleOrderSelection = (orderId, checked) => {
     setSelectedOrderIds((current) => {
@@ -564,8 +587,14 @@ function IncomingQueueWorkspace({
   // Phase 229 (#1289), §2.9: `explicitOrderIds` lets a drag (single unselected card, or the whole
   // checkbox selection when the dragged card is part of it) supply its own id set instead of the
   // closure's `selectedEligibleOrders` -- everything else (idempotency signature, the 409 recovery
-  // loop, refreshIncomingOrders()) is reused verbatim. QueueRunAssignBar's own call site passes
-  // just one argument, so `explicitOrderIds` defaults to null and this is fully backward-compatible.
+  // loop, refreshIncomingOrders()) is reused verbatim. The standalone tab's QueueRunAssignBar call
+  // site passes just one argument, so `explicitOrderIds` defaults to null there and resolves
+  // against the closure's own `selectedEligibleOrders` (which is derived from the standalone tab's
+  // own `visibleIncomingOrders`). Phase 257 (#1491): the split view's QueueRunAssignBar call site
+  // passes its own `splitSelectionCounts.selectedEligibleOrders` ids explicitly instead, so its
+  // checkbox-submit path can never disagree with what its own bar displays -- the closure's
+  // `selectedEligibleOrders` is the standalone tab's list only, and must never silently double as
+  // the split view's too.
   const handleBulkAssignSubmit = async (targetRunId, explicitOrderIds = null) => {
     if (!isOnline) {
       toast.error('Reconnect before adding orders to a run.');
@@ -657,14 +686,18 @@ function IncomingQueueWorkspace({
 
   const handleQueueDragEnd = async (event) => {
     setActiveDragOrderId(null);
-    // Phase 231 (#1290): resolved against visibleIncomingOrders (the run-filtered list), not
-    // sortedIncomingOrders -- the split view only ever renders/drags visible cards (below), and a
-    // stale drag id from before a filter change must not resolve against a now-hidden order.
+    // Phase 231 (#1290): resolved against a run-filtered/candidate list, not sortedIncomingOrders
+    // -- the split view only ever renders/drags visible cards (below), and a stale drag id from
+    // before a filter change must not resolve against a now-hidden order. Phase 257 (#1491): this
+    // handler is only ever wired to the split view's own DndContext, so the candidate list here is
+    // `splitQueueCandidates` (unassigned-only), not `visibleIncomingOrders` -- an active.id can
+    // only be an id the split view actually rendered, and it must resolve against that same list
+    // rather than the standalone tab's possibly-stale `runFilter`.
     const assignment = resolveRunDropAssignment({
       activeOrderId: event?.active?.id,
       overRunId: event?.over?.id,
       selectedOrderIds,
-      orders: visibleIncomingOrders
+      orders: splitQueueCandidates
     });
     if (!assignment) return;
     await handleBulkAssignSubmit(assignment.targetRunId, assignment.orderIds);
@@ -796,16 +829,21 @@ function IncomingQueueWorkspace({
   }
 
   // Phase 229 (#1289), §2.4-2.9: the 4th "Queue + Run" view -- gated on both retail mode and the
-  // >=1280px viewport (the reset effect above already guards against a stale activeView here, this
-  // is belt + braces on the render branch itself, matching the 'runs' branch's own pattern).
+  // >=SPLIT_VIEW_MIN_WIDTH_PX viewport (the reset effect above already guards against a stale
+  // activeView here, this is belt + braces on the render branch itself, matching the 'runs'
+  // branch's own pattern).
   if (activeView === 'split' && isRetailMode && isSplitViewportEligible) {
     const dragDisabled = !canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting;
     const activeDragOrder = activeDragOrderId !== null
-      ? visibleIncomingOrders.find((order) => Number(order?.pos_transaction_id) === activeDragOrderId)
+      ? splitQueueCandidates.find((order) => Number(order?.pos_transaction_id) === activeDragOrderId)
       : null;
     const activeDragIsMultiDrag = activeDragOrderId !== null
       && selectedOrderIds.has(activeDragOrderId)
       && selectedOrderIds.size > 1;
+    // Phase 257 (#1491) Part 2: how many orders this split-view queue is hiding because they're
+    // already assigned to a run -- purely informational, so the shorter list here doesn't read as
+    // a bug against the Active Queue tab's own unfiltered count.
+    const splitHiddenAssignedCount = sortedIncomingOrders.length - splitQueueCandidates.length;
 
     return (
       <div id={sectionId} className="space-y-4">
@@ -831,11 +869,11 @@ function IncomingQueueWorkspace({
         </div>
         <DndContext sensors={sensors} onDragStart={handleQueueDragStart} onDragEnd={handleQueueDragEnd}>
           <QueueRunAssignBar
-            orders={visibleIncomingOrders}
-            selectedCount={visibleSelectedCount}
-            selectedEligibleCount={selectedEligibleOrders.length}
-            driftCount={selectedDriftCount}
-            hiddenCount={selectedHiddenCount}
+            orders={splitQueueCandidates}
+            selectedCount={splitSelectionCounts.visibleSelectedCount}
+            selectedEligibleCount={splitSelectionCounts.selectedEligibleOrders.length}
+            driftCount={splitSelectionCounts.selectedDriftCount}
+            hiddenCount={splitSelectionCounts.selectedHiddenCount}
             activeShiftLocationId={activeShiftLocationId}
             runs={deliveryRuns}
             runsLoading={deliveryRunsLoading}
@@ -844,11 +882,20 @@ function IncomingQueueWorkspace({
             submitting={bulkAssignSubmitting}
             onSelectAllEligible={handleSelectAllEligible}
             onClearSelection={handleClearSelection}
-            onSubmit={handleBulkAssignSubmit}
+            onSubmit={(targetRunId) => handleBulkAssignSubmit(
+              targetRunId,
+              splitSelectionCounts.selectedEligibleOrders.map((order) => Number(order?.pos_transaction_id))
+            )}
           />
           {!isOnline ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
               Incoming orders are read-only while offline. Reconnect before refreshing, collecting payment, printing, or changing fulfillment status.
+            </p>
+          ) : null}
+          {splitHiddenAssignedCount > 0 ? (
+            <p className="text-xs font-semibold text-slate-500">
+              {splitHiddenAssignedCount} order{splitHiddenAssignedCount === 1 ? '' : 's'} already assigned to a run
+              {splitHiddenAssignedCount === 1 ? ' is' : ' are'} hidden here -- see the Active Queue tab.
             </p>
           ) : null}
           {queueAccessNotice ? (
@@ -857,7 +904,7 @@ function IncomingQueueWorkspace({
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
               <div className="min-w-0 max-h-[70vh] overflow-y-auto pr-1">
                 <IncomingQueueOrderList
-                  orders={visibleIncomingOrders}
+                  orders={splitQueueCandidates}
                   isRetailMode={isRetailMode}
                   selectedOrderIds={selectedOrderIds}
                   onToggleSelection={toggleOrderSelection}
@@ -896,7 +943,7 @@ function IncomingQueueWorkspace({
             {activeDragOrderId !== null ? (
               <div className="rounded-lg border border-[#1A4E8D] bg-white px-3 py-2 text-xs font-bold text-[#1A4E8D] shadow-lg">
                 {activeDragIsMultiDrag
-                  ? `${selectedEligibleOrders.length} order${selectedEligibleOrders.length === 1 ? '' : 's'}`
+                  ? `${splitSelectionCounts.selectedEligibleOrders.length} order${splitSelectionCounts.selectedEligibleOrders.length === 1 ? '' : 's'}`
                   : (activeDragOrder?.invoice_number || `Order #${activeDragOrderId}`)}
               </div>
             ) : null}

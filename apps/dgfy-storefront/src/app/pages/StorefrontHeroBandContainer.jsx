@@ -114,6 +114,7 @@ export function StorefrontHeroBandContainer(props) {
         <DefaultStorefrontHero
           modeAdapter={modeAdapter}
           heroSectionModel={servicesRetailHeroSectionModel}
+          isServicesStorefront={isServicesMode}
           selectedStore={selectedStore}
           isMobileViewport={isMobileViewport}
           cartCount={0}

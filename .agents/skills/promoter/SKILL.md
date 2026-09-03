@@ -92,23 +92,27 @@ none of this — including `gate:release:local` — runs on the `develop → sta
 `references/promotion-runbook.md`'s `## Default: develop → staging → main` section and stops at
 `pr-checks.yml`'s build checks; don't reach for this section's gates there.
 
-**Ordering — only one real dependency (#1359).** These three gates read top-to-bottom below, but
-they are not a serial pipeline, and reading them as one wastes wall-clock on every promotion — caught
-live on the 2026-09-01/02 `staging → main` run (#1359), where `gate:release:local` was started and
+**Ordering — historical context, one real dependency remains (#1359).** This paragraph originally
+described three gates (`gate:release:local`, the compliance preflight sweep, the production
+tenant-schema report) that read top-to-bottom but were not a serial pipeline — caught live on the
+2026-09-01/02 `staging → main` run (#1359), where `gate:release:local` was started and
 `release/<label>` sat uncut for its full ~25 minutes before anyone noticed the two didn't need to
-wait on each other. Only the **compliance preflight sweep** is a real precondition on cutting the
-branch — no `NOT-EXECUTED-*` declaration may reach `main`, so confirm it's clear first. Once it is,
-**cut `release/<label>` and open its PR into `main` immediately** — do not wait on
-`gate:release:local` or the production tenant-schema report first. Those two have no dependency on
-each other, on the compliance sweep, or on the branch cut/PR-open step: run them **concurrently**
-with cutting the branch and opening the PR (background the local gate, dispatch the tenant-schema
-report workflow, and move straight on to `git switch -c release/$LABEL`), not serially before it. The
-PR's own remote checks (`promotion-quality-gate.yml`, `pr-checks.yml`) run regardless of local gate
-timing, and the local gate's result is posted as a PR comment once it finishes, same as today.
-**Only the merge into `main` waits on all three** — see `AGENTS.md`'s Merge Safety section and the
+wait on each other. **Since 2026-09-03 (#1431 Phase C/D), `gate:release:local` is no longer part of
+this ordering at all** — see its own section above. Only the **compliance preflight sweep** is a
+real precondition on cutting the branch — no `NOT-EXECUTED-*` declaration may reach `main`, so
+confirm it's clear first. Once it is, **cut `release/<label>` and open its PR into `main`
+immediately** — do not wait on the production tenant-schema report first; it has no dependency on
+the compliance sweep or on the branch cut/PR-open step, so dispatch it **concurrently** with cutting
+the branch and opening the PR, not serially before it. The PR's own remote checks
+(`promotion-quality-gate.yml`, `pr-checks.yml`) run regardless of this timing.
+**Only the merge into `main` waits on all of this** — see `AGENTS.md`'s Merge Safety section and the
 checkpoint table below; this reordering changes nothing about what gates the merge itself, only when
-the branch/PR mechanics happen relative to the other two gates. `references/promotion-runbook.md`
+the branch/PR mechanics happen relative to the other gate. `references/promotion-runbook.md`
 shows the concurrent command sequence.
+
+Since 2026-09-02 (#1431 Phase 1, PR-A), a red `promotion-quality-gate.yml` check on the promotion PR
+is a real failure to read and address before the Merge Safety poll below, not noise to skim past —
+7 of its steps now drive the check-run conclusion directly, no `continue-on-error` absorbing them.
 
 **Compliance preflight sweep — verify, don't dispatch (changed #1163/#1248, 2026-08-31; PR handoff
 is now supervised, not auto-merge, #1295/#1374, 2026-09-02).** The sweep
@@ -159,18 +163,25 @@ check above), not a step this role dispatches and waits on per promotion; #1007'
 (below) remains the one case a `NOT-EXECUTED-*` declaration may legitimately still reach `main`,
 logged and authorized, not silent.
 
-**`gate:release:local`** — run this concurrently with cutting `release/<label>` and opening its PR
-into `main` (see "Ordering" above), never serially before them. Run `npm run gate:release:local`
-against the exact target SHA — **invoke it, do not rebuild it** (the policy says this outright).
-~25 minutes on a full run, needs local
-MySQL/Redis; exit code `2` means at least one of 19 gates failed — report which, don't merge past
-it. Gate 19 (`release.verdict.contract`) auto-passes as "Skipped" whenever no `release_verdict.json`
-exists for the target SHA — the normal case — so a green #19 is not evidence of anything; don't cite
-it as verification, nor the other two gates the artifact itself flags
-`structurally_cannot_fail: true` (`compliance.contracts`, `observability.evidence.report`). Since
-#1016, the script also accepts `--only`/`--skip` and records per-gate `duration_ms` plus a top-level
-`run_mode: "full"|"partial"` — **a promotion decision must be made on a `run_mode: "full"` artifact
-only**; a partial run is for iterating on one gate locally, never for citing as promotion evidence.
+**`gate:release:local` is no longer a step in this procedure (since 2026-09-03, #1431 Phase C/D).**
+Every gate it used to run locally is now delegated to `promotion-quality-gate.yml`
+(`CI_ENFORCED_GATES`, 16 entries — `required_gate_count: 0` on a default run); 14 of the 16 are
+blocking on this leg, and 2 (`dependencies.audit.full`, permanently; `backend.test_matrix`,
+temporarily, tracked by #1469) are deliberately advisory. **Do not run this script as part of a
+promotion** — there is nothing left in its required set to invoke it for. Read the promotion PR's
+own `promotion-quality-gate` check instead (`gh pr checks <N>`, or per-job conclusions — see the
+run-rollup trap below, never the workflow-run rollup) as the evidence for the release go/no-go
+decision. `docs/testing/release-go-no-go-checklist.md` and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`
+carry the full gate-by-gate closeout; the script itself still exists for `--only`/
+`--include-ci-enforced` local debugging of one specific gate, just not as a promotion gate.
+
+**The run-rollup reading trap** (full detail: `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
+"Current state" section). `gh run view <id> --json conclusion` reports the *workflow run's* rollup
+conclusion, which stays `success` even when a quality job inside it failed — the pre-existing
+job-level `continue-on-error: true` spares the run rollup, not the job. The **job's** check-run is
+what actually carries `failure` and what GitHub computes `mergeStateStatus` from. Read per-job
+conclusions (`gh run view <id> --json jobs --jq '.jobs[]|"\(.name) \(.conclusion)"'`) or
+`gh pr checks <N>` — never the run rollup — or a blocking gate will look inert when it is not.
 
 **Production tenant-schema report — never skippable, under any circumstance including #1007's
 override.** Run this concurrently with cutting `release/<label>` and opening its PR too (see

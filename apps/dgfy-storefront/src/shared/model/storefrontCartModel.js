@@ -1,5 +1,20 @@
 export const getCartLineQuantity = (line) => Math.max(1, Number(line?.quantity || 1));
 
+export const buildServiceCartLineKey = (line = {}) => {
+  const selectedOptionIds = [...new Set([
+    ...(Array.isArray(line?.selected_option_ids) ? line.selected_option_ids : []),
+    ...(Array.isArray(line?.selected_options) ? line.selected_options.map((option) => option?.option_id) : [])
+  ]
+    .map(Number)
+    .filter((optionId) => Number.isInteger(optionId) && optionId > 0))]
+    .sort((left, right) => left - right);
+
+  return JSON.stringify({
+    itemId: Number(line?.item_id),
+    selectedOptionIds
+  });
+};
+
 export const getLineModifiersTotal = (line) => (
   (Array.isArray(line?.line_modifiers) ? line.line_modifiers : []).reduce(
     (sum, entry) => sum + ((Number(entry?.price_delta || 0) || 0) * Math.min(99, Math.max(1, Number.parseInt(entry?.quantity || 1, 10) || 1))),

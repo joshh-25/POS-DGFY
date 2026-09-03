@@ -45,6 +45,51 @@ const LOCAL_FLOW_DEFINITIONS = Object.freeze({
     requiresSchedule: false,
     requiresPayment: false,
     icon: 'file-text'
+  }),
+  appointment: Object.freeze({
+    method: 'appointment',
+    profileKey: 'appointment_at_business',
+    label: 'Appointment at the business',
+    shortLabel: 'Appointment',
+    requiresAddress: false,
+    requiresBranch: true,
+    requiresSchedule: true,
+    requiresPayment: true,
+    icon: 'calendar'
+  }),
+  on_site: Object.freeze({
+    method: 'on_site',
+    profileKey: 'service_at_customer_address',
+    label: "Service at the customer's address",
+    shortLabel: 'Service at your address',
+    requiresAddress: true,
+    requiresBranch: false,
+    requiresSchedule: true,
+    requiresPayment: true,
+    icon: 'map-pin'
+  }),
+  online: Object.freeze({
+    method: 'online',
+    profileKey: 'online_service',
+    label: 'Online service',
+    shortLabel: 'Online appointment',
+    requiresAddress: false,
+    requiresBranch: false,
+    requiresSchedule: true,
+    requiresPayment: true,
+    icon: 'calendar'
+  }),
+  hybrid: Object.freeze({
+    method: 'hybrid',
+    profileKey: 'customer_choice_of_location',
+    label: 'Choose where the service takes place',
+    shortLabel: 'Choose a location',
+    requiresAddress: false,
+    requiresBranch: false,
+    requiresLocationChoice: true,
+    requiresSchedule: true,
+    requiresPayment: true,
+    icon: 'map-pin'
   })
 });
 
@@ -74,6 +119,30 @@ const FLOW_PRESENTATION_BY_PROFILE = Object.freeze({
     trackingTitle: 'Quote request',
     locationTitle: 'Request details',
     trackingDescription: 'The business will review the request and prepare a price in this local preview.'
+  }),
+  appointment_at_business: Object.freeze({
+    method: 'appointment',
+    trackingTitle: 'Appointment',
+    locationTitle: 'Appointment at',
+    trackingDescription: 'This booking follows the customer appointment from confirmation through service completion.'
+  }),
+  service_at_customer_address: Object.freeze({
+    method: 'on_site',
+    trackingTitle: 'Service visit',
+    locationTitle: 'Service address',
+    trackingDescription: 'This booking follows the scheduled service visit at the customer address.'
+  }),
+  online_service: Object.freeze({
+    method: 'online',
+    trackingTitle: 'Online appointment',
+    locationTitle: 'Online service',
+    trackingDescription: 'This booking follows the online appointment from confirmation through completion.'
+  }),
+  customer_choice_of_location: Object.freeze({
+    method: 'hybrid',
+    trackingTitle: 'Service appointment',
+    locationTitle: 'Service location',
+    trackingDescription: 'This booking follows the selected service location from confirmation through completion.'
   })
 });
 

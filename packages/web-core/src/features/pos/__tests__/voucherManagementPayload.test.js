@@ -13,6 +13,7 @@
 
 import { describe, test, expect } from 'vitest';
 import { buildVoucherPayload, blankForm } from '../components/VoucherManagementPanel.jsx';
+import { parseAccountGrantIds, validateFormLocally, voucherToForm } from '../components/voucherFormModel.js';
 
 describe('#716 buildVoucherPayload — fixed_price XOR payload shape', () => {
     test('single-price sub-mode sends a real price and an explicit null pricelist_id', () => {
@@ -109,5 +110,189 @@ describe('#713 buildVoucherPayload — is_publicly_listed independent of channel
         const listedPayload = buildVoucherPayload(listedForm);
         expect(listedPayload.is_publicly_listed).toBe(true);
         expect(listedPayload.channels_mask).toBe(2);
+    });
+});
+
+// #1490: max_order_value_centavos round-trips through buildVoucherPayload and voucherToForm, the
+// same round-trip min_spend_centavos already gets covered by #713's tests above.
+describe('#1490 buildVoucherPayload/voucherToForm — max_order_value_centavos round-tripping', () => {
+    test('blank maxOrderValuePesos sends null', () => {
+        const payload = buildVoucherPayload({ ...blankForm(), code: 'X', title: 'X', benefitClass: 'percent_off', percentOffPercent: '10' });
+        expect(payload.max_order_value_centavos).toBeNull();
+    });
+
+    test('a set maxOrderValuePesos sends the equivalent centavos', () => {
+        const form = {
+            ...blankForm(),
+            code: 'X',
+            title: 'X',
+            benefitClass: 'percent_off',
+            percentOffPercent: '10',
+            maxOrderValuePesos: '500.00'
+        };
+        const payload = buildVoucherPayload(form);
+        expect(payload.max_order_value_centavos).toBe(50000);
+    });
+
+    test('voucherToForm round-trips a stored max_order_value_centavos back to pesos', () => {
+        const voucher = {
+            voucher_id: 1,
+            version: 0,
+            status: 'draft',
+            derived_status: 'draft',
+            benefit_class: 'percent_off',
+            max_order_value_centavos: 50000,
+            channels_mask: 1,
+            fulfillment_methods_mask: 1,
+            order_timings_mask: 1,
+            weekday_mask: 127
+        };
+        const form = voucherToForm(voucher);
+        expect(form.maxOrderValuePesos).toBe('500');
+    });
+
+    test('voucherToForm maps a null max_order_value_centavos to an empty string', () => {
+        const voucher = {
+            voucher_id: 1,
+            version: 0,
+            status: 'draft',
+            derived_status: 'draft',
+            benefit_class: 'percent_off',
+            max_order_value_centavos: null,
+            channels_mask: 1,
+            fulfillment_methods_mask: 1,
+            order_timings_mask: 1,
+            weekday_mask: 127
+        };
+        const form = voucherToForm(voucher);
+        expect(form.maxOrderValuePesos).toBe('');
+    });
+});
+
+// #1494: created_by_username/updated_by_username are display-only projections -- voucherToForm
+// carries them through, buildVoucherPayload must never emit them.
+describe('#1494 voucherToForm/buildVoucherPayload — audit fields are display-only', () => {
+    test('voucherToForm carries through the username projections and timestamps', () => {
+        const voucher = {
+            voucher_id: 1,
+            version: 0,
+            status: 'draft',
+            derived_status: 'draft',
+            benefit_class: 'percent_off',
+            channels_mask: 1,
+            fulfillment_methods_mask: 1,
+            order_timings_mask: 1,
+            weekday_mask: 127,
+            created_by_username: 'alice',
+            updated_by_username: 'bob',
+            created_at: '2026-09-01T00:00:00.000Z',
+            updated_at: '2026-09-02T00:00:00.000Z'
+        };
+        const form = voucherToForm(voucher);
+        expect(form.createdByUsername).toBe('alice');
+        expect(form.updatedByUsername).toBe('bob');
+        expect(form.createdAt).toBe('2026-09-01T00:00:00.000Z');
+        expect(form.updatedAt).toBe('2026-09-02T00:00:00.000Z');
+    });
+
+    test('buildVoucherPayload never emits created_by/updated_by/username fields', () => {
+        const form = {
+            ...blankForm(),
+            code: 'X',
+            title: 'X',
+            benefitClass: 'percent_off',
+            percentOffPercent: '10',
+            createdByUsername: 'alice',
+            updatedByUsername: 'bob'
+        };
+        const payload = buildVoucherPayload(form);
+        expect(payload).not.toHaveProperty('created_by');
+        expect(payload).not.toHaveProperty('updated_by');
+        expect(payload).not.toHaveProperty('created_by_username');
+        expect(payload).not.toHaveProperty('updated_by_username');
+    });
+});
+
+// #788 (Phase 269): account-restricted issuance.
+describe('#788 account_grant_ids — payload and round-trip', () => {
+    const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+    const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+    const percentOffForm = (overrides = {}) => ({
+        ...blankForm(),
+        code: 'SAVE10',
+        title: 'Ten percent off',
+        benefitClass: 'percent_off',
+        percentOffPercent: '10',
+        ...overrides
+    });
+
+    test('an empty textarea still sends an explicit empty array, never an omitted key', () => {
+        // Load-bearing on the update path: the server reads presence with hasOwnProperty, so an
+        // omitted key would leave a stored allowlist in place and silently ignore the merchant
+        // clearing the field.
+        const payload = buildVoucherPayload(percentOffForm());
+        expect(payload.account_grant_ids).toEqual([]);
+        expect(Object.prototype.hasOwnProperty.call(payload, 'account_grant_ids')).toBe(true);
+    });
+
+    test('newline-separated ids are parsed, trimmed, lowercased, and de-duplicated', () => {
+        const payload = buildVoucherPayload(percentOffForm({
+            accountGrantIdsText: `  ${ACCOUNT_A.toUpperCase()}\n${ACCOUNT_B}\n\n${ACCOUNT_A}  `
+        }));
+        expect(payload.account_grant_ids).toEqual([ACCOUNT_A, ACCOUNT_B]);
+    });
+
+    test('comma-separated ids parse too -- a pasted spreadsheet cell is a realistic source', () => {
+        expect(parseAccountGrantIds(`${ACCOUNT_A}, ${ACCOUNT_B}`)).toEqual([ACCOUNT_A, ACCOUNT_B]);
+    });
+
+    test('a delivery campaign sends the allowlist too, unlike scopes which it always blanks', () => {
+        const payload = buildVoucherPayload({
+            ...blankForm(),
+            code: 'FREEDEL',
+            title: 'Free delivery',
+            voucherKind: 'delivery_campaign',
+            benefitClass: 'free_delivery',
+            accountGrantIdsText: ACCOUNT_A
+        });
+        expect(payload.scopes).toEqual([]);
+        expect(payload.account_grant_ids).toEqual([ACCOUNT_A]);
+    });
+
+    test('voucherToForm round-trips the allowlist back into the textarea, one per line', () => {
+        const form = voucherToForm(
+            { voucher_id: 1, code: 'B2B', title: 'B2B', benefit_class: 'percent_off', percent_off_bps: 1000, version: 0, status: 'active' },
+            [],
+            [ACCOUNT_A, ACCOUNT_B]
+        );
+        expect(form.accountGrantIdsText).toBe(`${ACCOUNT_A}\n${ACCOUNT_B}`);
+        expect(buildVoucherPayload({ ...percentOffForm(), ...form }).account_grant_ids).toEqual([ACCOUNT_A, ACCOUNT_B]);
+    });
+
+    test('voucherToForm tolerates a server response with no account_grant_ids key', () => {
+        const form = voucherToForm(
+            { voucher_id: 1, code: 'OPEN', title: 'Open', benefit_class: 'percent_off', percent_off_bps: 1000, version: 0, status: 'active' },
+            []
+        );
+        expect(form.accountGrantIdsText).toBe('');
+    });
+
+    test('a malformed id is caught locally, before a round trip', () => {
+        const errors = validateFormLocally(percentOffForm({ accountGrantIdsText: 'not-a-uuid' }));
+        expect(errors.map((entry) => entry.field)).toContain('account_grant_ids');
+    });
+
+    test('restricted + publicly listed is caught locally, mirroring the server 422', () => {
+        const errors = validateFormLocally(percentOffForm({
+            accountGrantIdsText: ACCOUNT_A,
+            isPubliclyListed: true
+        }));
+        expect(errors.map((entry) => entry.field)).toContain('account_grant_ids');
+    });
+
+    test('publicly listed WITHOUT a restriction raises no error', () => {
+        const errors = validateFormLocally(percentOffForm({ isPubliclyListed: true }));
+        expect(errors.map((entry) => entry.field)).not.toContain('account_grant_ids');
     });
 });

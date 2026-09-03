@@ -15,7 +15,8 @@ import {
   getFulfillmentActionLabel,
   getIncomingOrderUtilityActions,
   getNextDeliveryJobStatus,
-  getNextStatusActions
+  getNextStatusActions,
+  resolveAppliedVouchers
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
@@ -197,6 +198,13 @@ function OrderCard({
   const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
   const hasDeliveryAssignment = hasCompleteDeliveryAssignment(deliveryJob || {});
   const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
+  // #1492: item-axis and delivery-axis vouchers surface independently, same split every other
+  // consumer of resolveAppliedVouchers uses -- an order can carry either, both, or neither.
+  const appliedVouchers = resolveAppliedVouchers(order);
+  const itemVoucherCode = appliedVouchers.find((voucher) => voucher.benefit_target !== 'delivery')?.code || null;
+  const deliveryVoucherLabel = order?.delivery_fee_waiver_label_snapshot
+    || appliedVouchers.find((voucher) => voucher.benefit_target === 'delivery')?.code
+    || null;
   const mapLink = deliveryCoords
     ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
     : '';
@@ -487,6 +495,20 @@ function OrderCard({
                 <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.payment_status || 'unpaid').replace(/_/g, ' ')}</span>
               </div>
             </div>
+
+            {(itemVoucherCode || deliveryVoucherLabel) && (
+              <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100/80">
+                  <Tag className="h-4 w-4" />
+                </div>
+                <div className="flex items-center flex-1 min-w-0">
+                  <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Voucher</span>
+                  <span className="text-xs font-semibold text-emerald-700 break-words flex-1">
+                    {[itemVoucherCode, deliveryVoucherLabel && `${deliveryVoucherLabel} (delivery)`].filter(Boolean).join(', ')}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {(() => {
               const split = resolveOrderDownpaymentSplit(order);

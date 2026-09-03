@@ -55,6 +55,11 @@ export const deleteItem = async (itemId) => {
   return response.data;
 };
 
+export const restoreItem = async (itemId) => {
+  const response = await api.post(`/items/${itemId}/restore`);
+  return response.data.data;
+};
+
 export const getItemBatches = async (itemId, params = {}) => {
   const response = await api.get(`/items/${itemId}/batches`, { params });
   return response.data.data.batches;

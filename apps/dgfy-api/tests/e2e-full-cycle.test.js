@@ -62,9 +62,20 @@ describe('E2E Full Cycle: PO → JO → Loss → Void', () => {
   beforeAll(async () => {
     const runtimeAudit = await auditRuntimeSchemaReadiness({ sequelizeInstance: sequelize });
     if (runtimeAudit.status !== 'healthy') {
+      // #1441: this used to set runtimeReady=false and silently `return`, which made every
+      // itIfRuntimeReady case below a no-op `it()` that still reported PASS -- a 20-green
+      // false-pass hiding a genuinely unhealthy runtime schema. Throwing here instead fails the
+      // whole suite loudly, naming exactly which schema issues the audit found.
+      // RF-1 (PR #1449): still set runtimeReady=false before throwing, so afterAll's guard below
+      // (skip the destructive destroy({where:{}}) cleanup path) correctly recognizes that setup
+      // never completed -- the throw itself is what makes the failure loud, this flag is only for
+      // afterAll's own safety check.
       runtimeReady = false;
-      runtimeSkipReason = `Runtime schema not ready (${runtimeAudit.issueCount} issue(s))`;
-      return;
+      const issueList = (runtimeAudit.issues || []).map((issue) => `  - ${issue.message}`).join('\n');
+      throw new Error(
+        `e2e-full-cycle.test.js: runtime schema is not ready (${runtimeAudit.issueCount} issue(s)); `
+          + `this suite cannot validate the FIFO workflow against an unhealthy schema:\n${issueList}`
+      );
     }
 
     // Create test user
