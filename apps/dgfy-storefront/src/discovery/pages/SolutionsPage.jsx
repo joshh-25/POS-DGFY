@@ -531,7 +531,7 @@ export function SolutionsPage({ logoSrc, onExploreClick, isMobileViewport }) {
                   <div style={{ display: 'grid', gap: '6px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 700 }}>
                       <span>Total Amount</span>
-                      <span style={{ color: '#0A0F1C' }}>PHP 1,280.00</span>
+                      <span style={{ color: '#0A0F1C' }}>₱1,280.00</span>
                     </div>
                     <div style={{ height: '1px', background: 'rgba(10,15,28,0.06)' }} />
                     <div style={{ display: 'flex', gap: '6px' }}>

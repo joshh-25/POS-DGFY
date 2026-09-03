@@ -1,7 +1,6 @@
 import QRCode from 'qrcode';
 import { DGFY_BRAND_NAME } from '../model/storefrontConstants.js';
-
-const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
+import { money } from './storefrontFormatters.js';
 
 export const downloadDataUrl = (dataUrl, filename) => {
   const link = document.createElement('a');

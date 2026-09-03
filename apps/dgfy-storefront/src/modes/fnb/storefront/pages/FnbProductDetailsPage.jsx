@@ -16,11 +16,10 @@ import { FnbProductPriceQuantitySelector } from '../components/FnbProductPriceQu
 import { FnbProductNavigationHeader } from '../components/FnbProductNavigationHeader.jsx';
 import { FnbProductNutritionAllergens } from '../components/FnbProductNutritionAllergens.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
+import { money } from '../../../../shared/utils/storefrontFormatters.js';
 
 const FNB_DISPLAY_FONT = '"Outfit", "Avenir Next", "Segoe UI", sans-serif';
 const FNB_BODY_FONT = '"Source Sans 3", "Segoe UI", sans-serif';
-
-const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 
 /* --- Button base (shared) --- */
 const actionButtonBase = {

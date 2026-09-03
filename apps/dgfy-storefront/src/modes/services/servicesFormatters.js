@@ -19,5 +19,5 @@ export const formatServiceNumber = (value) => (
 );
 
 export const formatServiceMoney = (value) => (
-  `PHP ${SERVICE_MONEY_FORMATTER.format(normalizeServiceNumber(value))}`
+  `₱${SERVICE_MONEY_FORMATTER.format(normalizeServiceNumber(value))}`
 );

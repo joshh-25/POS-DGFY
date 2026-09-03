@@ -4272,7 +4272,6 @@ export default function StorefrontApp() {
     goDiscovery,
     goStore,
     goStoreCatalogPage,
-    goStoreOrderPage,
     hasServiceCart,
     goStoreBookingPage,
     cartCount,
