@@ -11,8 +11,8 @@ verification_evidence: node --check apps/dgfy-api/src/validators/posValidator.js
 rollback_note: Revert this PR's diff. Every backend change is additive (a new validator schema, a new usecase, a new controller handler, a new route, plus their wiring exports) and every frontend change is additive (a new service function, a new button + handler) -- no existing endpoint, usecase, or component behavior is modified. Reverting the touched files fully restores prior behavior with no data migration or cleanup required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-03T06:37:12.000Z
-preflight_request_ref: NOT-EXECUTED-1488
+preflight_run_at: 2026-09-03T18:11:37.530Z
+preflight_request_ref: PREFLIGHT-33788577095-2026-09-03-PROCUREMENT-CSV-EXPORT
 ---
 
 # Pre-run procurement CSV export (#1488)

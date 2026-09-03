@@ -18,8 +18,8 @@ rollback_note: Revert this PR's diff, including the migration's down() (drops th
   migration, or repair registry), so there is no constraint to unwind either.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-06T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1490-1494-VOUCHER-ORDER-VALUE-AUDIT-COLUMNS
+preflight_run_at: 2026-09-03T18:11:37.530Z
+preflight_request_ref: PREFLIGHT-33788577095-2026-09-06-VOUCHER-MAX-ORDER-VALUE-AND-AUDIT-COLUMNS
 ---
 
 # Voucher `max_order_value_centavos` + `created_by`/`updated_by` audit columns (Phase 262, #1490 + #1494)

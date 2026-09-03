@@ -13,8 +13,8 @@ verification_evidence: node --check on every changed apps/dgfy-api file (0 error
 rollback_note: Purely additive and read-only -- revert this PR's diff to fully undo it. No migration, no new column, no new table, no write path touched anywhere in the diff. The Sequelize association this phase relies on (PosTransaction.hasMany(VoucherRedemption, { as: 'voucherRedemptions' })) already existed on develop before this phase (added 2026-08-18, unrelated work) and is untouched here, so there is nothing association-level to roll back either.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-08T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1492-ORDER-VOUCHER-VISIBILITY
+preflight_run_at: 2026-09-03T18:11:37.531Z
+preflight_request_ref: PREFLIGHT-33788577095-2026-09-08-ORDER-VOUCHER-VISIBILITY
 ---
 
 # Show which voucher was applied on the order list/detail (Phase 265, #1492)
