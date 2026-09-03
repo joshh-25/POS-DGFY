@@ -1,6 +1,6 @@
 ---
 name: conduct
-description: Run a task or epic through Orca's orchestration skill, pre-configured with which model — and which CLI/provider — plans, builds, and reviews, per-slot. Manual invocation only; not one of #331's four named roster roles, and carries no Claude Code shim.
+description: Run a task or epic through Orca's orchestration skill, pre-configured with which model — and which CLI/provider — plans, builds, and reviews, per-slot. Supports manual invocation and explicit promoter-originated frozen-candidate repair handoffs; not one of #331's four named roster roles, and carries no Claude Code shim.
 ---
 
 # Conduct
@@ -138,6 +138,17 @@ Do not scan arbitrary worktrees or infer a campaign from unrelated repository fi
 `waves` without a list runs all prepared waves. A list selects only those wave numbers. `wave`
 runs one wave, and `phase` runs one prepared phase identifier. The phase plan/ledger remains the
 source of dependency and ordering information; Conduct does not invent phase numbers.
+
+### Promoter-originated promotion-repair handoff
+
+The promoter may explicitly hand a frozen-candidate staging repair to Conduct after filing or
+identifying the repair issue. The handoff must include the candidate ID, exact current staging SHA,
+failure evidence, repair issue, and required branch `fix/staging/<candidate_id>-rN`. Conduct may
+address code-level defects, tests, migrations, API/UI behavior, or CI. It must stop and return the
+task for human coordination when the proposed repair requires live database work, secrets, SSH, or
+infrastructure operations. It must not broaden the repair by merging newer `develop` work into the
+candidate. The normal planner/builder/reviewer sequence, PR rules, and report-only first-live
+calibration still apply.
 
 ### Review-only ownership
 

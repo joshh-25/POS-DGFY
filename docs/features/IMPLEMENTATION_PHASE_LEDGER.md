@@ -20047,3 +20047,21 @@ phase extends. No migration, no schema change, so no deploy-order dependency on 
 every open PR's phase claim at plan time, per this ledger's own recurring caution against trusting a
 stale note -- this entry and Phase 266 are both filed retroactively after 263 through 269, plus the
 unrelated Phase 264 (#1511), had already claimed and merged their numbers around this gap.
+## Phase 271 — Frozen promotion-candidate repair loop (#1542)
+
+- Initiative/release: Release safety and promoter automation / current release process.
+- Objective and scope: identify the initial `develop` snapshot, bind release evidence to that
+  candidate, validate exact-SHA staging observations, and document repair routing for staging,
+  pre-main release, and post-main hotfix failures.
+- Status: completed.
+- Dependencies: ADR 0074; `docs/ops/RELEASE_CANDIDATE_POLICY.md`; existing promoter, Conduct, and
+  Merge Safety procedures.
+- Acceptance and validation evidence: `npm run test:promotion-candidate`; `npm run
+  test:staging-observation`; `node --test scripts/build-release-candidate-evidence.test.js`; docs
+  and ADR lint/checks.
+- Completion date: 2026-09-04.
+- Contracts/files: `scripts/check-promotion-candidate.js`,
+  `scripts/check-staging-candidate-observation.js`,
+  `.github/workflows/staging-candidate-observation.yml`, promoter/Conduct references,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, ADR 0074, issue #1542.
+- Next eligible phase: 272 — automated staging smoke collection and Conduct handoff execution.

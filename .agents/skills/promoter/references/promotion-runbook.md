@@ -40,14 +40,14 @@ is no longer part of this procedure at all — see `../SKILL.md`'s own note.)
 git fetch origin
 git ls-remote --exit-code --heads origin main || echo "MISSING — restore before proceeding"
 
-LABEL=$(date +%Y-%m-%d)   # or a more specific label if promoting more than once/day
-git switch -c release/$LABEL origin/develop
-git push -u origin release/$LABEL
+CANDIDATE_ID=$(date +%Y-%m-%d)-01
+git switch -c release/$CANDIDATE_ID-r1 origin/develop
+git push -u origin release/$CANDIDATE_ID-r1
 
 gh pr create \
   --base main \
-  --head release/$LABEL \
-  --title "chore: promote develop to main ($LABEL)" \
+  --head release/$CANDIDATE_ID-r1 \
+  --title "chore: promote candidate $CANDIDATE_ID to main (r1)" \
   --body "## Summary
 
 Promotes \`develop\` to \`main\` at $(git rev-parse --short origin/develop).
@@ -97,14 +97,14 @@ plain skip described above, not a ~15-20min advisory run.)
 git fetch origin
 git ls-remote --exit-code --heads origin staging || echo "MISSING — restore before proceeding"
 
-LABEL=$(date +%Y-%m-%d)
-git switch -c to-staging/$LABEL origin/develop
-git push -u origin to-staging/$LABEL
+CANDIDATE_ID=$(date +%Y-%m-%d)-01
+git switch -c to-staging/$CANDIDATE_ID origin/develop
+git push -u origin to-staging/$CANDIDATE_ID
 
 gh pr create \
   --base staging \
-  --head to-staging/$LABEL \
-  --title "chore: promote develop to staging ($LABEL)" \
+  --head to-staging/$CANDIDATE_ID \
+  --title "chore: promote develop to staging (candidate $CANDIDATE_ID)" \
   --body "## Summary
 
 Promotes \`develop\` to \`staging\` at $(git rev-parse --short origin/develop) — the default soak leg
@@ -119,9 +119,52 @@ See \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the promotion-PR compliance exe
 gh pr merge <N> --merge   # never --squash — see SKILL.md
 ```
 
-Then cut `release/<label>` from `origin/staging` instead of `origin/develop` in the
+Then cut `release/<candidate_id>-rN` from `origin/staging` instead of `origin/develop` in the
 "#1007-gated exception" section above — same commands, `origin/staging` in place of
 `origin/develop`.
+
+## Candidate repair after the staging merge
+
+After the `to-staging/<candidate_id>` PR merges, treat the candidate as frozen. Do not cut a new
+promotion branch from `develop` and do not merge `develop` into `staging` to pick up a fix. For a
+code-level staging failure, create the repair branch from the current staging head:
+
+```bash
+git fetch origin staging
+git switch -c fix/staging/$CANDIDATE_ID-r1 origin/staging
+# implement only the repair, or cherry-pick -x one reviewed isolated fix commit
+git push -u origin fix/staging/$CANDIDATE_ID-r1
+gh pr create --base staging --head fix/staging/$CANDIDATE_ID-r1 \
+  --title "fix(release): repair candidate $CANDIDATE_ID (r1)" \
+  --body "## Summary
+
+Repairs frozen release candidate $CANDIDATE_ID at the current staging SHA.
+
+## Testing Evidence
+
+Conduct/staging observation evidence: <link>. Candidate manifest: <path or link>."
+```
+
+Record the repair issue and PR in the candidate manifest, merge into `staging` with `--merge`,
+redeploy/observe, and increment the repair revision. If the repair is live DB, secrets, SSH, or
+infrastructure work, stop and hand it to Pat. If a developer already made the fix on `develop`,
+cherry-pick only an isolated, reviewed commit with `-x`; mixed commits must be recreated narrowly.
+
+When observation passes, cut the next release revision from the latest staging head:
+
+```bash
+RELEASE_REVISION=2
+git switch -c release/$CANDIDATE_ID-r$RELEASE_REVISION origin/staging
+git push -u origin release/$CANDIDATE_ID-r$RELEASE_REVISION
+```
+
+Run `scripts/check-promotion-candidate.js --manifest <candidate.json>` and include
+`--candidate-manifest <candidate.json>` when building release evidence. A pre-main failure returns
+to this staging loop and invalidates the old release head; it does not restart from `develop`.
+
+After a main deploy failure, use the incident/hotfix procedure on `main`, then backport the resolved
+main commit to `develop` after stabilization. No separate staging backport is needed because the
+next ordinary candidate starts from `develop`.
 
 ## Expedited override (#1007) — only on Pat's explicit real-time phrase
 

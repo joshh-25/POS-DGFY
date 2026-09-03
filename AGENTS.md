@@ -116,7 +116,8 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
 - **Verifier/QA** (#331/#536) — verifies a merged, deployed change against a live environment,
   then flips `For QA` to `Done` or `Failed`. @.agents/skills/verifier/SKILL.md
-- **Promoter/Release** (#331/#512) — runs a `develop → staging → main` promotion end to end
+- **Promoter/Release** (#331/#512) — runs a frozen-candidate `develop → staging → main` promotion
+  end to end, observes the candidate, and coordinates code-level repairs on `staging`
   (default again since #1404, 2026-09-02, reversing ADR 0074/#980's 2026-08-25 two-stage default; a
   direct `develop → main` promotion is available only as #1007's phrase-gated exception, not a
   routine choice), cutting the promotion branch(es) itself. Dispatches the STAGING deploy
