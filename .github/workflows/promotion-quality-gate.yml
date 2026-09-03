@@ -1649,30 +1649,34 @@ jobs:
       # only thing that ran the validator; test:pr-quality-workflow existed in package.json but had
       # no call site, so its fixtures -- including the checkAdvisoryFailureReportingShape negative
       # cases added alongside this comment -- never actually ran anywhere.
+      # Blocking on the release/*->main leg since #1431 Phase D follow-up (2026-09-04, #1550/#1551
+      # triage): a pure, deterministic check over checked-in files -- no registry, no network, no
+      # DB -- so it carries none of the flake risk that keeps e.g. dependencies.audit.full advisory.
+      # First recorded blocking-flip disposition for these four `validate_*` steps; see
+      # docs/ops/RELEASE_CANDIDATE_POLICY.md's matching 2026-09-04 amendment.
       - name: Validate PR quality workflow contract
         id: validate_pr_quality_workflow
         run: npm run check:pr-quality-workflow && npm run test:pr-quality-workflow
-        continue-on-error: true
         timeout-minutes: 5
 
       # Phase 233 (#1365): the #1365 acceptance criterion is "workflow tests and
       # documentation verify runner routing so future edits cannot silently invert the
       # strategy" -- this is that check, run in the same step/job as the sibling
       # contract validator above so it costs no new runner slot.
+      # Blocking since 2026-09-04 -- see the comment above the sibling step immediately above.
       - name: Validate runner routing contract
         id: validate_runner_routing
         run: npm run check:runner-routing && npm run test:runner-routing
-        continue-on-error: true
         timeout-minutes: 5
 
       # #1528: authoring-time counterpart to the runtime workspace-hygiene steps added to every
       # self-hosted-reachable checkout site. A `sparse-checkout:` on a self-hosted job permanently
       # poisons the shared `_work` tree for every other job on that box -- this catches the PR that
       # would (re)introduce one, or that adds a new self-hosted checkout site without the guard.
+      # Blocking since 2026-09-04 -- see the comment above "Validate PR quality workflow contract".
       - name: Validate workspace hygiene contract
         id: validate_workspace_hygiene
         run: npm run check:workspace-hygiene && npm run test:workspace-hygiene
-        continue-on-error: true
         timeout-minutes: 5
 
       # #1374 Wave 4: regression coverage for compliance-preflight-sweep.yml's supervised-handoff
@@ -1682,10 +1686,13 @@ jobs:
       # contract validators above so it costs no new runner slot. Also runs the four
       # scripts/*preflight*.test.js files this repo already had but never wired to any npm script
       # (test:preflight-sweep is the first call site for any of them).
+      # Blocking since 2026-09-04 (#1551): the failure that made this advisory
+      # (scripts/check-compliance-sweep-workflow.test.js's step-order assertion colliding with
+      # #1528's workspace-hygiene rollout) is fixed -- see that test's own #1551 comment. Blocking
+      # since 2026-09-04 -- see the comment above "Validate PR quality workflow contract".
       - name: Validate compliance sweep contract
         id: validate_compliance_sweep
         run: npm run test:preflight-sweep
-        continue-on-error: true
         timeout-minutes: 5
 
       - name: Run governed documentation lint
@@ -1891,6 +1898,13 @@ jobs:
               'Run runtime schema doctor',
               'Run frontend contract tests',
               'Check frontend budgets',
+              // 2026-09-04 (#1550/#1551 triage): 4 more steps flip blocking -- pure, deterministic
+              // checks over checked-in files, no registry/network/DB dependency. See
+              // docs/ops/RELEASE_CANDIDATE_POLICY.md's matching 2026-09-04 amendment.
+              'Validate PR quality workflow contract',
+              'Validate runner routing contract',
+              'Validate workspace hygiene contract',
+              'Validate compliance sweep contract',
             ]);
 
             const lines = [];
