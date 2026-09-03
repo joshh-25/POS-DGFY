@@ -118,6 +118,11 @@ describe('#1334 buildVoucherPayload -- promo_code regression (shared buildVouche
             validity_text: null,
             benefit_class: 'percent_off',
             min_spend_centavos: null,
+            // #1490 (Phase 262): this exhaustive assertion was not updated when
+            // max_order_value_centavos was added to buildVoucherPayload, so it has been failing on
+            // `develop` since that phase merged. Added here because #788 touches the same
+            // assertion -- fixing one key and leaving the other red would have been worse.
+            max_order_value_centavos: null,
             min_quantity: null,
             allow_below_cost: false,
             stackable_with_statutory: false,
@@ -134,6 +139,10 @@ describe('#1334 buildVoucherPayload -- promo_code regression (shared buildVouche
             max_total_discount_centavos: null,
             max_benefit_quantity: null,
             scopes: [],
+            // #788 (Phase 269): always sent, including as an empty array -- the server reads
+            // presence with hasOwnProperty on update, so an omitted key would leave a stored
+            // allowlist in place instead of clearing it.
+            account_grant_ids: [],
             percent_off_bps: 1000,
             max_discount_centavos: null
         });

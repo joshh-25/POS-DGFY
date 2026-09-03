@@ -87,6 +87,14 @@ Pat.** This phase builds it.
   merchant-facing copy for the new codes.
 - `packages/web-core/src/features/pos/components/voucherFormModel.js` / `VoucherManagementPanel.jsx`
   — the authoring field.
+- `packages/web-core/src/features/pos/__tests__/deliveryCampaignPayload.test.js` — two keys added to
+  an exhaustive `buildVoucherPayload` assertion. One is this phase's (`account_grant_ids`); the
+  other (`max_order_value_centavos`) is **a pre-existing failure not introduced here** — Phase 262
+  (#1490) added that key to `buildVoucherPayload` without updating this assertion, so the test has
+  been red on `develop` since that PR merged. Verified by diffing the test file against
+  `origin/develop` (untouched by this branch) while `develop`'s own `buildVoucherPayload` emits the
+  key. Repaired here rather than filed separately because this phase touches the same assertion;
+  fixing one key and leaving the other failing would have been worse than either.
 
 **No route file, permission, or role preset is touched.** `account_grant_ids` rides the existing
 `POST /vouchers` and `PUT /vouchers/:id` bodies through `validateCreateVoucher`/`validateUpdateVoucher`
@@ -178,7 +186,12 @@ with no edit. (This also keeps the diff clear of the three files #1493 owns in p
 6. **No allowlist contents are ever echoed to a buyer.** The 422 details for both buyer-facing codes
    carry no account identifiers — naming who *is* granted would leak the allowlist to whoever holds
    the code, the exact audience this feature excludes. Asserted directly by a unit test.
-7. **Zero regression to the existing voucher benefit / eligibility / redemption surface.** Confirmed
+7. **One pre-existing red test repaired, and identified as pre-existing rather than absorbed
+   silently.** See the last bullet of "Scope" above — `max_order_value_centavos` was missing from
+   `deliveryCampaignPayload.test.js`'s exhaustive payload lock before this branch existed. No
+   product behaviour changes from that repair; it is an assertion catching up to a payload key that
+   shipped in Phase 262.
+8. **Zero regression to the existing voucher benefit / eligibility / redemption surface.** Confirmed
    by running the full voucher-adjacent backend suite (40 files, 729 tests) and the whole
    `packages/web-core/src/features/pos` frontend suite (172 files, 1079 tests) alongside the
    extended files.
