@@ -50,6 +50,8 @@ const makeVoucher = (overrides = {}) => ({
     redeemed_quantity: 0,
     status: 'active',
     version: 0,
+    // #788 (Phase 269): unrestricted by default, matching every voucher authored before that phase.
+    is_account_restricted: false,
     ...overrides
 });
 
@@ -512,5 +514,160 @@ describe('evaluateVoucherEligibility — collect-all behavior', () => {
             expect(typeof reason.message).toBe('string');
             expect(typeof reason.details).toBe('object');
         });
+    });
+});
+
+// #788 (Phase 269): account-restricted issuance.
+//
+// The load-bearing case here is the THIRD one -- an un-hydrated allowlist must block, not wave
+// through. `voucher_account_grants` is a child table this pure module cannot read, so "restricted
+// but nobody told me the allowlist" is a caller defect that has to fail closed; the alternative
+// (treat it as unrestricted) would make a forgotten hydration call an invisible, unenforced
+// restriction rather than a loud 422.
+describe('evaluateVoucherEligibility -- account restriction (#788)', () => {
+    const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+    const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+    const restricted = (overrides = {}) => makeVoucher({
+        is_account_restricted: true,
+        account_grant_ids: [ACCOUNT_A],
+        ...overrides
+    });
+
+    test('an UNRESTRICTED voucher ignores the account dimension entirely', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: makeVoucher(),
+            context: baseContext({ dgfyAccountId: null })
+        });
+        expect(result.eligible).toBe(true);
+    });
+
+    test('a granted account passes', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: restricted(),
+            context: baseContext({ dgfyAccountId: ACCOUNT_A })
+        });
+        expect(result.eligible).toBe(true);
+    });
+
+    test('a restricted voucher with an UNHYDRATED allowlist fails closed, even for a granted account', () => {
+        const result = evaluateVoucherEligibility({
+            // `account_grant_ids` absent entirely -- the caller-forgot-to-hydrate case.
+            voucher: makeVoucher({ is_account_restricted: true }),
+            context: baseContext({ dgfyAccountId: ACCOUNT_A })
+        });
+        expect(result.eligible).toBe(false);
+        expect(reasonCodes(result)).toContain('VOUCHER_ACCOUNT_GRANTS_UNRESOLVED');
+        // Never leaks the buyer-facing codes for what is a server-side defect.
+        expect(reasonCodes(result)).not.toContain('VOUCHER_ACCOUNT_REQUIRED');
+        expect(reasonCodes(result)).not.toContain('VOUCHER_ACCOUNT_NOT_ELIGIBLE');
+    });
+
+    test('no buyer beats an unhydrated allowlist -- ACCOUNT_REQUIRED, not the caller-defect code', () => {
+        // Precedence matters: with no authenticated buyer the allowlist cannot change the answer,
+        // so hydrating it would be pointless work. This is exactly the state both display surfaces
+        // are in, and they must report "sign in", not "server could not evaluate".
+        const result = evaluateVoucherEligibility({
+            voucher: makeVoucher({ is_account_restricted: true }),
+            context: baseContext({ dgfyAccountId: null })
+        });
+        expect(reasonCodes(result)).toContain('VOUCHER_ACCOUNT_REQUIRED');
+        expect(reasonCodes(result)).not.toContain('VOUCHER_ACCOUNT_GRANTS_UNRESOLVED');
+    });
+
+    test('a guest (no account) gets ACCOUNT_REQUIRED, not ACCOUNT_NOT_ELIGIBLE', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: restricted(),
+            context: baseContext({ dgfyAccountId: null })
+        });
+        expect(result.eligible).toBe(false);
+        expect(reasonCodes(result)).toContain('VOUCHER_ACCOUNT_REQUIRED');
+        expect(reasonCodes(result)).not.toContain('VOUCHER_ACCOUNT_NOT_ELIGIBLE');
+    });
+
+    test('an omitted dgfyAccountId is treated exactly like an explicit null', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: restricted(),
+            context: baseContext()
+        });
+        expect(reasonCodes(result)).toContain('VOUCHER_ACCOUNT_REQUIRED');
+    });
+
+    test('an empty-string account id is a guest, not an account that happens to be blank', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: restricted(),
+            context: baseContext({ dgfyAccountId: '   ' })
+        });
+        expect(reasonCodes(result)).toContain('VOUCHER_ACCOUNT_REQUIRED');
+    });
+
+    test('a signed-in but ungranted account gets ACCOUNT_NOT_ELIGIBLE, not ACCOUNT_REQUIRED', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: restricted(),
+            context: baseContext({ dgfyAccountId: ACCOUNT_B })
+        });
+        expect(result.eligible).toBe(false);
+        expect(reasonCodes(result)).toContain('VOUCHER_ACCOUNT_NOT_ELIGIBLE');
+        // Telling an ineligible-but-signed-in buyer to "sign in" would send them in a loop.
+        expect(reasonCodes(result)).not.toContain('VOUCHER_ACCOUNT_REQUIRED');
+    });
+
+    test('a restricted voucher whose allowlist is hydrated but EMPTY blocks everyone', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: makeVoucher({ is_account_restricted: true, account_grant_ids: [] }),
+            context: baseContext({ dgfyAccountId: ACCOUNT_A })
+        });
+        expect(reasonCodes(result)).toContain('VOUCHER_ACCOUNT_NOT_ELIGIBLE');
+    });
+
+    test('account matching is case-insensitive, matching the CHAR(36) column collation', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: restricted({ account_grant_ids: [ACCOUNT_A.toUpperCase()] }),
+            context: baseContext({ dgfyAccountId: ACCOUNT_A })
+        });
+        expect(result.eligible).toBe(true);
+    });
+
+    test('a MySQL TINYINT 1 counts as restricted, not just a JS boolean', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: makeVoucher({ is_account_restricted: 1, account_grant_ids: [ACCOUNT_A] }),
+            context: baseContext({ dgfyAccountId: ACCOUNT_B })
+        });
+        expect(reasonCodes(result)).toContain('VOUCHER_ACCOUNT_NOT_ELIGIBLE');
+    });
+
+    test('POS fails closed with no POS-side code change -- it supplies no account identity', () => {
+        // Exactly what posUseCases.js's redeemVoucher binding builds: channel 'pos', no
+        // dgfyAccountId key at all (re-verified 2026-09-03 -- POS captures a customer NAME only).
+        const result = evaluateVoucherEligibility({
+            voucher: restricted(),
+            context: { now: SUNDAY_MIDDAY_MANILA, timezone: DEFAULT_VOUCHER_TIMEZONE, channel: 'pos', subtotalCentavos: 100000, quantity: 5 }
+        });
+        expect(result.eligible).toBe(false);
+        expect(reasonCodes(result)).toContain('VOUCHER_ACCOUNT_REQUIRED');
+    });
+
+    test('collect-all still holds -- an account failure does not short-circuit other reasons', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: restricted({ min_spend_centavos: 500000 }),
+            context: baseContext({ dgfyAccountId: null, subtotalCentavos: 1000 })
+        });
+        expect(reasonCodes(result)).toEqual(expect.arrayContaining([
+            'VOUCHER_ACCOUNT_REQUIRED',
+            'VOUCHER_MIN_SPEND_NOT_MET'
+        ]));
+    });
+
+    test('the account reasons carry no account identifiers in their details', () => {
+        // The reason object is echoed to the buyer in the 422 body. Naming which accounts ARE
+        // granted would leak the allowlist to whoever holds the code -- the exact audience #788
+        // exists to exclude.
+        const result = evaluateVoucherEligibility({
+            voucher: restricted(),
+            context: baseContext({ dgfyAccountId: ACCOUNT_B })
+        });
+        const reason = result.reasons.find((entry) => entry.reason_code === 'VOUCHER_ACCOUNT_NOT_ELIGIBLE');
+        expect(JSON.stringify(reason.details)).not.toContain(ACCOUNT_A);
+        expect(JSON.stringify(reason.details)).not.toContain(ACCOUNT_B);
     });
 });

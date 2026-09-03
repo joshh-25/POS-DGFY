@@ -49,6 +49,10 @@ describe('create schema — server-owned fields are refused, not stripped', () =
         // never client-writable, same treatment as the other identity/counter fields above.
         'created_by',
         'updated_by',
+        // #788: derived from account_grant_ids inside the use case's own transaction -- a client
+        // that could set it directly could mark a voucher restricted with an empty allowlist, or
+        // unrestricted while grants still exist.
+        'is_account_restricted',
         'created_at',
         'updated_at',
         'version'
@@ -74,6 +78,7 @@ describe('update schema — server-owned fields are refused there too', () => {
         'redeemed_quantity',
         'created_by',
         'updated_by',
+        'is_account_restricted',
         'created_at',
         'updated_at'
     ])('%s is forbidden on update', (field) => {
@@ -613,5 +618,72 @@ describe('voucher id param', () => {
     test.each(['0', '-1', 'abc'])('rejects %p', async (voucher_id) => {
         const { res } = await runMiddleware(validateVoucherIdParam, { params: { voucher_id } });
         expect(res.statusCode).toBe(422);
+    });
+});
+
+// #788 (Phase 269): account_grant_ids.
+describe('account_grant_ids (#788)', () => {
+    const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+    const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+    test('create defaults to an empty array -- every pre-#788 payload stays unrestricted', () => {
+        const { error, value } = validate(createVoucherSchema, validCreatePayload());
+        expect(error).toBeUndefined();
+        expect(value.account_grant_ids).toEqual([]);
+    });
+
+    test('the UPDATE schema injects no default, so an omitted key cannot silently unrestrict', () => {
+        // The whole present/absent contract rests on this: a defaulted [] here would make every PUT
+        // that did not resend the allowlist delete it.
+        const { error, value } = validate(updateVoucherSchema, { version: 0, title: 'Renamed' });
+        expect(error).toBeUndefined();
+        expect(Object.prototype.hasOwnProperty.call(value, 'account_grant_ids')).toBe(false);
+    });
+
+    test('an explicit empty array on update is accepted -- the deliberate un-restrict gesture', () => {
+        const { error, value } = validate(updateVoucherSchema, { version: 0, account_grant_ids: [] });
+        expect(error).toBeUndefined();
+        expect(value.account_grant_ids).toEqual([]);
+    });
+
+    test('valid UUIDs are accepted and lowercased to match the persisted value', () => {
+        const { error, value } = validate(createVoucherSchema, validCreatePayload({
+            account_grant_ids: [ACCOUNT_A.toUpperCase(), ACCOUNT_B]
+        }));
+        expect(error).toBeUndefined();
+        expect(value.account_grant_ids).toEqual([ACCOUNT_A, ACCOUNT_B]);
+    });
+
+    test('a non-UUID is rejected, not stripped', () => {
+        const { error } = validate(createVoucherSchema, validCreatePayload({ account_grant_ids: ['not-a-uuid'] }));
+        expect(errorFields(error)).toContain('account_grant_ids.0');
+    });
+
+    test('a numeric id is rejected -- the pre-#788 INT column type was the bug, not the contract', () => {
+        const { error } = validate(createVoucherSchema, validCreatePayload({ account_grant_ids: [42] }));
+        expect(error).toBeDefined();
+    });
+
+    test('duplicates are rejected rather than silently collapsed', () => {
+        const { error } = validate(createVoucherSchema, validCreatePayload({
+            account_grant_ids: [ACCOUNT_A, ACCOUNT_A]
+        }));
+        expect(error).toBeDefined();
+    });
+
+    test('the 200-account ceiling is enforced', () => {
+        const many = Array.from({ length: 201 }, (_, index) => (
+            `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`
+        ));
+        const { error } = validate(createVoucherSchema, validCreatePayload({ account_grant_ids: many }));
+        expect(errorFields(error)).toContain('account_grant_ids');
+    });
+
+    test('exactly 200 is allowed -- the boundary is inclusive', () => {
+        const many = Array.from({ length: 200 }, (_, index) => (
+            `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`
+        ));
+        const { error } = validate(createVoucherSchema, validCreatePayload({ account_grant_ids: many }));
+        expect(error).toBeUndefined();
     });
 });

@@ -2075,12 +2075,26 @@ const resolveCheckoutContext = async ({
         );
     }
 
+    // #788 (Phase 269): the authenticated buyer's landlord-side DGFY account id, or null.
+    //
+    // `storeCustomer.dgfy_account_id` is set by storeAuth.js on a DGFY-authenticated session and is
+    // NULL for two distinct cases this feature has to keep distinguishable from an eligible buyer:
+    // a pure guest (no `storeCustomer` at all, #622's guest-checkout path) and a native
+    // store_customer who signed up with email/password and never linked a DGFY account. Both land
+    // as null here, so both get VOUCHER_ACCOUNT_REQUIRED -- a clear, actionable 422 naming the
+    // missing sign-in, never a silent failure or a generic "invalid code".
+    //
+    // Threaded onto the SHARED voucher context rather than passed only to the redeem call, because
+    // the preview/quote path and the auto-apply selector both read this same object -- a buyer must
+    // see the same answer at quote time that checkout will enforce.
+    const dgfyAccountId = String(storeCustomer?.dgfy_account_id || '').trim() || null;
     const voucherContext = {
         channel: 'storefront',
         fulfillmentMethod: orderMethod,
         orderTiming: scheduledFor ? 'scheduled' : 'asap',
         subtotalCentavos: toCentavos(prepared.subtotalAmount),
         quantity: prepared.preparedLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
+        dgfyAccountId,
         affiliatePricing
     };
     const voucherLines = prepared.preparedLines.map((line) => ({
@@ -2113,6 +2127,9 @@ const resolveCheckoutContext = async ({
                 idempotencyKey: normalized.idempotency_key,
                 channel: 'storefront',
                 storeCustomerId: storeCustomer?.customer_id || null,
+                // #788: written to voucher_redemptions.dgfy_account_id -- the per-customer half of
+                // #586's tracking model, populated for the first time by this phase.
+                dgfyAccountId,
                 locationId: normalized.location_id,
                 transaction: options.transaction
             });
@@ -2371,6 +2388,9 @@ const resolveCheckoutContext = async ({
                 idempotencyKey: `${normalized.idempotency_key}:delivery`,
                 channel: 'storefront',
                 storeCustomerId: storeCustomer?.customer_id || null,
+                // #788: written to voucher_redemptions.dgfy_account_id -- the per-customer half of
+                // #586's tracking model, populated for the first time by this phase.
+                dgfyAccountId,
                 locationId: normalized.location_id,
                 transaction: options.transaction
             })
@@ -2500,6 +2520,9 @@ const resolveCheckoutContext = async ({
                                 idempotencyKey: `${normalized.idempotency_key}:delivery-auto`,
                                 channel: 'storefront',
                                 storeCustomerId: storeCustomer?.customer_id || null,
+                                // #788: written to voucher_redemptions.dgfy_account_id -- the per-customer half of
+                                // #586's tracking model, populated for the first time by this phase.
+                                dgfyAccountId,
                                 locationId: normalized.location_id,
                                 transaction: options.transaction
                             })
@@ -2581,6 +2604,9 @@ const resolveCheckoutContext = async ({
                             idempotencyKey: `${normalized.idempotency_key}:delivery-auto`,
                             channel: 'storefront',
                             storeCustomerId: storeCustomer?.customer_id || null,
+                            // #788: written to voucher_redemptions.dgfy_account_id -- the per-customer half of
+                            // #586's tracking model, populated for the first time by this phase.
+                            dgfyAccountId,
                             locationId: normalized.location_id,
                             transaction: options.transaction
                         });
