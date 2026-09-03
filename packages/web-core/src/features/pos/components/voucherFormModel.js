@@ -361,10 +361,6 @@ export const validateFormLocally = (form) => {
         addError('delivery_amount_off_centavos', "Enter an amount greater than ₱0, or choose 'waive the whole fee'.");
       }
     }
-    if (form.minSpendPesos !== '') {
-      const centavos = pesoStringToCentavos(form.minSpendPesos);
-      if (!Number.isFinite(centavos) || centavos < 0) addError('min_spend_centavos', 'Minimum item subtotal cannot be negative.');
-    }
   } else if (form.benefitClass === 'percent_off') {
     const bps = percentStringToBps(form.percentOffPercent);
     if (!Number.isFinite(bps) || bps < 1 || bps > 10000) addError('percent_off_bps', 'Enter a percentage between 0.01% and 100%.');
@@ -388,10 +384,17 @@ export const validateFormLocally = (form) => {
   }
   if (!form.orderTimingFlags.asap && !form.orderTimingFlags.scheduled) addError('order_timings_mask', 'Select at least one order timing.');
 
-  // #1490: runs unconditionally (both promo_code and delivery_campaign), unlike the pre-existing
-  // minSpendPesos check above which only runs under isDeliveryCampaign -- that asymmetry is a
-  // pre-existing gap, flagged but deliberately NOT fixed in this phase (kept out of scope; a
-  // follow-up issue tracks it). Not inheriting that gap for the new field.
+  // #1506: runs unconditionally (both promo_code and delivery_campaign) -- previously nested inside
+  // the isDeliveryCampaign branch above, so a promo_code voucher with a negative min_spend_centavos
+  // never got client-side feedback (the server-side Joi validator still caught it on submit, but
+  // only after a round trip). Flagged during Phase 259 (#1490) and fixed here.
+  if (form.minSpendPesos !== '') {
+    const centavos = pesoStringToCentavos(form.minSpendPesos);
+    if (!Number.isFinite(centavos) || centavos < 0) addError('min_spend_centavos', 'Minimum item subtotal cannot be negative.');
+  }
+  // #1490: runs unconditionally (both promo_code and delivery_campaign) -- the new field never
+  // inherited the minSpendPesos asymmetry above, which is why that gap was visible enough to flag
+  // and (per #1506, just above) fix.
   if (form.maxOrderValuePesos !== '') {
     const centavos = pesoStringToCentavos(form.maxOrderValuePesos);
     if (!Number.isFinite(centavos) || centavos < 0) addError('max_order_value_centavos', 'Maximum order value cannot be negative.');
