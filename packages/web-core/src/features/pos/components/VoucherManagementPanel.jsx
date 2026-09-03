@@ -110,7 +110,9 @@ const REASON_CODE_MESSAGES = Object.freeze({
   VOUCHER_PRICELIST_NOT_ACTIVE: 'Only a published (active) pricelist can be attached to a voucher.',
   // #1334/Phase 245:
   VOUCHER_BENEFIT_TARGET_MISMATCH: 'This code applies to items, not to the delivery fee (or vice versa).',
-  VOUCHER_POS_REDEMPTION_DISABLED: 'POS voucher redemption is turned off for this business.'
+  VOUCHER_POS_REDEMPTION_DISABLED: 'POS voucher redemption is turned off for this business.',
+  // #788/Phase 269:
+  VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE: 'An account-restricted voucher cannot be listed on the public storefront — public listing shows its code to every visitor.'
 });
 
 // #1334/Phase 245 (plan §6 Layer 3): VOUCHER_BENEFIT_CONFIG_INVALID covers four distinct authoring
@@ -327,7 +329,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
     setFormError('');
     try {
       const detail = await getVoucher(voucherSummary.voucher_id);
-      setForm(voucherToForm(detail.voucher, detail.scopes));
+      setForm(voucherToForm(detail.voucher, detail.scopes, detail.account_grant_ids));
       setRedemptionStats(detail.redemption_stats || null);
       setScopeRefDraft('');
       setView('form');
@@ -417,7 +419,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
     setReloading(true);
     try {
       const detail = await getVoucher(form.voucherId);
-      setForm(voucherToForm(detail.voucher, detail.scopes));
+      setForm(voucherToForm(detail.voucher, detail.scopes, detail.account_grant_ids));
       toast.warning('Reloaded the latest version. Your unsaved edits were discarded.');
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to reload the voucher.');
@@ -1153,6 +1155,36 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       </label>
                     )}
                   </div>
+                </div>
+              </div>
+
+              {/* #788 (Phase 269): account-restricted issuance. Its own card rather than a field in
+                  "Eligibility" above, because it answers a different question -- every control up
+                  there narrows WHEN or WHERE a shared code works; this one narrows WHO may use it at
+                  all, which is the one restriction that changes what the code fundamentally is.
+                  A plain textarea of account IDs, not a picker: a DGFY account that has never
+                  ordered from this store has no tenant-local row to search, and that unshopped B2B
+                  account is exactly the case #788 exists for. An email->ID lookup is a real UX gap,
+                  named in the PR body rather than papered over. */}
+              <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+                <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Account restriction (optional)</h4>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-[#0F172A]">Restrict to specific DGFY accounts</Label>
+                  <textarea
+                    value={form.accountGrantIdsText}
+                    onChange={(event) => setForm((current) => ({ ...current, accountGrantIdsText: event.target.value }))}
+                    rows={3}
+                    spellCheck={false}
+                    placeholder={'One DGFY account ID per line. Leave blank for a shared code anyone may use.'}
+                    className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 font-mono text-xs text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  />
+                  <FieldError message={fieldErrors.account_grant_ids} />
+                  <p className="text-[11px] leading-snug text-slate-500">
+                    Leave blank for a shared code. When set, only these accounts may redeem it, and
+                    only on the storefront while signed in — a guest checkout is refused, and POS
+                    cannot redeem it at all (a terminal captures a customer name, not an account).
+                    An account-restricted voucher also cannot be listed on the public storefront.
+                  </p>
                 </div>
               </div>
 
