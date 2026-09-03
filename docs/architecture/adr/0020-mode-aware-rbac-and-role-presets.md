@@ -66,6 +66,54 @@ different role when a user must not edit items. Backend authorization remains au
 POS client mirrors the same rule only to present consistent controls and is not the security
 boundary.
 
+### 2026-09-03 — Accounting preset family, and voucher management restricted to Admin + Accounting
+
+Phase 263 (#1493). Adds an `Accounting` role preset to every mode family -- `msme_accounting`,
+`generic_accounting`, `food_manufacturing_accounting`, `services_accounting`, `fnb_accounting`,
+`hospitality_accounting` -- extending the `Preset Families` list above. Each carries compatibility
+role `manager` at rank 5 with tenant location scope, and exactly four permissions: `vouchers:view`,
+`vouchers:manage`, `reports:view`, `reports:export`.
+
+This is a preset addition, not a `users.role` ENUM addition, and that is the point of recording it
+here: this ADR's Decision to "keep authorization based on granular permissions and workflow
+capability guards, not role labels" is what makes a new fixed role expressible with no schema
+migration and no change to `USER_ROLES`. The existing `hospitality_finance_billing` preset is the
+precedent -- an accounting-shaped preset on compatibility role `manager` at rank 5.
+
+Voucher-campaign management is correspondingly narrowed to Admin + Accounting:
+
+- `DEFAULT_ROLE_PERMISSIONS.manager` loses `vouchers:manage` and keeps `vouchers:view`. #1493
+  restricts management, not read access. `food_manufacturing_manager` inherits this through
+  `managerPermissions`.
+- `routes/vouchers.js`'s `canManageVouchers` drops its legacy `settings:edit` arm, retiring the
+  #655 dual-gate on the management routes. Retiring it is what makes the restriction real:
+  `settings:edit` is a permission every manager holds by default, so the narrowed
+  `DEFAULT_ROLE_PERMISSIONS` alone would have changed nothing. #655's own stated retirement
+  condition -- a full deploy cycle for `scripts/backfill-role-permissions.js` -- is met; commits
+  33bd92646 and 34224d4c3 landed 2026-08-18 and have been on `origin/main` across several releases
+  since.
+- `canViewVouchers` keeps both legacy `SYSTEM.*` arms, and `routes/pricelists.js` is untouched.
+  Pricelists (#732) share the `VOUCHERS.*` permission group but are a separate capability that
+  #1493 does not restrict; the `settings:edit` arm that route still accepts is what keeps managers
+  managing pricelists. The POS client mirrors this split as two distinct gates
+  (`canManageVouchers` vs `canManagePricelists`) rather than one shared flag.
+
+Two consequences worth stating rather than discovering later:
+
+1. **A config change cannot revoke a permission already written to a row.**
+   `resolveEffectivePermissions` re-derives role defaults only when a user's stored
+   `users.permissions` array is empty, and `scripts/backfill-role-permissions.js` is additive, so
+   managers on long-running tenants may already carry `vouchers:manage` in that array.
+   `apps/dgfy-api/scripts/revoke-manager-voucher-manage.js` is the data half, dry-run by default and
+   written to be run deliberately by an operator; it never touches admin rows, `is_master_admin`
+   rows, or rows holding an `*_accounting` preset.
+2. **`ROLE_CATALOG_VERSION` is bumped to `2026-09-03.mode-aware-rbac-v4`**, since a client holding
+   v3 would offer neither the new preset nor the corrected manager permission set.
+
+This amendment narrows one capability's authorization surface and extends the preset catalog. It
+does not change the mode-native permission contract, the fallback mechanism, or the additive-layer
+property this ADR's Consequences assert.
+
 ## Validation
 
 - Run `npm run check:architecture`.

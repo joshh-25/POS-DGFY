@@ -19048,3 +19048,162 @@ explicit tenant-schema deploy-order check above ("Dependencies") -- no open entr
 time rather than assuming -- this entry's own history (257 → guessed at 259, then collided and
 renumbered to 262) is itself the cautionary example for why that check has to happen fresh each
 time, not be trusted from an earlier confirmation.
+
+## Phase 263 - Accounting role + voucher management restricted to Admin + Accounting (#1493)
+
+### Initiative and release
+
+Child of epic #453 (vouchers). Continues the RBAC line from ADR 0020 (Phase 88-era mode-aware role
+presets) and the voucher-permission line from #655 (Phase 103's `PERMISSIONS.VOUCHERS` group) and
+#732 (Vouchers/Pricelists promoted to top-level POS nav modes).
+
+**Numbering.** Phase 262 (#1490/#1494, PR #1507) names **263** as next eligible in its own
+"Next eligible phase" section. Re-verified at PR time per `AGENTS.md`'s Continuous Phase Numbering
+rule rather than trusted from that note: 262 is the ledger's highest merged entry, and the only
+open PR at branch time (#1513, `fix/1506-min-spend-validation-promo-code`) claims no ledger phase
+at all and touches no file this phase touches. 263 was free.
+
+### Objective and scope
+
+#1493 asks for two things that only work together: a fixed Accounting role, and voucher-campaign
+management restricted to Admin + that role.
+
+**The Accounting role is a preset, not a `users.role` ENUM value.** ADR 0020's Decision keeps
+authorization on granular permissions rather than role labels, which is exactly what makes a new
+fixed role expressible with no migration and no change to `USER_ROLES` (which is duplicated in
+`models/User.js` and `dgfyAccountRepository.js`, so an ENUM addition would have cost a migration
+plus two enum syncs). `hospitality_finance_billing` is the existing precedent: an accounting-shaped
+preset on compatibility role `manager` at rank 5. One `*_accounting` preset is added per mode
+family (`msme`, `generic`, `food_manufacturing`, `services`, `fnb`, `hospitality`), each granting
+exactly `vouchers:view`, `vouchers:manage`, `reports:view`, `reports:export` at tenant location
+scope. Reports ride along because an accounting user who can issue campaigns but cannot read their
+redemption cost is not a usable role.
+
+**Three things had to change for the restriction to be real, not just declared.** The first two
+were each independently sufficient to defeat it:
+
+1. `routes/vouchers.js`'s `canManageVouchers` accepted `SYSTEM.EDIT_SETTINGS` as a second arm.
+   `settings:edit` is a permission every manager holds by default, so restricting `vouchers:manage`
+   alone would have changed nothing. This retires #655's dual-gate **on the management routes
+   only**. #655 set its own retirement condition -- a full deploy cycle for
+   `scripts/backfill-role-permissions.js` -- and it is met: commits 33bd92646 (the
+   `PERMISSIONS.VOUCHERS` group the backfill reads) and 34224d4c3 (the dual-gate) landed 2026-08-18
+   and have been on `origin/main` across several releases since.
+2. `DEFAULT_ROLE_PERMISSIONS.manager` carried `vouchers:manage` outright. Removed; `vouchers:view`
+   kept, since #1493 restricts management, not read access. `food_manufacturing_manager` inherits
+   this through `managerPermissions`.
+3. The POS client's `canManageVouchers` mirrored the old backend dual-gate. Left alone, every
+   manager would keep seeing the create/edit controls and discover the restriction as a 403 on
+   submit.
+
+**Two deliberate non-changes, both load-bearing.** `canViewVouchers` keeps both legacy `SYSTEM.*`
+arms on backend and client -- a settings-capable manager losing the ability to *see* campaigns is a
+regression this issue never asked for. And `routes/pricelists.js` is untouched: Pricelists (#732)
+share the `VOUCHERS.*` permission group but are a separate capability #1493 does not restrict. That
+sharing is why the POS client's single `canManageVouchers` flag had to be **split** into
+`canManageVouchers` (mirrors `routes/vouchers.js`) and `canManagePricelists` (mirrors
+`routes/pricelists.js`) and threaded through `TerminalPageLayout` to `TerminalOperationsWorkspace`;
+narrowing the one shared flag would have silently taken pricelist management away from every
+manager.
+
+**The data half, shipped but deliberately not executed.** A config change cannot revoke a
+permission already written to a row: `resolveEffectivePermissions` re-derives role defaults only
+when a user's stored `users.permissions` array is empty, and `scripts/backfill-role-permissions.js`
+is additive, so managers on long-running tenants may already carry `vouchers:manage` in that array.
+`apps/dgfy-api/scripts/revoke-manager-voucher-manage.js` is the remedy -- dry-run by default,
+printing every row it would touch, writing nothing without `--apply`, never touching admin rows,
+`is_master_admin` rows, or `*_accounting`-preset rows. **This PR does not run it.** Until an
+operator does, those managers retain voucher management: a known, stated residual, not an
+oversight.
+
+`ROLE_CATALOG_VERSION` is bumped `2026-05-19.mode-aware-rbac-v3` → `2026-09-03.mode-aware-rbac-v4`,
+since a client holding v3 would offer neither the new preset nor the corrected manager permission
+set.
+
+Scope explicitly declined, per the dispatch brief: nothing under
+`apps/dgfy-api/src/modules/vouchers/` is touched (a parallel phase, #788, owns that tree), and
+`PERMISSION_GROUP_VISIBILITY` needs no change -- it already lists `VOUCHERS` in every mode family
+as of #655, so #789's AFFILIATES gap is a different group and out of scope here.
+
+Files touched: `apps/dgfy-api/src/config/modeRolePresets.js`,
+`apps/dgfy-api/src/config/permissions.js`, `apps/dgfy-api/src/routes/vouchers.js`,
+`apps/dgfy-api/scripts/revoke-manager-voucher-manage.js` (new),
+`apps/dgfy-api/tests/modeRolePresets.test.js`,
+`apps/dgfy-api/tests/voucherManagementGating.test.js` (new),
+`apps/dgfy-api/tests/pricelistRoutePermissionParity.test.js` (header comment only -- records that
+parity with `routes/vouchers.js` now holds on the view gates and deliberately not on the manage
+gates; no assertion changed),
+`packages/web-core/src/features/pos/pages/TerminalPage.jsx`,
+`packages/web-core/src/features/pos/components/TerminalPageLayout.jsx`,
+`packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`,
+`docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md`,
+`docs/compliance/impact-declarations/2026-09-03-accounting-role-voucher-management-gating.md` (new),
+`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Depends on #655 (Phase 103's `PERMISSIONS.VOUCHERS` group) having reached `main` and had a deploy
+cycle -- verified above, and the precondition for retiring the legacy `settings:edit` arm. Depends
+on ADR 0020's preset catalog. No dependency on Phase 262 (#1490/#1494) beyond phase-number spacing;
+different files entirely.
+
+No migration, no schema change, so no deploy-order dependency on any open entry in
+`docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` -- that tracker governs tenant-DB schema
+drift, and this phase writes no DDL and touches no tenant schema.
+
+No collision with the sibling phases in this batch: #1513 (`fix/1506-...`) touches
+`voucherFormModel.js` and `deliveryCampaignPayload.test.js`, neither of which this phase touches;
+#788 is backend `modules/vouchers/**` only.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/added `apps/dgfy-api` file, including the new script -- 0
+  errors.
+- [x] Runtime assertion of the rebuilt role catalog across all 7 workflow-mode inputs (`msme`,
+  `retail`, `healthcare`, `food_manufacturing`, `services`, `fnb`, `hospitality`) -- each family
+  resolves exactly one `*_accounting` preset, `role=manager rank=5 scope=tenant`, permissions
+  `vouchers:view,vouchers:manage,reports:view,reports:export`.
+- [x] Runtime assertion that `DEFAULT_ROLE_PERMISSIONS.manager` no longer contains
+  `vouchers:manage`, still contains `vouchers:view` and `settings:edit`; that
+  `DEFAULT_ROLE_PERMISSIONS.admin` still contains `vouchers:manage`; and that
+  `food_manufacturing_manager` (which inherits `managerPermissions`) lost it too.
+- [x] `apps/dgfy-api/tests/modeRolePresets.test.js` (extended) -- 8 new cases covering preset
+  presence/shape/permissions per family, the manager narrowing, the admin retention, the
+  `managerPermissions` propagation, a sweep asserting no non-admin/non-accounting preset holds
+  `vouchers:manage`, and the catalog-version bump.
+- [x] `apps/dgfy-api/tests/voucherManagementGating.test.js` (new) -- 6 cases: `settings:edit` alone
+  is refused management but still granted view, `vouchers:view` alone is view-only,
+  `vouchers:manage` passes both, the `is_master_admin` bypass still works, and a source-text
+  assertion binding all of it to `routes/vouchers.js` so a silently re-added legacy arm fails here.
+- [x] Broad regression run across every voucher/pricelist/permission/userService test file --
+  26 suites, 498 tests, all passing, with no edits beyond the two test files this phase extends.
+- [x] `npm run check:architecture` -- OK (54 modules, 560 code files, 94 controller files).
+- [x] `npm run lint:docs` / `check:adr` -- OK (29 governed docs, 87 ADRs).
+- [x] `npm run build:pos` -- clean.
+- [x] `npm run build:skupervisor` -- clean (`apps/dgfy-ims` also mounts `TerminalPage.jsx`).
+- [x] `npm run check:compliance` -- PASS; declaration:
+  `docs/compliance/impact-declarations/2026-09-03-accounting-role-voucher-management-gating.md`.
+- [ ] `revoke-manager-voucher-manage.js` -- **not run against any environment, by design.** See
+  "Objective and scope" above; it needs an operator's deliberate `--apply` after reading its dry-run
+  output.
+- [ ] `npm run gate:release:local` -- not run; delegated to `promotion-quality-gate.yml` at
+  promotion time per Phase 256's closeout, not a PR-time step.
+
+### Links
+
+- Tracking issue: #1493 (`Closes`), child of epic #453.
+- ADR: `docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md`, 2026-09-03 `## Amendments`
+  block (ADR 0039 `[default]`-tier route -- amend in the same PR, do not supersede).
+- Prior art relied on: #655 (voucher permission group + dual-gate), #732 (Vouchers/Pricelists as
+  top-level POS nav modes), ADR 0066 (voucher price resolution).
+- PR: `feature/1493-accounting-role-voucher-gating` → `develop`.
+
+### Next eligible phase
+
+**264.** Re-check the ledger's highest merged entry and every open PR's phase claim at plan time
+rather than trusting this note -- Phase 262's own history (claimed 257, guessed 259, collided,
+renumbered to 262) is the standing cautionary example.
