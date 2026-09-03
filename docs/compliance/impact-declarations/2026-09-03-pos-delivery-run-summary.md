@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/deliveryRunSerializer.test.js -- actu
 rollback_note: No schema change and no migration in this phase -- every change is additive read shaping (a widened Sequelize `attributes:` allowlist on an existing include, two extra serializer fields per member, one new computed `summary` object on the response, and a client-side render block reading that object). Rollback is a plain revert of these four files (deliveryRunRepository.js, deliveryRunSerializer.js, DeliveryRunsWorkspacePanel.jsx, and removing the new DeliveryRunSummary.jsx) -- no data was written, no existing field's meaning changed, and no existing response field was removed or renamed, so a revert is safe at any time with no follow-up cleanup.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-03T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1487-POS-DELIVERY-RUN-SUMMARY
+preflight_run_at: 2026-09-03T18:11:37.530Z
+preflight_request_ref: PREFLIGHT-33788577095-2026-09-03-POS-DELIVERY-RUN-SUMMARY
 ---
 
 # Delivery Run summary: total expected, total settled, delivered-order count (Phase 264, #1487)

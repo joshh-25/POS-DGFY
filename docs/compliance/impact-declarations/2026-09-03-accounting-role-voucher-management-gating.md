@@ -18,8 +18,8 @@ rollback_note: Revert this PR's diff. No migration, no schema change, no ENUM ch
   users.permissions row is modified by merging or reverting it.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-03T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1493-ACCOUNTING-ROLE-VOUCHER-MANAGEMENT-GATING
+preflight_run_at: 2026-09-03T18:11:37.528Z
+preflight_request_ref: PREFLIGHT-33788577095-2026-09-03-ACCOUNTING-ROLE-VOUCHER-MANAGEMENT-GATING
 ---
 
 # Accounting role + voucher management restricted to Admin + Accounting (Phase 263, #1493)

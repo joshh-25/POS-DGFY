@@ -11,8 +11,8 @@ verification_evidence: node --check packages/web-core/src/features/pos/component
 rollback_note: Revert this PR's diff. The only behavior change is client-side -- validateFormLocally now also runs the pre-existing negative-min_spend_centavos check for promo_code vouchers, not just delivery_campaign. No server-side validator, schema, reason code, or persisted data changed; the Joi validator in voucherValidator.js already rejected the same bad value server-side before this PR, so reverting only removes the earlier client-side feedback, not a data-integrity guard.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-03T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1506
+preflight_run_at: 2026-09-03T18:11:37.530Z
+preflight_request_ref: PREFLIGHT-33788577095-2026-09-03-MIN-SPEND-VALIDATION-PROMO-CODE
 ---
 
 # Fix promo_code min_spend_centavos client-side validation gap (Phase 266, #1506)

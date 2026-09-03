@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/deliveryRun.usecase.test.js -- actual
 rollback_note: This phase DOES carry a schema change, unlike Phase 225's own declaration -- a new migration (20260907000001-add-delivery-run-scheduled-date-end.cjs) adds delivery_runs.scheduled_date_end (nullable DATEONLY) and replaces idx_delivery_runs_status_scheduled with a 3-column idx_delivery_runs_status_scheduled_range. Rollback is the migration's own down(), which is safe: the column is nullable and additive, no existing row's scheduled_date is touched or reinterpreted, and down() restores the original 2-column index before dropping the column. No CHECK constraint was added (kept out of this migration by implementation decision -- the app-level start<=end checks in the use cases are sufficient and keep the migration minimal); there is therefore no DB-level constraint to drop on rollback either.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-03T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1489-POS-DELIVERY-RUN-DATE-RANGE
+preflight_run_at: 2026-09-03T18:11:37.530Z
+preflight_request_ref: PREFLIGHT-33788577095-2026-09-07-POS-DELIVERY-RUN-DATE-RANGE
 ---
 
 # POS delivery run date-range scheduling (Phase 260, #1489)
