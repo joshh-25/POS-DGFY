@@ -3,7 +3,7 @@ import { CSS } from '@dnd-kit/utilities';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils.js';
-import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check, Folder, Monitor, AlertTriangle } from 'lucide-react';
+import { MoreVertical, Eye, Edit, History, FileEdit, Trash2, Clock, Check, Folder, Monitor, AlertTriangle, RotateCcw } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ export default function ItemCard({
   onView,
   onEdit,
   onDelete,
+  onRestore,
   onMoveToFolder,
   posReadiness,
   onOpenInTerminal,
@@ -209,7 +210,18 @@ export default function ItemCard({
                 )}
               </>
             )}
-            {canDelete('items') && onDelete && (
+            {canDelete('items') && item.status === 'inactive' && onRestore && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => onRestore(item)}
+                  className="text-emerald-600 focus:text-emerald-600 focus:bg-emerald-50"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" /> Restore Item
+                </DropdownMenuItem>
+              </>
+            )}
+            {canDelete('items') && item.status !== 'inactive' && onDelete && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -297,6 +309,11 @@ export default function ItemCard({
           </div>
         )}
         <div className="flex items-center gap-2 flex-wrap">
+          {item.status === 'inactive' && (
+            <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-300">
+              Inactive
+            </Badge>
+          )}
           <Badge variant="outline" className={cn("font-medium", statusStyle.color)}>
             {isDraft && statusStyle.icon && <statusStyle.icon className="w-3 h-3 mr-1" />}
             {statusStyle.label}

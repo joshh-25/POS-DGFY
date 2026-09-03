@@ -3,6 +3,7 @@ export {
   useInventoryCreateItem,
   useInventoryUpdateItem,
   useInventoryDeleteItem,
+  useInventoryRestoreItem,
   useInventoryCreateItemDraft,
   useInventoryFinalizeItem,
   useInventoryFolders

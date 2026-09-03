@@ -191,6 +191,26 @@ export const useDeleteItem = () => {
   return { deleteItem, loading, error };
 };
 
+export const useRestoreItem = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const restoreItem = useCallback(async (itemId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      return await itemService.restoreItem(itemId);
+    } catch (err) {
+      setError(err.message || 'Failed to restore item');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { restoreItem, loading, error };
+};
+
 export const useCreateItemDraft = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);

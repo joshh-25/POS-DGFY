@@ -40,7 +40,10 @@ export const getBranchZeroStockHint = (stockScope) => (
 // items query" -- pulled out so it's independently testable rather than trusted by inspection.
 // 'all' (the default) omits location_id entirely, which is what keeps the request byte-identical
 // to what this page sent before this change.
-export const buildItemsListParams = ({ limit = 1000, selectedLocationId = 'all' } = {}) => ({
+// #1495 Part A: includeInactive follows the same "omit unless meaningfully set" shape -- false
+// (the default) keeps the request byte-identical to every pre-#1495 caller.
+export const buildItemsListParams = ({ limit = 1000, selectedLocationId = 'all', includeInactive = false } = {}) => ({
     limit,
-    ...(selectedLocationId !== 'all' ? { location_id: Number(selectedLocationId) } : {})
+    ...(selectedLocationId !== 'all' ? { location_id: Number(selectedLocationId) } : {}),
+    ...(includeInactive ? { include_inactive: true } : {})
 });
