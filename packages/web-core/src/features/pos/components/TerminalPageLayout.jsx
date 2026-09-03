@@ -100,6 +100,7 @@ export default function TerminalPageLayout({
     canDeleteItems = false,
     canManageCategories = false,
     canManageVouchers = false,
+    canManagePricelists = false,
     canViewVouchers = false,
     canAdminBypassShiftPrompt = false,
     showIncomingQueue = true,
@@ -964,6 +965,7 @@ export default function TerminalPageLayout({
                 canDeleteItems={canDeleteItems}
                 canManageCategories={canManageCategories}
                 canManageVouchers={canManageVouchers}
+                canManagePricelists={canManagePricelists}
                 onSelectViewMode={handleSelectViewMode}
                 itemsStockFilterPreset={itemsStockFilterPreset}
                 onItemsStockFilterPresetApplied={onItemsStockFilterPresetApplied}

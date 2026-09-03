@@ -71,11 +71,45 @@ const adminPreset = (key, label, mode) => preset({
   permissions: getAllPermissions()
 });
 
+// Accounting / Finance (#1493, Phase 263). Voucher-campaign management is Admin + Accounting only
+// as of this phase; this preset is the "+ Accounting" half, and routes/vouchers.js's
+// `canManageVouchers` is the enforcement half.
+//
+// Deliberately a preset rather than a new `users.role` ENUM value. ADR 0020's Decision keeps
+// authorization on granular permissions rather than role labels, and an ENUM addition would cost a
+// migration plus two duplicate enum syncs (models/User.js, dgfyAccountRepository.js) to buy nothing
+// this preset does not already give. `hospitality_finance_billing` below is the existing precedent:
+// an accounting-shaped preset carrying compatibility role `manager` at rank 5, no schema change.
+//
+// `locationScope: 'tenant'` because a voucher campaign is a tenant-wide object -- unlike
+// `hospitality_finance_billing`'s per-property folios, there is nothing here to scope to an
+// assigned location.
+//
+// Reports view/export ride along because an accounting user who can issue voucher campaigns but
+// cannot read the reports showing their redemption cost is not a usable role. Nothing else is
+// granted: no `settings:view`, no inventory, no POS. The POS Vouchers nav reaches this preset
+// through `canViewVouchers`'s `vouchers:manage` arm, so no settings permission is needed to see it.
+const accountingPreset = (key, mode) => preset({
+  key,
+  label: 'Accounting',
+  mode,
+  role: 'manager',
+  rank: 5,
+  locationScope: 'tenant',
+  permissions: [
+    PERMISSIONS.VOUCHERS.actions.VIEW,
+    PERMISSIONS.VOUCHERS.actions.MANAGE,
+    PERMISSIONS.REPORTS.actions.VIEW_REPORTS,
+    PERMISSIONS.REPORTS.actions.EXPORT_REPORTS
+  ]
+});
+
 const managerPermissions = uniq(DEFAULT_ROLE_PERMISSIONS.manager);
 
 const MODE_ROLE_PRESETS = Object.freeze({
   msme: [
     adminPreset('msme_admin', 'Owner / Admin', 'msme'),
+    accountingPreset('msme_accounting', 'msme'),
     preset({
       key: 'msme_manager',
       label: 'Manager',
@@ -135,6 +169,7 @@ const MODE_ROLE_PRESETS = Object.freeze({
   // "msme", and so msme's own evolution doesn't drag these modes along.
   generic: [
     adminPreset('generic_admin', 'Owner / Admin', 'generic'),
+    accountingPreset('generic_accounting', 'generic'),
     preset({
       key: 'generic_manager',
       label: 'Manager',
@@ -187,6 +222,7 @@ const MODE_ROLE_PRESETS = Object.freeze({
   ],
   food_manufacturing: [
     adminPreset('food_manufacturing_admin', 'Food Manufacturing Admin', 'food_manufacturing'),
+    accountingPreset('food_manufacturing_accounting', 'food_manufacturing'),
     preset({
       key: 'food_manufacturing_manager',
       label: 'Food Manufacturing Manager',
@@ -250,6 +286,7 @@ const MODE_ROLE_PRESETS = Object.freeze({
   ],
   services: [
     adminPreset('services_admin', 'Services Admin', 'services'),
+    accountingPreset('services_accounting', 'services'),
     preset({
       key: 'services_manager',
       label: 'Services Manager',
@@ -351,6 +388,7 @@ const MODE_ROLE_PRESETS = Object.freeze({
   ],
   fnb: [
     adminPreset('fnb_admin', 'F&B Admin', 'fnb'),
+    accountingPreset('fnb_accounting', 'fnb'),
     preset({
       key: 'fnb_restaurant_manager',
       label: 'Restaurant Manager',
@@ -460,6 +498,7 @@ const MODE_ROLE_PRESETS = Object.freeze({
   ],
   hospitality: [
     adminPreset('hospitality_admin', 'Hospitality Admin', 'hospitality'),
+    accountingPreset('hospitality_accounting', 'hospitality'),
     preset({
       key: 'hospitality_general_manager',
       label: 'General Manager',
@@ -641,9 +680,12 @@ const PERMISSION_GROUP_VISIBILITY = Object.freeze({
   hospitality: ['INVENTORY', 'SUPPLIERS', 'HOSPITALITY', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM', 'VOUCHERS']
 });
 
-// Bumped for #655: PERMISSION_GROUP_VISIBILITY gained a VOUCHERS entry in every mode, so a client
-// that cached the previous catalog by version needs to know to refetch.
-export const ROLE_CATALOG_VERSION = '2026-05-19.mode-aware-rbac-v3';
+// Bumped for #1493 (Phase 263): every mode family gained an `*_accounting` preset, and
+// `DEFAULT_ROLE_PERMISSIONS.manager` lost `vouchers:manage` (which `food_manufacturing_manager`
+// inherits through `managerPermissions`). A client holding the v3 catalog would offer neither the
+// new preset nor the corrected manager permission set, so it has to refetch.
+// Previously bumped for #655, when PERMISSION_GROUP_VISIBILITY gained its VOUCHERS entry.
+export const ROLE_CATALOG_VERSION = '2026-09-03.mode-aware-rbac-v4';
 
 export const getRoleCatalogMode = (mode) => {
   const normalized = normalizeWorkflowMode(mode || DEFAULT_WORKFLOW_MODE);
