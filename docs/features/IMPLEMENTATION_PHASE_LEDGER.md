@@ -19048,3 +19048,185 @@ explicit tenant-schema deploy-order check above ("Dependencies") -- no open entr
 time rather than assuming -- this entry's own history (257 → guessed at 259, then collided and
 renumbered to 262) is itself the cautionary example for why that check has to happen fresh each
 time, not be trusted from an earlier confirmation.
+
+## Phase 269 - Account-restricted voucher issuance (#788)
+
+### Initiative and release
+
+Epic #453 (Vouchers), governed by ADR 0066. Part of the deferred-decision batch #783 rounds up;
+#788 itself postdates that round-up and is not listed in it.
+
+**Numbering, verified live at build time** per `AGENTS.md`'s Continuous Phase Numbering rule and
+Phase 262's own closing warning (item 263 above: re-check the merged tip *and* every open PR's
+claim fresh, never trust an earlier confirmation). Checked against `origin/develop` and the open-PR
+list on 2026-09-03: merged tip is **Phase 262**; open PRs claim **263** (#1516,
+`feature/1493-accounting-role-voucher-gating`), **265** (#1519,
+`feature/1492-order-voucher-visibility`), **267** (#1517, `feature/1495-csv-sync-import`), and
+**268** (#1515, `feat/1318-item-multi-category-ui`). **269** was assigned to this phase by the
+batch plan and was still unclaimed on that check, so it is taken as-is rather than compacted down
+into the 264/266 gaps -- renumbering into a gap would collide with whichever parallel phase in the
+same batch has not opened its PR yet.
+
+### Objective and scope
+
+**#788's own stated non-goal is "Not implementing anything here -- a decision/scope record."
+Pat explicitly overrode that: this phase builds it.**
+
+Restrict a voucher's redemption to one or more named DGFY accounts, so that holding the code is no
+longer sufficient. Two motivations from the issue, both preserved: anti-misuse of a leaked or
+shared code (#454 decision 4 makes every voucher a shared code today), and a B2B roadmap signal -- a
+voucher assignable to a specific business's account.
+
+The open design question the issue left -- *where the allowlist lives* -- is resolved as a **child
+table**, `voucher_account_grants`, structurally a twin of the existing `voucher_scopes`. That is the
+shape #454 decision 4 already anticipated ("a `voucher_codes` child table can be added later
+without migrating the campaign table"), arriving keyed on the **account** rather than on a
+per-recipient code. Per-recipient unique-code issuance stays unbuilt.
+
+Design decisions taken at build time, each recorded rather than left implicit:
+
+1. **`vouchers.is_account_restricted`, a derived gate.** `NOT NULL DEFAULT false`, written from the
+   grants array in the same transaction as the child rows, in `FORBIDDEN_FIELDS`, absent from
+   `WRITABLE_VOUCHER_COLUMNS`. Two jobs: an unrestricted voucher (nearly all of them) pays no extra
+   query on the checkout hot path, and a restricted voucher whose allowlist a caller forgot to
+   hydrate is *detectable* and fails closed rather than silently evaluating as unrestricted.
+2. **Three reason codes, not one.** `VOUCHER_ACCOUNT_REQUIRED` (guest, or a native store_customer
+   with no linked DGFY account -- actionable), `VOUCHER_ACCOUNT_NOT_ELIGIBLE` (signed in, not on the
+   list -- telling them to sign in would loop them), `VOUCHER_ACCOUNT_GRANTS_UNRESOLVED` (a caller
+   defect, never a buyer state). The no-buyer check runs **first**, so the display surfaces -- which
+   legitimately have no buyer identity and do not hydrate -- report the accurate first code rather
+   than the server-defect one.
+3. **The #622 guest-checkout interaction, answered explicitly** (the issue asks and does not
+   decide): an account-restricted voucher effectively requires login for its own redemption even on
+   a store where guest checkout is enabled. It does **not** require #622's toggle to be on. A guest
+   gets a clear 422 naming the missing sign-in, with dedicated storefront copy beside the existing
+   `GUEST_CHECKOUT_DISABLED` branch -- never a silent failure.
+4. **POS stays out of scope, verified against current code rather than inherited.** #454 decision 6
+   ("POS captures no buyer identity") was re-checked: `posUseCases.js`'s `redeemVoucher` binding
+   still passes `storeCustomerId: null` and no account identity, and ADR 0066's 2026-08-20
+   amendment narrowed that decision only as far as a free-typed customer *name*
+   (`posDiscountPolicy.js`'s `DISCOUNT_CUSTOMER_NAME_REQUIRED`). A name is not an authenticated
+   account. POS therefore fails closed through the shared check with **zero POS files changed**.
+5. **Account-restricted and publicly-listed are mutually exclusive**, refused at authoring
+   (`VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE`) on create, update, and activate, *and*
+   independently omitted from the public snapshot by the display filter. Not cosmetic:
+   `storefrontDiscoveryIndexService.js`'s projection publishes each listed voucher's literal `code`.
+6. **A latent type bug found and repaired.** `voucher_redemptions.dgfy_account_id` has been declared
+   `INTEGER` since #455/Phase 102 while `DgfyAccount.id` is a UUID -- it could never have held a real
+   account id. Verified nothing has ever written the column, so every row is NULL and the retype to
+   `CHAR(36)` is lossless. This phase is its first writer, on every storefront redemption (restricted
+   or not -- the per-customer half of #586's two-tier tracking model).
+7. **No cross-database FK, and no existence check.** `dgfy_accounts` is landlord-side (ADR 0052);
+   format validation only. An existence check via the tenant-local `store_customers` proxy was
+   considered and rejected -- it would wrongly reject a B2B account that has never ordered from the
+   store, which is #788's motivating case.
+
+**No route, permission, or role-preset file is touched.** `account_grant_ids` rides the existing
+`POST /vouchers` and `PUT /vouchers/:id` bodies exactly as `scopes` does, so `routes/vouchers.js`'s
+existing `VOUCHERS.MANAGE` gate covers it unchanged -- which also keeps this diff clear of the three
+files Phase 263 (#1493) owns in parallel.
+
+Files touched: `apps/dgfy-api/src/models/VoucherAccountGrant.js` (new),
+`apps/dgfy-api/src/models/Voucher.js`, `apps/dgfy-api/src/models/VoucherRedemption.js`,
+`apps/dgfy-api/src/models/index.js`,
+`apps/dgfy-migration-runner/migrations/20260908000001-add-voucher-account-restriction.cjs` (new),
+`apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+`apps/dgfy-api/src/modules/vouchers/domain/voucherEligibilityPolicy.js`,
+`apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js`,
+`apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherAutoApplyUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherDisplayUseCases.js`,
+`apps/dgfy-api/src/validators/voucherValidator.js`,
+`apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+`apps/dgfy-storefront/src/shared/model/storefrontErrorMessages.js`,
+`packages/web-core/src/features/pos/utils/posCheckoutErrorMessages.js`,
+`packages/web-core/src/features/pos/components/voucherFormModel.js`,
+`packages/web-core/src/features/pos/components/VoucherManagementPanel.jsx`,
+`apps/dgfy-api/tests/addVoucherAccountRestriction.migration.test.js` (new),
+`apps/dgfy-api/tests/voucherEligibilityPolicy.unit.test.js`,
+`apps/dgfy-api/tests/voucherUseCases.usecases.test.js`,
+`apps/dgfy-api/tests/voucherRedemptionUseCases.usecases.test.js`,
+`apps/dgfy-api/tests/voucherValidator.test.js`,
+`apps/dgfy-api/tests/voucherDisplayUseCases.usecases.test.js`,
+`packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js`,
+`docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (dated Amendments block),
+`docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md` (new).
+
+### Status
+
+`in_progress`
+
+### Dependencies
+
+Depends on the voucher domain from epic #453/ADR 0066 (Phase 101-110), extended through Phase
+239-245 (delivery-targeted benefit axis, auto-apply) and Phase 262 (#1490/#1494).
+
+**Deliberately disjoint from the parallel phases in the same batch.** Phase 263 (#1493) owns
+`apps/dgfy-api/src/config/modeRolePresets.js`, `apps/dgfy-api/src/config/permissions.js`, and
+`apps/dgfy-api/src/routes/vouchers.js`; none of the three is touched here, and the feature was
+designed so none needs to be -- see "Objective and scope" above.
+
+No deploy-order dependency on any open entry in
+`docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`: the tracker's one open item
+(`OPS-TSYNC-001`/#539) is scoped to `fnb_modifier_groups`, `fnb_modifier_options`, and
+`fnb_item_modifier_groups`, none of which this migration touches.
+
+**One migration step warrants a human's eyes before it reaches a tenant DB**, and is flagged rather
+than treated as routine: the `voucher_redemptions.dgfy_account_id` INT → CHAR(36) retype. It is
+guarded on the column's current data type (so it is idempotent and a no-op on an already-CHAR(36)
+tenant), and is lossless because nothing has ever written the column -- but
+`sync-tenant-schemas.js`'s repair pass is column-*presence* based and structurally cannot repair a
+type change, so a tenant that misses this migration keeps the pre-#788 INT column. The new write
+fails loudly there rather than silently mis-recording an account.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/added `apps/dgfy-api` and `apps/dgfy-migration-runner` file
+  -- 0 errors.
+- [x] `apps/dgfy-api/tests/addVoucherAccountRestriction.migration.test.js` (new) -- 14 tests, all
+  passing; covers tenant fan-out, retype idempotence in both directions, DDL-string identity with
+  `sync-tenant-schemas.js` for the new column/table/index, and the corrected `char(36)` ledger
+  snapshot.
+- [x] `voucherEligibilityPolicy.unit.test.js` (+14), `voucherUseCases.usecases.test.js` (+14),
+  `voucherRedemptionUseCases.usecases.test.js` (+10), `voucherValidator.test.js` (+10),
+  `voucherDisplayUseCases.usecases.test.js` (+3) -- all passing.
+- [x] Broad voucher-adjacent regression run -- 40 suites, 729 tests, all passing.
+- [x] `npm run check:tenant-schema-coverage` against the new migration -- PASS.
+- [x] `npm run check:compliance` -- PASS; declaration
+  `docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md`.
+- [x] `npm run lint:docs` / `npm run check:adr` -- OK (87 ADRs, 29 governed docs).
+- [x] `packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js` (+9, 21
+  total) and the full `packages/web-core/src/features/pos` vitest run (172 files, 1079 tests) --
+  all passing, run via `apps/dgfy-ims`'s vitest config per
+  `docs/architecture/frontend-split-sync.md`.
+- [x] `npm run build:skupervisor` and `npm run build:pos` -- both clean.
+- [ ] `npm run gate:release:local` -- not run; delegated to `promotion-quality-gate.yml` at
+  promotion time per Phase 256's closeout, not a PR-time step.
+- [ ] Migration not executed against any live database -- covered by unit tests against a
+  `queryInterface` double only. See "Dependencies" above for the one step worth a human's review.
+
+### Links
+
+- Tracking issue: #788 (`Refs`, not `Closes` -- the account-restriction path needs deployed
+  verification against a real DGFY-authenticated storefront session before it can be called done,
+  so the issue stays open through `For QA` per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+- Epic: #453. Related, explicitly NOT conflated: #606 (per-customer voucher *limits* -- a quantity
+  cap, orthogonal to this audience allowlist; the `idx_voucher_redemptions_account` index added here
+  is the one it will need), #622 (guest checkout -- interaction answered in scope item 3 above),
+  #569 (B2C-now/B2B-later, not reopened -- this serves a B2B-shaped need through the existing B2C
+  mechanism, the same carve-out #454 decision 2 already makes), #586 (two-tier tracking, whose
+  per-customer half this finally populates), #446/#447 (Affiliate v2 -- #454 decision 5's
+  "affiliate identifies the affiliate; voucher identifies the campaign" question narrows slightly
+  now that a voucher can also identify a party; noted for whoever works Affiliate v2, not resolved
+  here).
+- ADR: 0066, dated `## Amendments` block added in this PR (Decisions 9 and 10, both `[default]` --
+  the cheapest correct route per ADR 0039; Decisions 3 and 4 inherited unchanged).
+- PR: `feature/788-account-restricted-vouchers` → `develop`.
+
+### Next eligible phase
+
+**270**, unless a parallel PR in this batch claims it first -- 264 and 266 are currently unclaimed
+gaps left by this batch's own number assignment and should be re-checked against the live open-PR
+list before being reused, exactly as this entry's "Numbering" note above did.
