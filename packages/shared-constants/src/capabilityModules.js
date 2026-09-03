@@ -452,11 +452,11 @@ export const STORE_TEMPLATE_PRESETS = Object.freeze({
 });
 
 /**
- * Registration offers 10 Operating Mode choices (WORKFLOW_MODE_VALUES minus
+ * Registration offers 11 Operating Mode choices (WORKFLOW_MODE_VALUES minus
  * the deprecated `manufacturing` alias) but only 6 of them have a curated
- * template preset above. These 4 are intentionally bare, not an oversight:
- * `healthcare`, `ticketing_transport`, `logistics_distribution`, and
- * `education_institutions` are candidates for verticals that may end up
+ * template preset above. These 5 are intentionally bare, not an oversight:
+ * `laundry`, `healthcare`, `ticketing_transport`, `logistics_distribution`,
+ * and `education_institutions` are candidates for verticals that may end up
  * powered by separate sibling apps under the same parent company, with DGFY
  * providing registration and UI/UX visibility only - the operating "engine"
  * living elsewhere. Until that direction is decided (tracked in a follow-up
@@ -466,13 +466,14 @@ export const STORE_TEMPLATE_PRESETS = Object.freeze({
  * design (ADR 0056 - provenance is never required for a mode to function).
  *
  * This list exists so that bareness is a checked, deliberate fact rather
- * than a silent gap: capabilityModules.contract.test.js asserts these four
- * (and only these four) offered modes lack a canonical preset. Adding an
+ * than a silent gap: capabilityModules.contract.test.js asserts these five
+ * offered modes lack a canonical preset. Adding an
  * 11th mode without deciding its preset story, or seeding a preset for one
- * of these four without removing it from this list first, both fail that
+ * of these five without removing it from this list first, both fail that
  * test loudly instead of drifting unnoticed.
  */
 export const STORE_TEMPLATE_PRESETLESS_MODES = Object.freeze([
+    'laundry',
     'healthcare',
     'ticketing_transport',
     'logistics_distribution',
@@ -494,9 +495,9 @@ export const STORE_TEMPLATE_PRESETLESS_MODES = Object.freeze([
  * its base mode's default capability list, so deriving visibility from that
  * list would hide exactly the modules an admin is most likely to be adding.
  *
- * Keyed by workflow mode FAMILY (resolveWorkflowModeFamily's output), so the
- * `manufacturing` alias resolves without a duplicate entry. Every family maps
- * to a value containing 'universal'. External-engine modes are not
+ * Keyed by workflow mode family (resolveWorkflowModeFamily's output), with an
+ * explicit laundry entry because it is an external runtime mode. Every key
+ * maps to a value containing 'universal'. External-engine modes are not
  * authorable (TEMPLATE_AUTHORABLE_MODES in workflowModes.js), but a
  * pre-existing template row for one can still be viewed - a retail-shaped
  * fallback covers that case.
@@ -504,6 +505,7 @@ export const STORE_TEMPLATE_PRESETLESS_MODES = Object.freeze([
 export const MODE_FAMILY_MODULE_GROUPS = Object.freeze({
     retail: Object.freeze(['universal', 'stock', 'presentation']),
     services: Object.freeze(['universal', 'services', 'stock', 'presentation']),
+    laundry: Object.freeze(['universal', 'services', 'presentation']),
     food_manufacturing: Object.freeze(['universal', 'stock', 'presentation']),
     fnb: Object.freeze(['universal', 'fnb', 'stock', 'presentation']),
     hospitality: Object.freeze(['universal', 'hospitality', 'stock', 'presentation']),

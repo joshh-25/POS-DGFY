@@ -11,8 +11,8 @@ verification_evidence: npm run build:skupervisor,npm run build:pos,npm run check
 rollback_note: Revert this commit. The final state of this PR removes both legacy promo settings sections (the singular editor in apps/dgfy-ims/Pages/Settings.jsx and the plural editor in packages/web-core/.../TerminalOperationsWorkspace.jsx) and their now-fully-dead supporting code entirely, rather than merely disabling inputs. Rollback restores both editors exactly as they were before PR #988/#695 (fully editable, no freeze) -- no schema, migration, or redemption-path change is involved, so rollback carries no data or compliance-state risk. commercialPromoPolicy.js and every existing redemption/read path are untouched by this PR either way.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-25T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-695-LEGACY-PROMO-CARD-FROZEN
+preflight_run_at: 2026-09-02T03:56:16.390Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-25-LEGACY-PROMO-CARD-FROZEN
 ---
 
 # Legacy Promo Card Removed (#695)

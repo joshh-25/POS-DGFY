@@ -30,8 +30,10 @@ const getFinalizationFailureReason = (error) => {
 // payment as paid. Accepted as-is -- this mirrors the same flow's existing, already-accepted
 // stock/location-availability race (not a new bug class); reserving the voucher earlier, at session
 // creation, would instead hold a redemption slot hostage for a session the customer never actually
-// pays, and this flow has no session-expiry release mechanism to hedge that today
-// (reverseVoucherRedemptionUseCase exists but has no live caller yet). What #668 actually named as
+// pays, and this flow has no session-expiry release mechanism to hedge that today. (#1390 gave
+// reverseVoucherRedemptionUseCase its first live caller -- a cancelled storefront order -- but that
+// is a distinct trigger from an abandoned/expired payment session, which still has no release path
+// at all.) What #668 actually named as
 // the gap was reconciliation visibility: every finalization failure landed under the same generic
 // ORDER_FINALIZATION_FAILED code, so an operator working the paid_manual_resolution_required queue
 // (commercePaymentAdminUseCases.js's retry/refund use cases) had to read a raw error message to tell
@@ -196,12 +198,22 @@ export const finalizePaidCommerceSession = async ({
       refundable: plainSession.downpayment_refundable
     } : null;
 
+    // Phase 237 (#1329, epic #1321, Wave 0 decision #2): the whole delivery-fee breakdown pinned at
+    // payment-session creation (storeUseCases.js's buildStoreCheckoutPaymentSessionUseCase). A
+    // server-internal sibling argument, never a payload field -- same precedent as capturedPayment
+    // above. resolveCheckoutContext validates its shape/version itself and falls through to a fresh
+    // resolution on anything malformed; passed through here verbatim, whatever it is (including
+    // null/undefined for a pre-Phase-237 session, which resolves exactly as it did before this
+    // phase shipped).
+    const pinnedDeliveryBreakdown = plainSession.delivery_fee_breakdown ?? null;
+
     const result = await dbStore.run(context, () => storeCheckoutUseCase({
       tenantId: tenant.id,
       payload: checkoutPayload,
       storeCustomer: verifiedStoreCustomer,
       allowExpiredGuestCheckoutProof: true,
-      capturedPayment
+      capturedPayment,
+      pinnedDeliveryBreakdown
     }));
 
     if (!result.success) {

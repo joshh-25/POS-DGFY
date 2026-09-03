@@ -80,8 +80,19 @@ export const REGISTRATION_INDUSTRIES = Object.freeze({
         workflow_mode: 'services',
         template_key: 'services_shop'
     }),
-    fnb: Object.freeze({
+    laundry: Object.freeze({
         order: 4,
+        label: 'Laundry',
+        summary: 'Laundry businesses whose catalog, scheduling, and service execution are operated by DGLaundry.',
+        niches: Object.freeze([
+            'Laundry shop', 'Self-service laundromat', 'Wash-and-fold service',
+            'Dry-cleaning service', 'Commercial laundry service'
+        ]),
+        workflow_mode: 'laundry',
+        template_key: null
+    }),
+    fnb: Object.freeze({
+        order: 5,
         label: 'Food & Beverage',
         summary: 'Established businesses preparing meals or drinks for immediate consumption.',
         niches: Object.freeze([
@@ -92,7 +103,7 @@ export const REGISTRATION_INDUSTRIES = Object.freeze({
         template_key: 'fnb_full_service'
     }),
     micro_fnb: Object.freeze({
-        order: 5,
+        order: 6,
         label: 'Micro Food & Beverage',
         summary: 'Small or home-based food businesses with limited menus and simpler operations.',
         niches: Object.freeze([
@@ -103,7 +114,7 @@ export const REGISTRATION_INDUSTRIES = Object.freeze({
         template_key: 'fnb_counter_service'
     }),
     food_manufacturing: Object.freeze({
-        order: 6,
+        order: 7,
         label: 'Food Manufacturing',
         summary: 'Businesses that produce packaged, processed, preserved, or bulk food products for resale or distribution.',
         niches: Object.freeze([
@@ -115,7 +126,7 @@ export const REGISTRATION_INDUSTRIES = Object.freeze({
         template_key: 'food_manufacturer'
     }),
     hospitality: Object.freeze({
-        order: 7,
+        order: 8,
         label: 'Hospitality',
         summary: 'Businesses primarily offering short-term accommodation and guest experiences.',
         niches: Object.freeze([
@@ -126,7 +137,7 @@ export const REGISTRATION_INDUSTRIES = Object.freeze({
         template_key: 'hospitality_property'
     }),
     healthcare: Object.freeze({
-        order: 8,
+        order: 9,
         label: 'Healthcare',
         summary: 'Licensed health facilities and providers offering consultation, treatment, testing, or wellness-related care.',
         niches: Object.freeze([
@@ -137,7 +148,7 @@ export const REGISTRATION_INDUSTRIES = Object.freeze({
         template_key: null
     }),
     ticketing_transport: Object.freeze({
-        order: 9,
+        order: 10,
         label: 'Ticketing and Transport',
         summary: 'Businesses transporting passengers or managing routes, reservations, seats, and tickets.',
         niches: Object.freeze([
@@ -148,7 +159,7 @@ export const REGISTRATION_INDUSTRIES = Object.freeze({
         template_key: null
     }),
     logistics_distribution: Object.freeze({
-        order: 10,
+        order: 11,
         label: 'Logistics and Distribution',
         summary: 'Businesses moving, storing, supplying, or delivering goods rather than passengers.',
         niches: Object.freeze([
@@ -159,7 +170,7 @@ export const REGISTRATION_INDUSTRIES = Object.freeze({
         template_key: null
     }),
     education_institutions: Object.freeze({
-        order: 11,
+        order: 12,
         label: 'Education and Institutions',
         summary: 'Schools, training providers, organizations, and institutions offering programs, facilities, events, or public services.',
         niches: Object.freeze([

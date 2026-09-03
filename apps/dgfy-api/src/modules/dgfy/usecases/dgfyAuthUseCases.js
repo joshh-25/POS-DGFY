@@ -178,6 +178,10 @@ const serializeCompanyMembership = (membership, { currentTenantToken = '', accou
     const isOwner = isMembershipOwner(membership, accountId);
     const canSwitch = isAccepted && isTenantActive;
     const isInviteSourced = String(membership?.source || '').trim().toLowerCase() === 'invite';
+    const settings = tenant?.settings && typeof tenant.settings === 'object'
+        ? tenant.settings
+        : (() => { try { return JSON.parse(tenant?.settings || '{}'); } catch { return {}; } })();
+    const isDglaundry = settings.business_mode === 'laundry' && settings.runtime_owner === 'dglaundry';
     return {
         membership_id: membership?.id,
         tenant_id: membership?.tenant_id || tenant?.id || null,
@@ -200,6 +204,13 @@ const serializeCompanyMembership = (membership, { currentTenantToken = '', accou
         can_switch: canSwitch,
         can_leave: canSwitch && !isOwner,
         can_transfer_ownership: canSwitch && isOwner,
+        business_mode: settings.business_mode || settings.workflow_mode || null,
+        runtime_owner: settings.runtime_owner || null,
+        dgfy_storefront: settings.dgfy_storefront === true,
+        ims: settings.ims !== false,
+        pos: settings.pos !== false,
+        external_runtime: isDglaundry,
+        operations_url: isDglaundry ? 'https://laundry.dgfy.ph' : null,
         group: isOwner ? 'owned' : (status === 'pending' ? 'pending' : 'invited'),
         // Only source: 'invite' rows can actually be accepted/rejected (see
         // acceptDgfyInvitationUseCase's matching source === 'invite' guard) -
@@ -1611,7 +1622,8 @@ export const buildTransferDgfyCompanyOwnershipUseCase = ({
 };
 
 export const buildStartDgfyTenantSessionUseCase = ({
-    createTenantSessionForDgfyAccount
+    createTenantSessionForDgfyAccount,
+    repository = null
 }) => async ({ account, body }) => {
     const tenantId = String(body?.tenant_id || body?.tenantId || '').trim();
     const companyToken = String(body?.company_token || body?.companyToken || '').trim();
@@ -1626,6 +1638,15 @@ export const buildStartDgfyTenantSessionUseCase = ({
     }
 
     try {
+        if (tenantId && repository?.findMembershipForAccount) {
+            const membership = await repository.findMembershipForAccount({ dgfyAccountId: account.id, tenantId, status: 'accepted' });
+            const tenantSettings = membership?.tenant?.settings && typeof membership.tenant.settings === 'object'
+                ? membership.tenant.settings
+                : (() => { try { return JSON.parse(membership?.tenant?.settings || '{}'); } catch { return {}; } })();
+            if (tenantSettings.runtime_owner === 'dglaundry' || tenantSettings.business_mode === 'laundry') {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Laundry staff operations are hosted by DGLaundry; use the DGLaundry launch.', { statusCode: 403, details: { error_code: 'DGLAUNDRY_EXTERNAL_RUNTIME', operations_url: 'https://laundry.dgfy.ph' } });
+            }
+        }
         const session = await createTenantSessionForDgfyAccount({
             account,
             tenantId,
@@ -1692,6 +1713,12 @@ export const buildStartDgfyPosSessionUseCase = ({
                 || tenantStatus !== 'active'
             ) {
                 throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'No active company membership is available for this DGFY account.', { statusCode: 403 });
+            }
+            const tenantSettings = membership.tenant?.settings && typeof membership.tenant.settings === 'object'
+                ? membership.tenant.settings
+                : (() => { try { return JSON.parse(membership.tenant?.settings || '{}'); } catch { return {}; } })();
+            if (tenantSettings.runtime_owner === 'dglaundry' || tenantSettings.business_mode === 'laundry') {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Laundry staff operations are hosted by DGLaundry; use the DGLaundry launch.', { statusCode: 403, details: { error_code: 'DGLAUNDRY_EXTERNAL_RUNTIME', operations_url: 'https://laundry.dgfy.ph' } });
             }
             await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
                 account,

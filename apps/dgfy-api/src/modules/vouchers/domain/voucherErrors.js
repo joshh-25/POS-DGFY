@@ -53,6 +53,13 @@ export const VoucherReasonCode = Object.freeze({
     // first actual caller of this code (POS voucher redemption itself is not built yet).
     VOUCHER_DISCOUNT_SLOT_OCCUPIED: 'VOUCHER_DISCOUNT_SLOT_OCCUPIED',
 
+    // #1331 (Phase 240): a code entered into the wrong axis-specific field -- an item-targeted
+    // voucher submitted via `delivery_voucher_code`, or a delivery-targeted voucher submitted via
+    // `voucher_code`. Raised by storeUseCases.js's resolveCheckoutContext for both directions,
+    // rather than letting the second direction fall through to the domain layer's
+    // INVALID_DELIVERY_FEE_CENTAVOS (correct but a misleading, internal-error-shaped reason).
+    VOUCHER_BENEFIT_TARGET_MISMATCH: 'VOUCHER_BENEFIT_TARGET_MISMATCH',
+
     // #604: tenant-wide POS voucher redemption master switch, default off. Distinct from a voucher's
     // own `channels` mask (VOUCHER_CHANNEL_BITS.pos, evaluated in voucherEligibilityPolicy.js) --
     // this can disable POS redemption tenant-wide even for a voucher whose channels already include

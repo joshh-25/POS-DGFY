@@ -235,6 +235,20 @@ const validatePayPalConfig = (env, errors) => {
   }
 };
 
+const validateDglaundryProviderConfig = (env, errors) => {
+  if (!isTruthy(env.DGLAUNDRY_INTEGRATION_ENABLED)) return;
+  for (const key of ['DGLAUNDRY_PARTNER_TOKEN_FILE', 'DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_KEY_ID']) {
+    if (!hasValue(env, key)) addMissing(errors, key);
+  }
+  const redirect = String(env.DGFY_DGLAUNDRY_REDIRECT_URI || '').trim();
+  if (redirect !== 'https://laundry.dgfy.ph/api/v1/session/dgfy/callback') {
+    errors.push('DGFY_DGLAUNDRY_REDIRECT_URI must be the registered HTTPS DGLaundry callback');
+  }
+  if (String(env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc').trim() !== 'https://api.dgfy.ph/oidc') {
+    errors.push('DGFY_OIDC_ISSUER must be https://api.dgfy.ph/oidc for production');
+  }
+};
+
 const detectPaymentProvider = (env) => {
   const configured = String(env.PAYMENT_PROVIDER || env.DEPLOY_PAYMENT_PROVIDER || '').trim().toLowerCase();
   if (['paymongo', 'paypal', 'dual'].includes(configured)) return configured;
@@ -410,6 +424,7 @@ const validateProductionEnv = ({ env = process.env, profile = null, strictProduc
   validateRateLimits(env, errors);
   validateProfilePolicy({ profile: normalizedProfile, env, errors });
   validatePaymentConfig(env, errors, warnings);
+  validateDglaundryProviderConfig(env, errors);
 
   if (normalizedNodeEnv && normalizedNodeEnv !== 'production') {
     errors.push('NODE_ENV must be production for hosting preflight');

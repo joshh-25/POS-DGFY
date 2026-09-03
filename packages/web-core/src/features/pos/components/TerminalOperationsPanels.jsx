@@ -22,7 +22,6 @@ import IncomingQueueOrderList from './IncomingQueueOrderList.jsx';
 import { addDeliveryRunMembers } from '../services/deliveryRunService.js';
 import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
 import { resolveRunDropAssignment } from '../utils/queueRunDropAssignment.js';
-import { IMIN_TABLET_MAX_WIDTH_PX } from '../utils/posTabletViewport.js';
 import { QUEUE_RUN_FILTER_ALL, QUEUE_RUN_FILTER_UNASSIGNED, filterOrdersByRun, getQueueRunFilterOptions } from '../utils/deliveryRunQueueFilter.js';
 import useDeliveryRunOptions from '../hooks/useDeliveryRunOptions.js';
 import {
@@ -44,11 +43,20 @@ import { normalizeWorkflowMode } from '../../settings/workflowMode.js';
 
 const createIdempotencyKey = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
 
-// Phase 229 (#1289), §2.6. Split-tab viewport gate as a CSS media query, matching the primary POS
-// hardware constraint the plan documents against `posTabletViewport.js` (Falcon 1 @ 1280 landscape)
-// without reimplementing that util -- it answers a different question (is this a POS tablet at
-// all) than this gate does (is there *physically enough width* for two panels side by side).
-const SPLIT_VIEW_MEDIA_QUERY = `(min-width: ${IMIN_TABLET_MAX_WIDTH_PX}px)`;
+// Fixed 2026-09-02 (#1289 follow-up, reported live): this gate originally reused
+// IMIN_TABLET_MAX_WIDTH_PX (1280) as its *minimum* width -- but that constant is the Falcon 1 POS
+// tablet's own MAX landscape width (posTabletViewport.js's tablet-detection upper bound), so
+// requiring the split view's viewport to be >= the real hardware's own max width made it
+// structurally unable to render on that hardware at 100% zoom (confirmed live: it only appeared
+// after zooming out below 100%, which inflates the effective CSS viewport width past 1280).
+// SPLIT_VIEW_MIN_WIDTH_PX is a deliberately separate, smaller constant answering the actual
+// question this gate needs answered -- is there *physically enough width* for two panels side by
+// side -- decoupled from tablet detection. 1024px is the standard iPad landscape CSS viewport
+// width (iPad mini, the narrowest current iPad model, landscape); every iPad in landscape clears
+// it. Portrait iPad (~768-834px) intentionally still falls back to the single-panel view -- a
+// two-panel side-by-side layout hasn't had a design pass for that width, per #1289's own filing.
+const SPLIT_VIEW_MIN_WIDTH_PX = 1024;
+const SPLIT_VIEW_MEDIA_QUERY = `(min-width: ${SPLIT_VIEW_MIN_WIDTH_PX}px)`;
 
 function useSplitViewportEligible() {
   const [isEligible, setIsEligible] = React.useState(() => {
@@ -796,8 +804,9 @@ function IncomingQueueWorkspace({
   }
 
   // Phase 229 (#1289), §2.4-2.9: the 4th "Queue + Run" view -- gated on both retail mode and the
-  // >=1280px viewport (the reset effect above already guards against a stale activeView here, this
-  // is belt + braces on the render branch itself, matching the 'runs' branch's own pattern).
+  // >=SPLIT_VIEW_MIN_WIDTH_PX viewport (the reset effect above already guards against a stale
+  // activeView here, this is belt + braces on the render branch itself, matching the 'runs'
+  // branch's own pattern).
   if (activeView === 'split' && isRetailMode && isSplitViewportEligible) {
     const dragDisabled = !canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting;
     const activeDragOrder = activeDragOrderId !== null

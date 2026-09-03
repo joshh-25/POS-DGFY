@@ -580,14 +580,14 @@ describe('storefront discovery integration flow', () => {
     ))[0]);
 
     expect(await screen.findByText('My Account')).toBeTruthy();
-    expect(await screen.findByText('Ada Lovelace')).toBeTruthy();
+    expect((await screen.findAllByText('Ada Lovelace')).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Track Order' }).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Reorder Items' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Addresses' }));
     expect(await screen.findByText('Default')).toBeTruthy();
     expect((await screen.findAllByText('Iloilo Home Address')).length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'Use for Checkout' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Use .* for checkout/i })).toBeTruthy();
   }, 10000);
 
   it('searches only after the current search action is submitted', async () => {

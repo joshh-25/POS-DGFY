@@ -11,8 +11,8 @@ verification_evidence: npm run build:pos,npm run build:skupervisor,npm run check
 rollback_note: Revert this commit. The route-level checkPermission guard removed from GET /terminal/operator/current and POST /terminal/operator/resume is replaced by an equivalent (and, for getCurrent, strictly new) in-use-case check in the same commit -- reverting restores the removed guard exactly as it was, re-introducing the reported defect but changing no schema, migration, or persisted permission data. The checkPermission 403 payload change and the frontend classifier/banner changes are additive and read-only over existing fields.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-26T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1045-POS-ATTENDANCE-PERMISSION-GATE
+preflight_run_at: 2026-09-02T03:56:16.393Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-26-POS-ATTENDANCE-PERMISSION-GATE
 ---
 
 # POS Register Owner Still Blocked: The #1054 Fix Was Unreachable Behind a Route-Level Permission Guard

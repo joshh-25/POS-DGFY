@@ -23,6 +23,7 @@ import {
   getCustomerBusinessStatusLabel
 } from '../model/customerBusinessAssets.js';
 import { getCustomerProfileVerification } from '../model/customerProfileVerification.js';
+import { isCustomerAddressDefault } from '../model/customerAddressPresentation.js';
 import {
   CUSTOMER_DASHBOARD_THEME,
   CustomerDashboardEmptyState,
@@ -39,11 +40,13 @@ export function DgfyCustomerAccountPage({
   presentation = 'page',
   isMobileViewport,
   onClose,
+  onGetOrderDetails,
   onTrackReference,
   onMarkNotificationRead,
   onMarkAllNotificationsRead,
   onSignOut,
   onHelp,
+  onFeedback,
   onRegisterBusiness,
   onRequestBusinessStepUp,
   onAcceptCompanyInvitation,
@@ -86,7 +89,7 @@ export function DgfyCustomerAccountPage({
   const allAddresses = Array.isArray(accountPanel?.addresses) ? accountPanel.addresses : [];
   const notifications = Array.isArray(accountPanel?.notifications) ? accountPanel.notifications : [];
   const unreadNotificationCount = Math.max(0, Number(accountPanel?.unreadNotificationCount || 0));
-  const defaultAddress = allAddresses.find((address) => address.is_default) || allAddresses[0];
+  const defaultAddress = allAddresses.find((address) => isCustomerAddressDefault(address)) || allAddresses[0];
   const contactParts = String(accountIdentityContact || '').split(' | ').map((value) => String(value || '').trim());
   const overviewPhone = String(accountPanel?.me?.phone || contactParts[0] || '').trim();
   const overviewEmail = String(accountPanel?.me?.email || contactParts[1] || '').trim();
@@ -247,18 +250,18 @@ export function DgfyCustomerAccountPage({
 
   const views = {
     overview: <DashboardOverviewSection isMobileViewport={isMobileViewport} theme={theme} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} accountPanel={accountPanel} profileVerification={profileVerification} isAccountPanelLoading={Boolean(accountPanel?.loading)} overviewPhone={overviewPhone} overviewEmail={overviewEmail} inProgressOrders={inProgressOrders} completedOrders={completedOrders} allBookings={allBookings} allAddresses={allAddresses} loyalty={loyalty} activeActivityTab={activeActivityTab} setActiveActivityTab={setActiveActivityTab} enrichedActiveOrders={enrichedActiveOrders} reviewEligibleOrders={reviewEligibleOrders} defaultAddress={defaultAddress} EmptyState={EmptyState} StatusBadge={StatusBadge} getStoreLogoUrl={getCustomerStoreLogoUrl} formatDate={formatCustomerDate} handleOpenStorefront={handleOpenStorefront} onTrackReference={onTrackReference} openReviewComposer={openReviewComposer} setActiveNav={setActiveNav} onGoDiscovery={onGoDiscovery} onHelp={onHelp} />,
-    orders: <OrdersSection activeTab={activeOrdersTab} setActiveTab={setActiveOrdersTab} inProgressOrders={inProgressOrders} completedOrders={completedOrders} reviews={accountReviewHistory} isMobileViewport={isMobileViewport} customerTrackLoadingReference={customerTrackLoadingReference} onTrackReference={onTrackReference} onOpenStorefront={handleOpenStorefront} onOpenReview={openReviewComposer} EmptyState={EmptyState} StatusBadge={StatusBadge} getStoreLogoUrl={getCustomerStoreLogoUrl} formatDate={formatCustomerDate} money={formatCustomerMoney} prettyStatus={prettyCustomerStatus} theme={theme} />,
-    bookings: <BookingsSection activeTab={activeBookingsTab} setActiveTab={setActiveBookingsTab} activeBookings={activeBookings} pastBookings={pastBookings} reviews={accountReviewHistory} isMobileViewport={isMobileViewport} EmptyState={EmptyState} StatusBadge={StatusBadge} formatDate={formatCustomerDate} theme={theme} />,
+    orders: <OrdersSection activeTab={activeOrdersTab} setActiveTab={setActiveOrdersTab} inProgressOrders={inProgressOrders} completedOrders={completedOrders} reviews={accountReviewHistory} isMobileViewport={isMobileViewport} customerTrackLoadingReference={customerTrackLoadingReference} onGetOrderDetails={onGetOrderDetails} onTrackReference={onTrackReference} onOpenStorefront={handleOpenStorefront} onOpenReview={openReviewComposer} EmptyState={EmptyState} StatusBadge={StatusBadge} getStoreLogoUrl={getCustomerStoreLogoUrl} formatDate={formatCustomerDate} money={formatCustomerMoney} prettyStatus={prettyCustomerStatus} theme={theme} />,
+    bookings: <BookingsSection activeTab={activeBookingsTab} setActiveTab={setActiveBookingsTab} activeBookings={activeBookings} pastBookings={pastBookings} reviews={accountReviewHistory} isMobileViewport={isMobileViewport} EmptyState={EmptyState} StatusBadge={StatusBadge} formatDate={formatCustomerDate} money={formatCustomerMoney} theme={theme} />,
     addresses: <AddressesSection addresses={allAddresses} isMobileViewport={isMobileViewport} onSaveAddress={onSaveAddress} onDeleteAddress={onDeleteAddress} onSetDefaultAddress={onSetDefaultAddress} onUseAddressForCheckout={onUseAddressForCheckout} renderAddressPinEditor={renderAddressPinEditor} accountAddressActionId={accountAddressActionId} theme={theme} />,
     loyalty: <LoyaltySection isMobileViewport={isMobileViewport} loyalty={loyalty} transactions={loyaltyTransactions} EmptyState={EmptyState} formatDate={formatCustomerDate} prettyStatus={prettyCustomerStatus} theme={theme} />,
-    affiliate: <AffiliateSection enrollments={affiliateEnrollments} earnings={affiliateEarnings} earningsByStore={affiliateEarningsByStore} payoutMethods={affiliatePayoutMethods} onSavePayoutMethod={onSavePayoutMethod} onDeletePayoutMethod={onDeletePayoutMethod} onSetDefaultPayoutMethod={onSetDefaultPayoutMethod} accountPayoutActionId={accountPayoutActionId} cashouts={affiliateCashouts} onRequestCashout={onRequestCashout} onCancelCashout={onCancelCashout} accountCashoutActionId={accountCashoutActionId} isMobileViewport={isMobileViewport} EmptyState={EmptyState} StatusBadge={StatusBadge} money={formatCustomerMoney} formatDate={formatCustomerDate} theme={theme} />,
+    affiliate: <AffiliateSection enrollments={affiliateEnrollments} earnings={affiliateEarnings} earningsByStore={affiliateEarningsByStore} payoutMethods={affiliatePayoutMethods} onSavePayoutMethod={onSavePayoutMethod} onDeletePayoutMethod={onDeletePayoutMethod} onSetDefaultPayoutMethod={onSetDefaultPayoutMethod} accountPayoutActionId={accountPayoutActionId} cashouts={affiliateCashouts} onRequestCashout={onRequestCashout} onCancelCashout={onCancelCashout} accountCashoutActionId={accountCashoutActionId} affiliateAccessStatus={accountPanel?.affiliateAccessStatus || 'unknown'} isAccountPanelLoading={Boolean(accountPanel?.loading)} isMobileViewport={isMobileViewport} EmptyState={EmptyState} StatusBadge={StatusBadge} money={formatCustomerMoney} formatDate={formatCustomerDate} theme={theme} />,
     account: <AccountSettingsSection isMobileViewport={isMobileViewport} theme={theme} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} accountPanel={accountPanel} overviewPhone={overviewPhone} overviewEmail={overviewEmail} profileVerification={profileVerification} />,
     business: <BusinessSection isMobileViewport={isMobileViewport} theme={theme} businessCompanies={businessCompanies} businessMemberships={businessMemberships} businessActionError={businessActionError} businessActionLoading={businessActionLoading} businessStepUpAction={businessStepUpAction} businessEmailOtpCode={businessEmailOtpCode} setBusinessEmailOtpCode={setBusinessEmailOtpCode} setBusinessStepUpAction={setBusinessStepUpAction} startBusinessAction={startBusinessAction} submitBusinessStepUpAction={submitBusinessStepUpAction} onRegisterBusiness={onRegisterBusiness} onOpenBusinessPos={(company, options = {}) => setPosLaunchRequest({ company, intent: options.intent || 'pos' })} onOpenBusinessDayClose={openBusinessDayClose} resolveBusinessAssetUrl={resolveBusinessAssetUrl} getBusinessCoverUrl={getCustomerBusinessCoverUrl} getBusinessProfileUrl={getCustomerBusinessProfileUrl} getBusinessRoleLabel={(company) => getCustomerBusinessRoleLabel(company, prettyCustomerStatus)} getBusinessStatusLabel={businessStatusLabel} />
   };
 
   return (
     <>
-      <CustomerDashboardShell presentation={presentation} isMobileViewport={isMobileViewport} activeNav={activeNav} setActiveNav={setActiveNav} notifications={notifications} unreadNotificationCount={unreadNotificationCount} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} onClose={onClose} onSignOut={onSignOut} onHelp={onHelp} onMarkNotificationRead={onMarkNotificationRead} onMarkAllNotificationsRead={onMarkAllNotificationsRead} onTrackReference={onTrackReference}>
+      <CustomerDashboardShell presentation={presentation} isMobileViewport={isMobileViewport} activeNav={activeNav} setActiveNav={setActiveNav} notifications={notifications} unreadNotificationCount={unreadNotificationCount} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} onClose={onClose} onSignOut={onSignOut} onHelp={onHelp} onFeedback={onFeedback} onGoDiscovery={onGoDiscovery} onMarkNotificationRead={onMarkNotificationRead} onMarkAllNotificationsRead={onMarkAllNotificationsRead} onTrackReference={onTrackReference}>
         {views[activeNav] || views.overview}
       </CustomerDashboardShell>
       <ReviewComposerModal composer={reviewComposer} setComposer={setReviewComposer} submitting={reviewSubmitting} error={reviewError} onClose={closeReviewComposer} onSubmit={submitReviewComposer} theme={theme} />

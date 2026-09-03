@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import {
     buildDgfyHistoricalBackfillUseCase,
     buildGetDgfyCustomerDashboardUseCase,
+    buildGetDgfyCustomerOrderDetailsUseCase,
     buildListDgfyCustomerActivitiesUseCase,
     buildListDgfyCustomerNotificationsUseCase,
     buildManageDgfyCustomerAddressesUseCases,
@@ -99,6 +100,90 @@ describe('dgfyCustomerUseCases', () => {
         });
         expect(result.data.activity.reference).toBe('SK-ABC123');
         expect(result.data.activity.status).toBe('preparing');
+    });
+
+    it('loads account-scoped order details without exposing the raw tenant record', async () => {
+        const findActivityForAccount = jest.fn().mockResolvedValue({
+            activity_id: 21,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-1',
+            activity_type: 'order',
+            reference: 'SK-ABC123',
+            status: 'placed',
+            payment_status: 'unpaid',
+            total_amount: 170.69,
+            occurred_at: new Date('2026-08-29T01:00:00Z'),
+            display_snapshot: {}
+        });
+        const detailReader = jest.fn().mockResolvedValue({
+            activity_id: 21,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-1',
+            activity_type: 'order',
+            reference: 'SK-ABC123',
+            status: 'confirmed',
+            payment_status: 'paid',
+            total_amount: 170.69,
+            occurred_at: new Date('2026-08-29T01:00:00Z'),
+            display_snapshot: {
+                order_method: 'delivery',
+                receipt_number: 'INV-21',
+                subtotal_amount: 150,
+                delivery_fee: 20,
+                lines: [{ item_id: 4, name: 'Iced coffee', quantity: 2, unit_price: 75, line_total: 150 }]
+            }
+        });
+        const useCase = buildGetDgfyCustomerOrderDetailsUseCase({
+            repository: { findActivityForAccount },
+            detailReader
+        });
+
+        const result = await useCase({ account, reference: 'sk-abc123' });
+
+        expect(result.success).toBe(true);
+        expect(findActivityForAccount).toHaveBeenCalledWith({ dgfyAccountId: account.id, reference: 'SK-ABC123' });
+        expect(detailReader).toHaveBeenCalledWith({
+            account: expect.objectContaining({ id: account.id }),
+            activity: expect.objectContaining({ reference: 'SK-ABC123' })
+        });
+        expect(result.data.details_available).toBe(true);
+        expect(result.data.order).toMatchObject({
+            reference: 'SK-ABC123',
+            status: 'confirmed',
+            payment_status: 'paid',
+            display: {
+                order_method: 'delivery',
+                receipt_number: 'INV-21',
+                lines: [{ item_id: 4, name: 'Iced coffee', quantity: 2, line_total: 150 }]
+            }
+        });
+        expect(result.data.order.tenant_id).toBeUndefined();
+        expect(result.data.order.dgfy_account_id).toBeUndefined();
+    });
+
+    it('rejects invalid or non-order detail references before reading tenant data', async () => {
+        const findActivityForAccount = jest.fn();
+        const detailReader = jest.fn();
+        const useCase = buildGetDgfyCustomerOrderDetailsUseCase({
+            repository: { findActivityForAccount },
+            detailReader
+        });
+
+        const invalid = await useCase({ account, reference: 'not-a-reference' });
+        expect(invalid.success).toBe(false);
+        expect(invalid.error.statusCode).toBe(422);
+        expect(findActivityForAccount).not.toHaveBeenCalled();
+
+        findActivityForAccount.mockResolvedValue({
+            activity_id: 22,
+            dgfy_account_id: account.id,
+            activity_type: 'service_booking',
+            reference: 'SV-ABC123'
+        });
+        const nonOrder = await useCase({ account, reference: 'SV-ABC123' });
+        expect(nonOrder.success).toBe(false);
+        expect(nonOrder.error.statusCode).toBe(404);
+        expect(detailReader).not.toHaveBeenCalled();
     });
 
     it('creates coordinate-backed saved addresses for delivery pins', async () => {

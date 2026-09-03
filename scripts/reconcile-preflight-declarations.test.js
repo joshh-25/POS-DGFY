@@ -61,6 +61,30 @@ test('buildReconciledValues produces a run-bound, schema-valid ref on a real pas
   assert.match(values.preflight_request_ref, /^[A-Z0-9]+(?:-[A-Z0-9]+){2,}$/);
 });
 
+test('buildReconciledValues produces a NOT-APPLICABLE-* ref for a not_applicable result (#1396)', () => {
+  const values = buildReconciledValues(
+    { pass: true, result: 'not_applicable', reason_code: 'NO_ENDPOINT_ACCEPTED_SURFACE', can_proceed: true },
+    { runId: '987654321', declarationId: '2026-09-05-discovery-delivery-from-price' }
+  );
+
+  assert.equal(values.preflight_result, 'not_applicable');
+  assert.equal(values.preflight_reason_code, 'NO_ENDPOINT_ACCEPTED_SURFACE');
+  assert.equal(
+    values.preflight_request_ref,
+    'NOT-APPLICABLE-987654321-2026-09-05-DISCOVERY-DELIVERY-FROM-PRICE'
+  );
+  // Matches isValidPreflightRequestRef's 3+-segment pattern (scripts/check-compliance-impact.js)
+  assert.match(values.preflight_request_ref, /^[A-Z0-9]+(?:-[A-Z0-9]+){2,}$/);
+});
+
+test('buildReconciledValues still produces a PREFLIGHT-* ref for a no_breach result (regression)', () => {
+  const values = buildReconciledValues(
+    { pass: true, result: 'no_breach', reason_code: 'ALLOWED', can_proceed: true },
+    { runId: '1', declarationId: 'x' }
+  );
+  assert.match(values.preflight_request_ref, /^PREFLIGHT-/);
+});
+
 test('applyReconciledFrontMatter rewrites only the four target keys, leaves everything else byte-identical', () => {
   const updated = applyReconciledFrontMatter(FIXTURE_DECLARATION, {
     preflight_result: 'no_breach',
@@ -110,6 +134,27 @@ test('reconcileDeclarationFile writes the reconciled front matter to disk and re
   assert.doesNotMatch(written, /preflight_request_ref: NOT-EXECUTED-1234-FIXTURE-DECLARATION\n/);
   // Body's historical mention of the old ref still survives
   assert.match(written, /Historical note mentioning `NOT-EXECUTED-1234-FIXTURE-DECLARATION`/);
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test('reconcileDeclarationFile writes a NOT-APPLICABLE-* ref and preflight_result: not_applicable to disk (#1396)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-test-'));
+  const declarationPath = path.join(tmpDir, 'fixture.md');
+  fs.writeFileSync(declarationPath, FIXTURE_DECLARATION, 'utf8');
+
+  const ref = reconcileDeclarationFile(
+    declarationPath,
+    { pass: true, result: 'not_applicable', reason_code: 'NO_ENDPOINT_ACCEPTED_SURFACE', can_proceed: true },
+    { runId: '42' }
+  );
+
+  assert.equal(ref, 'NOT-APPLICABLE-42-2026-08-28-FIXTURE-DECLARATION');
+
+  const written = fs.readFileSync(declarationPath, 'utf8');
+  assert.match(written, /preflight_request_ref: NOT-APPLICABLE-42-2026-08-28-FIXTURE-DECLARATION/);
+  assert.match(written, /preflight_result: not_applicable/);
+  assert.doesNotMatch(written, /preflight_request_ref: NOT-EXECUTED-1234-FIXTURE-DECLARATION\n/);
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });

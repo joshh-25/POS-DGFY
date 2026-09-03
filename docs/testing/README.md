@@ -180,7 +180,7 @@ Required command:
 1. `npm run test:backend:matrix`
 
 Evidence semantics:
-1. The matrix discovers active backend Jest test files from the backend Jest config, then runs them in bounded groups with one file per chunk by default.
+1. The matrix discovers active backend Jest test files from the backend Jest config, partitions them into a "fast" tier (no real DB, one worker-mode Jest invocation with real worker parallelism, not one file per chunk) and a "db" tier (the `scripts/backend-db-dependent-tests.js` manifest, chunked 8 files at a time, `--runInBand`, grouped by domain). See `docs/testing/backend-test-suite-value-audit.md` for the #1441 value audit of what's in each tier and why.
 2. The matrix writes `.tmp/release-gates/<sha>/backend-test-matrix/backend_test_matrix.json` with target SHA, active test count, group count, schema preflight result, per-chunk duration, status, timeout, and log path.
 3. Schema preflight must pass before test execution; it verifies the matrix is pointed at a test database and repairs only known test-schema drift needed for current suites.
 4. The local release gate runs `npm run test:backend:matrix` through `scripts/gate-release-local.js`.

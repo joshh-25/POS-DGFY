@@ -91,4 +91,29 @@ describe('routeCalculatorRepository.calculateRoute', () => {
             originLat: 10, originLng: 122, destLat: 10.1, destLng: 122.1, profile: 'car'
         })).rejects.toMatchObject({ code: 'ROUTE_UNREACHABLE' });
     });
+
+    // Phase 236 (#1328, epic #1321): additive `timeoutMs` param -- §3.1 Option A.
+    it('uses the env-driven default timeout when timeoutMs is omitted (byte-identical to pre-#1328 behavior)', async () => {
+        mockGet.mockResolvedValue({ data: { paths: [{ distance: 100, time: 1000 }] } });
+
+        await routeCalculatorRepository.calculateRoute({
+            originLat: 10, originLng: 122, destLat: 10.1, destLng: 122.1, profile: 'car'
+        });
+
+        expect(mockGet).toHaveBeenCalledWith('http://graphhopper.test/route', expect.objectContaining({
+            timeout: 6000
+        }));
+    });
+
+    it('uses the caller-supplied timeoutMs when present, overriding the env default', async () => {
+        mockGet.mockResolvedValue({ data: { paths: [{ distance: 100, time: 1000 }] } });
+
+        await routeCalculatorRepository.calculateRoute({
+            originLat: 10, originLng: 122, destLat: 10.1, destLng: 122.1, profile: 'car', timeoutMs: 600
+        });
+
+        expect(mockGet).toHaveBeenCalledWith('http://graphhopper.test/route', expect.objectContaining({
+            timeout: 600
+        }));
+    });
 });

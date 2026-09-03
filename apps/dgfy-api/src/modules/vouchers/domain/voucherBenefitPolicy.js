@@ -12,6 +12,27 @@
 //     rendered as a derived delta `Σ qty × max(0, base_unit − fixed_unit)`, clamped at zero when the
 //     base price has fallen below the pinned price.
 //
+// #1326 / epic #1321 decision 9: the `benefit_target` axis ('items' | 'delivery'). `benefitTarget`
+// defaults to 'items' at the JS level -- NOT a DB column default, there is no `benefit_target` column
+// yet (#240) -- so every existing caller and every existing voucher resolves exactly as before, byte
+// for byte, with no migration. Related: ADR 0078's note on ADR 0066 Decision 8.
+//
+// ADR 0066 Decision 1 `[binding]` ("a voucher NEVER mutates a persisted unit price") is preserved
+// across this axis BY CONSTRUCTION, not by a guard, in both directions:
+//   - Direction A (a delivery-targeted voucher can't touch a unit price): the only mutable per-line
+//     money channel is the local `perLineDiscounts` array, written in exactly two places inside the
+//     `benefitClass === 'fixed_price'` / else arms below. Putting `benefitTarget === 'delivery'` as
+//     the FIRST arm of that if/else-if/else makes both write sites unreachable on the delivery path
+//     via mutual exclusion, not a runtime check.
+//   - Direction B (an items-targeted voucher can't reach the delivery fee): `deliveryFeeCentavos` has
+//     EXACTLY ONE read site in this module -- the `benefitTarget === 'delivery'` arm of the
+//     `benefitBaseCentavos` ternary below. It is never passed into `resolveRawDiscount`, never stored
+//     on a line, never present on the 'items' path's return shape. A later refactor that hoists the
+//     fee into `resolveRawDiscount` would silently destroy this invariant -- don't.
+//   - Corollary: `fixed_price` is rejected outright for `benefitTarget: 'delivery'` (see the guard in
+//     `calculateVoucherBenefit`) -- the one benefit class defined as a per-unit price pin can never be
+//     aimed at a fee that has no units.
+//
 // Below-cost detection (#697) is deliberately benefit-class-agnostic: it compares the resolved,
 // post-cap, post-clamp `voucherUnitPriceCentavos` against an optional per-line `costPerUnitCentavos`
 // -- not `fixedUnitPriceCentavos` alone -- because a deep `percent_off` or `amount_off` can sell
@@ -22,6 +43,10 @@
 // fails closed, catalog display fails open, per ADR 0066 decision 3).
 
 export const VOUCHER_BENEFIT_CLASSES = Object.freeze(['percent_off', 'amount_off', 'fixed_price']);
+
+// #1326: the benefit-target axis. 'items' is the JS-level default (see calculateVoucherBenefit) --
+// not a DB default, there is no `benefit_target` column yet.
+export const VOUCHER_BENEFIT_TARGETS = Object.freeze(['items', 'delivery']);
 
 export class VoucherBenefitError extends Error {
     constructor(code, message, details = {}) {
@@ -126,7 +151,12 @@ const resolveRawDiscount = ({
     fixedUnitPriceCentavos,
     fixedUnitPriceByItemId,
     eligibleLines,
-    eligibleSubtotalCentavos
+    // #1326: the shared benefit base -- the eligible item subtotal on the 'items' path, the delivery
+    // fee on the 'delivery' path. Renamed from `eligibleSubtotalCentavos`; internal-only, this
+    // function is not exported. See `calculateVoucherBenefit`'s `benefitBaseCentavos` local for how
+    // this is chosen -- both the percent_off and amount_off clamps below must read the SAME base the
+    // final order-level clamp uses, or a delivery voucher silently computes against the wrong number.
+    benefitBaseCentavos
 }) => {
     if (benefitClass === 'percent_off') {
         const bps = toInteger(percentOffBps);
@@ -138,7 +168,7 @@ const resolveRawDiscount = ({
             );
         }
         return {
-            rawDiscountCentavos: Math.round((eligibleSubtotalCentavos * bps) / 10000),
+            rawDiscountCentavos: Math.round((benefitBaseCentavos * bps) / 10000),
             intrinsicLineDiscounts: null
         };
     }
@@ -153,7 +183,7 @@ const resolveRawDiscount = ({
             );
         }
         return {
-            rawDiscountCentavos: Math.min(amount, eligibleSubtotalCentavos),
+            rawDiscountCentavos: Math.min(amount, benefitBaseCentavos),
             intrinsicLineDiscounts: null
         };
     }
@@ -212,6 +242,8 @@ const resolveRawDiscount = ({
  *
  * @returns {{
  *   benefitClass: string,
+ *   benefitTarget: string,
+ *   benefitBaseCentavos: number,
  *   eligibleSubtotalCentavos: number,
  *   eligibleQuantity: number,
  *   rawDiscountCentavos: number,
@@ -223,9 +255,24 @@ const resolveRawDiscount = ({
  *   `belowCostLines` (#697) is non-throwing -- empty unless a line's resolved `voucherUnitPriceCentavos`
  *   undercuts its supplied `costPerUnitCentavos`. The caller decides whether that blocks (checkout,
  *   fail closed) or is ignored/logged (catalog display, fail open).
+ *   `capApplied` (#1326): its meaning widens with `benefitTarget: 'delivery'` to also cover "the fee
+ *   ceiling clamped it" (`benefitBaseCentavos`, not just `maxDiscountCentavos`) -- same field, not
+ *   renamed, just a broader "something clamped the raw discount" reading.
  */
 export const calculateVoucherBenefit = ({
     benefitClass,
+    // #1326 / epic #1321 decision 9: the benefit-target axis. 'items' is the JS-level default, so
+    // every existing caller and every existing voucher resolves exactly as before with no DDL and no
+    // migration -- see this file's header, and ADR 0078's Related note on ADR 0066 Decision 8. #240's
+    // migration story is a one-line change AT THE CALL SITE
+    // (`benefitTarget: voucher.benefit_target ?? 'items'`), not a change to this default -- there is
+    // no domain-level default to remove later.
+    benefitTarget = 'items',
+    // Only ever read on the 'delivery' arm below (see `benefitBaseCentavos`). An items-targeted
+    // voucher structurally cannot reach this value -- ADR 0066 Decision 1, by construction, see the
+    // file header. `null` and `0` are distinct: `0` is a legal base (a free-delivery tenant), `null`
+    // means "no base supplied" and fails closed below.
+    deliveryFeeCentavos = null,
     percentOffBps = null,
     amountOffCentavos = null,
     fixedUnitPriceCentavos = null,
@@ -243,11 +290,39 @@ export const calculateVoucherBenefit = ({
             { benefit_class: benefitClass ?? null }
         );
     }
+    if (!VOUCHER_BENEFIT_TARGETS.includes(benefitTarget)) {
+        throw new VoucherBenefitError(
+            'UNKNOWN_BENEFIT_TARGET',
+            `Unknown voucher benefit target: ${benefitTarget}`,
+            { benefit_target: benefitTarget ?? null }
+        );
+    }
+    if (benefitTarget === 'delivery' && benefitClass === 'fixed_price') {
+        throw new VoucherBenefitError(
+            'BENEFIT_TARGET_CLASS_UNSUPPORTED',
+            'fixed_price is a per-line unit-price pin and has no delivery-fee analogue',
+            { benefit_class: benefitClass, benefit_target: benefitTarget }
+        );
+    }
+    if (benefitTarget === 'delivery' && deliveryFeeCentavos == null) {
+        throw new VoucherBenefitError(
+            'INVALID_DELIVERY_FEE_CENTAVOS',
+            'delivery-targeted vouchers require a delivery_fee_centavos base',
+            { delivery_fee_centavos: null }
+        );
+    }
 
     const normalizedLines = normalizeLines(lines);
     const eligibleLines = normalizedLines.filter((line) => line.eligible);
     const eligibleSubtotalCentavos = eligibleLines.reduce((sum, line) => sum + line.lineSubtotalCentavos, 0);
     const eligibleQuantity = roundQuantity(eligibleLines.reduce((sum, line) => sum + line.quantity, 0));
+
+    // #1326: the benefit base. For 'items' this is byte-identically the eligible item subtotal --
+    // every existing case computes the same numbers it did before. For 'delivery' the base becomes
+    // the passed delivery fee and the item subtotal plays no part in the money math at all.
+    const benefitBaseCentavos = benefitTarget === 'delivery'
+        ? toNonNegativeInteger(deliveryFeeCentavos)
+        : eligibleSubtotalCentavos;
 
     const { rawDiscountCentavos, intrinsicLineDiscounts } = resolveRawDiscount({
         benefitClass,
@@ -256,17 +331,22 @@ export const calculateVoucherBenefit = ({
         fixedUnitPriceCentavos,
         fixedUnitPriceByItemId,
         eligibleLines,
-        eligibleSubtotalCentavos
+        benefitBaseCentavos
     });
 
     const cap = maxDiscountCentavos == null ? Number.POSITIVE_INFINITY : toInteger(maxDiscountCentavos);
     const cappedDiscount = Math.min(rawDiscountCentavos, cap);
-    const discountCentavos = Math.max(0, Math.min(cappedDiscount, eligibleSubtotalCentavos));
+    const discountCentavos = Math.max(0, Math.min(cappedDiscount, benefitBaseCentavos));
     const capApplied = discountCentavos < rawDiscountCentavos;
 
     const perLineDiscounts = normalizedLines.map(() => 0);
 
-    if (benefitClass === 'fixed_price' && !capApplied) {
+    if (benefitTarget === 'delivery') {
+        // #1326: a delivery-targeted benefit has no per-line component by construction. Deliberately
+        // NOT an allocateByLargestRemainder call with zero weights -- there is nothing to apportion,
+        // and leaving perLineDiscounts untouched is what makes ADR 0066 Decision 1 structural rather
+        // than incidental (see this file's header note on Direction A).
+    } else if (benefitClass === 'fixed_price' && !capApplied) {
         // Already exact -- the intrinsic per-line deltas sum to the discount, so re-allocating would
         // only introduce rounding noise.
         eligibleLines.forEach((line, position) => {
@@ -330,6 +410,10 @@ export const calculateVoucherBenefit = ({
 
     return {
         benefitClass,
+        // #1326: additive -- verified no existing caller destructures this object exhaustively. #240's
+        // ledger writer needs to tell an items redemption from a delivery one without re-deriving it.
+        benefitTarget,
+        benefitBaseCentavos,
         eligibleSubtotalCentavos,
         eligibleQuantity,
         rawDiscountCentavos,

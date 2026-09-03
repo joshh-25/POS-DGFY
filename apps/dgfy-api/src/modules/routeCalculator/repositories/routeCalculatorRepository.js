@@ -27,7 +27,10 @@ const mapGraphHopperPath = (path) => ({
 });
 
 export const routeCalculatorRepository = {
-    calculateRoute: async ({ originLat, originLng, destLat, destLng, profile }) => {
+    // `timeoutMs` is optional and additive (#1328/epic #1321) -- when omitted, behavior is
+    // byte-identical to before: the env-driven default from routeCalculatorTimeoutMs() is used,
+    // same as every existing caller (e.g. the map-display use case) already relies on.
+    calculateRoute: async ({ originLat, originLng, destLat, destLng, profile, timeoutMs }) => {
         const endpoint = routeCalculatorEndpoint();
         if (!endpoint) {
             throw new RouteCalculatorError('ROUTE_CALCULATOR_DISABLED', 'Route calculator is not configured.');
@@ -43,7 +46,7 @@ export const routeCalculatorRepository = {
                     locale: 'en'
                 },
                 paramsSerializer: { indexes: null },
-                timeout: routeCalculatorTimeoutMs()
+                timeout: Number.isFinite(timeoutMs) ? timeoutMs : routeCalculatorTimeoutMs()
             });
         } catch (error) {
             if (error?.code === 'ECONNABORTED') {

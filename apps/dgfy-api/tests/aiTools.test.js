@@ -5,7 +5,7 @@
  * - Tool definitions in aiTools.js
  * - Tool handlers in aiToolExecutor.js
  *
- * Run with: npm test -- --testPathPattern=aiTools
+ * Run with: npm test -- --testPathPatterns=aiTools
  */
 
 import fs from 'fs';

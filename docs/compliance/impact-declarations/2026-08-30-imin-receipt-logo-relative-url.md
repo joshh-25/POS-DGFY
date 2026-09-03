@@ -12,8 +12,8 @@ verification_evidence: targeted iMin receipt/logo Vitest suite (49 tests),dgfy-p
 rollback_note: Revert the absolutizeLogoSource helper, its wiring into resolveReceiptLogoSource, the three replaced/added tests, the Dockerfile ARG/ENV lines, the deploy-frontend.yml build-arg threading, and this declaration together. No payment, tax, discount, transaction, audit, API, or migration behavior changes; the LAN/USB bridge print path is unaffected (it has no bundled fallback logo).
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-08-30T23:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-321-IMIN-RECEIPT-LOGO
+preflight_run_at: 2026-09-02T03:56:16.393Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-30-IMIN-RECEIPT-LOGO-RELATIVE-URL
 ---
 
 # iMin Receipt Logo Relative URL Resolution

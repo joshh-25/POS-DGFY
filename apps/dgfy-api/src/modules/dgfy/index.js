@@ -41,6 +41,7 @@ import {
 import {
     buildCancelDgfyCustomerOrderUseCase,
     buildGetDgfyCustomerDashboardUseCase,
+    buildGetDgfyCustomerOrderDetailsUseCase,
     buildGetDgfyCustomerLoyaltyUseCase,
     buildDgfyHistoricalBackfillUseCase,
     buildListDgfyCustomerReviewsForModerationUseCase,
@@ -203,7 +204,8 @@ export const createDgfyInvitationUseCase = buildCreateDgfyInvitationUseCase({
 });
 
 export const startDgfyTenantSessionUseCase = buildStartDgfyTenantSessionUseCase({
-    createTenantSessionForDgfyAccount
+    createTenantSessionForDgfyAccount,
+    repository: dgfyAccountRepository
 });
 
 export const startDgfyPosSessionUseCase = buildStartDgfyPosSessionUseCase({
@@ -283,6 +285,7 @@ export const deleteAdminDgfyAccountUseCase = buildDeleteAdminDgfyAccountUseCase(
 });
 
 export const getDgfyCustomerDashboardUseCase = buildGetDgfyCustomerDashboardUseCase();
+export const getDgfyCustomerOrderDetailsUseCase = buildGetDgfyCustomerOrderDetailsUseCase();
 export const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
 export const listDgfyCustomerOrdersUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'order' });
 export const listDgfyCustomerBookingsUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'booking' });

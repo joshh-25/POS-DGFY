@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/posOrderPackedStep.usecase.test.js --
 rollback_note: The two pos_transactions columns (packed_at, packed_by) are nullable and additive -- down() is pure at the schema level for those, the only data loss on rollback is the packed_at/packed_by stamps themselves. The MySQL ENUM MODIFY COLUMN widening of fulfillment_status is DELIBERATELY NOT reverted by down() -- narrowing an ENUM that may already hold 'packed' rows would itself be destructive (STRICT_TRANS_TABLES rejection or silent truncation to ''). This down() is asymmetric by design, not an oversight.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-01T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1180-RETAIL-ORDER-PACKED-STEP
+preflight_run_at: 2026-09-02T03:56:16.395Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-09-01-RETAIL-ORDER-PACKED-STEP
 ---
 
 # Retail orders: mark an order packed, one at a time (#1180)

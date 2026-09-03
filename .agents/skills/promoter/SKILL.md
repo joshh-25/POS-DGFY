@@ -1,6 +1,6 @@
 ---
 name: promoter
-description: Run a develop -> main promotion end to end on dgfy-platform, cutting the release branch itself — the Promoter/Release role from issue #331/#512. Use when asked to promote develop to production, cut a release branch, or run a "review, merge, and deploy" composite instruction's deploy leg. An optional staging soak (develop -> staging -> main) is still available per batch, not the default. Dispatches DEV/STAGING deploys unattended; never merges main and never dispatches a main/PROD deploy without an explicit go each time, except a narrow phrase-gated expedited override (#1007). First live run is report-only.
+description: Run a develop -> staging -> main promotion end to end on dgfy-platform, cutting the release branch(es) itself — the Promoter/Release role from issue #331/#512. Use when asked to promote develop to production, cut a release branch, or run a "review, merge, and deploy" composite instruction's deploy leg. The develop -> staging -> main soak is the default again since #1404 (2026-09-02); a direct develop -> main promotion is available only as #1007's phrase-gated exception, not a routine choice. Dispatches DEV/STAGING deploys unattended; never merges main and never dispatches a main/PROD deploy without an explicit go each time, except a narrow phrase-gated expedited override (#1007). First live run is report-only.
 ---
 
 # Promoter/Release
@@ -8,14 +8,14 @@ description: Run a develop -> main promotion end to end on dgfy-platform, cuttin
 **Portability**: this is the canonical definition of this role (#442).
 `.claude/skills/promoter/SKILL.md` is a thin pointer back here — edit here, not there.
 
-Runs a branch promotion end to end — `develop` → `main` by default since #980/ADR 0074
-(2026-08-25), or `develop` → `staging` → `main` when a promoter chooses the optional soak — including
-cutting the promotion branch(es) each leg needs. This is the "Release/Deploy captain" candidate
-named in #331, built out by #512 after PR #510 was blocked because `staging` had been deleted as a
-side effect of using it directly as a PR head (full incident:
-`docs/ops/STAGING_TO_MAIN_PROMOTION_INCIDENT_2026-07-28.md`). The branch-per-promotion mechanism
-that incident produced is what makes the optional soak safe to still offer — nothing about dropping
-`staging` from the default path changes that mechanism.
+Runs a branch promotion end to end — `develop` → `staging` → `main` by default again since #1404
+(2026-09-02, reversing ADR 0074/#980's 2026-08-25 two-stage default), or `develop` → `main`
+directly only as #1007's phrase-gated exception — including cutting the promotion branch(es) each
+leg needs. This is the "Release/Deploy captain" candidate named in #331, built out by #512 after PR
+#510 was blocked because `staging` had been deleted as a side effect of using it directly as a PR
+head (full incident: `docs/ops/STAGING_TO_MAIN_PROMOTION_INCIDENT_2026-07-28.md`). The
+branch-per-promotion mechanism that incident produced is what makes the #1007 exception safe to
+still offer — nothing about restoring `staging` to the default path changes that mechanism.
 
 **Read rule sources at runtime. Never embed their contents here.**
 `docs/ops/RELEASE_CANDIDATE_POLICY.md` (authoritative) owns the flow and branch-naming convention;
@@ -34,18 +34,25 @@ role rather than bending either existing one past its charter.
 
 ## The flow
 
-**Default, since #980/ADR 0074 (2026-08-25):** `feature → develop → release/<label> → main`.
-`release/<label>` is cut fresh from `origin/develop`, carries no commits of its own, used once as a
-PR head, never reused.
+**Default, since #1404 (2026-09-02) — reverses ADR 0074/#980's 2026-08-25 two-stage default; see
+ADR 0074's 2026-09-02 Amendment and `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching entry:**
+`feature → develop → to-staging/<label> → staging → release/<label> → main`. `to-staging/<label>`
+cuts fresh from `origin/develop`; `release/<label>` then cuts fresh from `origin/staging`. Every
+promotion branch is a throwaway — cut fresh, no commits of its own, used once as a PR head, never
+reused. Because this leg runs on every ordinary promotion again, `staging` gets refreshed as a
+routine side effect of shipping — it is no longer relying only on the manual on-demand refresh ADR
+0074 Decision 4 describes, though that gap (no *guaranteed* anti-rot mechanism) still stands for a
+run of consecutive #1007 exceptions in a row.
 
-**Optional, non-default, per batch:** `feature → develop → to-staging/<label> → staging →
-release/<label> → main`. Choose this when a specific batch is risky enough to want a `staging` soak
-first (e.g. schema-shaping migrations, a large bundle, anything resembling the #860 precedent) —
-this is a judgment call each promotion, not a standing policy switch. When chosen, `to-staging/<label>`
-cuts from `origin/develop` and `release/<label>` cuts from `origin/staging` instead of
-`origin/develop`. `staging` is not kept automatically current — if it's been a while, either refresh
-it first (`git push --force-with-lease origin origin/develop:staging`) or just take the default
-two-stage path instead; a stale soak is worse than no soak.
+**Optional, non-default: the #1007-gated expedited exception.** `feature → develop →
+release/<label> → main` — skips the `staging` soak, cutting `release/<label>` fresh from
+`origin/develop` instead of `origin/staging`. This is **not** a routine per-batch judgment call
+(that framing applied 2026-08-25 through 2026-09-02, while this was the default) — it is invoked
+**only** as #1007's own phrase-gated, logged override, defined in full in "Expedited `develop →
+main` override (#1007)" below. Nothing about that mechanism changes here: same checkpoint table,
+same never-skippable list (production tenant-schema report, `AGENTS.md` Merge Safety, never-
+`--squash`, the `release/<label>` head-cut rule), same every-invocation restate-and-log requirement.
+Only which path it is an exception *to* has flipped.
 
 Either way, every promotion branch is a throwaway: cut fresh, carries no commits of its own, used
 once as a PR head, never reused. This is **one** mechanism for however many legs a given promotion
@@ -64,7 +71,7 @@ history from what the next promotion diffs against.
 ## Pre-flight — run before touching any branch
 
 The check that would have caught #426: confirm the **target** branch exists on the remote
-(`git ls-remote --exit-code --heads origin main`, plus `staging` too if using the optional soak)
+(`git ls-remote --exit-code --heads origin main`, plus `staging` too on the default flow's soak leg)
 before starting. If it's missing, restore it from the last known-good SHA and stop — do not proceed
 into a promotion against a branch that isn't there. Also confirm the head you're about to cut has
 never been used as a PR head before (long-lived branches — `develop`, `staging`, `main` — must never
@@ -73,34 +80,74 @@ be a head; that's the mechanism the `to-staging/`/`release/` prefixes exist to p
 ## Pre-`main` gates
 
 Everything below runs once per promotion batch, before `release/<label>` merges into `main` —
-whether that PR came directly off `develop` (the default) or off `staging` (the optional soak). See
-`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment for the full ladder this collapses
-from three stages into one.
+whether that PR came directly off `staging` (the default flow's final leg, per #1404) or directly
+off `develop` (the #1007-gated exception, which skips the `staging` soak entirely). See
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment (and its 2026-09-02 #1404 reversal)
+for the full ladder the #1007 exception collapses from three stages into two — the default flow
+itself keeps all three.
 
 **Stated the other direction, explicitly, since #1097 found this gets over-applied in practice:
 none of this — including `gate:release:local` — runs on the `develop → staging` leg** (the
-`to-staging/<label>` PR, when the optional soak is chosen). That leg's own procedure is in
-`references/promotion-runbook.md`'s "Optional: a `staging` soak first" section and stops at
+`to-staging/<label>` PR, the default flow's first leg since #1404). That leg's own procedure is in
+`references/promotion-runbook.md`'s `## Default: develop → staging → main` section and stops at
 `pr-checks.yml`'s build checks; don't reach for this section's gates there.
 
-**Compliance preflight sweep — verify, don't dispatch (changed #1163/#1248, 2026-08-31).** The
-sweep (`compliance-preflight-sweep.yml`) is no longer a promotion-time step this role runs — it
+**Ordering — only one real dependency (#1359).** These three gates read top-to-bottom below, but
+they are not a serial pipeline, and reading them as one wastes wall-clock on every promotion — caught
+live on the 2026-09-01/02 `staging → main` run (#1359), where `gate:release:local` was started and
+`release/<label>` sat uncut for its full ~25 minutes before anyone noticed the two didn't need to
+wait on each other. Only the **compliance preflight sweep** is a real precondition on cutting the
+branch — no `NOT-EXECUTED-*` declaration may reach `main`, so confirm it's clear first. Once it is,
+**cut `release/<label>` and open its PR into `main` immediately** — do not wait on
+`gate:release:local` or the production tenant-schema report first. Those two have no dependency on
+each other, on the compliance sweep, or on the branch cut/PR-open step: run them **concurrently**
+with cutting the branch and opening the PR (background the local gate, dispatch the tenant-schema
+report workflow, and move straight on to `git switch -c release/$LABEL`), not serially before it. The
+PR's own remote checks (`promotion-quality-gate.yml`, `pr-checks.yml`) run regardless of local gate
+timing, and the local gate's result is posted as a PR comment once it finishes, same as today.
+**Only the merge into `main` waits on all three** — see `AGENTS.md`'s Merge Safety section and the
+checkpoint table below; this reordering changes nothing about what gates the merge itself, only when
+the branch/PR mechanics happen relative to the other two gates. `references/promotion-runbook.md`
+shows the concurrent command sequence.
+
+Since 2026-09-02 (#1431 Phase 1, PR-A), a red `promotion-quality-gate.yml` check on the promotion PR
+is a real failure to read and address before the Merge Safety poll below, not noise to skim past —
+7 of its steps now drive the check-run conclusion directly, no `continue-on-error` absorbing them.
+
+**Compliance preflight sweep — verify, don't dispatch (changed #1163/#1248, 2026-08-31; PR handoff
+is now supervised, not auto-merge, #1295/#1374, 2026-09-02).** The sweep
+(`compliance-preflight-sweep.yml`) is no longer a promotion-time step this role runs — it
 auto-triggers whenever a declaration lands on `develop` and, once every result in a run passes,
-reconciles the front matter and opens + auto-merges its own PR into `develop`
+reconciles the front matter and pushes a `compliance-sweep/<run_id>` branch
 (`docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs"). In
 the ordinary case every declaration in the batch is already reconciled by the time promotion
-starts. This role's job here is only to **confirm** that:
+starts. This role's job here is two checks, not one — verify outstanding declarations, **and**
+check for a stuck handoff:
 
 ```bash
-git fetch origin main develop
-git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/ \
+git ls-files -- docs/compliance/impact-declarations | grep '\.md$' \
   | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
+gh issue list --label compliance:preflight-handoff --state open --json number,title,url
 ```
 
-Empty output means zero outstanding — proceed. If the command lists any file, the continuous
-trigger hasn't caught up yet (or a declaration landed via a path this repo's automation doesn't
-cover, e.g. a direct commit — shouldn't happen, but check): dispatch the sweep manually and wait
-for it —
+The first command is a **full scan of the checked-out ref**, not a `develop..main` diff — the diff
+had a permanent blind spot (a declaration that reached `main` via a #1007-override promotion sits on
+both branches and never appears in a diff between them; #1374's own research found 26 outstanding on
+a full scan where the diff found 4). Empty output means zero outstanding.
+
+The second command is the **fast signal for a stuck handoff**: `gh pr create` from
+`github-actions[bot]` is blocked by an org-level policy (#1295), so a sweep whose preflight passed
+can leave a reconciliation branch pushed with no PR ever opened for it — invisible to the first
+command alone, since the declarations *are* reconciled in that pushed branch's working tree, just
+not yet merged into `develop`. **If this returns any open issue, open and merge that handoff PR
+before cutting `release/<label>`** — follow `docs/compliance/request-time-preflight-protocol.md`'s
+"Operator handoff procedure" (find the branch/commands from the issue or the run's
+`compliance-preflight-sweep-handoff` artifact, `gh pr create` + Merge Safety poll + merge). Its merge
+re-triggers one more sweep that reports zero outstanding and closes the issue.
+
+If the first command lists any file and the second returns no open issue, the continuous trigger
+hasn't caught up yet (or a declaration landed via a path this repo's automation doesn't cover, e.g.
+a direct commit — shouldn't happen, but check): dispatch the sweep manually and wait for it —
 
 ```bash
 gh workflow run compliance-preflight-sweep.yml
@@ -111,29 +158,71 @@ gh run list --workflow=compliance-preflight-sweep.yml -L1 --json databaseId,stat
 own ephemeral CI-provisioned instance now — no `environment:` input, no secrets, nothing to
 provision (superseded #1121's `stage.dgfy.ph` bot-account design; see the ADR 0074 amendment dated
 2026-08-31 for why). **No `NOT-EXECUTED-*` declaration may reach `main`** — unchanged — but the
-sweep itself is what clears them now, continuously, not a step this role dispatches and waits on
-per promotion; #1007's expedited override (below) remains the one case a `NOT-EXECUTED-*`
-declaration may legitimately still reach `main`, logged and authorized, not silent.
+sweep itself is what clears them now, continuously (once its PR is actually merged — see the handoff
+check above), not a step this role dispatches and waits on per promotion; #1007's expedited override
+(below) remains the one case a `NOT-EXECUTED-*` declaration may legitimately still reach `main`,
+logged and authorized, not silent.
 
-**`gate:release:local`.** Run `npm run gate:release:local` against the exact target SHA — **invoke
-it, do not rebuild it** (the policy says this outright). ~25 minutes on a full run, needs local
-MySQL/Redis; exit code `2` means at least one of 19 gates failed — report which, don't merge past
-it. Gate 19 (`release.verdict.contract`) auto-passes as "Skipped" whenever no `release_verdict.json`
-exists for the target SHA — the normal case — so a green #19 is not evidence of anything; don't cite
-it as verification, nor the other two gates the artifact itself flags
-`structurally_cannot_fail: true` (`compliance.contracts`, `observability.evidence.report`). Since
+**`gate:release:local`** — run this concurrently with cutting `release/<label>` and opening its PR
+into `main` (see "Ordering" above), never serially before them. Run `npm run gate:release:local`
+against the exact target SHA — **invoke it, do not rebuild it** (the policy says this outright).
+Covers **9 required gates locally**, not 19, since 2026-09-03 (#1431 Phase 1 PR-B + Phase 3
+together): 7 gates (`docs.lint`, `architecture.guardrails`, `backend.lint`, `frontend.ims.lint`,
+`frontend.pos.lint`, `frontend.storefront.lint`, `frontend.storefront.contracts`) run as blocking
+steps in `promotion-quality-gate.yml` on this leg instead and are recorded `status:
+"delegated_to_ci"`, `ok: true`, `duration_ms: 0` in the artifact rather than run — read their result
+off the promotion PR's own `promotion-quality-gate` check (`gh pr checks <N>`, or per-job
+conclusions, never the workflow-run rollup — see the run-rollup trap below), not off this artifact.
+`release.target_sha`, `observability.evidence.report`, and `release.verdict.contract` were retired
+outright 2026-09-02 (#1431 Phase 3) rather than left green-but-meaningless — do not expect them in
+the artifact and do not re-add them. Correspondingly faster than the historical ~25-minute figure
+below, still needs local MySQL/Redis for the gates that do run locally; exit code `2` means at
+least one required gate failed — report which, don't merge past it. The one remaining gate the
+artifact flags `structurally_cannot_fail: true` is `compliance.contracts`; a green result there is
+not evidence of anything, so don't cite it as verification. Since
 #1016, the script also accepts `--only`/`--skip` and records per-gate `duration_ms` plus a top-level
 `run_mode: "full"|"partial"` — **a promotion decision must be made on a `run_mode: "full"` artifact
 only**; a partial run is for iterating on one gate locally, never for citing as promotion evidence.
+Delegation does **not** flip `run_mode` to `"partial"` — a default run that delegates all 7 CI-
+enforced gates is still `"full"`; `run_mode` tracks `--only`/`--skip` selection, not local-vs-CI
+execution. The artifact's `required_gate_count`/`delegated_gate_count`/`ci_enforced_gates` fields
+make the split legible — **the promotion PR's evidence paste should cite both this artifact and the
+promotion PR's own `promotion-quality-gate` check-run**, not the artifact alone, for the 7 delegated
+gates.
+
+**The run-rollup reading trap** (full detail: `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
+"Critical caveat" section). `gh run view <id> --json conclusion` reports the *workflow run's* rollup
+conclusion, which stays `success` even when a quality job inside it failed — the pre-existing
+job-level `continue-on-error: true` spares the run rollup, not the job. The **job's** check-run is
+what actually carries `failure` and what GitHub computes `mergeStateStatus` from. Read per-job
+conclusions (`gh run view <id> --json jobs --jq '.jobs[]|"\(.name) \(.conclusion)"'`) or
+`gh pr checks <N>` — never the run rollup — or these 7 gates will look inert when they are not.
 
 **Production tenant-schema report — never skippable, under any circumstance including #1007's
-override.** Dispatch `tenant-schema-report.yml` (#1017) with `environment: PROD` and confirm
+override.** Run this concurrently with cutting `release/<label>` and opening its PR too (see
+"Ordering" above) — it has no dependency on the branch cut either. Dispatch
+`tenant-schema-report.yml` (#1017) with `environment: PROD` and confirm
 `failed_tenant_count: 0` — this is the one control the #860/#639-class crash-loop risk depends on,
 and it must run against **production** tenant databases specifically, not staging's — the
 2026-07-28 outage happened because schema drift was checked against the wrong environment.
 Dispatching this workflow is read-only (`--mode report` only, no write path exists in the workflow
 at all — see its own header comment), so it needs no checkpoint, same as dispatching
 `verify-deployment.yml`.
+
+**Runner-routing preflight (Phase 233, #1365, H1) — run immediately before the `deploy-main.yml`
+dispatch ask, not before cutting `release/<label>`.** Unlike the two gates above, this is not a
+pre-`main`-merge gate at all — it's the one place the answer can still change which class the
+`deploy-main.yml` dispatch actually uses. Run `npm run preflight:runner -- --target-sha <the merged
+main SHA>` and read the result: exit `0` means the currently-active class (self-hosted, as of Phase
+233 — no live flip has happened yet) is confirmed available, proceed with the dispatch ask as
+normal; exit `3` means a documented flip is required — read the reported file:line pairs in
+`deploy-main.yml`, comment/uncomment them per `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`'s flip
+procedure (never automatically — this script never flips a routing value itself), log the flip in
+the promotion PR, and only then proceed; exit `1` means the result is indeterminate or an error —
+report it plainly, same as any other check state this file already treats as unresolved rather than
+silently passable. Read-only (`gh api` GETs + one `curl`; the `--canary` dispatch path is opt-in
+and self-cancelling) — no new checkpoint, no new authority, same classification as
+`tenant-schema-report.yml`/`verify-deployment.yml` above.
 
 ## Expedited `develop → main` override (#1007)
 
@@ -155,11 +244,13 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 
 | Trigger | What "stop" means |
 |---|---|
-| Pre-flight, branch cut, PR open, merge into `develop`, or into `staging` (the optional soak) | Unattended — proceed |
+| Pre-flight, branch cut, PR open, merge into `develop`, or into `staging` (the default soak leg) | Unattended — proceed |
 | Dispatching `deploy.yml` for environment `DEV` or `STAGING` | Unattended — proceed. Pat's 2026-08-16 call: this leg of "review, merge, and deploy" runs end to end without a per-dispatch ask, matching #543's "Promoter cuts/promotes staging (unattended)" framing |
 | Dispatching `verify-deployment.yml` (any environment) | Unattended — every remote command it runs is read-only |
 | Dispatching `tenant-schema-report.yml` (any environment, including PROD) | Unattended — read-only, `--mode report` only, no write path exists |
-| Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched; auto-merges only when every result already passed a real policy evaluation, same reasoning as `verify-deployment.yml`'s read-only classification |
+| Running `npm run preflight:runner` (Phase 233, #1365, H1) before the `deploy-main.yml` dispatch ask | Unattended — read-only (`gh api`/`curl`, self-cancelling `--canary` if used). An exit-`3` "flip required" result still requires logging the flip in the promotion PR before acting on it — that's a documentation step, not a new ask |
+| Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched. No longer auto-merges (#1295/#1374): a passing run pushes its reconciliation branch and attempts the PR, but a policy-blocked `gh pr create` finishes green-with-warning and hands off to a human/credentialed AI session instead — see "Compliance preflight sweep" above. Dispatching itself is still unattended either way, same reasoning as `verify-deployment.yml`'s read-only classification |
+| Opening and merging a stuck compliance-sweep handoff PR (per the "Compliance preflight sweep" fast-signal check above, before cutting `release/<label>`) | Unattended — same reasoning as any other `develop`-base PR merge in this role's table (pre-flight, branch cut, PR open, merge into `develop` row above): no destructive action, no `main`, and every declaration in it already passed a real preflight evaluation before the branch was ever pushed. Still subject to `AGENTS.md`'s Merge Safety hard stop, unchanged |
 | Dispatching `deploy-main.yml` (PROD deploy) | Ask, every time — no standing pre-authorization, matching `implement`'s existing deploy-dispatch tier |
 | Merging a `release/<label>` PR into `main` | **Never**, no exception — restate this rule explicitly whenever the boundary is hit, don't just silently stop. **Two** narrow, phrase-gated exceptions exist, neither a standing pre-authorization: `incident-responder`'s own override for an actively open production incident (`.agents/skills/incident-responder/SKILL.md` — belongs to that role, invoked there, not here), and this role's own #1007 expedited override (below) for Pat's business-urgency call, invoked here |
 | Invoking the #1007 expedited override (skipping `gate:release:local` and/or the compliance preflight sweep before a `main` merge) | **Only** on Pat's explicit real-time phrase given in this exact moment — never inferred, never a standing pre-authorization from a prior invocation. Restate the standing "these are normally required" rule out loud, then post the authorization comment on the promotion PR/tracking issue **before** merging, not after. The production tenant-schema report, `AGENTS.md` Merge Safety, never-`--squash`, and the `release/` head-cut rule stay mandatory regardless — this override never touches those. Run the retro-verification checklist (`RELEASE_CANDIDATE_POLICY.md`'s amendment) afterward as part of "done," not a follow-up |
@@ -202,6 +293,6 @@ This role owns no `Status` lane — a promotion PR isn't a per-issue card. `pr-r
 
 ## Reference files
 
-- `references/promotion-runbook.md` — the copy-pasteable command sequence for the default two-stage
-  flow and the optional `staging` soak: pre-flight, branch cut, PR create, checks, merge, deploy
-  dispatch, verify dispatch.
+- `references/promotion-runbook.md` — the copy-pasteable command sequence for the default
+  three-stage flow and the #1007-gated two-stage exception: pre-flight, branch cut, PR create,
+  checks, merge, deploy dispatch, verify dispatch.

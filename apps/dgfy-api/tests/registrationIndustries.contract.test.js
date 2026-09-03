@@ -72,6 +72,29 @@ describe('registration industry seed-baseline integrity', () => {
         expect(orders).toEqual(Array.from({ length: orders.length }, (_, i) => i + 1));
     });
 
+    // #1432: several consumer tests (adminRegistrationIndustryUseCases.test.js,
+    // registrationIndustries.transport.test.js) now derive their seeded-count
+    // assertions from Object.keys(REGISTRATION_INDUSTRIES).length instead of a
+    // hardcoded number, so an *unintended* catalog change no longer fails
+    // loudly there. This is the one explicit pin that still catches it -
+    // update it deliberately, in the same PR/commit that changes the catalog.
+    it('pins the seed-baseline catalog to its current, ordered key list', () => {
+        expect(REGISTRATION_INDUSTRY_KEYS).toEqual([
+            'retail',
+            'micro_retail',
+            'services',
+            'laundry',
+            'fnb',
+            'micro_fnb',
+            'food_manufacturing',
+            'hospitality',
+            'healthcare',
+            'ticketing_transport',
+            'logistics_distribution',
+            'education_institutions'
+        ]);
+    });
+
     it('resolveRegistrationIndustry returns null for an unknown key and tolerates surrounding whitespace', () => {
         expect(resolveRegistrationIndustry('not_a_real_industry')).toBeNull();
         expect(resolveRegistrationIndustry(null)).toBeNull();

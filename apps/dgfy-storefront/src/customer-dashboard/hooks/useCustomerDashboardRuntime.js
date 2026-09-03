@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef } from 'react';
+﻿import { useCallback, useEffect, useRef } from 'react';
 import { useCustomerAccountPanel } from './useCustomerAccountPanel.js';
 import { useCustomerDashboardAddresses } from './useCustomerDashboardAddresses.jsx';
 import { useCustomerDashboardPayouts } from './useCustomerDashboardPayouts.jsx';
@@ -38,6 +38,21 @@ export function useCustomerDashboardRuntime({
     deriveAccountActivityCollections, readDgfyAuthToken, readStoreAuthToken,
     clearDgfyAuthToken
   });
+  const handleGetCustomerOrderDetails = useCallback(async (orderOrReference, { signal } = {}) => {
+    const reference = String(
+      orderOrReference && typeof orderOrReference === 'object'
+        ? orderOrReference.reference
+        : orderOrReference || ''
+    ).trim().toUpperCase();
+    if (!reference) throw new Error('Order reference is unavailable.');
+    const authToken = String(readDgfyAuthToken() || '').trim();
+    if (!authToken && !dgfySessionAccount?.id) throw new Error('Sign in again to view order details.');
+    return requestJson(`/api/v1/dgfy/customer/orders/${encodeURIComponent(reference)}`, {
+      authToken,
+      cache: 'no-store',
+      signal
+    });
+  }, [dgfySessionAccount?.id, readDgfyAuthToken, requestJson]);
   useEffect(() => {
     loadAccountPanelRef.current = handleLoadAccountPanel;
   }, [handleLoadAccountPanel]);
@@ -123,6 +138,7 @@ export function useCustomerDashboardRuntime({
     accountTrackedOrders: tracking.accountTrackedOrders,
     resolveStorefrontMetaForAccountEntry: tracking.resolveStorefrontMetaForAccountEntry,
     openStorefrontFromAccountEntry: session.openStorefrontFromAccountEntry,
+    handleGetCustomerOrderDetails,
     submitAccountReviewFromDashboard: session.submitAccountReviewFromDashboard,
     useAccountAddressForCheckout: addresses.useAccountAddressForCheckout,
     renderAddressPinEditor: addresses.renderAddressPinEditor,

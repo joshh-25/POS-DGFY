@@ -189,7 +189,7 @@ export function DiscoveryHeader({
                 <button
                   type="button"
                   onClick={onAuthClick}
-                  className={isAuthenticated ? '' : "discovery-header__secondaryAction"}
+                  className={isAuthenticated ? '' : "discovery-header__secondaryAction discovery-header__cta"}
                   style={isAuthenticated ? { background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: '#101828', fontSize: isTabletViewport ? 14 : 15, fontWeight: 600 } : undefined}
                 >
                   {isAuthenticated ? (
@@ -290,7 +290,7 @@ export function DiscoveryHeader({
                   <button
                     type="button"
                     onClick={onAuthClick}
-                    className="discovery-header__menuSecondaryAction"
+                    className="discovery-header__menuSecondaryAction discovery-header__menuCta"
                   >
                     <UserCircle2 size={16} />
                     {authLabel}

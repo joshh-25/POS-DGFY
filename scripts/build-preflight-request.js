@@ -89,6 +89,31 @@ const filterEndpointAcceptedSurfaces = (surfaces) => (
   surfaces.filter((surface) => ENDPOINT_ACCEPTED_SURFACES.has(surface))
 );
 
+// #1396 -- a declaration can pass check-compliance-impact.js's own (broader) surface validation
+// while still declaring nothing the live preflight ENDPOINT can evaluate, e.g. `surfaces:
+// storefront` alone: filterEndpointAcceptedSurfaces() above drops it to an empty array, and an
+// empty `surfaces` array makes complianceUseCases.js's own surfaceToOperations map (lines
+// 2660-2675) resolve to zero operations -- identical, silently, to submitting no surfaces at all.
+// Adding `storefront` to ENDPOINT_ACCEPTED_SURFACES would be a no-op that reads as a real check:
+// there is no storefront rule anywhere in compliancePolicyEngine.js, and the regulatory framework
+// (BIR/BSP/NPC) this endpoint evaluates is POS-fiscal/payments scoped. classifyEndpointApplicability
+// names that gap explicitly instead of silently degrading to the generic REQUEST_PREFLIGHT decision.
+const classifyEndpointApplicability = (frontMatter) => {
+  const declaredSurfaces = parseCsvField(frontMatter.surfaces);
+  const acceptedSurfaces = filterEndpointAcceptedSurfaces(declaredSurfaces);
+
+  if (acceptedSurfaces.length > 0) {
+    return { applicable: true };
+  }
+
+  return {
+    applicable: false,
+    classification: String(frontMatter.classification || '').trim(),
+    reason_code: 'NO_ENDPOINT_ACCEPTED_SURFACE',
+    declared_surfaces: declaredSurfaces
+  };
+};
+
 // Truncates (never drops) an evidence entry to the endpoint's 300-char field limit -- see this
 // file's header comment.
 const truncateEvidenceEntry = (entry) => (
@@ -183,6 +208,42 @@ const main = () => {
     return;
   }
 
+  let frontMatter;
+  try {
+    frontMatter = parseFrontMatter(content);
+    if (!frontMatter) {
+      throw new Error(`No YAML front matter found in ${declarationPath}`);
+    }
+  } catch (error) {
+    process.stderr.write(`[build-preflight-request] ${error.message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const applicability = classifyEndpointApplicability(frontMatter);
+  if (!applicability.applicable) {
+    const declarationId = String(frontMatter.declaration_id || '').trim();
+    if (applicability.classification === 'minor') {
+      process.stdout.write(JSON.stringify({
+        not_applicable: true,
+        declaration_id: declarationId,
+        reason_code: applicability.reason_code,
+        declared_surfaces: applicability.declared_surfaces
+      }));
+      process.exitCode = 3;
+      return;
+    }
+    process.stderr.write(
+      `[build-preflight-request] declaration ${declarationId} is classification ` +
+      `"${applicability.classification}" but declares no endpoint-accepted surface ` +
+      '(pos|terminal|settings|payments|compliance); add the evaluable surface or reclassify -- ' +
+      'live preflight cannot evaluate it and check-compliance-impact.js requires ' +
+      'preflight_result=no_breach for this classification\n'
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   let request;
   try {
     request = buildRequestFromContent(content, { declarationPath });
@@ -203,6 +264,7 @@ module.exports = {
   deriveSummary,
   buildRequestFromContent,
   filterEndpointAcceptedSurfaces,
+  classifyEndpointApplicability,
   truncateEvidenceEntry,
   ENDPOINT_ACCEPTED_SURFACES,
   VERIFICATION_EVIDENCE_MAX_LENGTH

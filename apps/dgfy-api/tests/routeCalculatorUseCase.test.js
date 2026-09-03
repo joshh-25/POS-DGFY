@@ -68,4 +68,25 @@ describe('calculateRouteUseCase', () => {
         expect(result.error.details).toBeNull();
         expect(resolveDomainFailure(result).details).toBeNull();
     });
+
+    // Phase 236 (#1328, epic #1321): additive `timeoutMs` param -- §3.1 Option A.
+    it('forwards a caller-supplied timeoutMs through to the repository', async () => {
+        process.env.ROUTE_CALCULATOR_ENDPOINT = 'http://graphhopper.test';
+        const routeCalculatorRepository = { calculateRoute: jest.fn().mockResolvedValue({ distance_meters: 100 }) };
+        const calculateRoute = buildCalculateRouteUseCase({ routeCalculatorRepository });
+
+        await calculateRoute({ originLat: 10, originLng: 122, destLat: 10.1, destLng: 122.1, timeoutMs: 600 });
+
+        expect(routeCalculatorRepository.calculateRoute).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 600 }));
+    });
+
+    it('omitting timeoutMs (every pre-#1328 caller) forwards undefined, unchanged from before', async () => {
+        process.env.ROUTE_CALCULATOR_ENDPOINT = 'http://graphhopper.test';
+        const routeCalculatorRepository = { calculateRoute: jest.fn().mockResolvedValue({ distance_meters: 100 }) };
+        const calculateRoute = buildCalculateRouteUseCase({ routeCalculatorRepository });
+
+        await calculateRoute({ originLat: 10, originLng: 122, destLat: 10.1, destLng: 122.1 });
+
+        expect(routeCalculatorRepository.calculateRoute).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: undefined }));
+    });
 });

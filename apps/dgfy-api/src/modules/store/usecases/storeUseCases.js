@@ -34,12 +34,27 @@ import {
     previewVoucherEligibilityUseCase,
     redeemVoucherUseCase,
     resolveVoucherDisplayPricesUseCase,
-    VoucherReasonCode
+    VoucherReasonCode,
+    // #1390: the checkout-side half of closing the redemption<->order link -- see the
+    // attachRedemptionsToTransaction call site below, near the two VOUCHER_REDEMPTION_UNRECORDED
+    // guards. cancelStoreOrderUseCase's own half is injected as an optional builder dependency
+    // instead (store/index.js), not imported here -- see buildCancelStoreOrderUseCase's own comment.
+    voucherRepository,
+    // #1332 (Phase 244, epic #1321 decision 9): the auto-applied delivery-campaign selector's use
+    // case -- one query plus the pure selector, see voucherAutoApplyUseCases.js.
+    resolveAutoAppliedDeliveryCampaignUseCase
 } from '../../vouchers/index.js';
-// Phase 233 (#1324, epic #1321): fee-mode config schema, fixed-only behavior. resolveStoreDeliveryFee
-// below starts consuming this but still returns today's flat store_delivery_fee value regardless of
-// the resolved mode -- no behavior change yet. See deliveryPricing/domain/deliveryFeeConfig.js.
-import { resolveDeliveryFeeConfig } from '../../deliveryPricing/index.js';
+// Phase 233 (#1324, epic #1321): fee-mode config schema. Phase 237 (#1329) wires the calculated-mode
+// formula and fail-open-to-fixed branching into resolveStoreDeliveryFee below -- see
+// deliveryPricing/domain/deliveryFeeConfig.js and deliveryFeePolicy.js.
+import {
+    resolveDeliveryFeeConfig,
+    roadDistanceProvider as defaultRoadDistanceProvider,
+    computeCalculatedDeliveryFeeCentavos,
+    DeliveryFeePolicyError,
+    DELIVERY_FEE_CALC_VERSION,
+    DELIVERY_FEE_MODES
+} from '../../deliveryPricing/index.js';
 import {
     generateStoreCancelProof,
     generateStoreClaimToken,
@@ -323,7 +338,17 @@ const CHECKOUT_SETTING_KEYS = Object.freeze([
 ]);
 const STORE_HAS_NO_LOCATION_KEY = 'store_has_no_location';
 
+// #1377 review, RF-3: `Number(null) === 0` and `Number('') === 0` are both finite, so a bare
+// `Number(value)` coercion silently turned an explicit JSON `null` (or an empty string) coordinate
+// into a fabricated `0`, not `null` -- indistinguishable downstream from a genuine (0, 0) coordinate.
+// A delivery order with `delivery_latitude: null` (a realistic client shape -- e.g. a browser
+// geolocation permission denial serialized as `null`) could therefore still pass the
+// `Number.isFinite(deliveryDestLat)` provider-call guard below and price calculated mode off a
+// garbage coordinate instead of correctly falling back to fixed. Explicit null/undefined/empty
+// string all normalize to `null` (absent) before any numeric coercion is attempted.
 const toNumberOrNull = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
 };
@@ -410,6 +435,12 @@ const serializeOrderBase = (order) => ({
     service_fee_label_snapshot: order?.service_fee_label_snapshot,
     service_fee_method_snapshot: order?.service_fee_method_snapshot,
     delivery_fee: order?.delivery_fee,
+    // #1331 (Phase 240): additive, same posture Phase 237 already used for delivery_fee itself --
+    // deliberately NOT delivery_fee_waiver_voucher_id, a raw internal id has no place on a public,
+    // PIN-addressable tracking page (see serializeOrderBase's own rejected_by/rejected_at note
+    // above). The label is the customer-facing fact.
+    delivery_fee_waiver: order?.delivery_fee_waiver ?? null,
+    delivery_fee_waiver_label_snapshot: order?.delivery_fee_waiver_label_snapshot ?? null,
     total_amount: order?.total_amount,
     discount: order?.discount || null,
     outside_radius_flag: order?.outside_radius_flag,
@@ -468,6 +499,10 @@ const buildNormalizedCheckoutRequest = (payload = {}, storeCustomer = null) => {
         payment_election: String(payload.payment_election || 'full').trim().toLowerCase() === 'downpayment' ? 'downpayment' : 'full',
         promo_code: normalizePromoCode(payload.promo_code),
         voucher_code: normalizeVoucherCode(payload.voucher_code),
+        // #1331 (Phase 240): a SECOND, independent code-entry field -- the item-voucher slot guard
+        // (resolveCheckoutContext, below) only ever fires on `voucher_code`, never this one, which
+        // is the whole point of the two-axis design (ADR 0066 Decision 8's 2026-09-02 amendment).
+        delivery_voucher_code: normalizeVoucherCode(payload.delivery_voucher_code),
         customer_name: String(payload.customer_name || storeCustomer?.name || '').trim(),
         customer_phone: String(payload.customer_phone || storeCustomer?.phone || '').trim(),
         customer_email: String(payload.customer_email || storeCustomer?.email || '').trim().toLowerCase(),
@@ -534,26 +569,142 @@ const resolveDeliveryRadiusFlag = ({ orderMethod, location, deliveryLatitude, de
     return distanceKm > radiusKm;
 };
 
-const resolveStoreDeliveryFee = (settings = {}, orderMethod) => {
-    if (orderMethod !== 'delivery') return 0;
-
-    // Phase 233 (#1324): start consuming the fee-mode config. Deliberately unused beyond this --
-    // every mode still resolves to today's flat store_delivery_fee value below. Calculated/free
-    // fee computation (and branching on feeConfig.mode) is #237's job, not this phase's.
-    // locationOverride stays hardwired null per epic #1321 decision 2 until a later phase resolves
-    // a real per-location override.
-    resolveDeliveryFeeConfig({
-        tenantSettings: {
-            store_delivery_fee_mode: settings?.store_delivery_fee_mode?.value,
-            store_delivery_fee_calc: settings?.store_delivery_fee_calc?.value
-        },
-        locationOverride: null
-    });
-
+// Phase 236 (#1328): the parsed flat store_delivery_fee value, extracted to its own helper so
+// resolveStoreDeliveryFee can reuse it as the fixed-mode price AND as the fallback-mode price for
+// calculated tenants (ADR 0078 Decision 2 [binding]) without duplicating the parse/guard logic.
+// Byte-identical to the guard the pre-Phase-237 resolveStoreDeliveryFee applied inline.
+const parseFixedDeliveryFee = (settings = {}) => {
     const rawFee = settings?.store_delivery_fee?.value;
     const parsed = Number(rawFee);
     if (!Number.isFinite(parsed) || parsed < 0) return 0;
     return round4(parsed);
+};
+
+// Phase 237 (#1329, epic #1321). Resolves the storefront delivery fee as a full breakdown object,
+// not a bare scalar -- see the Phase 237 plan §2 for the exact field-by-field contract. `async`
+// even though this function performs no `await` itself: the ticket mandates it (future-proofs #240
+// waiver lookup and a real locationOverride source with no second signature break), and every call
+// site below awaits it -- a forgotten `await` would coerce a Promise through round4() into NaN,
+// which the fixed-mode byte-identity regression tests (deliveryFeeModeConfig.checkoutFallback.unit
+// .test.js, storeCheckoutRoadDistanceCapture.unit.test.js) would catch immediately.
+//
+// distanceMeters/distanceSource are PASSED IN, never fetched here -- this function stays I/O-free
+// and unit-testable standalone; resolveCheckoutContext (the only caller) remains the sole thing
+// that talks to roadDistanceProvider, preserving ADR 0078 Decision 4's single-choke-point property.
+const resolveStoreDeliveryFee = async ({
+    settings = {},
+    orderMethod,
+    distanceMeters = null,
+    distanceSource = 'none',
+    // Hardwired null per ADR 0078 Decision 6 [binding] until a later phase resolves a real
+    // per-location override (#1346 tracks the known wholesale-replace divergence -- zero live
+    // impact today since this stays null; this phase must not be the first caller to pass non-null).
+    locationOverride = null
+} = {}) => {
+    if (orderMethod !== 'delivery') {
+        return Object.freeze({
+            mode: 'fixed',
+            baseFee: 0,
+            waiverAmount: 0,
+            overrideAmount: null,
+            finalFee: 0,
+            distanceMeters: null,
+            distanceSource: 'none',
+            fallbackApplied: false,
+            outOfRange: false,
+            calcVersion: DELIVERY_FEE_CALC_VERSION
+        });
+    }
+
+    const feeConfig = resolveDeliveryFeeConfig({
+        tenantSettings: {
+            store_delivery_fee_mode: settings?.store_delivery_fee_mode?.value,
+            store_delivery_fee_calc: settings?.store_delivery_fee_calc?.value
+        },
+        locationOverride
+    });
+    const fixedFee = parseFixedDeliveryFee(settings);
+
+    let baseFee = 0;
+    let fallbackApplied = false;
+    let outOfRange = false;
+
+    if (feeConfig.mode === 'free') {
+        baseFee = 0;
+    } else if (feeConfig.mode === 'fixed') {
+        baseFee = fixedFee;
+    } else {
+        // mode === 'calculated'
+        const distanceUsable = distanceSource === 'road'
+            && Number.isFinite(distanceMeters)
+            && distanceMeters >= 0;
+
+        if (feeConfig.calc === null || !distanceUsable) {
+            // ADR 0078 Decision 2 [binding]: absent/malformed calc config, OR the road-distance
+            // provider didn't resolve a usable distance (down, timeout, non-2xx, unmapped area,
+            // non-delivery, missing/unparseable coordinates -- roadDistanceProvider already
+            // collapses all of these to source 'unavailable', which resolveCheckoutContext already
+            // maps to distanceSource 'fallback'). Never invents/estimates/interpolates a distance.
+            baseFee = fixedFee;
+            fallbackApplied = true;
+        } else {
+            let calcResult;
+            try {
+                calcResult = computeCalculatedDeliveryFeeCentavos({
+                    distanceMeters,
+                    config: feeConfig.calc
+                });
+            } catch (error) {
+                // Belt-and-suspenders: 3a/3b above make this unreachable in principle (normalizeCalcBlob
+                // and this module's own validateConfig enforce the same invariants), but the pure
+                // policy module THROWS by design (see deliveryFeePolicy.js), and a throw escaping this
+                // choke point would violate Decision 2's "never blocks checkout on a provider/config
+                // failure." Fail open to fixed, same as every other branch here.
+                if (!(error instanceof DeliveryFeePolicyError)) throw error;
+                logger.warn('[DeliveryFee] computeCalculatedDeliveryFeeCentavos threw; falling back to fixed rate', {
+                    code: error.code,
+                    message: error.message
+                });
+                baseFee = fixedFee;
+                fallbackApplied = true;
+                calcResult = null;
+            }
+
+            if (calcResult) {
+                if (calcResult.outOfRange) {
+                    // NOT a fallback -- ADR 0078 Decision 2 explicitly separates "out of range" from
+                    // "unknown distance." The hard block is enforced one layer up, in
+                    // resolveCheckoutContext (see enforceDeliveryRange).
+                    baseFee = 0;
+                    outOfRange = true;
+                } else {
+                    baseFee = centavosToPeso(calcResult.feeCentavos);
+                }
+            }
+        }
+    }
+
+    // #1331 (Phase 240): still hardcoded HERE, deliberately. This function stays I/O-free (see its
+    // own header) and a voucher lookup is not -- resolveCheckoutContext rebuilds `delivery` with the
+    // resolved waiver AFTER this function returns (its own §5.3 in the Phase 240 plan), rather than
+    // dragging a repository call into a function whose byte-identity regression tests depend on it
+    // staying await-free.
+    const waiverAmount = 0;
+    const overrideAmount = null; // Hardcoded this phase -- #238 overrides the PERSISTED column post-hoc, not resolve-time.
+    const finalFee = overrideAmount !== null ? overrideAmount : Math.max(0, round4(baseFee - waiverAmount));
+
+    return Object.freeze({
+        mode: feeConfig.mode,
+        baseFee,
+        waiverAmount,
+        overrideAmount,
+        finalFee,
+        distanceMeters: distanceSource === 'road' ? distanceMeters : null,
+        distanceSource,
+        fallbackApplied,
+        outOfRange,
+        calcVersion: DELIVERY_FEE_CALC_VERSION
+    });
 };
 
 const resolveEstimatedWaitMinutes = ({ settings = {}, location = null }) => {
@@ -1548,6 +1699,107 @@ const buildVoucherDiscountRecord = (voucherApplication) => ({
     })
 });
 
+// #1331 (Phase 240 plan §3.2, epic #1321 decision 9): the delivery-fee waiver's resolved shape --
+// deliberately NOT a voucherApplication, and deliberately field-disjoint from one (no
+// benefitClass/discountRate/discountAmount/enteredVoucherCode/lineAllocations keys). This is
+// Mechanism B of the four structural mechanisms that keep a delivery waiver out of
+// pos_transaction_discounts (ADR 0066 Decision 8's 2026-09-02 amendment): routing this object
+// through buildVoucherDiscountRecord throws a TypeError on `undefined.map(...)` at the first call
+// rather than silently writing a structurally-invalid discount row. Do not add any of the five
+// voucherApplication keys to this shape.
+const DEFAULT_DELIVERY_WAIVER_APPLICATION = Object.freeze({
+    applied: false,
+    waiverAmount: 0,
+    voucherId: null,
+    labelSnapshot: null,
+    redemptionId: null,
+    idempotentReplay: false,
+    enteredDeliveryVoucherCode: null,
+    // #1332 (Phase 244): additive -- distinguishes a code-entered waiver from an auto-applied one.
+    // No existing reader destructures this object exhaustively (same argument #1331 made for its own
+    // additions).
+    autoApplied: false
+});
+
+// Phase 237 (#1329, epic #1321, Wave 0 decision #2 / D2): advisory-only quoted-fee pin window.
+// 60 minutes -- >= the PayMongo QRPh intent window (no legitimately-paid session is ever flagged),
+// short enough that a genuinely stuck/redelivered webhook is visible in logs. ADVISORY ONLY: never
+// used to invalidate the pin, only to log a warning past this age. A hard expiry would produce a
+// paid-but-unfinalizable order (money already captured, no order can be written) or force a silent
+// re-price to a different number than the customer paid -- both strictly worse than honoring a
+// slightly-stale pin, and this repo has no rollback mechanism (#495 open) to lean on if either
+// happened. Do not turn this into a hard-invalidation TTL without first building a reconciliation
+// path for "re-resolved fee != captured amount" -- see the Phase 237 plan §7.3.
+const DELIVERY_QUOTE_PIN_ADVISORY_TTL_MS = 60 * 60 * 1000;
+
+// Validates a pin read back from commerce_payment_sessions.delivery_fee_breakdown (JSON from the
+// DB -- could be null, truncated, or written by an older deploy). Full shape validation: every
+// field the caller copies verbatim into the persisted order (see the `delivery = Object.freeze({...})`
+// assignment below) is checked here, not just the three top-level invariants -- a partially-valid
+// pin (right mode/finalFee/calcVersion, garbage everywhere else) would otherwise corrupt the
+// money/provenance breakdown on webhook finalization (#1377 review, RF-2).
+// Any failure here means "fall through to normal resolution," never a thrown error -- pinning must
+// never be able to block a checkout that would otherwise succeed.
+const PINNED_DISTANCE_SOURCES = Object.freeze(['road', 'fallback', 'none']);
+
+// typeof-gated, not merely Number.isFinite -- Number.isFinite(Number("97")) is true, so checking
+// finiteness alone would silently coerce and accept a stringified numeric value. Every numeric pin
+// field must already BE a number, not just look like one (#1377 post-merge audit, RF-2).
+const isFiniteNonNegativeNumber = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+const isValidPinnedDeliveryBreakdown = (pin) => {
+    if (!pin || typeof pin !== 'object' || Array.isArray(pin)) return false;
+    if (!DELIVERY_FEE_MODES.includes(pin.mode)) return false;
+
+    if (!isFiniteNonNegativeNumber(pin.finalFee)) return false;
+
+    // A calcVersion mismatch means a formula change shipped between pin and finalize -- re-resolving
+    // is more correct than honoring a fee priced under a since-superseded formula.
+    if (pin.calcVersion !== DELIVERY_FEE_CALC_VERSION) return false;
+
+    // baseFee/waiverAmount: always finite, nonnegative money values -- never null/absent in a
+    // genuinely-produced breakdown (resolveStoreDeliveryFee always sets both to a number).
+    if (!isFiniteNonNegativeNumber(pin.baseFee)) return false;
+    if (!isFiniteNonNegativeNumber(pin.waiverAmount)) return false;
+
+    // overrideAmount: null (the overwhelming common case this phase -- #238 hasn't shipped yet) or a
+    // finite nonnegative number. Anything else (a string, a negative number, NaN) is malformed.
+    if (pin.overrideAmount !== null && !isFiniteNonNegativeNumber(pin.overrideAmount)) return false;
+
+    // distanceSource: closed enum, no coercion -- an unrecognized value is unconditionally malformed.
+    if (!PINNED_DISTANCE_SOURCES.includes(pin.distanceSource)) return false;
+
+    // distanceMeters: null (mirrors distanceSource !== 'road', see resolveStoreDeliveryFee's own
+    // `distanceSource === 'road' ? distanceMeters : null`) or a finite nonnegative number.
+    if (pin.distanceMeters !== null && !isFiniteNonNegativeNumber(pin.distanceMeters)) return false;
+
+    // fallbackApplied/outOfRange: real booleans, not merely truthy -- a stray string/number here
+    // would otherwise be copied verbatim into the persisted breakdown.
+    if (typeof pin.fallbackApplied !== 'boolean') return false;
+    if (typeof pin.outOfRange !== 'boolean') return false;
+
+    // pinned_at: must be a string that actually parses -- the advisory-TTL check downstream
+    // (Date.parse(pinnedDeliveryBreakdown.pinned_at)) already tolerates an unparseable value by
+    // logging and honoring the pin anyway, but a missing/non-string pinned_at means this was never a
+    // real pin from the write site (which always sets `new Date().toISOString()`) -- treat it as
+    // shape-invalid rather than silently persisting a garbage timestamp.
+    if (typeof pin.pinned_at !== 'string' || !Number.isFinite(Date.parse(pin.pinned_at))) return false;
+
+    // #1332 (Phase 244, epic #1321 decision 9): which campaign (if any) auto-applied at pin time --
+    // required so the webhook-finalized path redeems the SAME campaign that priced the order rather
+    // than re-selecting whichever campaign happens to be winning at finalize time (potentially a
+    // different one, minutes later). `undefined` is accepted as equivalent to `null` here
+    // specifically -- an in-flight pin created before this deploy has no such key at all, and
+    // treating that as shape-invalid would needlessly lose an otherwise-good pin (forcing a safe but
+    // unnecessary re-resolution) for every session already in flight across this deploy window. Not
+    // a DELIVERY_FEE_CALC_VERSION bump -- the fee formula itself is unchanged; only interpretation of
+    // one new field is backward-compatible here.
+    if (pin.autoAppliedVoucherId !== undefined && pin.autoAppliedVoucherId !== null
+        && !Number.isInteger(pin.autoAppliedVoucherId)) return false;
+
+    return true;
+};
+
 const resolveCheckoutContext = async ({
     storeRepository,
     payload,
@@ -1580,7 +1832,26 @@ const resolveCheckoutContext = async ({
     // not a hard-imported module-level singleton the way dgfyAffiliateRepository is. `undefined`
     // (every existing caller that doesn't pass this) means "don't read, assume full_payment", via
     // the `?.` guard at the call site below.
-    downpaymentSettingsRepository = null
+    downpaymentSettingsRepository = null,
+    // Phase 236 (#1328, epic #1321): injected the same way downpaymentSettingsRepository is, so
+    // tests can supply a fake without touching the real routeCalculator/GraphHopper integration.
+    // Defaults to the real singleton for every existing caller.
+    roadDistanceProvider = defaultRoadDistanceProvider,
+    // Phase 237 (#1329, epic #1321, ADR 0078 Decision 2 [binding]): mirrors requireCheckoutContact's
+    // own DI shape exactly (#746). `true` for every order-placing caller (checkout, payment
+    // session) -- an out-of-range delivery address hard-blocks the order. `false` ONLY for the cart
+    // quote (buildStoreCartQuoteUseCase), which must never throw -- it returns the blocked state as
+    // additive response fields instead (delivery_out_of_range / delivery_distance_meters) so a
+    // shopper can still see their cart total. See resolveStoreDeliveryFee's `outOfRange` field.
+    enforceDeliveryRange = true,
+    // Phase 237 (#1329, epic #1321, Wave 0 decision #2): server-internal sibling argument, never a
+    // payload field -- same precedent as capturedPayment (Phase 141, #822). Passed ONLY by
+    // finalizePaidCommerceSession.js on a webhook replay, carrying the whole frozen breakdown
+    // object captured at payment-session creation. When present and shape-valid, resolveCheckoutContext
+    // skips resolveStoreDeliveryFee entirely and uses this verbatim -- this is what keeps the
+    // finalized order's persisted fee identical to the amount PayMongo actually captured, even if
+    // settings or GraphHopper state changed between session creation and webhook finalization.
+    pinnedDeliveryBreakdown = null
 }) => {
     const normalized = buildNormalizedCheckoutRequest(payload, storeCustomer);
     const orderMethod = normalized.order_method || 'delivery';
@@ -1648,6 +1919,45 @@ const resolveCheckoutContext = async ({
     });
 
     normalized.location_id = location.location_id;
+
+    // Phase 236 (#1328, epic #1321): observation-only server-side road-distance capture. Fired
+    // (not awaited) as soon as location + delivery coordinates are both resolved, so it runs
+    // concurrently with the rest of this function's own I/O (voucher/promo resolution, etc.)
+    // rather than adding to this function's serial latency in the common case -- same guard shape
+    // resolveDeliveryRadiusFlag below already uses. Never feeds deliveryFee/totalAmount -- see
+    // resolveStoreDeliveryFee (unchanged) and the mapping applied at this promise's await point
+    // near the end of this function.
+    const deliveryOriginLat = Number(location?.latitude);
+    const deliveryOriginLng = Number(location?.longitude);
+    // Phase 237 (#1329): FIXED a pre-existing correctness gap here -- normalized.delivery_latitude/
+    // longitude are already toNumberOrNull()'d (a finite number or null; see
+    // buildNormalizedCheckoutRequest above), so this guard deliberately checks finiteness on the
+    // already-normalized value directly rather than re-wrapping it in a redundant `Number(...)`.
+    // Harmless while this capture was observation-only (Phase 236), but Phase 237 makes
+    // distanceSource feed calculated-mode fee pricing, so a delivery order with genuinely missing
+    // coordinates must resolve distanceSource: 'none' (-> fallback to the fixed rate), not silently
+    // query the provider with a fabricated coordinate.
+    // #1377 review, RF-3: this guard alone was still insufficient -- toNumberOrNull() itself
+    // normalized an explicit `null` (and empty-string) coordinate to `0`, which IS finite, so a
+    // payload with `delivery_latitude: null` still passed this check with a fabricated (0, 0). Fixed
+    // at the source (toNumberOrNull, above) rather than here, so every caller of
+    // buildNormalizedCheckoutRequest benefits, not just this one guard.
+    const deliveryDestLat = normalized.delivery_latitude;
+    const deliveryDestLng = normalized.delivery_longitude;
+    const roadDistancePromise = (
+        orderMethod === 'delivery'
+        && Number.isFinite(deliveryOriginLat) && Number.isFinite(deliveryOriginLng)
+        && Number.isFinite(deliveryDestLat) && Number.isFinite(deliveryDestLng)
+    )
+        ? roadDistanceProvider.resolveRoadDistance({
+            tenantId: tenantId || currentTenantAccessContext().tenantId,
+            locationId: normalized.location_id,
+            originLat: deliveryOriginLat,
+            originLng: deliveryOriginLng,
+            destLat: deliveryDestLat,
+            destLng: deliveryDestLng
+        })
+        : null;
 
     const items = await storeRepository.findSellableItemsByIds(itemIds, {
         ...options,
@@ -1806,6 +2116,23 @@ const resolveCheckoutContext = async ({
                 locationId: normalized.location_id,
                 transaction: options.transaction
             });
+            // #1331 (Phase 240 plan §5.4): fail closed -- a delivery-targeted voucher entered in
+            // THIS field (voucher_code) would otherwise reach calculateVoucherBenefit with
+            // deliveryFeeCentavos: null and throw INVALID_DELIVERY_FEE_CENTAVOS, a 500-shaped
+            // internal error instead of a clean 422 naming the actual mistake.
+            if (redemption.applied && redemption.benefitTarget !== 'items') {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'This code is a delivery-fee voucher and cannot be entered as an item voucher.',
+                    {
+                        statusCode: 422,
+                        details: {
+                            reason_code: VoucherReasonCode.VOUCHER_BENEFIT_TARGET_MISMATCH,
+                            voucher_code: normalized.voucher_code
+                        }
+                    }
+                );
+            }
             voucherApplication = {
                 applied: redemption.applied,
                 discountAmount: centavosToPeso(redemption.discountCentavos),
@@ -1835,6 +2162,21 @@ const resolveCheckoutContext = async ({
                 context: voucherContext,
                 lines: voucherLines
             });
+            // #1331 (Phase 240 plan §5.4): same axis-mismatch guard as the transactional branch
+            // above, for the preview/quote path.
+            if (preview.applied && preview.benefitTarget !== 'items') {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'This code is a delivery-fee voucher and cannot be entered as an item voucher.',
+                    {
+                        statusCode: 422,
+                        details: {
+                            reason_code: VoucherReasonCode.VOUCHER_BENEFIT_TARGET_MISMATCH,
+                            voucher_code: normalized.voucher_code
+                        }
+                    }
+                );
+            }
             voucherApplication = {
                 applied: preview.applied,
                 discountAmount: centavosToPeso(preview.discountCentavos),
@@ -1853,7 +2195,465 @@ const resolveCheckoutContext = async ({
         }
     }
 
-    const deliveryFee = resolveStoreDeliveryFee(settings, orderMethod);
+    // Phase 236 (#1328): reconcile the adapter's own {distanceMeters, source: 'road'|'unavailable'}
+    // vocabulary with the persisted road|fallback|none enum -- done ONLY here, never inside the
+    // adapter itself (roadDistanceProvider has no notion of orderMethod or the fallback/none split).
+    //
+    // Phase 237 (#1329): MOVED UP from its original position (after the fee computation) to
+    // immediately BEFORE it -- calculated mode requires the resolved distance before it can price.
+    // Pure relocation, no logic change: the fire point at roadDistancePromise's own declaration
+    // above is unchanged, and everything between that fire point and here (item lookup, promo
+    // resolution, voucher resolution) was already-concurrent I/O, so this move costs no latency.
+    let deliveryDistanceMeters = null;
+    let deliveryDistanceSource = 'none';
+    if (roadDistancePromise) {
+        // Phase 237 (#1329): the distance await now sits directly upstream of fee pricing (not just
+        // an observation-only capture, as it was under Phase 236), so this await is defensively
+        // guarded too -- roadDistanceProvider is documented to never reject (routeCalculator's own
+        // ApplicationResult contract, plus the adapter's own belt-and-suspenders try/catch), but ADR
+        // 0078 Decision 2 [binding]'s "never blocks checkout on a provider failure" means this choke
+        // point must not trust that contract blindly. A rejection is treated identically to an
+        // 'unavailable' resolution.
+        let roadDistanceResult;
+        try {
+            roadDistanceResult = await roadDistancePromise;
+        } catch (error) {
+            logger.warn('[DeliveryFee] roadDistanceProvider rejected unexpectedly; treating as unavailable', {
+                message: error?.message || null
+            });
+            roadDistanceResult = { distanceMeters: null, source: 'unavailable' };
+        }
+        if (roadDistanceResult.source === 'road') {
+            deliveryDistanceMeters = roadDistanceResult.distanceMeters;
+            deliveryDistanceSource = 'road';
+        } else {
+            deliveryDistanceMeters = null;
+            deliveryDistanceSource = 'fallback';
+        }
+    }
+
+    // Phase 237 (#1329, Wave 0 decision #2 / D2): a webhook-replay finalization pins the whole
+    // breakdown captured at payment-session creation, so the persisted order reflects EXACTLY the
+    // amount PayMongo actually captured, not a fresh (possibly different) re-resolution. Advisory
+    // TTL only -- see the module-level comment on DELIVERY_QUOTE_PIN_ADVISORY_TTL_MS: this NEVER
+    // hard-invalidates the pin, because the money is already captured and this repo has no rollback
+    // mechanism (#495 open). A shape/version-invalid pin falls through to normal resolution.
+    let delivery;
+    // #1331 (Phase 240 plan §5.5): tracks which branch below actually ran, so the delivery voucher
+    // block further down knows whether to trust a freshly-recomputed waiver or clamp to the pin.
+    let deliveryBreakdownWasPinned = false;
+    if (pinnedDeliveryBreakdown !== null && isValidPinnedDeliveryBreakdown(pinnedDeliveryBreakdown)) {
+        deliveryBreakdownWasPinned = true;
+        const pinnedAtMs = Date.parse(pinnedDeliveryBreakdown.pinned_at);
+        const pinAgeMs = Number.isFinite(pinnedAtMs) ? (Date.now() - pinnedAtMs) : null;
+        if (pinAgeMs === null || pinAgeMs > DELIVERY_QUOTE_PIN_ADVISORY_TTL_MS) {
+            logger.warn('[DeliveryFee] Quoted-fee pin past the advisory TTL (or has no parseable pinned_at) -- honoring it anyway, never hard-invalidated', {
+                pin_age_ms: pinAgeMs,
+                mode: pinnedDeliveryBreakdown.mode,
+                final_fee: pinnedDeliveryBreakdown.finalFee
+            });
+        }
+        delivery = Object.freeze({
+            mode: pinnedDeliveryBreakdown.mode,
+            baseFee: pinnedDeliveryBreakdown.baseFee,
+            waiverAmount: pinnedDeliveryBreakdown.waiverAmount,
+            overrideAmount: pinnedDeliveryBreakdown.overrideAmount,
+            finalFee: pinnedDeliveryBreakdown.finalFee,
+            distanceMeters: pinnedDeliveryBreakdown.distanceMeters,
+            distanceSource: pinnedDeliveryBreakdown.distanceSource,
+            fallbackApplied: pinnedDeliveryBreakdown.fallbackApplied,
+            outOfRange: pinnedDeliveryBreakdown.outOfRange,
+            calcVersion: pinnedDeliveryBreakdown.calcVersion,
+            // #1332 (Phase 244): `?? null` covers the backward-compatibility case -- a pin written
+            // before this deploy has no such key, and `undefined` must read as "no campaign auto-
+            // applied at pin time" rather than as a distinct third state.
+            autoAppliedVoucherId: pinnedDeliveryBreakdown.autoAppliedVoucherId ?? null
+        });
+    } else {
+        if (pinnedDeliveryBreakdown !== null) {
+            // Shape-invalid, or a calcVersion mismatch (a formula change shipped between pin and
+            // finalize -- re-resolving is more correct than honoring a pin priced under an old
+            // formula). Re-resolve exactly as if no pin had been passed at all.
+            logger.warn('[DeliveryFee] pinnedDeliveryBreakdown failed shape/version validation -- re-resolving instead of honoring it', {
+                pin_mode: pinnedDeliveryBreakdown?.mode ?? null,
+                pin_calc_version: pinnedDeliveryBreakdown?.calcVersion ?? null,
+                expected_calc_version: DELIVERY_FEE_CALC_VERSION
+            });
+        }
+        delivery = await resolveStoreDeliveryFee({
+            settings,
+            orderMethod,
+            distanceMeters: deliveryDistanceMeters,
+            distanceSource: deliveryDistanceSource,
+            locationOverride: null
+        });
+        // #1332 (Phase 244): resolveStoreDeliveryFee stays voucher-free by design (mirrors #1331's
+        // own "this function stays I/O-free" note) -- the auto-apply resolution below (if any) sets
+        // this field on the rebuilt `delivery`; every other path (pickup, or a delivery order with
+        // neither an entered nor an auto-applied campaign) needs it explicitly `null` rather than
+        // `undefined`, so the persisted/pinned breakdown always carries the key.
+        delivery = Object.freeze({ ...delivery, autoAppliedVoucherId: null });
+
+        // Risk #1 (Phase 237 plan §13): the road-distance provider's timeout is unmeasured, and a
+        // calculated-mode fallback is otherwise invisible to the customer -- they just see the
+        // fixed rate. Logged only on a FRESH resolution (never on a pin reuse, which would just be
+        // re-logging an already-known historical event from session creation), so the rollout can
+        // be measured rather than assumed.
+        if (delivery.fallbackApplied) {
+            logger.warn('[DeliveryFee] Calculated-mode fallback applied', {
+                tenant_id: tenantId || currentTenantAccessContext().tenantId || null,
+                location_id: normalized.location_id || null
+            });
+        }
+    }
+
+    // ADR 0078 Decision 2 [binding]: exceeding a known max distance is a deliberate hard block at
+    // self-service checkout. Thrown here, before totalAmount is computed, so no total is ever built
+    // from an out-of-range fee -- mirrors every other unshippable-order condition in this function
+    // (assertCheckoutLocationOperationalReadiness, ensureRequiredCheckoutContact, the voucher slot
+    // guard above), all of which already throw DomainError rather than return a status. D6: gated on
+    // enforceDeliveryRange so the cart-quote preview (buildStoreCartQuoteUseCase) never throws --
+    // see that use case's additive delivery_out_of_range/delivery_distance_meters response fields.
+    if (enforceDeliveryRange && delivery.outOfRange) {
+        // Read straight from the raw setting rather than threading feeConfig.calc out of
+        // resolveStoreDeliveryFee: the pinned-replay branch above never resolves a fresh feeConfig
+        // at all, so this detail-only value is looked up independently, the same raw source
+        // resolveStoreDeliveryFee itself reads from.
+        const rawMaxDistanceKm = Number(settings?.store_delivery_fee_calc?.value?.max_distance_km);
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'This delivery address is outside the store’s maximum delivery distance.',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'DELIVERY_DISTANCE_OUT_OF_RANGE',
+                    distance_meters: delivery.distanceMeters,
+                    max_distance_km: Number.isFinite(rawMaxDistanceKm) ? rawMaxDistanceKm : null
+                }
+            }
+        );
+    }
+
+    // #1331 (Phase 240, epic #1321 decision 9): a SECOND, independent voucher resolution -- the
+    // delivery-fee axis. Deliberately a NEW step here, not folded into the item-voucher block
+    // above: it must run AFTER `delivery` is resolved (its benefit base, `delivery.baseFee`, does
+    // not exist before this point -- Phase 240 plan §5.1/§13.3/§13.11) and AFTER the out-of-range
+    // hard block above (an out-of-range order must not burn a redemption on a checkout that was
+    // always going to 422 -- Phase 240 plan §5.1). ADR 0066 Decision 8's 2026-09-02 amendment is
+    // what makes this a second, independent axis rather than something the slot guard above must
+    // also police -- ONLY the item-axis guard (promoApplication.applied && normalized.voucher_code)
+    // applies to voucher_code; this field is never slot-guarded.
+    //
+    // #1389 review fixup (RF-1): gated on `orderMethod === 'delivery'` ONLY -- NOT on
+    // `delivery.baseFee > 0`. A pickup order has no delivery-fee axis at all and must still skip
+    // this block entirely (never burn a redemption). But a delivery order with a zero base fee
+    // (free-delivery mode, or any other legitimate zero -- Phase 239's own comment already treats
+    // `0` and `null` as distinct) still has the axis; it just resolves to a zero waiver. The
+    // original `delivery.baseFee > 0` guard skipped validation/mismatch-checking/redemption
+    // entirely whenever baseFee was zero, which (a) let an item-targeted code entered in this
+    // field pass through silently instead of failing closed with VOUCHER_BENEFIT_TARGET_MISMATCH,
+    // and (b) skipped the required exactly-once redemption on the pinned QRPh/webhook replay path
+    // for a validly-entered code that correctly resolves to a zero waiver. Phase 240 plan §13.12
+    // called this out directly: the domain layer accepts `deliveryFeeCentavos: 0` as legal, so it's
+    // this call site's job to still distinguish pickup (skip) from free-mode-delivery (still run,
+    // let the math naturally produce a 0 waiver) -- do not special-case the zero amount.
+    let deliveryWaiverApplication = DEFAULT_DELIVERY_WAIVER_APPLICATION;
+    if (normalized.delivery_voucher_code && orderMethod === 'delivery') {
+        const deliveryVoucherContext = { ...voucherContext, deliveryFeeCentavos: toCentavos(delivery.baseFee) };
+        const deliveryResult = options?.transaction
+            ? await redeemVoucherUseCase({
+                code: normalized.delivery_voucher_code,
+                context: deliveryVoucherContext,
+                lines: voucherLines,
+                // #1331 (Phase 240 plan §4/§13.5): distinct from the item voucher's bare key above
+                // -- that key is unchanged, so every existing order's key stays byte-identical to
+                // before this phase.
+                idempotencyKey: `${normalized.idempotency_key}:delivery`,
+                channel: 'storefront',
+                storeCustomerId: storeCustomer?.customer_id || null,
+                locationId: normalized.location_id,
+                transaction: options.transaction
+            })
+            : await previewVoucherEligibilityUseCase({
+                code: normalized.delivery_voucher_code,
+                context: deliveryVoucherContext,
+                lines: voucherLines
+            });
+
+        // #1331 (Phase 240 plan §5.4): fail closed -- an item-targeted code entered in THIS field
+        // would otherwise silently resolve against the delivery fee using the item math.
+        if (deliveryResult.applied && deliveryResult.benefitTarget !== 'delivery') {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'This code is not a delivery-fee voucher.',
+                {
+                    statusCode: 422,
+                    details: {
+                        reason_code: VoucherReasonCode.VOUCHER_BENEFIT_TARGET_MISMATCH,
+                        delivery_voucher_code: normalized.delivery_voucher_code
+                    }
+                }
+            );
+        }
+
+        const resolvedWaiverAmount = centavosToPeso(deliveryResult.discountCentavos);
+        const labelSnapshot = deliveryResult.applied
+            ? (deliveryResult.badge || deliveryResult.title || `Voucher (${deliveryResult.code})`)
+            : null;
+
+        if (deliveryBreakdownWasPinned) {
+            // Phase 240 plan §5.5: the pinned-breakdown replay path -- every QRPh/webhook-finalized
+            // order takes this branch. The redemption above still has to happen exactly once, on
+            // this transactional pass -- but the PERSISTED waiver amount comes from the pin
+            // captured at payment-session creation, never from a fresh recomputation that could
+            // disagree with the amount PayMongo actually captured. Never throws, never re-prices --
+            // this repo has no rollback (#495).
+            if (deliveryResult.applied && resolvedWaiverAmount !== pinnedDeliveryBreakdown.waiverAmount) {
+                logger.warn('[DeliveryFee] Delivery voucher waiver recomputed differently from the pinned amount -- honoring the pin', {
+                    pinned_waiver_amount: pinnedDeliveryBreakdown.waiverAmount,
+                    resolved_waiver_amount: resolvedWaiverAmount
+                });
+            }
+            deliveryWaiverApplication = Object.freeze({
+                applied: deliveryResult.applied,
+                waiverAmount: pinnedDeliveryBreakdown.waiverAmount,
+                voucherId: deliveryResult.voucherId,
+                labelSnapshot,
+                redemptionId: deliveryResult.redemptionId ?? null,
+                idempotentReplay: Boolean(deliveryResult.idempotentReplay),
+                enteredDeliveryVoucherCode: deliveryResult.applied ? deliveryResult.code : null,
+                // #1332: a typed code, never auto-applied -- this branch only runs when
+                // normalized.delivery_voucher_code is present.
+                autoApplied: false
+            });
+            // `delivery` stays exactly as the pin gave it -- do not rebuild it on this branch.
+        } else {
+            deliveryWaiverApplication = Object.freeze({
+                applied: deliveryResult.applied,
+                waiverAmount: resolvedWaiverAmount,
+                voucherId: deliveryResult.voucherId,
+                labelSnapshot,
+                redemptionId: deliveryResult.redemptionId ?? null,
+                idempotentReplay: Boolean(deliveryResult.idempotentReplay),
+                enteredDeliveryVoucherCode: deliveryResult.applied ? deliveryResult.code : null,
+                autoApplied: false
+            });
+            // ADR 0078: finalFee = max(0, baseFee - waiverAmount); overrideAmount (#1330, not built
+            // yet) still wins when present -- the same precedence resolveStoreDeliveryFee's own
+            // formula already encodes. overrideAmount is always null here today (#1330 hasn't
+            // shipped), kept for when it does.
+            const nextFinalFee = delivery.overrideAmount !== null
+                ? delivery.overrideAmount
+                : Math.max(0, round4(delivery.baseFee - deliveryWaiverApplication.waiverAmount));
+            delivery = Object.freeze({
+                ...delivery,
+                waiverAmount: deliveryWaiverApplication.waiverAmount,
+                finalFee: nextFinalFee,
+                // #1332: a code-entered waiver is never an auto-applied one -- explicit null so the
+                // pinned breakdown never carries a stale/wrong campaign id on this branch.
+                autoAppliedVoucherId: null
+            });
+        }
+    } else if (orderMethod === 'delivery') {
+        // #1332 (Phase 244, epic #1321 decision 9): auto-apply. Mutually exclusive with the
+        // code-entered branch above BY CONSTRUCTION (else-if on the same `deliveryWaiverApplication`
+        // variable, gated on the same `orderMethod === 'delivery'` condition) -- D3: an explicitly
+        // typed delivery code always beats an auto-applied campaign, and auto-apply is skipped
+        // entirely whenever one was typed, so no budget is ever burned evaluating it. A pickup order
+        // (orderMethod !== 'delivery') skips this branch entirely too, same as the code-entered one.
+        //
+        // Runs AFTER `delivery` is resolved (its benefit base, delivery.baseFee, doesn't exist
+        // before this point) and AFTER the out-of-range hard block above (an out-of-range order must
+        // never burn a redemption on a checkout that was always going to 422) -- same ordering
+        // reasoning #1331's own block already established.
+        if (deliveryBreakdownWasPinned) {
+            // Webhook-finalize replay. `autoAppliedVoucherId == null` on the pin means no campaign
+            // auto-applied at payment-session-creation time -- skip entirely rather than
+            // opportunistically applying a campaign that appeared after the shopper already paid
+            // (the captured amount would no longer match). `delivery` stays exactly as the pin gave
+            // it either way; this branch only ever sets `deliveryWaiverApplication`.
+            if (pinnedDeliveryBreakdown.autoAppliedVoucherId != null) {
+                let pinnedCampaign = null;
+                try {
+                    pinnedCampaign = await voucherRepository.findById(
+                        pinnedDeliveryBreakdown.autoAppliedVoucherId,
+                        { transaction: options?.transaction }
+                    );
+                } catch (error) {
+                    logger.warn('[AutoApplyDelivery] Failed to re-resolve the pinned auto-applied campaign by id', {
+                        voucher_id: pinnedDeliveryBreakdown.autoAppliedVoucherId,
+                        message: error?.message || null
+                    });
+                }
+
+                if (pinnedCampaign) {
+                    try {
+                        const autoApplyResult = options?.transaction
+                            ? await redeemVoucherUseCase({
+                                code: pinnedCampaign.code,
+                                context: { ...voucherContext, deliveryFeeCentavos: toCentavos(delivery.baseFee) },
+                                lines: voucherLines,
+                                // Distinct from both the item voucher's bare key and the code-entered
+                                // delivery key above -- so a request that legitimately carries both a
+                                // typed item code AND (on a DIFFERENT prior attempt) an auto-applied
+                                // delivery campaign never collides in the idempotency ledger.
+                                idempotencyKey: `${normalized.idempotency_key}:delivery-auto`,
+                                channel: 'storefront',
+                                storeCustomerId: storeCustomer?.customer_id || null,
+                                locationId: normalized.location_id,
+                                transaction: options.transaction
+                            })
+                            : null;
+
+                        if (autoApplyResult?.applied) {
+                            const labelSnapshot = autoApplyResult.badge || autoApplyResult.title || `Voucher (${autoApplyResult.code})`;
+                            deliveryWaiverApplication = Object.freeze({
+                                applied: true,
+                                // PERSISTED amount comes from the pin, never a fresh recomputation --
+                                // same posture as the code-entered pinned branch above (#1331):
+                                // never throws, never re-prices, this repo has no rollback (#495).
+                                waiverAmount: pinnedDeliveryBreakdown.waiverAmount,
+                                voucherId: autoApplyResult.voucherId,
+                                labelSnapshot,
+                                redemptionId: autoApplyResult.redemptionId ?? null,
+                                idempotentReplay: Boolean(autoApplyResult.idempotentReplay),
+                                // Never the campaign's code -- `enteredDeliveryVoucherCode` signals
+                                // "the shopper typed this," which is false for every auto-apply path
+                                // (RF-1, PR #1397 review). The campaign's identity is still fully
+                                // recoverable via `voucherId`/`autoAppliedVoucherId` + `labelSnapshot`.
+                                enteredDeliveryVoucherCode: null,
+                                autoApplied: true
+                            });
+                        }
+                    } catch (error) {
+                        // D2: fails open here too -- never blocks a webhook finalization (money is
+                        // already captured) because the pinned campaign could not be re-redeemed.
+                        logger.warn('[AutoApplyDelivery] Pinned auto-applied campaign failed to redeem on finalize -- fail open', {
+                            voucher_id: pinnedDeliveryBreakdown.autoAppliedVoucherId,
+                            message: error?.message || null,
+                            reason_code: error?.details?.reason_code || null
+                        });
+                    }
+                }
+            }
+            // `delivery` stays exactly as the pin gave it -- do not rebuild it on this branch.
+        } else {
+            // Fresh resolution: cart quote, direct (non-QRPh) checkout, or QRPh payment-session
+            // creation -- the only pinned pass is the webhook-finalize replay handled above. One
+            // explicit `now`, shared between the selector and the redemption call below, so a
+            // campaign with a valid_time_end boundary can't select one way and redeem another within
+            // the same request (Risk R2, Phase 244 plan).
+            const autoApplyNow = new Date();
+            let selection = { selected: null, waiverCentavos: 0 };
+            try {
+                selection = await resolveAutoAppliedDeliveryCampaignUseCase({
+                    context: {
+                        ...voucherContext,
+                        deliveryFeeCentavos: toCentavos(delivery.baseFee),
+                        now: autoApplyNow
+                    },
+                    transaction: options?.transaction ?? null
+                });
+            } catch (error) {
+                // Fail open on the candidate READ itself, not just the redemption -- this is a
+                // zero-side-effect query (`listAutoApplyDeliveryCampaigns` never writes), and every
+                // other soft dependency `resolveCheckoutContext` calls (roadDistanceProvider, the
+                // calculated-fee formula) already fails open to a safe default on its own error
+                // rather than blocking checkout. A shopper should never see checkout fail because a
+                // promotional-campaign lookup errored.
+                logger.warn('[AutoApplyDelivery] Failed to resolve auto-apply candidates -- fail open, no campaign considered', {
+                    message: error?.message || null
+                });
+            }
+
+            if (selection.selected) {
+                let autoApplyResult;
+                if (options?.transaction) {
+                    try {
+                        autoApplyResult = await redeemVoucherUseCase({
+                            code: selection.selected.code,
+                            context: {
+                                ...voucherContext,
+                                deliveryFeeCentavos: toCentavos(delivery.baseFee),
+                                now: autoApplyNow
+                            },
+                            lines: voucherLines,
+                            idempotencyKey: `${normalized.idempotency_key}:delivery-auto`,
+                            channel: 'storefront',
+                            storeCustomerId: storeCustomer?.customer_id || null,
+                            locationId: normalized.location_id,
+                            transaction: options.transaction
+                        });
+                    } catch (error) {
+                        // D2 (Phase 244 plan §4.5): auto-apply FAILS OPEN on a redemption failure --
+                        // no waiver, checkout proceeds, no next-candidate retry. Consistent with ADR
+                        // 0066 Decision 3's entered-vs-empty distinction
+                        // (voucherRedemptionUseCases.js's own module docstring): the shopper entered
+                        // nothing, so there is nothing to fail closed about. Blocking a paying
+                        // customer's checkout because a promotional campaign hit its cap between the
+                        // candidate read and the reserve is strictly worse than charging the normal
+                        // delivery fee. No retry against the next candidate either -- see that
+                        // section for why (lock-contention footgun, and the window this covers is
+                        // vanishingly small: both reads happen inside the same open transaction).
+                        logger.warn('[AutoApplyDelivery] Selected campaign failed to redeem -- fail open, checkout proceeds with no waiver', {
+                            voucher_id: selection.selected.voucher_id,
+                            code: selection.selected.code,
+                            message: error?.message || null,
+                            reason_code: error?.details?.reason_code || null
+                        });
+                        autoApplyResult = null;
+                    }
+                } else {
+                    // Preview (quote, or QRPh payment-session creation): the selector has already
+                    // computed eligibility and the exact waiver for the winner, purely -- take the
+                    // numbers from `selection` directly rather than a second, redundant preview call
+                    // that could theoretically disagree.
+                    autoApplyResult = {
+                        applied: true,
+                        voucherId: selection.selected.voucher_id,
+                        code: selection.selected.code,
+                        title: selection.selected.title,
+                        badge: selection.selected.badge,
+                        discountCentavos: selection.waiverCentavos,
+                        redemptionId: null,
+                        idempotentReplay: false
+                    };
+                }
+
+                if (autoApplyResult?.applied) {
+                    const resolvedWaiverAmount = centavosToPeso(autoApplyResult.discountCentavos);
+                    const labelSnapshot = autoApplyResult.badge || autoApplyResult.title || `Voucher (${autoApplyResult.code})`;
+                    deliveryWaiverApplication = Object.freeze({
+                        applied: true,
+                        waiverAmount: resolvedWaiverAmount,
+                        voucherId: autoApplyResult.voucherId,
+                        labelSnapshot,
+                        redemptionId: autoApplyResult.redemptionId ?? null,
+                        idempotentReplay: Boolean(autoApplyResult.idempotentReplay),
+                        // Same RF-1 fix as the pinned/webhook-finalize branch above -- never the
+                        // campaign's code, this was never something the shopper entered.
+                        enteredDeliveryVoucherCode: null,
+                        autoApplied: true
+                    });
+                    const nextFinalFee = delivery.overrideAmount !== null
+                        ? delivery.overrideAmount
+                        : Math.max(0, round4(delivery.baseFee - deliveryWaiverApplication.waiverAmount));
+                    delivery = Object.freeze({
+                        ...delivery,
+                        waiverAmount: deliveryWaiverApplication.waiverAmount,
+                        finalFee: nextFinalFee,
+                        autoAppliedVoucherId: deliveryWaiverApplication.voucherId
+                    });
+                }
+            }
+        }
+    }
+
+    // Kept as a scalar alongside the new `delivery` breakdown object (purely additive) -- every
+    // existing read site (cart-quote response, checkout persistence/response, payment-session
+    // persistence) keeps reading `resolved.deliveryFee` unchanged, which is what keeps this diff's
+    // four money-adjacent call sites untouched (Phase 237 plan §4.1).
+    const deliveryFee = delivery.finalFee;
     const serviceFeeAmount = revenueSharingEnabled
         ? 0
         : computeDgfyConvenienceFee(prepared.subtotalAmount);
@@ -1901,7 +2701,15 @@ const resolveCheckoutContext = async ({
         recipePlan,
         promoApplication,
         voucherApplication,
+        // #1331 (Phase 240): the delivery-fee axis's own application object, deliberately separate
+        // from voucherApplication above (ADR 0066 Decision 8's 2026-09-02 amendment -- two
+        // independent axes, not one governed slot).
+        deliveryWaiverApplication,
         deliveryFee,
+        // Phase 237 (#1329): the full resolved breakdown, additive alongside the deliveryFee scalar
+        // above (which stays === delivery.finalFee). See resolveStoreDeliveryFee's own doc comment
+        // for the field-by-field contract.
+        delivery,
         serviceFeeAmount,
         serviceFeeLabel,
         totalAmount,
@@ -1913,6 +2721,8 @@ const resolveCheckoutContext = async ({
         // full_payment shape for both. See the payment-session use case's DOWNPAYMENT_POLICY_UNRESOLVED guard.
         downpaymentSettings: downpaymentSettings || null,
         outsideRadiusFlag,
+        deliveryDistanceMeters,
+        deliveryDistanceSource,
         scheduledFor,
         affiliatePricing
     };
@@ -2854,7 +3664,10 @@ export const buildStoreCartQuoteUseCase = ({
     revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
-    downpaymentSettingsRepository
+    downpaymentSettingsRepository,
+    // Phase 236 (#1328): see the resolveCheckoutContext-level comment. Has its own default there,
+    // so omitting this here (every pre-existing caller/test) still exercises the real singleton.
+    roadDistanceProvider
 }) => {
     return async ({ payload, storeCustomer = null }) => {
         if (!isPlainObject(payload)) {
@@ -2872,8 +3685,14 @@ export const buildStoreCartQuoteUseCase = ({
                 storeCustomer,
                 revenueSharingEnabled,
                 downpaymentSettingsRepository,
+                roadDistanceProvider,
                 // #746: this is a preview -- see resolveCheckoutContext's own comment on the option.
-                requireCheckoutContact: false
+                requireCheckoutContact: false,
+                // Phase 237 (#1329, ADR 0078 Decision 2 [binding], D6): a cart quote must never
+                // throw on an out-of-range address -- the shopper still needs to see their cart
+                // total. The blocked state surfaces as delivery_out_of_range/delivery_distance_meters
+                // below instead; the two order-placing use cases keep the default `true`.
+                enforceDeliveryRange: false
             });
             return ok({
                 subtotal_amount: resolved.prepared.subtotalAmount,
@@ -2884,6 +3703,17 @@ export const buildStoreCartQuoteUseCase = ({
                 service_fee_amount: resolved.serviceFeeAmount,
                 service_fee_label: resolved.serviceFeeLabel,
                 delivery_fee: resolved.deliveryFee,
+                // #1331 (Phase 240, epic #1321 decision 9): additive, alongside delivery_fee above
+                // -- so a shopper sees the waiver applied at quote time, before reaching checkout.
+                delivery_fee_waiver: resolved.deliveryWaiverApplication.waiverAmount,
+                // Phase 237 (#1329, D6): additive. `delivery_out_of_range` mirrors
+                // resolved.delivery.outOfRange; `delivery_distance_meters` mirrors
+                // resolved.delivery.distanceMeters (populated only when distanceSource === 'road').
+                // Never gates anything client-side by itself -- checkout/payment-session are the
+                // actual enforcement points -- but lets the storefront disable submit / show the
+                // out-of-range affordance before the shopper reaches checkout.
+                delivery_out_of_range: resolved.delivery.outOfRange,
+                delivery_distance_meters: resolved.delivery.distanceMeters,
                 total_amount: resolved.totalAmount,
                 // Phase 140 (#821, ADR 0069/0070): server-authoritative downpayment split.
                 // downpayment_amount/balance_due_amount/downpayment_refundable are null when
@@ -2930,6 +3760,25 @@ export const buildStoreCartQuoteUseCase = ({
                     : null,
                 voucher_feedback: resolved.voucherApplication.applied
                     ? { applied: true, voucher_code: normalizeVoucherCode(payload.voucher_code) }
+                    : null,
+                // #1331 (Phase 240): sibling of voucher_feedback above, for the delivery-fee axis.
+                // #1332 (Phase 244): the code is sourced from `deliveryWaiverApplication`'s own
+                // resolved canonical code, not `payload.delivery_voucher_code` -- an auto-applied
+                // campaign has NO payload code at all, so reading the request field would report a
+                // waiver applied with no indication of what applied it. `enteredDeliveryVoucherCode`
+                // is populated (non-null) ONLY on the code-entered path and stays null on both
+                // auto-applied paths (RF-1, PR #1397 review) -- that field exists specifically to
+                // signal "the shopper typed this," which auto-apply never is. Which campaign applied
+                // is still recoverable via `voucherId`/`autoAppliedVoucherId` and the `auto_applied`/
+                // `label` fields the storefront UI (#1391) uses to render an auto-applied campaign
+                // differently from a typed one.
+                delivery_voucher_feedback: resolved.deliveryWaiverApplication.applied
+                    ? {
+                        applied: true,
+                        voucher_code: resolved.deliveryWaiverApplication.enteredDeliveryVoucherCode,
+                        auto_applied: resolved.deliveryWaiverApplication.autoApplied,
+                        label: resolved.deliveryWaiverApplication.labelSnapshot
+                    }
                     : null
             });
         } catch (error) {
@@ -2999,13 +3848,18 @@ export const buildStoreCheckoutUseCase = ({
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
-    inventoryReservationService = null
+    inventoryReservationService = null,
+    // Phase 236 (#1328): see the resolveCheckoutContext-level comment. Has its own default there,
+    // so omitting this here (every pre-existing caller/test) still exercises the real singleton.
+    roadDistanceProvider
 }) => {
     // Phase 141 (#822): capturedPayment is a server-internal sibling argument, never a payload
     // field -- passed ONLY by finalizePaidCommerceSession.js after the webhook has confirmed real
     // money was captured. storeHandlers.js (the direct HTTP path) never passes it, so it is
     // unreachable from any client request, which is what keeps this guard server-authoritative.
-    return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false, capturedPayment = null }) => {
+    // Phase 237 (#1329): pinnedDeliveryBreakdown is the same shape of sibling argument -- see
+    // resolveCheckoutContext's own doc comment on the param.
+    return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false, capturedPayment = null, pinnedDeliveryBreakdown = null }) => {
         if (!isPlainObject(payload)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -3057,7 +3911,9 @@ export const buildStoreCheckoutUseCase = ({
                 validateRecipeAvailability: !existing,
                 tenantId: normalizedTenantId,
                 revenueSharingEnabled,
-                downpaymentSettingsRepository
+                downpaymentSettingsRepository,
+                roadDistanceProvider,
+                pinnedDeliveryBreakdown
             });
             const { normalized } = resolved;
 
@@ -3068,6 +3924,10 @@ export const buildStoreCheckoutUseCase = ({
                 payment_timing: normalized.payment_timing,
                 promo_code: normalized.promo_code,
                 voucher_code: normalized.voucher_code,
+                // #1331 (Phase 240 plan §13.6): omitting this would let two carts differing only in
+                // their delivery voucher share one idempotency key -- the second request would
+                // silently return the first order.
+                delivery_voucher_code: normalized.delivery_voucher_code,
                 customer_name: normalized.customer_name,
                 customer_phone: normalized.customer_phone,
                 customer_email: normalized.customer_email,
@@ -3245,6 +4105,28 @@ export const buildStoreCheckoutUseCase = ({
                     delivery_fee: resolved.deliveryFee,
                     store_customer_id: normalizedStoreCustomer?.customer_id || null,
                     outside_radius_flag: resolved.outsideRadiusFlag,
+                    // Phase 236 (#1328, epic #1321): observation-only capture, never fed into
+                    // delivery_fee/total_amount above.
+                    delivery_distance_meters: resolved.deliveryDistanceMeters,
+                    delivery_distance_source: resolved.deliveryDistanceSource,
+                    // Phase 237 (#1329, epic #1321): money-provenance columns, additive siblings to
+                    // delivery_fee above. `delivery_fee_base - delivery_fee_waiver === delivery_fee`
+                    // reconciles whenever delivery_fee_override is null (§9.1's three-entry-point
+                    // consistency test asserts this). fallbackApplied/outOfRange are deliberately NOT
+                    // persisted -- fully derivable from these five columns plus
+                    // delivery_distance_source, see the Phase 237 ADR 0012 amendment.
+                    delivery_fee_mode: resolved.delivery.mode,
+                    delivery_fee_base: resolved.delivery.baseFee,
+                    delivery_fee_waiver: resolved.delivery.waiverAmount,
+                    delivery_fee_override: resolved.delivery.overrideAmount,
+                    delivery_fee_calc_version: resolved.delivery.calcVersion,
+                    // #1331 (Phase 240, epic #1321): the two genuinely-new provenance columns --
+                    // which voucher waived the fee, and what it was called at the time. Header
+                    // fields, deliberately NOT on the `discount` argument below -- see
+                    // buildVoucherDiscountRecord's own field-disjoint contract and ADR 0066 Decision
+                    // 8's 2026-09-02 amendment (Mechanism A: a separate write path).
+                    delivery_fee_waiver_voucher_id: resolved.deliveryWaiverApplication.voucherId,
+                    delivery_fee_waiver_label_snapshot: resolved.deliveryWaiverApplication.labelSnapshot,
                     accepted_by: null,
                     accepted_at: null
                 },
@@ -3361,6 +4243,45 @@ export const buildStoreCheckoutUseCase = ({
                     DomainErrorCode.CONFLICT,
                     'Voucher redemption produced no discounted line allocations for this order.',
                     { statusCode: 409, details: { reason_code: 'VOUCHER_REDEMPTION_UNRECORDED' } }
+                );
+            }
+
+            // #1331 (Phase 240 plan §5.3): the delivery waiver's sibling to the redemptionId guard
+            // above. Deliberately WITHOUT that guard's line-allocation half -- a delivery-targeted
+            // benefit has no per-line component BY CONSTRUCTION (voucherBenefitPolicy.js's own
+            // Direction A), so an all-zero lineAllocations here is correct, not a defect (Phase 240
+            // plan §3.3/§13.2 -- routing this through the item guard would misfire on every single
+            // delivery voucher redemption).
+            if (
+                resolved.deliveryWaiverApplication.applied
+                && !resolved.deliveryWaiverApplication.redemptionId
+                && !resolved.deliveryWaiverApplication.idempotentReplay
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Delivery voucher redemption could not be recorded for this order.',
+                    { statusCode: 409, details: { reason_code: 'VOUCHER_REDEMPTION_UNRECORDED' } }
+                );
+            }
+
+            // #1390: close the ledger<->order link. voucher_redemptions.pos_transaction_id has
+            // existed (and been indexed) since #455 but was written by nothing -- the redemption
+            // necessarily happens above, inside resolveCheckoutContext, before this transaction had
+            // an orderId. Attaching it here, in the same transaction, is what lets
+            // buildCancelStoreOrderUseCase find what to reverse on cancel without reconstructing a
+            // composite idempotency key from string parts. Both redemption ids are already in
+            // memory (including on an idempotent-replay branch -- voucherRedemptionUseCases.js
+            // returns the existing row's id on replay too), so this is a single indexed UPDATE, no
+            // lookup.
+            const redemptionIdsToAttach = [
+                resolved.voucherApplication.redemptionId,
+                resolved.deliveryWaiverApplication.redemptionId
+            ].filter((id) => parsePositiveInt(id));
+            if (redemptionIdsToAttach.length > 0) {
+                await voucherRepository.attachRedemptionsToTransaction(
+                    redemptionIdsToAttach,
+                    orderId,
+                    { transaction }
                 );
             }
 
@@ -3598,6 +4519,19 @@ export const buildStoreCheckoutUseCase = ({
                         redemption_id: resolved.voucherApplication.redemptionId
                     }
                     : null,
+                // #1331 (Phase 240): sibling of voucher_feedback above, for the delivery-fee axis.
+                // #1332 (Phase 244): sourced from `deliveryWaiverApplication`'s own resolved code,
+                // not `normalized.delivery_voucher_code` -- see the cart-quote response's identical
+                // fix above for why. `auto_applied`/`label` are additive.
+                delivery_voucher_feedback: resolved.deliveryWaiverApplication.applied
+                    ? {
+                        applied: true,
+                        voucher_code: resolved.deliveryWaiverApplication.enteredDeliveryVoucherCode,
+                        redemption_id: resolved.deliveryWaiverApplication.redemptionId,
+                        auto_applied: resolved.deliveryWaiverApplication.autoApplied,
+                        label: resolved.deliveryWaiverApplication.labelSnapshot
+                    }
+                    : null,
                 account_action: accountAction,
                 cancel_proof: cancelProof,
                 cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
@@ -3791,7 +4725,13 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
     requireCommercePaymentConfig = requireCommerceQrphConfig,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
-    downpaymentSettingsRepository
+    downpaymentSettingsRepository,
+    // Phase 237 (#1329): same injection Phase 236 already gave buildStoreCartQuoteUseCase and
+    // buildStoreCheckoutUseCase, extended here so the out-of-range hard block (ADR 0078 Decision 2
+    // [binding]) is testable at this entry point too, without depending on the real GraphHopper
+    // singleton. Has its own default in resolveCheckoutContext, so omitting this (every pre-Phase-237
+    // caller) still exercises the real singleton, unchanged.
+    roadDistanceProvider
 }) => {
     return async ({ payload, storeCustomer = null, trustedReturnUrl = null }) => {
         try {
@@ -3950,7 +4890,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 storeRepository,
                 payload: normalizedPayload,
                 storeCustomer,
-                downpaymentSettingsRepository
+                downpaymentSettingsRepository,
+                roadDistanceProvider
             });
 
             // Phase 141 (#822, ADR 0069 clause 1b [binding] / ADR 0070 clause 7 [binding]): fail
@@ -4091,6 +5032,16 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 checkout_payload: normalizedPayload,
                 subtotal_amount: resolved.prepared.subtotalAmount,
                 delivery_fee: resolved.deliveryFee,
+                // Phase 237 (#1329, epic #1321, Wave 0 decision #2): pins the WHOLE resolved
+                // breakdown, not just distance+fee -- a partial pin would let the persisted audit
+                // row become internally inconsistent with what the customer actually paid. Read back
+                // by finalizePaidCommerceSession.js on webhook finalization (resolved.deliveryFee
+                // above is already delivery.finalFee, so "store the same finalFee" holds by
+                // construction -- asserted, not assumed, by the three-entry-point consistency test).
+                delivery_fee_breakdown: {
+                    ...resolved.delivery,
+                    pinned_at: new Date().toISOString()
+                },
                 service_fee_amount: resolved.serviceFeeAmount,
                 total_amount: capturedAmountPeso,
                 currency: 'PHP',
@@ -4522,12 +5473,87 @@ export const buildClaimStoreOrderUseCase = ({ storeRepository }) => {
     };
 };
 
+// #1390 (ADR 0066 Validation #3, closing Consequences #3's cancelled-order half): a cancelled
+// order must return its voucher budget/usage, IN-TRANSACTION -- unlike the payment lifecycle below,
+// this is a same-database write with no provider call, so ADR 0052's cross-database fail-open
+// carve-out does not apply. A reversal failure throws and rolls the whole cancellation back; the
+// customer sees a retryable error, never a silently-unreturned campaign budget. Kept out of
+// buildCancelStoreOrderUseCase's own body so that function does not grow a fourth concern.
+const reverseOrderVoucherRedemptions = async ({
+    voucherRepository,
+    reverseVoucherRedemptionUseCase,
+    order,
+    transaction,
+    trackingPin
+}) => {
+    // Cheap in-memory gate FIRST: an order with neither axis touched costs zero queries, and every
+    // existing cancel unit test (which wires no voucher repository at all) is unaffected.
+    const hasDeliveryAxis = parsePositiveInt(order?.delivery_fee_waiver_voucher_id) !== null;
+    const hasItemAxis = order?.discount?.discount_type === 'voucher';
+    if (!hasDeliveryAxis && !hasItemAxis) {
+        return { attempted: 0, reversed: 0, entries: [] };
+    }
+    if (!voucherRepository || typeof reverseVoucherRedemptionUseCase !== 'function') {
+        return { attempted: 0, reversed: 0, entries: [], skipped_reason: 'unwired' };
+    }
+
+    const orderId = parsePositiveInt(order.pos_transaction_id);
+    const rows = orderId ? await voucherRepository.listRedemptionsByTransactionId(orderId, { transaction }) : [];
+    let candidates = rows.filter((row) => row.entry_type === 'redemption');
+
+    // Legacy orders (placed before #1390) have pos_transaction_id NULL. The delivery axis is still
+    // exactly reconstructable from the header's voucher id; the item axis is not -- a prefix scan
+    // has a real collision hazard against client-supplied idempotency keys (see the PR's own plan,
+    // section 3.2), so it is a documented gap, not silently dropped.
+    if (candidates.length === 0 && hasDeliveryAxis && order.idempotency_key) {
+        const legacyKey = `storefront:${order.idempotency_key}:delivery:${order.delivery_fee_waiver_voucher_id}`;
+        const legacy = await voucherRepository.findRedemptionByIdempotencyKey(legacyKey, { transaction, lock: true });
+        if (legacy && legacy.entry_type === 'redemption') {
+            candidates = [legacy];
+        }
+    }
+    // The item axis has no exact-key reconstruction (see the comment above) -- if it's present on
+    // the order but no candidate row carries a 'items' benefit_target, it was silently unrecoverable
+    // and stays that way. Named via a warn rather than silently dropped, per the plan's own gap.
+    const itemAxisRecovered = candidates.some((row) => (row.benefit_config_snapshot?.benefit_target ?? 'items') === 'items');
+    if (hasItemAxis && !itemAxisRecovered) {
+        logger.warn('[StoreUseCases] Cancelled order has an item-axis voucher discount but no reversible redemption row -- likely a legacy order placed before #1390 (pos_transaction_id backfill), or a redemption id that was never attached', {
+            tracking_pin: trackingPin
+        });
+    }
+
+    const entries = [];
+    for (const row of candidates) {
+        const result = await reverseVoucherRedemptionUseCase({
+            originalRedemptionId: row.voucher_redemption_id,
+            reason: `Storefront order cancelled (${trackingPin})`,
+            transaction
+        });
+        entries.push({
+            voucher_id: row.voucher_id,
+            original_redemption_id: row.voucher_redemption_id,
+            reversal_id: result.reversalId,
+            idempotent_replay: result.idempotentReplay,
+            benefit_target: row.benefit_config_snapshot?.benefit_target ?? 'items'
+        });
+    }
+    return { attempted: candidates.length, reversed: entries.length, entries };
+};
+
 export const buildCancelStoreOrderUseCase = ({
     storeRepository,
     inventoryReservationService = null,
     // Phase 144 (#824): injected, optional, and defaulting to null so every existing test that
     // builds this use case without it keeps its current behaviour verbatim.
-    commerceOrderLifecycleUseCase = null
+    commerceOrderLifecycleUseCase = null,
+    // #1390: injected, optional, defaulting to null -- same reasoning as commerceOrderLifecycleUseCase
+    // above. Deliberately NOT the static `../../vouchers/index.js` import storeCheckoutUseCase uses
+    // for its own (checkout-side) voucher call -- storeCancelDownpaymentLifecycle.unit.test.js and
+    // others build this use case with a hand-built fake storeRepository and no voucher wiring at
+    // all, and a hard static import would make every one of those tests exercise the real
+    // repository against a live tenant connection. store/index.js wires the real ones.
+    voucherRepository = null,
+    reverseVoucherRedemptionUseCase = null
 }) => {
     return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
         let normalizedTrackingPin = null;
@@ -4616,6 +5642,21 @@ export const buildCancelStoreOrderUseCase = ({
                 });
             }
 
+            // #1390: IN-TRANSACTION and BEFORE commit (ADR 0066 Validation #3) -- a failure here
+            // throws and is caught below, rolling back the inventory release and the
+            // fulfillment_status flip along with it. Fail-CLOSED, deliberately the opposite of the
+            // payment-lifecycle block below: that one is cross-database/cross-provider (ADR 0052)
+            // and genuinely cannot be rolled back; this one is same-database, same-transaction, so
+            // a failure is atomically undoable and a retryable customer-facing error is strictly
+            // better than a silently-unreturned campaign budget.
+            const voucherReversal = await reverseOrderVoucherRedemptions({
+                voucherRepository,
+                reverseVoucherRedemptionUseCase,
+                order: existing,
+                transaction,
+                trackingPin: normalizedTrackingPin
+            });
+
             await storeRepository.updateOrderByTrackingPin(normalizedTrackingPin, {
                 fulfillment_status: 'cancelled'
             }, { transaction });
@@ -4677,7 +5718,11 @@ export const buildCancelStoreOrderUseCase = ({
                 tracking_pin: normalizedTrackingPin,
                 status: 'cancelled',
                 order: serializeOrderForPublicTracking(updated),
-                payment_lifecycle: paymentLifecycle
+                payment_lifecycle: paymentLifecycle,
+                // #1390: purely additive, always this stable shape (never null) so a consumer never
+                // has to null-guard it. { attempted: 0, reversed: 0, entries: [] } for any order with
+                // no voucher touched at all.
+                voucher_reversal: voucherReversal
             });
         } catch (error) {
             if (error?.code === DomainErrorCode.VALIDATION_FAILED || error?.code === DomainErrorCode.RESOURCE_NOT_FOUND || error?.code === DomainErrorCode.AUTHENTICATION_FAILED || error?.code === DomainErrorCode.AUTHORIZATION_FAILED) {

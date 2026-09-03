@@ -10,10 +10,10 @@ reason_codes_impacted: ALLOWED
 policy_version: 2026.08.31
 verification_evidence: apps/dgfy-storefront/src/__tests__/downpaymentTermsDocument.test.js (5 passed, new -- version identifier pinned, store-cancellation refund carve-out asserted present, pending-legal-review notice asserted present in the internal markdown doc and absent from the customer-facing plain text, and a byte-for-byte sync check between the rendering module and the committed docs/legal draft),apps/dgfy-storefront/src/__tests__/downpaymentTermsDisclosure.test.jsx (4 passed, new -- link shown only when refundable === false, absent when refundable or unknown, dialog opens over a still-mounted checkout step and closes back to it with no review-status banner rendered to the customer, and no checkbox or "I agree" control exists),apps/dgfy-storefront storefrontDownpaymentPresentation.test.js + downpaymentTrackingSummary.test.jsx + useCheckoutTotalsAndGating.downpayment.test.js (34 passed -- unchanged existing downpayment coverage),npm run build:store (real Vite build, succeeded, re-verified independently by the implementing session),npx eslint on every new/changed file (0 errors),npm run check:compliance (PASS -- reports no compliance-sensitive changes; this declaration is voluntary, see below),npm run check:architecture (OK),npm run lint:docs (OK -- 29 governed docs, 84 ADRs)
 rollback_note: Revert this PR's diff. No migration, no schema change, no API change, and no backend file touched. The only behavioural change is a storefront link plus an overlay rendering static text, both gated on the pre-existing `refundable === false` condition; reverting restores the Phase 144 (#824) neutral placeholder note exactly as it was, and no persisted state anywhere references the terms version, since recording acceptance is deliberately out of scope (#1086).
-preflight_result: not_executed
-preflight_reason_code: NOT_EXECUTED
-preflight_run_at: NOT-EXECUTED-2026-08-31
-preflight_request_ref: NOT-EXECUTED-1220-2026-08-31
+preflight_result: no_breach
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-02T03:56:16.394Z
+preflight_request_ref: PREFLIGHT-33588602895-2026-08-31-DOWNPAYMENT-NONREFUNDABLE-TERMS-DISCLOSURE
 ---
 
 # Non-refundable downpayment terms: versioned draft, linked at the downpayment step (#1220)

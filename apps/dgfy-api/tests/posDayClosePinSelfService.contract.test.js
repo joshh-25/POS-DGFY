@@ -42,4 +42,21 @@ describe('POS Day Close PIN self-service contract', () => {
     expect(service).toContain('Master Admin can only reset a cashier POS Day Close PIN');
     expect(service).toContain("operation: 'admin_reset'");
   });
+
+  // Consolidated from tests/dgfyTenantSessionService.contract.test.js (#1441)
+  it('loads tenant db_name before opening a tenant connection', () => {
+    const service = readSource('src/services/dgfyTenantSessionService.js');
+
+    expect(service).toContain("attributes: ['id', 'name', 'db_name', 'company_token', 'status', 'plan']");
+    expect(service).toContain('tenantConnector.getConnection(tenant)');
+  });
+
+  // Consolidated from tests/dgfyTenantSessionService.contract.test.js (#1441)
+  it('binds DGFY Day Close PIN setup to the accepted membership tenant user', () => {
+    const service = readSource('src/services/dgfyTenantSessionService.js');
+
+    expect(service).toContain('configureTenantDayClosePinForDgfyAccount');
+    expect(service).toContain('membership.tenant_user_id');
+    expect(service).toContain("String(user.email || '').trim().toLowerCase() !== String(account.email || '').trim().toLowerCase()");
+  });
 });

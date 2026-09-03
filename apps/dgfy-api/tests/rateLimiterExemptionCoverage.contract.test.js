@@ -93,4 +93,17 @@ describe('generalLimiter exemption coverage', () => {
 
         expect(uncoveredPaths).toEqual([]);
     });
+
+    // Consolidated from tests/onboardingRoutes.contract.test.js (#1441)
+    it('guards onboarding events route with dedicated onboarding events limiter', () => {
+        const onboardingRoutes = readRoute('onboarding.js');
+        expect(onboardingRoutes).toContain('onboardingEventsLimiter');
+        expect(onboardingRoutes).toContain("router.post('/events', authenticate, requireMasterAdmin, onboardingEventsLimiter, validateOnboardingEventPayload, onboardingController.trackOnboardingEvent);");
+    });
+
+    // Consolidated from tests/onboardingRoutes.contract.test.js (#1441)
+    it('exposes a master-admin guarded bulk onboarding items route', () => {
+        const onboardingRoutes = readRoute('onboarding.js');
+        expect(onboardingRoutes).toContain("router.post('/items/bulk', authenticate, requireMasterAdmin, validateOnboardingBulkItemsPayload, onboardingController.bulkCreateOnboardingItems);");
+    });
 });
