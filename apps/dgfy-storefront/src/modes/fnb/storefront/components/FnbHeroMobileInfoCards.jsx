@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { StoresMap } from '../../../../discovery/components/StoresMapLazy.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
-import { FnbHeroGalleryLightbox } from './FnbHeroGalleryLightbox.jsx';
+import { StorefrontGalleryLightbox } from '../../../../shared/components/storefront/StorefrontGalleryLightbox.jsx';
 import { StorefrontDirectionsEta } from '../../../../shared/components/storefront/hero/StorefrontDirectionsEta.jsx';
 
 const FnbHeroMobileInfoCards = ({
@@ -288,7 +288,7 @@ const FnbHeroMobileInfoCards = ({
         </div>
       )}
     </div>
-    <FnbHeroGalleryLightbox
+    <StorefrontGalleryLightbox
       open={isGalleryLightboxOpen}
       images={lightboxImages}
       currentIndex={galleryLightboxIndex}

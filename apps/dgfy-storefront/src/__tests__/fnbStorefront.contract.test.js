@@ -13,7 +13,7 @@ const storefrontAppSource = () => readSource('StorefrontApp.jsx');
 const productDetailsRouteSource = () => readSource('modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx');
 const productDetailsPageSource = () => readSource('modes/fnb/storefront/pages/FnbProductDetailsPage.jsx');
 const catalogRouteContainerSource = () => readSource('app/pages/StorefrontCatalogRouteContainer.jsx');
-const productDetailsMediaSource = () => readSource('modes/fnb/storefront/components/FnbProductMediaGallery.jsx');
+const productDetailsMediaSource = () => readSource('shared/components/storefront/StorefrontProductMediaGallery.jsx');
 const productDetailsNutritionSource = () => readSource('modes/fnb/storefront/components/FnbProductNutritionAllergens.jsx');
 const productDetailsReviewsSource = () => readSource('modes/fnb/storefront/components/FnbProductReviewsSection.jsx');
 const productDetailsRoutePropsSource = () => readSource('modes/fnb/storefront/hooks/useFnbProductDetailsRouteProps.js');
@@ -73,7 +73,7 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('useFnbProductDetailsRoute');
     expect(source).toContain('useFnbProductDetailNavigation');
     expect(routeSource).toContain('FnbProductDetailsPage');
-    expect(detailsSource).toContain('FnbProductMediaGallery');
+    expect(detailsSource).toContain('StorefrontProductMediaGallery');
     expect(mediaSource).toContain('aria-label="View larger image"');
     expect(mediaSource).toContain('aria-label="Previous slide"');
     expect(mediaSource).toContain('aria-label="Next slide"');

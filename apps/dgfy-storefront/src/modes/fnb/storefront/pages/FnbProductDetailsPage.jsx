@@ -10,7 +10,7 @@ import { FnbRecommendedPairings } from '../components/FnbRecommendedPairings.jsx
 import { ProductModifierGroups } from '../../../../shared/components/storefront/ProductModifierGroups.jsx';
 import { FnbProductDesktopPurchasePanel } from '../components/FnbProductDesktopPurchasePanel.jsx';
 import { FnbProductMobilePurchaseSummary } from '../components/FnbProductMobilePurchaseSummary.jsx';
-import { FnbProductMediaGallery } from '../components/FnbProductMediaGallery.jsx';
+import { StorefrontProductMediaGallery } from '../../../../shared/components/storefront/StorefrontProductMediaGallery.jsx';
 import { FnbProductInfoHeader } from '../components/FnbProductInfoHeader.jsx';
 import { FnbProductPriceQuantitySelector } from '../components/FnbProductPriceQuantitySelector.jsx';
 import { FnbProductNavigationHeader } from '../components/FnbProductNavigationHeader.jsx';
@@ -149,7 +149,6 @@ function FnbProductDetailsState({
     </section>
   );
 }
-
 export function FnbProductDetailsPage({
   item,
   isEditingCartLine = false,
@@ -381,13 +380,14 @@ export function FnbProductDetailsPage({
           {/* -- LEFT COLUMN: Image + Info -- */}
           <div style={{ display: 'grid', gap: sp(2), minWidth: 0, width: '100%' }}>
 
-            <FnbProductMediaGallery
+            <StorefrontProductMediaGallery
               accentColor={detailAccent}
               accentSoft={detailAccentSoft}
               available={available}
               availabilityLabel={availabilityLabel}
               borderSoft={detailBorderSoft}
               bodyFont={detailBodyFont}
+              imageGallery={imageSources.gallery}
               imageSources={imageSources}
               imageUrl={imageUrl}
               itemName={item.name}
