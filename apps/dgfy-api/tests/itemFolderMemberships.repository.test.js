@@ -74,6 +74,35 @@ describe('itemRepository — secondary category memberships (ADR 0080)', () => {
     ]);
   });
 
+  it('Phase 268: threads a caller-supplied transaction through destroy, bulkCreate, AND the final read-after-write', async () => {
+    // Regression coverage for the non-atomicity bug: the final
+    // `listItemFolderMemberships` call inside replaceItemFolderMemberships
+    // must also receive the transaction, or it reads on a separate
+    // connection that can't see the not-yet-committed writes (stale data),
+    // even once the caller (buildReplaceItemFoldersUseCase) does open one.
+    const destroy = jest.fn().mockResolvedValue(1);
+    const bulkCreate = jest.fn().mockResolvedValue([]);
+    const membershipFindAll = jest.fn().mockResolvedValue([
+      { item_id: 5, folder_id: 20, sort_order: 0 }
+    ]);
+    const item = { item_id: 5, folder_id: 10 };
+    const activeFolders = [{ folder_id: 20 }];
+    const transaction = { fake: 'transaction' };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return { findOne: jest.fn().mockResolvedValue(item) };
+      if (name === 'ItemFolder') return { findAll: jest.fn().mockResolvedValue(activeFolders) };
+      if (name === 'ItemFolderMembership') return { destroy, bulkCreate, findAll: membershipFindAll };
+      return {};
+    });
+
+    await itemRepository.replaceItemFolderMemberships(5, [20], { transaction });
+
+    expect(destroy).toHaveBeenCalledWith(expect.objectContaining({ transaction }));
+    expect(bulkCreate).toHaveBeenCalledWith(expect.anything(), { transaction });
+    expect(membershipFindAll).toHaveBeenCalledWith(expect.objectContaining({ transaction }));
+  });
+
   it('drops a requested folder id equal to the item\'s own primary category (disjointness guard, ADR 0080 clause 2)', async () => {
     const destroy = jest.fn().mockResolvedValue(1);
     const bulkCreate = jest.fn().mockResolvedValue([]);
