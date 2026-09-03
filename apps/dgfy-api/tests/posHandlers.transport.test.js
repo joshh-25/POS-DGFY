@@ -10,6 +10,7 @@ const mockVerifyPosDiscountApprovalUseCase = jest.fn();
 const mockListPosTransactionsUseCase = jest.fn();
 const mockGetPosReportsOverviewUseCase = jest.fn();
 const mockExportPosReportsUseCase = jest.fn();
+const mockExportProcurementCsvUseCase = jest.fn();
 const mockGetPosTransactionByIdUseCase = jest.fn();
 const mockRecordFiscalPrintEventUseCase = jest.fn();
 const mockVoidPosTransactionUseCase = jest.fn();
@@ -103,6 +104,7 @@ const posHandlersBarrelOverrides = {
     listPosTransactionsUseCase: mockListPosTransactionsUseCase,
     getPosReportsOverviewUseCase: mockGetPosReportsOverviewUseCase,
     exportPosReportsUseCase: mockExportPosReportsUseCase,
+    exportProcurementCsvUseCase: mockExportProcurementCsvUseCase,
     getPosTransactionByIdUseCase: mockGetPosTransactionByIdUseCase,
     recordFiscalPrintEventUseCase: mockRecordFiscalPrintEventUseCase,
     voidPosTransactionUseCase: mockVoidPosTransactionUseCase,
@@ -198,6 +200,7 @@ let voidTransaction;
 let listTransactions;
 let getReportsOverview;
 let exportReports;
+let exportProcurementCsv;
 let closeDayZReading;
 let getCurrentXReading;
 let incrementGovernedResetCounter;
@@ -222,6 +225,7 @@ beforeAll(async () => {
     listTransactions = mod.listTransactions;
     getReportsOverview = mod.getReportsOverview;
     exportReports = mod.exportReports;
+    exportProcurementCsv = mod.exportProcurementCsv;
     closeDayZReading = mod.closeDayZReading;
     getCurrentXReading = mod.getCurrentXReading;
     incrementGovernedResetCounter = mod.incrementGovernedResetCounter;
@@ -756,6 +760,73 @@ describe('posHandlers transport contracts', () => {
         expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="pos-daily-report.csv"');
         expect(res.status).toHaveBeenCalledWith(200);
         expect(res.send).toHaveBeenCalledWith('"Metric","Value"\n"Gross Sales","1000"');
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('exportProcurementCsv writes CSV response headers and body', async () => {
+        mockExportProcurementCsvUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                filename: 'pos-procurement-export-2026-09-03.csv',
+                content_type: 'text/csv; charset=utf-8',
+                content: '"Order #","Order Date"\n"INV-001","2026-09-01T08:00:00.000Z"'
+            }
+        });
+
+        const req = {
+            validatedQuery: { location_id: 4 },
+            query: {},
+            user: { user_id: 11, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-procurement-export'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await exportProcurementCsv(req, res, next);
+
+        expect(mockExportProcurementCsvUseCase).toHaveBeenCalledWith({
+            query: { location_id: 4 },
+            user: expect.objectContaining({ user_id: 11 })
+        });
+        expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
+        expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="pos-procurement-export-2026-09-03.csv"');
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.send).toHaveBeenCalledWith('"Order #","Order Date"\n"INV-001","2026-09-01T08:00:00.000Z"');
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('exportProcurementCsv returns standardized error payload on failure', async () => {
+        mockExportProcurementCsvUseCase.mockResolvedValue({
+            success: false,
+            error: {
+                code: 'VALIDATION_FAILED',
+                message: 'location_id must be a positive integer',
+                details: null,
+                statusCode: 422
+            }
+        });
+
+        const req = {
+            query: {},
+            validatedQuery: { location_id: 'abc' },
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-procurement-export-error'
+        };
+        const res = createRes();
+        res.setHeader = jest.fn();
+        res.send = jest.fn();
+        const next = jest.fn();
+
+        await exportProcurementCsv(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(422);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            success: false,
+            message: 'location_id must be a positive integer',
+            error_code: 'VALIDATION_FAILED',
+            request_id: 'req-pos-procurement-export-error'
+        }));
+        expect(res.send).not.toHaveBeenCalled();
         expect(next).not.toHaveBeenCalled();
     });
 

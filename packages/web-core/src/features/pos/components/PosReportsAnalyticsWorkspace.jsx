@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   exportPosReportCsv,
+  exportProcurementCsv,
   fetchPosReportsOverview
 } from '../services/posService.js';
 import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
@@ -416,6 +417,13 @@ function PosReportsAnalyticsWorkspace({
     downloadBlob(blob, filename);
   };
 
+  // Phase 261 (#1488): pre-run procurement CSV export -- no params, matches handleExportCsv's own
+  // lack of a location_id filter today.
+  const handleExportProcurementCsv = async () => {
+    const { blob, filename } = await exportProcurementCsv();
+    downloadBlob(blob, filename);
+  };
+
   const handlePrint = () => {
     if (typeof window === 'undefined' || !reportData) return;
     const printWindow = window.open('', '_blank', 'width=1120,height=900');
@@ -585,6 +593,10 @@ function PosReportsAnalyticsWorkspace({
           <Button type="button" variant="outline" className="h-11 min-w-0 rounded-xl border-slate-200 px-4 font-extrabold" onClick={handleExportCsv} disabled={!reportData}>
             <Download className="mr-2 h-4 w-4" />
             Export CSV
+          </Button>
+          <Button type="button" variant="outline" className="h-11 min-w-0 rounded-xl border-slate-200 px-4 font-extrabold" onClick={handleExportProcurementCsv}>
+            <Download className="mr-2 h-4 w-4" />
+            Procurement CSV
           </Button>
           <Button type="button" className="h-11 min-w-0 rounded-xl bg-[#2563EB] px-4 font-extrabold text-white hover:bg-[#1D4ED8]" onClick={handlePrint} disabled={!reportData}>
             <Printer className="mr-2 h-4 w-4" />

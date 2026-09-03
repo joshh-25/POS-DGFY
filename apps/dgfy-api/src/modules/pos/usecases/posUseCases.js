@@ -801,6 +801,66 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
     }
 };
 
+// Phase 261 (#1488, RF-1 fix per #1504 review): pre-run procurement CSV export. Deliberately
+// reuses posRepository.listIncomingOnlineOrders() directly rather than
+// buildListIncomingOnlineOrdersUseCase -- this list must be usable before a run is built (no
+// open shift required). It is NOT aggregated across all locations, though -- like the other
+// shift-independent read path (buildListOnlineOrderHistoryUseCase), it resolves the caller's
+// authorized location via resolvePosReadLocationScope so a VIEW_POS user can only ever export
+// pending-order PII (customer name, phone, delivery address) for a location they're actually
+// granted access to. See the implementation plan's section 1 for the reuse reasoning, and PR
+// #1504's review (RF-1) for the location-scope fix.
+export const buildExportProcurementCsvUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => async ({ query = {}, user } = {}) => {
+    try {
+        if (query !== undefined && !isPlainObject(query)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'query must be an object', { statusCode: 400 });
+        }
+        const normalizedUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedUserId) {
+            throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated user is required to export procurement data', { statusCode: 401 });
+        }
+        if (query?.location_id != null && !parsePositiveInt(query.location_id)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'location_id must be a positive integer', { statusCode: 422 });
+        }
+
+        const locationScope = await resolveLocationScope({
+            requestedLocationId: query?.location_id,
+            userId: normalizedUserId,
+            operationLabel: 'POS procurement export read'
+        });
+
+        const orders = await posRepository.listIncomingOnlineOrders({ locationId: locationScope.location_id, limit: 500 });
+
+        const rows = [
+            ['Order #', 'Order Date', 'Location', 'Status', 'Customer Name', 'Customer Phone', 'Delivery Address', 'SKU', 'Item Name', 'Quantity', 'Unit'],
+            ...orders.flatMap((order) => (order.lines || []).map((line) => [
+                order.invoice_number || order.pos_transaction_id,
+                order.created_at || '',
+                order.location?.name || '',
+                order.fulfillment_status || '',
+                order.customer_name || 'Guest Buyer',
+                order.customer_phone || '',
+                order.delivery_address || '',
+                line.item?.sku_code || '',
+                line.item?.name || '',
+                line.quantity,
+                line.item?.unit_of_measure || ''
+            ]))
+        ];
+
+        return ok({
+            filename: `pos-procurement-export-${nowInManilaBusinessDate()}.csv`,
+            content_type: 'text/csv; charset=utf-8',
+            content: rows.map((row) => row.map(escapeCsvValue).join(',')).join('\n')
+        });
+    } catch (error) {
+        return fail(mapPosUseCaseError(error, 'Failed to export procurement data'));
+    }
+};
+
 const buildZReadingIdentifier = ({ businessDate, zCounterValue }) => (
     `ZR-${String(businessDate || '').replace(/-/g, '')}-${String(zCounterValue || 0).padStart(8, '0')}`
 );
