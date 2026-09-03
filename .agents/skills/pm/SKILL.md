@@ -32,8 +32,23 @@ was scheduled in three separate issues (#244 / #250 / #280) before anyone notice
 2. Check open epics' children for anything adjacent — `gh issue view <epic> --json body` or the
    sub-issues list, not just full-text search, since a related child may not share vocabulary with
    the new ask.
+3. **`in:body,comments` pass** — required since #1509 (Deferred decomposition, below). A candidate
+   task living only in an epic's candidate slate comment is invisible to a default title/body
+   search: `gh api "search/issues?q=repo:Sieitzz/dgfy-platform+<term>+in:body,comments"`. Skipping
+   this is exactly how the #244/#250/#280 triple-filing failure would recur against unfiled
+   candidates instead of filed issues.
 
 If a plausible duplicate turns up, surface it and ask rather than filing a near-duplicate silently.
+
+## Deferred decomposition — candidate slates, not upfront filed children
+
+Added 2026-09-03 (#1509). Rule lives in `docs/process/ISSUE-TAXONOMY.md`'s "Deferred decomposition"
+section — read it there, not restated here beyond the operational default: **when an epic is
+figured out, the output is a `## Definition of done` plus one candidate-slate comment, not N filed
+child issues.** Children are filed only for the wave actually being scheduled into an iteration or
+active work. On revisiting a parked epic, post a fresh rolled-up slate comment (current list,
+graduated items struck through with their issue number) rather than appending a fragment to an old
+one. This does not apply to epics that already exist — forward-looking only.
 
 ## The two field planes — the trap worth its own section
 
@@ -102,6 +117,7 @@ either hard to notice or hard to undo:
 | Set `Priority` / `Effort` / `Start date` / `Target date` | **Editing another author's issue body** — append a comment with the correction instead; never rewrite someone else's words |
 | Parent/unparent via `addSubIssue`, add an item to project #10 | **Bulk re-parenting** or restructuring an existing epic's children |
 | Move `Status`, set `Iteration`, set `Milestone` (via `gh issue edit --milestone`) | **Creating/deleting milestones**, or changing board **fields or views** — five saved views (Backlog, Board, Current iteration, Roadmap, My items) depend on the current field schema; a field delete/recreate can break several silently |
+| Post/refresh a candidate slate comment on an epic | **Filing children for an epic whose wave is not currently being scheduled** — the specific behavior #1509 curbs; ask first rather than decomposing an epic all at once |
 
 If a task doesn't trip any of these, proceed without pausing — filing, labeling, and routine field
 updates are the default case.
@@ -112,7 +128,8 @@ updates are the default case.
 2. Draft the issue per `docs/process/ISSUE-TAXONOMY.md`'s filing steps: pick a parent or
    deliberately go standalone (roughly a quarter of open issues have none, and that's fine), apply
    an `area:*` label and an issue type, and — if it's itself an epic — write the
-   `## Definition of done` section before filing children.
+   `## Definition of done` section, then post the candidate slate comment. File children only for
+   the wave being scheduled now — see "Deferred decomposition" above.
 3. File via `gh issue create`.
 4. Parent it (`addSubIssue`) if applicable — see `references/board-operations.md`.
 5. Set repo-level fields (`Priority` at minimum) via the issue-field mutation, not the project
