@@ -19208,6 +19208,147 @@ No collision with the sibling phases in this batch: #1513 (`fix/1506-...`) touch
 rather than trusting this note -- Phase 262's own history (claimed 257, guessed 259, collided,
 renumbered to 262) is the standing cautionary example.
 
+## Phase 267 - CSV sync import: upsert + deactivate-not-delete (#1495 Part B)
+
+### Initiative and release
+
+Part B of #1495, the sync-mode half. Part A (the merchant-facing deactivate/restore concept #1495's
+own scope names as a prerequisite) shipped as **Phase 259**; this entry consumes it rather than
+rebuilding it.
+
+**Numbering note.** The ledger's highest merged entry on `origin/develop` at branch time was
+**Phase 262** (#1490/#1494, PR #1507), and `gh pr list --state open` returned zero open PRs, so no
+phase claim was visible above it. **263-266 are claimed by four sibling phases in the same
+coordinated batch**, none of which had opened a PR when this branch was cut -- hence **267**, not
+263. Re-verify against `origin/develop`'s actual tip at PR time; Phase 262's own history (257 →
+259 → 262) is the standing cautionary example for why a phase number is confirmed fresh rather than
+trusted from an earlier check.
+
+### Objective and scope
+
+Two genuinely separate deliverables landed together, because the first is a prerequisite for the
+second being safe:
+
+**1. The existing-SKU lookup bug (a live data-corruption defect, fixed in BOTH modes).**
+`csvImportService.js`'s existing-SKU lookup was scoped
+`buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })`, and `buildVisibleWhere` also pins
+`deleted_at: null`. A deactivated item was therefore invisible to the lookup and its SKU classified
+`CREATE`. Because `active_sku_code` is a generated STORED column that is NULL whenever
+`deleted_at IS NOT NULL OR status IN ('draft','inactive')`
+(`20260418000002-add-active-sku-unique-constraint.cjs`), `uq_items_active_sku_code` never fired on
+the insert either -- so **re-importing a previously deactivated SKU silently created a second,
+duplicate item row**. This is worse than #1495's "append-only" framing suggests: today's importer
+actively corrupts data on re-import, it does not merely fail to reconcile.
+
+Fixed by loading the lookup **unscoped** (`loadExistingItemIndex`) and partitioning in JS, with
+explicit, deterministic precedence (`existingItemPrecedence`: active > draft > inactive > deleted)
+so an active row always wins over an inactive row holding the same SKU -- a pairing that already
+exists in production data *because of this bug*, and whose winner was previously whatever order
+`findAll` happened to return. A matched-but-deactivated SKU is now classified **`REACTIVATE`**, a
+third action alongside CREATE/UPDATE, and routed through a conflict-safe status flip before its
+CSV fields are written. **This half is deliberately not gated on sync mode** -- it is the
+correctness fix for a live defect on the default (append) path, and it also applies to the PDF
+menu-import path, which shares `confirmItemsImportUseCase`.
+
+`itemRepository.reactivateItem` (new) is a sibling of Phase 259's `restoreItem`, not a replacement:
+`restoreItem` gates on `deleted_at` and rejects a row merely deactivated by a plain PUT
+(`status: 'inactive'`, `deleted_at` still null) as "not deleted", which is an ordinary match target
+for a CSV row. `reactivateItem` gates on the *effective* deactivated state and clears both fields.
+It reuses `normalizeSkuConflictError` -- the exact guard Phase 259's `restoreItem` applies -- because
+reactivation re-materializes `active_sku_code` and can collide with a different currently-active
+item holding that SKU; that surfaces as the same 409 every other write path produces, reported as a
+row failure rather than a silent no-op.
+
+**2. Sync mode (`mode: 'sync' | 'append'`, default `append`).** Deactivates currently-active items
+whose SKU is absent from the uploaded file, via the **existing** `deleteItem` path (reused, not
+reimplemented -- which is what brings its referential-integrity guards along: an item still used as
+an ingredient in an active product, or referenced by a non-archived PO/JO, is reported as
+`deactivationSkipped` with the reason, never force-deactivated). Never a hard delete.
+
+Six safety properties, each a deliberate decision rather than a default:
+
+- **The preview gate is server-enforced.** A sync-mode confirm with no `deactivateSkus` array is
+  refused (`SYNC_DEACTIVATION_NOT_ACKNOWLEDGED`). An empty array is a valid acknowledgement meaning
+  "nothing to deactivate"; a *missing* one means this confirm never went through a preview.
+- **Intersection semantics.** Confirm re-derives the absent set server-side from a pre-write
+  snapshot AND intersects it with the acknowledged list. The server-derived set caps a client
+  asking for more than is actually absent; the acknowledged set caps anything that became absent
+  between preview and confirm (TOCTOU) and was therefore never shown to the user. Only a SKU in
+  BOTH is deactivated -- the acknowledged list can narrow, never widen.
+- **Presence, not validity, spares an item.** The present-SKU set is built from every row in the
+  file including rows that failed validation. A typo'd row is still a row the merchant intends to
+  keep; deactivating it over a validation error would be silent data loss.
+- **Drafts and SKU-less rows are excluded** from the deactivation candidate set. An unpublished
+  draft was never expected to appear in the spreadsheet (and `deleteItem` would destroy its draft
+  state); a row with no SKU cannot be represented in the file at all, so its absence proves nothing.
+- **Sync requires `items:delete` on top of `items:import`** (403 `SYNC_IMPORT_FORBIDDEN`, checked on
+  both preview and confirm). Without this, anyone who could import could deactivate the whole
+  catalog through a CSV -- a strictly wider blast radius than the single-item deactivate route.
+- **Deactivation runs last**, after every create/update/reactivate in the import has been attempted,
+  against a snapshot taken before any write -- so an item this same import created can never be
+  caught by it.
+
+Frontend: an explicit import-mode radio on the upload step (append preselected), a fifth preview
+tile plus the full deactivation table and a required acknowledgement checkbox that gates the Confirm
+button, and reactivated/deactivated/skipped buckets on the result step. Changing mode after a
+preview invalidates it and returns to step 1 -- a stale deactivation list is the one thing this flow
+must never let a user confirm against.
+
+**Deliberately out of scope, stated rather than implied:**
+- Per-item "blocked by an active reference" flags in the *preview*. Detecting them would mean
+  duplicating `deleteItem`'s three include-heavy guard queries in the CSV service, and that
+  duplicate would drift. `deleteItem` stays authoritative at execute time and blocked items are
+  reported as skipped, with the preview stating plainly that this can happen.
+- Folder memberships. Phase 257 (#1318) did not wire CSV import to `ItemFolderMembership`, and this
+  phase does not either -- that surface belongs to #1318's own follow-up.
+- Any percentage/absolute cap on how much of a catalog one sync may deactivate. The preview gate
+  plus intersection already prevent an unseen deactivation, and a cap would block a legitimate
+  full-catalog replacement. Flagged here as a possible future guard, not silently omitted.
+
+Files touched: `apps/dgfy-api/src/services/csvImportService.js`,
+`apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`,
+`apps/dgfy-api/src/modules/inventory/usecases/reactivateItemUseCase.js` (new),
+`apps/dgfy-api/src/modules/inventory/usecases/itemCommandUseCases.js`,
+`apps/dgfy-api/src/modules/inventory/index.js`, `apps/dgfy-api/src/services/itemService.js`,
+`apps/dgfy-api/src/modules/csv/usecases/csvUseCases.js`,
+`apps/dgfy-api/src/modules/csv/controllers/itemCsvImportHandlers.js`,
+`apps/dgfy-api/tests/csvImportService.syncMode.test.js` (new),
+`packages/web-core/src/hooks/useCSVImport.js`,
+`packages/web-core/Components/items/CSVImportModal.jsx`.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+- **Phase 259 (#1495 Part A)** -- required, and merged. `reactivateItem` is modelled directly on its
+  `restoreItem`, reuses its `normalizeSkuConflictError` guard, and `deleteItem`/`restoreItem` are
+  the deactivate/reactivate concept #1495's scope named as a prerequisite for this half.
+- **Phase 257 (#1318)** -- no dependency; folder memberships are explicitly out of scope above.
+- No migration and no model change, so **no deploy-order dependency on any open entry in**
+  `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`. This phase reads
+  `items.active_sku_code`/`items.status`/`items.deleted_at`, all long-established columns, and adds
+  no DDL of any kind.
+- No compliance impact declaration required: no changed path matches
+  `check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES` (the frontend changes are in
+  `packages/web-core/Components/` and `src/hooks/`, not `src/features/pos/`).
+
+### Acceptance and validation evidence
+
+See the PR's `## Testing Evidence` section for the run output.
+
+### Links
+
+- Tracking issue: #1495 (`Refs`, not `Closes` -- Part A already shipped against the same issue and
+  the change needs deployed verification per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+- PR: `feature/1495-csv-sync-import` → `develop`.
+
+### Next eligible phase
+
+**268**, assuming siblings 263-266 land as claimed. Re-check the ledger's highest merged entry and
+every open PR's phase claim fresh at plan time rather than trusting this line.
+
 ## Phase 268 - Item multi-category membership: IMS authoring UI (#1318)
 
 ### Initiative and release
@@ -19266,18 +19407,28 @@ under its secondary categories (the "34 existing read sites" wiring Phase 257 de
 deferred, one surface at a time, to later phases), and no regression suite exists yet for that
 rendering surface, since it isn't built.
 
-### Fix-step (merge conflict against `origin/develop`, PR #1515)
+### Fix-step (merge conflicts against `origin/develop`, PR #1515)
 
-This branch was cut before Phase 263 (#1493, PR #1516) and Phase 262's other siblings (#1514, #1487
-delivery run summary) merged. By the time this PR was checked, it reported `mergeable: false`,
-`mergeable_state: dirty`, 3 ahead / 13 behind `develop` — sibling PRs from the same dispatch batch
-had merged since the branch was cut. `git merge-tree` confirmed the only real conflict was this
-ledger file (both this entry and Phase 263's entry appended after the same Phase 262 base). Fixed
-by merging fresh `origin/develop` and resolving the ledger conflict to keep **both** entries in
-full — Phase 263 (already on `develop`) placed before this Phase 268 entry, matching merge order —
-rather than dropping either side. No other file conflicted; re-ran this phase's Tier 0 checks
-(`node --check` on the touched backend files, `npm run build:skupervisor`) against the merged tree
-before pushing.
+This branch was cut before every sibling phase in this batch merged. Two rounds of conflict
+resolution were needed, both against this same ledger file, no other file:
+
+1. **Round 1** — cut before Phase 263 (#1493, PR #1516) and Phase 262's other siblings (#1514,
+   #1487 delivery run summary) merged. PR reported `mergeable: false`, `mergeable_state: dirty`,
+   3 ahead / 13 behind `develop`. `git merge-tree` confirmed the only real conflict was this ledger
+   file (both this entry and Phase 263's appended after the same Phase 262 base). Resolved by
+   merging fresh `origin/develop`, keeping **both** entries in full, Phase 263 placed before this
+   entry to match merge order.
+2. **Round 2** — while round 1's push was still waiting on CI, Phase 267 (#1495 Part B CSV sync
+   import, PR #1517) also merged into `develop`, again appending a ledger entry after the same base
+   and reintroducing `mergeable_state: dirty`. `git merge-tree` this time showed an additional
+   clean auto-merge in `itemRepository.js` (Phase 267 added `reactivateItem`, a different function
+   from this phase's `replaceItemFolderMemberships` changes — no real collision) plus the same
+   ledger conflict shape. Resolved the same way: merged fresh `origin/develop` again, kept **both**
+   entries in full, Phase 267 placed before this entry (267 < 268, and it was already on `develop`).
+
+Re-ran this phase's Tier 0 checks (`node --check` on the touched backend files, `npm run
+build:skupervisor`, `npm run build:pos`) against the fully merged tree after each round before
+pushing — no dropped ledger entry on either side, either round.
 
 ### Status
 
@@ -19286,10 +19437,11 @@ before pushing.
 ### Dependencies
 
 Depends on Phase 257 (#1318 foundation), already merged. No dependency on any other in-flight
-phase (263–267, whatever they turn out to be) — Phase 263 (#1493) is now confirmed merged ahead of
-this entry, touching an unrelated file set (RBAC/vouchers), no collision. A future phase
-(POS/storefront read-site opt-in) depends on this one for the admin UI to exist, but none of that
-is built or scoped here.
+phase — Phase 263 (#1493) and Phase 267 (#1495 Part B) are both now confirmed merged ahead of this
+entry, touching unrelated file sets (RBAC/vouchers; CSV import), with the one incidental
+`itemRepository.js` overlap against Phase 267 auto-merging cleanly (different functions). A future
+phase (POS/storefront read-site opt-in) depends on this one for the admin UI to exist, but none of
+that is built or scoped here.
 
 ### Acceptance and validation evidence
 
@@ -19311,9 +19463,10 @@ is built or scoped here.
   final diff after the last edit (`✓ built in 3m 59s`, exit 0). Confirmed via `grep -rl
   "ItemFormModal"`/`"ItemsPage"` across `apps/*/src` that `dgfy-pos`/`dgfy-storefront` don't import
   either changed file, so IMS is the only app build this change needs.
-- [x] Re-verified after the `origin/develop` merge (this fix-step): `node --check` on the three
-  modified backend `.js` files and `npm run build:skupervisor` both re-run clean against the merged
-  tree.
+- [x] Re-verified after each `origin/develop` merge (this fix-step, both rounds): `node --check` on
+  the three modified backend `.js` files, `npm run build:skupervisor`, and `npm run build:pos`
+  (shared `web-core` components touched by sibling phases 263/267 are consumed by both apps) all
+  re-run clean against the fully merged tree.
 
 ### Deviations from the plan
 
@@ -19347,6 +19500,6 @@ worktree branch directly.
 ### Next eligible phase
 
 **269**, pending a fresh re-check of the ledger's actual highest merged entry and every open PR's
-phase claim at plan time — do not assume 263–267 are still open just because they weren't visible
-in this entry's own check. (263 is now confirmed merged as of this fix-step; 264–267 remain
-unverified.)
+phase claim at plan time — do not assume 264–266 are still open just because they weren't visible
+in this entry's own check. (263 and 267 are now confirmed merged as of this fix-step; 264-266
+remain unverified.)
