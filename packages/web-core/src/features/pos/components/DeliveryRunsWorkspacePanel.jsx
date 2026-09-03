@@ -17,6 +17,7 @@ import DeliveryRunFormDialog from './DeliveryRunFormDialog.jsx';
 import DeliveryRunPersonnelEditor from './DeliveryRunPersonnelEditor.jsx';
 import DeliveryRunMembersList from './DeliveryRunMembersList.jsx';
 import DeliveryRunDispatchSummary from './DeliveryRunDispatchSummary.jsx';
+import DeliveryRunSummary from './DeliveryRunSummary.jsx';
 import { getDeliveryRunDispatchReasonMessage } from '../utils/deliveryRunDispatchReasons.js';
 
 // Phase 226 (#1273). Self-contained master/detail panel over Phase 225's delivery-run API,
@@ -544,6 +545,8 @@ export default function DeliveryRunsWorkspacePanel({
                   {unpackedMembers.map((member) => `#${member.pos_transaction_id}`).join(', ')}.
                 </p>
               ) : null}
+
+              <DeliveryRunSummary summary={selectedRun.summary} />
 
               <DeliveryRunDispatchSummary result={dispatchResult} />
 
