@@ -11,7 +11,7 @@ const candidate = {
   source_develop_sha: sha('a'),
   current_staging_sha: sha('a'),
   revisions: [{ kind: 'initial', sha: sha('a'), parent_sha: null, branch: 'to-staging/2026-09-04-01' }],
-  release_revision: { revision: 1, source_staging_sha: sha('a'), branch: 'release/2026-09-04-01-r1', pr: 12 },
+  release_revision: null,
 };
 
 const passing = () => ({
