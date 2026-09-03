@@ -756,6 +756,19 @@ export const exportPosReportCsv = async (params = {}) => {
     };
 };
 
+// Phase 258 (#1488): pre-run procurement CSV export.
+export const exportProcurementCsv = async (params = {}) => {
+    const response = await api.get('/pos/reports/procurement-export', {
+        params,
+        responseType: 'blob'
+    });
+    return {
+        blob: response.data,
+        filename: String(response.headers?.['content-disposition'] || '')
+            .match(/filename="?([^"]+)"?$/i)?.[1] || 'procurement-export.csv'
+    };
+};
+
 export const fetchIncomingOnlineOrders = async (params = {}, requestConfig = {}) => {
     const response = await api.get('/pos/incoming-orders', {
         params,
@@ -984,6 +997,7 @@ export default {
     fetchPosReportsComparison,
     fetchPosReportsProfitLoss,
     exportPosReportCsv,
+    exportProcurementCsv,
     fetchIncomingOnlineOrders,
     fetchOnlineOrderHistory,
     fetchActiveDeliveryPersonnel,
