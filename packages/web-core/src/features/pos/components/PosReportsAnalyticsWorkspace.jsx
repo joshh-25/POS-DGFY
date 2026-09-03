@@ -417,7 +417,7 @@ function PosReportsAnalyticsWorkspace({
     downloadBlob(blob, filename);
   };
 
-  // Phase 258 (#1488): pre-run procurement CSV export -- no params, matches handleExportCsv's own
+  // Phase 261 (#1488): pre-run procurement CSV export -- no params, matches handleExportCsv's own
   // lack of a location_id filter today.
   const handleExportProcurementCsv = async () => {
     const { blob, filename } = await exportProcurementCsv();

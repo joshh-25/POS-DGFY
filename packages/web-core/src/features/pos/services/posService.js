@@ -756,7 +756,7 @@ export const exportPosReportCsv = async (params = {}) => {
     };
 };
 
-// Phase 258 (#1488): pre-run procurement CSV export.
+// Phase 261 (#1488): pre-run procurement CSV export.
 export const exportProcurementCsv = async (params = {}) => {
     const response = await api.get('/pos/reports/procurement-export', {
         params,

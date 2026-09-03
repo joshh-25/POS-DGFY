@@ -120,6 +120,12 @@ bar as every other POS read path (`buildListOnlineOrderHistoryUseCase`,
 shipped with. Classification stays `major` -- this is still the first endpoint exposing this PII
 field set as a downloadable file -- but the specific gap RF-1 identified is closed.
 
+Separately, RF-2 on the same review (a phase-number collision, unrelated to this compliance
+surface) renumbered this work's ledger entry from Phase 258 to Phase 261 -- see
+`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`. Noted here only because the in-code comments this
+declaration's Affected Surfaces section points at also carry that phase number; no compliance
+substance changes as a result.
+
 ## Preflight Reconciliation
 
 `NOT-EXECUTED-1488` is expected for a `develop`-targeting PR; the live preflight sweep
