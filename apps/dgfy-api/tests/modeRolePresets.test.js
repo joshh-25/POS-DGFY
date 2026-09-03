@@ -4,8 +4,10 @@ import {
   getModeRolePreset,
   getModeRoleCatalog,
   getRoleCatalogMode,
-  getRolePresetsForMode
+  getRolePresetsForMode,
+  ROLE_CATALOG_VERSION
 } from '../src/config/modeRolePresets.js';
+import { DEFAULT_ROLE_PERMISSIONS } from '../src/config/permissions.js';
 
 describe('mode-aware role preset catalog', () => {
   it('normalizes workflow modes to the correct role catalog family', () => {
@@ -136,5 +138,84 @@ describe('mode-aware role preset catalog', () => {
     });
     expect(catalog.presets.length).toBeGreaterThan(0);
     expect(catalog.permission_groups.length).toBeGreaterThan(0);
+  });
+  // #1493 (Phase 263): Accounting is a preset, not a `users.role` ENUM value, and voucher-campaign
+  // management is restricted to Admin + Accounting. These tests pin both halves -- the preset
+  // existing with the right shape, and `manager` no longer carrying `vouchers:manage`.
+  describe('Accounting preset family and the Admin + Accounting voucher restriction (#1493)', () => {
+    const MODE_TO_ACCOUNTING_PRESET = {
+      msme: 'msme_accounting',
+      retail: 'generic_accounting',
+      food_manufacturing: 'food_manufacturing_accounting',
+      services: 'services_accounting',
+      fnb: 'fnb_accounting',
+      hospitality: 'hospitality_accounting'
+    };
+
+    it('exposes exactly one Accounting preset in every mode family', () => {
+      Object.entries(MODE_TO_ACCOUNTING_PRESET).forEach(([mode, expectedKey]) => {
+        const accountingPresets = getRolePresetsForMode(mode).filter((preset) => preset.key.endsWith('_accounting'));
+        expect(accountingPresets).toHaveLength(1);
+        expect(accountingPresets[0].key).toBe(expectedKey);
+      });
+    });
+
+    it('gives every Accounting preset the same shape: compatibility role manager, rank 5, tenant scope', () => {
+      Object.entries(MODE_TO_ACCOUNTING_PRESET).forEach(([mode, key]) => {
+        expect(getModeRolePreset(key, mode)).toMatchObject({
+          key,
+          label: 'Accounting',
+          role: 'manager',
+          rank: 5,
+          location_scope: 'tenant'
+        });
+      });
+    });
+
+    it('grants Accounting voucher management plus reporting, and nothing else', () => {
+      Object.entries(MODE_TO_ACCOUNTING_PRESET).forEach(([mode, key]) => {
+        expect(getModeRolePreset(key, mode).permissions.sort()).toEqual([
+          'reports:export',
+          'reports:view',
+          'vouchers:manage',
+          'vouchers:view'
+        ]);
+      });
+    });
+
+    it('withdraws vouchers:manage from the manager role while keeping vouchers:view', () => {
+      expect(DEFAULT_ROLE_PERMISSIONS.manager).not.toContain('vouchers:manage');
+      expect(DEFAULT_ROLE_PERMISSIONS.manager).toContain('vouchers:view');
+      // settings:edit is untouched on purpose -- routes/pricelists.js still accepts it, so
+      // managers keep pricelist management. See ADR 0020's 2026-09-03 amendment.
+      expect(DEFAULT_ROLE_PERMISSIONS.manager).toContain('settings:edit');
+    });
+
+    it('keeps vouchers:manage on admin, the other half of "Admin + Accounting"', () => {
+      expect(DEFAULT_ROLE_PERMISSIONS.admin).toContain('vouchers:manage');
+      ['msme_admin', 'generic_admin', 'food_manufacturing_admin', 'services_admin', 'fnb_admin', 'hospitality_admin']
+        .forEach((key) => {
+          expect(getModeRolePreset(key, null, { allowAnyMode: true }).permissions).toContain('vouchers:manage');
+        });
+    });
+
+    it('propagates the manager narrowing to food_manufacturing_manager, which inherits managerPermissions', () => {
+      expect(getModeRolePreset('food_manufacturing_manager', 'food_manufacturing').permissions)
+        .not.toContain('vouchers:manage');
+    });
+
+    it('leaves no non-admin, non-accounting preset holding vouchers:manage', () => {
+      Object.keys(MODE_TO_ACCOUNTING_PRESET).forEach((mode) => {
+        getRolePresetsForMode(mode)
+          .filter((preset) => !preset.key.endsWith('_admin') && !preset.key.endsWith('_accounting'))
+          .forEach((preset) => {
+            expect(preset.permissions).not.toContain('vouchers:manage');
+          });
+      });
+    });
+
+    it('bumps ROLE_CATALOG_VERSION so cached clients refetch the new catalog', () => {
+      expect(ROLE_CATALOG_VERSION).toBe('2026-09-03.mode-aware-rbac-v4');
+    });
   });
 });
