@@ -21,6 +21,7 @@ import {
     resolvePosVoidReason
 } from '../utils/posVoidAudit.js';
 import { isPosTabletViewport } from '../utils/posTabletViewport.js';
+import { resolveAppliedVouchers } from './orderFulfillmentUi.js';
 import POSRefundWorkflowDialog from './POSRefundWorkflowDialog.jsx';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
@@ -356,6 +357,15 @@ export default function POSTransactionHistoryPanel({
                                     const voidReason = resolvePosVoidReason(row);
                                     const voidedAtLabel = formatPosVoidTimestamp(row.voided_at);
                                     const expanded = expandedRowId === row.pos_transaction_id;
+                                    // #1492: item-axis and delivery-axis vouchers surface separately --
+                                    // the delivery waiver has its own label snapshot on the row already
+                                    // (never routed through PosTransactionDiscount), independent of
+                                    // whether an item-axis voucher also applied.
+                                    const appliedVouchers = resolveAppliedVouchers(row);
+                                    const itemVoucherCode = appliedVouchers.find((voucher) => voucher.benefit_target !== 'delivery')?.code || null;
+                                    const deliveryVoucherLabel = row.delivery_fee_waiver_label_snapshot
+                                        || appliedVouchers.find((voucher) => voucher.benefit_target === 'delivery')?.code
+                                        || null;
                                     return (
                                         <React.Fragment key={row.pos_transaction_id}>
                                             <tr className="border-b border-slate-100 text-slate-700 transition hover:bg-slate-50/70">
@@ -416,13 +426,22 @@ export default function POSTransactionHistoryPanel({
                                                                     {row.discount.discount_rate != null ? ` (${money(row.discount.discount_rate)}%)` : ''}
                                                                 </div>
                                                                 <div className="text-[11px] text-rose-700">PHP {money(row.discount.discount_amount || row.discount_amount)}</div>
-                                                                <div className="text-[11px] text-slate-500">
-                                                                    Authorized by {row.discount.approvedBy?.username || `employee #${row.discount.manager_approval_id || 'unknown'}`}
-                                                                </div>
+                                                                {row.discount.discount_type === 'voucher' ? (
+                                                                    itemVoucherCode && (
+                                                                        <div className="text-[11px] font-semibold text-emerald-700">Voucher: {itemVoucherCode}</div>
+                                                                    )
+                                                                ) : (
+                                                                    <div className="text-[11px] text-slate-500">
+                                                                        Authorized by {row.discount.approvedBy?.username || `employee #${row.discount.manager_approval_id || 'unknown'}`}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         ) : row.discount_label_snapshot
                                                             ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
                                                             : '–'}
+                                                        {deliveryVoucherLabel && (
+                                                            <div className="mt-0.5 text-[11px] font-semibold text-emerald-700">Delivery voucher: {deliveryVoucherLabel}</div>
+                                                        )}
                                                     </td>
                                                 )}
                                                 {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">PHP {money(row.vatable_sales)}</td>}
@@ -512,6 +531,12 @@ export default function POSTransactionHistoryPanel({
                                                                         ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
                                                                         : '–'}
                                                                 </p>
+                                                                {itemVoucherCode && (
+                                                                    <p className="mt-0.5 font-semibold text-emerald-700">Voucher: {itemVoucherCode}</p>
+                                                                )}
+                                                                {deliveryVoucherLabel && (
+                                                                    <p className="mt-0.5 font-semibold text-emerald-700">Delivery voucher: {deliveryVoucherLabel}</p>
+                                                                )}
                                                             </div>
                                                             <div>
                                                                 <span className="font-semibold text-[#0F172A]">VATable Sales</span>
