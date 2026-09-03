@@ -78,9 +78,24 @@ const TARGET_FILES = ['deploy-main.yml', 'promotion-quality-gate.yml'];
 // are ordinary PR-triggered checks that stay self-hosted by policy. Deliberately excludes
 // pr-android-build-checks.yml and build-android-manual.yml -- documented exception, neither box
 // carries an Android SDK either way, so those two are free to run hosted.
+//
+// #1529 (2026-09-03): pr-checks.yml itself joins this list -- previously ungoverned by this
+// assertion at all, even though it's exactly the "ordinary PR-triggered check, self-hosted by
+// policy" class the paragraph above already describes. It now carries one legitimate, narrow
+// exception: a release/*|hotfix/* head into a main base routes its build-check jobs to
+// GitHub-hosted runners (the route-build-checks job), matching CI_RUNNER_POLICY.md's
+// promotion/hotfix-to-main rationale one step earlier in the PR lifecycle. That hosted literal
+// ('["ubuntu-latest"]') lives inside route-build-checks's own shell step as a bash variable
+// assignment, never at a line whose key is runner_labels_json:/runs-on: -- so it never matches
+// checkNoHostedLiteral's siteRe pattern below and needs no allowlist carve-out. Any OTHER hosted
+// literal actually appearing at a runner_labels_json:/runs-on: site in this file (an accidental
+// unconditional flip, or a wrong condition copy-pasted into a build-check job's own with: block)
+// still fails this check exactly as it always has -- that's the regression this file exists to
+// catch, unchanged. See check-runner-routing.test.js for the fixture proving both halves.
 const NON_HOSTED_FILES = [
   'deploy.yml',
   'deployment-orchestrator.yml',
+  'pr-checks.yml',
   'pr-dgfy-api-build-checks.yml',
   'pr-frontend-build-checks.yml',
   'pr-migration-runner-build-checks.yml'

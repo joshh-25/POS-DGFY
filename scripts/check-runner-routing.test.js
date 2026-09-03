@@ -390,16 +390,42 @@ jobs:
   assert.match(problems[0], /hosted runner literal/);
 });
 
-test('NON_HOSTED_FILES: names the five expected files, excluding the documented Android exception', () => {
+test('NON_HOSTED_FILES: names the six expected files, excluding the documented Android exception', () => {
   assert.deepEqual(NON_HOSTED_FILES, [
     'deploy.yml',
     'deployment-orchestrator.yml',
+    'pr-checks.yml',
     'pr-dgfy-api-build-checks.yml',
     'pr-frontend-build-checks.yml',
     'pr-migration-runner-build-checks.yml'
   ]);
   assert.ok(!NON_HOSTED_FILES.includes('pr-android-build-checks.yml'));
   assert.ok(!NON_HOSTED_FILES.includes('build-android-manual.yml'));
+});
+
+// --- #1529: pr-checks.yml joins NON_HOSTED_FILES with one narrow, legitimate exception ---
+
+test('checkNoHostedLiteral: a hosted literal inside a run: shell script (not at a runner_labels_json:/runs-on: key) is not flagged (#1529 route-build-checks pattern)', () => {
+  const text = `
+jobs:
+  route-build-checks:
+    runs-on: ['sieitz-runner']
+    steps:
+      - id: check
+        run: |
+          HOSTED_JSON='["ubuntu-latest"]'
+          echo "light=$HOSTED_JSON" >> "$GITHUB_OUTPUT"
+`;
+  assert.deepEqual(checkNoHostedLiteral('pr-checks.yml', text), []);
+});
+
+test('checkRunnerRouting: an accidental unconditional hosted literal in pr-checks.yml is still reported (#1529)', () => {
+  const { deployMainText, qualityGateText, nonHostedFilesText, verifyDeploymentText } = readRealWorkflowInputs();
+  const polluted = { ...nonHostedFilesText, 'pr-checks.yml': "runner_labels_json: '[\"ubuntu-latest\"]'\n" };
+  const problems = checkRunnerRouting({
+    deployMainText, qualityGateText, nonHostedFilesText: polluted, verifyDeploymentText
+  });
+  assert.ok(problems.some((p) => /pr-checks\.yml/.test(p) && /hosted runner literal/.test(p)));
 });
 
 test('checkRunnerRouting: a hosted literal in a NON_HOSTED_FILES entry is reported', () => {
