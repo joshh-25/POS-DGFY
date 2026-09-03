@@ -66,6 +66,18 @@ const resolveEligibleBenefit = async ({ repository, code, context = {}, lines = 
         voucherError('Voucher code was not found.', VoucherReasonCode.VOUCHER_NOT_FOUND, { code: normalizedCode });
     }
 
+    // #788 (Phase 269): hydrate the account allowlist ONLY for a voucher that declares itself
+    // restricted. `is_account_restricted` is the derived gate written alongside the child rows in
+    // one transaction (voucherUseCases.js), so `false` provably means "no rows" -- an unrestricted
+    // voucher, which is nearly all of them, adds zero queries to this hot path. When it IS set, the
+    // hydrated array is attached to the row and `evaluateVoucherEligibility` does the rest; if this
+    // hydration were ever skipped, that function fails closed on VOUCHER_ACCOUNT_GRANTS_UNRESOLVED
+    // rather than treating the voucher as open to everyone.
+    if (voucher.is_account_restricted === true || voucher.is_account_restricted === 1) {
+        const grantsByVoucherId = await repository.listAccountGrants([voucher.voucher_id], options);
+        voucher.account_grant_ids = grantsByVoucherId[voucher.voucher_id] || [];
+    }
+
     // Structural checks only. The three exhaustion reasons this also returns (11-13 in the
     // policy's own numbering) are PREVIEW ONLY per that module's docstring -- real enforcement is
     // the atomic `reserveRedemption` UPDATE below. Treating a positive here as an additional
@@ -278,6 +290,14 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
     idempotencyKey,
     channel = 'storefront',
     storeCustomerId = null,
+    // #788 (Phase 269): the authenticated buyer's landlord-side DGFY account id, or null. Two jobs,
+    // and they are separable on purpose: it reaches `evaluateVoucherEligibility` via
+    // `context.dgfyAccountId` (set by the CALLER, not derived here -- the preview path needs the
+    // same value and takes no `storeCustomerId`/`dgfyAccountId` argument at all), and it is written
+    // to the ledger below. Writing it is not conditional on the voucher being restricted: it is the
+    // per-customer half of #586's two-tier tracking model, which the column has always been
+    // declared for and nothing has ever populated.
+    dgfyAccountId = null,
     locationId = null,
     transaction
 } = {}) => {
@@ -420,6 +440,10 @@ export const buildRedeemVoucherUseCase = ({ repository }) => async ({
         channel,
         location_id: locationId,
         store_customer_id: storeCustomerId,
+        // #788: first writer of this column since it was declared in #455/Phase 102. Normalized to
+        // a trimmed string-or-null so an empty-string caller argument lands as SQL NULL rather than
+        // as a zero-length CHAR(36) that no account can ever match.
+        dgfy_account_id: String(dgfyAccountId ?? '').trim() || null,
         code_snapshot: voucher.code,
         benefit_config_snapshot: buildBenefitConfigSnapshot(voucher),
         subtotal_centavos: benefit.eligibleSubtotalCentavos,

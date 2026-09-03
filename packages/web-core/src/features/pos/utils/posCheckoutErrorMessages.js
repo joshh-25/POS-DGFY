@@ -24,6 +24,14 @@ const VOUCHER_REASON_MESSAGES = Object.freeze({
   VOUCHER_PRICE_BELOW_COST: 'This voucher would price an item below cost. Contact an admin.',
   VOUCHER_DISCOUNT_SLOT_OCCUPIED: 'Only one discount can be applied to a sale. Remove the other discount first.',
   VOUCHER_POS_REDEMPTION_DISABLED: 'Voucher redemption is not enabled for this store. Contact an admin.',
+  // #788 (Phase 269): account-restricted issuance. Worded for a CASHIER, not a shopper -- a
+  // terminal captures a customer name, never an authenticated DGFY account (ADR 0066's 2026-08-20
+  // amendment narrowed #454 decision 6 only that far), so a restricted voucher can never be
+  // redeemed at POS at all. Telling the cashier to "sign in" would be nonsense; the actionable
+  // answer is that this code is online-only.
+  VOUCHER_ACCOUNT_REQUIRED: 'This voucher is tied to specific customer accounts and can only be used online, not at the terminal.',
+  VOUCHER_ACCOUNT_NOT_ELIGIBLE: 'This voucher was issued to specific customer accounts and cannot be used here.',
+  VOUCHER_ACCOUNT_GRANTS_UNRESOLVED: 'Could not verify who this voucher is issued to. Try again, or contact an admin.',
   VOUCHER_CODE_REQUIRED: 'Voucher code is required.'
 });
 

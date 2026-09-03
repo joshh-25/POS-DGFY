@@ -168,6 +168,24 @@ const Voucher = sequelize.define('Voucher', {
     allowNull: false,
     defaultValue: false
   },
+  // #788 (Phase 269): the indexable gate for account-restricted issuance. DERIVED, never
+  // client-writable -- `voucherUseCases.js` sets it from the `account_grant_ids` payload array in
+  // the same transaction that writes `voucher_account_grants`, so the flag and the child rows can
+  // never disagree. It exists (rather than deriving the restriction from a COUNT on every
+  // resolution) for two reasons: an unrestricted voucher -- the overwhelming majority -- pays no
+  // extra query on the checkout hot path, and a caller that forgets to hydrate the allowlist for a
+  // restricted voucher is detectable and fails CLOSED in voucherEligibilityPolicy.js rather than
+  // silently evaluating as unrestricted.
+  //
+  // Deliberately NOT indexed: it is a two-valued flag that no query ever filters on (the redemption
+  // path already holds the voucher row when it reads this), and a boolean index is near-useless to
+  // the optimizer anyway. `voucher_redemptions.dgfy_account_id` DOES get one -- that column is a
+  // high-cardinality UUID serving a real per-account audit read.
+  is_account_restricted: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
   fulfillment_methods_mask: {
     type: DataTypes.TINYINT.UNSIGNED,
     allowNull: false,
