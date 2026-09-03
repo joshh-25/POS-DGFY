@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-15
-last_reviewed: 2026-08-25
+last_reviewed: 2026-09-03
 review_by: 2027-02-15
 applies_to: repository_layout
 topic: frontend_split_into_three_apps
@@ -190,6 +190,26 @@ moves) to preserve `git mv` rename-detection across the split. Graduating IMS-on
   couple of minutes), not a 3x speedup — the third job simply queues for a free runner. If a GHCR
   rate limit does recur, reverting is a one-line `needs:` re-add per job.
 - PR: (this PR, issue #1041).
+
+### 2026-09-03 — Interim override: new back-office-level feature work targets POS, not IMS
+
+- Clause amended: **Context** (untagged, `default` tier per ADR 0039) — the framing *"surfaces that
+  in practice change on unrelated schedules (... IMS ships back-office admin work)."*
+- Change: per issue #1554 (Pat's call), until #1354's dedicated DGFY Back Office ships, **new**
+  back-office-level feature work — catalog/inventory authoring, CSV/bulk import-export,
+  cross-location configuration — targets `apps/dgfy-pos`, not `apps/dgfy-ims`. Concrete evidence
+  this was needed: #1318 and #1495 Part B both landed IMS-only (Surebiz Iteration 4 batch 2,
+  2026-09-03/04) with confirmed zero POS reach, by default rather than by decision. Full rule and
+  its "back-office-level" definition: `AGENTS.md`'s "Feature placement policy" section, added in
+  the same PR as this amendment.
+- What's unchanged: this ADR's Decision clauses (the three-app split, `packages/web-core` as the
+  only shared trunk, per-app container images) are untouched — only the Context sentence's framing
+  of which app currently plays the "back-office" role is overridden, and only on an interim basis.
+  POS terminal operational flows (checkout, delivery run assignment, shift management) are outside
+  this override's scope. Issue #358 (extract/freeze/deprecate `apps/dgfy-ims`) remains open and
+  unresolved — this amendment is a data point toward that decision, flagged there, not a resolution
+  of it.
+- PR: (this PR, issue #1554).
 
 ## Future Direction
 
