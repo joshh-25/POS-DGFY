@@ -18216,7 +18216,7 @@ base is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`.
 Re-check the ledger's actual highest merged entry at plan time rather than assuming — Phase 255
 (#1441 PR-D) may or may not have merged by then.
 
-## Phase 258 - DeliveryRun date-range scheduling (#1489)
+## Phase 260 - DeliveryRun date-range scheduling (#1489)
 
 ### Initiative and release
 
@@ -18224,9 +18224,12 @@ Standalone task, not part of a multi-PR sequence. Branch `feature/1489-delivery-
 cut fresh from `origin/develop`. **Numbering note**: the ledger's highest merged entry at branch
 time was Phase 256; 257 was reported already claimed by a concurrently in-flight PR for #1488 (not
 yet visible in the ledger or as an open PR against `develop` at the time of this check), so this
-entry claims **258**, re-verified immediately before commit per `AGENTS.md`'s Continuous Phase
-Numbering rule (`grep -n "^## Phase" docs/features/IMPLEMENTATION_PHASE_LEDGER.md | tail -1` and
-`gh pr list --repo Sieitzz/dgfy-platform --base develop --state open` both re-run at commit time).
+entry originally claimed **258**, re-verified immediately before commit per `AGENTS.md`'s Continuous
+Phase Numbering rule (`grep -n "^## Phase" docs/features/IMPLEMENTATION_PHASE_LEDGER.md | tail -1`
+and `gh pr list --repo Sieitzz/dgfy-platform --base develop --state open` both re-run at commit
+time). **Renumbered 258 -> 260** during PR review (pr-reviewer RF-2, PR #1500) after a separate
+concurrently-merged PR also landed as Phase 258 -- the coordinator resolved the collision by
+reassigning this entry to the next free number rather than re-deriving history for either side.
 
 ### Objective and scope
 
@@ -18302,7 +18305,7 @@ both without modifying Phase 224's own migration file.
 ### Deviations from the plan
 
 None of substance. The plan itself was planned under a working phase number of 257; it is filed here
-as 258 per the numbering note above. The plan's claim that the `sequelize.where(sequelize.fn(
+as 260 per the numbering note above. The plan's claim that the `sequelize.where(sequelize.fn(
 'COALESCE', ...))` idiom was "already used" in `posRepository.js`/`dashboardService.js`/
 `reportService.js`/`stockMovementService.js` did not hold on inspection -- those files only use
 `sequelize.where(col, Op, col)` two-column comparisons, not `sequelize.fn('COALESCE', ...)` inside

@@ -15,7 +15,7 @@ preflight_run_at: 2026-09-03T00:00:00.000Z
 preflight_request_ref: NOT-EXECUTED-1489-POS-DELIVERY-RUN-DATE-RANGE
 ---
 
-# POS delivery run date-range scheduling (Phase 258, #1489)
+# POS delivery run date-range scheduling (Phase 260, #1489)
 
 ## Compliance Impact Classification
 
