@@ -152,7 +152,12 @@ export const deliveryRunRepository = {
                         // true (undefined !== 'online_store') and every dispatch call fails every
                         // member with DELIVERY_ORDER_REQUIRED, regardless of the order's real
                         // classification. Found live-testing Phase 228 (#1273) against a real DB.
-                        attributes: ['pos_transaction_id', 'invoice_number', 'customer_name', 'delivery_address', 'fulfillment_status', 'order_source', 'order_method', 'location_id']
+                        // total_amount/amount_paid/balance_due/payment_status: Phase 264 (#1487) --
+                        // required by serializeDeliveryRun's run-level summary (expected/settled
+                        // totals, delivered-order count) to reduce over each member's order money
+                        // fields. Same hydration trap as above applies: omit one here and it's
+                        // silently `undefined` on every member, not a query error.
+                        attributes: ['pos_transaction_id', 'invoice_number', 'customer_name', 'delivery_address', 'fulfillment_status', 'order_source', 'order_method', 'location_id', 'total_amount', 'amount_paid', 'balance_due', 'payment_status']
                     }]
                 }
             ],
