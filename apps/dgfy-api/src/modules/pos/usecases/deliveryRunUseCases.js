@@ -36,16 +36,43 @@ const RUN_LOCKED_STATUSES = Object.freeze(['dispatched', 'completed']);
 const RUN_MUTATION_BLOCKED_STATUSES = Object.freeze(['dispatched', 'completed', 'cancelled']);
 const RUN_UPDATABLE_STATUSES = Object.freeze(['draft', 'scheduled', 'cancelled']);
 
-// Phase 258 (#1489): maximum span a delivery run's scheduled_date/scheduled_date_end range may
+// Phase 260 (#1489): maximum span a delivery run's scheduled_date/scheduled_date_end range may
 // cover, inclusive of both endpoints. Placeholder -- #1489's own text doesn't specify a number;
 // 31 was chosen as a conservative default (a run spanning over a month almost certainly indicates
 // a data-entry mistake) and can be revisited once real usage patterns exist.
 const MAX_DELIVERY_RUN_SPAN_DAYS = 31;
 
-// Inclusive day-count between two DATEONLY ('YYYY-MM-DD') strings, e.g. same day -> 1.
-const calculateDeliveryRunSpanDays = (startDate, endDate) => Math.round(
-    (new Date(`${endDate}T00:00:00.000Z`) - new Date(`${startDate}T00:00:00.000Z`)) / 86400000
-) + 1;
+// RF-1 fix (PR #1500 review): normalizes a scheduled_date/scheduled_date_end value into a DATEONLY
+// ('YYYY-MM-DD') string before calculateDeliveryRunSpanDays does day-span arithmetic on it. On a
+// real HTTP request, createDeliveryRunSchema/updateDeliveryRunSchema's `Joi.date().iso()` hands the
+// use case an actual JS Date object -- unit tests that called the use case directly with plain
+// 'YYYY-MM-DD' strings never exercised that path. A Date object interpolated straight into the
+// `${value}T00:00:00.000Z` template below stringifies via its default `toString()` (e.g. "Wed Sep
+// 03 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"), which `new Date(...)` can't parse --
+// producing `Invalid Date` on both sides and `NaN` for the span, and `NaN > MAX_DELIVERY_RUN_SPAN_
+// DAYS` is `false`, so the documented 31-day cap silently never fires. Sequelize DATEONLY columns
+// round-trip as plain strings, so a value read back from the DB (the `run.scheduled_date`/
+// `run.scheduled_date_end` merge in buildUpdateDeliveryRunUseCase) already arrives as a string and
+// passes through this unchanged.
+const toDateOnlyString = (value) => {
+    if (value instanceof Date) {
+        const year = value.getUTCFullYear();
+        const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(value.getUTCDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    return String(value).slice(0, 10);
+};
+
+// Inclusive day-count between two DATEONLY ('YYYY-MM-DD') values, e.g. same day -> 1. Accepts a
+// DATEONLY string or a Date object for either argument -- see toDateOnlyString above.
+const calculateDeliveryRunSpanDays = (startDate, endDate) => {
+    const start = toDateOnlyString(startDate);
+    const end = toDateOnlyString(endDate);
+    return Math.round(
+        (new Date(`${end}T00:00:00.000Z`) - new Date(`${start}T00:00:00.000Z`)) / 86400000
+    ) + 1;
+};
 
 // Phase 228 (#1273/#1271): dispatch's own locked-status set. Deliberately NOT reusing
 // RUN_LOCKED_STATUSES/RUN_MUTATION_BLOCKED_STATUSES above -- both correctly treat `dispatched` as

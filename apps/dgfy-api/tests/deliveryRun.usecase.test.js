@@ -6,11 +6,42 @@ import {
     buildUpdateDeliveryRunUseCase,
     buildSetDeliveryRunPersonnelUseCase
 } from '../src/modules/pos/usecases/deliveryRunUseCases.js';
+import { validateDeliveryRunCreate, validateDeliveryRunUpdate } from '../src/validators/posValidator.js';
 import {
     createDeliveryRunTestHarness,
     createLocationScopeResolver,
     runInTenantContext
 } from './testHelpers/deliveryRunTestHarness.js';
+
+// RF-1 regression (PR #1500 review): runs the real Express validator middleware first, exactly
+// like a live HTTP request would, so `req.validatedData` carries the Joi-converted Date objects
+// createDeliveryRunSchema actually produces (`Joi.date().iso()`) -- not the plain 'YYYY-MM-DD'
+// strings every other test in this file passes to the use case directly. Before the RF-1 fix,
+// calculateDeliveryRunSpanDays interpolated those Date objects straight into a
+// `${value}T00:00:00.000Z` template, producing `Invalid Date` on both sides and `NaN` for the
+// span -- and `NaN > MAX_DELIVERY_RUN_SPAN_DAYS` is `false`, so the 31-day cap silently never
+// fired on a real request even though every string-based unit test in this file kept passing.
+const runValidatedDeliveryRunCreate = (body) => {
+    const req = { body };
+    const res = { status: jest.fn(() => res), json: jest.fn(() => res) };
+    const next = jest.fn();
+    validateDeliveryRunCreate(req, res, next);
+    if (!next.mock.calls.length) {
+        throw new Error(`validateDeliveryRunCreate unexpectedly rejected: ${JSON.stringify(res.json.mock.calls[0]?.[0])}`);
+    }
+    return req.validatedData;
+};
+
+const runValidatedDeliveryRunUpdate = (body) => {
+    const req = { body };
+    const res = { status: jest.fn(() => res), json: jest.fn(() => res) };
+    const next = jest.fn();
+    validateDeliveryRunUpdate(req, res, next);
+    if (!next.mock.calls.length) {
+        throw new Error(`validateDeliveryRunUpdate unexpectedly rejected: ${JSON.stringify(res.json.mock.calls[0]?.[0])}`);
+    }
+    return req.validatedData;
+};
 
 describe('Delivery run use cases (Phase 225)', () => {
     it('creates a draft run with a resolved location scope', async () => {
@@ -35,7 +66,7 @@ describe('Delivery run use cases (Phase 225)', () => {
         expect(resolveLocationScope).toHaveBeenCalled();
     });
 
-    // Phase 258 (#1489): date-range scheduling.
+    // Phase 260 (#1489): date-range scheduling.
     it('creates a run with a valid scheduled_date/scheduled_date_end range', async () => {
         const { deliveryRunRepository } = createDeliveryRunTestHarness();
         const resolveLocationScope = jest.fn(async () => ({ location_id: 7 }));
@@ -64,6 +95,30 @@ describe('Delivery run use cases (Phase 225)', () => {
             payload: { label: 'Too Long', scheduled_date: '2026-09-01', scheduled_date_end: '2026-10-15' },
             user: { user_id: 12 }
         });
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('DELIVERY_RUN_RANGE_TOO_LONG');
+    });
+
+    // RF-1 regression (PR #1500 review): same >31-day range as the string-based test above, but
+    // routed through the real validator middleware first -- see runValidatedDeliveryRunCreate's
+    // own comment for why that distinction is the whole point of this test.
+    it('rejects run creation when a real HTTP request carries a Date-object range exceeding the maximum span', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const useCase = buildCreateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: jest.fn(async () => ({ location_id: 7 }))
+        });
+
+        const payload = runValidatedDeliveryRunCreate({
+            label: 'Too Long (HTTP)',
+            scheduled_date: '2026-09-01',
+            scheduled_date_end: '2026-10-15'
+        });
+        expect(payload.scheduled_date).toBeInstanceOf(Date);
+        expect(payload.scheduled_date_end).toBeInstanceOf(Date);
+
+        const result = await useCase({ payload, user: { user_id: 12 } });
 
         expect(result.success).toBe(false);
         expect(result.error.details.reason_code).toBe('DELIVERY_RUN_RANGE_TOO_LONG');
@@ -138,7 +193,7 @@ describe('Delivery run use cases (Phase 225)', () => {
         expect(blocked.error.details.reason_code).toBe('DELIVERY_RUN_LOCKED');
     });
 
-    // Phase 258 (#1489): the range invariant is enforced against the MERGED effective state
+    // Phase 260 (#1489): the range invariant is enforced against the MERGED effective state
     // (existing row + this patch) -- a same-request Joi rule can't see a value that's only on the
     // existing row, so this has to be a use-case-level check.
     it('rejects a PATCH that sends scheduled_date_end alone, conflicting with the row\'s existing scheduled_date', async () => {
@@ -227,6 +282,38 @@ describe('Delivery run use cases (Phase 225)', () => {
         const result = await runInTenantContext(() => useCase({
             deliveryRunId: run.delivery_run_id,
             payload: { scheduled_date_end: '2026-10-15' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('DELIVERY_RUN_RANGE_TOO_LONG');
+    });
+
+    // RF-1 regression (PR #1500 review): the merged-effective-state check's trickiest input shape
+    // -- a real HTTP PATCH's Joi-converted Date object (`scheduled_date_end`, from
+    // runValidatedDeliveryRunUpdate) merged against the existing row's plain DATEONLY string
+    // (`run.scheduled_date`, as Sequelize actually returns it). Before the RF-1 fix this mixed
+    // Date/string pair broke calculateDeliveryRunSpanDays the same way the create-path regression
+    // above does.
+    it('rejects a PATCH whose merged effective range (real HTTP Date object + DB string) exceeds the maximum span', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const run = await deliveryRunRepository.createRun({
+            label: 'Run A',
+            location_id: 7,
+            created_by: 12,
+            scheduled_date: '2026-09-01'
+        });
+        const useCase = buildUpdateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
+
+        const payload = runValidatedDeliveryRunUpdate({ scheduled_date_end: '2026-10-15' });
+        expect(payload.scheduled_date_end).toBeInstanceOf(Date);
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload,
             user: { user_id: 12 }
         }));
 
