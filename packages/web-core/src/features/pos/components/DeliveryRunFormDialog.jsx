@@ -12,11 +12,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
-// Phase 226 (#1273). Create/edit dialog. Fields match POST/PATCH /pos/delivery-runs exactly:
-// label (1-120, required), scheduled_date (date().iso(), sent as YYYY-MM-DD, cleared -> null on
-// PATCH / omitted on POST), notes (<=2000, ''/null ok). status is edit-only and offers only the
-// three values the PATCH validator accepts (draft/scheduled/cancelled) -- dispatched/completed
-// are Phase 228's job and are never offered here.
+// Phase 226 (#1273), extended Phase 258 (#1489). Create/edit dialog. Fields match POST/PATCH
+// /pos/delivery-runs exactly: label (1-120, required), scheduled_date (date().iso(), sent as
+// YYYY-MM-DD, cleared -> null on PATCH / omitted on POST), scheduled_date_end (same shape, an
+// optional end date making the run span a range -- omitted/cleared means a single-day run), notes
+// (<=2000, ''/null ok). status is edit-only and offers only the three values the PATCH validator
+// accepts (draft/scheduled/cancelled) -- dispatched/completed are Phase 228's job and are never
+// offered here.
 
 const STATUS_OPTIONS = [
   { value: 'draft', label: 'Draft' },
@@ -24,7 +26,7 @@ const STATUS_OPTIONS = [
   { value: 'cancelled', label: 'Cancelled' }
 ];
 
-const emptyForm = { label: '', scheduledDate: '', notes: '', status: 'draft' };
+const emptyForm = { label: '', scheduledDate: '', scheduledDateEnd: '', notes: '', status: 'draft' };
 
 export default function DeliveryRunFormDialog({
   open,
@@ -44,6 +46,7 @@ export default function DeliveryRunFormDialog({
       ? {
         label: run.label || '',
         scheduledDate: run.scheduled_date ? String(run.scheduled_date).slice(0, 10) : '',
+        scheduledDateEnd: run.scheduled_date_end ? String(run.scheduled_date_end).slice(0, 10) : '',
         notes: run.notes || '',
         status: STATUS_OPTIONS.some((option) => option.value === run.status) ? run.status : 'draft'
       }
@@ -56,15 +59,27 @@ export default function DeliveryRunFormDialog({
       setError('Label is required and must be 120 characters or fewer.');
       return;
     }
+    // Mirror the server's `.with()`/`.min(ref)` range rules client-side so a bad range never
+    // round-trips to a 422.
+    if (form.scheduledDateEnd && !form.scheduledDate) {
+      setError('An end date requires a start date.');
+      return;
+    }
+    if (form.scheduledDate && form.scheduledDateEnd && form.scheduledDateEnd < form.scheduledDate) {
+      setError('End date must be on or after the start date.');
+      return;
+    }
     const payload = {
       label: trimmedLabel,
       notes: form.notes.trim() || null
     };
     if (isEdit) {
       payload.scheduled_date = form.scheduledDate || null;
+      payload.scheduled_date_end = form.scheduledDateEnd || null;
       payload.status = form.status;
     } else if (form.scheduledDate) {
       payload.scheduled_date = form.scheduledDate;
+      if (form.scheduledDateEnd) payload.scheduled_date_end = form.scheduledDateEnd;
     }
     const succeeded = await onSubmit(payload);
     if (succeeded !== false) onOpenChange(false);
@@ -97,6 +112,17 @@ export default function DeliveryRunFormDialog({
               value={form.scheduledDate}
               disabled={saving}
               onChange={(event) => setForm((current) => ({ ...current, scheduledDate: event.target.value }))}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>End date (optional)</Label>
+            <input
+              type="date"
+              value={form.scheduledDateEnd}
+              disabled={saving}
+              min={form.scheduledDate || undefined}
+              onChange={(event) => setForm((current) => ({ ...current, scheduledDateEnd: event.target.value }))}
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"
             />
           </div>
