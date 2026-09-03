@@ -19397,6 +19397,83 @@ preference (draft + self-verify, then straight to commit/push/PR, recorded from 
 PR's phase claim at plan time regardless -- per this ledger's own recurring caution, don't trust
 this note alone.
 
+## Phase 266 - voucherFormModel: min_spend_centavos validation for promo_code vouchers (#1506)
+
+### Initiative and release
+
+Follow-up filed against #1490/Phase 259's `voucherFormModel.js` work, discovered by a builder
+during this same batch. Filed retroactively -- see Phase 270's "Numbering note" for the fuller
+account of why: this phase's own builder never actually committed the ledger entry it reported as
+changed, and by restoration time an unrelated PR had also claimed the number (264) this entry's
+sibling originally targeted.
+
+### Objective and scope
+
+`validateFormLocally` in `packages/web-core/src/features/pos/components/voucherFormModel.js`
+validated `min_spend_centavos` (a non-negative check) only when `form.voucherKind ===
+'delivery_campaign'` -- a `promo_code` voucher with a negative `min_spend_centavos` value never got
+a client-side error. Lifted the check out of the `isDeliveryCampaign`-only branch so it runs
+unconditionally for both voucher kinds, matching the pattern the sibling
+`max_order_value_centavos` check already uses (#1490/Phase 259).
+
+The server-side Joi validator (`voucherValidator.js`) already rejected the same bad value on submit
+for both voucher kinds -- this is a pure client-side UX fix, not a data-integrity change. Nothing
+persisted, no reason code, and no eligibility logic changes.
+
+Pinned with 4 new test cases in `deliveryCampaignPayload.test.js`, alongside the existing
+`delivery_campaign` assertion (kept, to confirm it stayed unchanged).
+
+**A separate, pre-existing bug was found and deliberately not fixed in this PR**, to keep it scoped:
+`deliveryCampaignPayload.test.js`'s own `#1334 buildVoucherPayload -- promo_code regression` case
+fails on `origin/develop` at HEAD too, unrelated to this change -- `buildVoucherPayload` has carried
+`max_order_value_centavos` since #1490/Phase 259 but that test's expected literal was never updated.
+Filed separately as #1512.
+
+Files touched: `packages/web-core/src/features/pos/components/voucherFormModel.js`,
+`packages/web-core/src/features/pos/__tests__/deliveryCampaignPayload.test.js`,
+`docs/compliance/impact-declarations/2026-09-03-min-spend-validation-promo-code.md`.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Depends on #1490/Phase 259's `min_spend_centavos` and `max_order_value_centavos` fields already
+existing on the voucher form model. No migration, no schema change, so no deploy-order dependency
+on any open entry in `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`.
+
+### Acceptance and validation evidence
+
+- [x] `node --check packages/web-core/src/features/pos/components/voucherFormModel.js` -- 0 errors.
+- [x] `npx vitest run src/features/pos/__tests__/deliveryCampaignPayload.test.js` (from
+  `packages/web-core`) -- 24 tests, 23 passed, 1 pre-existing failure unrelated to this change (the
+  #1334/#1512 gap described above). The 4 new cases (negative value flagged for `promo_code`, valid
+  value not flagged, empty value never flags either kind, `delivery_campaign` coverage unchanged)
+  all pass.
+- [x] `npm run build:skupervisor` -- succeeded.
+- [x] `npm run build:pos` -- succeeded. Both apps bundle `TerminalOperationsWorkspace.jsx`, which
+  mounts `VoucherManagementPanel.jsx` (the only production importer of `validateFormLocally`,
+  confirmed by grep; `apps/dgfy-storefront` does not import `features/pos` at all).
+- [x] `npm run check:architecture` -- OK (54 modules, 560 code files, 94 controller files).
+- [x] `npm run lint:docs` / `check:adr` -- OK (29 governed docs, 87 ADRs).
+- [x] `npm run check:compliance` -- PASS; declaration:
+  `docs/compliance/impact-declarations/2026-09-03-min-spend-validation-promo-code.md`.
+- [x] `validateFormLocally`'s return shape confirmed unchanged (array of `{ field, message }`) and
+  `VoucherManagementPanel.jsx`'s only consumption point has no dependency on which fields can appear.
+
+### Links
+
+- Tracking issue: #1506 (`Closes`).
+- Related: #1512 (the pre-existing, unrelated test-literal gap found and filed separately).
+- PR: `fix/1506-min-spend-validation-promo-code` → `develop`, merged as `c7e601c17e5376878918d6a4d9a4033046d3e903`.
+
+### Next eligible phase
+
+Not applicable -- this entry fills an interior gap (263/265/267/268/269 all already merged around
+it). See Phase 270 (#1487), filed alongside this entry, for the ledger's actual next-eligible-phase
+note at restoration time.
+
 ## Phase 267 - CSV sync import: upsert + deactivate-not-delete (#1495 Part B)
 
 ### Initiative and release
@@ -19875,3 +19952,98 @@ fails loudly there rather than silently mis-recording an account.
 **270**, unless a parallel PR in this batch claims it first -- 264 and 266 are currently unclaimed
 gaps left by this batch's own number assignment and should be re-checked against the live open-PR
 list before being reused, exactly as this entry's "Numbering" note above did.
+
+## Phase 270 - Delivery Run summary: total expected, total settled, delivered-order count (#1487)
+
+### Initiative and release
+
+Child of the Delivery Run entity work started at Phase 260 (#1489, date-range scheduling). Adds a
+per-run money/delivery summary to the run detail response.
+
+**Numbering note, filed retroactively.** This entry was never actually committed by the phase's own
+builder despite PR #1514 reporting it as changed -- confirmed via `git show <branch-tip>` and `git
+diff <merge-base>..<branch-tip>` on `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`, both empty.
+Phase 266 (#1506) had the identical gap, for the same reason, and is filed alongside this entry.
+This entry originally targeted **264**, the number both #1487's own phase-263 predecessor note and
+Phase 265's note predicted as free -- but by the time this restoration PR was opened, an unrelated,
+concurrently-merged PR (#1522, `docs(conduct): define campaign topology and retention`, closing
+#1511) had already claimed 264 for itself. Rather than renumber #1522's already-merged, already-
+published entry -- `AGENTS.md`'s Continuous Phase Numbering rule 5 forbids renumbering a completed
+phase without an explicit migration -- this entry is filed as **270**, the ledger's actual next-free
+number at restoration time, re-verified against both open PRs (`gh api .../pulls?state=open`) at
+that moment. No code change accompanies this entry -- PR #1514 is already merged and functioning;
+this is a documentation-completeness fix only.
+
+### Objective and scope
+
+No backend "settled" helper existed anywhere in this codebase before this phase -- every other call
+site inlines `balance_due <= 0` for a single order. This phase defines the run-level equivalent from
+scratch, explicitly deciding how a partial or unpaid order counts rather than leaving it ambiguous:
+
+- `total_expected_amount` sums every member order's `total_amount`.
+- `total_settled_amount` sums `amount_paid` -- a `partially_paid` downpayment order counts only what
+  has actually been collected so far, not its full total; an `unpaid` COD order counts `0` until its
+  collection is recorded through the existing payment path.
+- `total_outstanding_amount` is the derived difference.
+- `delivered_order_count` / `total_order_count` read `DeliveryJob.status === 'delivered'` -- the
+  delivery job's own status, not the order's separate `fulfillment_status`.
+
+Backend: widened `getRunDetail`'s `PosTransaction` attribute allowlist
+(`deliveryRunRepository.js`) with `total_amount`/`amount_paid`/`balance_due`/`payment_status`,
+mirrored onto `serializeDeliveryRunMember`'s `order` object, and added `buildDeliveryRunSummary` --
+an in-JS reduce with `round4` rounding, the same pattern `posRepository.js`'s
+`buildReportShiftMoney` already uses -- wired into `serializeDeliveryRun` as a `summary` block,
+present only when member orders were actually hydrated (never on the list endpoint).
+
+Frontend: new `DeliveryRunSummary.jsx` renders the four totals plus the delivered/total count,
+mounted in `DeliveryRunsWorkspacePanel.jsx`'s run detail pane above the existing
+`DeliveryRunDispatchSummary`.
+
+Files touched: `apps/dgfy-api/src/modules/pos/repositories/deliveryRunRepository.js`,
+`apps/dgfy-api/src/modules/pos/serializers/deliveryRunSerializer.js`,
+`apps/dgfy-api/tests/deliveryRunSerializer.test.js`,
+`packages/web-core/src/features/pos/components/DeliveryRunSummary.jsx` (new),
+`packages/web-core/src/features/pos/components/DeliveryRunsWorkspacePanel.jsx`,
+`packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+`docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md`.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Depends on Phase 260 (#1489)'s date-range scheduling having landed -- the run detail shape this
+phase extends. No migration, no schema change, so no deploy-order dependency on any open entry in
+`docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `apps/dgfy-api` file -- 0 errors.
+- [x] `apps/dgfy-api/tests/deliveryRunSerializer.test.js` (extended, 6 new cases) --
+  `86 passed, 6 suites passed` across the full delivery-run backend test set.
+- [x] `deliveryRunsWorkspace.behavior.test.jsx` (extended, 1 new case) -- `109 passed, 8 files
+  passed` across the full delivery-run frontend test set.
+- [x] `npm run check:architecture` -- OK (54 modules, 560 code files, 94 controller files).
+- [x] `npm run lint:docs` / `check:adr` -- OK (29 governed docs, 87 ADRs).
+- [x] `npm run build:pos` -- clean (real Vite build; owns `DeliveryRunsWorkspacePanel.jsx`).
+- [x] `npm run build:skupervisor` -- clean (`apps/dgfy-ims` also mounts the same panel via
+  `packages/web-core`).
+- [x] `npm run check:compliance` -- confirmed to fail first (all 5 touched sensitive files listed),
+  then pass once the declaration was added:
+  `docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md`.
+- [ ] Manual verification against a live query planner -- not possible in the build environment (no
+  reachable MySQL/Redis); the declaration's own "Known gap" note states this explicitly. Everything
+  else is exercised directly.
+
+### Links
+
+- Tracking issue: #1487 (`Closes`).
+- PR: `feature/1487-delivery-run-summary` → `develop`, merged as `70dae9d55c15ab7520f0a5a070058ba628237307`.
+
+### Next eligible phase
+
+**271.** Confirmed by re-reading the ledger's actual highest merged entry (270, this entry) plus
+every open PR's phase claim at plan time, per this ledger's own recurring caution against trusting a
+stale note -- this entry and Phase 266 are both filed retroactively after 263 through 269, plus the
+unrelated Phase 264 (#1511), had already claimed and merged their numbers around this gap.
