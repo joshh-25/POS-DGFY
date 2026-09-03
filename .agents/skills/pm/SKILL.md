@@ -128,8 +128,10 @@ updates are the default case.
 2. Draft the issue per `docs/process/ISSUE-TAXONOMY.md`'s filing steps: pick a parent or
    deliberately go standalone (roughly a quarter of open issues have none, and that's fine), apply
    an `area:*` label and an issue type, and — if it's itself an epic — write the
-   `## Definition of done` section, then post the candidate slate comment. File children only for
-   the wave being scheduled now — see "Deferred decomposition" above.
+   `## Definition of done` section, then post the candidate slate comment and add the body's
+   pointer line to it (`Candidate decomposition: see the latest ## Candidate slate comment.`) —
+   refreshed/retained, never duplicated, on a later revisit. File children only for the wave being
+   scheduled now — see "Deferred decomposition" above.
 3. File via `gh issue create`.
 4. Parent it (`addSubIssue`) if applicable — see `references/board-operations.md`.
 5. Set repo-level fields (`Priority` at minimum) via the issue-field mutation, not the project
