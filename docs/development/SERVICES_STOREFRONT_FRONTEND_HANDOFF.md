@@ -14,6 +14,8 @@ The documentation is intentionally explicit about the difference between:
 - backend capabilities that already exist in the repository;
 - backend work that is recommended but is not part of this push.
 
+The current follow-up also corrects a Services palette propagation defect found after the previous push: the Services hero follow control could inherit a legacy mode accent even though the rest of the Services presentation used the approved blue palette. The follow control is now explicitly bound to the Services primary/success tokens, and the correction is covered by the existing Services palette and presentation tests.
+
 ## 1. Executive decision
 
 The current push is a frontend Services storefront implementation. It does not add or change API routes, database migrations, booking persistence, availability authority, payment processing, or production scheduling.
@@ -71,9 +73,11 @@ The complete Services storefront series currently present on the branch is:
 
 The latest audited Services commits are 60c90166, 0d10b0f6, and 72758315. The first two are the feature batches; 72758315 is the small replay-repair batch required by the updated upstream base. The documentation commits are intentionally separate.
 
+The unpushed palette-correction follow-up updates the rendered Services surfaces that could drift from the template palette, including the shared catalog toolbar, Services hero, catalog/promo sections, booking/cart surfaces, and Services presentation regression coverage. It is limited to Services mode behavior used by Laundry and AC. F&B and Salon presentation paths are not part of this correction.
+
 The clean replay is five commits ahead of the fetched `origin/develop` base and zero commits behind it: two feature batches, one replay-repair batch, and two documentation batches. Earlier shared history is already part of that base; no unrelated dirty-worktree commits were replayed.
 
-This document update is intentionally a separate documentation commit. The push remains gated on the final validation below.
+This document update is intentionally a separate documentation commit. The push remains gated on the final validation below; the final remote commit SHA will be recorded in the release handoff after the explicit push completes.
 
 ### 3.2 Files and boundaries
 
