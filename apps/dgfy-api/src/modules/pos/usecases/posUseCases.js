@@ -801,12 +801,19 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
     }
 };
 
-// Phase 258 (#1488): pre-run procurement CSV export. Deliberately reuses
-// posRepository.listIncomingOnlineOrders() directly rather than
+// Phase 261 (#1488, RF-1 fix per #1504 review): pre-run procurement CSV export. Deliberately
+// reuses posRepository.listIncomingOnlineOrders() directly rather than
 // buildListIncomingOnlineOrdersUseCase -- this list must be usable before a run is built (no
-// open shift required) and aggregated across locations, not pinned to one shift's location. See
-// the implementation plan's section 1 for the full reasoning.
-export const buildExportProcurementCsvUseCase = ({ posRepository }) => async ({ query = {}, user } = {}) => {
+// open shift required). It is NOT aggregated across all locations, though -- like the other
+// shift-independent read path (buildListOnlineOrderHistoryUseCase), it resolves the caller's
+// authorized location via resolvePosReadLocationScope so a VIEW_POS user can only ever export
+// pending-order PII (customer name, phone, delivery address) for a location they're actually
+// granted access to. See the implementation plan's section 1 for the reuse reasoning, and PR
+// #1504's review (RF-1) for the location-scope fix.
+export const buildExportProcurementCsvUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => async ({ query = {}, user } = {}) => {
     try {
         if (query !== undefined && !isPlainObject(query)) {
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'query must be an object', { statusCode: 400 });
@@ -815,12 +822,17 @@ export const buildExportProcurementCsvUseCase = ({ posRepository }) => async ({ 
         if (!normalizedUserId) {
             throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated user is required to export procurement data', { statusCode: 401 });
         }
-        const locationId = query?.location_id != null ? parsePositiveInt(query.location_id) : null;
-        if (query?.location_id != null && !locationId) {
+        if (query?.location_id != null && !parsePositiveInt(query.location_id)) {
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'location_id must be a positive integer', { statusCode: 422 });
         }
 
-        const orders = await posRepository.listIncomingOnlineOrders({ locationId, limit: 500 });
+        const locationScope = await resolveLocationScope({
+            requestedLocationId: query?.location_id,
+            userId: normalizedUserId,
+            operationLabel: 'POS procurement export read'
+        });
+
+        const orders = await posRepository.listIncomingOnlineOrders({ locationId: locationScope.location_id, limit: 500 });
 
         const rows = [
             ['Order #', 'Order Date', 'Location', 'Status', 'Customer Name', 'Customer Phone', 'Delivery Address', 'SKU', 'Item Name', 'Quantity', 'Unit'],
