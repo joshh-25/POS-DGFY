@@ -62,6 +62,7 @@ import EmployeeCreditAccount from './EmployeeCreditAccount.js';
 import EmployeeCreditLedgerEntry from './EmployeeCreditLedgerEntry.js';
 import Voucher from './Voucher.js';
 import VoucherScope from './VoucherScope.js';
+import VoucherAccountGrant from './VoucherAccountGrant.js';
 import VoucherRedemption from './VoucherRedemption.js';
 import VoucherRedemptionLine from './VoucherRedemptionLine.js';
 import Pricelist from './Pricelist.js';
@@ -841,6 +842,11 @@ PosTransaction.hasMany(EmployeeCreditLedgerEntry, { foreignKey: 'pos_transaction
 // `scope_ref_id` is polymorphic across items/item_folders, so it gets no association here.
 Voucher.hasMany(VoucherScope, { foreignKey: 'voucher_id', as: 'scopes' });
 VoucherScope.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
+// #788 (Phase 269): the account allowlist for an account-restricted voucher. Same shape as
+// `scopes` above -- a real tenant-side FK with ON DELETE CASCADE, unlike the landlord-side
+// `dgfy_account_id` inside it, which is unconstrained by construction (see the model's header).
+Voucher.hasMany(VoucherAccountGrant, { foreignKey: 'voucher_id', as: 'accountGrants' });
+VoucherAccountGrant.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
 Voucher.hasMany(VoucherRedemption, { foreignKey: 'voucher_id', as: 'redemptions' });
 VoucherRedemption.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
 VoucherRedemption.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'posTransaction' });
@@ -1183,6 +1189,7 @@ const db = {
   EmployeeCreditLedgerEntry,
   Voucher,
   VoucherScope,
+  VoucherAccountGrant,
   VoucherRedemption,
   VoucherRedemptionLine,
   Pricelist,
@@ -1400,6 +1407,7 @@ export {
   EmployeeCreditLedgerEntry,
   Voucher,
   VoucherScope,
+  VoucherAccountGrant,
   VoucherRedemption,
   VoucherRedemptionLine,
   Pricelist,
