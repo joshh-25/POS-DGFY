@@ -18215,3 +18215,107 @@ base is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`.
 
 Re-check the ledger's actual highest merged entry at plan time rather than assuming — Phase 255
 (#1441 PR-D) may or may not have merged by then.
+
+## Phase 257 - Queue+Run: iPad portrait split-view fix + hide-assigned-orders in split view only (#1491)
+
+### Initiative and release
+
+Standalone bug fix, no epic. Claimed 257 fresh at branch/commit time -- re-checked the ledger's
+merged tip (still Phase 256, `docs/features/IMPLEMENTATION_PHASE_LEDGER.md:18116`) and every open
+PR into `develop` (`gh api repos/Sieitzz/dgfy-platform/pulls?base=develop&state=open`: only #1475
+and #1316, neither claiming a phase number) immediately before this commit, per `AGENTS.md`'s
+Continuous Phase Numbering rule.
+
+### Objective and scope
+
+One PR, `fix/1491-queue-run-ipad-and-hide-assigned` into `develop`, shipping both parts of #1491 per
+the implementation plan's own recommendation (single PR, `Closes #1491`):
+
+- **Part 1** — the split ("Queue + Run") view's viewport eligibility gate
+  (`SPLIT_VIEW_MIN_WIDTH_PX`, `TerminalOperationsPanels.jsx`) lowered from a standalone 1024px
+  literal to `POS_TABLET_MIN_WIDTH_PX` (768, imported from `posTabletViewport.js`) -- the
+  structural fix the plan recommended, closing off a third silent drift of this constant (1280 ->
+  1024 -> a re-declared 1024 -> now sourced from the shared constant). This makes the view's
+  already-shipped single-column stacked layout (the grid's own `xl:` 1280px breakpoint is
+  untouched) reachable on portrait iPad mini/standard/Air/11"-Pro (~768-834px), not just landscape.
+- **Part 2** — a new `splitQueueCandidates` derivation
+  (`filterOrdersByRun(sortedIncomingOrders, QUEUE_RUN_FILTER_UNASSIGNED)`) that the split view's
+  queue panel, `QueueRunAssignBar` counts, and drag-to-assign source/target resolution now read
+  from instead of `visibleIncomingOrders` -- hiding orders already assigned to a run. Scoped to
+  this one call site only, per the plan's own regression analysis: the standalone Active Queue
+  tab's `runFilter`/`visibleIncomingOrders` default is untouched, since that tab is the only screen
+  with the per-order cash-collection/balance-settlement/status-change/personnel-assignment actions
+  an operator still needs for an already-assigned order.
+- Extracted the pre-existing selection-count math (Phase 231/#1290's correctness crux) into a new
+  pure util, `deriveQueueSelectionCounts.js`, called once per candidate list (standalone tab's
+  `visibleIncomingOrders`, split view's `splitQueueCandidates`) so the two call sites can't drift
+  apart.
+- **Explicitly deferred, not fixed in this PR** (per task resolution, not silently dropped): the
+  drag-handle's 28x28px touch target (below Apple's 44pt HIG minimum) -- filed as a separate
+  fast-follow issue via `pm` rather than bundled here, since drag is the secondary path behind the
+  now-always-reachable button-based `QueueRunAssignBar`. The optional portrait `max-h` polish is
+  skipped entirely, per the task's own resolution -- cosmetic, not required.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+None. Builds on already-shipped Phase 227/229/231 (#1273/#1289/#1290) work -- `QueueRunAssignBar`,
+the split view's own DnD wiring, and `filterOrdersByRun`/`QUEUE_RUN_FILTER_UNASSIGNED` all existed
+unchanged; this phase only rewires which list two existing call sites read from and where one
+existing constant's value comes from.
+
+### Acceptance and validation evidence
+
+- [x] `npx vitest run` (from `apps/dgfy-ims`) targeted at
+  `deliveryRunSplitViewDnd.behavior.test.jsx`, `incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`,
+  `deriveQueueSelectionCounts.test.js`, `deliveryRunQueueFilter.test.js`, `posTabletViewport.test.js`
+  -- 49/49 pass.
+- [x] Full `packages/web-core/src/features/pos` suite from `apps/dgfy-ims` -- 189 files / 1163
+  tests, all pass.
+- [x] `npm run build:skupervisor` -- succeeded.
+- [x] `npm run build:pos` -- succeeded.
+- [x] `npm run check:compliance` -- PASS (declaration:
+  `docs/compliance/impact-declarations/2026-09-03-queue-run-ipad-portrait-hide-assigned.md`).
+- [x] `npm run check:architecture` -- 54 modules / 555 files, 94 controllers, OK.
+- [x] `npm run check:adr` -- 86 ADRs, OK.
+
+### Deviations from the plan
+
+- Two of the plan's four "open items to confirm" were resolved by explicit task instruction rather
+  than left to PR-time judgment: the grip touch-target size is filed as a fast-follow issue (not
+  fixed here), and the optional portrait `max-h` polish is skipped (not "worth a quick pass").
+  Part 2's scoping (split-view-only, not the shared `runFilter` default) was likewise pre-approved
+  rather than re-litigated.
+- Two pre-existing tests assumed an already-run-assigned order would still render (disabled, or
+  under its original "Select order N" label) inside the split view -- both premises are exactly
+  what Part 2 changes. Updated rather than deleted: one now asserts the order is hidden entirely
+  (`incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`), the other now checks the
+  ineligible-labeled checkbox variant instead of the eligible one on the standalone tab
+  (`deliveryRunSplitViewDnd.behavior.test.jsx`). Not called out in the plan's own testing section,
+  found while running the targeted suite.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion. PR
+base is `develop`, branch prefix `fix/` per `.github/branch-cleanup-policy.json`.
+`npm run check:compliance`'s missing-declaration checkpoint fired as expected (major, `pos,terminal`)
+and was drafted by this session per the user's standing preference, rather than stopped on.
+
+### Links
+
+- Issue: #1491 (Closes).
+- Modified: `packages/web-core/src/features/pos/components/TerminalOperationsPanels.jsx`,
+  `packages/web-core/src/features/pos/utils/deriveQueueSelectionCounts.js` (new),
+  `packages/web-core/src/features/pos/utils/__tests__/deriveQueueSelectionCounts.test.js` (new),
+  `packages/web-core/src/features/pos/__tests__/deliveryRunSplitViewDnd.behavior.test.jsx`,
+  `packages/web-core/src/features/pos/__tests__/incomingQueueRunMemberFulfillmentGate.behavior.test.jsx`,
+  `docs/compliance/impact-declarations/2026-09-03-queue-run-ipad-portrait-hide-assigned.md` (new),
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+258. Re-check the ledger's actual highest merged entry and open `develop` PRs at plan time rather
+than assuming.
