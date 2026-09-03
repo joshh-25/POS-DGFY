@@ -124,7 +124,11 @@ open backlog. Filing every child the moment an epic is figured out produces exac
 decomposed months before any of it is addressable, and a backlog too granular to work through.
 
 **The default for a newly filed epic is a `## Definition of done` plus a candidate slate comment,
-not filed children.** A candidate slate is a comment on the epic, not a body edit:
+not filed children.** A candidate slate is a comment on the epic, not a body edit — but the epic
+body does carry one stable pointer line to it, e.g. `Candidate decomposition: see the latest
+## Candidate slate comment.` Add that line to the body the first time a slate is posted; on every
+later revisit, refresh/retain that one line rather than duplicating it — the pointer itself never
+grows into a body-held checklist, it just names where the current truth lives.
 
 ```markdown
 ## Candidate slate — 2026-09-03
@@ -147,7 +151,9 @@ Supersedes the slate of 2026-08-14.
   an iteration or active work. An epic is never fully decomposed in one pass.
 - **On revisit**, post a fresh rolled-up slate — the full current list, graduated items struck
   through with their issue number, superseded ones marked — rather than appending a fragment.
-  Readback should always be one comment, not a thread archaeology exercise.
+  Readback should always be one comment, not a thread archaeology exercise. The body's pointer line
+  stays as-is (it already points at "the latest" slate comment, not a specific one) — nothing to
+  edit there on an ordinary revisit.
 - **This is not the "checklist of issue numbers" anti-pattern** (see Anti-patterns, below). That
   rule bans a checklist of *filed* issue numbers, which drifts because the real sub-issue links are
   a second source of truth. A candidate slate holds unfiled tasks with no issue numbers — nothing
