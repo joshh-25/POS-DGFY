@@ -18,7 +18,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { FULFILLMENT_STATUS_LABELS, ORDER_METHOD_LABELS, PAYMENT_TYPE_LABELS } from './orderFulfillmentUi.js';
+import { FULFILLMENT_STATUS_LABELS, ORDER_METHOD_LABELS, PAYMENT_TYPE_LABELS, resolveAppliedVouchers } from './orderFulfillmentUi.js';
 
 const money = (value) => Number(value || 0).toFixed(2);
 
@@ -146,6 +146,13 @@ export default function OnlineOrderDetailsModal({
   const deliveryJob = order?.deliveryJob || null;
   const assignedRider = resolveAssignedRider(deliveryJob);
   const discount = order?.discount && typeof order.discount === 'object' ? order.discount : null;
+  // #1492: the delivery-fee-waiving voucher, distinct from the item-axis one above (`discount`) --
+  // this order never gets a PosTransactionDiscount row for it, it's a separate mechanism entirely,
+  // so it had no rendering here at all before this.
+  const appliedVouchers = resolveAppliedVouchers(order);
+  const deliveryVoucherLabel = order?.delivery_fee_waiver_label_snapshot
+    || appliedVouchers.find((voucher) => voucher.benefit_target === 'delivery')?.code
+    || null;
   const orderNumber = order?.invoice_number || order?.tracking_pin || '-';
   const orderMethod = ORDER_METHOD_LABELS[order?.order_method] || order?.order_method || '-';
   const orderStatus = FULFILLMENT_STATUS_LABELS[order?.fulfillment_status] || order?.fulfillment_status || '-';
@@ -262,6 +269,7 @@ export default function OnlineOrderDetailsModal({
                         <DetailRow label="Address" value={order.delivery_address || '-'} />
                         <DetailRow label="Contact" value={order.customer_phone || '-'} />
                         <DetailRow label="Delivery Fee" value={`PHP ${money(order.delivery_fee)}`} />
+                        {deliveryVoucherLabel && <DetailRow label="Delivery Voucher" value={deliveryVoucherLabel} valueClassName="text-emerald-700" />}
                         {assignedRider && <DetailRow label="Assigned Rider" value={assignedRider} />}
                       </dl>
                     </section>

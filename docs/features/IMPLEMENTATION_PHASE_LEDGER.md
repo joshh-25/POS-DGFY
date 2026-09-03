@@ -19208,6 +19208,139 @@ No collision with the sibling phases in this batch: #1513 (`fix/1506-...`) touch
 rather than trusting this note -- Phase 262's own history (claimed 257, guessed 259, collided,
 renumbered to 262) is the standing cautionary example.
 
+## Phase 265 - Show which voucher was applied on the order list/detail (#1492)
+
+### Initiative and release
+
+Standalone task, not part of a multi-PR sequence. Branch `feature/1492-order-voucher-visibility`,
+cut fresh from `origin/develop` (merge-base `c7e601c17`, one merge past this ledger's own Phase 262
+entry -- #1513 "fix(pos): run min_spend_centavos validation for promo_code vouchers too", unrelated
+to this diff). **Numbering note**: this entry's own "Next eligible phase" note above states 263;
+this phase was dispatched as **265** by a multi-agent coordinator running several phases in parallel
+against this repo, which reserves phase numbers via its own claim ledger external to this file
+(263/264 reserved for other concurrently in-flight work, not yet visible here since neither has
+merged -- PR #1514 "feat(pos): delivery run summary" on `feature/1487-delivery-run-summary`, still
+open at branch time, is one such phase). Re-verified immediately before this entry was written that
+this file's own merged tip was still 262 and no open PR had yet claimed 263, 264, or 265 by landing
+a ledger entry -- per `AGENTS.md`'s Continuous Phase Numbering rule, this file and visible in-flight
+PRs are authoritative, not an external claim alone; if 263-264 land with different content than
+assumed here before this PR merges, this entry's number may need the same kind of renumbering
+Phase 262's own history above already documents.
+
+**Resolved at merge time** (this branch's conflict fix against fresh `origin/develop`, per the
+sibling task that also produced this merge): 263 landed as the Accounting-role phase (#1493, PR
+#1516), not #1514 as guessed above -- #1514 ("feat(pos): delivery run summary", PR #1514) merged
+into `develop` without adding its own ledger entry, so 264 is currently unclaimed. This entry keeps
+its dispatched number, **265**, rather than renumbering down to fill that gap: unlike Phase 262's
+collision (a real duplicate claim on the same number), 265 does not collide with anything actually
+on `develop`, so there is nothing forcing a renumber here -- only a now-confirmed gap at 264 for a
+future phase (or a back-filled #1514 entry) to close.
+
+### Objective and scope
+
+Issue #1492 (child of epic #453): show which voucher (if any) was applied to an order, on the
+authenticated order list/detail surfaces (POS transaction history, the incoming online-order queue,
+and the online-order detail modal -- all three live under `packages/web-core/src/features/pos/`,
+the shared trunk `apps/dgfy-pos` and `apps/dgfy-ims` both mount, per
+`docs/architecture/apps-layout-migration.md`). Deliberately **not** the public, PIN-addressable
+customer tracking page -- see the compliance declaration's "Affected Surfaces" §3 for why that
+withholding is preserved rather than incidentally undone.
+
+Corrections the task's own pre-brief exploration made to the ticket's literal wording, verified
+against the actual code before implementing (re-verification, not blind trust, per the brief's own
+"re-verify tip is free at PR time" instruction) -- one of the four corrections did not hold and was
+dropped rather than implemented anyway:
+
+- **Confirmed still true**: no item-axis voucher column exists on `PosTransaction` -- only
+  `delivery_fee_waiver_voucher_id`/`_label_snapshot`; the item-axis voucher rides the generic
+  `discount_label_snapshot`/`discount_amount`/`discount_rate_snapshot` columns (shared with any
+  other POS discount type), and `voucher_redemptions` is the real, unambiguous source of truth
+  (ADR 0066 Decision 4).
+- **Did NOT hold, dropped**: the brief stated no `PosTransaction`⟷`VoucherRedemption` Sequelize
+  association existed and instructed adding one to `models/index.js`. `git blame` on the exact line
+  showed `PosTransaction.hasMany(VoucherRedemption, { foreignKey: 'pos_transaction_id', as:
+  'voucherRedemptions' })` already committed 2026-08-18 (unrelated Phase 240/#1331 work, well before
+  this phase). No association was added -- adding a second one would have thrown a duplicate-alias
+  error at Sequelize init.
+- **Confirmed still true**: the three named backend seams (`storeUseCases.js`'s order serializers,
+  `posRepository.js`'s `listTransactions`, `posUseCases.js`'s per-row decoration) and the three named
+  frontend render targets were all real and each needed the described widening -- detailed file-list
+  in the compliance declaration's "Scope" section, not repeated here.
+- **Refined, not overturned**: the brief pointed at `serializeOrderBase` for "the authenticated order
+  list" widening. Tracing every call site showed `serializeOrderBase` is *only* ever consumed via two
+  wrapper functions, `serializeOrderForCustomer` (authenticated) and `serializeOrderForPublicTracking`
+  (public) -- so the actual authenticated-only widening point is `serializeOrderForCustomer`, which
+  is what the brief's own forbidding language ("never the public tracking endpoint") already implied
+  once traced through; widening `serializeOrderBase` itself would have leaked the new field onto the
+  public page the same brief explicitly forbade touching.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Phase 240/#1331 (delivery-axis voucher benefit + the `PosTransaction`⟷`VoucherRedemption`
+association this phase reads from, unmodified) and Phase 105/#455 + Phase 242/#1390 (the storefront
+voucher redemption ledger and its `pos_transaction_id` attachment, which is what populates the data
+this phase now surfaces).
+
+### Acceptance and validation evidence
+
+- `node --check` on every changed `apps/dgfy-api` file (0 errors) -- that app's own `build` script is
+  a no-op, so this is the real Tier 0 check there.
+- `npm run build:pos` -- OK, real Vite build (this app mounts `POSTransactionHistoryPanel.jsx`/
+  `IncomingQueueOrderList.jsx`/`OnlineOrderDetailsModal.jsx`/`orderFulfillmentUi.js` via
+  `packages/web-core`).
+- `npm run build:skupervisor` -- OK, real Vite build (same shared trunk, mounted by `apps/dgfy-ims`).
+- `npm run check:compliance` -- confirmed to fail first (listing 8 sensitive files), then pass once
+  `docs/compliance/impact-declarations/2026-09-08-order-voucher-visibility.md` was added; also runs
+  `check-compliance-api-contracts.js`, which passed unmodified.
+- `npm run lint:docs` (chains `check:adr --strict`) -- OK, 29 governed docs / 87 ADRs validated (the
+  new compliance declaration's `related_adr` citation included).
+- `npm run check:architecture` (`check-architecture-guardrails` + `check-controller-boundaries`,
+  run directly from `apps/dgfy-api` since neither script has an external dependency) -- OK, 54
+  modules / 560 files, 94 controllers, zero new allowlist entries or unauthorized model imports.
+- **Known gap, stated rather than hidden**: no automated test was added for this phase (a pure
+  display/read-path widening with no new business logic) -- see the compliance declaration's own
+  "Verification Evidence" section for the full reasoning and what a future extension should add.
+
+### Deviations from the plan
+
+None of substance beyond the one dropped correction (the already-existing model association) named
+under "Objective and scope" above.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration, no new/changed Sequelize association, no deploy dispatch, no SSH, no
+force-push/branch deletion, no `staging`/`main` base. PR base is `develop`, branch prefix `feature/`
+per `.github/branch-cleanup-policy.json`.
+**Fired**: `check:compliance`'s missing-declaration checkpoint (major classification) -- the
+declaration was drafted and the checkpoint satisfied without pausing to ask, per Pat's standing
+preference (draft + self-verify, then straight to commit/push/PR, recorded from prior sessions).
+
+### Links
+
+- Issue: #1492 (Closes). Child of epic #453.
+- PR: `feature/1492-order-voucher-visibility` → `develop`.
+- Modified/added: `apps/dgfy-api/src/modules/store/repositories/storeRepository.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `packages/web-core/src/features/pos/components/orderFulfillmentUi.js`,
+  `packages/web-core/src/features/pos/components/POSTransactionHistoryPanel.jsx`,
+  `packages/web-core/src/features/pos/components/OnlineOrderDetailsModal.jsx`,
+  `packages/web-core/src/features/pos/components/IncomingQueueOrderList.jsx`,
+  `docs/compliance/impact-declarations/2026-09-08-order-voucher-visibility.md` (new),
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+**266.** 263 (#1493) and 265 (this entry) are both now merged into `develop`; 264 is confirmed free
+(see the Numbering note above). Re-check the ledger's actual highest merged entry and every open
+PR's phase claim at plan time regardless -- per this ledger's own recurring caution, don't trust
+this note alone.
+
 ## Phase 267 - CSV sync import: upsert + deactivate-not-delete (#1495 Part B)
 
 ### Initiative and release

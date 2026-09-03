@@ -5330,6 +5330,22 @@ export const buildLoginPosCashierUseCase = ({ authService }) => {
     };
 };
 
+// #1492: which voucher (if any) a transaction row redeemed, projected from the
+// posRepository.listTransactions() voucherRedemptions include (already scoped to
+// entry_type: 'redemption' at the query level) into the same shape
+// storeUseCases.js's serializeAppliedVoucher produces, for one consistent frontend contract across
+// both the authenticated storefront order history and this POS/IMS transaction history.
+const serializeAppliedVouchers = (row) => (
+    Array.isArray(row?.voucherRedemptions)
+        ? row.voucherRedemptions.map((redemption) => ({
+            voucher_id: redemption?.voucher_id ?? null,
+            code: redemption?.code_snapshot ?? null,
+            benefit_target: redemption?.benefit_config_snapshot?.benefit_target === 'delivery' ? 'delivery' : 'items',
+            discount_amount: redemption?.discount_centavos != null ? fromCurrencyCents(redemption.discount_centavos) : null
+        }))
+        : []
+);
+
 export const buildListPosTransactionsUseCase = ({ posRepository }) => {
     return async ({ query, user }) => {
         if (query !== undefined && !isPlainObject(query)) {
@@ -5370,7 +5386,8 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
                         ...row,
                         receipt_print_status: status?.status || 'pending',
                         receipt_printed_at: status?.printed_at || null,
-                        receipt_print_failure_reason: status?.reason_code || null
+                        receipt_print_failure_reason: status?.reason_code || null,
+                        applied_vouchers: serializeAppliedVouchers(row)
                     };
                 })
             });
