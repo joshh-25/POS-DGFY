@@ -19208,6 +19208,62 @@ No collision with the sibling phases in this batch: #1513 (`fix/1506-...`) touch
 rather than trusting this note -- Phase 262's own history (claimed 257, guessed 259, collided,
 renumbered to 262) is the standing cautionary example.
 
+## Phase 264 - Conduct campaign routing and shared-worktree topology (#1511)
+
+### Initiative and release
+
+Conduct orchestration workflow hardening. This is a documentation and agent-procedure phase; it
+does not change application runtime behavior or any dispatched feature phase.
+
+### Objective and scope
+
+Define the full `/conduct` contract for issue campaigns, PR reviews, prepared waves, and prepared
+phases. The canonical Conduct skill now specifies target routing, current Orca context resolution,
+single-target shared-worktree execution, one-worktree-per-phase wave execution with a three-worker
+parallelism cap, model overrides, structured reviewer-feedback handoffs, retained Builder and
+Reviewer terminals across feedback loops, review-only Builder ownership by the conducting session,
+and delegation to the existing PR Reviewer merge policy.
+
+Automatic Orca worktree removal is deliberately deferred. Conduct leaves campaign worktrees for
+manual operator cleanup; the existing cleanup policy and pure decision tests remain unchanged.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Depends on the current Orca orchestration guide's supervised Run, task, worker-start, structured
+message, and worker-release commands. No application architecture boundary, API, database, or
+deployment surface is changed, so no ADR or compliance declaration is required.
+
+### Acceptance and validation evidence
+
+- [x] Canonical Conduct skill defines issue/PR/campaign/wave/phase routing and fail-closed context
+  resolution.
+- [x] Single-target roles and feedback loops reuse one exact child worktree; wave phases use one
+  child worktree each and never create sibling Reviewer worktrees.
+- [x] Wave concurrency is capped at three and sequential execution is supported.
+- [x] Builder and Reviewer retention across feedback loops is explicit.
+- [x] Review-only Conduct runs keep PR feedback ownership in the conducting session and do not
+  spawn a second Builder worker.
+- [x] `npm run lint:docs` passes.
+- [x] `npm run test:conduct-model-slot` passes.
+- [x] `npm run test:conduct-cleanup-policy` passes unchanged.
+
+Completion date: 2026-09-03.
+
+### Links
+
+- Tracking issue: #1511.
+- Canonical procedure: `.agents/skills/conduct/SKILL.md`.
+- Orca procedure source: freshly loaded `orca skills get orchestration --full` guide.
+
+### Next eligible phase
+
+**270.** Re-check the ledger's highest merged entry and every open phase claim at plan/branch time;
+do not rely on this reservation if another phase lands first.
+
 ## Phase 265 - Show which voucher was applied on the order list/detail (#1492)
 
 ### Initiative and release
