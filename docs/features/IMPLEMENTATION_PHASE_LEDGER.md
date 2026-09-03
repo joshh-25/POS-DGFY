@@ -18215,3 +18215,138 @@ base is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`.
 
 Re-check the ledger's actual highest merged entry at plan time rather than assuming — Phase 255
 (#1441 PR-D) may or may not have merged by then.
+
+## Phase 258 - DeliveryRun date-range scheduling (#1489)
+
+### Initiative and release
+
+Standalone task, not part of a multi-PR sequence. Branch `feature/1489-delivery-run-date-range`,
+cut fresh from `origin/develop`. **Numbering note**: the ledger's highest merged entry at branch
+time was Phase 256; 257 was reported already claimed by a concurrently in-flight PR for #1488 (not
+yet visible in the ledger or as an open PR against `develop` at the time of this check), so this
+entry claims **258**, re-verified immediately before commit per `AGENTS.md`'s Continuous Phase
+Numbering rule (`grep -n "^## Phase" docs/features/IMPLEMENTATION_PHASE_LEDGER.md | tail -1` and
+`gh pr list --repo Sieitzz/dgfy-platform --base develop --state open` both re-run at commit time).
+
+### Objective and scope
+
+Issue #1489 (child of epic #1178): a Delivery Run's `scheduled_date` (Phase 224 schema) becomes a
+date **range** (`scheduled_date`/`scheduled_date_end`) instead of a single day, since Surebiz's
+actual delivery runs aren't always same-day. Full plan:
+`PHASE-257-PLAN-delivery-run-date-range.md` (planned as 257 before #1488's claim was known; the
+plan's own content and reasoning are otherwise unaffected by the renumbering). Three corrections the
+plan's own Critical Assessment made to the task's literal wording, all implemented as corrected:
+
+- **A new migration, not an edit to the already-shipped `20260901000005-create-delivery-runs.cjs`**
+  -- that migration id is already recorded in `SequelizeMeta` on every environment that has run it;
+  editing it in place would be silently inert everywhere except a from-scratch database.
+- **The range invariant on `PATCH` is enforced in the use case, not the validator** --
+  `updateDeliveryRunSchema`'s Joi rule can only see fields present in one request, so a `PATCH`
+  sending only one of `scheduled_date`/`scheduled_date_end` needs the check run against the merged
+  (existing locked row + patch) effective state instead.
+- **The `listRuns` filter becomes a range-overlap predicate**, not a straight rename of
+  `Op.gte`/`Op.lte` -- a run with `scheduled_date_end = NULL` is a single-day run whose effective
+  end equals its start, via `sequelize.where(sequelize.fn('COALESCE', ...), { [Op.gte]: ... })`.
+
+Resolutions given at implementation start for the plan's own open questions (§13):
+
+1. `MAX_DELIVERY_RUN_SPAN_DAYS = 31` (placeholder -- #1489's text specifies no number) shipped
+   as-is.
+2. No same-day-run "detection" UI was built -- #1489's "range collapses to one day" requirement is
+   satisfied by the `COALESCE`/serializer/`formatRunScheduleLabel` treatment of a `NULL`/
+   equal-to-start end date as a single-day run; no "Today" badge or similar affordance exists in
+   this codebase and none was asked for beyond that collapse behavior.
+3. Issue #1489 was read in full via `gh api repos/Sieitzz/dgfy-platform/issues/1489` (the `gh`
+   GraphQL CLI was rate-limited; the REST API was not) before deciding linkage -- its three scope
+   bullets (schema range, same-day collapse, create/edit UI) are all fully covered by this one PR,
+   so `Closes #1489` is used.
+4. No DB-level CHECK constraint was added -- the migration adds only the nullable column and the
+   composite index; the app-level start<=end checks in the use cases are sufficient, per
+   implementation decision.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Phase 225 (#1273/#1081, delivery run API) and Phase 224 (delivery run schema) -- this phase extends
+both without modifying Phase 224's own migration file.
+
+### Acceptance and validation evidence
+
+- `node --check` on every changed/new `.js`/`.cjs` file (`apps/dgfy-migration-runner`'s and
+  `apps/dgfy-api`'s own `build` scripts are no-ops, so this is the real Tier 0 check for those two
+  apps).
+- `npm run build:pos` -- OK, a real Vite build (this app owns `DeliveryRunsWorkspacePanel.jsx`/
+  `DeliveryRunFormDialog.jsx` via `packages/web-core`).
+- Backend: `apps/dgfy-api/tests/deliveryRun.usecase.test.js`,
+  `apps/dgfy-api/tests/posValidator.deliveryRun.test.js`, plus the three unchanged sibling suites
+  (`deliveryRunDispatch.usecase.test.js`, `deliveryRunRoutes.transport.test.js`,
+  `deliveryRunWriteThrough.usecase.test.js`) -- 5 suites, 78 tests, all passing (Jest).
+- Frontend: `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`
+  plus 7 other delivery-run-related suites -- 8 suites, 104 tests, all passing (Vitest, run from
+  `apps/dgfy-ims` per `docs/architecture/frontend-split-sync.md` -- `packages/web-core` tests do not
+  run from `apps/dgfy-pos` despite that app owning the build).
+- `npm run check:architecture` -- OK, 54 modules / 555 files, 94 controllers, zero new allowlist
+  entries.
+- `npm run check:adr` -- OK, 86 ADRs validated.
+- `npm run lint:docs` -- OK, 29 governed docs validated.
+- `npm run check:compliance` -- confirmed to fail first (listing 7 sensitive files), then pass once
+  `docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md` was added.
+- **Known gap, stated rather than hidden**: no delivery-run test in this codebase exercises a real
+  MySQL query planner (local MySQL/Redis were not reachable in this environment) -- the `listRuns`
+  overlap predicate is syntactically correct per Sequelize's own documented pattern but unverified
+  against a live tenant database. See the compliance declaration's "Residual Risks" section.
+
+### Deviations from the plan
+
+None of substance. The plan itself was planned under a working phase number of 257; it is filed here
+as 258 per the numbering note above. The plan's claim that the `sequelize.where(sequelize.fn(
+'COALESCE', ...))` idiom was "already used" in `posRepository.js`/`dashboardService.js`/
+`reportService.js`/`stockMovementService.js` did not hold on inspection -- those files only use
+`sequelize.where(col, Op, col)` two-column comparisons, not `sequelize.fn('COALESCE', ...)` inside
+`sequelize.where(...)`. The syntax itself was independently verified correct against Sequelize v6's
+own documentation (`sequelize.where(sequelize.fn(...), value-or-operator)`) before shipping; the
+code comment introducing it does not repeat the plan's inaccurate precedent claim.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Fired**: new file under `apps/dgfy-migration-runner/migrations/` -- per Pat's standing preference
+(given directly in this task's brief: draft, self-verify, then go straight to commit/push/PR rather
+than pausing for a checkpoint confirmation he reviews on every PR anyway), proceeded straight to
+commit/push/PR without pausing to ask, since the migration is additive/nullable-only (new column +
+index, no data rewrite, no drop) and was reviewed against the already-shipped sibling migration's
+own idempotent-helper convention before writing it.
+**Also fired**: `check:compliance`'s missing-declaration checkpoint (major classification) -- the
+declaration was drafted and the checkpoint satisfied without pausing to ask, per the same standing
+preference.
+**Not fired**: no deploy dispatch, no SSH, no force-push/branch deletion, no `staging`/`main` base.
+PR base is `develop`, branch prefix `feature/` per `.github/branch-cleanup-policy.json`.
+
+### Links
+
+- Issue: #1489 (Closes). Child of epic #1178.
+- PR: `feature/1489-delivery-run-date-range` → `develop`.
+- Plan: `PHASE-257-PLAN-delivery-run-date-range.md` (scratchpad artifact, not committed to the repo).
+- Modified/added:
+  `apps/dgfy-migration-runner/migrations/20260907000001-add-delivery-run-scheduled-date-end.cjs`
+  (new), `apps/dgfy-api/src/models/DeliveryRun.js`, `apps/dgfy-api/src/validators/posValidator.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/deliveryRunUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/deliveryRunRepository.js`,
+  `apps/dgfy-api/src/modules/pos/serializers/deliveryRunSerializer.js`,
+  `apps/dgfy-api/tests/deliveryRun.usecase.test.js`,
+  `apps/dgfy-api/tests/posValidator.deliveryRun.test.js`,
+  `apps/dgfy-api/tests/testHelpers/deliveryRunTestHarness.js`,
+  `packages/web-core/src/features/pos/components/DeliveryRunFormDialog.jsx`,
+  `packages/web-core/src/features/pos/components/DeliveryRunsWorkspacePanel.jsx`,
+  `packages/web-core/src/features/pos/utils/deliveryRunQueueFilter.js`,
+  `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+  `docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md` (new),
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+Re-check the ledger's actual highest merged entry at plan time rather than assuming -- both Phase
+257 (#1488, claimed but not yet confirmed merged as of this entry) and this entry may or may not
+have merged by then.
