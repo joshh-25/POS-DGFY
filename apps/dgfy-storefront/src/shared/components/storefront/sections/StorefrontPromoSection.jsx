@@ -37,6 +37,7 @@ function PromoCard({
   cardBorder,
   isRetail,
   isSimple,
+  isServices,
   bodyFontFamily,
   titleFontFamily,
   activePromoCode
@@ -159,8 +160,8 @@ function PromoCard({
             <div style={{ fontSize: isMobileViewport ? 16 : 19, fontWeight: 800, lineHeight: 1.25, fontFamily: titleFontFamily }}>{description}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: '#166534', fontSize: 12, fontWeight: 700, fontFamily: bodyFontFamily }}>
               {promoCode ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 26, padding: '0 10px', borderRadius: 999, background: isRetail || isSimple ? accentTint : '#fff7ed', border: isRetail || isSimple ? `1px solid ${accentColor}55` : '1px solid #fed7aa', color: accentDark, fontSize: 11, fontWeight: 800 }}>
-                  <span style={{ color: isRetail || isSimple ? accentDark : '#9a3412', fontWeight: 700 }}>Promo Code:</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 26, padding: '0 10px', borderRadius: 999, background: isRetail || isSimple || isServices ? accentTint : '#fff7ed', border: isRetail || isSimple || isServices ? `1px solid ${accentColor}55` : '1px solid #fed7aa', color: accentDark, fontSize: 11, fontWeight: 800 }}>
+                  <span style={{ color: isRetail || isSimple || isServices ? accentDark : '#9a3412', fontWeight: 700 }}>Promo Code:</span>
                   <span>{promoCode}</span>
                 </span>
               ) : null}
@@ -215,27 +216,40 @@ export function StorefrontPromoSection({
   mobileTrailingInset = 0,
   titleSize = null,
   subtitleSize = null,
-  activePromoCode = ''
+  activePromoCode = '',
+  paletteTokens = null
 }) {
   if (!Array.isArray(items) || items.length === 0) return null;
   const isSimple = palette === 'simple';
   const isTeal = palette === 'teal';
   const isFnb = palette === 'fnb';
   const isRetail = palette === 'retail';
-  const accentColor = isSimple ? '#176B3A' : (isFnb ? '#f97316' : (isRetail ? '#1A4E8D' : (isTeal ? '#0f766e' : '#1a4e8d')));
-  const accentDark = isSimple ? '#0F5A30' : (isFnb ? '#c2410c' : (isRetail ? '#1A4586' : (isTeal ? '#134e4a' : '#1e3a6e')));
-  const accentTint = isSimple ? '#FFF8E7' : (isFnb ? '#fff7ed' : (isRetail ? '#EEF4FB' : (isTeal ? '#ecfeff' : '#eef6fd')));
-  const cardBorder = isSimple ? '#E4C98E' : (isFnb ? '#ffe4c8' : (isRetail ? '#E2E8F0' : (isTeal ? '#99f6e4' : '#dbe5ee')));
+  const isServices = palette === 'services';
+  const servicePalette = isServices ? (paletteTokens || {}) : {};
+  const accentColor = isServices
+    ? (servicePalette.primary || '#1A4E8D')
+    : (isSimple ? '#176B3A' : (isFnb ? '#f97316' : (isRetail ? '#1A4E8D' : (isTeal ? '#0f766e' : '#1a4e8d'))));
+  const accentDark = isServices
+    ? (servicePalette.primaryDark || '#1A4586')
+    : (isSimple ? '#0F5A30' : (isFnb ? '#c2410c' : (isRetail ? '#1A4586' : (isTeal ? '#134e4a' : '#1e3a6e'))));
+  const accentTint = isServices
+    ? (servicePalette.primarySoft || '#eef6fd')
+    : (isSimple ? '#FFF8E7' : (isFnb ? '#fff7ed' : (isRetail ? '#EEF4FB' : (isTeal ? '#ecfeff' : '#eef6fd'))));
+  const cardBorder = isServices
+    ? (servicePalette.primaryBorder || 'rgba(26,78,141,0.2)')
+    : (isSimple ? '#E4C98E' : (isFnb ? '#ffe4c8' : (isRetail ? '#E2E8F0' : (isTeal ? '#99f6e4' : '#dbe5ee'))));
+  const headingColor = isServices ? (servicePalette.textPrimary || '#0F172A') : '#0f172a';
+  const mutedColor = isServices ? (servicePalette.textMuted || '#64748B') : '#64748b';
 
   return (
     <section style={{ marginLeft: isMobileViewport ? 0 : 'calc(50% - 50vw)', width: isMobileViewport ? '100%' : '100vw', padding: sectionPadding || (isMobileViewport ? '32px 0' : '48px 0'), background: sectionBackground, borderTop: `1px solid ${collapseSpacing ? '#edf2f7' : '#f1f5f9'}`, borderBottom: collapseSpacing ? 'none' : '1px solid #f1f5f9' }}>
       <div style={{ maxWidth: contentMaxWidth, width: '100%', margin: '0 auto', paddingLeft: isMobileViewport ? 16 : 24, paddingRight: isMobileViewport ? 16 + Math.max(0, Number(mobileTrailingInset) || 0) : 24, boxSizing: 'border-box' }}>
         <div style={{ display: 'grid', gap: 6, marginBottom: isMobileViewport ? 16 : 24 }}>
-          <h2 style={{ margin: 0, color: '#0f172a', fontSize: titleSize || (isMobileViewport ? 28 : 36), fontWeight: 800, lineHeight: 1.08, fontFamily: titleFontFamily }}>Current Promos</h2>
-          <p style={{ margin: 0, color: '#64748b', fontSize: subtitleSize || (isMobileViewport ? 14 : 16), lineHeight: 1.45, fontFamily: bodyFontFamily }}>Limited-time offers available from this storefront.</p>
+          <h2 style={{ margin: 0, color: headingColor, fontSize: titleSize || (isMobileViewport ? 28 : 36), fontWeight: 800, lineHeight: 1.08, fontFamily: titleFontFamily }}>Current Promos</h2>
+          <p style={{ margin: 0, color: mutedColor, fontSize: subtitleSize || (isMobileViewport ? 14 : 16), lineHeight: 1.45, fontFamily: bodyFontFamily }}>Limited-time offers available from this storefront.</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(auto-fill, minmax(360px, 580px))', gap: isMobileViewport ? 16 : 20, justifyContent: 'start' }}>
-          {items.map((promoEntry, index) => <PromoCard key={promoEntry.promoCode || promoEntry.promo_code || `${promoEntry.title}-${index}`} {...{ promoEntry, index, isMobileViewport, accentColor, accentDark, accentTint, cardBorder, isRetail, isSimple, bodyFontFamily, titleFontFamily, activePromoCode }} />)}
+          {items.map((promoEntry, index) => <PromoCard key={promoEntry.promoCode || promoEntry.promo_code || `${promoEntry.title}-${index}`} {...{ promoEntry, index, isMobileViewport, accentColor, accentDark, accentTint, cardBorder, isRetail, isSimple, isServices, bodyFontFamily, titleFontFamily, activePromoCode }} />)}
         </div>
       </div>
     </section>

@@ -37,6 +37,7 @@ export function useFnbCheckoutPromoRenderers({
   // touching, for a change that's supposed to be UI-only.
   const renderPromoCodePanel = useCallback(({
     compact = false,
+    variant = 'default',
     accentColor = '#0f766e',
     bodyFont = servicesBodyFont,
     isMobile = false
@@ -51,6 +52,7 @@ export function useFnbCheckoutPromoRenderers({
         statusTone={voucherStatusTone}
         appliedDiscountText={appliedVoucherDiscountText}
         compact={compact}
+        variant={variant}
         bodyFont={bodyFont}
         isMobile={isMobile}
         availableOffers={Array.isArray(promoSectionModel) ? promoSectionModel : []}

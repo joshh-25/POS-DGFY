@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { __storefrontTrackingTestUtils } from '../StorefrontApp.jsx';
-
-const { normalizeTrackedOrderEntry, mapAccountActivityToTrackedOrderEntry } = __storefrontTrackingTestUtils;
+import { normalizeTrackedOrderEntry } from '../tracking/storage.js';
+import { mapAccountActivityToTrackedOrderEntry } from '../tracking/accountActivity.js';
 
 describe('storefront tracked order normalization', () => {
   it('preserves detailed item rows when normalizing tracked order entries', () => {

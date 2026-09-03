@@ -37,6 +37,13 @@ const LOCAL_TRACKING_FLOWS = Object.freeze({
     { id: 'quoted', label: 'Quote prepared' },
     { id: 'accepted', label: 'Quote accepted' },
     { id: 'completed', label: 'Request completed' }
+  ]),
+  service_at_customer_address: Object.freeze([
+    { id: 'requested', label: 'Request received' },
+    { id: 'confirmed', label: 'Booking confirmed' },
+    { id: 'checked_in', label: 'Ready for your service visit' },
+    { id: 'in_service', label: 'Service in progress' },
+    { id: 'completed', label: 'Service completed' }
   ])
 });
 

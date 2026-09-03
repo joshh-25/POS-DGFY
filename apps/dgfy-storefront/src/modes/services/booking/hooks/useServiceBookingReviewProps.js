@@ -22,6 +22,7 @@ export function useServiceBookingReviewProps({
   servicePaymentTiming,
   servicesPrimary,
   servicesPrimaryDark,
+  servicesDisplayFont,
   setCartImageErrors,
   setCheckoutTab,
   withAssetOrigin
@@ -42,6 +43,7 @@ export function useServiceBookingReviewProps({
     servicePaymentTiming,
     servicesPrimary,
     servicesPrimaryDark,
+    servicesDisplayFont,
     setCartImageErrors,
     setCheckoutTab,
     withAssetOrigin
