@@ -13,7 +13,7 @@
 
 import { describe, test, expect } from 'vitest';
 import { buildVoucherPayload, blankForm } from '../components/VoucherManagementPanel.jsx';
-import { voucherToForm } from '../components/voucherFormModel.js';
+import { parseAccountGrantIds, validateFormLocally, voucherToForm } from '../components/voucherFormModel.js';
 
 describe('#716 buildVoucherPayload — fixed_price XOR payload shape', () => {
     test('single-price sub-mode sends a real price and an explicit null pricelist_id', () => {
@@ -210,5 +210,89 @@ describe('#1494 voucherToForm/buildVoucherPayload — audit fields are display-o
         expect(payload).not.toHaveProperty('updated_by');
         expect(payload).not.toHaveProperty('created_by_username');
         expect(payload).not.toHaveProperty('updated_by_username');
+    });
+});
+
+// #788 (Phase 269): account-restricted issuance.
+describe('#788 account_grant_ids — payload and round-trip', () => {
+    const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+    const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+    const percentOffForm = (overrides = {}) => ({
+        ...blankForm(),
+        code: 'SAVE10',
+        title: 'Ten percent off',
+        benefitClass: 'percent_off',
+        percentOffPercent: '10',
+        ...overrides
+    });
+
+    test('an empty textarea still sends an explicit empty array, never an omitted key', () => {
+        // Load-bearing on the update path: the server reads presence with hasOwnProperty, so an
+        // omitted key would leave a stored allowlist in place and silently ignore the merchant
+        // clearing the field.
+        const payload = buildVoucherPayload(percentOffForm());
+        expect(payload.account_grant_ids).toEqual([]);
+        expect(Object.prototype.hasOwnProperty.call(payload, 'account_grant_ids')).toBe(true);
+    });
+
+    test('newline-separated ids are parsed, trimmed, lowercased, and de-duplicated', () => {
+        const payload = buildVoucherPayload(percentOffForm({
+            accountGrantIdsText: `  ${ACCOUNT_A.toUpperCase()}\n${ACCOUNT_B}\n\n${ACCOUNT_A}  `
+        }));
+        expect(payload.account_grant_ids).toEqual([ACCOUNT_A, ACCOUNT_B]);
+    });
+
+    test('comma-separated ids parse too -- a pasted spreadsheet cell is a realistic source', () => {
+        expect(parseAccountGrantIds(`${ACCOUNT_A}, ${ACCOUNT_B}`)).toEqual([ACCOUNT_A, ACCOUNT_B]);
+    });
+
+    test('a delivery campaign sends the allowlist too, unlike scopes which it always blanks', () => {
+        const payload = buildVoucherPayload({
+            ...blankForm(),
+            code: 'FREEDEL',
+            title: 'Free delivery',
+            voucherKind: 'delivery_campaign',
+            benefitClass: 'free_delivery',
+            accountGrantIdsText: ACCOUNT_A
+        });
+        expect(payload.scopes).toEqual([]);
+        expect(payload.account_grant_ids).toEqual([ACCOUNT_A]);
+    });
+
+    test('voucherToForm round-trips the allowlist back into the textarea, one per line', () => {
+        const form = voucherToForm(
+            { voucher_id: 1, code: 'B2B', title: 'B2B', benefit_class: 'percent_off', percent_off_bps: 1000, version: 0, status: 'active' },
+            [],
+            [ACCOUNT_A, ACCOUNT_B]
+        );
+        expect(form.accountGrantIdsText).toBe(`${ACCOUNT_A}\n${ACCOUNT_B}`);
+        expect(buildVoucherPayload({ ...percentOffForm(), ...form }).account_grant_ids).toEqual([ACCOUNT_A, ACCOUNT_B]);
+    });
+
+    test('voucherToForm tolerates a server response with no account_grant_ids key', () => {
+        const form = voucherToForm(
+            { voucher_id: 1, code: 'OPEN', title: 'Open', benefit_class: 'percent_off', percent_off_bps: 1000, version: 0, status: 'active' },
+            []
+        );
+        expect(form.accountGrantIdsText).toBe('');
+    });
+
+    test('a malformed id is caught locally, before a round trip', () => {
+        const errors = validateFormLocally(percentOffForm({ accountGrantIdsText: 'not-a-uuid' }));
+        expect(errors.map((entry) => entry.field)).toContain('account_grant_ids');
+    });
+
+    test('restricted + publicly listed is caught locally, mirroring the server 422', () => {
+        const errors = validateFormLocally(percentOffForm({
+            accountGrantIdsText: ACCOUNT_A,
+            isPubliclyListed: true
+        }));
+        expect(errors.map((entry) => entry.field)).toContain('account_grant_ids');
+    });
+
+    test('publicly listed WITHOUT a restriction raises no error', () => {
+        const errors = validateFormLocally(percentOffForm({ isPubliclyListed: true }));
+        expect(errors.map((entry) => entry.field)).not.toContain('account_grant_ids');
     });
 });

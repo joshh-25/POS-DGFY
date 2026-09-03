@@ -58,9 +58,18 @@ const VoucherRedemption = sequelize.define('VoucherRedemption', {
     onDelete: 'SET NULL'
   },
   // Landlord-side account pointer. Non-authoritative, no FK, and NULL for the whole POS half by
-  // design -- #454 decision 6 makes POS redemption identity-free.
+  // design -- #454 decision 6 makes POS redemption identity-free (re-verified 2026-09-03 for #788:
+  // posUseCases.js still passes `storeCustomerId: null` and no account identity of any kind; ADR
+  // 0066's 2026-08-20 amendment narrowed that decision only as far as a free-typed customer NAME).
+  //
+  // #788 (Phase 269): retyped INTEGER -> UUID. `DgfyAccount.id` is a UUID and always has been, so
+  // the original INTEGER declaration could never have held a real account id -- MySQL would have
+  // coerced the UUID string to 0 (or errored under strict mode). Latent rather than live: nothing
+  // in this repo ever wrote this column, so every existing row is NULL and the retype is lossless.
+  // Written for the first time by this phase, from the storefront's authenticated
+  // `store_customers.dgfy_account_id` (itself a UUID).
   dgfy_account_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: true
   },
   code_snapshot: {
@@ -147,7 +156,11 @@ const VoucherRedemption = sequelize.define('VoucherRedemption', {
     { name: 'idx_voucher_redemptions_channel', fields: ['channel'] },
     { name: 'idx_voucher_redemptions_reversal_of', fields: ['reversal_of_redemption_id'] },
     { name: 'idx_voucher_redemptions_location', fields: ['location_id'] },
-    { name: 'idx_voucher_redemptions_cashier', fields: ['cashier_user_id'] }
+    { name: 'idx_voucher_redemptions_cashier', fields: ['cashier_user_id'] },
+    // #788: answers "has this account already redeemed this voucher?" -- the per-customer read the
+    // account-restriction feature makes meaningful for the first time, and the index #606
+    // (per-customer limits) will need as-is when it lands.
+    { name: 'idx_voucher_redemptions_account', fields: ['dgfy_account_id', 'voucher_id'] }
   ]
 });
 

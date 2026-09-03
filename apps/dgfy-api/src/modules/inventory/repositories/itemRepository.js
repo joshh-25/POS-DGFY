@@ -2228,6 +2228,78 @@ export const itemRepository = {
 
         return itemRepository.getItemById(itemId);
     },
+    // #1495 Part B (CSV sync import): a bulk-import-safe sibling of restoreItem above, not a
+    // replacement for it. Two deliberate differences, both driven by what a CSV row can match:
+    //
+    //   1. restoreItem gates on `deleted_at` and rejects a row that was merely deactivated by a
+    //      plain PUT (status 'inactive', deleted_at still null) as "not deleted". That shape is a
+    //      perfectly ordinary match target for an import row, so this method gates on the
+    //      *effective* deactivated state -- status 'inactive' OR deleted_at set -- and clears both.
+    //   2. It returns a boolean rather than re-reading the item, because the CSV import path
+    //      immediately applies its own field update to the row afterwards; a getItemById per
+    //      reactivated row would be a wasted query per row on a bulk import.
+    //
+    // Identical to restoreItem on the part that actually matters: reactivation re-materializes the
+    // generated active_sku_code column (NULL while deleted_at IS NOT NULL OR status IN
+    // ('draft','inactive')), so uq_items_active_sku_code can fire against a *different* currently-
+    // active item already holding that SKU. That write goes through the same
+    // normalizeSkuConflictError normalization every other create/update/finalize/restore path uses,
+    // so the caller sees the same 409 instead of a raw SequelizeUniqueConstraintError.
+    async reactivateItem(itemId, userId) {
+        const Item = dbStore.get('Item');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
+        let reactivated = false;
+
+        await sequelize.transaction(async (transaction) => {
+            const item = await Item.findOne({
+                where: { item_id: itemId },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!item) {
+                throw notFoundError('Item not found');
+            }
+
+            const previousStatus = item.status;
+            if (previousStatus !== 'inactive' && !item.deleted_at) {
+                // Already visible. Not an error: an item restored by hand between the import
+                // preview and its confirm is a benign race, and the caller still has field updates
+                // to apply either way. Report "nothing reactivated" rather than throwing.
+                return;
+            }
+
+            try {
+                await item.update({
+                    status: 'active',
+                    deleted_by: null,
+                    deleted_at: null
+                }, { transaction });
+            } catch (error) {
+                throw normalizeSkuConflictError(error);
+            }
+
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'RESTORE',
+                eventType: 'item_reactivated',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    sku_code: item.sku_code,
+                    previous_status: previousStatus,
+                    status: 'active',
+                    source: 'csv_import'
+                },
+                transaction
+            });
+
+            reactivated = true;
+        });
+
+        return reactivated;
+    },
     async getItemStockHistory(itemId, queryParams = {}) {
         const Item = dbStore.get('Item');
         const StockMovement = dbStore.get('StockMovement');

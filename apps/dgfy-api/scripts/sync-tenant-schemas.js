@@ -476,6 +476,19 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         is_publicly_listed: Object.freeze({
             sql: "ALTER TABLE `vouchers` ADD COLUMN `is_publicly_listed` TINYINT(1) NOT NULL DEFAULT 0"
         }),
+        // #788 (Phase 269): the derived gate for account-restricted issuance. Kept in lockstep with
+        // migration 20260908000001-add-voucher-account-restriction.cjs -- DDL string must stay
+        // string-identical (addVoucherAccountRestriction.migration.test.js).
+        //
+        // That migration's THIRD change -- retyping `voucher_redemptions.dgfy_account_id` from INT
+        // to CHAR(36) -- has deliberately NO entry here: this registry's repair pass is
+        // column-PRESENCE based only and has no notion of a type mismatch on a column that already
+        // exists, the same documented limitation as the ENUM widenings noted below. A tenant that
+        // misses the migration keeps the INT column, which is its pre-#788 state; the storefront's
+        // new write would fail loudly there rather than silently mis-recording an account id.
+        is_account_restricted: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `is_account_restricted` TINYINT(1) NOT NULL DEFAULT 0"
+        }),
         // #1331 (Phase 240, epic #1321 decision 9): two additive columns for the benefit-target axis
         // and the free_delivery benefit class's own amount. Kept in lockstep with migration
         // 20260904000001-add-delivery-voucher-benefit.cjs -- DDL strings must stay string-identical
@@ -1503,9 +1516,36 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `voucher_scopes_ibfk_1` FOREIGN KEY (`voucher_id`) REFERENCES `vouchers` (`voucher_id`) ON DELETE CASCADE\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
+    // #788 (Phase 269): the DGFY-account allowlist for an account-restricted voucher. Declared
+    // after `voucher_scopes` and before `voucher_redemptions`, keeping this block in FK-dependency
+    // order -- its only FK is to `vouchers`, declared above.
+    //
+    // `dgfy_account_id` is CHAR(36) with NO foreign key: `dgfy_accounts` lives in the LANDLORD
+    // database while this table is tenant-scoped, so the reference is not expressible as an FK
+    // (ADR 0052) -- the same posture `voucher_redemptions.dgfy_account_id` below already takes.
+    // Kept string-identical to migration 20260908000001-add-voucher-account-restriction.cjs's own
+    // CREATE TABLE body (addVoucherAccountRestriction.migration.test.js asserts the identity).
+    voucher_account_grants: Object.freeze({
+        sql: "CREATE TABLE `voucher_account_grants` (\n"
+            + "  `voucher_account_grant_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `voucher_id` int NOT NULL,\n"
+            + "  `dgfy_account_id` char(36) NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`voucher_account_grant_id`),\n"
+            + "  UNIQUE KEY `uq_voucher_account_grants_voucher_account` (`voucher_id`,`dgfy_account_id`),\n"
+            + "  KEY `idx_voucher_account_grants_account` (`dgfy_account_id`),\n"
+            + "  CONSTRAINT `voucher_account_grants_ibfk_1` FOREIGN KEY (`voucher_id`) REFERENCES `vouchers` (`voucher_id`) ON DELETE CASCADE\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     // The redemption ledger - authoritative, append-only (no `updated_at`). `idempotency_key` is
     // NOT NULL UNIQUE and its row is inserted before the counter UPDATE, so a replay is rejected
     // here rather than double-counting. `dgfy_account_id` is a landlord-side pointer with no FK.
+    //
+    // #788 (Phase 269): `dgfy_account_id` reads `char(36)` below, not `int`. That is the CORRECTED
+    // type -- `DgfyAccount.id` is a UUID and always has been, so the original `int` snapshot could
+    // never have held one. Nothing ever wrote the column before Phase 269, so no data was affected;
+    // existing tenants are retyped by that phase's migration, and this string is what a NEW tenant
+    // gets. See that migration's header for the full verification.
     voucher_redemptions: Object.freeze({
         sql: "CREATE TABLE `voucher_redemptions` (\n"
             + "  `voucher_redemption_id` int NOT NULL AUTO_INCREMENT,\n"
@@ -1517,7 +1557,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `cashier_user_id` int DEFAULT NULL,\n"
             + "  `terminal_id` varchar(100) DEFAULT NULL,\n"
             + "  `store_customer_id` int DEFAULT NULL,\n"
-            + "  `dgfy_account_id` int DEFAULT NULL,\n"
+            + "  `dgfy_account_id` char(36) DEFAULT NULL,\n"
             + "  `code_snapshot` varchar(64) NOT NULL,\n"
             + "  `benefit_config_snapshot` json NOT NULL,\n"
             + "  `subtotal_centavos` bigint NOT NULL DEFAULT '0',\n"
@@ -1543,6 +1583,9 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `idx_voucher_redemptions_reversal_of` (`reversal_of_redemption_id`),\n"
             + "  KEY `idx_voucher_redemptions_location` (`location_id`),\n"
             + "  KEY `idx_voucher_redemptions_cashier` (`cashier_user_id`),\n"
+            // #788 (Phase 269): the per-account read this feature makes meaningful for the first
+            // time -- and the index #606 (per-customer voucher limits) will need unchanged.
+            + "  KEY `idx_voucher_redemptions_account` (`dgfy_account_id`,`voucher_id`),\n"
             + "  CONSTRAINT `voucher_redemptions_ibfk_1` FOREIGN KEY (`voucher_id`) REFERENCES `vouchers` (`voucher_id`),\n"
             + "  CONSTRAINT `voucher_redemptions_ibfk_2` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE SET NULL,\n"
             + "  CONSTRAINT `voucher_redemptions_ibfk_3` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL,\n"
@@ -2156,6 +2199,14 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         idx_voucher_redemptions_cashier: Object.freeze({
             sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_cashier` (`cashier_user_id`)"
+        }),
+        // #788 (Phase 269): added alongside the column retype in migration
+        // 20260908000001-add-voucher-account-restriction.cjs. Unlike that migration's retype (which
+        // this registry structurally cannot repair -- see the note on
+        // REQUIRED_TENANT_SCHEMA_COLUMNS.vouchers.is_account_restricted), an index IS
+        // presence-repairable, so a tenant restored from a pre-#788 snapshot self-heals this one.
+        idx_voucher_redemptions_account: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_account` (`dgfy_account_id`,`voucher_id`)"
         })
     }),
     voucher_redemption_lines: Object.freeze({

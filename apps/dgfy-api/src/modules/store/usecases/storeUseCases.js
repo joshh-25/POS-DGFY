@@ -452,6 +452,17 @@ const serializeOrderBase = (order) => ({
     items: serializeOrderLines(order)
 });
 
+// #1492: the order's own voucher_redemptions rows (entry_type: 'redemption'), projected to the
+// fields a staff-facing order view actually needs -- the internal ledger row id stays out of it,
+// voucher_id is the only identifier exposed (an FK, not PII, unlike delivery_fee_waiver_voucher_id's
+// own withholding reasoning below which is about a PUBLIC page specifically).
+const serializeAppliedVoucher = (row) => ({
+    voucher_id: row?.voucher_id ?? null,
+    code: row?.code_snapshot ?? null,
+    benefit_target: row?.benefit_config_snapshot?.benefit_target === 'delivery' ? 'delivery' : 'items',
+    discount_amount: row?.discount_centavos != null ? round4(Number(row.discount_centavos) / 100) : null
+});
+
 const serializeOrderForCustomer = (order) => ({
     ...serializeOrderBase(order),
     customer_name: order?.customer_name,
@@ -459,7 +470,13 @@ const serializeOrderForCustomer = (order) => ({
     customer_email: order?.customer_email,
     delivery_address: order?.delivery_address,
     delivery_latitude: order?.delivery_latitude,
-    delivery_longitude: order?.delivery_longitude
+    delivery_longitude: order?.delivery_longitude,
+    // #1492: deliberately NOT added to serializeOrderBase, which serializeOrderForPublicTracking
+    // also spreads -- an authenticated-surface-only field, same posture as this function's other
+    // customer-account-only fields above (name/phone/email/address are also absent from the base).
+    applied_vouchers: Array.isArray(order?.voucherRedemptions)
+        ? order.voucherRedemptions.map(serializeAppliedVoucher)
+        : []
 });
 
 const serializeOrderForPublicTracking = (order) => {
@@ -2075,12 +2092,26 @@ const resolveCheckoutContext = async ({
         );
     }
 
+    // #788 (Phase 269): the authenticated buyer's landlord-side DGFY account id, or null.
+    //
+    // `storeCustomer.dgfy_account_id` is set by storeAuth.js on a DGFY-authenticated session and is
+    // NULL for two distinct cases this feature has to keep distinguishable from an eligible buyer:
+    // a pure guest (no `storeCustomer` at all, #622's guest-checkout path) and a native
+    // store_customer who signed up with email/password and never linked a DGFY account. Both land
+    // as null here, so both get VOUCHER_ACCOUNT_REQUIRED -- a clear, actionable 422 naming the
+    // missing sign-in, never a silent failure or a generic "invalid code".
+    //
+    // Threaded onto the SHARED voucher context rather than passed only to the redeem call, because
+    // the preview/quote path and the auto-apply selector both read this same object -- a buyer must
+    // see the same answer at quote time that checkout will enforce.
+    const dgfyAccountId = String(storeCustomer?.dgfy_account_id || '').trim() || null;
     const voucherContext = {
         channel: 'storefront',
         fulfillmentMethod: orderMethod,
         orderTiming: scheduledFor ? 'scheduled' : 'asap',
         subtotalCentavos: toCentavos(prepared.subtotalAmount),
         quantity: prepared.preparedLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
+        dgfyAccountId,
         affiliatePricing
     };
     const voucherLines = prepared.preparedLines.map((line) => ({
@@ -2113,6 +2144,9 @@ const resolveCheckoutContext = async ({
                 idempotencyKey: normalized.idempotency_key,
                 channel: 'storefront',
                 storeCustomerId: storeCustomer?.customer_id || null,
+                // #788: written to voucher_redemptions.dgfy_account_id -- the per-customer half of
+                // #586's tracking model, populated for the first time by this phase.
+                dgfyAccountId,
                 locationId: normalized.location_id,
                 transaction: options.transaction
             });
@@ -2371,6 +2405,9 @@ const resolveCheckoutContext = async ({
                 idempotencyKey: `${normalized.idempotency_key}:delivery`,
                 channel: 'storefront',
                 storeCustomerId: storeCustomer?.customer_id || null,
+                // #788: written to voucher_redemptions.dgfy_account_id -- the per-customer half of
+                // #586's tracking model, populated for the first time by this phase.
+                dgfyAccountId,
                 locationId: normalized.location_id,
                 transaction: options.transaction
             })
@@ -2500,6 +2537,9 @@ const resolveCheckoutContext = async ({
                                 idempotencyKey: `${normalized.idempotency_key}:delivery-auto`,
                                 channel: 'storefront',
                                 storeCustomerId: storeCustomer?.customer_id || null,
+                                // #788: written to voucher_redemptions.dgfy_account_id -- the per-customer half of
+                                // #586's tracking model, populated for the first time by this phase.
+                                dgfyAccountId,
                                 locationId: normalized.location_id,
                                 transaction: options.transaction
                             })
@@ -2581,6 +2621,9 @@ const resolveCheckoutContext = async ({
                             idempotencyKey: `${normalized.idempotency_key}:delivery-auto`,
                             channel: 'storefront',
                             storeCustomerId: storeCustomer?.customer_id || null,
+                            // #788: written to voucher_redemptions.dgfy_account_id -- the per-customer half of
+                            // #586's tracking model, populated for the first time by this phase.
+                            dgfyAccountId,
                             locationId: normalized.location_id,
                             transaction: options.transaction
                         });

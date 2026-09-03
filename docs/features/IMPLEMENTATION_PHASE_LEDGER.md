@@ -19260,3 +19260,457 @@ Completion date: 2026-09-03.
 
 **265.** Re-check the ledger's highest merged entry and every open phase claim at plan/branch time;
 do not rely on this reservation if another phase lands first.
+
+## Phase 265 - Show which voucher was applied on the order list/detail (#1492)
+
+### Initiative and release
+
+Standalone task, not part of a multi-PR sequence. Branch `feature/1492-order-voucher-visibility`,
+cut fresh from `origin/develop` (merge-base `c7e601c17`, one merge past this ledger's own Phase 262
+entry -- #1513 "fix(pos): run min_spend_centavos validation for promo_code vouchers too", unrelated
+to this diff). **Numbering note**: this entry's own "Next eligible phase" note above states 263;
+this phase was dispatched as **265** by a multi-agent coordinator running several phases in parallel
+against this repo, which reserves phase numbers via its own claim ledger external to this file
+(263/264 reserved for other concurrently in-flight work, not yet visible here since neither has
+merged -- PR #1514 "feat(pos): delivery run summary" on `feature/1487-delivery-run-summary`, still
+open at branch time, is one such phase). Re-verified immediately before this entry was written that
+this file's own merged tip was still 262 and no open PR had yet claimed 263, 264, or 265 by landing
+a ledger entry -- per `AGENTS.md`'s Continuous Phase Numbering rule, this file and visible in-flight
+PRs are authoritative, not an external claim alone; if 263-264 land with different content than
+assumed here before this PR merges, this entry's number may need the same kind of renumbering
+Phase 262's own history above already documents.
+
+**Resolved at merge time** (this branch's conflict fix against fresh `origin/develop`, per the
+sibling task that also produced this merge): 263 landed as the Accounting-role phase (#1493, PR
+#1516), not #1514 as guessed above -- #1514 ("feat(pos): delivery run summary", PR #1514) merged
+into `develop` without adding its own ledger entry, so 264 is currently unclaimed. This entry keeps
+its dispatched number, **265**, rather than renumbering down to fill that gap: unlike Phase 262's
+collision (a real duplicate claim on the same number), 265 does not collide with anything actually
+on `develop`, so there is nothing forcing a renumber here -- only a now-confirmed gap at 264 for a
+future phase (or a back-filled #1514 entry) to close.
+
+### Objective and scope
+
+Issue #1492 (child of epic #453): show which voucher (if any) was applied to an order, on the
+authenticated order list/detail surfaces (POS transaction history, the incoming online-order queue,
+and the online-order detail modal -- all three live under `packages/web-core/src/features/pos/`,
+the shared trunk `apps/dgfy-pos` and `apps/dgfy-ims` both mount, per
+`docs/architecture/apps-layout-migration.md`). Deliberately **not** the public, PIN-addressable
+customer tracking page -- see the compliance declaration's "Affected Surfaces" §3 for why that
+withholding is preserved rather than incidentally undone.
+
+Corrections the task's own pre-brief exploration made to the ticket's literal wording, verified
+against the actual code before implementing (re-verification, not blind trust, per the brief's own
+"re-verify tip is free at PR time" instruction) -- one of the four corrections did not hold and was
+dropped rather than implemented anyway:
+
+- **Confirmed still true**: no item-axis voucher column exists on `PosTransaction` -- only
+  `delivery_fee_waiver_voucher_id`/`_label_snapshot`; the item-axis voucher rides the generic
+  `discount_label_snapshot`/`discount_amount`/`discount_rate_snapshot` columns (shared with any
+  other POS discount type), and `voucher_redemptions` is the real, unambiguous source of truth
+  (ADR 0066 Decision 4).
+- **Did NOT hold, dropped**: the brief stated no `PosTransaction`⟷`VoucherRedemption` Sequelize
+  association existed and instructed adding one to `models/index.js`. `git blame` on the exact line
+  showed `PosTransaction.hasMany(VoucherRedemption, { foreignKey: 'pos_transaction_id', as:
+  'voucherRedemptions' })` already committed 2026-08-18 (unrelated Phase 240/#1331 work, well before
+  this phase). No association was added -- adding a second one would have thrown a duplicate-alias
+  error at Sequelize init.
+- **Confirmed still true**: the three named backend seams (`storeUseCases.js`'s order serializers,
+  `posRepository.js`'s `listTransactions`, `posUseCases.js`'s per-row decoration) and the three named
+  frontend render targets were all real and each needed the described widening -- detailed file-list
+  in the compliance declaration's "Scope" section, not repeated here.
+- **Refined, not overturned**: the brief pointed at `serializeOrderBase` for "the authenticated order
+  list" widening. Tracing every call site showed `serializeOrderBase` is *only* ever consumed via two
+  wrapper functions, `serializeOrderForCustomer` (authenticated) and `serializeOrderForPublicTracking`
+  (public) -- so the actual authenticated-only widening point is `serializeOrderForCustomer`, which
+  is what the brief's own forbidding language ("never the public tracking endpoint") already implied
+  once traced through; widening `serializeOrderBase` itself would have leaked the new field onto the
+  public page the same brief explicitly forbade touching.
+### Status
+
+`completed`
+
+### Dependencies
+
+Phase 240/#1331 (delivery-axis voucher benefit + the `PosTransaction`⟷`VoucherRedemption`
+association this phase reads from, unmodified) and Phase 105/#455 + Phase 242/#1390 (the storefront
+voucher redemption ledger and its `pos_transaction_id` attachment, which is what populates the data
+this phase now surfaces).
+
+### Acceptance and validation evidence
+
+- `node --check` on every changed `apps/dgfy-api` file (0 errors) -- that app's own `build` script is
+  a no-op, so this is the real Tier 0 check there.
+- `npm run build:pos` -- OK, real Vite build (this app mounts `POSTransactionHistoryPanel.jsx`/
+  `IncomingQueueOrderList.jsx`/`OnlineOrderDetailsModal.jsx`/`orderFulfillmentUi.js` via
+  `packages/web-core`).
+- `npm run build:skupervisor` -- OK, real Vite build (same shared trunk, mounted by `apps/dgfy-ims`).
+- `npm run check:compliance` -- confirmed to fail first (listing 8 sensitive files), then pass once
+  `docs/compliance/impact-declarations/2026-09-08-order-voucher-visibility.md` was added; also runs
+  `check-compliance-api-contracts.js`, which passed unmodified.
+- `npm run lint:docs` (chains `check:adr --strict`) -- OK, 29 governed docs / 87 ADRs validated (the
+  new compliance declaration's `related_adr` citation included).
+- `npm run check:architecture` (`check-architecture-guardrails` + `check-controller-boundaries`,
+  run directly from `apps/dgfy-api` since neither script has an external dependency) -- OK, 54
+  modules / 560 files, 94 controllers, zero new allowlist entries or unauthorized model imports.
+- **Known gap, stated rather than hidden**: no automated test was added for this phase (a pure
+  display/read-path widening with no new business logic) -- see the compliance declaration's own
+  "Verification Evidence" section for the full reasoning and what a future extension should add.
+
+### Deviations from the plan
+
+None of substance beyond the one dropped correction (the already-existing model association) named
+under "Objective and scope" above.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration, no new/changed Sequelize association, no deploy dispatch, no SSH, no
+force-push/branch deletion, no `staging`/`main` base. PR base is `develop`, branch prefix `feature/`
+per `.github/branch-cleanup-policy.json`.
+**Fired**: `check:compliance`'s missing-declaration checkpoint (major classification) -- the
+declaration was drafted and the checkpoint satisfied without pausing to ask, per Pat's standing
+preference (draft + self-verify, then straight to commit/push/PR, recorded from prior sessions).
+
+### Links
+
+- Issue: #1492 (Closes). Child of epic #453.
+- PR: `feature/1492-order-voucher-visibility` → `develop`.
+- Modified/added: `apps/dgfy-api/src/modules/store/repositories/storeRepository.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `packages/web-core/src/features/pos/components/orderFulfillmentUi.js`,
+  `packages/web-core/src/features/pos/components/POSTransactionHistoryPanel.jsx`,
+  `packages/web-core/src/features/pos/components/OnlineOrderDetailsModal.jsx`,
+  `packages/web-core/src/features/pos/components/IncomingQueueOrderList.jsx`,
+  `docs/compliance/impact-declarations/2026-09-08-order-voucher-visibility.md` (new),
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+**266.** 263 (#1493) and 265 (this entry) are both now merged into `develop`; 264 is confirmed free
+(see the Numbering note above). Re-check the ledger's actual highest merged entry and every open
+PR's phase claim at plan time regardless -- per this ledger's own recurring caution, don't trust
+this note alone.
+
+## Phase 267 - CSV sync import: upsert + deactivate-not-delete (#1495 Part B)
+
+### Initiative and release
+
+Part B of #1495, the sync-mode half. Part A (the merchant-facing deactivate/restore concept #1495's
+own scope names as a prerequisite) shipped as **Phase 259**; this entry consumes it rather than
+rebuilding it.
+
+**Numbering note.** The ledger's highest merged entry on `origin/develop` at branch time was
+**Phase 262** (#1490/#1494, PR #1507), and `gh pr list --state open` returned zero open PRs, so no
+phase claim was visible above it. **263-266 are claimed by four sibling phases in the same
+coordinated batch**, none of which had opened a PR when this branch was cut -- hence **267**, not
+263. Re-verify against `origin/develop`'s actual tip at PR time; Phase 262's own history (257 →
+259 → 262) is the standing cautionary example for why a phase number is confirmed fresh rather than
+trusted from an earlier check.
+
+### Objective and scope
+
+Two genuinely separate deliverables landed together, because the first is a prerequisite for the
+second being safe:
+
+**1. The existing-SKU lookup bug (a live data-corruption defect, fixed in BOTH modes).**
+`csvImportService.js`'s existing-SKU lookup was scoped
+`buildVisibleWhere({ status: { [Op.in]: ['active', 'draft'] } })`, and `buildVisibleWhere` also pins
+`deleted_at: null`. A deactivated item was therefore invisible to the lookup and its SKU classified
+`CREATE`. Because `active_sku_code` is a generated STORED column that is NULL whenever
+`deleted_at IS NOT NULL OR status IN ('draft','inactive')`
+(`20260418000002-add-active-sku-unique-constraint.cjs`), `uq_items_active_sku_code` never fired on
+the insert either -- so **re-importing a previously deactivated SKU silently created a second,
+duplicate item row**. This is worse than #1495's "append-only" framing suggests: today's importer
+actively corrupts data on re-import, it does not merely fail to reconcile.
+
+Fixed by loading the lookup **unscoped** (`loadExistingItemIndex`) and partitioning in JS, with
+explicit, deterministic precedence (`existingItemPrecedence`: active > draft > inactive > deleted)
+so an active row always wins over an inactive row holding the same SKU -- a pairing that already
+exists in production data *because of this bug*, and whose winner was previously whatever order
+`findAll` happened to return. A matched-but-deactivated SKU is now classified **`REACTIVATE`**, a
+third action alongside CREATE/UPDATE, and routed through a conflict-safe status flip before its
+CSV fields are written. **This half is deliberately not gated on sync mode** -- it is the
+correctness fix for a live defect on the default (append) path, and it also applies to the PDF
+menu-import path, which shares `confirmItemsImportUseCase`.
+
+`itemRepository.reactivateItem` (new) is a sibling of Phase 259's `restoreItem`, not a replacement:
+`restoreItem` gates on `deleted_at` and rejects a row merely deactivated by a plain PUT
+(`status: 'inactive'`, `deleted_at` still null) as "not deleted", which is an ordinary match target
+for a CSV row. `reactivateItem` gates on the *effective* deactivated state and clears both fields.
+It reuses `normalizeSkuConflictError` -- the exact guard Phase 259's `restoreItem` applies -- because
+reactivation re-materializes `active_sku_code` and can collide with a different currently-active
+item holding that SKU; that surfaces as the same 409 every other write path produces, reported as a
+row failure rather than a silent no-op.
+
+**2. Sync mode (`mode: 'sync' | 'append'`, default `append`).** Deactivates currently-active items
+whose SKU is absent from the uploaded file, via the **existing** `deleteItem` path (reused, not
+reimplemented -- which is what brings its referential-integrity guards along: an item still used as
+an ingredient in an active product, or referenced by a non-archived PO/JO, is reported as
+`deactivationSkipped` with the reason, never force-deactivated). Never a hard delete.
+
+Six safety properties, each a deliberate decision rather than a default:
+
+- **The preview gate is server-enforced.** A sync-mode confirm with no `deactivateSkus` array is
+  refused (`SYNC_DEACTIVATION_NOT_ACKNOWLEDGED`). An empty array is a valid acknowledgement meaning
+  "nothing to deactivate"; a *missing* one means this confirm never went through a preview.
+- **Intersection semantics.** Confirm re-derives the absent set server-side from a pre-write
+  snapshot AND intersects it with the acknowledged list. The server-derived set caps a client
+  asking for more than is actually absent; the acknowledged set caps anything that became absent
+  between preview and confirm (TOCTOU) and was therefore never shown to the user. Only a SKU in
+  BOTH is deactivated -- the acknowledged list can narrow, never widen.
+- **Presence, not validity, spares an item.** The present-SKU set is built from every row in the
+  file including rows that failed validation. A typo'd row is still a row the merchant intends to
+  keep; deactivating it over a validation error would be silent data loss.
+- **Drafts and SKU-less rows are excluded** from the deactivation candidate set. An unpublished
+  draft was never expected to appear in the spreadsheet (and `deleteItem` would destroy its draft
+  state); a row with no SKU cannot be represented in the file at all, so its absence proves nothing.
+- **Sync requires `items:delete` on top of `items:import`** (403 `SYNC_IMPORT_FORBIDDEN`, checked on
+  both preview and confirm). Without this, anyone who could import could deactivate the whole
+  catalog through a CSV -- a strictly wider blast radius than the single-item deactivate route.
+- **Deactivation runs last**, after every create/update/reactivate in the import has been attempted,
+  against a snapshot taken before any write -- so an item this same import created can never be
+  caught by it.
+
+Frontend: an explicit import-mode radio on the upload step (append preselected), a fifth preview
+tile plus the full deactivation table and a required acknowledgement checkbox that gates the Confirm
+button, and reactivated/deactivated/skipped buckets on the result step. Changing mode after a
+preview invalidates it and returns to step 1 -- a stale deactivation list is the one thing this flow
+must never let a user confirm against.
+
+**Deliberately out of scope, stated rather than implied:**
+- Per-item "blocked by an active reference" flags in the *preview*. Detecting them would mean
+  duplicating `deleteItem`'s three include-heavy guard queries in the CSV service, and that
+  duplicate would drift. `deleteItem` stays authoritative at execute time and blocked items are
+  reported as skipped, with the preview stating plainly that this can happen.
+- Folder memberships. Phase 257 (#1318) did not wire CSV import to `ItemFolderMembership`, and this
+  phase does not either -- that surface belongs to #1318's own follow-up.
+- Any percentage/absolute cap on how much of a catalog one sync may deactivate. The preview gate
+  plus intersection already prevent an unseen deactivation, and a cap would block a legitimate
+  full-catalog replacement. Flagged here as a possible future guard, not silently omitted.
+
+Files touched: `apps/dgfy-api/src/services/csvImportService.js`,
+`apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`,
+`apps/dgfy-api/src/modules/inventory/usecases/reactivateItemUseCase.js` (new),
+`apps/dgfy-api/src/modules/inventory/usecases/itemCommandUseCases.js`,
+`apps/dgfy-api/src/modules/inventory/index.js`, `apps/dgfy-api/src/services/itemService.js`,
+`apps/dgfy-api/src/modules/csv/usecases/csvUseCases.js`,
+`apps/dgfy-api/src/modules/csv/controllers/itemCsvImportHandlers.js`,
+`apps/dgfy-api/tests/csvImportService.syncMode.test.js` (new),
+`packages/web-core/src/hooks/useCSVImport.js`,
+`packages/web-core/Components/items/CSVImportModal.jsx`.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+- **Phase 259 (#1495 Part A)** -- required, and merged. `reactivateItem` is modelled directly on its
+  `restoreItem`, reuses its `normalizeSkuConflictError` guard, and `deleteItem`/`restoreItem` are
+  the deactivate/reactivate concept #1495's scope named as a prerequisite for this half.
+- **Phase 257 (#1318)** -- no dependency; folder memberships are explicitly out of scope above.
+- No migration and no model change, so **no deploy-order dependency on any open entry in**
+  `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`. This phase reads
+  `items.active_sku_code`/`items.status`/`items.deleted_at`, all long-established columns, and adds
+  no DDL of any kind.
+- No compliance impact declaration required: no changed path matches
+  `check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES` (the frontend changes are in
+  `packages/web-core/Components/` and `src/hooks/`, not `src/features/pos/`).
+
+### Acceptance and validation evidence
+
+See the PR's `## Testing Evidence` section for the run output.
+
+### Links
+
+- Tracking issue: #1495 (`Refs`, not `Closes` -- Part A already shipped against the same issue and
+  the change needs deployed verification per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+- PR: `feature/1495-csv-sync-import` → `develop`.
+
+### Next eligible phase
+
+**268**, assuming siblings 263-266 land as claimed. Re-check the ledger's highest merged entry and
+every open PR's phase claim fresh at plan time rather than trusting this line.
+## Phase 269 - Account-restricted voucher issuance (#788)
+
+### Initiative and release
+
+Epic #453 (Vouchers), governed by ADR 0066. Part of the deferred-decision batch #783 rounds up;
+#788 itself postdates that round-up and is not listed in it.
+
+**Numbering, verified live at build time** per `AGENTS.md`'s Continuous Phase Numbering rule and
+Phase 262's own closing warning (item 263 above: re-check the merged tip *and* every open PR's
+claim fresh, never trust an earlier confirmation). Checked against `origin/develop` and the open-PR
+list on 2026-09-03: merged tip is **Phase 262**; open PRs claim **263** (#1516,
+`feature/1493-accounting-role-voucher-gating`), **265** (#1519,
+`feature/1492-order-voucher-visibility`), **267** (#1517, `feature/1495-csv-sync-import`), and
+**268** (#1515, `feat/1318-item-multi-category-ui`). **269** was assigned to this phase by the
+batch plan and was still unclaimed on that check, so it is taken as-is rather than compacted down
+into the 264/266 gaps -- renumbering into a gap would collide with whichever parallel phase in the
+same batch has not opened its PR yet.
+
+### Objective and scope
+
+**#788's own stated non-goal is "Not implementing anything here -- a decision/scope record."
+Pat explicitly overrode that: this phase builds it.**
+
+Restrict a voucher's redemption to one or more named DGFY accounts, so that holding the code is no
+longer sufficient. Two motivations from the issue, both preserved: anti-misuse of a leaked or
+shared code (#454 decision 4 makes every voucher a shared code today), and a B2B roadmap signal -- a
+voucher assignable to a specific business's account.
+
+The open design question the issue left -- *where the allowlist lives* -- is resolved as a **child
+table**, `voucher_account_grants`, structurally a twin of the existing `voucher_scopes`. That is the
+shape #454 decision 4 already anticipated ("a `voucher_codes` child table can be added later
+without migrating the campaign table"), arriving keyed on the **account** rather than on a
+per-recipient code. Per-recipient unique-code issuance stays unbuilt.
+
+Design decisions taken at build time, each recorded rather than left implicit:
+
+1. **`vouchers.is_account_restricted`, a derived gate.** `NOT NULL DEFAULT false`, written from the
+   grants array in the same transaction as the child rows, in `FORBIDDEN_FIELDS`, absent from
+   `WRITABLE_VOUCHER_COLUMNS`. Two jobs: an unrestricted voucher (nearly all of them) pays no extra
+   query on the checkout hot path, and a restricted voucher whose allowlist a caller forgot to
+   hydrate is *detectable* and fails closed rather than silently evaluating as unrestricted.
+2. **Three reason codes, not one.** `VOUCHER_ACCOUNT_REQUIRED` (guest, or a native store_customer
+   with no linked DGFY account -- actionable), `VOUCHER_ACCOUNT_NOT_ELIGIBLE` (signed in, not on the
+   list -- telling them to sign in would loop them), `VOUCHER_ACCOUNT_GRANTS_UNRESOLVED` (a caller
+   defect, never a buyer state). The no-buyer check runs **first**, so the display surfaces -- which
+   legitimately have no buyer identity and do not hydrate -- report the accurate first code rather
+   than the server-defect one.
+3. **The #622 guest-checkout interaction, answered explicitly** (the issue asks and does not
+   decide): an account-restricted voucher effectively requires login for its own redemption even on
+   a store where guest checkout is enabled. It does **not** require #622's toggle to be on. A guest
+   gets a clear 422 naming the missing sign-in, with dedicated storefront copy beside the existing
+   `GUEST_CHECKOUT_DISABLED` branch -- never a silent failure.
+4. **POS stays out of scope, verified against current code rather than inherited.** #454 decision 6
+   ("POS captures no buyer identity") was re-checked: `posUseCases.js`'s `redeemVoucher` binding
+   still passes `storeCustomerId: null` and no account identity, and ADR 0066's 2026-08-20
+   amendment narrowed that decision only as far as a free-typed customer *name*
+   (`posDiscountPolicy.js`'s `DISCOUNT_CUSTOMER_NAME_REQUIRED`). A name is not an authenticated
+   account. POS therefore fails closed through the shared check with **zero POS files changed**.
+5. **Account-restricted and publicly-listed are mutually exclusive**, refused at authoring
+   (`VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE`) on create, update, and activate, *and*
+   independently omitted from the public snapshot by the display filter. Not cosmetic:
+   `storefrontDiscoveryIndexService.js`'s projection publishes each listed voucher's literal `code`.
+6. **A latent type bug found and repaired.** `voucher_redemptions.dgfy_account_id` has been declared
+   `INTEGER` since #455/Phase 102 while `DgfyAccount.id` is a UUID -- it could never have held a real
+   account id. Verified nothing has ever written the column, so every row is NULL and the retype to
+   `CHAR(36)` is lossless. This phase is its first writer, on every storefront redemption (restricted
+   or not -- the per-customer half of #586's two-tier tracking model).
+7. **No cross-database FK, and no existence check.** `dgfy_accounts` is landlord-side (ADR 0052);
+   format validation only. An existence check via the tenant-local `store_customers` proxy was
+   considered and rejected -- it would wrongly reject a B2B account that has never ordered from the
+   store, which is #788's motivating case.
+
+**No route, permission, or role-preset file is touched.** `account_grant_ids` rides the existing
+`POST /vouchers` and `PUT /vouchers/:id` bodies exactly as `scopes` does, so `routes/vouchers.js`'s
+existing `VOUCHERS.MANAGE` gate covers it unchanged -- which also keeps this diff clear of the three
+files Phase 263 (#1493) owns in parallel.
+
+Files touched: `apps/dgfy-api/src/models/VoucherAccountGrant.js` (new),
+`apps/dgfy-api/src/models/Voucher.js`, `apps/dgfy-api/src/models/VoucherRedemption.js`,
+`apps/dgfy-api/src/models/index.js`,
+`apps/dgfy-migration-runner/migrations/20260908000001-add-voucher-account-restriction.cjs` (new),
+`apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+`apps/dgfy-api/src/modules/vouchers/domain/voucherEligibilityPolicy.js`,
+`apps/dgfy-api/src/modules/vouchers/domain/voucherErrors.js`,
+`apps/dgfy-api/src/modules/vouchers/repositories/voucherRepository.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherRedemptionUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherAutoApplyUseCases.js`,
+`apps/dgfy-api/src/modules/vouchers/usecases/voucherDisplayUseCases.js`,
+`apps/dgfy-api/src/validators/voucherValidator.js`,
+`apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+`apps/dgfy-storefront/src/shared/model/storefrontErrorMessages.js`,
+`packages/web-core/src/features/pos/utils/posCheckoutErrorMessages.js`,
+`packages/web-core/src/features/pos/components/voucherFormModel.js`,
+`packages/web-core/src/features/pos/components/VoucherManagementPanel.jsx`,
+`apps/dgfy-api/tests/addVoucherAccountRestriction.migration.test.js` (new),
+`apps/dgfy-api/tests/voucherEligibilityPolicy.unit.test.js`,
+`apps/dgfy-api/tests/voucherUseCases.usecases.test.js`,
+`apps/dgfy-api/tests/voucherRedemptionUseCases.usecases.test.js`,
+`apps/dgfy-api/tests/voucherValidator.test.js`,
+`apps/dgfy-api/tests/voucherDisplayUseCases.usecases.test.js`,
+`packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js`,
+`docs/architecture/adr/0066-voucher-sale-time-price-resolution.md` (dated Amendments block),
+`docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md` (new).
+
+### Status
+
+`in_progress`
+
+### Dependencies
+
+Depends on the voucher domain from epic #453/ADR 0066 (Phase 101-110), extended through Phase
+239-245 (delivery-targeted benefit axis, auto-apply) and Phase 262 (#1490/#1494).
+
+**Deliberately disjoint from the parallel phases in the same batch.** Phase 263 (#1493) owns
+`apps/dgfy-api/src/config/modeRolePresets.js`, `apps/dgfy-api/src/config/permissions.js`, and
+`apps/dgfy-api/src/routes/vouchers.js`; none of the three is touched here, and the feature was
+designed so none needs to be -- see "Objective and scope" above.
+
+No deploy-order dependency on any open entry in
+`docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`: the tracker's one open item
+(`OPS-TSYNC-001`/#539) is scoped to `fnb_modifier_groups`, `fnb_modifier_options`, and
+`fnb_item_modifier_groups`, none of which this migration touches.
+
+**One migration step warrants a human's eyes before it reaches a tenant DB**, and is flagged rather
+than treated as routine: the `voucher_redemptions.dgfy_account_id` INT → CHAR(36) retype. It is
+guarded on the column's current data type (so it is idempotent and a no-op on an already-CHAR(36)
+tenant), and is lossless because nothing has ever written the column -- but
+`sync-tenant-schemas.js`'s repair pass is column-*presence* based and structurally cannot repair a
+type change, so a tenant that misses this migration keeps the pre-#788 INT column. The new write
+fails loudly there rather than silently mis-recording an account.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/added `apps/dgfy-api` and `apps/dgfy-migration-runner` file
+  -- 0 errors.
+- [x] `apps/dgfy-api/tests/addVoucherAccountRestriction.migration.test.js` (new) -- 14 tests, all
+  passing; covers tenant fan-out, retype idempotence in both directions, DDL-string identity with
+  `sync-tenant-schemas.js` for the new column/table/index, and the corrected `char(36)` ledger
+  snapshot.
+- [x] `voucherEligibilityPolicy.unit.test.js` (+14), `voucherUseCases.usecases.test.js` (+14),
+  `voucherRedemptionUseCases.usecases.test.js` (+10), `voucherValidator.test.js` (+10),
+  `voucherDisplayUseCases.usecases.test.js` (+3) -- all passing.
+- [x] Broad voucher-adjacent regression run -- 40 suites, 729 tests, all passing.
+- [x] `npm run check:tenant-schema-coverage` against the new migration -- PASS.
+- [x] `npm run check:compliance` -- PASS; declaration
+  `docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md`.
+- [x] `npm run lint:docs` / `npm run check:adr` -- OK (87 ADRs, 29 governed docs).
+- [x] `packages/web-core/src/features/pos/__tests__/voucherManagementPayload.test.js` (+9, 21
+  total) and the full `packages/web-core/src/features/pos` vitest run (172 files, 1079 tests) --
+  all passing, run via `apps/dgfy-ims`'s vitest config per
+  `docs/architecture/frontend-split-sync.md`.
+- [x] `npm run build:skupervisor` and `npm run build:pos` -- both clean.
+- [ ] `npm run gate:release:local` -- not run; delegated to `promotion-quality-gate.yml` at
+  promotion time per Phase 256's closeout, not a PR-time step.
+- [ ] Migration not executed against any live database -- covered by unit tests against a
+  `queryInterface` double only. See "Dependencies" above for the one step worth a human's review.
+
+### Links
+
+- Tracking issue: #788 (`Refs`, not `Closes` -- the account-restriction path needs deployed
+  verification against a real DGFY-authenticated storefront session before it can be called done,
+  so the issue stays open through `For QA` per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule).
+- Epic: #453. Related, explicitly NOT conflated: #606 (per-customer voucher *limits* -- a quantity
+  cap, orthogonal to this audience allowlist; the `idx_voucher_redemptions_account` index added here
+  is the one it will need), #622 (guest checkout -- interaction answered in scope item 3 above),
+  #569 (B2C-now/B2B-later, not reopened -- this serves a B2B-shaped need through the existing B2C
+  mechanism, the same carve-out #454 decision 2 already makes), #586 (two-tier tracking, whose
+  per-customer half this finally populates), #446/#447 (Affiliate v2 -- #454 decision 5's
+  "affiliate identifies the affiliate; voucher identifies the campaign" question narrows slightly
+  now that a voucher can also identify a party; noted for whoever works Affiliate v2, not resolved
+  here).
+- ADR: 0066, dated `## Amendments` block added in this PR (Decisions 9 and 10, both `[default]` --
+  the cheapest correct route per ADR 0039; Decisions 3 and 4 inherited unchanged).
+- PR: `feature/788-account-restricted-vouchers` → `develop`.
+
+### Next eligible phase
+
+**270**, unless a parallel PR in this batch claims it first -- 264 and 266 are currently unclaimed
+gaps left by this batch's own number assignment and should be re-checked against the live open-PR
+list before being reused, exactly as this entry's "Numbering" note above did.
