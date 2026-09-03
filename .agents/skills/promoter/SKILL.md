@@ -36,8 +36,9 @@ role rather than bending either existing one past its charter.
 
 **Default, since #1404 (2026-09-02) — reverses ADR 0074/#980's 2026-08-25 two-stage default; see
 ADR 0074's 2026-09-02 Amendment and `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching entry:**
-`feature → develop → to-staging/<label> → staging → release/<label> → main`. `to-staging/<label>`
-cuts fresh from `origin/develop`; `release/<label>` then cuts fresh from `origin/staging`. Every
+`feature → develop → to-staging/<candidate_id> → staging → release/<candidate_id>-rN → main`.
+`to-staging/<candidate_id>` cuts fresh from `origin/develop`; `release/<candidate_id>-rN` then
+cuts fresh from the candidate's current `origin/staging`. Every
 promotion branch is a throwaway — cut fresh, no commits of its own, used once as a PR head, never
 reused. Because this leg runs on every ordinary promotion again, `staging` gets refreshed as a
 routine side effect of shipping — it is no longer relying only on the manual on-demand refresh ADR
@@ -67,6 +68,31 @@ that the prefix and base match. Full command sequence: `references/promotion-run
 Promotion PRs merge with `--merge` (a true merge commit), never `--squash` — confirmed as the
 existing convention on every prior promotion (#127, #426); squashing would diverge the target's
 history from what the next promotion diffs against.
+
+## Frozen candidate and repair loop
+
+The initial `develop` SHA is a release candidate, not a moving branch target. Use a candidate ID in
+`YYYY-MM-DD-NN` form and validate its manifest with `scripts/check-promotion-candidate.js`. Once
+`to-staging/<candidate_id>` is merged, freeze that candidate: do not re-promote a newer `develop`
+wholesale into `staging` while the candidate is being qualified.
+
+Staging failures are repaired against the candidate's latest staging SHA. The normal repair shape
+is `fix/staging/<candidate_id>-rN` cut from `origin/staging`, with a PR into `staging`; redeploy
+and re-observe the same candidate after each merge. An isolated developer fix may be cherry-picked
+with `git cherry-pick -x` after diff review. If it is mixed with newer work, recreate the narrow fix
+on the staging repair branch. Never merge `develop` wholesale into an active candidate.
+
+Code-level repair work is handed to Conduct with the candidate ID, exact staging SHA, failure
+evidence, and repair issue. Conduct may address code, tests, migrations, API/UI behavior, or CI;
+live database changes, secrets, SSH, and infrastructure operations are hard stops. The report-only
+`staging-candidate-observation.yml` workflow validates combined health, migration, API, and UI
+evidence without performing operational mutations.
+
+Only after staging observation passes may the promoter cut `release/<candidate_id>-rN` from the
+current staging SHA. A pre-main failure returns to the staging repair loop; discard the stale
+release head and recut it after staging changes. A post-main failure uses the incident/hotfix path
+on `main`, then backports the resolved main commit to `develop` once production is stable. Do not
+create a separate staging backport for a main hotfix.
 
 ## Pre-flight — run before touching any branch
 

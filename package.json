@@ -58,6 +58,8 @@
     "test:compat-seams": "node --test scripts/check-compat-seams.test.js",
     "test:conduct-model-slot": "node --test scripts/conduct-model-slot.test.js",
     "test:conduct-cleanup-policy": "node --test scripts/conduct-cleanup-policy.test.js",
+    "test:promotion-candidate": "node --test scripts/check-promotion-candidate.test.js",
+    "test:staging-observation": "node --test scripts/check-staging-candidate-observation.test.js",
     "generate:compat-inventory": "node scripts/generate-compat-inventory.js",
     "preflight:shared": "node scripts/check-hosting-profile.js --profile shared",
     "preflight:vps": "node scripts/check-hosting-profile.js --profile vps",

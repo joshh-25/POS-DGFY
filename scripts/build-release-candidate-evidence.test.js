@@ -42,9 +42,18 @@ function fixture() {
   const prEvidence = write(root, 'pr.json', { repository: 'owner/repo', number: 24, base: 'master', head: 'staging', head_sha: SHA, checks: [] });
   const qaProof = write(root, 'qa.json', { status: 'pass', target_sha: SHA, isolated: true });
   const localQualification = write(root, 'local.json', { status: 'pass', target_sha: SHA });
+  const candidateManifest = write(root, 'candidate.json', {
+    schema: 'sku-release-candidate/v1',
+    candidate_id: '2026-09-04-01',
+    status: 'qualified',
+    source_develop_sha: SHA,
+    current_staging_sha: SHA,
+    revisions: [{ kind: 'initial', sha: SHA, parent_sha: null, branch: 'to-staging/2026-09-04-01', pr: 2001 }],
+    release_revision: { revision: 1, source_staging_sha: SHA, branch: 'release/2026-09-04-01-r1', pr: 2002 },
+  });
   return {
     root,
-    options: { projectRoot: root, phase: 'promotion', targetSha: SHA, inventory, documentationClosure, regressionRiskNotice, prEvidence, qaProof, localQualification },
+    options: { projectRoot: root, phase: 'promotion', targetSha: SHA, inventory, documentationClosure, regressionRiskNotice, prEvidence, qaProof, localQualification, candidateManifest },
   };
 }
 
@@ -81,6 +90,8 @@ test('candidate evidence binds passing documentation closure and regression risk
     const evidence = buildCandidateEvidence(options);
     assert.equal(evidence.schema, 'sku-release-evidence/v2');
     assert.equal(evidence.documentation_closure.status, 'pass');
+    assert.equal(evidence.candidate.candidate_id, '2026-09-04-01');
+    assert.equal(evidence.candidate.current_staging_sha, SHA);
     assert.match(evidence.documentation_closure.report_sha256, /^[0-9a-f]{64}$/);
     assert.match(evidence.regression_risk_notice.report_sha256, /^[0-9a-f]{64}$/);
   } finally {

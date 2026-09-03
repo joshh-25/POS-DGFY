@@ -785,4 +785,28 @@ as a surprise if/when mobile work resumes.
 
 PR: (this PR). Refs #982, #304.
 
+### 2026-09-04: Frozen promotion-candidate repair loop (#1542)
+
+The three-stage default remains `develop -> staging -> main`, but a promotion is now treated as a
+frozen release candidate rather than as repeated movement of the current `develop` branch.
+
+- The promoter assigns a `YYYY-MM-DD-NN` candidate ID and records the initial `develop` SHA in a
+  `sku-release-candidate/v1` manifest. The `to-staging/<candidate_id>` merge freezes that snapshot.
+- Staging failures are repaired only from the candidate's current `staging` SHA, using disposable
+  `fix/staging/<candidate_id>-rN` branches and PRs into `staging`. An isolated fix from `develop`
+  may be cherry-picked after review; newer `develop` work is never merged wholesale into a live
+  candidate.
+- Code-level failures are handed to Conduct with exact-SHA evidence. Live database, secrets, SSH,
+  and infrastructure work remains a human stop. The report-only
+  `staging-candidate-observation.yml` workflow validates exact SHA, health, migration, API, UI,
+  and read-only evidence before a release branch is cut.
+- A failed pre-main release revision returns to staging, invalidates the old release head, and
+  recuts `release/<candidate_id>-rN` from the repaired staging head. A post-main production failure
+  uses the main hotfix path; once stable, the resolved main commit is backported to `develop`, with
+  no separate staging backport.
+
+The candidate manifest and observation validator are evidence contracts, not a replacement for the
+existing promotion PR checks, production tenant-schema report, or `AGENTS.md` Merge Safety rules.
+This is a dated amendment to `[default]` release procedure; no `[binding]` clause is changed.
+
 PR: (this PR, `ci/1431-phase-cde-zero-local-gates`). Refs #1431, #1147, #1469, #1015, #925.
