@@ -1,29 +1,14 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { ChevronRight, Minus, Plus, ShoppingCart, Trash2, X } from 'lucide-react';
 
 import { STOREFRONT_CART_MOTION } from '../../../../shared/theme/storefrontMotionTokens.js';
+import { StorefrontCartQuantityInput } from '../../../../shared/components/storefront/StorefrontCartQuantityInput.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 import { ServiceImage } from '../../ServiceImage.jsx';
 import { formatServiceNumber } from '../../servicesFormatters.js';
 import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 const resolveLineName = (line) => String(line?.variantName || line?.name || '').trim();
-
-const requestMotionFrame = (callback) => {
-  if (typeof window.requestAnimationFrame === 'function') return window.requestAnimationFrame(callback);
-  return window.setTimeout(() => callback(window.performance?.now?.() || Date.now()), 16);
-};
-
-const cancelMotionFrame = (frameId) => {
-  if (frameId === null || frameId === undefined) return;
-  if (typeof window.cancelAnimationFrame === 'function') {
-    window.cancelAnimationFrame(frameId);
-    return;
-  }
-  window.clearTimeout(frameId);
-};
-
-const easeCartMotion = (progress) => 1 - ((1 - Math.min(1, Math.max(0, progress))) ** 3);
 
 const resolveLineDetail = (line) => {
   const optionLabels = (Array.isArray(line?.selected_options) ? line.selected_options : [])
@@ -36,163 +21,6 @@ const resolveLineDetail = (line) => {
     .filter(Boolean);
   return [...new Set([...optionLabels, ...supportingLabels])].join(' · ');
 };
-
-function ServiceCartQuantityInput({ itemId, lineName, cartLineId, quantity, updateQty, onFocusChange }) {
-  const [draftQuantity, setDraftQuantity] = useState(String(quantity));
-  const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef(null);
-  const alignmentFrameRef = useRef(null);
-  const scrollFrameRef = useRef(null);
-  const scrollAnimationStateRef = useRef(null);
-
-  useEffect(() => {
-    setDraftQuantity(String(quantity));
-  }, [quantity]);
-
-  const commitQuantity = () => {
-    const nextQuantity = Number.parseInt(draftQuantity, 10);
-    if (!Number.isInteger(nextQuantity) || nextQuantity < 1) {
-      setDraftQuantity(String(quantity));
-      return;
-    }
-    setDraftQuantity(String(nextQuantity));
-    if (nextQuantity !== quantity) updateQty(itemId, nextQuantity, cartLineId);
-  };
-
-  const selectQuantity = useCallback(() => {
-    const input = inputRef.current;
-    if (!input || typeof input.setSelectionRange !== 'function') return;
-    const end = input.value.length;
-    input.setSelectionRange(0, end);
-  }, []);
-
-  const cancelInputAlignment = useCallback(() => {
-    cancelMotionFrame(alignmentFrameRef.current);
-    cancelMotionFrame(scrollFrameRef.current);
-    alignmentFrameRef.current = null;
-    scrollFrameRef.current = null;
-    scrollAnimationStateRef.current = null;
-  }, []);
-
-  const cancelScheduledAlignment = useCallback(() => {
-    cancelMotionFrame(alignmentFrameRef.current);
-    alignmentFrameRef.current = null;
-  }, []);
-
-  const keepInputVisible = useCallback(() => {
-    const input = inputRef.current;
-    if (!input) return;
-
-    cancelScheduledAlignment();
-    alignmentFrameRef.current = requestMotionFrame(() => {
-      alignmentFrameRef.current = null;
-      const scrollContainer = input.closest('[data-service-cart-lines="true"]');
-      if (scrollContainer) {
-        const containerBounds = scrollContainer.getBoundingClientRect();
-        const inputBounds = input.getBoundingClientRect();
-        const targetTop = inputBounds.top - containerBounds.top + scrollContainer.scrollTop - 12;
-        const startTop = scrollContainer.scrollTop;
-        const nextTop = Math.max(0, targetTop);
-        const activeAnimation = scrollAnimationStateRef.current;
-        if (activeAnimation) {
-          activeAnimation.targetTop = nextTop;
-          return;
-        }
-
-        const distance = nextTop - startTop;
-        if (Math.abs(distance) < 1) return;
-
-        const animationState = {
-          scrollContainer,
-          startTop,
-          targetTop: nextTop,
-          startedAt: window.performance?.now?.() || Date.now()
-        };
-        scrollAnimationStateRef.current = animationState;
-        const animateScroll = (now) => {
-          if (scrollAnimationStateRef.current !== animationState) return;
-          const progress = Math.min(1, (now - animationState.startedAt) / STOREFRONT_CART_MOTION.durationMs);
-          const animationDistance = animationState.targetTop - animationState.startTop;
-          animationState.scrollContainer.scrollTop = animationState.startTop + (animationDistance * easeCartMotion(progress));
-          if (progress < 1) {
-            scrollFrameRef.current = requestMotionFrame(animateScroll);
-          } else {
-            animationState.scrollContainer.scrollTop = animationState.targetTop;
-            scrollFrameRef.current = null;
-            scrollAnimationStateRef.current = null;
-          }
-        };
-
-        scrollFrameRef.current = requestMotionFrame(animateScroll);
-        return;
-      }
-
-      input.scrollIntoView?.({ behavior: 'smooth', block: 'start', inline: 'nearest' });
-    });
-  }, [cancelScheduledAlignment]);
-
-  useEffect(() => () => cancelInputAlignment(), [cancelInputAlignment]);
-
-  useEffect(() => {
-    if (!isFocused) return undefined;
-
-    const viewport = window.visualViewport;
-    const handleViewportResize = () => keepInputVisible();
-    const timeoutId = window.setTimeout(keepInputVisible, 250);
-    viewport?.addEventListener('resize', handleViewportResize);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      viewport?.removeEventListener('resize', handleViewportResize);
-    };
-  }, [isFocused, keepInputVisible]);
-
-  return (
-    <input
-      ref={inputRef}
-      type="text"
-      role="spinbutton"
-      aria-valuemin="1"
-      aria-valuenow={Number.parseInt(draftQuantity, 10) || quantity}
-      inputMode="numeric"
-      pattern="[0-9]*"
-      aria-label={`Quantity for ${lineName}`}
-      value={draftQuantity}
-      onBeforeInput={(event) => {
-        if (event.data && /[^0-9]/.test(event.data)) event.preventDefault();
-      }}
-      onChange={(event) => setDraftQuantity(event.target.value.replace(/[^0-9]/g, ''))}
-      onFocus={() => {
-        setIsFocused(true);
-        onFocusChange?.(true);
-        selectQuantity();
-        keepInputVisible();
-      }}
-      onClick={() => {
-        selectQuantity();
-        keepInputVisible();
-      }}
-      onBlur={() => {
-        setIsFocused(false);
-        onFocusChange?.(false);
-        cancelInputAlignment();
-        commitQuantity();
-      }}
-      onKeyDown={(event) => {
-        if (event.key.length === 1 && /[^0-9]/.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
-          event.preventDefault();
-          return;
-        }
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          commitQuantity();
-          event.currentTarget.blur();
-        }
-      }}
-      style={{ width: 42, minWidth: 24, height: 28, border: 'none', outline: 'none', background: 'transparent', color: '#0f172a', textAlign: 'center', fontSize: 14, fontWeight: 800, lineHeight: 1, padding: 0, fontFamily: 'inherit', scrollMarginBlockStart: 12 }}
-    />
-  );
-}
 
 export function ServiceCartDrawer({
   isCheckoutOpen,
@@ -440,7 +268,7 @@ export function ServiceCartDrawer({
                               </button>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: 2 }}>
-                              <div style={{ display: 'inline-grid', gridTemplateColumns: '32px minmax(24px, auto) 32px', alignItems: 'center', justifyItems: 'center', borderRadius: 999, border: `1px solid ${servicesPrimaryBorder}`, background: '#ffffff', boxShadow: '0 4px 10px rgba(15,23,42,0.04)', padding: '2px 4px', gap: 4 }}>
+                              <div style={{ display: 'inline-grid', gridTemplateColumns: '32px 42px 32px', alignItems: 'center', justifyItems: 'center', borderRadius: 999, border: `1px solid ${servicesPrimaryBorder}`, background: '#ffffff', boxShadow: '0 4px 10px rgba(15,23,42,0.04)', padding: '2px 4px', gap: 4 }}>
                                 <button
                                   type="button"
                                   aria-label={`Decrease quantity for ${lineName}`}
@@ -449,13 +277,14 @@ export function ServiceCartDrawer({
                                 >
                                   <Minus size={14} strokeWidth={2.5} />
                                 </button>
-                                <ServiceCartQuantityInput
+                                <StorefrontCartQuantityInput
                                   itemId={line.item_id}
                                   lineName={lineName}
                                   cartLineId={line.cart_line_id}
                                   quantity={quantity}
-                                  updateQty={updateQty}
+                                  onUpdateQuantity={updateQty}
                                   onFocusChange={setIsQuantityEditing}
+                                  scrollContainerSelector="[data-service-cart-lines]"
                                 />
                                 <button
                                   type="button"

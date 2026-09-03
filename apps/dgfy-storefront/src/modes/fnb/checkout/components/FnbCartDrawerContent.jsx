@@ -3,6 +3,7 @@ import { ChefHat, ChevronRight, Minus, Pencil, Plus, Trash2 } from 'lucide-react
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 import { resolveCartDiscountDisplay } from '../../../../shared/model/cartDiscountDisplay.js';
+import { StorefrontCartQuantityInput } from '../../../../shared/components/storefront/StorefrontCartQuantityInput.jsx';
 
 /**
  * F&B-owned cart drawer body. The storefront shell still owns the shared
@@ -52,7 +53,7 @@ export function FnbCartDrawerContent({
     isQuoteStale
   });
   return (              <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: isDesktopCheckout ? 'calc(100vh - 126px)' : 'calc(92vh - 122px)' }}>
-                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? '14px 16px 18px' : '16px 20px 18px', display: 'grid', gap: isMobileViewport ? 10 : 12, alignContent: 'start' }}>
+                <div data-storefront-cart-lines="true" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? '14px 16px 18px' : '16px 20px 18px', display: 'grid', gap: isMobileViewport ? 10 : 12, alignContent: 'start' }}>
                   {cart.length === 0 ? (
                     <div style={{ border: '1px dashed #cbd5e1', borderRadius: 20, background: '#f8fafc', padding: '28px 20px', minHeight: isMobileViewport ? 240 : 320, textAlign: 'center', display: 'grid', alignContent: 'center', gap: 8 }}>
                       <div style={{ fontSize: 18, fontWeight: 900, color: '#1e293b' }}>No menu item added yet</div>
@@ -165,7 +166,7 @@ export function FnbCartDrawerContent({
                                 </button>
                               ) : null}
                               <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: 2 }}>
-                                <div style={{ display: 'inline-grid', gridTemplateColumns: '32px minmax(24px, auto) 32px', alignItems: 'center', justifyItems: 'center', borderRadius: 999, border: '1px solid #e2e8f0', background: '#ffffff', boxShadow: '0 4px 10px rgba(15,23,42,0.04)', padding: '2px 4px', gap: 4 }}>
+                                <div style={{ display: 'inline-grid', gridTemplateColumns: '32px 42px 32px', alignItems: 'center', justifyItems: 'center', borderRadius: 999, border: '1px solid #e2e8f0', background: '#ffffff', boxShadow: '0 4px 10px rgba(15,23,42,0.04)', padding: '2px 4px', gap: 4 }}>
                                   <button
                                     type="button"
                                     onClick={() => updateQty(line.item_id, Math.max(0, Number(line.quantity || 1) - 1), line.cart_line_id)}
@@ -173,9 +174,13 @@ export function FnbCartDrawerContent({
                                   >
                                     <Minus size={14} strokeWidth={2.5} />
                                   </button>
-                                  <span style={{ minWidth: 24, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
-                                    {Math.max(1, Number(line.quantity || 1))}
-                                  </span>
+                                  <StorefrontCartQuantityInput
+                                    itemId={line.item_id}
+                                    lineName={line.name}
+                                    cartLineId={line.cart_line_id}
+                                    quantity={Math.max(1, Number(line.quantity || 1))}
+                                    onUpdateQuantity={updateQty}
+                                  />
                                   <button
                                     type="button"
                                     onClick={() => updateQty(line.item_id, Number(line.quantity || 1) + 1, line.cart_line_id)}
