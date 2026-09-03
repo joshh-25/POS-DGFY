@@ -9,7 +9,8 @@ import {
     applyVoucherKindDefaults,
     blankForm,
     buildVoucherPayload,
-    suggestVoucherCode
+    suggestVoucherCode,
+    validateFormLocally
 } from '../components/voucherFormModel.js';
 
 const deliveryForm = (overrides = {}) => ({
@@ -163,6 +164,40 @@ describe('#1334 applyVoucherKindDefaults', () => {
     test('R6: forces is_publicly_listed false when already switching in with auto_apply on', () => {
         const result = applyVoucherKindDefaults({ ...blankForm(), autoApply: true, isPubliclyListed: true }, 'delivery_campaign');
         expect(result.isPubliclyListed).toBe(false);
+    });
+});
+
+describe('#1506 validateFormLocally -- min_spend_centavos validates for promo_code too', () => {
+    // Mirrors deliveryForm() above, but for a minimally-valid promo_code voucher -- otherwise
+    // validateFormLocally would flag the unrelated benefit-class fields and drown out the
+    // min_spend_centavos assertions these tests actually care about.
+    const validPromoForm = (overrides = {}) => ({
+        ...blankForm(),
+        code: 'SAVE10',
+        title: 'Save 10%',
+        benefitClass: 'percent_off',
+        percentOffPercent: '10',
+        ...overrides
+    });
+
+    test('flags a negative min_spend_centavos on a promo_code voucher (the #1506 gap)', () => {
+        const errors = validateFormLocally(validPromoForm({ minSpendPesos: '-50' }));
+        expect(errors).toContainEqual({ field: 'min_spend_centavos', message: 'Minimum item subtotal cannot be negative.' });
+    });
+
+    test('does not flag a valid, non-negative min_spend_centavos on a promo_code voucher', () => {
+        const errors = validateFormLocally(validPromoForm({ minSpendPesos: '500' }));
+        expect(errors.some((error) => error.field === 'min_spend_centavos')).toBe(false);
+    });
+
+    test('an empty minSpendPesos never flags, for either voucher kind', () => {
+        expect(validateFormLocally(validPromoForm({ minSpendPesos: '' })).some((error) => error.field === 'min_spend_centavos')).toBe(false);
+        expect(validateFormLocally(deliveryForm({ minSpendPesos: '' })).some((error) => error.field === 'min_spend_centavos')).toBe(false);
+    });
+
+    test('still flags a negative min_spend_centavos on a delivery_campaign voucher (pre-existing coverage, unchanged)', () => {
+        const errors = validateFormLocally(deliveryForm({ minSpendPesos: '-1' }));
+        expect(errors).toContainEqual({ field: 'min_spend_centavos', message: 'Minimum item subtotal cannot be negative.' });
     });
 });
 
