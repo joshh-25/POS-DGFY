@@ -14,6 +14,15 @@ group-address list this run (excluding non-agent addresses like `@all`/`@idle`/`
 never hardcoded. `--default-cli` is the conducting session's own runtime, mapped to a dispatch
 agent id (section 1.3 of `SKILL.md`).
 
+Planning policy examples from Conduct's invocation contract:
+
+- `use Opus for planning` overrides `WORKER_PLANNER` only for that run.
+- `use claude sonnet for reviewing` overrides `REVIEWER` only for that run; the value must still
+  resolve through the canonical or legacy slot parser.
+- `use Opus for Heavy Planning, Sonnet for Light Planning` lets Conduct classify phase weight for
+  the Planner slot only. Builder and Reviewer remain their configured slots unless separately
+  overridden, and configured effort is preserved unless explicitly changed.
+
 | Input | Known CLIs | Default CLI | Result |
 |---|---|---|---|
 | `claude:claude-sonnet-5:high` | claude, codex, ... | claude | **Canonical.** `cli=claude`, `model=claude-sonnet-5`, `effort=high`. Segment 1 matches a known agent id. |

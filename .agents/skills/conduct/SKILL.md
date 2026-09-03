@@ -104,7 +104,42 @@ indistinguishable from a canonical one — the "verify" callout is mandatory tex
 flourish, since an inferred CLI is a guess about intent even when the mechanism itself is
 deterministic.
 
-## 1.5 Invocation-time overrides
+## 1.5 Invocation modes and target resolution
+
+Conduct is an Orca-only invocation contract. It interprets the user's invocation, resolves the
+target, and hands the resulting campaign to the freshly loaded Orca orchestration guide; it does
+not add a second executable or fallback orchestration implementation.
+
+When the first positional argument is an identifier and no explicit mode is supplied, inspect the
+GitHub object before dispatching:
+
+- An open issue selects a full Conduct campaign: plan, build, review, feedback loop, and the
+  handoff governed by the existing `pr-reviewer` policy.
+- An open pull request selects a PR-review campaign using the Reviewer slot only.
+- An identifier that is neither a usable issue nor PR is a hard stop; do not guess from a branch,
+  title, or nearby issue.
+
+Explicit modes are:
+
+```text
+/conduct campaign 1511
+/conduct pr-reviewer 1512
+/conduct waves
+/conduct waves [2,5,7]
+/conduct wave 2
+/conduct phase 15-B
+```
+
+`campaign` requires an issue or epic. `pr-reviewer` requires a PR. `waves`, `wave`, and `phase`
+resolve their umbrella and phase definitions from the current bound Orca Run/worktree context;
+they fail before dispatch when that context is absent, stale, or identifies more than one campaign.
+Do not scan arbitrary worktrees or infer a campaign from unrelated repository files.
+
+`waves` without a list runs all prepared waves. A list selects only those wave numbers. `wave`
+runs one wave, and `phase` runs one prepared phase identifier. The phase plan/ledger remains the
+source of dependency and ordering information; Conduct does not invent phase numbers.
+
+## 1.6 Invocation-time overrides
 
 An explicit instruction in the invocation overrides its matching slot for that run only — e.g.
 "use opus for planning" overrides `WORKER_PLANNER` without touching the other two slots or the
@@ -117,19 +152,21 @@ planner/builder, and a different model or tier for reviewer than whatever built 
 same model reviewing its own work. State which model landed in each slot and why (env var,
 override, or fallback) before dispatching, per section 1.4's table.
 
-## 1.6 Compose the campaign
+## 1.7 Compose the campaign
 
-Fill this template with the resolved `{cli, model, effort}` tuples from sections 1.1–1.5 and the
+Fill this template with the resolved `{cli, model, effort}` tuples from sections 1.1–1.6 and the
 task/issue/epic the user described, then hand it to Orca's `orchestration` skill exactly as if the
 user had typed it themselves after `/orchestration`. The `<WORKER_PLANNER model>`-shaped
 placeholders below are the literal resolved values from the pre-dispatch report — not a
-paraphrase, and this is exactly what feeds each slot's `worker-start` call in section 1.7:
+paraphrase, and this is exactly what feeds each slot's `worker-start` call in section 1.8:
 
 ```
 Conduct the following for this worktree's task/epic into sub-worktrees:
 - Worker Planner using <WORKER_PLANNER cli>:<WORKER_PLANNER model>[:<WORKER_PLANNER effort>]
 - Worker Execution using <WORKER_BUILDER cli>:<WORKER_BUILDER model>[:<WORKER_BUILDER effort>]
 - pr-reviewer using <REVIEWER cli>:<REVIEWER model>[:<REVIEWER effort>]
+- Use the topology selected by the invocation: one shared child worktree for a single target, or
+  one child worktree per phase for a wave campaign.
 - If the reviewer's verdict is not APPROVE, Worker Execution addresses the feedback, then
   pr-reviewer re-reviews
 - Keep looping until the final verdict is APPROVE
@@ -137,7 +174,7 @@ Conduct the following for this worktree's task/epic into sub-worktrees:
 <what to build/fix/review, from the user's request>
 ```
 
-## 1.7 Run it
+## 1.8 Run it
 
 Load Orca's own orchestration guide fresh every time (`orca skills get orchestration` — never
 from memory) and follow its Preferred Supervised Worker Loop to run the campaign above exactly as
@@ -145,8 +182,50 @@ if `/orchestration` had been typed directly: `run-create` once, `task-create` pe
 `worker-start --agent <cli> --model <model> [--effort <effort>]` per resolved slot, `check --wait`
 until every dispatch settles. Run the commands the loaded guide actually returns — don't
 paraphrase or reimplement them from a remembered grammar. The `--agent`/`--model`/`--effort` flags
-passed to each `worker-start` call are exactly sections 1.1–1.5's resolved values for that slot,
+passed to each `worker-start` call are exactly sections 1.1–1.6's resolved values for that slot,
 sourced from the pre-dispatch report table (section 1.4) — not re-derived at this step.
+
+### Topology and concurrency
+
+- A single issue or PR uses one Conduct-owned child worktree. The first role uses
+  `--worktree new-child`; Planner, Builder, Reviewer, and every feedback follow-up use the exact
+  returned worktree selector. A later role must never create a sibling worktree for the same
+  target.
+- A wave campaign uses one child worktree per phase. The first role for each phase uses
+  `--worktree new-child`; every later role for that phase uses that phase's exact selector.
+- Independent ready phases may run in parallel, capped at three worktrees. An explicit `sequential`
+  or equivalent “run in succession” instruction sets concurrency to one. Never parallelize phases
+  whose declared dependencies are unresolved.
+- Use a fresh terminal in the existing phase worktree when role-specific model/effort flags are
+  needed. Reuse an exact terminal only when permitted by Orca and no model/effort override is
+  required, because `--terminal` cannot be combined with `--model` or `--effort`.
+
+Pass the exact resolved `--agent`/`--model`/`--effort` values from the pre-dispatch report to each
+fresh `worker-start`; do not re-derive them at dispatch time.
+
+### Feedback handoff and retention
+
+Retain the active Builder and Reviewer terminals throughout a review feedback loop whenever Orca
+allows it. Their retained context is intentional: do not release and respawn either role merely to
+review a new commit.
+
+After a Reviewer `BLOCK` or actionable feedback, send the substantive handoff through structured
+Orca inbox mail:
+
+```sh
+orca orchestration send --to dispatch:<builder-dispatch-id> \
+  --subject "Address reviewer feedback" --body "<attempt-specific findings>" --json
+```
+
+Then transfer the retained Builder terminal to the follow-up task, or use the exact retained
+dispatch/terminal path supported by the loaded orchestration guide. Start a new dispatch only when
+the existing worker cannot be transferred; if that happens, keep the new dispatch in the same
+phase worktree and preserve the handoff context in its prompt. Re-review with the retained
+Reviewer terminal whenever possible. Raw `orca terminal send` is not a valid substitute for a
+supervised feedback handoff. Continue until the Reviewer posts the canonical `APPROVE` verdict.
+
+For approved PRs, Conduct delegates merge behavior to `pr-reviewer`'s current merge policy. It
+does not merge independently, bypass pending checks, use `--squash`, or merge `main`.
 
 Real dispatched output only: a `worker_done` message, a review comment a worker actually posted.
 Narrating what a worker "would" produce is never a substitute for waiting on it.
@@ -154,7 +233,12 @@ Narrating what a worker "would" produce is never a substitute for waiting on it.
 This is a preset for Orca, not a second implementation of it — no fallback mode of its own. If
 Orca isn't available in this environment, say so and stop.
 
-## 1.8 Track and clean up completed work
+## 1.9 Track and clean up completed work
+
+The cleanup policy below remains the manual safety reference, but automatic worktree removal is
+deferred for Conduct campaigns. This version of Conduct may release settled worker sessions when
+the orchestration guide requires it, but it must not issue `orca worktree rm`; campaign and phase
+worktrees remain available for the operator to close manually after the run.
 
 **Tracking** (so cleanup targets are explicit, never inferred by scanning): for each dispatched
 role, record `task_id`, `dispatch_id`, `worktree` selector, whether *this run* created that
@@ -170,11 +254,16 @@ reviewer — needed because "handoff evidence" differs per role, below).
    - Worker Execution/Builder → branch pushed **and** PR opened (not just committed locally).
    - Reviewer → the review verdict comment confirmed posted.
 
+During a review feedback loop, Builder and Reviewer are intentionally retained between iterations;
+do not release either settled dispatch while another feedback iteration is expected. Release them
+only after the final `APPROVE` verdict and the role's handoff evidence are recorded, unless the
+operator explicitly asks to keep them live for debugging.
+
 Then: `orca orchestration worker-release --dispatch <dispatch_id>` — "Post-completion cleanup for
 a settled (succeeded or failed) worker... closes only the exact coordinator-owned agent terminal,"
 idempotent (`already_released` on repeat). This is Orca's current lifecycle command for this —
 re-confirm the exact flags via `orca orchestration worker-release --help` at run time rather than
-trusting this doc, same discipline section 1.7 already requires for `worker-start`.
+trusting this doc, same discipline section 1.8 already requires for `worker-start`.
 
 Do **not** use `worker-stop` (fences an active dispatch — for stopping a running worker, not
 closing a settled one) or `worker-abandon` (explicitly retains everything, for uncertain state) —
@@ -193,7 +282,8 @@ cleanup."
 - Its session is already closed (previous step done) and its terminal state is not `active` —
   cross-check `orca orchestration worker-list --terminal-state active` before removing.
 
-Then: `orca worktree rm --worktree <selector>` — **no `--force`** by default. Per its own
+For a future/manual cleanup outside Conduct's campaign execution, use
+`orca worktree rm --worktree <selector>` — **no `--force`** by default. Per its own
 `--help`, worktree removal already attempts to delete the checked-out local branch — that's the
 mechanism the "handoff-safe" check above exists to make safe. `--force` is reserved for a case
 where Orca's merge-detection is known stale, which must itself be logged, never routine.
@@ -222,7 +312,7 @@ Worktrees removed: <selector> (<role>), ...
 Retained: <selector or dispatch_id> — <reason: still active / dirty / not pushed / not created by this run>
 ```
 
-**First live run is report-only**, matching the calibration every other roster role carries
+**If a future version re-enables automatic cleanup, its first live run must be report-only**, matching the calibration every other roster role carries
 (`implement`/`pr-reviewer`/`observer`/`verifier`/`promoter`/`incident-responder`/`notes`) before
 being trusted to auto-delete anything: produce the full cleanup report — what *would* be closed,
 what *would* be removed, what's retained and why — but withhold the actual
