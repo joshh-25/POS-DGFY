@@ -18215,3 +18215,145 @@ base is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`.
 
 Re-check the ledger's actual highest merged entry at plan time rather than assuming — Phase 255
 (#1441 PR-D) may or may not have merged by then.
+
+## Phase 257 - Item multi-category membership: foundation (#1318)
+
+### Initiative and release
+
+#1318 — allow one catalog item to belong to more than one merchant-defined category/folder.
+Highest merged phase at branch time was 256; re-checked against `origin/develop`'s tip
+(`8ad843035`, unchanged since branching) and every open PR into `develop`
+(`gh pr list --base develop --state open`: #1502, #1501, #1500, #1475, #1316 — none phase-claiming)
+immediately before writing this entry. 257 is free.
+
+### Objective and scope
+
+One PR, `feature/1318-item-folder-memberships` into `develop`. **Foundation only** — pure
+additive infrastructure, zero of the ~34 existing item→folder read sites edited (per the
+implementation plan's own read-site inventory, section 5, conclusion: "0 of the 34 sites
+change"). IMS authoring UI, POS opt-in, and storefront opt-in are later, separately-scoped phases
+(258/259/260) — not built here. Issue #1318 is not resolved by this PR alone; the PR uses
+`Refs #1318`, not `Closes`.
+
+- New tenant-scoped join table `item_folder_memberships` (`item_id`, `folder_id`, `sort_order`,
+  `UNIQUE(folder_id, item_id)`, `KEY(item_id)`, both FKs `ON DELETE CASCADE`) — secondary category
+  memberships only. `items.folder_id` (the primary category) is untouched and remains the single
+  source of truth for every money-adjacent resolution.
+- New model `ItemFolderMembership` + additive `belongsToMany` associations
+  (`Item.secondaryFolders` / `ItemFolder.memberItems`) in `models/index.js` — the existing four
+  primary-category association lines are unchanged.
+- Two new backend functions on `itemRepository` — `listItemFolderMemberships(itemIds)` and
+  `replaceItemFolderMemberships(itemId, folderIds)` (destroy-then-`bulkCreate`, mirroring
+  `fnbRepository.js`'s `replaceFolderModifierGroups` shape) — with a disjointness guard (drops any
+  folder id equal to the item's own primary), an active/soft-deleted folder guard, and a cap of 10
+  memberships per item.
+- Two new routes, `GET /items/:item_id/folders` and `PUT /items/:item_id/folders`
+  (`requireTenantAdmin`, matching the existing folder-CRUD routes and ADR 0049's
+  `categories:manage` permission rule), their use cases, controller handlers, and a new Joi
+  validator schema (`folder_ids`, max 10) — the existing scalar `folder_id` validators are
+  untouched.
+- Mandatory tenant-schema-drift registrations (#860/#639 class, per
+  `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`): R1 —
+  `REQUIRED_TENANT_SCHEMA_TABLES.item_folder_memberships` in `sync-tenant-schemas.js`, enforced by
+  `npm run check:tenant-schema-coverage`; R2 — `TENANT_SCHEMA_CAPABILITY_VERSION` bumped
+  `2026-09-01.4` → `2026-09-07.1`; R3 — a `requiredIndexContract.js` entry, consumed by
+  `audit:indexes`. Also added (recommended, not gate-enforced):
+  `runtimeSchemaAuditService.js`'s `REQUIRED_TABLE_COLUMNS.item_folder_memberships`.
+- ADR 0080 (new, `status: accepted`) — the binding decision that makes the rest of this program
+  safe: `items.folder_id` is the primary and the single tiebreak for every money-adjacent
+  resolution (affiliate category commission, voucher folder scope, F&B folder-inherited modifier
+  groups, POS report grouping) `[binding]`; the join table never mirrors or is derived from the
+  primary `[binding]`; `items.folder_id` stays nullable `[default]`; every surface is opt-in per
+  phase `[default]`; grouping surfaces render once per section, cross-sell/single-label surfaces
+  stay primary-only `[default]`; membership cap of 10 `[default]`.
+- Tier 2 characterization tests pinning ADR 0080 clause 1 on `resolveCategoryRateBps`,
+  `resolveVoucherScopeItemIds`, and `resolveEffectiveFnbModifierGroups`, plus repository unit
+  tests for replace-semantics, the disjointness guard, inactive-folder rejection, and cap
+  enforcement.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+None on any other in-flight phase. Depends on the existing `item_folders`/`items` tables and the
+`fnbRepository.js` replace-pattern this PR mirrors. Phases 258 (IMS authoring UI), 259 (POS
+opt-in, `major` compliance declaration required), and 260 (storefront opt-in, `major` declaration
+required) all depend on this phase merging first; none of them are built or scoped as part of this
+PR.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed `.js`/`.cjs` file (all 14 backend files + the new migration
+  — `apps/dgfy-api` and `apps/dgfy-migration-runner` have no real build step).
+- [x] No `package.json` touched ⇒ no lockfile step.
+- [x] `npm run check:tenant-schema-coverage` — PASS, 1 changed migration file checked (the gate
+  that proves R1 landed).
+- [x] `npm run check:architecture` — 54 modules / 557 files, 94 controller files, OK.
+- [x] `npm run check:compliance` — "No compliance-sensitive changes detected" (expected per the
+  plan's path-by-path verification against `COMPLIANCE_SENSITIVE_RULES`: `modules/inventory/**`,
+  `routes/items.js`, `validators/itemValidator.js`, `models/**`, `scripts/**`, and the migration
+  runner are all outside the sensitive-path list) + `check:compliance:api-contracts` PASS.
+- [x] `npm run check:adr -- --write-index` — 87 ADRs validated, `INDEX.md` regenerated for the new
+  ADR 0080.
+- [x] `npm run lint:docs` — 29 governed docs validated, OK.
+- [x] New Jest suites: `tests/itemFolderMembershipPrimaryOnlyInvariant.test.js` (3 tests) and
+  `tests/itemFolderMemberships.repository.test.js` (7 tests) — 10/10 pass.
+- [x] Regression spot-check: `tests/inventoryItemRepository.test.js` (51/51),
+  `tests/internalItemBarcode.contract.test.js` (6/6), `tests/tenantModelFactory.contract.test.js`
+  (14/14) — all still pass after the `itemRepository.js`/`models/index.js` edits.
+- [ ] `npm run audit:tenant-index-headroom` — **not run**, requires a live MySQL connection
+  (`DB_HOST`/`DB_USER`/`DB_PASSWORD`) not available in this environment; the plan's own schema
+  review (no standalone `KEY(folder_id)`, only the unique key's leftmost prefix plus `KEY(item_id)`
+  — ADR 0080's Correction 3) is the static substitute. Flagged for a human/CI run with real DB
+  credentials before this ships past `develop`.
+- [ ] `node apps/dgfy-api/scripts/sync-tenant-schemas.js --mode report` against DEV/STAGING/PROD —
+  **not run**, no live tenant DB credentials in this environment; per the residual-risk tracker,
+  required before the deploy that restarts `dgfy-api`, not before merging this PR.
+
+### Deviations from the plan
+
+None of substance. Followed the plan's section 6 file list, section 7's exact ADR clauses (with
+Pat's four resolutions to section 10's open items applied: cap = 10; S3/S7 grouping semantics
+resolved as "render once per section" in clause 5; POS reports permanently primary-only stated in
+Consequences item 3; ADR 0080 shipped in this PR). One route-permission adjustment: the plan named
+`requireTenantAdmin` **and** a `checkPermission(categories:manage)` on the two new routes, but
+`requireTenantAdmin` itself already gates on `categories:manage` internally (`middleware/auth.js`)
+— matching the existing folder-CRUD routes (`routes/items.js`), which also use only
+`requireTenantAdmin`. Added the extra `checkPermission` call, found it redundant, removed it.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**New migration file** under `apps/dgfy-migration-runner/migrations/` is a listed checkpoint
+trigger — per Pat's standing preference (recorded twice already), skipped straight to commit/PR
+rather than pausing, since he reviews every PR himself. No other checkpoint fired: no deploy
+dispatch, no SSH, no force-push/branch deletion, `check:compliance` required no declaration (see
+evidence above).
+
+### Links
+
+- Tracking issue: #1318 (`Refs`, not `Closes` — this PR is infrastructure only; the issue is not
+  resolved until Phase 258's IMS authoring UI ships).
+- PR: `feature/1318-item-folder-memberships` → `develop`.
+- New: `docs/architecture/adr/0080-item-multi-category-membership.md`,
+  `apps/dgfy-migration-runner/migrations/20260907000001-create-item-folder-memberships.cjs`,
+  `apps/dgfy-api/src/models/ItemFolderMembership.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/listItemFoldersUseCase.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/replaceItemFoldersUseCase.js`,
+  `apps/dgfy-api/tests/itemFolderMembershipPrimaryOnlyInvariant.test.js`,
+  `apps/dgfy-api/tests/itemFolderMemberships.repository.test.js`.
+- Modified: `apps/dgfy-api/src/models/index.js`, `apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+  `apps/dgfy-api/src/config/requiredIndexContract.js`,
+  `apps/dgfy-api/src/services/runtimeSchemaAuditService.js`,
+  `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`,
+  `apps/dgfy-api/src/modules/inventory/index.js`,
+  `apps/dgfy-api/src/modules/inventory/controllers/itemHandlers.js`,
+  `apps/dgfy-api/src/controllers/itemController.js`, `apps/dgfy-api/src/validators/itemValidator.js`,
+  `apps/dgfy-api/src/routes/items.js`, `docs/architecture/adr/INDEX.md`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+258 — IMS authoring UI for secondary category memberships (`packages/web-core/src`), not yet
+built. Re-check the ledger's actual highest merged entry at plan time rather than assuming.

@@ -96,12 +96,13 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0071 | [Frontend Split into Three Apps](0071-frontend-split-into-three-apps.md) | `amended` | frontend_split_into_three_apps | 2027-02-15 | 6 |
 | 0072 | [GHCR Container Image Naming Convention](0072-ghcr-container-image-naming.md) | `accepted` | ghcr_container_image_naming | 2027-02-24 | 0 |
 | 0073 | [POS Cashier Attendance, Breaks, and Register Operator Sessions](0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md) | `amended` | pos_cashier_attendance_breaks_and_register_operator_sessions | 2027-02-24 | 8 |
-| 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 7 |
+| 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 13 |
 | 0075 | [Standalone Mobile Offline Financial Reconciliation](0075-standalone-mobile-offline-financial-reconciliation.md) | `amended` | standalone_mobile_offline_financial_reconciliation | 2027-02-27 | 13 |
 | 0076 | [Standalone Mobile Offline Order Actions](0076-standalone-mobile-offline-order-actions.md) | `accepted` | standalone_mobile_offline_order_actions | 2027-02-28 | 5 |
 | 0077 | [POS Cheque Tender Method (Scoped Supersession of ADR 0063 Clause 4)](0077-pos-cheque-tender-method-scoped-supersession.md) | `accepted` | pos_cheque_tender_method | 2027-02-28 | 9 |
 | 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `accepted` | customer_delivery_fee_modes | 2027-03-01 | 4 |
 | 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `proposed` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
+| 0080 | [Item Multi-Category Membership](0080-item-multi-category-membership.md) | `accepted` | item_multi_category_membership | 2027-03-03 | 4 |
 
 ## Renumbered (collision stubs)
 
