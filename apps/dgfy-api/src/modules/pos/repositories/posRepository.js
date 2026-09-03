@@ -967,6 +967,16 @@ export const buildTransactionInclude = () => ([
                 attributes: ['user_id', 'username', 'email']
             }
         ]
+    },
+    // #1492: which voucher (if any) this order redeemed. Mirrors storeRepository.js's own
+    // buildOrderInclude() addition -- same attribute set, same entry_type: 'redemption' scoping (a
+    // later reversal doesn't erase the historical fact that this order applied the code).
+    {
+        model: dbStore.get('VoucherRedemption'),
+        as: 'voucherRedemptions',
+        required: false,
+        where: { entry_type: 'redemption' },
+        attributes: ['voucher_redemption_id', 'voucher_id', 'code_snapshot', 'benefit_config_snapshot', 'discount_centavos']
     }
 ]);
 
@@ -3451,6 +3461,16 @@ export const posRepository = {
                         attributes: ['user_id', 'username', 'role'],
                         required: false
                     }]
+                },
+                // #1492: same voucherRedemptions widening as buildTransactionInclude() -- listed
+                // separately here because this branch (the general sales-history table, retail +
+                // online) hand-rolls its own include array rather than reusing that helper.
+                {
+                    model: dbStore.get('VoucherRedemption'),
+                    as: 'voucherRedemptions',
+                    required: false,
+                    where: { entry_type: 'redemption' },
+                    attributes: ['voucher_redemption_id', 'voucher_id', 'code_snapshot', 'benefit_config_snapshot', 'discount_centavos']
                 }
             ],
             distinct: true,

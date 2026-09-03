@@ -84,6 +84,19 @@ const buildOrderInclude = () => ([
         model: dbStore.get('User'),
         as: 'acceptedByUser',
         attributes: ['user_id', 'username', 'email']
+    },
+    // #1492: which voucher (if any) this order actually redeemed -- item axis and delivery axis
+    // both live in this one ledger (ADR 0066 Decision 4's "authoritative record of voucher usage"),
+    // unlike the generic discount_label_snapshot/discount columns a plain staff discount also rides
+    // on. Scoped to entry_type: 'redemption' -- a later 'reversal' row (voucher-budget accounting,
+    // e.g. on order cancellation) doesn't erase the historical fact that this order applied the
+    // code, so it's deliberately not filtered out here.
+    {
+        model: dbStore.get('VoucherRedemption'),
+        as: 'voucherRedemptions',
+        required: false,
+        where: { entry_type: 'redemption' },
+        attributes: ['voucher_redemption_id', 'voucher_id', 'code_snapshot', 'benefit_config_snapshot', 'discount_centavos']
     }
 ]);
 

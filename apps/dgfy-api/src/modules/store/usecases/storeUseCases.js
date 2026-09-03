@@ -452,6 +452,17 @@ const serializeOrderBase = (order) => ({
     items: serializeOrderLines(order)
 });
 
+// #1492: the order's own voucher_redemptions rows (entry_type: 'redemption'), projected to the
+// fields a staff-facing order view actually needs -- the internal ledger row id stays out of it,
+// voucher_id is the only identifier exposed (an FK, not PII, unlike delivery_fee_waiver_voucher_id's
+// own withholding reasoning below which is about a PUBLIC page specifically).
+const serializeAppliedVoucher = (row) => ({
+    voucher_id: row?.voucher_id ?? null,
+    code: row?.code_snapshot ?? null,
+    benefit_target: row?.benefit_config_snapshot?.benefit_target === 'delivery' ? 'delivery' : 'items',
+    discount_amount: row?.discount_centavos != null ? round4(Number(row.discount_centavos) / 100) : null
+});
+
 const serializeOrderForCustomer = (order) => ({
     ...serializeOrderBase(order),
     customer_name: order?.customer_name,
@@ -459,7 +470,13 @@ const serializeOrderForCustomer = (order) => ({
     customer_email: order?.customer_email,
     delivery_address: order?.delivery_address,
     delivery_latitude: order?.delivery_latitude,
-    delivery_longitude: order?.delivery_longitude
+    delivery_longitude: order?.delivery_longitude,
+    // #1492: deliberately NOT added to serializeOrderBase, which serializeOrderForPublicTracking
+    // also spreads -- an authenticated-surface-only field, same posture as this function's other
+    // customer-account-only fields above (name/phone/email/address are also absent from the base).
+    applied_vouchers: Array.isArray(order?.voucherRedemptions)
+        ? order.voucherRedemptions.map(serializeAppliedVoucher)
+        : []
 });
 
 const serializeOrderForPublicTracking = (order) => {
