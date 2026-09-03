@@ -1,6 +1,6 @@
 ---
 name: promoter
-description: Run a develop -> staging -> main promotion end to end on dgfy-platform, cutting the release branch(es) itself — the Promoter/Release role from issue #331/#512. Use when asked to promote develop to production, cut a release branch, or run a "review, merge, and deploy" composite instruction's deploy leg. The develop -> staging -> main soak is the default again since #1404 (2026-09-02); a direct develop -> main promotion is available only as #1007's phrase-gated exception, not a routine choice. Dispatches DEV/STAGING deploys unattended; never merges main and never dispatches a main/PROD deploy without an explicit go each time, except a narrow phrase-gated expedited override (#1007). First live run is report-only.
+description: Run a develop -> staging -> main promotion end to end on dgfy-platform, cutting the release branch(es) itself — the Promoter/Release role from issue #331/#512. Use when asked to promote develop to production, cut a release branch, or run a "review, merge, and deploy" composite instruction's deploy leg. The develop -> staging -> main soak is the default again since #1404 (2026-09-02); a direct develop -> main promotion is available only as #1007's phrase-gated exception, not a routine choice. Dispatches the STAGING deploy unattended (DEV dropped from the default flow — #982); never merges main and never dispatches a main/PROD deploy without an explicit go each time, except a narrow phrase-gated expedited override (#1007). First live run is report-only.
 ---
 
 # Promoter/Release
@@ -230,7 +230,8 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 | Trigger | What "stop" means |
 |---|---|
 | Pre-flight, branch cut, PR open, merge into `develop`, or into `staging` (the default soak leg) | Unattended — proceed |
-| Dispatching `deploy.yml` for environment `DEV` or `STAGING` | Unattended — proceed. Pat's 2026-08-16 call: this leg of "review, merge, and deploy" runs end to end without a per-dispatch ask, matching #543's "Promoter cuts/promotes staging (unattended)" framing |
+| Dispatching `deploy.yml` for environment `STAGING` | Unattended — proceed. Pat's 2026-08-16 call: this leg of "review, merge, and deploy" runs end to end without a per-dispatch ask, matching #543's "Promoter cuts/promotes staging (unattended)" framing |
+| Dispatching `deploy.yml` for environment `DEV` | **Dropped from the default flow entirely (#982) — not a routine step, and not an ask-first fallback either.** DEV is optional and intentionally allowed to go stale; dispatch it only when specifically asked for, never implied by a "review, merge, and deploy" composite instruction |
 | Dispatching `verify-deployment.yml` (any environment) | Unattended — every remote command it runs is read-only |
 | Dispatching `tenant-schema-report.yml` (any environment, including PROD) | Unattended — read-only, `--mode report` only, no write path exists |
 | Running `npm run preflight:runner` (Phase 233, #1365, H1) before the `deploy-main.yml` dispatch ask | Unattended — read-only (`gh api`/`curl`, self-cancelling `--canary` if used). An exit-`3` "flip required" result still requires logging the flip in the promotion PR before acting on it — that's a documentation step, not a new ask |
@@ -260,6 +261,13 @@ hundredth. First-run evidence for the `develop → staging` leg: PR #595 merged 
 `dgfy-migration-runner` pushed fine; the downstream `publish` job never ran, so nothing was actually
 touched server-side); a retry dispatch (run `31955916496`) was cancelled before completing, and a
 second retry (run `31956577646`) succeeded, completing the deploy.
+
+**Note (2026-09-04, #982):** DEV dispatch was deprioritized around 2026-08-24 and formally dropped
+from the default flow by Pat's 2026-08-25 decision on #982 — DEV is now optional and intentionally
+allowed to go stale, never a routine step. The evidence above (PR #595, runs `31954803389`/
+`31955916496`/`31956577646`) predates that decision and is kept as the historical record of this
+row's first live run, not as license to keep dispatching DEV routinely. See the checkpoint table
+above for the current DEV/STAGING split.
 
 ## Composite-flow chaining
 
