@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.03
-verification_evidence: node --check apps/dgfy-api/src/validators/posValidator.js apps/dgfy-api/src/modules/pos/usecases/posUseCases.js apps/dgfy-api/src/modules/pos/controllers/posHandlers.js apps/dgfy-api/src/modules/pos/index.js apps/dgfy-api/src/routes/pos.js (all pass),node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/posReports.usecase.test.js tests/posHandlers.transport.test.js (40 passed),npx vitest run (from apps/dgfy-ims) ../../packages/web-core/src/features/pos/__tests__/posReportsAnalyticsWorkspace.contract.test.js (6 passed),npm run build:pos (succeeded),npm run build:skupervisor (succeeded),npm run check:compliance
+verification_evidence: node --check apps/dgfy-api/src/validators/posValidator.js apps/dgfy-api/src/modules/pos/usecases/posUseCases.js apps/dgfy-api/src/modules/pos/controllers/posHandlers.js apps/dgfy-api/src/modules/pos/index.js apps/dgfy-api/src/routes/pos.js (all pass),node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/posReports.usecase.test.js tests/posHandlers.transport.test.js (40 passed at PR-open time; 45 passed after the RF-1 fix-step added two location-scope tests and updated five existing ones to inject resolveLocationScope),npx vitest run (from apps/dgfy-ims) ../../packages/web-core/src/features/pos/__tests__/posReportsAnalyticsWorkspace.contract.test.js (6 passed),npm run build:pos (succeeded),npm run build:skupervisor (succeeded),npm run check:compliance
 rollback_note: Revert this PR's diff. Every backend change is additive (a new validator schema, a new usecase, a new controller handler, a new route, plus their wiring exports) and every frontend change is additive (a new service function, a new button + handler) -- no existing endpoint, usecase, or component behavior is modified. Reverting the touched files fully restores prior behavior with no data migration or cleanup required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -55,11 +55,17 @@ system as a downloadable file via this new endpoint.
   documented as a known limitation in the PR body rather than a silent truncation; not a compliance
   concern since it never expands the surface beyond what `/pos/incoming-orders` and
   `/pos/reports/export` already expose to the same permission tier.
-- Permission model: `VIEW_POS` only, no new tier. Considered and rejected gating cross-location
-  visibility behind `SWITCH_LOCATION_POS` -- `/pos/reports/*`'s own `location_id` filter already
-  grants any non-cashier `VIEW_POS` holder cross-location visibility into sales data today with no
-  extra check, and this export exposes a narrower field set (no financial totals) than that sibling
-  endpoint already does. Holding it to a stricter bar than its own sibling isn't justified.
+- Permission model: `VIEW_POS` only, no new tier -- unchanged. **Superseded by the RF-1 fix below**:
+  the paragraph originally here argued that no location-scope check was needed because
+  `/pos/reports/*`'s own `location_id` filter already grants cross-location visibility to any
+  non-cashier `VIEW_POS` holder. pr-reviewer's review of PR #1504 correctly rejected that reasoning
+  as the actual vulnerability -- it let an unscoped or arbitrary `location_id` request through with
+  no authorization check at all, which is not the same thing as an *authorized* cross-location grant.
+  The usecase now resolves `query.location_id` through `resolvePosReadLocationScope` (the same
+  helper `buildListOnlineOrderHistoryUseCase` uses) before ever touching the repository, so a
+  `VIEW_POS` holder can only export orders for a location they hold a `UserLocationGrant` for (or
+  their tenant's sole active location, matching every other POS read path's resolution rules) --
+  see "Fix-step Amendment" below.
 - No fiscal print event, payment field, checkout payload, or API contract changes. This is a
   read + CSV-serialize + buffered-download action only, structurally incapable of mutating any
   transaction, shift, or delivery state.
@@ -68,9 +74,12 @@ system as a downloadable file via this new endpoint.
 
 - `buildExportProcurementCsvUseCase` unit tests (`tests/posReports.usecase.test.js`): rejects a
   non-object query, requires an authenticated user, rejects a non-numeric `location_id`, returns a
-  header-only CSV with zero pending orders, passes `location_id` through to the repository call
-  unchanged, and flattens a multi-line-item / multi-order fixture into one CSV row per line item
-  (including the `Guest Buyer` fallback for a null `customer_name`).
+  header-only CSV with zero pending orders, resolves an unscoped request to the caller's own
+  authorized location scope, resolves a requested `location_id` through the scope resolver before
+  calling the repository, rejects a request for a location the caller is not authorized for
+  (`AUTHORIZATION_FAILED`/403, repository never called), and flattens a multi-line-item /
+  multi-order fixture into one CSV row per line item (including the `Guest Buyer` fallback for a
+  null `customer_name`).
 - `exportProcurementCsv` transport tests (`tests/posHandlers.transport.test.js`): buffered
   `Content-Type`/`Content-Disposition`/200-status response shape, and the standardized error
   payload on a usecase failure.
@@ -90,6 +99,26 @@ system as a downloadable file via this new endpoint.
   "deliberately small" scope; pagination is explicitly out of scope per #1488's own Scope section.
 - No dedicated procurement page/route or persisted worklist -- this is a one-button CSV dump, by
   design (#1488's Scope section).
+
+## Fix-step Amendment (RF-1, PR #1504 review)
+
+pr-reviewer's review of PR #1504 posted a `BLOCK` verdict: the export authenticated the caller but
+never checked a POS read-location scope, so a `VIEW_POS` user could download pending-order PII
+(customer name, phone, delivery address) across every location, or for an arbitrary location, with
+no authorization check -- the exact class of gap this declaration's original "Considered and
+rejected" paragraph (see Compliance Preconditions above) failed to catch, since it reasoned about
+*authorized* cross-location visibility rather than the absence of any check at all.
+
+Fixed by injecting `resolvePosReadLocationScope` (default-wired in `modules/pos/index.js`'s
+composition root, exactly like `buildListOnlineOrderHistoryUseCase`): `query.location_id` is
+resolved against the caller's `UserLocationGrant` rows before the repository call, and only
+`locationScope.location_id` -- never the raw query value -- reaches
+`posRepository.listIncomingOnlineOrders()`. This changes the classification's underlying risk
+profile for the better, not worse: the export is now held to the *same* per-location authorization
+bar as every other POS read path (`buildListOnlineOrderHistoryUseCase`,
+`buildListIncomingOnlineOrdersUseCase`), rather than the unscoped bar the original implementation
+shipped with. Classification stays `major` -- this is still the first endpoint exposing this PII
+field set as a downloadable file -- but the specific gap RF-1 identified is closed.
 
 ## Preflight Reconciliation
 
