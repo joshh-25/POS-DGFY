@@ -11,8 +11,8 @@ verification_evidence: npx vitest run (from apps/dgfy-ims) ../../packages/web-co
 rollback_note: Revert this PR's diff. TerminalOperationsPanels.jsx's changes are (a) SPLIT_VIEW_MIN_WIDTH_PX now imports POS_TABLET_MIN_WIDTH_PX (768) instead of the literal 1024 -- a pure constant/import swap, no new state or behavior beyond the widened eligibility window; (b) a new splitQueueCandidates derivation (filterOrdersByRun against QUEUE_RUN_FILTER_UNASSIGNED) that the split ("Queue + Run") branch alone reads for its rendered list, drag source/target lookups, and QueueRunAssignBar counts -- the standalone Active Queue tab's own visibleIncomingOrders/runFilter path is untouched. deriveQueueSelectionCounts.js is a new, pure, side-effect-free util extracted verbatim from the pre-existing inline selection-math block, called twice (once per candidate list) with no change to either call's own math. No API, database, or hardware-dispatch code changes at all -- reverting the touched files fully restores prior behavior.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-03T06:40:36.000Z
-preflight_request_ref: NOT-EXECUTED-1491
+preflight_run_at: 2026-09-03T08:25:46.102Z
+preflight_request_ref: PREFLIGHT-33731997295-2026-09-03-QUEUE-RUN-IPAD-PORTRAIT-HIDE-ASSIGNED
 ---
 
 # Queue+Run iPad portrait split-view fix + hide-assigned-orders in split view only (#1491)
