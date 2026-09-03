@@ -14,6 +14,11 @@ export const REQUIRED_INDEX_CONTRACT = Object.freeze({
     jo_ingredients: Object.freeze({
         single: Object.freeze(['item_id', 'batch_id']),
         composite: Object.freeze([])
+    }),
+    // Phase 257 (#1318) — secondary item/category memberships. See ADR 0080.
+    item_folder_memberships: Object.freeze({
+        single: Object.freeze(['item_id']),
+        composite: Object.freeze([Object.freeze(['folder_id', 'item_id'])])
     })
 });
 

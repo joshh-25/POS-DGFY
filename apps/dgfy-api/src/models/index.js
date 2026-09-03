@@ -29,6 +29,7 @@ import PendingAIAction from './PendingAIAction.js';
 import AIConversation from './AIConversation.js';
 import ItemEmbedding from './ItemEmbedding.js';
 import ItemFolder from './ItemFolder.js';
+import ItemFolderMembership from './ItemFolderMembership.js';
 import ItemBarcode from './ItemBarcode.js';
 import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
@@ -472,6 +473,25 @@ ItemFolder.hasMany(Item, { foreignKey: 'folder_id', as: 'items' });
 ItemFolder.hasMany(ItemFolder, { foreignKey: 'parent_id', as: 'children' });
 ItemFolder.belongsTo(ItemFolder, { foreignKey: 'parent_id', as: 'parent' });
 Item.belongsTo(ItemFolder, { foreignKey: 'folder_id', as: 'folder' });
+
+// Phase 257 (#1318) — secondary item/category memberships. Additive only:
+// the four lines above (the primary-category pointer) are untouched. Aliases
+// are deliberately distinct from 'folder'/'items' to avoid collision. ADR
+// 0080 clause 1/2: `folder_id` is never mirrored into or derived from these.
+Item.belongsToMany(ItemFolder, {
+  through: ItemFolderMembership,
+  foreignKey: 'item_id',
+  otherKey: 'folder_id',
+  as: 'secondaryFolders'
+});
+ItemFolder.belongsToMany(Item, {
+  through: ItemFolderMembership,
+  foreignKey: 'folder_id',
+  otherKey: 'item_id',
+  as: 'memberItems'
+});
+ItemFolderMembership.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+ItemFolderMembership.belongsTo(ItemFolder, { foreignKey: 'folder_id', as: 'folder' });
 
 // Item associations
 Item.hasMany(FIFOBatch, { foreignKey: 'item_id', as: 'fifoBatches' });
@@ -1125,6 +1145,7 @@ const db = {
   AIConversation,
   ItemEmbedding,
   ItemFolder,
+  ItemFolderMembership,
   ItemBarcode,
   DispatchOrder,
   DispatchOrderLine,
@@ -1345,6 +1366,7 @@ export {
   AIConversation,
   ItemEmbedding,
   ItemFolder,
+  ItemFolderMembership,
   ItemBarcode,
   DispatchOrder,
   DispatchOrderLine,
