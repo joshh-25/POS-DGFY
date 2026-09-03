@@ -16,4 +16,11 @@ describe('commerce payment route mount contract', () => {
       "router.post('/admin/payment-sessions/:payment_session_id/reconcile', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, reconcilePaymentSession);"
     );
   });
+
+  it('validates DGLaundry booking payment-session bodies before the controller', () => {
+    expect(routeSource).toContain('validateCreateDglaundryBookingPaymentSessionBody');
+    expect(routeSource).toContain(
+      "router.post('/dglaundry/booking-groups/payment-sessions', setNoStoreCacheControl, requireTenantContext, validateCreateDglaundryBookingPaymentSessionBody, createDglaundryBookingPaymentSession);"
+    );
+  });
 });

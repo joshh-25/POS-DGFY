@@ -39,6 +39,11 @@ services:
       STOREFRONT_DOMAIN_PROD: ${STOREFRONT_DOMAIN_PROD}
       STOREFRONT_ALT_DOMAIN_PROD: ${STOREFRONT_ALT_DOMAIN_PROD:-}
       CERT_DOMAIN_PROD: ${CERT_DOMAIN_PROD}
+      # DGLaundry staff operations are reached through the shared edge only;
+      # the gateway is never attached to dgfy_internal or the DGFY database.
+      DGLAUNDRY_DOMAIN: ${DGLAUNDRY_DOMAIN:-laundry.dgfy.ph}
+      DGLAUNDRY_GATEWAY_HOST: ${DGLAUNDRY_GATEWAY_HOST:-dglaundry-gateway}
+      DGLAUNDRY_GATEWAY_PORT: ${DGLAUNDRY_GATEWAY_PORT:-4400}
     ports:
       - "80:80"
       - "443:443"
@@ -56,7 +61,9 @@ services:
         condition: service_healthy
       dgfy-storefront:
         condition: service_healthy
-    networks: [dgfy_internal]
+    networks:
+      - dgfy_internal
+      - dgfy-dglaundry-edge
 
   # Renews the Let's Encrypt certificate automatically (only actually
   # renews within 30 days of expiry, so roughly every ~60 days). nginx
@@ -72,3 +79,10 @@ services:
     entrypoint: >
       sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;"
     networks: [dgfy_internal]
+
+networks:
+  # Pre-created by the deployment owner and shared only with the DGLaundry
+  # gateway. It is intentionally external so this Compose project cannot
+  # create or connect to DGLaundry's private application/database network.
+  dgfy-dglaundry-edge:
+    external: true

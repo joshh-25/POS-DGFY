@@ -21,6 +21,7 @@ const request = async (path, body, { method = 'POST', idempotencyKey = null } = 
 
 export const dglaundryPartnerClient = {
   prepareQuote: (payload) => request('/api/v1/integrations/dgfy/quotes', payload, { idempotencyKey: payload?.idempotencyKey || payload?.idempotency_key }),
+  prepareBookingGroup: (payload) => request('/api/v1/integrations/dgfy/booking-groups/prepare', payload, { idempotencyKey: payload?.idempotencyKey || payload?.idempotency_key }),
   submitOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id }),
   updateOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id }),
   cancelOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id }),
