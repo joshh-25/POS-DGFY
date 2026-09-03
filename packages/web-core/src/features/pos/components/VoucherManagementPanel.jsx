@@ -646,6 +646,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       {voucher.benefit_class === 'free_delivery' && voucher.delivery_amount_off_centavos != null && ` · up to ${peso(voucher.delivery_amount_off_centavos)} waived`}
                       {voucher.auto_apply === true && ' · Auto-applied'}
                       {' · Redeemed '}{voucher.redeemed_count || 0}{voucher.max_redemptions ? ` / ${voucher.max_redemptions}` : ''}
+                      {voucher.created_by_username && ` · Created by ${voucher.created_by_username}`}
                     </p>
                     {/* #1334/Phase 245 (plan §5.1): only fetched (include_stats: true) when the
                         Type filter is narrowed to delivery campaigns -- an extra grouped aggregate
@@ -737,6 +738,17 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
             </div>
           )}
         </div>
+
+        {/* #1494: read-only audit meta -- accountable creating/modifying officer. Never part of
+            buildVoucherPayload's outgoing request body. */}
+        {isEdit && (form.createdByUsername || form.updatedByUsername) && (
+          <p className="text-[11px] text-slate-400">
+            {form.createdByUsername && `Created by ${form.createdByUsername}`}
+            {form.createdByUsername && form.createdAt && ` on ${new Date(form.createdAt).toLocaleDateString()}`}
+            {form.updatedByUsername && form.updatedAt && (form.createdByUsername ? ' · ' : '')}
+            {form.updatedByUsername && form.updatedAt && `Last modified by ${form.updatedByUsername} on ${new Date(form.updatedAt).toLocaleDateString()}`}
+          </p>
+        )}
 
         {formLoading && <p className="text-sm text-slate-500">Loading voucher...</p>}
 
@@ -1067,6 +1079,19 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                         Free delivery when the items in the cart total at least this amount -- the delivery fee itself doesn’t count toward it.
                       </p>
                     )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-[#0F172A]">
+                      {isDeliveryCampaign ? 'Maximum item subtotal (PHP, optional)' : 'Max order value (PHP, optional)'}
+                    </Label>
+                    <Input type="number" min="0" step="1" className="h-8 text-xs" value={form.maxOrderValuePesos}
+                      onChange={(e) => setForm((current) => ({ ...current, maxOrderValuePesos: e.target.value }))} />
+                    <FieldError message={fieldErrors.max_order_value_centavos} />
+                    {/* #1490: same ITEM-subtotal comparison min_spend_centavos already documents
+                        above (R4) -- excludes the delivery fee. */}
+                    <p className="text-[11px] text-slate-400">
+                      Voucher is refused above this amount -- the delivery fee itself doesn't count toward it.
+                    </p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">Min quantity (optional)</Label>

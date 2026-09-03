@@ -45,7 +45,7 @@ export const getVoucher = async (req, res, next) => {
 
 export const createVoucher = async (req, res, next) => {
     try {
-        const result = await createVoucherUseCase({ payload: req.validatedData });
+        const result = await createVoucherUseCase({ payload: req.validatedData, user: req.user });
         return respond(req, res, result, 'Voucher created successfully', 201);
     } catch (error) {
         return next(error);
@@ -56,7 +56,8 @@ export const updateVoucher = async (req, res, next) => {
     try {
         const result = await updateVoucherUseCase({
             voucherId: req.validatedParams.voucher_id,
-            payload: req.validatedData
+            payload: req.validatedData,
+            user: req.user
         });
         return respond(req, res, result, 'Voucher updated successfully');
     } catch (error) {

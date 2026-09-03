@@ -101,6 +101,14 @@ const Voucher = sequelize.define('Voucher', {
     type: DataTypes.BIGINT,
     allowNull: true
   },
+  // #1490: the mirror image of min_spend_centavos above -- an eligibility CAP, not a discount cap
+  // (that's max_discount_centavos, a different axis). Compared against the same ITEM subtotal
+  // min_spend_centavos already uses (excludes the delivery fee) -- see voucherEligibilityPolicy.js.
+  // Nullable: null means "no cap," matching every other optional voucher field's default.
+  max_order_value_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
   min_quantity: {
     type: DataTypes.INTEGER,
     allowNull: true
@@ -207,6 +215,19 @@ const Voucher = sequelize.define('Voucher', {
     type: DataTypes.ENUM('draft', 'active', 'paused', 'expired', 'archived'),
     allowNull: false,
     defaultValue: 'draft'
+  },
+  // #1494: accountable creating/modifying officer. Plain value-link INTEGER, no DB-level FK --
+  // see this phase's plan doc / migration header for why (cross-tenant-DB migration risk +
+  // sync-tenant-schemas.js's column-presence-only repair gate would silently starve already-active
+  // tenants of the constraint). Association declared in models/index.js with `constraints: false`
+  // so sequelize.sync() (new-tenant provisioning) stays byte-identical to the migration path.
+  created_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  updated_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true
   },
   // Manual optimistic locking, same convention as EmployeeCreditAccount.version.
   version: {

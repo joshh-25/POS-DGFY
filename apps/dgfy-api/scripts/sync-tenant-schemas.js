@@ -499,6 +499,20 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         // .test.js).
         auto_apply: Object.freeze({
             sql: "ALTER TABLE `vouchers` ADD COLUMN `auto_apply` TINYINT(1) NOT NULL DEFAULT 0"
+        }),
+        // #1490 (Phase 262): eligibility cap mirroring min_spend_centavos's own shape. Kept in
+        // lockstep with migration 20260906000002-add-voucher-order-value-and-audit-columns.cjs --
+        // this DDL string must stay string-identical to that migration's own.
+        max_order_value_centavos: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `max_order_value_centavos` BIGINT NULL DEFAULT NULL"
+        }),
+        // #1494 (Phase 262): accountable creating/modifying officer, no DB-level FK -- see the
+        // migration's own header comment for why. Kept in lockstep the same way.
+        created_by: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `created_by` INT NULL DEFAULT NULL"
+        }),
+        updated_by: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `updated_by` INT NULL DEFAULT NULL"
         })
     }),
     // Phase 204 (#965): six nullable, additive columns for an optional proof-of-payment image on

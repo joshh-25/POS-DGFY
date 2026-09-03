@@ -40,11 +40,21 @@ export const voucherRepository = {
         return sequelize.transaction();
     },
 
+    // #1494: `includeActors` is opt-in so the hot transactional paths (create/update/redeem, which
+    // call findById repeatedly inside a lock) don't pay for a join they never display. Get/list --
+    // the only staff-admin, low-QPS read paths -- always request it (voucherUseCases.js).
     async findById(voucherId, options = {}) {
         const Voucher = dbStore.get('Voucher');
+        const User = dbStore.get('User');
         const row = await Voucher.findByPk(voucherId, {
             transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined,
+            include: options.includeActors
+                ? [
+                    { model: User, as: 'createdByUser', attributes: ['user_id', 'username'], required: false },
+                    { model: User, as: 'updatedByUser', attributes: ['user_id', 'username'], required: false }
+                ]
+                : undefined
         });
         return toPlain(row);
     },
@@ -61,8 +71,9 @@ export const voucherRepository = {
         return toPlain(row);
     },
 
-    async listVouchers(filters = {}, pagination = {}) {
+    async listVouchers(filters = {}, pagination = {}, options = {}) {
         const Voucher = dbStore.get('Voucher');
+        const User = dbStore.get('User');
         const where = {};
 
         if (Array.isArray(filters.status) && filters.status.length > 0) {
@@ -90,7 +101,13 @@ export const voucherRepository = {
             where,
             order: [[sortColumn, direction], ['voucher_id', 'DESC']],
             offset: (page - 1) * limit,
-            limit
+            limit,
+            include: options.includeActors
+                ? [
+                    { model: User, as: 'createdByUser', attributes: ['user_id', 'username'], required: false },
+                    { model: User, as: 'updatedByUser', attributes: ['user_id', 'username'], required: false }
+                ]
+                : undefined
         });
 
         return { rows: rows.map(toPlain), count };

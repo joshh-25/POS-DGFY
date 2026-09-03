@@ -12,7 +12,8 @@ import {
     VoucherReasonCode,
     voucherConflict,
     voucherError,
-    voucherNotFound
+    voucherNotFound,
+    voucherUnauthorized
 } from '../domain/voucherErrors.js';
 
 /**
@@ -55,6 +56,8 @@ const WRITABLE_VOUCHER_COLUMNS = Object.freeze([
     'pricelist_id',
     'max_discount_centavos',
     'min_spend_centavos',
+    // #1490: the mirror image of min_spend_centavos above -- see Voucher.js's column comment.
+    'max_order_value_centavos',
     'min_quantity',
     'allow_below_cost',
     'stackable_with_statutory',
@@ -92,6 +95,7 @@ const NUMERIC_VOUCHER_COLUMNS = Object.freeze([
     'pricelist_id',
     'max_discount_centavos',
     'min_spend_centavos',
+    'max_order_value_centavos',
     'min_quantity',
     'weekday_mask',
     'channels_mask',
@@ -123,6 +127,11 @@ const presentVoucher = (voucher, { now, timezone }) => {
     const normalized = normalizeNumerics(voucher);
     return {
         ...normalized,
+        // #1494: display-only projection alongside the raw IDs, tolerant of the association being
+        // absent -- the repository's `includeActors` join is opt-in, so a row fetched without it
+        // (every hot transactional path) simply presents both usernames as null.
+        created_by_username: voucher.createdByUser?.username ?? null,
+        updated_by_username: voucher.updatedByUser?.username ?? null,
         derived_status: deriveVoucherStatus({ voucher: normalized, now, timezone })
     };
 };
@@ -313,6 +322,26 @@ const assertValidityInvariants = (merged) => {
 };
 
 /**
+ * #1490: min_spend_centavos/max_order_value_centavos deadlock guard. Checked against the *merged*
+ * row (both in create and update), so a PATCH that only sends one of the two fields is still
+ * caught -- the validator's own same-request check (voucherValidator.js) is a faster, best-effort
+ * complement, not a substitute for this one.
+ */
+const assertOrderValueRangeInvariant = (merged) => {
+    if (merged.min_spend_centavos == null || merged.max_order_value_centavos == null) return;
+    if (Number(merged.max_order_value_centavos) < Number(merged.min_spend_centavos)) {
+        voucherError(
+            'max_order_value_centavos cannot be less than min_spend_centavos.',
+            VoucherReasonCode.VOUCHER_ORDER_VALUE_RANGE_INVALID,
+            {
+                min_spend_centavos: Number(merged.min_spend_centavos),
+                max_order_value_centavos: Number(merged.max_order_value_centavos)
+            }
+        );
+    }
+};
+
+/**
  * #696: a pricelist-backed voucher needs no `voucher_scopes` rows -- the pricelist's own item rows
  * ARE the scope. `pricelistId` is `applyBenefitConfig`'s already-resolved value (never both a
  * pricelist and a scalar price at this point), so this check runs after that one.
@@ -466,7 +495,11 @@ export const buildListVouchersUseCase = ({ repository }) => async ({
                 auto_apply: query.auto_apply,
                 search: query.search
             },
-            { page, limit, sort: query.sort, direction: query.direction }
+            { page, limit, sort: query.sort, direction: query.direction },
+            // #1494: always-on, not client-controlled -- this endpoint is staff-admin-only and
+            // capped at 100 rows/page (the `limit` clamp above), so the extra two LEFT JOINs are
+            // negligible against that ceiling.
+            { includeActors: true }
         );
 
         const refreshed = await materializeExpiry(repository, rows, { now, timezone });
@@ -505,7 +538,8 @@ export const buildGetVoucherUseCase = ({ repository }) => async ({
     timezone = DEFAULT_VOUCHER_TIMEZONE
 } = {}) => {
     try {
-        const stored = await repository.findById(voucherId);
+        // #1494: always-on, not client-controlled -- see listVouchers' own comment above.
+        const stored = await repository.findById(voucherId, { includeActors: true });
         if (!stored) voucherNotFound('Voucher not found', { voucher_id: voucherId });
 
         const [refreshed] = await materializeExpiry(repository, [stored], { now, timezone });
@@ -526,16 +560,26 @@ export const buildGetVoucherUseCase = ({ repository }) => async ({
 
 export const buildCreateVoucherUseCase = ({ repository }) => async ({
     payload = {},
+    user = {},
     now = new Date(),
     timezone = DEFAULT_VOUCHER_TIMEZONE
 } = {}) => {
     let transaction = null;
     try {
+        // #1494: hard-fail 401 on a missing actor, matching deliveryRunUseCases.js's stricter
+        // behavior -- the voucher routes already require `authenticate` ahead of the controller,
+        // so this should never actually trigger in practice.
+        const actorUserId = Number.parseInt(user?.user_id, 10) || null;
+        if (!actorUserId) voucherUnauthorized();
+
         const scopes = Array.isArray(payload.scopes) ? payload.scopes : [];
         const values = pickWritableColumns(payload);
         values.code = normalizeCode(values.code);
+        values.created_by = actorUserId;
+        values.updated_by = actorUserId;
 
         assertValidityInvariants(values);
+        assertOrderValueRangeInvariant(values);
         assertFixedPriceHasScope(values.benefit_class, scopes, values.pricelist_id);
         assertAutoApplyHasNoScope(values.auto_apply, scopes);
         const preparedValues = applyBenefitConfig(values);
@@ -580,11 +624,16 @@ export const buildCreateVoucherUseCase = ({ repository }) => async ({
 export const buildUpdateVoucherUseCase = ({ repository }) => async ({
     voucherId,
     payload = {},
+    user = {},
     now = new Date(),
     timezone = DEFAULT_VOUCHER_TIMEZONE
 } = {}) => {
     let transaction = null;
     try {
+        // #1494: hard-fail 401 on a missing actor -- see buildCreateVoucherUseCase's own comment.
+        const actorUserId = Number.parseInt(user?.user_id, 10) || null;
+        if (!actorUserId) voucherUnauthorized();
+
         transaction = await repository.beginTransaction();
 
         const stored = await repository.findById(voucherId, { transaction, lock: true });
@@ -628,6 +677,7 @@ export const buildUpdateVoucherUseCase = ({ repository }) => async ({
 
         const merged = { ...stored, ...patch };
         assertValidityInvariants(merged);
+        assertOrderValueRangeInvariant(merged);
 
         const scopesProvided = Object.prototype.hasOwnProperty.call(payload, 'scopes');
         const nextScopes = scopesProvided
@@ -644,6 +694,9 @@ export const buildUpdateVoucherUseCase = ({ repository }) => async ({
             accumulator[column] = preparedMerged[column] ?? null;
             return accumulator;
         }, {});
+        // #1494: server-owned, stamped directly rather than via WRITABLE_VOUCHER_COLUMNS -- never
+        // client-writable. `created_by` is deliberately left untouched on update.
+        values.updated_by = actorUserId;
 
         if (scopesProvided) {
             await assertScopeRefs(repository, nextScopes, transaction);

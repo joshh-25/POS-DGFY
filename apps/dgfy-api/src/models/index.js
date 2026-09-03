@@ -852,6 +852,11 @@ VoucherRedemption.hasMany(VoucherRedemptionLine, { foreignKey: 'voucher_redempti
 VoucherRedemptionLine.belongsTo(VoucherRedemption, { foreignKey: 'voucher_redemption_id', as: 'redemption' });
 VoucherRedemptionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 PosTransaction.hasMany(VoucherRedemption, { foreignKey: 'pos_transaction_id', as: 'voucherRedemptions' });
+// #1494: accountable creating/modifying officer, value-link only -- constraints: false so
+// sequelize.sync() (new-tenant provisioning) never adds a DB-level FK the migration path can't
+// match (see Voucher.js's own column comment and this phase's migration header for the full reasoning).
+Voucher.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', constraints: false });
+Voucher.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser', constraints: false });
 
 // Pricelists (#696, extends #584/ADR 0066). Pricelist -> per-item price rows; a fixed_price voucher
 // may attach one instead of a single fixed_unit_price_centavos. draft_of_pricelist_id is a

@@ -45,6 +45,10 @@ describe('create schema — server-owned fields are refused, not stripped', () =
         'redeemed_count',
         'redeemed_value_centavos',
         'redeemed_quantity',
+        // #1494: created_by/updated_by are server-owned, stamped by the use case from req.user --
+        // never client-writable, same treatment as the other identity/counter fields above.
+        'created_by',
+        'updated_by',
         'created_at',
         'updated_at',
         'version'
@@ -68,6 +72,8 @@ describe('update schema — server-owned fields are refused there too', () => {
         'redeemed_count',
         'redeemed_value_centavos',
         'redeemed_quantity',
+        'created_by',
+        'updated_by',
         'created_at',
         'updated_at'
     ])('%s is forbidden on update', (field) => {
@@ -404,6 +410,29 @@ describe('date and time fields', () => {
         }));
         expect(error).toBeUndefined();
     });
+
+    // #1490: mirrors min_spend_centavos's own nullability above.
+    test('max_order_value_centavos is legitimately nullable', () => {
+        const { error } = validate(createVoucherSchema, validCreatePayload({
+            max_order_value_centavos: null
+        }));
+        expect(error).toBeUndefined();
+    });
+
+    test('max_order_value_centavos accepts a real centavos value', () => {
+        const { error, value } = validate(createVoucherSchema, validCreatePayload({
+            max_order_value_centavos: 500000
+        }));
+        expect(error).toBeUndefined();
+        expect(value.max_order_value_centavos).toBe(500000);
+    });
+
+    test('max_order_value_centavos rejects a negative value', () => {
+        const { error } = validate(createVoucherSchema, validCreatePayload({
+            max_order_value_centavos: -1
+        }));
+        expect(errorFields(error)).toContain('max_order_value_centavos');
+    });
 });
 
 describe('cross-field rules via the middleware', () => {
@@ -429,6 +458,23 @@ describe('cross-field rules via the middleware', () => {
             body: validCreatePayload({ valid_time_start: '09:00', valid_time_end: '09:00' })
         });
         expect(res.statusCode).toBe(422);
+    });
+
+    // #1490: best-effort, same-request-only check -- the authoritative check against the *merged*
+    // row lives in voucherUseCases.js's assertOrderValueRangeInvariant, covered separately there.
+    test('max_order_value_centavos below min_spend_centavos in the same request is a 422', async () => {
+        const { res } = await runMiddleware(validateCreateVoucher, {
+            body: validCreatePayload({ min_spend_centavos: 100000, max_order_value_centavos: 50000 })
+        });
+        expect(res.statusCode).toBe(422);
+        expect(res.body.errors.map((row) => row.field)).toContain('max_order_value_centavos');
+    });
+
+    test('max_order_value_centavos equal to min_spend_centavos is accepted', async () => {
+        const { nextCalled } = await runMiddleware(validateCreateVoucher, {
+            body: validCreatePayload({ min_spend_centavos: 100000, max_order_value_centavos: 100000 })
+        });
+        expect(nextCalled).toBe(true);
     });
 
     test('an overnight window is accepted — wrap-around is legal', async () => {

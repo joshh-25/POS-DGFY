@@ -31,6 +31,8 @@ const makeVoucher = (overrides = {}) => ({
     fixed_unit_price_centavos: null,
     max_discount_centavos: null,
     min_spend_centavos: null,
+    // #1490: the mirror image of min_spend_centavos above.
+    max_order_value_centavos: null,
     min_quantity: null,
     valid_from: null,
     valid_until: null,
@@ -379,6 +381,47 @@ describe('evaluateVoucherEligibility — basket minimums', () => {
             context: baseContext({ subtotalCentavos: 99999 })
         });
         expect(reasonCodes(result)).toContain('VOUCHER_MIN_SPEND_NOT_MET');
+    });
+
+    // #1490: max_order_value_centavos mirrors every one of min_spend_centavos's own cases above.
+    test('a subtotal above max_order_value_centavos blocks', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: makeVoucher({ max_order_value_centavos: 100000 }),
+            context: baseContext({ subtotalCentavos: 200000 })
+        });
+        expect(reasonCodes(result)).toContain('VOUCHER_MAX_ORDER_VALUE_EXCEEDED');
+    });
+
+    test('a subtotal exactly at max_order_value_centavos passes', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: makeVoucher({ max_order_value_centavos: 100000 }),
+            context: baseContext({ subtotalCentavos: 100000 })
+        });
+        expect(result.eligible).toBe(true);
+    });
+
+    test('null max_order_value_centavos means no cap', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: makeVoucher({ max_order_value_centavos: null }),
+            context: baseContext({ subtotalCentavos: 999999999 })
+        });
+        expect(result.eligible).toBe(true);
+    });
+
+    test('a BIGINT max_order_value_centavos arriving as a string still compares numerically', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: makeVoucher({ max_order_value_centavos: '100000' }),
+            context: baseContext({ subtotalCentavos: 100001 })
+        });
+        expect(reasonCodes(result)).toContain('VOUCHER_MAX_ORDER_VALUE_EXCEEDED');
+    });
+
+    test('min_spend_centavos and max_order_value_centavos can both apply at once, within the window', () => {
+        const result = evaluateVoucherEligibility({
+            voucher: makeVoucher({ min_spend_centavos: 50000, max_order_value_centavos: 200000 }),
+            context: baseContext({ subtotalCentavos: 100000 })
+        });
+        expect(result.eligible).toBe(true);
     });
 });
 

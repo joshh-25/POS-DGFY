@@ -13,6 +13,7 @@
 
 import { describe, test, expect } from 'vitest';
 import { buildVoucherPayload, blankForm } from '../components/VoucherManagementPanel.jsx';
+import { voucherToForm } from '../components/voucherFormModel.js';
 
 describe('#716 buildVoucherPayload — fixed_price XOR payload shape', () => {
     test('single-price sub-mode sends a real price and an explicit null pricelist_id', () => {
@@ -109,5 +110,105 @@ describe('#713 buildVoucherPayload — is_publicly_listed independent of channel
         const listedPayload = buildVoucherPayload(listedForm);
         expect(listedPayload.is_publicly_listed).toBe(true);
         expect(listedPayload.channels_mask).toBe(2);
+    });
+});
+
+// #1490: max_order_value_centavos round-trips through buildVoucherPayload and voucherToForm, the
+// same round-trip min_spend_centavos already gets covered by #713's tests above.
+describe('#1490 buildVoucherPayload/voucherToForm — max_order_value_centavos round-tripping', () => {
+    test('blank maxOrderValuePesos sends null', () => {
+        const payload = buildVoucherPayload({ ...blankForm(), code: 'X', title: 'X', benefitClass: 'percent_off', percentOffPercent: '10' });
+        expect(payload.max_order_value_centavos).toBeNull();
+    });
+
+    test('a set maxOrderValuePesos sends the equivalent centavos', () => {
+        const form = {
+            ...blankForm(),
+            code: 'X',
+            title: 'X',
+            benefitClass: 'percent_off',
+            percentOffPercent: '10',
+            maxOrderValuePesos: '500.00'
+        };
+        const payload = buildVoucherPayload(form);
+        expect(payload.max_order_value_centavos).toBe(50000);
+    });
+
+    test('voucherToForm round-trips a stored max_order_value_centavos back to pesos', () => {
+        const voucher = {
+            voucher_id: 1,
+            version: 0,
+            status: 'draft',
+            derived_status: 'draft',
+            benefit_class: 'percent_off',
+            max_order_value_centavos: 50000,
+            channels_mask: 1,
+            fulfillment_methods_mask: 1,
+            order_timings_mask: 1,
+            weekday_mask: 127
+        };
+        const form = voucherToForm(voucher);
+        expect(form.maxOrderValuePesos).toBe('500');
+    });
+
+    test('voucherToForm maps a null max_order_value_centavos to an empty string', () => {
+        const voucher = {
+            voucher_id: 1,
+            version: 0,
+            status: 'draft',
+            derived_status: 'draft',
+            benefit_class: 'percent_off',
+            max_order_value_centavos: null,
+            channels_mask: 1,
+            fulfillment_methods_mask: 1,
+            order_timings_mask: 1,
+            weekday_mask: 127
+        };
+        const form = voucherToForm(voucher);
+        expect(form.maxOrderValuePesos).toBe('');
+    });
+});
+
+// #1494: created_by_username/updated_by_username are display-only projections -- voucherToForm
+// carries them through, buildVoucherPayload must never emit them.
+describe('#1494 voucherToForm/buildVoucherPayload — audit fields are display-only', () => {
+    test('voucherToForm carries through the username projections and timestamps', () => {
+        const voucher = {
+            voucher_id: 1,
+            version: 0,
+            status: 'draft',
+            derived_status: 'draft',
+            benefit_class: 'percent_off',
+            channels_mask: 1,
+            fulfillment_methods_mask: 1,
+            order_timings_mask: 1,
+            weekday_mask: 127,
+            created_by_username: 'alice',
+            updated_by_username: 'bob',
+            created_at: '2026-09-01T00:00:00.000Z',
+            updated_at: '2026-09-02T00:00:00.000Z'
+        };
+        const form = voucherToForm(voucher);
+        expect(form.createdByUsername).toBe('alice');
+        expect(form.updatedByUsername).toBe('bob');
+        expect(form.createdAt).toBe('2026-09-01T00:00:00.000Z');
+        expect(form.updatedAt).toBe('2026-09-02T00:00:00.000Z');
+    });
+
+    test('buildVoucherPayload never emits created_by/updated_by/username fields', () => {
+        const form = {
+            ...blankForm(),
+            code: 'X',
+            title: 'X',
+            benefitClass: 'percent_off',
+            percentOffPercent: '10',
+            createdByUsername: 'alice',
+            updatedByUsername: 'bob'
+        };
+        const payload = buildVoucherPayload(form);
+        expect(payload).not.toHaveProperty('created_by');
+        expect(payload).not.toHaveProperty('updated_by');
+        expect(payload).not.toHaveProperty('created_by_username');
+        expect(payload).not.toHaveProperty('updated_by_username');
     });
 });
