@@ -19221,7 +19221,8 @@ Define the full `/conduct` contract for issue campaigns, PR reviews, prepared wa
 phases. The canonical Conduct skill now specifies target routing, current Orca context resolution,
 single-target shared-worktree execution, one-worktree-per-phase wave execution with a three-worker
 parallelism cap, model overrides, structured reviewer-feedback handoffs, retained Builder and
-Reviewer terminals across feedback loops, and delegation to the existing PR Reviewer merge policy.
+Reviewer terminals across feedback loops, review-only Builder ownership by the conducting session,
+and delegation to the existing PR Reviewer merge policy.
 
 Automatic Orca worktree removal is deliberately deferred. Conduct leaves campaign worktrees for
 manual operator cleanup; the existing cleanup policy and pure decision tests remain unchanged.
@@ -19244,6 +19245,8 @@ deployment surface is changed, so no ADR or compliance declaration is required.
   child worktree each and never create sibling Reviewer worktrees.
 - [x] Wave concurrency is capped at three and sequential execution is supported.
 - [x] Builder and Reviewer retention across feedback loops is explicit.
+- [x] Review-only Conduct runs keep PR feedback ownership in the conducting session and do not
+  spawn a second Builder worker.
 - [x] `npm run lint:docs` passes.
 - [x] `npm run test:conduct-model-slot` passes.
 - [x] `npm run test:conduct-cleanup-policy` passes unchanged.

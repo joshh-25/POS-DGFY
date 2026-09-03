@@ -139,6 +139,20 @@ Do not scan arbitrary worktrees or infer a campaign from unrelated repository fi
 runs one wave, and `phase` runs one prepared phase identifier. The phase plan/ledger remains the
 source of dependency and ordering information; Conduct does not invent phase numbers.
 
+### Review-only ownership
+
+For `/conduct pr-reviewer <PR>` with an explicit Reviewer model/provider override, the conducting
+session remains the Builder/feedback owner by default. Conduct dispatches only the Reviewer to its
+own review worktree; it does not create a separate Builder worker or Builder worktree. This is the
+expected shape when a Codex session asks Claude to review a PR authored by the current session.
+
+The conducting session must be on the PR's branch/worktree, or must have an explicitly selected
+PR worktree, before it edits feedback. On `BLOCK` or actionable feedback, the conducting session
+addresses the findings, commits and pushes the PR according to the Worker rules, and requests a
+re-review from the same retained Reviewer terminal/worktree. It must not dispatch a second Builder
+just because the Reviewer uses a different model/provider. If the current session is not safely
+positioned to edit the target PR, stop before dispatch and report the required worktree.
+
 ## 1.6 Invocation-time overrides
 
 An explicit instruction in the invocation overrides its matching slot for that run only — e.g.
@@ -151,6 +165,9 @@ If a slot is unset and not overridden: pick the cheapest/fastest available model
 planner/builder, and a different model or tier for reviewer than whatever built it — never the
 same model reviewing its own work. State which model landed in each slot and why (env var,
 override, or fallback) before dispatching, per section 1.4's table.
+
+In review-only ownership mode, the Builder slot is not dispatched: the conducting session is the
+Builder and its runtime identity is reported separately from the Reviewer worker's resolved slot.
 
 ## 1.7 Compose the campaign
 
@@ -167,6 +184,8 @@ Conduct the following for this worktree's task/epic into sub-worktrees:
 - pr-reviewer using <REVIEWER cli>:<REVIEWER model>[:<REVIEWER effort>]
 - Use the topology selected by the invocation: one shared child worktree for a single target, or
   one child worktree per phase for a wave campaign.
+- For review-only ownership mode, omit Worker Execution; the conducting session addresses any
+  feedback in the target PR worktree while the retained Reviewer re-reviews.
 - If the reviewer's verdict is not APPROVE, Worker Execution addresses the feedback, then
   pr-reviewer re-reviews
 - Keep looping until the final verdict is APPROVE
