@@ -84,7 +84,13 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
     const children = [];
     try {
       for (const childMode of childModes) {
-        const lines = payload.lines.filter((_, index) => lineModes[index] === childMode).map(({ mode: _ignored, ...line }) => line);
+        const lines = payload.lines
+          .filter((_, index) => lineModes[index] === childMode)
+          .map((line) => {
+            const sanitizedLine = { ...line };
+            delete sanitizedLine.mode;
+            return sanitizedLine;
+          });
         const childPayload = {
           companyId,
           locationId,
