@@ -157,7 +157,13 @@ jobs:
 
   dgfy-api-build-check:
     needs: [changes, route-build-checks]
-    if: needs.changes.outputs.dgfy_api == 'true'
+    # PR #1534 review RF-1: route-build-checks failing at the job level (not just its own
+    # continue-on-error'd step) must not implicitly skip this job via GitHub Actions' default
+    # success() condition -- that would silently drop the self-hosted `||` fallback below along
+    # with it. always() overrides the implicit condition; needs.changes.result == 'success'
+    # restores the "don't run with a failed changes job" half that always() alone would remove,
+    # and the existing changes.outputs check still gates on whether there's anything to build.
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.dgfy_api == 'true'
     uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
     with:
       # Measured (#923): npm ci --omit=dev + COPY, no compile step -- median
@@ -170,7 +176,9 @@ jobs:
 
   dgfy-migration-runner-build-check:
     needs: [changes, route-build-checks]
-    if: needs.changes.outputs.migration_runner == 'true'
+    # PR #1534 review RF-1: same always()/needs.changes.result reasoning as dgfy-api-build-check
+    # above -- without it, a route-build-checks job-level failure implicitly skips this job too.
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.migration_runner == 'true'
     uses: ./.github/workflows/pr-migration-runner-build-checks.yml
     with:
       # Measured (#923): same shape as dgfy-api-build-check -- median 1.4m on
@@ -181,7 +189,9 @@ jobs:
 
   frontend-ims-build-check:
     needs: [changes, route-build-checks]
-    if: needs.changes.outputs.frontend_ims == 'true'
+    # PR #1534 review RF-1: same always()/needs.changes.result reasoning as dgfy-api-build-check
+    # above -- without it, a route-build-checks job-level failure implicitly skips this job too.
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.frontend_ims == 'true'
     uses: ./.github/workflows/pr-frontend-build-checks.yml
     with:
       # #923's own measurement was taken pre-split, against the old
@@ -201,7 +211,9 @@ jobs:
 
   frontend-pos-build-check:
     needs: [changes, route-build-checks]
-    if: needs.changes.outputs.frontend_pos == 'true'
+    # PR #1534 review RF-1: same always()/needs.changes.result reasoning as dgfy-api-build-check
+    # above -- without it, a route-build-checks job-level failure implicitly skips this job too.
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.frontend_pos == 'true'
     uses: ./.github/workflows/pr-frontend-build-checks.yml
     with:
       app: dgfy-pos
@@ -210,7 +222,9 @@ jobs:
 
   frontend-storefront-build-check:
     needs: [changes, route-build-checks]
-    if: needs.changes.outputs.frontend_storefront == 'true'
+    # PR #1534 review RF-1: same always()/needs.changes.result reasoning as dgfy-api-build-check
+    # above -- without it, a route-build-checks job-level failure implicitly skips this job too.
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.frontend_storefront == 'true'
     uses: ./.github/workflows/pr-frontend-build-checks.yml
     with:
       app: dgfy-storefront
