@@ -40,6 +40,7 @@ import {
     buildListPosTransactionsUseCase,
     buildGetPosReportsOverviewUseCase,
     buildExportPosReportsUseCase,
+    buildExportProcurementCsvUseCase,
     buildGetPosTransactionByIdUseCase,
     buildRecordFiscalPrintEventUseCase,
     buildVoidPosTransactionUseCase,
@@ -223,6 +224,7 @@ export const getMerchantTenderReconciliationUseCase = buildGetMerchantTenderReco
 export const reviewMerchantTenderReconciliationUseCase = buildReviewMerchantTenderReconciliationUseCase({ posRepository });
 export const getPosReportsOverviewUseCase = buildGetPosReportsOverviewUseCase({ posRepository });
 export const exportPosReportsUseCase = buildExportPosReportsUseCase({ posRepository });
+export const exportProcurementCsvUseCase = buildExportProcurementCsvUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
 export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase({ posRepository });
 export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
