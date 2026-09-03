@@ -9133,6 +9133,7 @@ export default function TerminalOperationsWorkspace({
   canDeleteItems = false,
   canManageCategories = false,
   canManageVouchers = false,
+  canManagePricelists = false,
   onSelectViewMode = () => {},
   itemsStockFilterPreset = '',
   onItemsStockFilterPresetApplied = () => {},
@@ -9396,9 +9397,15 @@ export default function TerminalOperationsWorkspace({
     // #732: promoted out of the Settings tab strip. Reaching either of these top-level modes at
     // all already implies view access (canViewVouchers gates the sidebar NavButton and the
     // view-mode allowlist in TerminalPage.jsx, mirroring routes/pricelists.js's own
-    // VOUCHERS.VIEW/VOUCHERS.MANAGE/SYSTEM.VIEW_SETTINGS/SYSTEM.EDIT_SETTINGS dual-gate) --
-    // canManageVouchers (settings:edit / vouchers:manage) only gates create/edit/lifecycle
-    // actions inside each panel itself, same as before the promotion.
+    // VOUCHERS.VIEW/VOUCHERS.MANAGE/SYSTEM.VIEW_SETTINGS/SYSTEM.EDIT_SETTINGS dual-gate) -- the
+    // canManage* props below only gate create/edit/lifecycle actions inside each panel itself,
+    // same as before the promotion.
+    //
+    // #1493: these are two different permissions now, not one shared prop. canManageVouchers is
+    // `vouchers:manage` alone (Admin + the `*_accounting` presets), matching routes/vouchers.js;
+    // canManagePricelists keeps the legacy `vouchers:manage || settings:edit` pair, matching
+    // routes/pricelists.js, which #1493 deliberately left alone. Do not collapse them back into
+    // one prop -- that would silently take pricelist management away from every manager.
     case 'settings_vouchers':
       return (
         <VoucherManagementPanel
@@ -9412,7 +9419,7 @@ export default function TerminalOperationsWorkspace({
       return (
         <PricelistManagementPanel
           disabled={locked}
-          canManage={canManageVouchers}
+          canManage={canManagePricelists}
           sectionId={sectionIds.pricelists}
         />
       );
@@ -9473,6 +9480,7 @@ export default function TerminalOperationsWorkspace({
     canEditItems,
     canManageCategories,
     canManageVouchers,
+    canManagePricelists,
     onSelectViewMode,
     canManageServiceCatalog,
     canManageFnbModifiers,
