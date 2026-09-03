@@ -136,7 +136,7 @@ export function FnbCartDrawerContent({
                                         {String(modifier.option_name || 'Add-on').trim() || 'Add-on'}{Number(modifier.quantity || 1) > 1 ? ` ×${Number(modifier.quantity)}` : ''}
                                       </span>
                                       <span style={{ fontSize: 12, fontWeight: 800, color: '#16a34a', whiteSpace: 'nowrap' }}>
-                                        +{money(Number(modifier.price_delta || 0) * Number(modifier.quantity || 1)).replace('PHP ', 'PHP ')}
+                                        +{money(Number(modifier.price_delta || 0) * Number(modifier.quantity || 1))}
                                       </span>
                                     </div>
                                   ))}
