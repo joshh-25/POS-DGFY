@@ -40,7 +40,10 @@ const VOUCHER_DEFAULTS = {
     redeemed_value_centavos: 0,
     redeemed_quantity: 0,
     status: 'active',
-    version: 0
+    version: 0,
+    // #788 (Phase 269): unrestricted by default -- the state every voucher authored before that
+    // phase is already in.
+    is_account_restricted: false
 };
 
 const makeVoucher = (overrides = {}) => ({ ...VOUCHER_DEFAULTS, ...overrides });
@@ -56,7 +59,10 @@ const CONTEXT = {
 const LINES = [{ item_id: 1, quantity: 2, sale_price: 50, line_subtotal: 100 }];
 
 const makeFakeRepository = ({
-    vouchers = [], scopes = [], folders = [], items = [], pricelistItemsByPricelistId = {}, pricelistStatusById = {}
+    vouchers = [], scopes = [], folders = [], items = [], pricelistItemsByPricelistId = {}, pricelistStatusById = {},
+    // #788: { [voucher_id]: [accountId, ...] }. A voucher ABSENT from this map returns no entry
+    // from listAccountGrants, exactly like the real repository.
+    accountGrantsByVoucherId = {}
 } = {}) => {
     const state = {
         vouchers: vouchers.map((v) => ({ ...v })),
@@ -91,6 +97,16 @@ const makeFakeRepository = ({
             state.calls.push('findById');
             const row = findVoucher(id);
             return row ? { ...row } : null;
+        },
+
+        async listAccountGrants(voucherIds) {
+            state.calls.push('listAccountGrants');
+            const ids = (voucherIds || []).map(Number);
+            return ids.reduce((accumulator, id) => {
+                const granted = accountGrantsByVoucherId[id];
+                if (granted) accumulator[id] = [...granted];
+                return accumulator;
+            }, {});
         },
 
         async listScopes(voucherIds) {
@@ -725,5 +741,141 @@ describe('free_delivery benefit translation (#1331, Phase 240)', () => {
         expect(result.discountCentavos).toBe(10000);
         expect(result.benefitTarget).toBe('delivery');
         expect(repository.__state.redemptions).toHaveLength(0);
+    });
+});
+
+// #788 (Phase 269): account-restricted issuance, redemption half.
+//
+// Two properties matter here beyond "the right code comes back": the hot path must not pay for
+// hydration it doesn't need (asserted by call ORDER, not just outcome), and the ledger must record
+// WHO redeemed -- `voucher_redemptions.dgfy_account_id` has existed since #455 and nothing ever
+// wrote it until this phase.
+describe('account-restricted redemption (#788)', () => {
+    const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+    const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+    const restrictedRepository = (granted = [ACCOUNT_A]) => makeFakeRepository({
+        vouchers: [makeVoucher({ is_account_restricted: true })],
+        accountGrantsByVoucherId: { 1: granted }
+    });
+
+    const redeemArgs = (overrides = {}) => ({
+        code: 'SAVE10',
+        context: CONTEXT,
+        lines: LINES,
+        idempotencyKey: 'checkout-key-1',
+        transaction: FAKE_TRANSACTION,
+        ...overrides
+    });
+
+    test('an UNRESTRICTED voucher never queries the grants table at all', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher()] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+
+        await redeem(redeemArgs({ dgfyAccountId: ACCOUNT_A }));
+
+        expect(repository.__state.calls).not.toContain('listAccountGrants');
+    });
+
+    test('a RESTRICTED voucher hydrates the allowlist before evaluating eligibility', async () => {
+        const repository = restrictedRepository();
+        const redeem = buildRedeemVoucherUseCase({ repository });
+
+        const result = await redeem(redeemArgs({
+            context: { ...CONTEXT, dgfyAccountId: ACCOUNT_A },
+            dgfyAccountId: ACCOUNT_A
+        }));
+
+        expect(result.applied).toBe(true);
+        // Immediately after the lookup, before anything else -- a later hydration would mean
+        // eligibility had already been evaluated against an un-hydrated row.
+        expect(repository.__state.calls.slice(0, 2)).toEqual(['findByCode', 'listAccountGrants']);
+    });
+
+    test('a granted buyer redeems and the ledger records their account id', async () => {
+        const repository = restrictedRepository();
+        const redeem = buildRedeemVoucherUseCase({ repository });
+
+        await redeem(redeemArgs({
+            context: { ...CONTEXT, dgfyAccountId: ACCOUNT_A },
+            dgfyAccountId: ACCOUNT_A
+        }));
+
+        expect(repository.__state.redemptions[0].dgfy_account_id).toBe(ACCOUNT_A);
+    });
+
+    test('an UNRESTRICTED voucher still records the account id -- per-customer tracking is not gated on the restriction', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher()] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+
+        await redeem(redeemArgs({ dgfyAccountId: ACCOUNT_A }));
+
+        expect(repository.__state.redemptions[0].dgfy_account_id).toBe(ACCOUNT_A);
+    });
+
+    test('a guest redemption records NULL, not an empty string', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher()] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+
+        await redeem(redeemArgs({ dgfyAccountId: '  ' }));
+
+        expect(repository.__state.redemptions[0].dgfy_account_id).toBeNull();
+    });
+
+    test('a guest is refused with VOUCHER_ACCOUNT_REQUIRED and burns no redemption', async () => {
+        const repository = restrictedRepository();
+        const redeem = buildRedeemVoucherUseCase({ repository });
+
+        await expect(redeem(redeemArgs({ dgfyAccountId: null })))
+            .rejects.toMatchObject({ details: { reason_code: VoucherReasonCode.VOUCHER_ACCOUNT_REQUIRED } });
+
+        // The whole point of failing at eligibility rather than at reservation: no counter moved
+        // and no ledger row exists for an attempt that was always going to be rejected.
+        expect(repository.__state.calls).not.toContain('reserveRedemption');
+        expect(repository.__state.redemptions).toHaveLength(0);
+        expect(repository.__state.vouchers[0].redeemed_count).toBe(0);
+    });
+
+    test('an ungranted signed-in buyer is refused with VOUCHER_ACCOUNT_NOT_ELIGIBLE', async () => {
+        const repository = restrictedRepository();
+        const redeem = buildRedeemVoucherUseCase({ repository });
+
+        await expect(redeem(redeemArgs({
+            context: { ...CONTEXT, dgfyAccountId: ACCOUNT_B },
+            dgfyAccountId: ACCOUNT_B
+        }))).rejects.toMatchObject({
+            details: { reason_code: VoucherReasonCode.VOUCHER_ACCOUNT_NOT_ELIGIBLE }
+        });
+    });
+
+    test('the PREVIEW path enforces the same restriction, so a quote never promises what checkout refuses', async () => {
+        const repository = restrictedRepository();
+        const preview = buildPreviewVoucherEligibilityUseCase({ repository });
+
+        await expect(preview({ code: 'SAVE10', context: { ...CONTEXT, dgfyAccountId: ACCOUNT_B }, lines: LINES }))
+            .rejects.toMatchObject({ details: { reason_code: VoucherReasonCode.VOUCHER_ACCOUNT_NOT_ELIGIBLE } });
+    });
+
+    test('the preview path lets a granted buyer through', async () => {
+        const repository = restrictedRepository();
+        const preview = buildPreviewVoucherEligibilityUseCase({ repository });
+
+        const result = await preview({ code: 'SAVE10', context: { ...CONTEXT, dgfyAccountId: ACCOUNT_A }, lines: LINES });
+
+        expect(result.applied).toBe(true);
+    });
+
+    test('a restricted voucher whose grants row set is empty blocks everyone', async () => {
+        // `is_account_restricted` true but no child rows -- unreachable through the authoring use
+        // case, but this is the direction it must fail if a row ever reaches that state.
+        const repository = makeFakeRepository({ vouchers: [makeVoucher({ is_account_restricted: true })] });
+        const redeem = buildRedeemVoucherUseCase({ repository });
+
+        await expect(redeem(redeemArgs({
+            context: { ...CONTEXT, dgfyAccountId: ACCOUNT_A },
+            dgfyAccountId: ACCOUNT_A
+        }))).rejects.toMatchObject({
+            details: { reason_code: VoucherReasonCode.VOUCHER_ACCOUNT_NOT_ELIGIBLE }
+        });
     });
 });

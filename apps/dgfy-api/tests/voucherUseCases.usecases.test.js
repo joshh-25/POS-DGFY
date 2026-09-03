@@ -50,6 +50,8 @@ const VOUCHER_DEFAULTS = {
     redeemed_value_centavos: 0,
     redeemed_quantity: 0,
     conditions: null,
+    // #788 (Phase 269): derived server-side from account_grant_ids, never client-writable.
+    is_account_restricted: false,
     status: 'draft',
     version: 0
 };
@@ -59,6 +61,8 @@ const seedVoucher = (overrides = {}) => ({ ...VOUCHER_DEFAULTS, ...overrides });
 const makeFakeRepository = ({
     vouchers = [],
     scopes = [],
+    // #788: [{ voucher_account_grant_id, voucher_id, dgfy_account_id }]
+    accountGrants = [],
     itemIds = [1, 2, 3],
     folderIds = [10, 11],
     redemptions = {},
@@ -70,9 +74,11 @@ const makeFakeRepository = ({
     const state = {
         vouchers: vouchers.map((voucher) => ({ ...voucher })),
         scopes: scopes.map((scope) => ({ ...scope })),
+        accountGrants: accountGrants.map((grant) => ({ ...grant })),
         nextVoucherId: vouchers.reduce((max, v) => Math.max(max, v.voucher_id || 0), 0) + 1,
         nextScopeId: scopes.reduce((max, s) => Math.max(max, s.voucher_scope_id || 0), 0) + 1,
-        calls: { markExpired: 0, getRedemptionStats: 0, replaceScopes: 0, rollbacks: 0, commits: 0 }
+        nextGrantId: accountGrants.reduce((max, g) => Math.max(max, g.voucher_account_grant_id || 0), 0) + 1,
+        calls: { markExpired: 0, getRedemptionStats: 0, replaceScopes: 0, replaceAccountGrants: 0, rollbacks: 0, commits: 0 }
     };
 
     const find = (voucherId) => state.vouchers.find((voucher) => voucher.voucher_id === Number(voucherId));
@@ -167,6 +173,35 @@ const makeFakeRepository = ({
             return state.scopes
                 .filter((scope) => ids.includes(Number(scope.voucher_id)))
                 .map((scope) => ({ ...scope }));
+        },
+
+        // #788: mirrors the real repository's contract exactly -- a voucher with no rows is ABSENT
+        // from the returned map rather than mapped to [], which is what lets a caller tell
+        // "restricted with an empty allowlist" from "never queried".
+        async listAccountGrants(voucherIds) {
+            const ids = voucherIds.map(Number);
+            return state.accountGrants
+                .filter((grant) => ids.includes(Number(grant.voucher_id)))
+                .reduce((accumulator, grant) => {
+                    const voucherId = Number(grant.voucher_id);
+                    if (!accumulator[voucherId]) accumulator[voucherId] = [];
+                    accumulator[voucherId].push(String(grant.dgfy_account_id));
+                    return accumulator;
+                }, {});
+        },
+
+        async replaceAccountGrants(voucherId, accountIds = []) {
+            state.calls.replaceAccountGrants += 1;
+            state.accountGrants = state.accountGrants.filter((grant) => Number(grant.voucher_id) !== Number(voucherId));
+            accountIds.forEach((accountId) => {
+                state.accountGrants.push({
+                    voucher_account_grant_id: state.nextGrantId,
+                    voucher_id: Number(voucherId),
+                    dgfy_account_id: String(accountId)
+                });
+                state.nextGrantId += 1;
+            });
+            return { deleted: 0, inserted: accountIds.length };
         },
 
         async assertScopeRefsExist(requested = []) {
@@ -1099,5 +1134,237 @@ describe('failure mapping', () => {
         expect(result.error.code).toBe('INTERNAL_ERROR');
         expect(result.error.statusCode).toBe(500);
         expect(result.error.cause?.message).toBe('connection lost');
+    });
+});
+
+// #788 (Phase 269): account-restricted issuance, authoring half.
+//
+// The property under test throughout is that `is_account_restricted` is DERIVED and can never
+// disagree with the child rows -- a client cannot set it, an omitted key cannot clear it, and only
+// an explicit empty array removes a restriction.
+describe('account-restricted issuance (#788)', () => {
+    const ACCOUNT_A = '11111111-1111-4111-8111-111111111111';
+    const ACCOUNT_B = '22222222-2222-4222-8222-222222222222';
+
+    describe('create', () => {
+        test('grants persist and is_account_restricted is derived to true', async () => {
+            const repository = makeFakeRepository();
+            const create = buildCreate(repository);
+
+            const result = await create({
+                payload: percentOffPayload({ account_grant_ids: [ACCOUNT_A, ACCOUNT_B] }),
+                now: NOW
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data.voucher.is_account_restricted).toBe(true);
+            expect(result.data.account_grant_ids).toEqual([ACCOUNT_A, ACCOUNT_B]);
+        });
+
+        test('no grants means an unrestricted voucher and no child-table write at all', async () => {
+            const repository = makeFakeRepository();
+            const create = buildCreate(repository);
+
+            const result = await create({ payload: percentOffPayload(), now: NOW });
+
+            expect(result.success).toBe(true);
+            expect(result.data.voucher.is_account_restricted).toBe(false);
+            expect(result.data.account_grant_ids).toEqual([]);
+            expect(repository.__state.calls.replaceAccountGrants).toBe(0);
+        });
+
+        test('duplicate and mixed-case ids collapse to one normalized grant', async () => {
+            const repository = makeFakeRepository();
+            const create = buildCreate(repository);
+
+            const result = await create({
+                payload: percentOffPayload({ account_grant_ids: [ACCOUNT_A, ACCOUNT_A.toUpperCase(), ` ${ACCOUNT_A} `] }),
+                now: NOW
+            });
+
+            expect(result.data.account_grant_ids).toEqual([ACCOUNT_A]);
+        });
+
+        test('account-restricted + publicly listed is refused, not silently coerced', async () => {
+            const repository = makeFakeRepository();
+            const create = buildCreate(repository);
+
+            const result = await create({
+                payload: percentOffPayload({ account_grant_ids: [ACCOUNT_A], is_publicly_listed: true }),
+                now: NOW
+            });
+
+            expect(result.success).toBe(false);
+            expect(reasonCode(result)).toBe('VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE');
+            expect(statusCode(result)).toBe(422);
+            // Nothing was written, and -- like every other pre-transaction assert in create -- the
+            // guard fires before `beginTransaction`, so there is no transaction to roll back.
+            expect(repository.__state.vouchers).toHaveLength(0);
+            expect(repository.__state.calls.commits).toBe(0);
+            expect(repository.__state.calls.rollbacks).toBe(0);
+        });
+
+        test('publicly listed WITHOUT a restriction is still allowed', async () => {
+            const repository = makeFakeRepository();
+            const create = buildCreate(repository);
+
+            const result = await create({ payload: percentOffPayload({ is_publicly_listed: true }), now: NOW });
+
+            expect(result.success).toBe(true);
+        });
+    });
+
+    describe('update', () => {
+        const seedRestricted = () => makeFakeRepository({
+            vouchers: [seedVoucher({
+                voucher_id: 1,
+                code: 'B2BONLY',
+                title: 'B2B only',
+                benefit_class: 'percent_off',
+                percent_off_bps: 1000,
+                is_account_restricted: true,
+                status: 'active',
+                version: 3
+            })],
+            accountGrants: [{ voucher_account_grant_id: 1, voucher_id: 1, dgfy_account_id: ACCOUNT_A }]
+        });
+
+        test('an OMITTED account_grant_ids leaves the allowlist and the flag untouched', async () => {
+            const repository = seedRestricted();
+            const update = buildUpdate(repository);
+
+            const result = await update({ voucherId: 1, payload: { version: 3, title: 'Renamed' }, now: NOW });
+
+            expect(result.success).toBe(true);
+            expect(result.data.voucher.is_account_restricted).toBe(true);
+            expect(result.data.account_grant_ids).toEqual([ACCOUNT_A]);
+            expect(repository.__state.calls.replaceAccountGrants).toBe(0);
+        });
+
+        test('an EXPLICIT empty array removes the restriction and every grant', async () => {
+            const repository = seedRestricted();
+            const update = buildUpdate(repository);
+
+            const result = await update({ voucherId: 1, payload: { version: 3, account_grant_ids: [] }, now: NOW });
+
+            expect(result.success).toBe(true);
+            expect(result.data.voucher.is_account_restricted).toBe(false);
+            expect(result.data.account_grant_ids).toEqual([]);
+            expect(repository.__state.accountGrants).toHaveLength(0);
+        });
+
+        test('replacing the allowlist swaps the grants and keeps the flag set', async () => {
+            const repository = seedRestricted();
+            const update = buildUpdate(repository);
+
+            const result = await update({ voucherId: 1, payload: { version: 3, account_grant_ids: [ACCOUNT_B] }, now: NOW });
+
+            expect(result.data.voucher.is_account_restricted).toBe(true);
+            expect(result.data.account_grant_ids).toEqual([ACCOUNT_B]);
+        });
+
+        test('adding a restriction to a voucher that is already publicly listed is refused', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [seedVoucher({
+                    voucher_id: 1,
+                    code: 'PUBLIC',
+                    title: 'Public',
+                    benefit_class: 'percent_off',
+                    percent_off_bps: 1000,
+                    is_publicly_listed: true,
+                    status: 'active',
+                    version: 0
+                })]
+            });
+            const update = buildUpdate(repository);
+
+            const result = await update({ voucherId: 1, payload: { version: 0, account_grant_ids: [ACCOUNT_A] }, now: NOW });
+
+            expect(result.success).toBe(false);
+            expect(reasonCode(result)).toBe('VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE');
+        });
+
+        test('turning ON public listing for an already-restricted voucher is refused too (the other direction)', async () => {
+            const repository = seedRestricted();
+            const update = buildUpdate(repository);
+
+            // account_grant_ids omitted -- the guard must read the STORED allowlist, not just the
+            // payload, or this direction slips through.
+            const result = await update({ voucherId: 1, payload: { version: 3, is_publicly_listed: true }, now: NOW });
+
+            expect(result.success).toBe(false);
+            expect(reasonCode(result)).toBe('VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE');
+        });
+
+        test('a normal update self-heals a flag that disagrees with the child rows', async () => {
+            // A row whose flag says "unrestricted" while grants exist would be an unenforced
+            // restriction. Not reachable through this use case, but the write is unconditional
+            // precisely so it repairs rather than perpetuates such a row.
+            const repository = makeFakeRepository({
+                vouchers: [seedVoucher({
+                    voucher_id: 1,
+                    code: 'DRIFT',
+                    title: 'Drifted',
+                    benefit_class: 'percent_off',
+                    percent_off_bps: 1000,
+                    is_account_restricted: false,
+                    status: 'active',
+                    version: 0
+                })],
+                accountGrants: [{ voucher_account_grant_id: 1, voucher_id: 1, dgfy_account_id: ACCOUNT_A }]
+            });
+            const update = buildUpdate(repository);
+
+            const result = await update({ voucherId: 1, payload: { version: 0, title: 'Renamed' }, now: NOW });
+
+            expect(result.success).toBe(true);
+            expect(result.data.voucher.is_account_restricted).toBe(true);
+        });
+    });
+
+    describe('get and activate', () => {
+        test('GET returns the allowlist alongside scopes', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [seedVoucher({ voucher_id: 1, code: 'B2BONLY', title: 'B2B', benefit_class: 'percent_off', percent_off_bps: 1000, is_account_restricted: true })],
+                accountGrants: [{ voucher_account_grant_id: 1, voucher_id: 1, dgfy_account_id: ACCOUNT_A }]
+            });
+
+            const result = await buildGetVoucherUseCase({ repository })({ voucherId: 1, now: NOW });
+
+            expect(result.success).toBe(true);
+            expect(result.data.account_grant_ids).toEqual([ACCOUNT_A]);
+        });
+
+        test('GET on an unrestricted voucher returns an empty allowlist, never undefined', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [seedVoucher({ voucher_id: 1, code: 'OPEN', title: 'Open', benefit_class: 'percent_off', percent_off_bps: 1000 })]
+            });
+
+            const result = await buildGetVoucherUseCase({ repository })({ voucherId: 1, now: NOW });
+
+            expect(result.data.account_grant_ids).toEqual([]);
+        });
+
+        test('activation re-checks the restricted/publicly-listed conflict on a drifted draft', async () => {
+            const repository = makeFakeRepository({
+                vouchers: [seedVoucher({
+                    voucher_id: 1,
+                    code: 'BADCOMBO',
+                    title: 'Bad combo',
+                    benefit_class: 'percent_off',
+                    percent_off_bps: 1000,
+                    is_account_restricted: true,
+                    is_publicly_listed: true,
+                    status: 'draft',
+                    version: 0
+                })],
+                accountGrants: [{ voucher_account_grant_id: 1, voucher_id: 1, dgfy_account_id: ACCOUNT_A }]
+            });
+
+            const result = await buildActivateVoucherUseCase({ repository })({ voucherId: 1, now: NOW });
+
+            expect(result.success).toBe(false);
+            expect(reasonCode(result)).toBe('VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE');
+        });
     });
 });

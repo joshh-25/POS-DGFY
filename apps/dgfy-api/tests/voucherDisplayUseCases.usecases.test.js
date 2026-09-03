@@ -32,7 +32,9 @@ const VOUCHER_DEFAULTS = {
     redeemed_value_centavos: 0,
     redeemed_quantity: 0,
     status: 'active',
-    version: 0
+    version: 0,
+    // #788 (Phase 269): unrestricted by default.
+    is_account_restricted: false
 };
 
 const makeVoucher = (overrides = {}) => ({ ...VOUCHER_DEFAULTS, ...overrides });
@@ -347,5 +349,44 @@ describe('resolveVoucherDisplayPricesUseCase', () => {
 
         expect(result.applied).toBe(false);
         expect(result.pricesByItemId).toEqual({});
+    });
+});
+
+// #788 (Phase 269): account-restricted vouchers at display time.
+//
+// The three VOUCHER_ACCOUNT_* codes ARE in DISPLAY_RELEVANT_REASON_CODES -- the opposite of the
+// basket-dependent codes above. That is deliberate and load-bearing, for two reasons at once:
+// this module falls back to the plain catalog price (ADR 0066 decision 3's fail-open half), and
+// storefrontDiscoveryIndexService.js imports the same set to decide what reaches the PUBLIC
+// snapshot -- which publishes each listed voucher's literal code.
+describe('account-restricted display (#788)', () => {
+    it('an account-restricted voucher resolves to the plain catalog price, never a voucher price', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher({ is_account_restricted: true })] });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+
+        const result = await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(result.applied).toBe(false);
+        expect(result.pricesByItemId).toEqual({});
+        // Fail-OPEN, not a throw: the browse page still renders, it just advertises nothing.
+        expect(result.reasonCode).toBe('VOUCHER_ACCOUNT_REQUIRED');
+    });
+
+    it('the display path never hydrates the allowlist -- it has no buyer identity to check against', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher({ is_account_restricted: true })] });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+
+        await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(repository.__state.calls).not.toContain('listAccountGrants');
+    });
+
+    it('an UNRESTRICTED voucher is unaffected -- the regression guard for the change above', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher()] });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+
+        const result = await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(result.applied).toBe(true);
     });
 });
