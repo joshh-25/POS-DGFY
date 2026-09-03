@@ -80,8 +80,15 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // `run_shared_fnb_contract_tests` step now running `npm run test:frontend:contracts` (frontend-ims-
 // quality, gate 14) -- stay advisory pending real-promotion evidence (P2-3), same as every other
 // still-advisory step here.
+// #1529: route-build-checks routes pr-checks.yml's build-check jobs to GitHub-hosted runners for a
+// release/*|hotfix/* PR into main; these three markers replace the old
+// 'runner_labels_json: *runner_heavy' marker (which lived in the 3 frontend build-check jobs'
+// with: blocks and no longer does -- that alias usage relocated into route-build-checks's own
+// env: block under this change) and additionally guard the new job/condition from silent removal.
 const REQUIRED_PR_CHECKS_MARKERS = [
-  'runner_labels_json: *runner_heavy'
+  'RUNNER_HEAVY_JSON: *runner_heavy',
+  'route-build-checks:',
+  'release/*|hotfix/*'
 ];
 const REQUIRED_QUALITY_MARKERS = [
   'workflow_call:',
