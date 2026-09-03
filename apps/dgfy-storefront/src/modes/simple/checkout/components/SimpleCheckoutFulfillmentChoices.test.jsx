@@ -30,8 +30,32 @@ describe('SimpleCheckoutFulfillmentChoices', () => {
 
     expect(screen.queryByRole('button', { name: /Delivery/ })).toBeNull();
     expect(screen.queryByText('How would you like to receive your order?')).toBeNull();
-    expect(screen.getByText('This order will be ready for pickup at the store.')).toBeTruthy();
+    expect(screen.getByTestId('pickup-only-fulfillment-notice')).toBeTruthy();
+    expect(screen.getByText('Pickup only')).toBeTruthy();
+    expect(screen.getByText('This store only offers pickup. Delivery is not available.')).toBeTruthy();
+    expect(screen.queryByText('This order will be ready for pickup at the store.')).toBeNull();
     expect(screen.getByText('1. When would you like your order?')).toBeTruthy();
+  });
+
+  it('shows the shared DGFY delivery-only notice when pickup is disabled in POS', () => {
+    render(<SimpleCheckoutFulfillmentChoices
+      orderMethod="delivery"
+      isDeliveryOrder
+      onOrderMethodChange={vi.fn()}
+      onScheduleModeChange={vi.fn()}
+      onScheduledForChange={vi.fn()}
+      fnbScheduleMode="asap"
+      fnbScheduledFor=""
+      simpleOrderMethodOptions={[
+        { value: 'delivery', label: 'Delivery', available: true },
+        { value: 'pickup', label: 'Pickup', available: false }
+      ]}
+    />);
+
+    expect(screen.getByTestId('delivery-only-fulfillment-notice')).toBeTruthy();
+    expect(screen.getByText('Delivery only')).toBeTruthy();
+    expect(screen.getByText('This store only offers delivery. Pickup is not available.')).toBeTruthy();
+    expect(screen.queryByText('This store delivers your order.')).toBeNull();
   });
 
   it('keeps the chooser and (Unavailable) treatment when two or more methods are available', () => {
@@ -80,7 +104,23 @@ describe('SimpleCheckoutFulfillmentChoices', () => {
     expect(screen.queryByTestId('order-timing-expectation')).toBeNull();
   });
 
-  it('(b) scheduling disabled: no Schedule card, no datetime-local input', () => {
+  it('stacks NOW and Schedule on small screens', () => {
+    render(<SimpleCheckoutFulfillmentChoices
+      isMobileViewport
+      orderMethod="delivery"
+      isDeliveryOrder
+      onOrderMethodChange={vi.fn()}
+      onScheduleModeChange={vi.fn()}
+      onScheduledForChange={vi.fn()}
+      fnbScheduleMode="asap"
+      fnbScheduledFor=""
+      simpleOrderMethodOptions={twoMethodOptions}
+    />);
+
+    expect(screen.getByTestId('order-timing-choice-grid').style.gridTemplateColumns).toBe('1fr');
+  });
+
+  it('(b) immediate-only policy: no timing selector, input, or redundant NOW banner', () => {
     render(<SimpleCheckoutFulfillmentChoices
       orderMethod="delivery"
       isDeliveryOrder
@@ -95,7 +135,8 @@ describe('SimpleCheckoutFulfillmentChoices', () => {
 
     expect(screen.queryByRole('button', { name: 'Schedule' })).toBeNull();
     expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
-    expect(screen.getByText(/will be delivered NOW/)).toBeTruthy();
+    expect(screen.queryByText(/When would you like your order/)).toBeNull();
+    expect(screen.queryByText(/will be delivered NOW/)).toBeNull();
   });
 
   it('(c) immediate fulfillment disabled: no NOW card, no green callout, lead-time string present', () => {

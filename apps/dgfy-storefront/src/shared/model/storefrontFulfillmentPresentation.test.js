@@ -25,7 +25,7 @@ describe('resolveFulfillmentSelectorPresentation', () => {
 
     expect(result.showSelector).toBe(false);
     expect(result.soleOption.value).toBe('delivery');
-    expect(result.notice).toBe('This store delivers your order.');
+    expect(result.notice).toBe('This store only offers delivery. Pickup is not available.');
   });
 
   it('hides the chooser and states the pickup notice when only pickup is available', () => {
@@ -36,7 +36,7 @@ describe('resolveFulfillmentSelectorPresentation', () => {
 
     expect(result.showSelector).toBe(false);
     expect(result.soleOption.value).toBe('pickup');
-    expect(result.notice).toBe('This order will be ready for pickup at the store.');
+    expect(result.notice).toBe('This store only offers pickup. Delivery is not available.');
   });
 
   it('hides the chooser and shows the defensive notice when zero methods are available', () => {

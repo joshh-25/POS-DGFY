@@ -18,8 +18,8 @@ export const NO_FULFILLMENT_METHOD_NOTICE = 'This store is not accepting online 
 // Statement form of each method, used in place of the "How would you like to receive your
 // order?" question when only that one method is available.
 const SOLE_FULFILLMENT_METHOD_NOTICES = Object.freeze({
-  delivery: 'This store delivers your order.',
-  pickup: 'This order will be ready for pickup at the store.',
+  delivery: 'This store only offers delivery. Pickup is not available.',
+  pickup: 'This store only offers pickup. Delivery is not available.',
   takeout: 'This order will be prepared for takeout.',
   dine_in: 'This order will be served for dine in.'
 });

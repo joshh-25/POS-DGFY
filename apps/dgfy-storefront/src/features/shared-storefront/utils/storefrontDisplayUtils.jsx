@@ -86,7 +86,7 @@ export function getDeliveryPlatformLinks(deliveryPartners = []) {
 
 export function BrandFacebookIcon({ size = 16 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="#1877F2">
       <path d="M13.5 22v-8h2.7l.4-3h-3.1V9.1c0-.9.3-1.5 1.6-1.5H16.8V4.8c-.3 0-1.4-.1-2.6-.1-2.6 0-4.3 1.6-4.3 4.4V11H7v3h2.9v8h3.6Z" />
     </svg>
   );

@@ -1054,10 +1054,11 @@ export default function StorefrontApp() {
   }, [isTrackSubpage, checkoutTab]);
   useStorefrontCartPersistence({
     cart,
-    // #768 scope: retail / F&B / services only -- simple mode has no cart persistence layer, so
-    // an applied voucher/promo code is still session-only there (PR #769 RF-3).
-    enabled: isFnbMode || isServicesMode || isRetailMode,
-    mode: isFnbMode ? 'fnb' : (isServicesMode || selectedStore?.workflow_mode === 'laundry' ? 'services' : (isRetailMode ? 'retail' : '')),
+    // Keep each product storefront's unfinished cart, voucher, and promotion
+    // scoped to its own mode and slug. Without Simple MSME here, its shared
+    // in-memory cart survived navigation into a different Simple storefront.
+    enabled: isFnbMode || isServicesMode || isRetailMode || isSimpleMode,
+    mode: isFnbMode ? 'fnb' : (isServicesMode || selectedStore?.workflow_mode === 'laundry' ? 'services' : (isRetailMode ? 'retail' : (isSimpleMode ? 'simple' : ''))),
     // #768: rides along in the same snapshot as the cart lines -- see that hook's own note.
     promoCode: checkoutPromoCode,
     setCart,

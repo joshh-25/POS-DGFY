@@ -11,6 +11,7 @@ export function SimpleCheckoutExpandedMapModal({
   isOpen,
   onClose
 }) {
+  useModalScrollLock(isOpen);
   if (!isOpen) return null;
 
   return (
@@ -25,7 +26,8 @@ export function SimpleCheckoutExpandedMapModal({
         background: 'rgba(15,23,42,0.46)',
         display: 'grid',
         placeItems: 'center',
-        padding: isMobileViewport ? 16 : 28
+        padding: isMobileViewport ? 16 : 28,
+        overscrollBehavior: 'contain'
       }}
     >
       <div
@@ -70,3 +72,4 @@ export function SimpleCheckoutExpandedMapModal({
     </div>
   );
 }
+import { useModalScrollLock } from '../../../../shared/hooks/useModalScrollLock.js';

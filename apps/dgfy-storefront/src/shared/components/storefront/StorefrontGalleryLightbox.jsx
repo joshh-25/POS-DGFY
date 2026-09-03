@@ -16,11 +16,10 @@ const navButtonStyle = {
   cursor: 'pointer'
 };
 
-// Shared fullscreen viewer for the FNB hero gallery, used by both the mobile
-// merged hero image and the desktop 4-tile grid. Always navigates the full,
-// unsliced image list (galleryImagesFull), independent of the 4-tile preview
-// cap used for the inline grids/thumbnails.
-const FnbHeroGalleryLightbox = ({
+// Shared fullscreen viewer for Storefront galleries. It always navigates the
+// complete image list supplied by the caller, independent of any inline
+// preview or thumbnail cap.
+const StorefrontGalleryLightbox = ({
   currentIndex,
   images,
   onClose,
@@ -143,7 +142,7 @@ const FnbHeroGalleryLightbox = ({
           key={safeIndex}
           src={activeUrl}
           alt=""
-          className="fnb-gallery-lightbox-image"
+          className="storefront-gallery-lightbox-image"
           style={{
             maxWidth: '100%',
             maxHeight: '80vh',
@@ -178,4 +177,4 @@ const FnbHeroGalleryLightbox = ({
   );
 };
 
-export { FnbHeroGalleryLightbox };
+export { StorefrontGalleryLightbox };

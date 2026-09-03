@@ -2,6 +2,7 @@ import { ShoppingBag, Truck } from 'lucide-react';
 import { useState } from 'react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { getUnavailableFulfillmentMessage } from '../../../../shared/model/storefrontFulfillmentOptions.js';
+import { CHECKOUT_FONT_FAMILY } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 const SIMPLE_ORDER_METHOD_ICONS = {
   delivery: ({ size }) => <Truck size={size} />,
@@ -51,6 +52,7 @@ export function SimpleOrderMethodSelector({
             fontWeight={700}
             iconBoxSize={isMobileViewport ? 34 : 40}
             iconSize={isMobileViewport ? 18 : 20}
+            fontFamily={CHECKOUT_FONT_FAMILY}
             unavailable={!isAvailable}
           />
         );

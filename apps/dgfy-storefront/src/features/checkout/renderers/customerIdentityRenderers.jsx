@@ -3,6 +3,7 @@ import { CustomerIdentityCard } from '../../../shared/components/checkout/Custom
 import { GuestIdentityForm } from '../components/GuestIdentityForm.jsx';
 import { SavedCustomerDetailsPanel } from '../../../shared/components/checkout/SavedCustomerDetailsPanel.jsx';
 import { CheckoutBillingEmailPrompt } from '../../../shared/components/checkout/CheckoutBillingEmailPrompt.jsx';
+import { GUEST_CHECKOUT_SAVED_DETAILS_TITLE } from '../../../shared/components/checkout/guestCheckoutTypography.js';
 
 export function createCustomerIdentityRenderers({
   hasSavedCustomerDetails,
@@ -52,7 +53,7 @@ export function createCustomerIdentityRenderers({
     addressRequired = false,
     showSavedDetailsCard = true,
     layoutVariant = 'default',
-    savedDetailsTitle = 'Saved Details',
+    savedDetailsTitle = GUEST_CHECKOUT_SAVED_DETAILS_TITLE,
     savedDetailsApplyLabel = 'Apply Details',
     onSavedDetailsApply = handleApplyGuestDetails,
     showSingleNameField = true

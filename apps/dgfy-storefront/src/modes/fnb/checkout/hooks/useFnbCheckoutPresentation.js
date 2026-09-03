@@ -52,7 +52,7 @@ export function useFnbCheckoutPresentation({
     usePinnedAddress: true,
   });
   const isFnbOrderResponsiveFlow = isFnbOrderSubpage && isFnbMode && !isDesktopCheckout;
-  const fnbMobileCheckoutFooterReserve = 'calc(env(safe-area-inset-bottom, 0px) + 196px)';
+  const fnbMobileCheckoutFooterReserve = 'var(--storefront-mobile-checkout-footer-reserve, 196px)';
   const fnbOrderStepRenderKey = `${isFnbOrderResponsiveFlow ? 'responsive' : 'desktop'}-${checkoutResult ? 'complete' : 'open'}-${fnbOrderStep}`;
 
   const mobileSummaryKey = `${isFnbOrderResponsiveFlow ? 'responsive' : 'desktop'}-${checkoutResult ? 'complete' : 'open'}-${fnbOrderStep}`;
