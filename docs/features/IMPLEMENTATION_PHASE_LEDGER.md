@@ -19261,7 +19261,7 @@ Completion date: 2026-09-03.
 
 ### Next eligible phase
 
-**265.** Re-check the ledger's highest merged entry and every open phase claim at plan/branch time;
+**270.** Re-check the ledger's highest merged entry and every open phase claim at plan/branch time;
 do not rely on this reservation if another phase lands first.
 
 ## Phase 265 - Show which voucher was applied on the order list/detail (#1492)
@@ -19329,6 +19329,7 @@ dropped rather than implemented anyway:
   is what the brief's own forbidding language ("never the public tracking endpoint") already implied
   once traced through; widening `serializeOrderBase` itself would have leaked the new field onto the
   public page the same brief explicitly forbade touching.
+
 ### Status
 
 `completed`

@@ -57,7 +57,7 @@ legacy, malformed, unavailable CLI, per-slot override).
 ## 1.2 CLI validation
 
 Before any dispatch, validate the resolved `cli` for every slot against the **currently available
-Orca dispatch agents** — sourced from the same freshly-loaded orchestration guide section 1.7
+Orca dispatch agents** — sourced from the same freshly-loaded orchestration guide section 1.8
 already makes mandatory (`orca skills get orchestration`, never from memory), specifically its
 documented group-address roster (excluding the non-agent addresses `@all`, `@idle`,
 `@worktree:<id>`). **This file does not enumerate that list** — read it from the guide loaded this
@@ -69,7 +69,7 @@ environment) → **fail before dispatch** with a clear per-slot configuration er
 substitute a different CLI silently.
 
 This is a pre-dispatch gate, not a per-worker-start error handler — nothing in section 1.4's report
-or the campaign template (section 1.6) should ever reference a slot that failed this check; the
+or the campaign template (section 1.7) should ever reference a slot that failed this check; the
 whole run stops first.
 
 ## 1.3 Legacy CLI inference
