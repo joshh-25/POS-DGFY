@@ -18215,3 +18215,165 @@ base is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`.
 
 Re-check the ledger's actual highest merged entry at plan time rather than assuming — Phase 255
 (#1441 PR-D) may or may not have merged by then.
+
+## Phase 257 - Item deactivate/restore (#1495 Part A)
+
+### Initiative and release
+
+Prerequisite half of #1495 (CSV sync import for inventory items): that issue's own scope names "a
+merchant-facing deactivate/reactivate concept" for items as a prerequisite step, since items had
+`deleted_at` enforced at the data layer with no restore UX. This phase builds that prerequisite in
+isolation. The sync-import mode itself (#1495 Part B) is a separate, later phase, gated on this one
+plus #1318 (folders) — not built here. **Numbering note**: re-checked the ledger's highest heading
+(`## Phase 256`, merged) and every open PR into `develop` (`gh api
+repos/Sieitzz/dgfy-platform/pulls?base=develop&state=open`: #1475, #1316, neither claiming a phase
+number) immediately before this commit — 257 is free.
+
+### Objective and scope
+
+Mirrors the existing PO/JO archive/restore pair (`modules/purchaseOrders/`,
+`POST /:po_id/restore`) at the item layer, which is materially more complex for three reasons:
+items use a combined `status` + `deleted_at` soft-delete (not a single `archived_at`), items have a
+generated, uniquely-indexed `active_sku_code` column that can collide on restore, and item
+visibility is read by IMS/POS/storefront through one shared `buildVisibleWhere` helper.
+
+- **Backend**: `itemRepository.restoreItem(itemId, userId, { expectedServerVersion })` — new
+  method, placed directly after `deleteItem`. Looks the row up unscoped (`Item.findOne` by
+  `item_id`, not `findVisibleItemById`, which would always 404 on the exact `status: 'inactive'`
+  row being restored); gates on `deleted_at IS NOT NULL` rather than `status === 'inactive'` (an
+  item deactivated via a plain `PUT /items/:item_id` has `status: 'inactive'` but `deleted_at:
+  null`, and must NOT be restorable through this one-way-reversal endpoint); always restores to
+  `status: 'active'` (V1 — see Deviations below); reuses the existing
+  `isActiveSkuUniqueConstraintError`/`normalizeSkuConflictError` helpers to turn an
+  `active_sku_code` collision into a friendly 409; writes a new `item_restored` audit event via the
+  existing `auditInventoryEvent` helper; returns the restored row via `itemRepository.getItemById`.
+  New `restoreItemUseCase.js` (direct mirror of `deleteItemUseCase.js`), wired in
+  `modules/inventory/index.js`; new `restoreItem` handler in `itemHandlers.js` (mirrors `deleteItem`
+  — same `publishCatalogInvalidation(req, 'item_restored', ...)` call, same
+  `trackProductUsageFromResult` telemetry with `eventType: 'inventory_item_restored'`); added to
+  `itemController.js`'s three facade export blocks; new route
+  `POST /:item_id/restore`, gated by the existing `PERMISSIONS.INVENTORY.actions.DELETE_ITEMS` (no
+  new permission tier — matches the PO/JO precedent, confirmed with the requester before
+  implementing).
+- **Backend — `include_inactive` list/detail flag**: `itemRepository.getItems`/`getItemById` gain
+  an `include_inactive` bypass (`buildVisibleWhere({}, { excludeInactiveStatus: false })` instead of
+  the unconditional `visibleItemWhere`) so an admin can actually see what's restorable, and so the
+  "view details" action on a surfaced inactive item doesn't 404 into a degraded fallback (traced to
+  `findVisibleItemById` excluding `status: 'inactive'` — this was a real, reachable UX break, not
+  hypothetical, and is fixed on the frontend's `handleView`/`onRefresh` call sites by requesting the
+  bypass only when the item being viewed is actually inactive). Permission-gated (not just hidden in
+  the UI) in `getItemsUseCase`/`getItemByIdUseCase`: the flag is honored only when the requesting
+  user holds `DELETE_ITEMS`, otherwise silently ignored (fails soft, no 403 — matching the existing
+  `location_id` scoping precedent in the same use case) so a staff-role user can't see deleted items
+  by hand-appending a query param. Coerced inline (`=== true || === 'true'`) rather than via a new
+  Joi schema — see Deviations below.
+- **POS/storefront**: zero code changes. `posRepository.listCatalog` and all three
+  `storeRepository` call sites already share the same `buildVisibleWhere` helper with
+  `excludeInactiveStatus: true` and no override — restoring an item to `active` makes it reappear
+  automatically.
+- **No migration.** `active_sku_code` is `GENERATED ALWAYS ... STORED`; MySQL recomputes it on
+  every `UPDATE`, no migration involved.
+- **Frontend** (`packages/web-core`, IMS-surfaced): `itemService.restoreItem`,
+  `useItems.useRestoreItem`, `useInventoryItems.useInventoryRestoreItem` (mirrors the existing
+  delete triplet); `branchScopedStock.buildItemsListParams` gains an `includeInactive` param,
+  omitted-by-default (byte-identical request shape unless explicitly turned on), with a matching
+  unit test extension; `ItemsPage.jsx` gets a `showInactiveItems` toggle (deliberately *not*
+  persisted to `localStorage`, same reasoning as the existing `selectedLocationId` — reopening with
+  inactive items hidden is the honest default), threaded into the list call, a `handleRestore`
+  handler with no confirmation dialog (restore is non-destructive and trivially reversible again),
+  and prop-threading into both grid-view `ItemCard` render sites plus the drag-overlay ghost;
+  `ItemCard.jsx` gets an "Inactive" badge and swaps the "Delete Item" dropdown entry for "Restore
+  Item" when `item.status === 'inactive'` (permission-gated by the component's own existing
+  `usePermission()` call, no new prop needed); `ItemDetailsModal.jsx` gets the same badge plus a
+  dedicated restore banner/button in both its render branches (simple and product-accordion views),
+  self-deriving the permission the same way `ItemCard` does.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Prerequisite for #1495 Part B (sync-import), not yet started. Independent of #1318 (folders) — this
+phase never touches `folder_id`/`ItemFolder`.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on every changed/new `apps/dgfy-api` `.js` file.
+- [x] `npm run build:skupervisor` — clean build, no errors (validates `ItemsPage.jsx`,
+  `ItemCard.jsx`, `ItemDetailsModal.jsx`, and the `packages/web-core` hook/service changes).
+- [x] `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs
+  --runInBand` against every `item`/`inventory`-named unit test file (21 suites / 204 tests) plus
+  the new `inventoryItemRepository.test.js` restore cases (happy path, 400 not-deleted, 404 missing,
+  409 SKU conflict), the new `inventoryGetItemByIdUseCase.test.js`, the extended
+  `inventoryGetItemsUseCase.test.js` (include_inactive permission gate), and the extended
+  `itemHandlers.transport.test.js` (`restoreItem` transport contract) — all green; three existing
+  `inventoryGetItemsUseCase.test.js` assertions updated for the new `include_inactive` key in the
+  repository call shape.
+- [x] `npx vitest run` (via `apps/dgfy-ims`, which pulls in `packages/web-core`'s own suite) against
+  `branchScopedStock.test.js`'s extended cases (12/12 pass).
+- [x] `npm run check:compliance` — no compliance-sensitive changes detected (re-confirmed at
+  implementation time, per the plan's own instruction to double-check rather than trust the plan's
+  earlier read).
+- [x] `npm run check:architecture` — 54 modules / 556 files, 94 controllers, OK.
+- [x] `node scripts/check-adr.js --strict` — 86 ADRs, OK.
+
+### Deviations from the plan
+
+- **Draft-restore edge case (plan §2a.3): shipped V1 as directed** — always restore to `'active'`,
+  never attempt to recover the pre-delete `status` from the `item_deleted` audit log row (that
+  would-be V1.1 is explicitly not built here). **Known limitation, stated plainly**: an item that
+  was `status: 'draft'` at the moment it was deleted will restore straight to `'active'` and skip
+  `finalizeItem`'s validation gate (required `sku_code`/`category`/`max_capacity`/
+  `unit_of_measure`, MSME pricing requirements) — a draft item can legally have those fields empty,
+  so a restored former-draft item can end up `active` but missing fields the rest of the system
+  assumes an active item always has. Considered rare enough to defer (a user must have abandoned a
+  half-finished draft *and* explicitly deleted it, rather than just leaving it as a draft); revisit
+  only if a real complaint surfaces.
+- **Restore permission: confirmed, not a unilateral call** — reuses
+  `PERMISSIONS.INVENTORY.actions.DELETE_ITEMS` for restore, matching the PO/JO precedent, no new
+  permission tier. Flagged in the plan as a one-line confirm rather than a blocking question;
+  approved before implementation.
+- **`include_inactive` query validation: inline coercion, not a new Joi schema.** `GET /items` has
+  no query-validation schema at all today (no `page`/`limit`/`category`/`folder_id` validation
+  either) — adding the repo's first real query schema for this endpoint would be a bigger,
+  separately-reviewable change this phase shouldn't quietly bundle in. The absent broader query
+  validation is handed off to `pm` as a separate follow-up issue rather than fixed here.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+**Not fired**: no migration file, no deploy dispatch, no SSH, no force-push/branch deletion.
+`npm run check:compliance`'s missing-declaration checkpoint does not fire (no compliance-sensitive
+path touched). PR base is `develop`, branch prefix `feature/`.
+
+### Links
+
+- Tracking issue: #1495 (Refs, not Closes — Part B remains open and this change is user-facing/
+  behavior-changing, so per `docs/process/ISSUE-TAXONOMY.md`'s linkage rule the issue stays open
+  through merge for QA rather than auto-closing).
+- Follow-up handed to `pm`: absent `GET /items` query-validation schema (plan §3/§10).
+- PR: `feature/1495-item-restore` → `develop`.
+- Modified: `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/restoreItemUseCase.js` (new),
+  `apps/dgfy-api/src/modules/inventory/usecases/getItemsUseCase.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/getItemByIdUseCase.js`,
+  `apps/dgfy-api/src/modules/inventory/index.js`,
+  `apps/dgfy-api/src/modules/inventory/controllers/itemHandlers.js`,
+  `apps/dgfy-api/src/controllers/itemController.js`, `apps/dgfy-api/src/routes/items.js`,
+  `apps/dgfy-api/tests/inventoryItemRepository.test.js`,
+  `apps/dgfy-api/tests/inventoryGetItemByIdUseCase.test.js` (new),
+  `apps/dgfy-api/tests/inventoryGetItemsUseCase.test.js`,
+  `apps/dgfy-api/tests/itemHandlers.transport.test.js`,
+  `packages/web-core/src/services/itemService.js`, `packages/web-core/src/hooks/useItems.js`,
+  `packages/web-core/src/features/inventory/hooks/useInventoryItems.js`,
+  `packages/web-core/src/features/inventory/index.js`,
+  `packages/web-core/src/features/inventory/utils/branchScopedStock.js` (+ its `__tests__` file),
+  `packages/web-core/src/features/inventory/pages/ItemsPage.jsx`,
+  `packages/web-core/Components/items/ItemCard.jsx`,
+  `packages/web-core/Components/items/ItemDetailsModal.jsx`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+
+### Next eligible phase
+
+Re-check the ledger's actual highest merged entry at plan/branch time rather than assuming — Phase
+255 (#1441 PR-D) may still be unmerged, and #1495 Part B is not yet scoped as a numbered phase.
