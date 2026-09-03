@@ -26,6 +26,7 @@ export const deliveryRunRepository = {
         const row = await DeliveryRun.create({
             label: payload.label,
             scheduled_date: payload.scheduled_date ?? null,
+            scheduled_date_end: payload.scheduled_date_end ?? null,
             location_id: payload.location_id ?? null,
             notes: payload.notes ?? null,
             status: payload.status || 'draft',
@@ -66,15 +67,34 @@ export const deliveryRunRepository = {
         const DeliveryRun = dbStore.get('DeliveryRun');
         const DeliveryRunPersonnel = dbStore.get('DeliveryRunPersonnel');
         const DeliveryJob = dbStore.get('DeliveryJob');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
         const where = {};
         if (status) where.status = status;
         const normalizedLocationId = toPositiveInt(locationId);
         if (normalizedLocationId) where.location_id = normalizedLocationId;
-        if (scheduledDateFrom || scheduledDateTo) {
-            where.scheduled_date = {};
-            if (scheduledDateFrom) where.scheduled_date[Op.gte] = scheduledDateFrom;
-            if (scheduledDateTo) where.scheduled_date[Op.lte] = scheduledDateTo;
+
+        // Phase 260 (#1489): scheduled_date/scheduled_date_end is a RANGE now, so
+        // scheduledDateFrom/scheduledDateTo filter by overlap, not by scheduled_date alone. A run
+        // with scheduled_date_end = NULL is a single-day run whose effective end equals its start
+        // (a bare COALESCE isn't indexable, but a run's effective end only needs comparing against
+        // scheduledDateFrom, and MySQL can still use idx_delivery_runs_status_scheduled_range's
+        // leading status/scheduled_date columns for the scheduledDateTo half below).
+        const overlapConditions = [];
+        if (scheduledDateTo) {
+            overlapConditions.push({ scheduled_date: { [Op.lte]: scheduledDateTo } });
+        }
+        if (scheduledDateFrom) {
+            overlapConditions.push(
+                sequelize.where(
+                    sequelize.fn('COALESCE', sequelize.col('scheduled_date_end'), sequelize.col('scheduled_date')),
+                    { [Op.gte]: scheduledDateFrom }
+                )
+            );
+        }
+        if (overlapConditions.length > 0) {
+            // A run with scheduled_date = NULL still fails both Op.lte/Op.gte, same as today.
+            where[Op.and] = overlapConditions;
         }
 
         const normalizedLimit = Math.min(Math.max(toPositiveInt(limit) || 20, 1), 100);

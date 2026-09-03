@@ -35,6 +35,15 @@ const RUN_STATUS_LABELS = Object.freeze({
 
 const LOCKED_RUN_STATUSES = new Set(['dispatched', 'completed']);
 
+// Phase 260 (#1489): scheduled_date/scheduled_date_end is a range now, not a single point in
+// time. No end date (or an end equal to the start) still displays as a single-day run.
+const formatRunScheduleLabel = (run) => {
+  if (!run.scheduled_date) return 'No schedule set';
+  const start = String(run.scheduled_date).slice(0, 10);
+  const end = run.scheduled_date_end ? String(run.scheduled_date_end).slice(0, 10) : null;
+  return end && end !== start ? `${start} → ${end}` : start;
+};
+
 // Phase 228 (#1273/#1271). Distinct from LOCKED_RUN_STATUSES above -- `dispatched` is deliberately
 // absent here, matching buildDispatchDeliveryRunUseCase's own RUN_DISPATCH_BLOCKED_STATUSES: the
 // Dispatch button stays enabled (relabeled "Re-dispatch run") on an already-dispatched run, since
@@ -491,7 +500,7 @@ export default function DeliveryRunsWorkspacePanel({
                 </span>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                {run.scheduled_date ? String(run.scheduled_date).slice(0, 10) : 'No schedule set'}
+                {formatRunScheduleLabel(run)}
                 {' · '}
                 {Number.isFinite(Number(run.member_count)) ? run.member_count : 0} order(s)
               </p>
