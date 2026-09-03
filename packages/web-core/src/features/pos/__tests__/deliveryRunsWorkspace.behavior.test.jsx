@@ -333,6 +333,33 @@ describe('Run members list', () => {
     expect(screen.getByText(/Maria Santos/)).toBeTruthy();
   });
 
+  // Phase 264 (#1487): renders serializeDeliveryRun's `summary` block -- total expected, total
+  // settled, and delivered-order count vs. total-order count.
+  it('renders the run-level summary block from the stubbed run detail', async () => {
+    const run = {
+      ...buildRunWithMember(),
+      summary: {
+        total_expected_amount: 500,
+        total_settled_amount: 200,
+        total_outstanding_amount: 300,
+        delivered_order_count: 0,
+        total_order_count: 1
+      }
+    };
+    fetchDeliveryRuns.mockResolvedValue({ items: [run], pagination: { total: 1, page: 1, limit: 100 } });
+    fetchDeliveryRun.mockResolvedValue(run);
+
+    render(<IncomingQueueWorkspace {...baseProps()} />);
+    await openDeliveryRunsTab();
+
+    fireEvent.click(await screen.findByText('Evening Run'));
+
+    expect(await screen.findByText('PHP 500.00')).toBeTruthy();
+    expect(screen.getByText('PHP 200.00')).toBeTruthy();
+    expect(screen.getByText('PHP 300.00')).toBeTruthy();
+    expect(screen.getByText('0 / 1')).toBeTruthy();
+  });
+
   it('remove calls removeDeliveryRunMember; move calls remove then add, in that order', async () => {
     const run = buildRunWithMember();
     const otherRun = {
