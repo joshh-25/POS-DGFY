@@ -18216,7 +18216,7 @@ base is `develop`, branch prefix `ci/` per `.github/branch-cleanup-policy.json`.
 Re-check the ledger's actual highest merged entry at plan time rather than assuming — Phase 255
 (#1441 PR-D) may or may not have merged by then.
 
-## Phase 257 - Item deactivate/restore (#1495 Part A)
+## Phase 259 - Item deactivate/restore (#1495 Part A)
 
 ### Initiative and release
 
@@ -18227,7 +18227,9 @@ isolation. The sync-import mode itself (#1495 Part B) is a separate, later phase
 plus #1318 (folders) — not built here. **Numbering note**: re-checked the ledger's highest heading
 (`## Phase 256`, merged) and every open PR into `develop` (`gh api
 repos/Sieitzz/dgfy-platform/pulls?base=develop&state=open`: #1475, #1316, neither claiming a phase
-number) immediately before this commit — 257 is free.
+number) immediately before this commit — 257 is free. **Renumbered to 259** post-review (RF-2):
+257 collided with #1503's own claim on that number, and 258 was already taken by #1501's
+renumber — 259 is the next free slot across all three concurrently-open PRs.
 
 ### Objective and scope
 
