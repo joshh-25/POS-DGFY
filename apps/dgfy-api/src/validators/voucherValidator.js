@@ -47,6 +47,8 @@ const FORBIDDEN_FIELDS = Object.freeze([
     'redeemed_count',
     'redeemed_value_centavos',
     'redeemed_quantity',
+    'created_by',
+    'updated_by',
     'created_at',
     'updated_at'
 ]);
@@ -89,6 +91,9 @@ const baseVoucherFields = {
     // since this validator can't see the merged row or the scopes array.
     auto_apply: Joi.boolean(),
     min_spend_centavos: Joi.number().integer().min(0).max(MAX_CENTAVOS).allow(null),
+    // #1490: eligibility cap, mirrors min_spend_centavos's own shape -- see Voucher.js's column
+    // comment and voucherEligibilityPolicy.js for the ITEM-subtotal comparison semantics.
+    max_order_value_centavos: Joi.number().integer().min(0).max(MAX_CENTAVOS).allow(null),
     min_quantity: Joi.number().integer().min(1).allow(null),
     allow_below_cost: Joi.boolean(),
     stackable_with_statutory: Joi.boolean(),
@@ -255,6 +260,21 @@ const collectCrossFieldErrors = (value, { mode }) => {
 
     if (value.valid_from && value.valid_until && value.valid_until < value.valid_from) {
         errors.push({ field: 'valid_until', message: 'valid_until cannot be earlier than valid_from' });
+    }
+
+    // #1490: best-effort, same-request-only check. The authoritative check against the *merged*
+    // row (so a PATCH that only sends one of the two fields is still caught) lives in
+    // voucherUseCases.js's assertOrderValueRangeInvariant -- this one just gives faster feedback
+    // when both fields are present in the same payload.
+    if (
+        value.min_spend_centavos != null
+        && value.max_order_value_centavos != null
+        && value.max_order_value_centavos < value.min_spend_centavos
+    ) {
+        errors.push({
+            field: 'max_order_value_centavos',
+            message: 'max_order_value_centavos cannot be less than min_spend_centavos'
+        });
     }
 
     const startPresent = has(value, 'valid_time_start') && value.valid_time_start != null;

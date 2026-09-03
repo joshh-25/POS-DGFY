@@ -39,6 +39,7 @@ export const VOUCHER_ELIGIBILITY_REASON_CODES = Object.freeze({
     VOUCHER_FULFILLMENT_NOT_ELIGIBLE: 'VOUCHER_FULFILLMENT_NOT_ELIGIBLE',
     VOUCHER_ORDER_TIMING_NOT_ELIGIBLE: 'VOUCHER_ORDER_TIMING_NOT_ELIGIBLE',
     VOUCHER_MIN_SPEND_NOT_MET: 'VOUCHER_MIN_SPEND_NOT_MET',
+    VOUCHER_MAX_ORDER_VALUE_EXCEEDED: 'VOUCHER_MAX_ORDER_VALUE_EXCEEDED',
     VOUCHER_MIN_QUANTITY_NOT_MET: 'VOUCHER_MIN_QUANTITY_NOT_MET',
     VOUCHER_REDEMPTION_LIMIT_REACHED: 'VOUCHER_REDEMPTION_LIMIT_REACHED',
     VOUCHER_BUDGET_EXHAUSTED: 'VOUCHER_BUDGET_EXHAUSTED',
@@ -284,14 +285,23 @@ export const evaluateVoucherEligibility = ({ voucher, context = {} } = {}) => {
         }
     }
 
-    // 9-10. Basket minimums. Both columns are legitimately nullable -- null means "no minimum" -- so
-    // the "absent must be unrepresentable" rule that governs the four masks does not apply here.
+    // 9-11. Basket bounds. min_spend/max_order_value are both legitimately nullable -- null means
+    // "no bound" -- so the "absent must be unrepresentable" rule that governs the four masks does
+    // not apply here. #1490: max_order_value_centavos is compared against the same ITEM subtotal
+    // min_spend_centavos already uses (excludes the delivery fee) -- same comprehension-bug guard
+    // VoucherManagementPanel.jsx's own R4 comment already documents for min_spend_centavos.
     const subtotalCentavos = Number(context.subtotalCentavos ?? 0) || 0;
     const quantity = Number(context.quantity ?? 0) || 0;
 
     if (voucher.min_spend_centavos != null && subtotalCentavos < Number(voucher.min_spend_centavos)) {
         addReason(REASON.VOUCHER_MIN_SPEND_NOT_MET, 'Order subtotal is below the voucher minimum spend.', {
             min_spend_centavos: Number(voucher.min_spend_centavos),
+            subtotal_centavos: subtotalCentavos
+        });
+    }
+    if (voucher.max_order_value_centavos != null && subtotalCentavos > Number(voucher.max_order_value_centavos)) {
+        addReason(REASON.VOUCHER_MAX_ORDER_VALUE_EXCEEDED, 'Order subtotal exceeds the voucher maximum order value.', {
+            max_order_value_centavos: Number(voucher.max_order_value_centavos),
             subtotal_centavos: subtotalCentavos
         });
     }

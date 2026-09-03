@@ -30,6 +30,11 @@ export const VoucherReasonCode = Object.freeze({
     VOUCHER_SCOPE_REF_NOT_FOUND: 'VOUCHER_SCOPE_REF_NOT_FOUND',
     VOUCHER_VALIDITY_WINDOW_ELAPSED: 'VOUCHER_VALIDITY_WINDOW_ELAPSED',
     VOUCHER_VALIDITY_WINDOW_INVALID: 'VOUCHER_VALIDITY_WINDOW_INVALID',
+    // #1490: min_spend_centavos/max_order_value_centavos deadlock guard (both set, max < min).
+    VOUCHER_ORDER_VALUE_RANGE_INVALID: 'VOUCHER_ORDER_VALUE_RANGE_INVALID',
+    // #1494: create/update requires an authenticated actor to stamp created_by/updated_by --
+    // matches deliveryRunUseCases.js's stricter hard-fail-401 behavior for a missing req.user.
+    VOUCHER_ACTOR_REQUIRED: 'VOUCHER_ACTOR_REQUIRED',
     VOUCHER_TIME_WINDOW_INCOMPLETE: 'VOUCHER_TIME_WINDOW_INCOMPLETE',
     VOUCHER_BENEFIT_CONFIG_INVALID: 'VOUCHER_BENEFIT_CONFIG_INVALID',
 
@@ -116,6 +121,17 @@ export const voucherNotFound = (message = 'Voucher not found', details = {}) => 
     throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, message, {
         statusCode: 404,
         details: { reason_code: VoucherReasonCode.VOUCHER_NOT_FOUND, ...details }
+    });
+};
+
+// #1494: create/update must know who the actor is to stamp created_by/updated_by. The voucher
+// admin routes already require `authenticate` ahead of the controller, so this should never
+// actually trigger in practice -- hard-fail rather than silently persisting a null actor, matching
+// deliveryRunUseCases.js's stricter behavior for the equivalent case.
+export const voucherUnauthorized = (message = 'Authenticated user is required', details = {}) => {
+    throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, message, {
+        statusCode: 401,
+        details: { reason_code: VoucherReasonCode.VOUCHER_ACTOR_REQUIRED, ...details }
     });
 };
 
