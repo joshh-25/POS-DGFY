@@ -61,6 +61,45 @@ describe('Delivery run validators (Phase 225)', () => {
         expect(res.status).toHaveBeenCalledWith(422);
     });
 
+    // Phase 260 (#1489): date-range scheduling.
+    it('accepts a create payload with a valid scheduled_date/scheduled_date_end range', () => {
+        const req = { body: { label: 'Range Run', scheduled_date: '2026-09-10', scheduled_date_end: '2026-09-12' } };
+        const { res, next } = runValidator(validateDeliveryRunCreate, req);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toHaveBeenCalled();
+        expect(req.validatedData).toMatchObject({ scheduled_date_end: expect.any(Date) });
+    });
+
+    it('rejects a create payload where scheduled_date_end precedes scheduled_date', () => {
+        const req = { body: { label: 'Inverted Range', scheduled_date: '2026-09-12', scheduled_date_end: '2026-09-10' } };
+        const { res, next } = runValidator(validateDeliveryRunCreate, req);
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(422);
+    });
+
+    it('rejects a create payload with scheduled_date_end but no scheduled_date', () => {
+        const req = { body: { label: 'End Only', scheduled_date_end: '2026-09-10' } };
+        const { res, next } = runValidator(validateDeliveryRunCreate, req);
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(422);
+    });
+
+    it('accepts an update payload with scheduled_date_end alone -- no cross-field ref check at this layer', () => {
+        // The use case (not this validator) enforces start<=end against the merged row state --
+        // see deliveryRun.usecase.test.js's "rejects a PATCH..." case for that check.
+        const req = { body: { scheduled_date_end: '2026-09-10' } };
+        const { res, next } = runValidator(validateDeliveryRunUpdate, req);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it('accepts an update payload clearing scheduled_date_end to null', () => {
+        const req = { body: { scheduled_date_end: null } };
+        const { res, next } = runValidator(validateDeliveryRunUpdate, req);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toHaveBeenCalled();
+    });
+
     it('validates the run id param', () => {
         const req = { params: { deliveryRunId: '7' } };
         const { res, next } = runValidator(validateDeliveryRunIdParam, req);
