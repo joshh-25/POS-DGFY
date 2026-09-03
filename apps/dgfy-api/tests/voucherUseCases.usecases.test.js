@@ -213,6 +213,21 @@ const makeFakeRepository = ({
 const reasonCode = (result) => result.error?.details?.reason_code;
 const statusCode = (result) => result.error?.statusCode;
 
+// #1494: every existing test in this file predates the create/update actor requirement and calls
+// the returned function with no `user` at all -- these two wrappers default it to a real actor so
+// none of them have to be individually touched to add one. Tests that specifically exercise the
+// missing-actor 401 (below) call `buildCreateVoucherUseCase`/`buildUpdateVoucherUseCase` directly,
+// bypassing this default.
+const DEFAULT_ACTOR = { user_id: 501 };
+const buildCreate = (repository) => {
+    const create = buildCreateVoucherUseCase({ repository });
+    return (args = {}) => create({ user: DEFAULT_ACTOR, ...args });
+};
+const buildUpdate = (repository) => {
+    const update = buildUpdateVoucherUseCase({ repository });
+    return (args = {}) => update({ user: DEFAULT_ACTOR, ...args });
+};
+
 const percentOffPayload = (overrides = {}) => ({
     code: 'SAVE10',
     title: 'Ten percent off',
@@ -228,7 +243,7 @@ const percentOffPayload = (overrides = {}) => ({
 describe('create voucher', () => {
     test('happy path persists the voucher and returns its derived status', async () => {
         const repository = makeFakeRepository();
-        const create = buildCreateVoucherUseCase({ repository });
+        const create = buildCreate(repository);
 
         const result = await create({ payload: percentOffPayload(), now: NOW, timezone: TIMEZONE });
 
@@ -242,7 +257,7 @@ describe('create voucher', () => {
 
     test('normalizes the code to upper case before writing', async () => {
         const repository = makeFakeRepository();
-        const create = buildCreateVoucherUseCase({ repository });
+        const create = buildCreate(repository);
 
         const result = await create({ payload: percentOffPayload({ code: ' save10 ' }), now: NOW });
 
@@ -252,7 +267,7 @@ describe('create voucher', () => {
 
     test('nulls out benefit columns that do not belong to the chosen class', async () => {
         const repository = makeFakeRepository();
-        const create = buildCreateVoucherUseCase({ repository });
+        const create = buildCreate(repository);
 
         const result = await create({
             payload: {
@@ -276,7 +291,7 @@ describe('create voucher', () => {
         const repository = makeFakeRepository({
             vouchers: [seedVoucher({ voucher_id: 1, code: 'SAVE10', title: 'Existing', benefit_class: 'percent_off', percent_off_bps: 500 })]
         });
-        const create = buildCreateVoucherUseCase({ repository });
+        const create = buildCreate(repository);
 
         const result = await create({ payload: percentOffPayload(), now: NOW });
 
@@ -291,7 +306,7 @@ describe('create voucher', () => {
             vouchers: [seedVoucher({ voucher_id: 1, code: 'SAVE10', title: 'Existing', benefit_class: 'percent_off', percent_off_bps: 500 })],
             skipCodePrecheck: true
         });
-        const create = buildCreateVoucherUseCase({ repository });
+        const create = buildCreate(repository);
 
         const result = await create({ payload: percentOffPayload(), now: NOW });
 
@@ -301,7 +316,7 @@ describe('create voucher', () => {
 
     test('a fixed_price voucher with no scopes is refused (#584)', async () => {
         const repository = makeFakeRepository();
-        const create = buildCreateVoucherUseCase({ repository });
+        const create = buildCreate(repository);
 
         const result = await create({
             payload: {
@@ -321,7 +336,7 @@ describe('create voucher', () => {
 
     test('an unresolvable scope reference rolls the whole create back', async () => {
         const repository = makeFakeRepository({ itemIds: [1, 2, 3] });
-        const create = buildCreateVoucherUseCase({ repository });
+        const create = buildCreate(repository);
 
         const result = await create({
             payload: percentOffPayload({ scopes: [{ scope_type: 'item', scope_ref_id: 999 }] }),
@@ -339,7 +354,7 @@ describe('create voucher', () => {
 
     test('valid scopes are persisted alongside the voucher', async () => {
         const repository = makeFakeRepository();
-        const create = buildCreateVoucherUseCase({ repository });
+        const create = buildCreate(repository);
 
         const result = await create({
             payload: {
@@ -368,7 +383,7 @@ describe('create voucher', () => {
 
         test('a fixed_price voucher with an attached pricelist needs no scopes', async () => {
             const repository = makeFakeRepository({ pricelistStatusById: { 7: 'active' } });
-            const create = buildCreateVoucherUseCase({ repository });
+            const create = buildCreate(repository);
 
             const result = await create({ payload: pricelistPayload(), now: NOW });
 
@@ -380,7 +395,7 @@ describe('create voucher', () => {
 
         test('carrying both fixed_unit_price_centavos and pricelist_id is refused', async () => {
             const repository = makeFakeRepository({ pricelistStatusById: { 7: 'active' } });
-            const create = buildCreateVoucherUseCase({ repository });
+            const create = buildCreate(repository);
 
             const result = await create({
                 payload: pricelistPayload({ fixed_unit_price_centavos: 500 }),
@@ -396,7 +411,7 @@ describe('create voucher', () => {
             // A scope alone satisfies assertFixedPriceHasScope (checked first); this isolates
             // applyBenefitConfig's own "neither" branch rather than the scope-requirement check.
             const repository = makeFakeRepository();
-            const create = buildCreateVoucherUseCase({ repository });
+            const create = buildCreate(repository);
 
             const result = await create({
                 payload: {
@@ -414,7 +429,7 @@ describe('create voucher', () => {
 
         test('a non-existent pricelist reference rolls the create back', async () => {
             const repository = makeFakeRepository();
-            const create = buildCreateVoucherUseCase({ repository });
+            const create = buildCreate(repository);
 
             const result = await create({ payload: pricelistPayload(), now: NOW });
 
@@ -426,7 +441,7 @@ describe('create voucher', () => {
 
         test('a draft (unpublished) pricelist cannot be attached', async () => {
             const repository = makeFakeRepository({ pricelistStatusById: { 7: 'draft' } });
-            const create = buildCreateVoucherUseCase({ repository });
+            const create = buildCreate(repository);
 
             const result = await create({ payload: pricelistPayload(), now: NOW });
 
@@ -436,7 +451,7 @@ describe('create voucher', () => {
 
         test('an archived pricelist cannot be attached', async () => {
             const repository = makeFakeRepository({ pricelistStatusById: { 7: 'archived' } });
-            const create = buildCreateVoucherUseCase({ repository });
+            const create = buildCreate(repository);
 
             const result = await create({ payload: pricelistPayload(), now: NOW });
 
@@ -446,7 +461,7 @@ describe('create voucher', () => {
 
         test('switching benefit_class away from fixed_price clears a stale pricelist_id', async () => {
             const repository = makeFakeRepository();
-            const create = buildCreateVoucherUseCase({ repository });
+            const create = buildCreate(repository);
 
             // pricelist_id is silently irrelevant here since benefit_class is percent_off; the use
             // case must null it out rather than persist stale cross-class data.
@@ -459,7 +474,7 @@ describe('create voucher', () => {
 
     test('an inconsistent benefit configuration is refused', async () => {
         const repository = makeFakeRepository();
-        const create = buildCreateVoucherUseCase({ repository });
+        const create = buildCreate(repository);
 
         const result = await create({
             payload: { code: 'BADCFG', title: 'Broken', benefit_class: 'percent_off' },
@@ -472,7 +487,7 @@ describe('create voucher', () => {
 
     test('valid_until earlier than valid_from is refused', async () => {
         const repository = makeFakeRepository();
-        const create = buildCreateVoucherUseCase({ repository });
+        const create = buildCreate(repository);
 
         const result = await create({
             payload: percentOffPayload({ valid_from: '2026-09-01', valid_until: '2026-08-01' }),
@@ -481,6 +496,58 @@ describe('create voucher', () => {
 
         expect(statusCode(result)).toBe(422);
         expect(reasonCode(result)).toBe('VOUCHER_VALIDITY_WINDOW_INVALID');
+    });
+
+    // #1494: create requires an authenticated actor -- hard-fail 401 on a missing/invalid
+    // user_id, matching deliveryRunUseCases.js's stricter behavior.
+    test('a missing req.user is a 401, not a silently-null created_by', async () => {
+        const repository = makeFakeRepository();
+        const create = buildCreateVoucherUseCase({ repository });
+
+        const result = await create({ payload: percentOffPayload(), now: NOW });
+
+        expect(statusCode(result)).toBe(401);
+        expect(reasonCode(result)).toBe('VOUCHER_ACTOR_REQUIRED');
+        expect(repository.__state.vouchers).toHaveLength(0);
+    });
+
+    test('stamps created_by and updated_by from the authenticated actor', async () => {
+        const repository = makeFakeRepository();
+        const create = buildCreateVoucherUseCase({ repository });
+
+        const result = await create({ payload: percentOffPayload(), user: { user_id: 42 }, now: NOW });
+
+        expect(result.success).toBe(true);
+        expect(result.data.voucher.created_by).toBe(42);
+        expect(result.data.voucher.updated_by).toBe(42);
+    });
+
+    // #1490: min_spend_centavos/max_order_value_centavos deadlock guard, checked against the
+    // merged row (assertOrderValueRangeInvariant) -- distinct from the validator's own
+    // same-request-only check (voucherValidator.test.js).
+    test('max_order_value_centavos below min_spend_centavos is refused', async () => {
+        const repository = makeFakeRepository();
+        const create = buildCreate(repository);
+
+        const result = await create({
+            payload: percentOffPayload({ min_spend_centavos: 100000, max_order_value_centavos: 50000 }),
+            now: NOW
+        });
+
+        expect(statusCode(result)).toBe(422);
+        expect(reasonCode(result)).toBe('VOUCHER_ORDER_VALUE_RANGE_INVALID');
+    });
+
+    test('max_order_value_centavos equal to min_spend_centavos is accepted', async () => {
+        const repository = makeFakeRepository();
+        const create = buildCreate(repository);
+
+        const result = await create({
+            payload: percentOffPayload({ min_spend_centavos: 100000, max_order_value_centavos: 100000 }),
+            now: NOW
+        });
+
+        expect(result.success).toBe(true);
     });
 });
 
@@ -499,7 +566,7 @@ describe('update voucher', () => {
 
     test('happy path applies the patch and bumps the version', async () => {
         const repository = seededRepository();
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({
             voucherId: 1,
@@ -515,7 +582,7 @@ describe('update voucher', () => {
 
     test('a field the patch omits keeps its stored value', async () => {
         const repository = seededRepository({ weekday_mask: 65, channels_mask: 2 });
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({ voucherId: 1, payload: { version: 0, title: 'Renamed' }, now: NOW });
 
@@ -525,7 +592,7 @@ describe('update voucher', () => {
 
     test('a stale version is a 409 version conflict', async () => {
         const repository = seededRepository({ version: 3 });
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({ voucherId: 1, payload: { version: 2, title: 'Renamed' }, now: NOW });
 
@@ -536,7 +603,7 @@ describe('update voucher', () => {
 
     test('losing the race at the conditional UPDATE is also a 409, not a silent no-op', async () => {
         const repository = seededRepository({}, { forceUpdateMiss: true });
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({ voucherId: 1, payload: { version: 0, title: 'Renamed' }, now: NOW });
 
@@ -546,7 +613,7 @@ describe('update voucher', () => {
 
     test('an unknown voucher is a 404', async () => {
         const repository = seededRepository();
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({ voucherId: 999, payload: { version: 0, title: 'x' }, now: NOW });
 
@@ -555,7 +622,7 @@ describe('update voucher', () => {
 
     test('an archived voucher rejects every write with 409 VOUCHER_ARCHIVED_IMMUTABLE', async () => {
         const repository = seededRepository({ status: 'archived' });
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({ voucherId: 1, payload: { version: 0, title: 'Renamed' }, now: NOW });
 
@@ -565,7 +632,7 @@ describe('update voucher', () => {
 
     test('code is mutable while the voucher is a draft with no redemptions', async () => {
         const repository = seededRepository({ status: 'draft', redeemed_count: 0 });
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({ voucherId: 1, payload: { version: 0, code: 'save20' }, now: NOW });
 
@@ -575,7 +642,7 @@ describe('update voucher', () => {
 
     test('code is immutable once the voucher has left draft', async () => {
         const repository = seededRepository({ status: 'active' });
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({ voucherId: 1, payload: { version: 0, code: 'SAVE20' }, now: NOW });
 
@@ -585,7 +652,7 @@ describe('update voucher', () => {
 
     test('code is immutable once the voucher has been redeemed, even as a draft', async () => {
         const repository = seededRepository({ status: 'draft', redeemed_count: 1 });
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({ voucherId: 1, payload: { version: 0, code: 'SAVE20' }, now: NOW });
 
@@ -595,7 +662,7 @@ describe('update voucher', () => {
 
     test('resending the SAME code on a locked voucher is not an immutability violation', async () => {
         const repository = seededRepository({ status: 'active' });
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({ voucherId: 1, payload: { version: 0, code: 'save10', title: 'Renamed' }, now: NOW });
 
@@ -613,7 +680,7 @@ describe('update voucher', () => {
             })],
             scopes: [{ voucher_scope_id: 1, voucher_id: 1, scope_type: 'item', scope_ref_id: 1 }]
         });
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({ voucherId: 1, payload: { version: 0, scopes: [] }, now: NOW });
 
@@ -624,7 +691,7 @@ describe('update voucher', () => {
 
     test('an unresolvable scope reference on update rolls back before any scope write', async () => {
         const repository = seededRepository();
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({
             voucherId: 1,
@@ -638,7 +705,7 @@ describe('update voucher', () => {
 
     test('changing benefit_class rewrites the whole benefit configuration', async () => {
         const repository = seededRepository();
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({
             voucherId: 1,
@@ -654,7 +721,7 @@ describe('update voucher', () => {
 
     test('server-owned counters in the payload are ignored, never written', async () => {
         const repository = seededRepository();
-        const update = buildUpdateVoucherUseCase({ repository });
+        const update = buildUpdate(repository);
 
         const result = await update({
             voucherId: 1,
@@ -665,6 +732,49 @@ describe('update voucher', () => {
         expect(result.success).toBe(true);
         expect(result.data.voucher.redeemed_count).toBe(0);
         expect(result.data.voucher.status).toBe('draft');
+    });
+
+    // #1494: update requires an authenticated actor -- hard-fail 401, same as create.
+    test('a missing req.user is a 401, not a silently-null updated_by', async () => {
+        const repository = seededRepository();
+        const update = buildUpdateVoucherUseCase({ repository });
+
+        const result = await update({ voucherId: 1, payload: { version: 0, title: 'Renamed' }, now: NOW });
+
+        expect(statusCode(result)).toBe(401);
+        expect(reasonCode(result)).toBe('VOUCHER_ACTOR_REQUIRED');
+    });
+
+    test('stamps updated_by from the authenticated actor, leaving created_by untouched', async () => {
+        const repository = seededRepository({ created_by: 7 });
+        const update = buildUpdateVoucherUseCase({ repository });
+
+        const result = await update({
+            voucherId: 1,
+            payload: { version: 0, title: 'Renamed' },
+            user: { user_id: 99 },
+            now: NOW
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.voucher.created_by).toBe(7);
+        expect(result.data.voucher.updated_by).toBe(99);
+    });
+
+    // #1490: checked against the *merged* row -- a PATCH sending only one of the two fields is
+    // still caught against the stored value of the other.
+    test('a PATCH that only sends max_order_value_centavos is checked against the stored min_spend_centavos', async () => {
+        const repository = seededRepository({ min_spend_centavos: 100000 });
+        const update = buildUpdate(repository);
+
+        const result = await update({
+            voucherId: 1,
+            payload: { version: 0, max_order_value_centavos: 50000 },
+            now: NOW
+        });
+
+        expect(statusCode(result)).toBe(422);
+        expect(reasonCode(result)).toBe('VOUCHER_ORDER_VALUE_RANGE_INVALID');
     });
 });
 

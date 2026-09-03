@@ -114,6 +114,21 @@ describe('resolveVoucherDisplayPricesUseCase', () => {
         expect(result.pricesByItemId[2]).toEqual({ original_price: 50, voucher_price: 45 });
     });
 
+    // #1490: same reasoning already documented for min_spend_centavos (the comment block above
+    // DISPLAY_RELEVANT_REASON_CODES in voucherDisplayUseCases.js) -- a cart total is unknowable
+    // before a cart exists, so VOUCHER_MAX_ORDER_VALUE_EXCEEDED must stay absent from that
+    // allowlist. This is the regression the plan's own test-plan note names: fails loudly if
+    // someone later adds it, since evaluateVoucherEligibility's context here carries no
+    // subtotalCentavos (defaults to 0), so a real cap would otherwise never even fire -- this
+    // asserts the *allowlist* exclusion is what's actually load-bearing, not that default.
+    it('a voucher with a max_order_value_centavos cap still resolves as applied at display time', async () => {
+        const repository = makeFakeRepository({ vouchers: [makeVoucher({ max_order_value_centavos: 1 })] });
+        const resolve = buildResolveVoucherDisplayPricesUseCase({ repository });
+        const result = await resolve({ code: 'SAVE10', items: ITEMS });
+
+        expect(result.applied).toBe(true);
+    });
+
     it('resolves fixed_price prices, clamped so a line never goes negative', async () => {
         const repository = makeFakeRepository({
             vouchers: [makeVoucher({ benefit_class: 'fixed_price', percent_off_bps: null, fixed_unit_price_centavos: 7000 })]
