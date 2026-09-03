@@ -19481,6 +19481,163 @@ See the PR's `## Testing Evidence` section for the run output.
 
 **268**, assuming siblings 263-266 land as claimed. Re-check the ledger's highest merged entry and
 every open PR's phase claim fresh at plan time rather than trusting this line.
+
+## Phase 268 - Item multi-category membership: IMS authoring UI (#1318)
+
+### Initiative and release
+
+#1318 — the IMS authoring UI follow-up to Phase 257's backend foundation. Phase number
+pre-assigned at dispatch time; re-verified free immediately before opening the PR: ledger's
+highest merged entry was 262 (this file), `gh pr list --base develop --state open` returned three
+PRs (#1516 "Accounting role voucher gating", #1515 this PR, #1514 "delivery run summary") with no
+phase-number collision in any title, and `git log origin/develop --oneline -100 | grep -iE "phase
+26[3-8]"` returned nothing. 263–267 are not yet present in this ledger — presumably other
+concurrently-dispatched, still-in-flight phases from the same round — but none of them collide with
+268 specifically. 268 was free. **Confirmed at merge time (this fix-step)**: 263 landed on `develop`
+via PR #1516 while this branch was open; no collision with 268 either way.
+
+### Objective and scope
+
+One PR, `feat/1318-item-multi-category-ui` into `develop`. **Frontend only** — the backend API
+(`GET`/`PUT /items/:item_id/folders`, validator, use cases, repository functions) already shipped
+in Phase 257 (PR #1503, merged) and is not rebuilt here.
+
+- `ItemFormModal.jsx` (packages/web-core): a new "Additional Categories" section — a checkbox grid
+  (max 10) with its own explicit Save action, modeled on `PosFnbModifiersWorkspace.jsx`'s
+  folder-modifier-group checkbox grid, not a token/chip multiselect. Self-contained load/save cycle
+  (own `listItemFolders`/`replaceItemFolders` calls, not folded into the main form's `onSave`),
+  since the API is item-scoped and only exists once the item itself has been created — the section
+  renders in edit mode only. Gated by a `canManageFolders` prop (`categories:manage` permission),
+  matching the backend's `requireTenantAdmin` on this route. The item's own primary category is
+  excluded from the checkbox list (the API's disjointness guard would silently drop it anyway).
+- `itemService.js`: two new client functions, `listItemFolders(itemId)` /
+  `replaceItemFolders(itemId, folderIds)`, modeled on the existing `replaceItemSuppliers`
+  item-scoped replace-set client. No existing export changed.
+- `ItemsPage.jsx`: passes the tenant's persisted category list (real `folder_id` + `name`,
+  excluding transient/unsaved categories the API can't validate yet) and the `categories:manage`
+  permission flag down to the modal.
+- **Backend bug fix, in scope for this phase**: `replaceItemFoldersUseCase` never opened a
+  transaction around `itemRepository.replaceItemFolderMemberships`'s destroy-then-`bulkCreate`
+  pair, so a mid-failure could leave an item with zero secondary memberships. Fixed by wrapping the
+  call in a transaction (mirroring `fnbUseCases.js`'s `buildReplaceFolderModifierGroupsUseCase`),
+  and threading that transaction through `listItemFolderMemberships`'s own read-after-write call —
+  otherwise that final read runs on a separate, non-transactional connection and can't see the
+  not-yet-committed rows it just wrote (MVCC), returning stale `memberships` in the response.
+- **Verified, no action needed**: `apps/dgfy-api/src/services/tenantSchemaBootstrap.js` does not
+  maintain its own tenant-table list — it only orchestrates `repairItemFolderCategoryLifecycleSchema`
+  (legacy `item_folders` column repairs, unrelated to this join table) and the Phase 157 migration
+  manifest. `item_folder_memberships` is already registered in `sync-tenant-schemas.js`'s
+  `REQUIRED_TENANT_SCHEMA_TABLES` (Phase 257), which both a new tenant's `Sequelize.sync()` (via the
+  registered `ItemFolderMembership` model) and the existing-tenant drift-repair sweep
+  (`inspectRequiredTenantSchemaTables`/`buildTenantSchemaTableRepairSql`) already rely on. No
+  #860/#639-class gap found — no follow-up filed.
+- Did not touch `apps/dgfy-api/src/services/csvImportService.js` (owned by the parallel phase P-E2,
+  #1495 Part B, per its own scope).
+
+Issue #1318 is not resolved by this PR. It uses `Refs #1318`, not `Closes` — two of its four
+acceptance criteria remain unmet: POS and Storefront category listings still don't render an item
+under its secondary categories (the "34 existing read sites" wiring Phase 257 deliberately
+deferred, one surface at a time, to later phases), and no regression suite exists yet for that
+rendering surface, since it isn't built.
+
+### Fix-step (merge conflicts against `origin/develop`, PR #1515)
+
+This branch was cut before every sibling phase in this batch merged. Two rounds of conflict
+resolution were needed, both against this same ledger file, no other file:
+
+1. **Round 1** — cut before Phase 263 (#1493, PR #1516) and Phase 262's other siblings (#1514,
+   #1487 delivery run summary) merged. PR reported `mergeable: false`, `mergeable_state: dirty`,
+   3 ahead / 13 behind `develop`. `git merge-tree` confirmed the only real conflict was this ledger
+   file (both this entry and Phase 263's appended after the same Phase 262 base). Resolved by
+   merging fresh `origin/develop`, keeping **both** entries in full, Phase 263 placed before this
+   entry to match merge order.
+2. **Round 2** — while round 1's push was still waiting on CI, Phase 267 (#1495 Part B CSV sync
+   import, PR #1517) also merged into `develop`, again appending a ledger entry after the same base
+   and reintroducing `mergeable_state: dirty`. `git merge-tree` this time showed an additional
+   clean auto-merge in `itemRepository.js` (Phase 267 added `reactivateItem`, a different function
+   from this phase's `replaceItemFolderMemberships` changes — no real collision) plus the same
+   ledger conflict shape. Resolved the same way: merged fresh `origin/develop` again, kept **both**
+   entries in full, Phase 267 placed before this entry (267 < 268, and it was already on `develop`).
+
+Re-ran this phase's Tier 0 checks (`node --check` on the touched backend files, `npm run
+build:skupervisor`, `npm run build:pos`) against the fully merged tree after each round before
+pushing — no dropped ledger entry on either side, either round.
+
+### Status
+
+`completed`
+
+### Dependencies
+
+Depends on Phase 257 (#1318 foundation), already merged. No dependency on any other in-flight
+phase — Phase 263 (#1493) and Phase 267 (#1495 Part B) are both now confirmed merged ahead of this
+entry, touching unrelated file sets (RBAC/vouchers; CSV import), with the one incidental
+`itemRepository.js` overlap against Phase 267 auto-merging cleanly (different functions). A future
+phase (POS/storefront read-site opt-in) depends on this one for the admin UI to exist, but none of
+that is built or scoped here.
+
+### Acceptance and validation evidence
+
+- [x] `node --check` on all three modified backend `.js` files (`apps/dgfy-api` has no real build
+  step).
+- [x] No `package.json` touched ⇒ no lockfile step.
+- [x] Backend Jest: `tests/itemFolderMemberships.repository.test.js` (extended with a
+  transaction-threading regression test) + new `tests/replaceItemFoldersUseCase.test.js`
+  (commit/rollback wiring) — 10/10 pass.
+- [x] `npm run check:architecture` (`apps/dgfy-api`) — `check:architecture-guardrails`: "OK. Checked
+  54 modules and 560 code files."; `check:controller-boundaries`: "OK. Checked 94 controller files
+  with no unauthorized model imports."
+- [x] `npm run check:compliance` — "No compliance-sensitive changes detected" (inventory/catalog
+  admin UI, not `modules/pos` or `modules/vouchers`) + `check:compliance:api-contracts --staged`
+  PASS (both pre-commit hook runs).
+- [x] New Vitest contract test `itemService.folders.contract.test.js` (3/3 pass) covering the two
+  new client functions' HTTP method/path/payload shape.
+- [x] `npm run build:skupervisor` (apps/dgfy-ims full production build) — passes, re-run on the
+  final diff after the last edit (`✓ built in 3m 59s`, exit 0). Confirmed via `grep -rl
+  "ItemFormModal"`/`"ItemsPage"` across `apps/*/src` that `dgfy-pos`/`dgfy-storefront` don't import
+  either changed file, so IMS is the only app build this change needs.
+- [x] Re-verified after each `origin/develop` merge (this fix-step, both rounds): `node --check` on
+  the three modified backend `.js` files, `npm run build:skupervisor`, and `npm run build:pos`
+  (shared `web-core` components touched by sibling phases 263/267 are consumed by both apps) all
+  re-run clean against the fully merged tree.
+
+### Deviations from the plan
+
+None of substance — this session planned and built in one pass rather than against a separately
+authored plan doc.
+
+### Checkpoints (`.agents/skills/implement/SKILL.md`)
+
+No checkpoint trigger fired: no migration file (backend change is a use-case/repository edit only,
+no schema change), `check:compliance` required no declaration, no deploy dispatch, no SSH, no
+force-push/branch deletion. Branched from a worktree already sitting at `origin/develop`'s tip
+(`pat/pf-multi-category-ui`, 0 ahead/0 behind) and cut a properly-prefixed
+`feat/1318-item-multi-category-ui` branch from there rather than committing onto the unprefixed
+worktree branch directly.
+
+### Links
+
+- Tracking issue: #1318 (`Refs`, not `Closes` — see "Objective and scope" above for the two
+  acceptance criteria this PR doesn't satisfy).
+- PR: `feat/1318-item-multi-category-ui` → `develop` (#1515).
+- Modified: `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/replaceItemFoldersUseCase.js`,
+  `apps/dgfy-api/tests/itemFolderMemberships.repository.test.js`,
+  `packages/web-core/Components/items/ItemFormModal.jsx`,
+  `packages/web-core/src/features/inventory/pages/ItemsPage.jsx`,
+  `packages/web-core/src/services/itemService.js`,
+  `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` (this entry).
+- New: `apps/dgfy-api/tests/replaceItemFoldersUseCase.test.js`,
+  `packages/web-core/src/services/__tests__/itemService.folders.contract.test.js`.
+
+### Next eligible phase
+
+**269**, pending a fresh re-check of the ledger's actual highest merged entry and every open PR's
+phase claim at plan time — do not assume 264–266 are still open just because they weren't visible
+in this entry's own check. (263 and 267 are now confirmed merged as of this fix-step; 264-266
+remain unverified. **Correction, same fix-step**: 269 landed first, claimed by sibling #788 below
+-- next eligible is actually **270**, per that entry's own numbering note.)
+
 ## Phase 269 - Account-restricted voucher issuance (#788)
 
 ### Initiative and release

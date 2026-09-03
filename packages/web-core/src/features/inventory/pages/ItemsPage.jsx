@@ -1109,6 +1109,14 @@ export default function Items() {
 
   const folders = useMemo(() => folderEntries.map((entry) => entry.name), [folderEntries]);
   const productFolders = folders;
+  // #1318 Phase 268 — secondary category memberships are keyed on a real
+  // folder_id (the API validates each id against ItemFolder), so a
+  // transient/unsaved folder (folder_id: null, created inline via the
+  // primary-category input but not yet persisted) can't be offered here.
+  const secondaryFolderOptions = useMemo(
+    () => folderEntries.filter((entry) => entry.isPersistent && Number.isInteger(entry.folder_id) && entry.folder_id > 0),
+    [folderEntries]
+  );
   const folderByName = useMemo(() => new Map(folderEntries.map((entry) => [entry.name, entry])), [folderEntries]);
   const folderByLookupKey = useMemo(
     () => new Map(folderEntries.map((entry) => [toFolderLookupKey(entry.name), entry])),
@@ -3032,6 +3040,8 @@ export default function Items() {
           onSave={handleSave}
           onSaveDraft={handleSaveDraft}
           folders={folders}
+          folderOptions={secondaryFolderOptions}
+          canManageFolders={can('categories:manage')}
           existingItems={skuSuggestionItems}
           workflowMode={workflowMode}
           msmeMode={isMsmeMode}

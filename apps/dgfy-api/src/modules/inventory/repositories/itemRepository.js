@@ -3821,7 +3821,7 @@ export const itemRepository = {
     // additive to the existing primary `items.folder_id` pointer (ADR 0080
     // clause 1/2). Neither function is wired into any of the 34 existing
     // read sites yet — that opt-in happens per surface in later phases.
-    async listItemFolderMemberships(itemIds = []) {
+    async listItemFolderMemberships(itemIds = [], options = {}) {
         const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
         if (!ItemFolderMembership) return [];
 
@@ -3835,7 +3835,8 @@ export const itemRepository = {
         try {
             const rows = await ItemFolderMembership.findAll({
                 where: { item_id: { [Op.in]: ids } },
-                order: [['item_id', 'ASC'], ['sort_order', 'ASC']]
+                order: [['item_id', 'ASC'], ['sort_order', 'ASC']],
+                transaction: options.transaction
             });
             return rows.map((row) => ({
                 item_id: row.item_id,
@@ -3910,7 +3911,12 @@ export const itemRepository = {
             await ItemFolderMembership.bulkCreate(rows, { transaction: options.transaction });
         }
 
-        return this.listItemFolderMemberships([parsedItemId]);
+        // Phase 268 fix: thread `options` (the caller's transaction, if any)
+        // through this read-after-write too — otherwise, when the caller
+        // wraps destroy+bulkCreate above in an open transaction, this read
+        // runs on a separate connection and (correctly, per MVCC) can't see
+        // the still-uncommitted rows it just wrote, returning stale data.
+        return this.listItemFolderMemberships([parsedItemId], options);
     }
 };
 
