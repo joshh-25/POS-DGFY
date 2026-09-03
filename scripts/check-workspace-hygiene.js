@@ -45,22 +45,31 @@ function listWorkflowFiles() {
 
 /**
  * Resolves whether a job block can land on a self-hosted (`sieitz-*`) runner: directly via an
- * active `runs-on:`/`runner_labels_json:` literal containing "sieitz", or indirectly via a
- * delegated `${{ inputs.runner_labels_json }}` whose file-level input default contains "sieitz".
+ * active `runs-on:`/`runner_labels_json:` literal containing "sieitz", or indirectly via ANY
+ * expression referencing `inputs.runner_labels_json` -- including `${{ inputs.runner_labels_json
+ * }}`, `${{ fromJSON(inputs.runner_labels_json) }}`, and `${{ fromJSON(inputs.runner_labels_json
+ * || '["ubuntu-latest"]') }}`.
+ *
+ * Deliberately does NOT try to resolve the input's own file-level `default:` to decide reachability
+ * (an earlier version of this function did, and it was wrong -- caught live by a codex pr-reviewer
+ * pass, #1528 RF-1). A `workflow_call`/`workflow_dispatch` input's default is irrelevant to whether
+ * a *caller* can override it: this repo's own documented "F-5" pattern (deploy-main.yml,
+ * CI_RUNNER_MIGRATION_HANDOFF.md) is a single dispatch-time `runner_labels_json` override that
+ * deliberately routes an otherwise-hosted job to self-hosted. Any job whose runs-on depends on this
+ * input is therefore reachable regardless of its default -- treat it as self-hosted-reachable,
+ * full stop. This is deliberately over-inclusive (a genuinely hosted-only reusable, like
+ * pr-android-build-checks.yml, gets a harmless no-op guard) rather than under-inclusive, since
+ * under-inclusive is the failure mode that actually poisons a shared runner silently.
  *
  * @param {string} block job block text
- * @param {string} fileText whole file text (for the delegated-input default)
  * @returns {boolean}
  */
-function isSelfHostedReachable(block, fileText) {
+function isSelfHostedReachable(block) {
   const match = block.match(RUNNER_SITE_RE);
   if (!match) return false;
   const value = match[2];
   if (SELF_HOSTED_RE.test(value)) return true;
-  if (DELEGATED_INPUT_RE.test(value)) {
-    const defaultMatch = fileText.match(/runner_labels_json:\n(?:[^\n]*\n)*?\s{8}default:\s*(.+)$/m);
-    return defaultMatch ? SELF_HOSTED_RE.test(defaultMatch[1]) : false;
-  }
+  if (DELEGATED_INPUT_RE.test(value)) return true;
   return !isHosted(value);
 }
 
@@ -86,7 +95,7 @@ function checkFile(file, text) {
   const blocks = extractJobBlocks(text);
   for (const [jobName, { block }] of blocks) {
     if (!CHECKOUT_RE.test(block)) continue;
-    if (!isSelfHostedReachable(block, text)) continue;
+    if (!isSelfHostedReachable(block)) continue;
 
     const lines = block.split('\n');
     const checkoutLine = lines.findIndex((l) => CHECKOUT_RE.test(l));
@@ -125,64 +134,87 @@ function checkFile(file, text) {
 }
 
 /**
- * Extracts one step's full text (its `- name: ...` line through the line immediately before the
- * next step at the same indentation, or the block's end), by line index rather than raw string
- * search -- a raw `indexOf`-based scan can run past this step into trailing comments that belong
- * to a *later*, unrelated step or job, which previously produced false drift positives.
+ * Extracts EVERY occurrence of a step (by marker) in the given text, by line index rather than
+ * raw string search -- a raw `indexOf`-based scan can run past a step into trailing comments that
+ * belong to a *later*, unrelated step or job, which previously produced false drift positives.
+ * Returns every occurrence, not just the first -- a file with several guarded jobs (e.g.
+ * promotion-quality-gate.yml's seven quality jobs) must have drift checked at each of its own
+ * sites, not only compared once against other files (#1528 RF-1: an earlier version of this
+ * function only ever extracted the first marker per file, so drift between sites in the SAME file
+ * went undetected).
  *
- * @param {string} text block or file text containing the step
- * @param {string} marker a substring unique to the step's body (used to locate its start line)
- * @returns {string | null} normalised (whitespace-collapsed) step text, or null if not found
+ * @param {string} text file text containing zero or more instances of the step
+ * @param {string} marker a substring unique to the step's body (used to locate each start line)
+ * @returns {string[]} normalised (whitespace-collapsed) step texts, one per occurrence
  */
-function extractStep(text, marker) {
+function extractSteps(text, marker) {
   const lines = text.split('\n');
-  const markerLine = lines.findIndex((l) => l.includes(marker));
-  if (markerLine === -1) return null;
-  let start = markerLine;
-  while (start > 0 && !/^ {6}- (name:|uses:)/.test(lines[start])) start--;
-  // These step bodies never contain a blank line internally, so the first blank line after the
-  // marker reliably ends the step -- unlike a step/job-header regex, this can't be fooled by a
-  // trailing comment block (itself indented like a step, per this repo's "comment precedes what
-  // it describes" convention) that actually belongs to the *next* step.
-  let end = lines.length;
-  for (let i = markerLine + 1; i < lines.length; i++) {
-    if (lines[i].trim() === '' || /^ {6}- (name:|uses:)/.test(lines[i]) || /^ {0,4}\S/.test(lines[i])) {
-      end = i;
-      break;
+  const results = [];
+  for (let m = 0; m < lines.length; m++) {
+    if (!lines[m].includes(marker)) continue;
+    let start = m;
+    while (start > 0 && !/^ {6}- (name:|uses:)/.test(lines[start])) start--;
+    // These step bodies never contain a blank line internally, so the first blank line after the
+    // marker reliably ends the step -- unlike a step/job-header regex, this can't be fooled by a
+    // trailing comment block (itself indented like a step, per this repo's "comment precedes what
+    // it describes" convention) that actually belongs to the *next* step.
+    let end = lines.length;
+    for (let i = m + 1; i < lines.length; i++) {
+      if (lines[i].trim() === '' || /^ {6}- (name:|uses:)/.test(lines[i]) || /^ {0,4}\S/.test(lines[i])) {
+        end = i;
+        break;
+      }
     }
+    results.push(lines.slice(start, end).join('\n').replace(/\s+/g, ' ').trim());
   }
-  return lines.slice(start, end).join('\n').replace(/\s+/g, ' ').trim();
+  return results;
 }
 
 /**
- * Every present hygiene-clear step body, and every present assert step body, must be
- * byte-identical (normalised for leading indentation) across all sites. The duplication is
- * deliberate -- a pre-checkout step cannot be factored into a composite action or repo script,
- * since neither is on disk until checkout runs -- so drift is the one failure mode a shared
- * implementation would have caught for free; this is what stands in for that.
+ * Every hygiene-clear step body, and every assert step body, must be byte-identical (normalised
+ * for leading indentation) to every other instance IN THE SAME SHAPE BUCKET -- across every site
+ * in every file, not just once per file. The duplication is deliberate -- a pre-checkout step
+ * cannot be factored into a composite action or repo script, since neither is on disk until
+ * checkout runs -- so drift is the one failure mode a shared implementation would have caught for
+ * free; this is what stands in for that.
+ *
+ * Two shape buckets exist, not one: promotion-quality-gate.yml's quality jobs (QUALITY_JOB_NAMES
+ * in scripts/check-pr-quality-workflow.js) require every non-blocking step to carry exactly one
+ * `continue-on-error: true` line (#1063/#1066/#1431's advisory-job contract, enforced by
+ * check:pr-quality-workflow) -- a real structural difference from the plain sites elsewhere, not
+ * accidental drift. Bucketing by the presence of that line, rather than hardcoding a file
+ * allowlist, means the bucket assignment can never itself drift out of sync with which file
+ * actually needs the advisory shape.
  *
  * @param {Map<string, string>} fileTexts filename -> contents
  * @returns {string[]} problems found
  */
 function checkNoDrift(fileTexts) {
   const problems = [];
-  const bodies = { hygiene: new Map(), assert: new Map() };
-  for (const [file, text] of fileTexts) {
-    const hygiene = extractStep(text, HYGIENE_MARKER);
-    if (hygiene) bodies.hygiene.set(file, hygiene);
-    const assertBody = extractStep(text, ASSERT_MARKER);
-    if (assertBody) bodies.assert.set(file, assertBody);
-  }
+  const bucketOf = (body) => (/continue-on-error: true/.test(body) ? 'advisory' : 'plain');
 
-  for (const [kind, map] of Object.entries(bodies)) {
-    const unique = new Set(map.values());
-    if (unique.size > 1) {
-      problems.push(
-        `${map.size} sites define a "${kind}" workspace-hygiene step but their bodies are not ` +
-          `byte-identical (${unique.size} distinct variants across: ${[...map.keys()].join(', ')}). ` +
-          'This snippet is duplicated by design (a local composite action cannot run before ' +
-          'checkout) -- update every site together rather than editing just one.'
-      );
+  for (const kind of ['hygiene', 'assert']) {
+    const marker = kind === 'hygiene' ? HYGIENE_MARKER : ASSERT_MARKER;
+    const buckets = { advisory: new Map(), plain: new Map() };
+    for (const [file, text] of fileTexts) {
+      const blocks = extractJobBlocks(text);
+      for (const [jobName, { block }] of blocks) {
+        for (const body of extractSteps(block, marker)) {
+          buckets[bucketOf(body)].set(`${file}:${jobName}`, body);
+        }
+      }
+    }
+    for (const [bucketName, map] of Object.entries(buckets)) {
+      const unique = new Set(map.values());
+      if (unique.size > 1) {
+        problems.push(
+          `${map.size} sites define a "${kind}" (${bucketName}-shape) workspace-hygiene step but ` +
+            `their bodies are not byte-identical (${unique.size} distinct variants across: ` +
+            `${[...map.keys()].join(', ')}). This snippet is duplicated by design (a local ` +
+            'composite action cannot run before checkout) -- update every site in this shape ' +
+            'bucket together rather than editing just one.'
+        );
+      }
     }
   }
 
