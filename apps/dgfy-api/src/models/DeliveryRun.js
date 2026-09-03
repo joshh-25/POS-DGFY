@@ -15,6 +15,10 @@ const DeliveryRun = sequelize.define('DeliveryRun', {
     type: DataTypes.DATEONLY,
     allowNull: true
   },
+  scheduled_date_end: {
+    type: DataTypes.DATEONLY,
+    allowNull: true
+  },
   status: {
     type: DataTypes.ENUM('draft', 'scheduled', 'dispatched', 'completed', 'cancelled'),
     allowNull: false,
@@ -42,7 +46,7 @@ const DeliveryRun = sequelize.define('DeliveryRun', {
   createdAt: 'created_at',
   updatedAt: 'updated_at',
   indexes: [
-    { fields: ['status', 'scheduled_date'] },
+    { fields: ['status', 'scheduled_date', 'scheduled_date_end'] },
     { fields: ['location_id', 'status'] }
   ]
 });

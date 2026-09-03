@@ -36,6 +36,17 @@ const RUN_LOCKED_STATUSES = Object.freeze(['dispatched', 'completed']);
 const RUN_MUTATION_BLOCKED_STATUSES = Object.freeze(['dispatched', 'completed', 'cancelled']);
 const RUN_UPDATABLE_STATUSES = Object.freeze(['draft', 'scheduled', 'cancelled']);
 
+// Phase 258 (#1489): maximum span a delivery run's scheduled_date/scheduled_date_end range may
+// cover, inclusive of both endpoints. Placeholder -- #1489's own text doesn't specify a number;
+// 31 was chosen as a conservative default (a run spanning over a month almost certainly indicates
+// a data-entry mistake) and can be revisited once real usage patterns exist.
+const MAX_DELIVERY_RUN_SPAN_DAYS = 31;
+
+// Inclusive day-count between two DATEONLY ('YYYY-MM-DD') strings, e.g. same day -> 1.
+const calculateDeliveryRunSpanDays = (startDate, endDate) => Math.round(
+    (new Date(`${endDate}T00:00:00.000Z`) - new Date(`${startDate}T00:00:00.000Z`)) / 86400000
+) + 1;
+
 // Phase 228 (#1273/#1271): dispatch's own locked-status set. Deliberately NOT reusing
 // RUN_LOCKED_STATUSES/RUN_MUTATION_BLOCKED_STATUSES above -- both correctly treat `dispatched` as
 // locked for every other run mutation (personnel/membership edits), but dispatch is the one place
@@ -143,6 +154,19 @@ export const buildCreateDeliveryRunUseCase = ({
                 { statusCode: 422 }
             ));
         }
+        // end < start is already impossible here -- createDeliveryRunSchema's
+        // `.min(Joi.ref('scheduled_date'))` rejected it before this use case ever runs. Only the
+        // max-span check remains this use case's job.
+        if (payload?.scheduled_date && payload?.scheduled_date_end) {
+            const spanDays = calculateDeliveryRunSpanDays(payload.scheduled_date, payload.scheduled_date_end);
+            if (spanDays > MAX_DELIVERY_RUN_SPAN_DAYS) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `Delivery run schedule cannot exceed ${MAX_DELIVERY_RUN_SPAN_DAYS} days`,
+                    { statusCode: 422, details: { reason_code: 'DELIVERY_RUN_RANGE_TOO_LONG' } }
+                ));
+            }
+        }
 
         try {
             const locationScope = await resolveLocationScope({
@@ -155,6 +179,7 @@ export const buildCreateDeliveryRunUseCase = ({
             const run = await deliveryRunRepository.createRun({
                 label,
                 scheduled_date: payload?.scheduled_date ?? null,
+                scheduled_date_end: payload?.scheduled_date_end ?? null,
                 location_id: locationScope.location_id ?? null,
                 notes: payload?.notes ?? null,
                 created_by: actorUserId
@@ -333,8 +358,38 @@ export const buildUpdateDeliveryRunUseCase = ({
             const updatePayload = { updated_by: actorUserId };
             if (payload?.label !== undefined) updatePayload.label = String(payload.label).trim();
             if (payload?.scheduled_date !== undefined) updatePayload.scheduled_date = payload.scheduled_date;
+            if (payload?.scheduled_date_end !== undefined) updatePayload.scheduled_date_end = payload.scheduled_date_end;
             if (payload?.notes !== undefined) updatePayload.notes = payload.notes;
             if (payload?.status !== undefined) updatePayload.status = payload.status;
+
+            // Range invariant against the MERGED effective state (existing row + this patch) --
+            // a PATCH touching only one of scheduled_date/scheduled_date_end must still be checked
+            // against whichever value the other field already holds in the DB. createDeliveryRunSchema's
+            // Joi.ref cross-check can't see this because a same-request rule only sees fields present
+            // in that one request; this is the use case's job instead, against the row locked above.
+            const effectiveStart = updatePayload.scheduled_date !== undefined
+                ? updatePayload.scheduled_date
+                : run.scheduled_date;
+            const effectiveEnd = updatePayload.scheduled_date_end !== undefined
+                ? updatePayload.scheduled_date_end
+                : run.scheduled_date_end;
+            if (effectiveStart && effectiveEnd && effectiveEnd < effectiveStart) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'scheduled_date_end must not be before scheduled_date',
+                    { statusCode: 422, details: { reason_code: 'DELIVERY_RUN_RANGE_INVALID' } }
+                );
+            }
+            if (effectiveStart && effectiveEnd) {
+                const spanDays = calculateDeliveryRunSpanDays(effectiveStart, effectiveEnd);
+                if (spanDays > MAX_DELIVERY_RUN_SPAN_DAYS) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `Delivery run schedule cannot exceed ${MAX_DELIVERY_RUN_SPAN_DAYS} days`,
+                        { statusCode: 422, details: { reason_code: 'DELIVERY_RUN_RANGE_TOO_LONG' } }
+                    );
+                }
+            }
 
             const updatedRun = await deliveryRunRepository.updateRun(runId, updatePayload, { transaction });
             await transaction.commit();

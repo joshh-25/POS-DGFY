@@ -35,6 +35,40 @@ describe('Delivery run use cases (Phase 225)', () => {
         expect(resolveLocationScope).toHaveBeenCalled();
     });
 
+    // Phase 258 (#1489): date-range scheduling.
+    it('creates a run with a valid scheduled_date/scheduled_date_end range', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const resolveLocationScope = jest.fn(async () => ({ location_id: 7 }));
+        const useCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository, resolveLocationScope });
+
+        const result = await useCase({
+            payload: { label: 'Range Run', scheduled_date: '2026-09-10', scheduled_date_end: '2026-09-12' },
+            user: { user_id: 12 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toMatchObject({
+            scheduled_date: '2026-09-10',
+            scheduled_date_end: '2026-09-12'
+        });
+    });
+
+    it('rejects run creation when the range exceeds the maximum span', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const useCase = buildCreateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: jest.fn(async () => ({ location_id: 7 }))
+        });
+
+        const result = await useCase({
+            payload: { label: 'Too Long', scheduled_date: '2026-09-01', scheduled_date_end: '2026-10-15' },
+            user: { user_id: 12 }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('DELIVERY_RUN_RANGE_TOO_LONG');
+    });
+
     it('rejects run creation without an authenticated actor', async () => {
         const { deliveryRunRepository } = createDeliveryRunTestHarness();
         const useCase = buildCreateDeliveryRunUseCase({
@@ -102,6 +136,102 @@ describe('Delivery run use cases (Phase 225)', () => {
         }));
         expect(blocked.success).toBe(false);
         expect(blocked.error.details.reason_code).toBe('DELIVERY_RUN_LOCKED');
+    });
+
+    // Phase 258 (#1489): the range invariant is enforced against the MERGED effective state
+    // (existing row + this patch) -- a same-request Joi rule can't see a value that's only on the
+    // existing row, so this has to be a use-case-level check.
+    it('rejects a PATCH that sends scheduled_date_end alone, conflicting with the row\'s existing scheduled_date', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const run = await deliveryRunRepository.createRun({
+            label: 'Run A',
+            location_id: 7,
+            created_by: 12,
+            scheduled_date: '2026-09-10'
+        });
+        const useCase = buildUpdateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { scheduled_date_end: '2026-09-05' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('DELIVERY_RUN_RANGE_INVALID');
+    });
+
+    it('rejects a PATCH that sends scheduled_date alone, conflicting with the row\'s existing scheduled_date_end', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const run = await deliveryRunRepository.createRun({
+            label: 'Run A',
+            location_id: 7,
+            created_by: 12,
+            scheduled_date: '2026-09-01',
+            scheduled_date_end: '2026-09-05'
+        });
+        const useCase = buildUpdateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { scheduled_date: '2026-09-10' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('DELIVERY_RUN_RANGE_INVALID');
+    });
+
+    it('accepts a PATCH updating both scheduled_date and scheduled_date_end together', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const run = await deliveryRunRepository.createRun({
+            label: 'Run A',
+            location_id: 7,
+            created_by: 12,
+            scheduled_date: '2026-09-01'
+        });
+        const useCase = buildUpdateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { scheduled_date: '2026-09-10', scheduled_date_end: '2026-09-12' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toMatchObject({ scheduled_date: '2026-09-10', scheduled_date_end: '2026-09-12' });
+    });
+
+    it('rejects a PATCH whose merged effective range exceeds the maximum span', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const run = await deliveryRunRepository.createRun({
+            label: 'Run A',
+            location_id: 7,
+            created_by: 12,
+            scheduled_date: '2026-09-01'
+        });
+        const useCase = buildUpdateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { scheduled_date_end: '2026-10-15' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('DELIVERY_RUN_RANGE_TOO_LONG');
     });
 
     it('replaces the personnel roster and enforces exactly one accountable', async () => {
