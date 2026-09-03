@@ -23,6 +23,7 @@ export function StorefrontReviewsSection({
   subtitleSize = null,
   summaryEnabled = false,
   starSymbol = '*',
+  formatReviewCount = (value) => String(value),
   mobileTrailingInset = 0
 }) {
   const reviewScore = Number(reviewSummary?.score);
@@ -133,7 +134,7 @@ export function StorefrontReviewsSection({
                     ))}
                   </div>
                   <div style={{ fontSize: 12, color: '#64748b', fontFamily: bodyFontFamily }}>
-                    from {reviewCount} review{reviewCount === 1 ? '' : 's'}
+                    from {formatReviewCount(reviewCount)} review{reviewCount === 1 ? '' : 's'}
                   </div>
                 </div>
               </div>

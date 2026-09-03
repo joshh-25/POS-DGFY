@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getServicesFlowPresentation } from './servicesLocalFlow.js';
+import { getServicesFlowPresentation, isServicesLocalFlowMethod } from './servicesLocalFlow.js';
 
 describe('Services flow presentation', () => {
   it('keeps booking, summary, and tracking copy aligned by profile', () => {

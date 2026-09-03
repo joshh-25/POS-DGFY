@@ -1914,6 +1914,23 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_drawer_handoff_events_fk_incoming_ack` FOREIGN KEY (`incoming_acknowledged_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `pos_drawer_handoff_events_fk_recorded_by` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 257 (#1318) — secondary item/category memberships. FKs reference
+    // `items`/`item_folders`, both base tables never in this registry and
+    // always present, so no ordering constraint on this entry. See ADR 0080.
+    item_folder_memberships: Object.freeze({
+        sql: "CREATE TABLE `item_folder_memberships` ("
+            + " `item_folder_membership_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `item_id` INT NOT NULL, `folder_id` INT NOT NULL,"
+            + " `sort_order` INT NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`item_folder_membership_id`),"
+            + " UNIQUE KEY `uq_item_folder_memberships_folder_item` (`folder_id`,`item_id`),"
+            + " KEY `idx_item_folder_memberships_item` (`item_id`),"
+            + " CONSTRAINT `fk_item_folder_memberships_folder` FOREIGN KEY (`folder_id`) REFERENCES `item_folders` (`folder_id`) ON DELETE CASCADE,"
+            + " CONSTRAINT `fk_item_folder_memberships_item` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     })
 });
 
@@ -2352,7 +2369,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-01.4';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-07.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

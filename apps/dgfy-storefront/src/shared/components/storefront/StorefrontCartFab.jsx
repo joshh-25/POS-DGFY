@@ -1,5 +1,6 @@
 import React from 'react';
 import { CalendarDays, CheckCircle2, ShoppingCart } from 'lucide-react';
+import { SERVICES_PALETTE } from '../../../modes/services/servicesPalette.js';
 
 /**
  * StorefrontCartFab — the floating "view cart / booking / checkout" button.
@@ -54,7 +55,7 @@ export function StorefrontCartFab({
         position: 'fixed',
         zIndex: 2100,
         border: (isServicesMode && hasServiceCart)
-          ? '1px solid #dbe5ee'
+          ? `1px solid ${SERVICES_PALETTE.border}`
           : (isFnbMode ? 'none' : 'none'),
         borderRadius: isFnbMode ? 999 : (isMobileViewport ? 16 : 22),
         background: (isServicesMode && hasServiceCart)
@@ -94,7 +95,7 @@ export function StorefrontCartFab({
               <div style={{ marginTop: 3, fontSize: 18, fontWeight: 900, color: '#0f172a' }}>{serviceBookingSummaryTitle}</div>
             </div>
             {!isMobileViewport && (
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 8px' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: servicesPrimary || SERVICES_PALETTE.primary, background: SERVICES_PALETTE.primarySoft, border: `1px solid ${SERVICES_PALETTE.primaryBorder}`, borderRadius: 999, padding: '4px 8px' }}>
                 {cartCount} service
               </div>
             )}
@@ -111,7 +112,7 @@ export function StorefrontCartFab({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ fontSize: 22, fontWeight: 900, color: '#0f172a' }}>{money(cartTotal)}</div>
-            <div style={{ fontSize: 13, color: '#0f766e', fontWeight: 800 }}>
+            <div style={{ fontSize: 13, color: servicesPrimary || SERVICES_PALETTE.primary, fontWeight: 800 }}>
               {isCheckoutOpen ? 'Close booking' : (isMobileViewport ? 'View booking' : 'View cart and checkout')}
             </div>
           </div>

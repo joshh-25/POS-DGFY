@@ -37,6 +37,7 @@ export function SavedAddressCard({
   themeHoverBg = '#f8fafc',
   themeShadowColor = 'rgba(26,78,141,0.12)',
   themeShadowColorSoft = 'rgba(26,78,141,0.08)',
+  compact = false,
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -89,7 +90,7 @@ export function SavedAddressCard({
 
   const containerStyle = {
     position: 'relative',
-    borderRadius: 16,
+    borderRadius: compact ? 14 : 16,
     border: isSelected
       ? `1.5px solid ${themeColor}`
       : isHoverActive
@@ -97,10 +98,10 @@ export function SavedAddressCard({
         : '1.5px solid #dbe5ee',
     background: isSelected ? themeBg : isHoverActive ? themeHoverBg : '#ffffff',
     boxShadow: isSelected ? `0 0 0 3px ${themeShadowColor}, 0 12px 28px ${themeShadowColorSoft}` : '0 1px 2px rgba(15,23,42,0.03)',
-    padding: '14px 16px',
+    padding: compact ? '10px 12px' : '14px 16px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
+    gap: compact ? 7 : 10,
     transition: 'border-color 180ms ease, box-shadow 180ms ease, background 180ms ease, transform 180ms ease',
     opacity: 1,
     cursor: isBusy ? 'wait' : 'default',
@@ -108,8 +109,8 @@ export function SavedAddressCard({
   };
 
   const iconCircleStyle = {
-    width: 32,
-    height: 32,
+    width: compact ? 30 : 32,
+    height: compact ? 30 : 32,
     borderRadius: '50%',
     background: isSelected ? themeColor : themeBg,
     color: isSelected ? '#ffffff' : themeColor,
@@ -120,18 +121,18 @@ export function SavedAddressCard({
   };
 
   const primaryTextStyle = {
-    fontSize: 13,
+    fontSize: compact ? 12 : 13,
     fontWeight: 700,
     color: '#0f172a',
-    lineHeight: 1.3,
+    lineHeight: 1.25,
     margin: 0,
   };
 
   const secondaryTextStyle = {
-    fontSize: 11,
+    fontSize: compact ? 10.5 : 11,
     fontWeight: 400,
     color: '#64748b',
-    lineHeight: 1.4,
+    lineHeight: 1.35,
     marginTop: 2,
     margin: 0,
   };
@@ -443,12 +444,12 @@ export function SavedAddressCard({
     >
       {/* Default badge — top-right absolute */}
       {address.isDefault ? (
-        <div style={{ position: 'absolute', top: 12, right: 12 }}>
+        <div style={{ position: 'absolute', top: compact ? 9 : 12, right: compact ? 9 : 12 }}>
           <span style={{
             background: '#dbeafe',
             color: themeColor,
             borderRadius: 999,
-            padding: '3px 8px',
+            padding: compact ? '2px 7px' : '3px 8px',
             fontSize: 10,
             fontWeight: 800,
             lineHeight: 1.4,
@@ -472,11 +473,11 @@ export function SavedAddressCard({
           padding: 0,
           display: 'flex',
           alignItems: 'flex-start',
-          gap: 12,
+          gap: compact ? 10 : 12,
           textAlign: 'left',
           cursor: isBusy ? 'not-allowed' : 'pointer',
           width: '100%',
-          paddingRight: address.isDefault ? 64 : 0,
+          paddingRight: address.isDefault ? (compact ? 52 : 64) : 0,
         }}
       >
         {/* Location icon */}
@@ -485,10 +486,10 @@ export function SavedAddressCard({
         </div>
 
         {/* Text content */}
-        <div style={{ minWidth: 0, flex: 1, paddingTop: 2 }}>
-          <p style={primaryTextStyle}>{address.label || 'Saved Address'}</p>
+        <div style={{ minWidth: 0, flex: 1, paddingTop: compact ? 1 : 2 }}>
+          <p style={{ ...primaryTextStyle, ...(compact ? { display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' } : {}) }}>{address.label || 'Saved Address'}</p>
           {address.fullAddress ? (
-            <p style={secondaryTextStyle}>{address.fullAddress}</p>
+            <p style={{ ...secondaryTextStyle, ...(compact ? { display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' } : {}) }}>{address.fullAddress}</p>
           ) : null}
         </div>
       </button>

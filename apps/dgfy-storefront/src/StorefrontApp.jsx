@@ -104,7 +104,8 @@ import { useStorefrontCartDrawerShellProps } from './app/hooks/useStorefrontCart
 import { StorefrontLoadBoundary } from './shared/components/storefront/StorefrontLoadBoundary.jsx';
 import { StorefrontBranchSwitchFeedback } from './shared/components/storefront/StorefrontBranchSwitchFeedback.jsx';
 import { openStorefrontActionLink, sanitizeExternalLink } from './shared/utils/externalLinks.js';
-import { money, toSlug } from './shared/utils/storefrontFormatters.js';
+import { money as defaultMoney, toSlug } from './shared/utils/storefrontFormatters.js';
+import { formatServiceMoney } from './modes/services/servicesFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
 import {
   buildTicketImage,
@@ -213,12 +214,12 @@ import {
   isBookingFieldComplete,
   normalizeServiceFormFields
 } from './modes/services/booking/model/serviceBookingFields.js';
-import { combineDateAndTimeParts } from './modes/services/booking/model/serviceBookingSchedule.js';
 import { buildServiceBookingSummaryModel } from './modes/services/booking/model/serviceBookingSummary.js';
 import { useServiceBookingDerivations } from './modes/services/booking/hooks/useServiceBookingDerivations.js';
 import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useServiceBookingFieldFocus.js';
 import { useServiceBookingReviewProps } from './modes/services/booking/hooks/useServiceBookingReviewProps.js';
 import { SERVICES_BODY_FONT, SERVICES_DISPLAY_FONT } from './modes/services/servicesTypography.js';
+import { SERVICES_PALETTE } from './modes/services/servicesPalette.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
 import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
 import { useSimpleCheckoutGating } from './modes/simple/checkout/hooks/useSimpleCheckoutGating.js';
@@ -268,7 +269,6 @@ import {
   createServicesLocalSimulation
 } from './modes/services/tracking/model/servicesLocalSimulation.js';
 import {
-  getServicesLocalFlowDefinition,
   isServicesLocalSimulationMethod,
   SERVICES_LOCAL_SIMULATION_ENABLED
 } from './modes/services/booking/model/servicesLocalFlow.js';
@@ -695,8 +695,8 @@ export default function StorefrontApp() {
   const [serviceAreaFilter, setServiceAreaFilter] = useState('all');
   const [serviceDurationFilter, setServiceDurationFilter] = useState('all');
   const [serviceBookingStep, setServiceBookingStep] = useState(1);
-  const [serviceOrderMethod, setServiceOrderMethod] = useState('delivery');
-  const [serviceScheduleMode, setServiceScheduleMode] = useState('now');
+  const [serviceOrderMethod, setServiceOrderMethod] = useState('');
+  const [serviceScheduleMode, setServiceScheduleMode] = useState('');
   const [serviceSpecialInstructions, setServiceSpecialInstructions] = useState('');
   const {
     bookingPreferredDateInputRef,
@@ -974,6 +974,7 @@ export default function StorefrontApp() {
     catalogError,
     hasCatalogSearchQuery: catalogSearch.trim().length > 0
   });
+  const money = isServicesMode ? formatServiceMoney : defaultMoney;
   const fnbCatalogRuntime = useFnbCatalogRuntime({
     activeSection: activeServiceTab,
     catalogSearch,
@@ -1177,16 +1178,28 @@ export default function StorefrontApp() {
     setSelectedTrackingPin(updated.tracking_pin);
     void handleTrack();
   }, [handleTrack, routeSlug, selectedStore?.slug, setSelectedTrackingPin, setTrackingPinInput]);
-  const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
-  const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
-  const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
+  // Services owns its checkout palette. A composed services capability must
+  // use the same tokens as a Services storefront instead of inheriting the
+  // legacy teal accent from the tenant's primary mode.
+  const usesServicesPalette = isServicesMode || modeAdapter?.hasServicesCapability === true;
+  const servicesPrimary = usesServicesPalette
+    ? SERVICES_PALETTE.primary
+    : (modeAdapter?.heroTheme?.accent || SERVICES_PALETTE.primary);
+  const servicesPrimaryDark = usesServicesPalette
+    ? SERVICES_PALETTE.primaryDark
+    : (modeAdapter?.heroTheme?.accentDark || SERVICES_PALETTE.primaryDark);
+  const servicesPrimarySoft = usesServicesPalette
+    ? SERVICES_PALETTE.primarySoft
+    : (modeAdapter?.heroTheme?.accentSoft || SERVICES_PALETTE.primarySoft);
   const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || SERVICES_BODY_FONT;
   const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || modeAdapter?.heroTheme?.bodyFont || SERVICES_DISPLAY_FONT;
-  const servicesPrimaryBorder = `${servicesPrimary}33`;
-  const servicesPrimaryShadow = isSimpleMode ? 'rgba(23,107,58,0.16)' : 'rgba(15,118,110,0.24)';
-  const servicesPrimaryShadowStrong = isSimpleMode ? 'rgba(23,107,58,0.24)' : 'rgba(15,118,110,0.32)';
-  const servicesHighlight = '#f59e0b';
-  const servicesHighlightSoft = '#fffbeb';
+  const servicesPrimaryBorder = usesServicesPalette
+    ? SERVICES_PALETTE.primaryBorder
+    : (modeAdapter?.heroTheme?.borderSoft || SERVICES_PALETTE.primaryBorder);
+  const servicesPrimaryShadow = SERVICES_PALETTE.primaryShadow;
+  const servicesPrimaryShadowStrong = SERVICES_PALETTE.primaryShadowStrong;
+  const servicesHighlight = SERVICES_PALETTE.warning;
+  const servicesHighlightSoft = SERVICES_PALETTE.warningSoft;
   const {
     isGlobalAccountPage,
     isTenantAccountPage,
@@ -1706,7 +1719,8 @@ export default function StorefrontApp() {
     serviceCartFlyAnimations,
     serviceCartLines,
     serviceCartTotal,
-    updateQty
+    updateQty,
+    updateServiceLineOptions
   } = useCartMutations({
     bookingPermitted,
     cart,
@@ -1929,6 +1943,8 @@ export default function StorefrontApp() {
     serviceIntakeFields,
     serviceLocationSummaryDraft,
     serviceFlow,
+    serviceFlowMethod,
+    serviceFlowProfileMethod,
     servicePaymentOptions,
     getPreferredBookingTimeForDate,
     stepOneComplete
@@ -1945,6 +1961,7 @@ export default function StorefrontApp() {
     selectedServiceCartLineId,
     selectedServiceDetail,
     serviceAppointmentAt,
+    serviceCatalog: catalog,
     serviceCartLines,
     serviceCartTotal,
     serviceDraftQuantity,
@@ -1952,7 +1969,9 @@ export default function StorefrontApp() {
     serviceOrderMethod,
     servicePaymentTiming,
     serviceUnitType,
-    storefrontHours: selectedStore?.storefront_hours
+    storefrontContext: selectedStore,
+    storefrontHours: selectedStore?.storefront_hours,
+    selectedLocationId
   });
   const isDesktopCheckout = isDesktopViewport;
   const isStorefrontV2 = parseBooleanFlag(selectedStore?.storefront_ui_v2_enabled, false);
@@ -2100,6 +2119,7 @@ export default function StorefrontApp() {
     const matchesCurrentService = Number(selectedServiceDetail.item_id) === Number(activeServiceCartLine?.item_id);
     setServiceDraftQuantity(matchesCurrentService ? Math.max(1, Number(activeServiceCartLine?.quantity || 1)) : 1);
     setServiceDraftNotes(matchesCurrentService ? String(activeServiceCartLine?.service_notes || '') : '');
+    setServiceScheduleMode(matchesCurrentService && String(activeServiceCartLine?.service_schedule_at || '').trim() ? 'later' : '');
     if (!matchesCurrentService) {
       setServiceAppointmentAt('');
       setServiceIntakeResponses({});
@@ -2126,6 +2146,7 @@ export default function StorefrontApp() {
     setServiceDraftQuantity(Math.max(1, Number(activeServiceCartLine.quantity || 1)));
     setServiceDraftNotes(String(activeServiceCartLine.service_notes || ''));
     setServiceAppointmentAt(String(activeServiceCartLine.service_schedule_at || ''));
+    setServiceScheduleMode(String(activeServiceCartLine.service_schedule_at || '').trim() ? 'later' : '');
     setServiceIntakeResponses(activeServiceCartLine?.intake_responses && typeof activeServiceCartLine.intake_responses === 'object'
       ? activeServiceCartLine.intake_responses
       : {});
@@ -2224,31 +2245,6 @@ export default function StorefrontApp() {
     serviceUnitType
   ]);
   useEffect(() => {
-    if (!isBookingSubpage || !activeBookingService || !serviceFlow.requiresSchedule) return;
-    const firstDate = bookingDateOptions[0]?.value || '';
-    if (!firstDate) {
-      if (serviceAppointmentAt) setServiceAppointmentAt('');
-      return;
-    }
-    const currentTimeIsValid = bookingTimeSlotOptions.some((option) => option.value === selectedServiceTimePart);
-    if (selectedServiceDatePart && currentTimeIsValid) return;
-    if (selectedServiceDatePart && !selectedServiceTimePart) return;
-    const nextTime = getPreferredBookingTimeForDate(activeBookingService, firstDate, selectedServiceTimePart);
-    const nextAppointment = combineDateAndTimeParts(firstDate, nextTime);
-    if (nextAppointment !== serviceAppointmentAt) setServiceAppointmentAt(nextAppointment);
-  }, [
-    isBookingSubpage,
-    activeBookingService,
-    bookingCalendarDateOptions,
-    bookingDateOptions,
-    bookingTimeSlotOptions,
-    getPreferredBookingTimeForDate,
-    selectedServiceDatePart,
-    selectedServiceTimePart,
-    serviceAppointmentAt,
-    serviceFlow.requiresSchedule
-  ]);
-  useEffect(() => {
     if (!isServiceDetailsSubpage) return;
     if (!routeServiceItemId) {
       setSelectedServiceDetail(null);
@@ -2343,7 +2339,7 @@ export default function StorefrontApp() {
     serviceDraftNotes,
     serviceDraftQuantity,
     serviceIntakeResponses,
-    serviceRequiresSchedule: getServicesLocalFlowDefinition(serviceOrderMethod).requiresSchedule,
+    serviceRequiresSchedule: serviceFlow.requiresSchedule,
     servicePaymentOptions,
     servicePaymentTiming,
     setCart,
@@ -2382,6 +2378,7 @@ export default function StorefrontApp() {
     servicePaymentTiming,
     servicesPrimary,
     servicesPrimaryDark,
+    servicesDisplayFont,
     setCartImageErrors,
     setCheckoutTab,
     withAssetOrigin
@@ -2764,6 +2761,7 @@ export default function StorefrontApp() {
     customerPin,
     deliveryLocationAction,
     isDeliveryOrder,
+    isCustomerLocationFlow: serviceFlowMethod === 'on_site',
     isFnbMode,
     isSignedIn: isDgfyCustomerSignedIn,
     landmarkNote: serviceLocationLandmarkNote,
@@ -2790,6 +2788,7 @@ export default function StorefrontApp() {
     deliveryLocationDisplayAddress,
     hasPinnedDeliveryLocation,
     isDeliveryOrder,
+    isCustomerLocationFlow: serviceFlowMethod === 'on_site',
     resolvedDeliveryAddress,
     setCustomerAddress,
     setCustomerPin,
@@ -2916,6 +2915,7 @@ export default function StorefrontApp() {
     selectedLocationId,
     selectedStore,
     serviceOrderMethod,
+    serviceFlowMethod,
     servicesLocalSimulationEnabled: SERVICES_LOCAL_SIMULATION_ENABLED,
     isServicesLocalSimulationMethod,
     createServicesLocalSimulation,
@@ -3965,7 +3965,7 @@ export default function StorefrontApp() {
     serviceHandoff: readServiceHandoffForBooking(
       selectedStore?.slug || routeSlug,
       trackingResult?.tracking_pin || trackingPinInput
-    ) || serviceOrderMethod,
+    ) || serviceFlowMethod || serviceOrderMethod,
     selectedStore,
     setTrackingPinInput,
     tileTransformRequest,
@@ -4057,6 +4057,7 @@ export default function StorefrontApp() {
     activeBookingService,
     activeServiceLocationSummary,
     addToCart,
+    updateServiceLineOptions,
     bookingCalendarDateOptions,
     bookingDateOptions,
     bookingFieldPlan,
@@ -4066,6 +4067,7 @@ export default function StorefrontApp() {
     bookingSummaryAmount,
     bookingSummaryQuantity,
     bookingTimeSlotOptions,
+    getPreferredBookingTimeForDate,
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
     guestCheckoutAllowed,
@@ -4083,6 +4085,8 @@ export default function StorefrontApp() {
     customerName,
     customerPhone,
     customerPin,
+    setCustomerAddress,
+    setResolvedDeliveryAddress,
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
     deliverySavedLocations,
@@ -4131,6 +4135,8 @@ export default function StorefrontApp() {
     reviewServiceLines,
     routeServiceItemId,
     selectedLocation,
+    selectedLocationId,
+    storeLocations,
     selectedSavedLocationId,
     selectedServiceCartLineId,
     selectedServiceDatePart,
@@ -4154,6 +4160,8 @@ export default function StorefrontApp() {
     serviceLocationLandmarkNote,
     serviceLocationSummaryDraft,
     serviceOrderMethod,
+    serviceFlowMethod,
+    serviceFlowProfileMethod,
     setServiceOrderMethod,
     serviceScheduleMode,
     setServiceScheduleMode,
@@ -4363,7 +4371,7 @@ export default function StorefrontApp() {
         '--services-body-font': servicesBodyFont,
         '--services-display-font': servicesDisplayFont,
         fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body),
-        background: isStorePage ? (isFnbMode ? '#fff' : (isServicesMode ? 'radial-gradient(circle at 20% 0%, #ecfeff 0%, #f8fafc 48%, #ffffff 100%)' : (isRetailMode ? 'radial-gradient(circle at 20% 0%, #EEF4FB 0%, #F8FAFC 42%, #EFF4F9 100%)' : (isSimpleMode ? 'radial-gradient(circle at 20% 0%, #FFFDF7 0%, #FFF7E6 42%, #F8FAFC 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')))) : '#ffffff',
+        background: isStorePage ? (isFnbMode ? '#fff' : (isServicesMode ? `radial-gradient(circle at 20% 0%, ${SERVICES_PALETTE.primarySoft} 0%, ${SERVICES_PALETTE.page} 48%, ${SERVICES_PALETTE.surface} 100%)` : (isRetailMode ? 'radial-gradient(circle at 20% 0%, #EEF4FB 0%, #F8FAFC 42%, #EFF4F9 100%)' : (isSimpleMode ? 'radial-gradient(circle at 20% 0%, #FFFDF7 0%, #FFF7E6 42%, #F8FAFC 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')))) : '#ffffff',
         minHeight: '100vh',
         color: '#0f172a',
         overflowX: 'clip'

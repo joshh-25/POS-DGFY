@@ -31,7 +31,8 @@ import {
   validateCreateFolder,
   validateUpdateFolder,
   validateDeleteFolder,
-  validateReplaceItemSuppliers
+  validateReplaceItemSuppliers,
+  validateReplaceItemFolderMemberships
 } from '../validators/itemValidator.js';
 import { authenticate, checkPermission, requireTenantAdmin } from '../middleware/auth.js';
 import { requireLocalInventoryLedgerOwnership, bodyDeclaresCurrentStock } from '../middleware/inventoryAuthorityGate.js';
@@ -207,6 +208,14 @@ router.get('/:item_id/stock-history', itemController.getItemStockHistory);
 router.get('/:item_id/batches', itemController.getItemBatches);
 router.get('/:item_id/movements', itemController.getItemMovements);
 router.put('/:item_id/suppliers', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateReplaceItemSuppliers, itemController.replaceItemSuppliers);
+
+// Secondary category memberships (Phase 257, #1318) - foundation only, not
+// wired into any existing catalog read yet. Never touches the primary
+// items.folder_id pointer. requireTenantAdmin (the categories:manage
+// permission check - see its own doc comment), matching the folder CRUD
+// routes above and ADR 0049's permission rule.
+router.get('/:item_id/folders', requireTenantAdmin, validateItemIdParam, itemController.listItemFolders);
+router.put('/:item_id/folders', requireTenantAdmin, validateItemIdParam, validateReplaceItemFolderMemberships, itemController.replaceItemFolders);
 
 // Composition validation - for nested products feature
 router.post('/validate-composition', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), itemController.validateComposition);
