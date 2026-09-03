@@ -37,6 +37,11 @@ Both self-hosted runners are online:
 | `vm-openproject` | 23 | `sieitz-sm`, `sieitz-runner` | Small box; also runs OpenProject, 3 buildx builders, cloudflared, yopass |
 | `vm-sieitzstaging` | 25 | `sieitz-lg`, `sieitz-runner` | Large box; **also the live DEV + STAGING docker-compose host** |
 
+A property of the self-hosted class that GitHub-hosted runners don't share: each box reuses one
+persistent `_work` git workspace across every job that lands on it, from every workflow. State one
+job leaves in that workspace can affect the next, unrelated job that lands there — see
+`CI_RUNNER_WORKSPACE_HYGIENE.md` for the mechanism and the standing defenses against it (#1528).
+
 Every workflow **without an explicit hosted exception** runs on one of these two labels today
 (`docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md`, "Status as of 2026-08-13") — this is not a blanket "zero
 hosted jobs" claim. One pre-existing exception already runs on `ubuntu-latest`, predates this
@@ -191,4 +196,5 @@ prerequisite for the remaining DB-backed gates), #1124 (quality-gate trust, gate
 closure), #724/#662 (local-CI fallback evidence path), #715 (alternative CI provider exploration),
 #923 (runner size labeling), `docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md` (full history), `AGENTS.md`
 (Merge Safety carve-out's four-way unavailability classification, reused here rather than
-duplicated).
+duplicated), `docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md` (#1528 — shared `_work` state hazards and
+their standing defenses, a distinct concern from this doc's own "which class runs a job" scope).
