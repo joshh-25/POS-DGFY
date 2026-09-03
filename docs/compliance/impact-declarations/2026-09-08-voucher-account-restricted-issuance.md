@@ -24,8 +24,8 @@ rollback_note: Revert this PR's diff, including the migration's down(). Three of
   order total, or existing redemption amount is touched by any of the four.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-08T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-788-VOUCHER-ACCOUNT-RESTRICTED-ISSUANCE
+preflight_run_at: 2026-09-03T18:11:37.531Z
+preflight_request_ref: PREFLIGHT-33788577095-2026-09-08-VOUCHER-ACCOUNT-RESTRICTED-ISSUANCE
 ---
 
 # Account-restricted voucher issuance (Phase 269, #788)
