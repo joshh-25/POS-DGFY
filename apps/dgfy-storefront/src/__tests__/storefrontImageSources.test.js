@@ -2,6 +2,65 @@ import { describe, expect, it } from 'vitest';
 import { resolveStorefrontImageSources } from '../shared/utils/storefrontImageSources.js';
 
 describe('resolveStorefrontImageSources', () => {
+  it('normalizes the ordered image gallery and keeps the primary image first', () => {
+    const sources = resolveStorefrontImageSources({
+      image_url: '/uploads/catalog/primary-large.webp',
+      image_gallery: [
+        {
+          url: '/uploads/catalog/secondary-large.webp',
+          variants: {
+            thumbnail_url: '/uploads/catalog/secondary-thumbnail.webp',
+            large_url: '/uploads/catalog/secondary-large.webp'
+          },
+          is_primary: false,
+          sort_order: 1
+        },
+        {
+          url: '/uploads/catalog/primary-large.webp',
+          variants: {
+            thumbnail_url: '/uploads/catalog/primary-thumbnail.webp',
+            large_url: '/uploads/catalog/primary-large.webp'
+          },
+          is_primary: true,
+          sort_order: 0
+        },
+        {
+          url: '/uploads/catalog/third-large.webp',
+          is_primary: false,
+          sort_order: 2
+        }
+      ]
+    }, { preferred: 'large' });
+
+    expect(sources.gallery).toHaveLength(3);
+    expect(sources.gallery.map((entry) => entry.url)).toEqual([
+      '/uploads/catalog/primary-large.webp',
+      '/uploads/catalog/secondary-large.webp',
+      '/uploads/catalog/third-large.webp'
+    ]);
+    expect(sources.gallery[0].isPrimary).toBe(true);
+    expect(sources.gallery[1].thumbnailUrl).toContain('/uploads/catalog/secondary-thumbnail.webp');
+    expect(sources.gallery[2].largeUrl).toContain('/uploads/catalog/third-large.webp');
+    expect(sources.src).toContain('/uploads/catalog/primary-large.webp');
+  });
+
+  it('adds the legacy primary URL when it is missing from the gallery and removes duplicates', () => {
+    const sources = resolveStorefrontImageSources({
+      image_url: '/uploads/catalog/primary.webp',
+      image_gallery: [
+        { url: '/uploads/catalog/secondary.webp', sort_order: 1 },
+        { url: '/uploads/catalog/secondary.webp', sort_order: 2 }
+      ]
+    });
+
+    expect(sources.gallery.map((entry) => entry.url)).toEqual([
+      '/uploads/catalog/primary.webp',
+      '/uploads/catalog/secondary.webp'
+    ]);
+    expect(sources.gallery[0].sortOrder).toBe(0);
+    expect(sources.gallery[0].isPrimary).toBe(true);
+  });
+
   it('builds a responsive source set from optimized variants', () => {
     const sources = resolveStorefrontImageSources({
       image_url: '/uploads/catalog/item-large.webp',

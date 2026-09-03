@@ -5,7 +5,6 @@ const VARIANT_WIDTHS = {
   medium: 1024,
   large: 1920
 };
-
 const resolveUrl = (value) => withAssetOrigin(
   typeof value === 'string' ? value.trim() : ''
 ) || '';
@@ -33,15 +32,7 @@ const buildVariantSources = (variants = {}, fallbackUrl = '') => {
       : undefined
   };
 };
-
-export const resolveStorefrontImageSources = (
-  item,
-  { preferred = 'medium' } = {}
-) => {
-  const fallbackUrl = resolveUrl(item?.image_url);
-  const variants = item?.image_variants && typeof item.image_variants === 'object'
-    ? item.image_variants
-    : {};
+const buildResolvedImageSources = (fallbackUrl, variants = {}, preferred = 'medium') => {
   const fallbackSources = buildVariantSources(variants, fallbackUrl);
   const avifSources = variants.avif && typeof variants.avif === 'object'
     ? buildVariantSources(variants.avif)
@@ -54,6 +45,7 @@ export const resolveStorefrontImageSources = (
 
   return {
     src: preferredUrls[preferred] || mediumUrl || fallbackUrl,
+    url: fallbackUrl,
     thumbnailUrl,
     mediumUrl,
     largeUrl,
@@ -62,5 +54,87 @@ export const resolveStorefrontImageSources = (
     webpSrcSet: webpSources?.srcSet,
     placeholderUrl: resolveUrl(variants.placeholder_url),
     version: Number(variants.version || 1)
+  };
+};
+
+const normalizeGalleryEntry = (entry, index, preferred) => {
+  const rawEntry = typeof entry === 'string' ? { url: entry } : entry;
+  if (!rawEntry || typeof rawEntry !== 'object') return null;
+
+  const fallbackUrl = resolveUrl(rawEntry.url || rawEntry.image_url || rawEntry.src);
+  if (!fallbackUrl) return null;
+
+  const variants = rawEntry.variants && typeof rawEntry.variants === 'object'
+    ? rawEntry.variants
+    : rawEntry.image_variants && typeof rawEntry.image_variants === 'object'
+      ? rawEntry.image_variants
+      : {};
+
+  return {
+    ...buildResolvedImageSources(fallbackUrl, variants, preferred),
+    isPrimary: rawEntry.is_primary === true,
+    sortOrder: Number.isFinite(Number(rawEntry.sort_order)) ? Number(rawEntry.sort_order) : index
+  };
+};
+
+export const resolveStorefrontImageGallery = (
+  item,
+  { preferred = 'medium' } = {}
+) => {
+  const fallbackUrl = resolveUrl(item?.image_url);
+  const fallbackVariants = item?.image_variants && typeof item.image_variants === 'object'
+    ? item.image_variants
+    : {};
+  const rawGallery = Array.isArray(item?.image_gallery) ? item.image_gallery : [];
+  const seenUrls = new Set();
+  const gallery = rawGallery
+    .map((entry, index) => normalizeGalleryEntry(entry, index, preferred))
+    .filter((entry) => {
+      if (!entry || seenUrls.has(entry.url)) return false;
+      seenUrls.add(entry.url);
+      return true;
+    });
+
+  const fallbackIsPresent = fallbackUrl && gallery.some((entry) => (
+    entry.url === fallbackUrl
+      || entry.thumbnailUrl === fallbackUrl
+      || entry.mediumUrl === fallbackUrl
+      || entry.largeUrl === fallbackUrl
+  ));
+
+  if (fallbackUrl && !fallbackIsPresent) {
+    gallery.unshift({
+      ...buildResolvedImageSources(fallbackUrl, fallbackVariants, preferred),
+      isPrimary: true,
+      sortOrder: -1
+    });
+  }
+
+  return gallery
+    .sort((left, right) => {
+      if (left.isPrimary !== right.isPrimary) return left.isPrimary ? -1 : 1;
+      return left.sortOrder - right.sortOrder;
+    })
+    .map((entry, index) => ({
+      ...entry,
+      isPrimary: index === 0,
+      sortOrder: index
+    }));
+};
+
+export const resolveStorefrontImageSources = (
+  item,
+  { preferred = 'medium' } = {}
+) => {
+  const fallbackUrl = resolveUrl(item?.image_url);
+  const variants = item?.image_variants && typeof item.image_variants === 'object'
+    ? item.image_variants
+    : {};
+  const gallery = resolveStorefrontImageGallery(item, { preferred });
+  const primarySources = gallery[0] || buildResolvedImageSources(fallbackUrl, variants, preferred);
+
+  return {
+    ...primarySources,
+    gallery
   };
 };

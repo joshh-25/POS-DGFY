@@ -17,7 +17,7 @@ const actionButtonBase = {
 afterEach(cleanup);
 
 describe('retail product-details presentation', () => {
-  it('keeps large retail images contained inside the fixed media viewport', () => {
+  it('fills the retail media viewport with the shared cover treatment', () => {
     render(
       <StorefrontProductMediaGallery
         available
@@ -25,7 +25,7 @@ describe('retail product-details presentation', () => {
         imageSources={{ src: '/large-product.png' }}
         imageUrl="/large-product.png"
         itemName="Tall product package"
-        objectFit="contain"
+        objectFit="cover"
         sectionLabel="Retail"
         standardImageHeight={450}
       />
@@ -34,7 +34,7 @@ describe('retail product-details presentation', () => {
     const image = screen.getByAltText('Tall product package');
     const gallery = image.parentElement.parentElement;
 
-    expect(image.style.objectFit).toBe('contain');
+    expect(image.style.objectFit).toBe('cover');
     expect(image.style.maxWidth).toBe('100%');
     expect(gallery.style.width).toBe('100%');
     expect(gallery.style.maxWidth).toBe('100%');
