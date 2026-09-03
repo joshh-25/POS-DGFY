@@ -74,7 +74,7 @@ export const deliveryRunRepository = {
         const normalizedLocationId = toPositiveInt(locationId);
         if (normalizedLocationId) where.location_id = normalizedLocationId;
 
-        // Phase 258 (#1489): scheduled_date/scheduled_date_end is a RANGE now, so
+        // Phase 260 (#1489): scheduled_date/scheduled_date_end is a RANGE now, so
         // scheduledDateFrom/scheduledDateTo filter by overlap, not by scheduled_date alone. A run
         // with scheduled_date_end = NULL is a single-day run whose effective end equals its start
         // (a bare COALESCE isn't indexable, but a run's effective end only needs comparing against

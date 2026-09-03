@@ -140,7 +140,7 @@ const buildDeliveryRunRepository = (state) => ({
             status: payload.status || 'draft',
             location_id: payload.location_id ?? null,
             scheduled_date: payload.scheduled_date ?? null,
-            // Phase 258 (#1489): scheduled_date_end makes the run span a date range.
+            // Phase 260 (#1489): scheduled_date_end makes the run span a date range.
             scheduled_date_end: payload.scheduled_date_end ?? null,
             notes: payload.notes ?? null,
             created_by: payload.created_by ?? null,

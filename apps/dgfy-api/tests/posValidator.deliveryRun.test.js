@@ -61,7 +61,7 @@ describe('Delivery run validators (Phase 225)', () => {
         expect(res.status).toHaveBeenCalledWith(422);
     });
 
-    // Phase 258 (#1489): date-range scheduling.
+    // Phase 260 (#1489): date-range scheduling.
     it('accepts a create payload with a valid scheduled_date/scheduled_date_end range', () => {
         const req = { body: { label: 'Range Run', scheduled_date: '2026-09-10', scheduled_date_end: '2026-09-12' } };
         const { res, next } = runValidator(validateDeliveryRunCreate, req);

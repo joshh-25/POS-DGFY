@@ -19,7 +19,7 @@ const VIEW_FILTER_EXCLUDED_STATUSES = new Set(['completed', 'cancelled']);
  * keeps `draft`, `scheduled`, and -- unlike getEligibleRunTargets -- `dispatched`.
  *
  * Sorted by scheduled_date (nulls last), then label, so the dropdown reads in a stable, predictable
- * order rather than API response order. Phase 258 (#1489): scheduled_date is now the START of a
+ * order rather than API response order. Phase 260 (#1489): scheduled_date is now the START of a
  * run's scheduled window (scheduled_date_end may extend it), not necessarily a single point in
  * time -- this still sorts correctly by "which run's window starts first."
  */

@@ -35,7 +35,7 @@ const RUN_STATUS_LABELS = Object.freeze({
 
 const LOCKED_RUN_STATUSES = new Set(['dispatched', 'completed']);
 
-// Phase 258 (#1489): scheduled_date/scheduled_date_end is a range now, not a single point in
+// Phase 260 (#1489): scheduled_date/scheduled_date_end is a range now, not a single point in
 // time. No end date (or an end equal to the start) still displays as a single-day run.
 const formatRunScheduleLabel = (run) => {
   if (!run.scheduled_date) return 'No schedule set';

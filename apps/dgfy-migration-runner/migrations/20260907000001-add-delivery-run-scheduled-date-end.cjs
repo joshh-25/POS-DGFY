@@ -1,6 +1,6 @@
 'use strict';
 
-// Phase 258 (#1489) -- extends delivery_runs to carry a date RANGE instead of a single
+// Phase 260 (#1489) -- extends delivery_runs to carry a date RANGE instead of a single
 // scheduled_date. A NULL scheduled_date_end means the run is still a single-day run (its
 // effective end equals scheduled_date) -- app-level range checks live in
 // buildCreateDeliveryRunUseCase/buildUpdateDeliveryRunUseCase, not a DB CHECK constraint (kept

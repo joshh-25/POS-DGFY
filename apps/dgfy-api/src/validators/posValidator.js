@@ -804,7 +804,7 @@ const assignDeliveryPersonnelSchema = Joi.object({
 // Phase 225 (#1273/#1081): delivery run CRUD + membership schemas.
 const DELIVERY_RUN_UPDATABLE_STATUSES = ['draft', 'scheduled', 'cancelled'];
 
-// Phase 258 (#1489): scheduled_date_end makes a run span a date RANGE instead of a single day.
+// Phase 260 (#1489): scheduled_date_end makes a run span a date RANGE instead of a single day.
 // `.min(Joi.ref('scheduled_date'))` rejects end < start within one create request; `.with(...)` is
 // one-directional -- an end date requires a start date, but a start date alone (today's single-day
 // shape) stays valid with no end.

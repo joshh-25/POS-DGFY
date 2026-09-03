@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
-// Phase 226 (#1273), extended Phase 258 (#1489). Create/edit dialog. Fields match POST/PATCH
+// Phase 226 (#1273), extended Phase 260 (#1489). Create/edit dialog. Fields match POST/PATCH
 // /pos/delivery-runs exactly: label (1-120, required), scheduled_date (date().iso(), sent as
 // YYYY-MM-DD, cleared -> null on PATCH / omitted on POST), scheduled_date_end (same shape, an
 // optional end date making the run span a range -- omitted/cleared means a single-day run), notes

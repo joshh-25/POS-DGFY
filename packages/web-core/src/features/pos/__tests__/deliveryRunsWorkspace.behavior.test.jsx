@@ -129,7 +129,7 @@ describe('Creating a delivery run', () => {
   });
 });
 
-// Phase 258 (#1489): date-range scheduling.
+// Phase 260 (#1489): date-range scheduling.
 describe('Delivery run date range', () => {
   it('sends both scheduled_date and scheduled_date_end when an end date is set on create', async () => {
     createDeliveryRun.mockResolvedValue({ delivery_run_id: 501 });
