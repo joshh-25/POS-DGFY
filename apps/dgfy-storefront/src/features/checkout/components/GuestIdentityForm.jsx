@@ -1,5 +1,6 @@
 import React from 'react';
 import { Mail, Phone, User } from 'lucide-react';
+import { GUEST_CHECKOUT_FONT_FAMILY, getGuestCheckoutTypography } from '../../../shared/components/checkout/guestCheckoutTypography.js';
 
 export function GuestIdentityForm({
   title = 'Guest Details',
@@ -102,11 +103,13 @@ export function GuestIdentityForm({
   }
 
   if (layoutVariant === 'fnbGuest') {
-    const inputStyle = { minHeight: 42, border: '1px solid #cbd5e1', borderRadius: 12, padding: '9px 12px', background: '#fff', boxSizing: 'border-box', width: '100%', fontWeight: 500 };
+    const typography = getGuestCheckoutTypography(isMobileViewport);
+    const inputStyle = { minHeight: 44, border: '1px solid #cbd5e1', borderRadius: 12, padding: '9px 12px', background: '#fff', boxSizing: 'border-box', width: '100%', fontWeight: 500, fontFamily: GUEST_CHECKOUT_FONT_FAMILY, ...typography.control };
     const inputWithIconStyle = { ...inputStyle, paddingLeft: 38 };
+    const fieldLabelStyle = { display: 'grid', gap: 6, ...typography.fieldLabel, color: '#0f172a', fontFamily: GUEST_CHECKOUT_FONT_FAMILY };
     const section = (
-      <div style={{ display: 'grid', gap: 14 }}>
-        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#0f172a', fontWeight: 700 }}>
+      <div style={{ display: 'grid', gap: isMobileViewport ? 14 : 18, fontFamily: GUEST_CHECKOUT_FONT_FAMILY }}>
+        <label style={fieldLabelStyle}>
           Full Name *
           <div style={{ position: 'relative' }}>
             <User size={17} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
@@ -120,8 +123,8 @@ export function GuestIdentityForm({
           </div>
         </label>
 
-        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#0f172a', fontWeight: 700 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: isMobileViewport ? 14 : 18, alignItems: 'start' }}>
+          <label style={fieldLabelStyle}>
             Mobile Number *
             <div style={{ position: 'relative' }}>
               <Phone size={17} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
@@ -133,7 +136,7 @@ export function GuestIdentityForm({
               />
             </div>
           </label>
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#0f172a', fontWeight: 700 }}>
+          <label style={fieldLabelStyle}>
             Email *
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <Mail size={17} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />

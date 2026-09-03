@@ -1,7 +1,12 @@
 import { CustomerIdentityCard } from './CustomerIdentityCard.jsx';
+import {
+  GUEST_CHECKOUT_FONT_FAMILY,
+  GUEST_CHECKOUT_SAVED_DETAILS_TITLE,
+  getGuestCheckoutTypography
+} from './guestCheckoutTypography.js';
 
 export function SavedCustomerDetailsPanel({
-  title = 'Customer Details',
+  title = GUEST_CHECKOUT_SAVED_DETAILS_TITLE,
   customerName = '',
   customerEmail = '',
   customerPhone = '',
@@ -19,6 +24,8 @@ export function SavedCustomerDetailsPanel({
     return null;
   }
 
+  const typography = getGuestCheckoutTypography(isMobileViewport);
+
   return (
     <section
       style={{
@@ -27,16 +34,16 @@ export function SavedCustomerDetailsPanel({
         background: 'transparent',
         padding: 0,
         display: 'grid',
-        gap: 10
+        gap: 16,
+        fontFamily: GUEST_CHECKOUT_FONT_FAMILY
       }}
     >
-      <div style={{ display: 'grid', gap: 6 }}>
-        <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a' }}>{title}</div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ ...typography.savedDetailsTitle, color: '#0f172a' }}>{title}</div>
         {feedback?.message ? (
           <div
             style={{
-              fontSize: 12,
-              lineHeight: 1.5,
+              ...typography.helper,
               borderRadius: 12,
               padding: '8px 10px',
               border: `1px solid ${feedback.type === 'error' ? '#fecaca' : '#bfdbfe'}`,
@@ -52,13 +59,15 @@ export function SavedCustomerDetailsPanel({
       {!isEditing ? (
         <>
           <CustomerIdentityCard
-            title="Saved Details"
+            title={title}
             subtitle=""
             showVerifiedBadge={false}
             name={customerName || 'Guest customer'}
             phone={customerPhone}
             email={customerEmail}
             isMobileViewport={isMobileViewport}
+            bodyFont={GUEST_CHECKOUT_FONT_FAMILY}
+            displayFont={GUEST_CHECKOUT_FONT_FAMILY}
           />
 
           <div
@@ -76,8 +85,9 @@ export function SavedCustomerDetailsPanel({
                 border: 'none',
                 background: 'transparent',
                 color: '#1a4e8d',
-                fontSize: 12,
-                fontWeight: 800,
+                ...typography.helper,
+                fontWeight: 600,
+                fontFamily: GUEST_CHECKOUT_FONT_FAMILY,
                 cursor: 'pointer',
                 padding: 0
               }}
@@ -94,14 +104,15 @@ export function SavedCustomerDetailsPanel({
               type="button"
               onClick={onCancelEdit}
               style={{
-                minHeight: 36,
+                minHeight: 44,
                 borderRadius: 12,
                 border: '1px solid #cbd5e1',
                 background: '#fff',
                 color: '#334155',
                 padding: '0 14px',
-                fontSize: 13,
+                ...typography.action,
                 fontWeight: 700,
+                fontFamily: GUEST_CHECKOUT_FONT_FAMILY,
                 cursor: 'pointer',
                 flex: isMobileViewport ? 1 : undefined
               }}
@@ -112,14 +123,15 @@ export function SavedCustomerDetailsPanel({
               type="button"
               onClick={onApplyEdit}
               style={{
-                minHeight: 36,
+                minHeight: 44,
                 borderRadius: 12,
                 border: '1px solid #1a4e8d',
                 background: '#1a4e8d',
                 color: '#fff',
                 padding: '0 14px',
-                fontSize: 13,
+                ...typography.action,
                 fontWeight: 700,
+                fontFamily: GUEST_CHECKOUT_FONT_FAMILY,
                 cursor: 'pointer',
                 flex: isMobileViewport ? 1 : undefined
               }}

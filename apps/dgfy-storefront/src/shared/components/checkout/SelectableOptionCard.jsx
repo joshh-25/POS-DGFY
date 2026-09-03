@@ -24,6 +24,7 @@ export function SelectableOptionCard({
   activeBoxShadow = '0 8px 20px rgba(15,23,42,0.08)',
   fontSize = 15,
   fontWeight = 700,
+  fontFamily = 'inherit',
   iconBoxSize = 40,
   iconSize = 20,
   disabled = false,
@@ -54,7 +55,8 @@ export function SelectableOptionCard({
         boxSizing: 'border-box',
         transition: 'all 200ms ease',
         opacity: disabled || unavailable ? 0.65 : 1,
-        filter: unavailable ? 'grayscale(0.35)' : 'none'
+        filter: unavailable ? 'grayscale(0.35)' : 'none',
+        fontFamily
       }}
     >
       {icon ? (

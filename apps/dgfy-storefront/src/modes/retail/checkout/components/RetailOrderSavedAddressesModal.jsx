@@ -1,5 +1,6 @@
 import { Plus, X } from 'lucide-react';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
+import { getCheckoutAddLocationActionStyle } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_SOFT_BORDER = '#b9cfe8';
@@ -38,7 +39,7 @@ export function RetailOrderSavedAddressesModal({
               type="button"
               aria-label="Add New Location"
               onClick={onAddNewLocation}
-              style={{ height: 32, borderRadius: 999, border: 'none', background: RETAIL_ACCENT_TINT, padding: '0 14px', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: RETAIL_ACCENT, cursor: 'pointer', fontSize: 13 }}
+              style={getCheckoutAddLocationActionStyle({ compact: true })}
             >
               <Plus size={16} strokeWidth={2.5} />
               Add New Location

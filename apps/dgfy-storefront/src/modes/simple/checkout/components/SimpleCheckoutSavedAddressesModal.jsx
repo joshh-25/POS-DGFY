@@ -1,10 +1,15 @@
 import { Plus, X } from 'lucide-react';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
+import { getCheckoutAddLocationActionStyle } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_BORDER = '#5eead4';
 const SIMPLE_BRAND_SHADOW = 'rgba(23,107,58,0.16)';
 const SIMPLE_BRAND_TINT = '#FFF8E7';
+const SIMPLE_ADD_LOCATION_ACTION_STYLE = {
+  accentColor: SIMPLE_BRAND,
+  accentShadow: 'rgba(23,107,58,0.18)'
+};
 
 /**
  * MSME mobile "Saved Addresses" bottom sheet, shown when tapping "View All
@@ -39,7 +44,7 @@ export function SimpleCheckoutSavedAddressesModal({
               type="button"
               aria-label="Add New Location"
               onClick={onAddNewLocation}
-              style={{ height: 32, borderRadius: 999, border: 'none', background: SIMPLE_BRAND_TINT, padding: '0 14px', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: SIMPLE_BRAND, cursor: 'pointer', fontSize: 13 }}
+              style={getCheckoutAddLocationActionStyle({ ...SIMPLE_ADD_LOCATION_ACTION_STYLE, compact: true })}
             >
               <Plus size={16} strokeWidth={2.5} />
               Add New Location

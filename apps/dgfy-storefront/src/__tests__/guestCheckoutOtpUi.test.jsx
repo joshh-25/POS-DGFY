@@ -33,7 +33,7 @@ describe('mode-owned guest checkout OTP UIs', () => {
   it.each([
     ['F&B', FnbGuestEmailVerification, 'Recommended', 'Send code again', 'Verify your email'],
     ['Retail', RetailOrderGuestEmailVerification, 'Recommended', 'Send code again', 'Verify your email'],
-    ['Simple MSME', SimpleCheckoutGuestEmailVerification, 'Recommended', 'Send code again', 'Verify this guest checkout email'],
+    ['Simple MSME', SimpleCheckoutGuestEmailVerification, 'Recommended', 'Send code again', 'Verify your email'],
     ['Services', ServiceBookingGuestEmailVerification, 'Required', 'Send verification code', 'Verify your email']
   ])('%s renders the verification controls and keeps the callbacks wired', (_mode, Component, badge, requestLabel, heading) => {
     const props = buildProps();
