@@ -36,6 +36,13 @@ export const VoucherReasonCode = Object.freeze({
     // matches deliveryRunUseCases.js's stricter hard-fail-401 behavior for a missing req.user.
     VOUCHER_ACTOR_REQUIRED: 'VOUCHER_ACTOR_REQUIRED',
     VOUCHER_TIME_WINDOW_INCOMPLETE: 'VOUCHER_TIME_WINDOW_INCOMPLETE',
+    // #788 (Phase 269): authoring-time refusal of account-restricted + publicly-listed. Owned here
+    // rather than in the eligibility policy because it is a CONFIG conflict, not a redemption-time
+    // eligibility outcome -- the three VOUCHER_ACCOUNT_* codes spread in above are the redemption
+    // half. Public listing publishes a voucher's literal `code` into the storefront discovery
+    // snapshot, so combining it with an account allowlist hands the code to everyone while letting
+    // almost nobody redeem it.
+    VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE: 'VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE',
     VOUCHER_BENEFIT_CONFIG_INVALID: 'VOUCHER_BENEFIT_CONFIG_INVALID',
 
     // Redemption codes (Phase 105, #455). ADR 0066 decision 7: two parties both claiming the right

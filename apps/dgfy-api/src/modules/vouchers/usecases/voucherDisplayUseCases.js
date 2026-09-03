@@ -36,7 +36,34 @@ export const DISPLAY_RELEVANT_REASON_CODES = new Set([
     VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_TIME_WINDOW_BLOCKED,
     VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_TIME_WINDOW_DEGENERATE,
     VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_TIMEZONE_UNRESOLVABLE,
-    VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_CHANNEL_NOT_ELIGIBLE
+    VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_CHANNEL_NOT_ELIGIBLE,
+    // #788 (Phase 269): campaign-level, exactly like the eight above -- knowable without a cart,
+    // and the OPPOSITE of the basket-dependent reasons this set deliberately omits. Including all
+    // three is what makes account restriction hold on the two display surfaces:
+    //
+    //   1. This module: an account-restricted voucher resolves to `notApplied`, so a browse page
+    //      shows the plain catalog price. That IS ADR 0066 decision 3's fail-open half ("falls back
+    //      to the plain catalog price"), not an inversion of it -- nothing throws and no page
+    //      breaks; the voucher simply advertises nothing.
+    //   2. storefrontDiscoveryIndexService.js's public-listing projection, which imports this exact
+    //      set: an account-restricted voucher is omitted from the PUBLIC snapshot. That one is
+    //      load-bearing, not cosmetic -- that projection publishes each listed voucher's literal
+    //      `code`, so an account-restricted voucher marked `is_publicly_listed` would broadcast to
+    //      the world the very code #788 exists to keep off the general public. (Authoring also
+    //      refuses that combination outright -- voucherUseCases.js's
+    //      `assertAccountRestrictionNotPubliclyListed` -- so this is the second of two independent
+    //      guards, not the only one.)
+    //
+    // Neither surface knows the browsing buyer's account (neither `listStoreCatalog` nor the
+    // discovery-index build receives a `storeCustomer`), so VOUCHER_ACCOUNT_REQUIRED fires for
+    // everyone -- including an account that IS granted. Stated plainly as an accepted v1 limitation:
+    // a granted buyer sees no display price on the browse page and only learns the voucher applies
+    // at checkout, where the account IS known. Conservative in the safe direction (never advertises
+    // a price the buyer might not get), and closing it means threading `storeCustomer` into the two
+    // catalog read paths, which is a separate change with its own surface.
+    VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_ACCOUNT_REQUIRED,
+    VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_ACCOUNT_NOT_ELIGIBLE,
+    VOUCHER_ELIGIBILITY_REASON_CODES.VOUCHER_ACCOUNT_GRANTS_UNRESOLVED
 ]);
 
 // percent_off and fixed_price both resolve to a well-defined per-unit price at quantity 1.
