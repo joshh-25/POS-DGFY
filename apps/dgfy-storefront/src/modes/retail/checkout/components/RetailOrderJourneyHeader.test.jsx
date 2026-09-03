@@ -21,7 +21,7 @@ describe('RetailOrderJourneyHeader', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Complete Your Product Order' })).toBeTruthy();
-    expect(screen.getByText('Order Journey')).toBeTruthy();
+    expect(screen.queryByText('Order Journey')).toBeNull();
     expect(screen.queryByText('19 items')).toBeNull();
     expect(screen.queryByText('Delivery order flow')).toBeNull();
   });
