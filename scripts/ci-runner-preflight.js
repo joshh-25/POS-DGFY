@@ -356,6 +356,69 @@ function resolveActiveRouting(deps = {}) {
   return readActiveRouting({ deployMainText, qualityGateText });
 }
 
+/**
+ * #1530: decides main()'s exit behavior from an already-assembled report -- extracted out of
+ * main() so this decision is unit-testable without spawning the script or stubbing process.exit,
+ * mirroring this file's existing pattern of small pure functions wrapped by a thin main(). Only
+ * called once resolveActiveRouting() has already ruled out 'mixed' (main() exits 1 before this
+ * point in that case), so report.active_routing is always 'hosted' or 'self-hosted' here.
+ *
+ * Fix for #1530: an 'indeterminate' active-class status (e.g. the hosted billing-scope probe,
+ * which is indeterminate on every run per this file's own header comment, lines 20-26) no longer
+ * hard-fails by itself. It hard-fails only when EITHER flip_required is true (unchanged, exit 3)
+ * OR the fallback (non-active) class is itself 'unavailable' -- i.e. there is no verified-healthy
+ * option at all. An indeterminate active class whose fallback is NOT unavailable (available, or
+ * also indeterminate) proceeds: the preflight found no evidence the active class is actually
+ * broken, and no documented-better alternative exists (flip_required is false by construction in
+ * runPreflight whenever activeStatus isn't 'unavailable').
+ *
+ * @param {object} report a sku-ci-runner-preflight/v1 report (see runPreflight's return shape)
+ * @returns {{exitCode: 0|1|3, message: string}}
+ */
+function decidePreflightExit(report) {
+  const activeStatus = report.active_routing === 'hosted' ? report.hosted.status : report.self_hosted.status;
+  const other = report.active_routing === 'hosted' ? report.self_hosted : report.hosted;
+
+  if (report.flip_required) {
+    return {
+      exitCode: 3,
+      message: `[ci-runner-preflight] FLIP REQUIRED: active routing (${report.active_routing}) is unavailable, ` +
+        `${report.recommended_routing} is available. Comment/uncomment the documented alternate lines in ` +
+        'deploy-main.yml / promotion-quality-gate.yml (see docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md) -- ' +
+        'this script never flips a routing value itself.'
+    };
+  }
+
+  if (activeStatus === 'unavailable') {
+    return {
+      exitCode: 1,
+      message: `[ci-runner-preflight] active routing (${report.active_routing}) status is "unavailable" and ` +
+        'no documented flip is available -- could not confirm availability.'
+    };
+  }
+
+  if (activeStatus === 'indeterminate') {
+    if (other.status === 'unavailable') {
+      return {
+        exitCode: 1,
+        message: `[ci-runner-preflight] active routing (${report.active_routing}) status is "indeterminate" and ` +
+          'the fallback class is "unavailable" too -- could not confirm availability and no viable alternative exists.'
+      };
+    }
+    return {
+      exitCode: 0,
+      message: `[ci-runner-preflight] proceeding despite indeterminate: active routing (${report.active_routing}) ` +
+        `status could not be confirmed, but flip_required is false and the fallback class is "${other.status}" ` +
+        '(not unavailable) -- no evidence the active class is actually broken. See #1530.'
+    };
+  }
+
+  return {
+    exitCode: 0,
+    message: `[ci-runner-preflight] OK. Active routing (${report.active_routing}) is available.`
+  };
+}
+
 function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
@@ -379,21 +442,13 @@ function main() {
     }
     console.log(JSON.stringify(report, null, 2));
 
-    const activeStatus = report.active_routing === 'hosted' ? report.hosted.status : report.self_hosted.status;
-    if (report.flip_required) {
-      console.error(
-        `[ci-runner-preflight] FLIP REQUIRED: active routing (${report.active_routing}) is unavailable, ` +
-        `${report.recommended_routing} is available. Comment/uncomment the documented alternate lines in ` +
-        'deploy-main.yml / promotion-quality-gate.yml (see docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md) -- ' +
-        'this script never flips a routing value itself.'
-      );
-      process.exit(3);
+    const outcome = decidePreflightExit(report);
+    if (outcome.exitCode === 0) {
+      console.log(outcome.message);
+    } else {
+      console.error(outcome.message);
+      process.exit(outcome.exitCode);
     }
-    if (activeStatus === 'indeterminate' || activeStatus === 'unavailable') {
-      console.error(`[ci-runner-preflight] active routing (${report.active_routing}) status is "${activeStatus}" and no documented flip is available -- could not confirm availability.`);
-      process.exit(1);
-    }
-    console.log(`[ci-runner-preflight] OK. Active routing (${report.active_routing}) is available.`);
   } catch (error) {
     console.error(`[ci-runner-preflight] ${error.code || 'FAILED'}: ${error.message}`);
     process.exit(1);
@@ -414,6 +469,7 @@ module.exports = {
   probeSelfHostedAvailability,
   runPreflight,
   resolveActiveRouting,
+  decidePreflightExit,
   REPO_SLUG,
   ORG_SLUG,
   PROBE_WORKFLOW

@@ -9,7 +9,8 @@ const {
   probeHostedAvailability,
   probeSelfHostedAvailability,
   runPreflight,
-  resolveActiveRouting
+  resolveActiveRouting,
+  decidePreflightExit
 } = require('./ci-runner-preflight');
 
 const SHA = 'a'.repeat(40);
@@ -306,4 +307,87 @@ test('runPreflight with a mixed-derived activeRouting is never asked to run -- m
   const deployMainText = `jobs:${pairJobBlock('job-a', true)}`;
   const qualityGateText = `jobs:${pairJobBlock('job-b', false)}`;
   assert.equal(resolveActiveRouting({ deployMainText, qualityGateText }), 'mixed');
+});
+
+// --- decidePreflightExit (main()'s exit-code decision, #1530) ---------------------------------
+
+function makeReport(overrides = {}) {
+  return {
+    schema: 'sku-ci-runner-preflight/v1',
+    target_sha: SHA,
+    active_routing: 'hosted',
+    hosted: { status: 'available', reason: 'healthy', evidence: '' },
+    self_hosted: { status: 'available', reason: 'healthy', evidence: '' },
+    recommended_routing: 'hosted',
+    flip_required: false,
+    ...overrides
+  };
+}
+
+// (a) indeterminate + flip_required=false + fallback healthy => exit 0
+test('decidePreflightExit: indeterminate active + flip_required false + fallback available -> exit 0, tolerated', () => {
+  const report = makeReport({
+    hosted: { status: 'indeterminate', reason: 'billing_scope_unavailable', evidence: '' },
+    self_hosted: { status: 'available', reason: 'healthy', evidence: '' }
+  });
+  const outcome = decidePreflightExit(report);
+  assert.equal(outcome.exitCode, 0);
+  assert.match(outcome.message, /indeterminate/);
+  assert.match(outcome.message, /proceeding despite/i);
+});
+
+test('decidePreflightExit: indeterminate active + fallback also indeterminate -> exit 0, tolerated (neither proven broken)', () => {
+  const report = makeReport({
+    hosted: { status: 'indeterminate', reason: 'billing_scope_unavailable', evidence: '' },
+    self_hosted: { status: 'indeterminate', reason: 'not_probed', evidence: '' }
+  });
+  const outcome = decidePreflightExit(report);
+  assert.equal(outcome.exitCode, 0);
+});
+
+// (b) indeterminate + fallback also unavailable => still exit 1
+test('decidePreflightExit: indeterminate active + fallback unavailable -> still exit 1 (no viable alternative)', () => {
+  const report = makeReport({
+    hosted: { status: 'indeterminate', reason: 'billing_scope_unavailable', evidence: '' },
+    self_hosted: { status: 'unavailable', reason: 'runner_offline', evidence: '' }
+  });
+  const outcome = decidePreflightExit(report);
+  assert.equal(outcome.exitCode, 1);
+  assert.match(outcome.message, /indeterminate/);
+  assert.match(outcome.message, /unavailable/);
+});
+
+// (c) unavailable active status => still exit 1 unchanged
+test('decidePreflightExit: active status unavailable -> still exit 1 unchanged', () => {
+  const report = makeReport({
+    active_routing: 'self-hosted',
+    self_hosted: { status: 'unavailable', reason: 'runner_offline', evidence: '' },
+    hosted: { status: 'unavailable', reason: 'billing_allocation_failure', evidence: '' },
+    flip_required: false // both classes down -> no flip recommended (existing runPreflight behavior)
+  });
+  const outcome = decidePreflightExit(report);
+  assert.equal(outcome.exitCode, 1);
+  assert.match(outcome.message, /"unavailable"/);
+});
+
+// (d) flip_required=true => still exit 3 unchanged
+test('decidePreflightExit: flip_required true -> still exit 3 unchanged', () => {
+  const report = makeReport({
+    active_routing: 'self-hosted',
+    self_hosted: { status: 'unavailable', reason: 'runner_offline', evidence: '' },
+    hosted: { status: 'available', reason: 'healthy', evidence: '' },
+    recommended_routing: 'hosted',
+    flip_required: true
+  });
+  const outcome = decidePreflightExit(report);
+  assert.equal(outcome.exitCode, 3);
+  assert.match(outcome.message, /FLIP REQUIRED/);
+});
+
+// Defensive: confirmed-healthy wording must stay distinct from tolerated-indeterminate wording
+test('decidePreflightExit: confirmed-available active status -> exit 0 with the unchanged "OK" message, distinct from the tolerated-indeterminate case', () => {
+  const outcome = decidePreflightExit(makeReport());
+  assert.equal(outcome.exitCode, 0);
+  assert.match(outcome.message, /OK\. Active routing/);
+  assert.doesNotMatch(outcome.message, /indeterminate/);
 });
