@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Barcode, Check, ExternalLink, Folder, Loader2, Package, Plus, ScanLine, Search, Trash2, X } from 'lucide-react';
+import { Barcode, Check, ExternalLink, Folder, Loader2, Package, Plus, ScanLine, Search, Tags, Trash2, X } from 'lucide-react';
 import { Switch } from "@/components/ui/switch";
 import { dummyItems } from '@/components/data/dummyData';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
@@ -35,7 +35,7 @@ import {
   resolveModeItemTaxonomy
 } from '@/src/features/settings/modeItemTaxonomy.js';
 import { resolveItemFinancialPolicy } from '@/src/features/inventory/itemFinancialPolicy.js';
-import { lookupExternalProduct } from '@/services/itemService.js';
+import { listItemFolders, lookupExternalProduct, replaceItemFolders } from '@/services/itemService.js';
 import {
   getGtinValidationMessage,
   getInternalBarcodeValidationMessage,
@@ -200,6 +200,8 @@ export default function ItemFormModal({
   onSave,
   onSaveDraft,
   folders = [],
+  folderOptions = [],
+  canManageFolders = false,
   existingItems = [],
   workflowMode = 'manufacturing',
   msmeMode = false,
@@ -263,6 +265,16 @@ export default function ItemFormModal({
   const [msmeOriginalCategory, setMsmeOriginalCategory] = useState(null);
   const [msmeCategoryTouched, setMsmeCategoryTouched] = useState(false);
   const [trackServiceCost, setTrackServiceCost] = useState(false);
+  // #1318 Phase 268 — secondary category memberships (additive to the
+  // primary `product_folder`/`folder_id` above; ADR 0080 clause 1/2). Kept
+  // as its own self-contained load/save cycle rather than folded into
+  // formData/onSave, since the API is item-scoped and only exists once the
+  // item itself has been created — mirrors PosFnbModifiersWorkspace.jsx's
+  // checkbox-grid + explicit-save shape, not this modal's supplier_links
+  // dirty-tracking shape.
+  const [secondaryFolderIds, setSecondaryFolderIds] = useState([]);
+  const [secondaryFoldersLoading, setSecondaryFoldersLoading] = useState(false);
+  const [secondaryFoldersSaving, setSecondaryFoldersSaving] = useState(false);
   const modeItemDefaults = useMemo(
     () => resolveBusinessModeItemDefaults(workflowMode),
     [workflowMode]
@@ -380,6 +392,17 @@ export default function ItemFormModal({
   const isEditingDraft = item?.status === 'draft';
   const isSaving = Boolean(savingAction);
   const folderSuggestionsListId = `item-folder-suggestions-${item?.item_id || item?.id || 'new'}`;
+  // #1318 Phase 268 — offerable secondary categories: every persisted folder
+  // except the item's own primary one (selecting it would be redundant, and
+  // the API silently drops it anyway per the disjointness guard, ADR 0080
+  // clause 2).
+  const availableSecondaryFolders = useMemo(
+    () => (Array.isArray(folderOptions) ? folderOptions : []).filter(
+      (folder) => Number(folder.folder_id) !== Number(item?.folder_id)
+    ),
+    [folderOptions, item?.folder_id]
+  );
+
   const normalizedFolderSuggestions = useMemo(() => {
     const query = String(formData.product_folder || '').trim().toLowerCase();
     const uniqueSuggestions = [];
@@ -429,6 +452,56 @@ export default function ItemFormModal({
       fetchSuppliers();
     }
   }, [msmeMode, open]);
+
+  const itemIdForFolders = item?.item_id || item?.id || null;
+
+  const fetchSecondaryFolders = async () => {
+    if (!itemIdForFolders) return;
+    setSecondaryFoldersLoading(true);
+    try {
+      const response = await listItemFolders(itemIdForFolders);
+      const memberships = Array.isArray(response?.memberships) ? response.memberships : [];
+      setSecondaryFolderIds(memberships.map((membership) => String(membership.folder_id)));
+    } catch (error) {
+      console.error('Failed to load item category memberships:', error);
+      setSecondaryFolderIds([]);
+    } finally {
+      setSecondaryFoldersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open && itemIdForFolders) {
+      fetchSecondaryFolders();
+    } else if (!open) {
+      setSecondaryFolderIds([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, itemIdForFolders]);
+
+  const toggleSecondaryFolder = (folderId, checked) => {
+    const normalizedId = String(folderId);
+    setSecondaryFolderIds((current) => {
+      if (checked) {
+        if (current.includes(normalizedId) || current.length >= 10) return current;
+        return [...current, normalizedId];
+      }
+      return current.filter((entry) => entry !== normalizedId);
+    });
+  };
+
+  const saveSecondaryFolders = async () => {
+    if (!itemIdForFolders) return;
+    setSecondaryFoldersSaving(true);
+    try {
+      await replaceItemFolders(itemIdForFolders, secondaryFolderIds.map((id) => Number(id)));
+      toast.success('Additional categories saved.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Unable to save additional categories.');
+    } finally {
+      setSecondaryFoldersSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!open || item) return;
@@ -1546,6 +1619,75 @@ export default function ItemFormModal({
                 Existing categories are suggested as you type. A new category is saved automatically when you save the item.
               </p>
             </div>
+
+            {Boolean(itemIdForFolders) && (
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <Label className="flex items-center gap-2">
+                  <Tags className="w-4 h-4" />
+                  Additional Categories
+                </Label>
+                <p className="text-xs text-slate-500">
+                  Optional. List this item under up to 10 more categories, alongside its primary category above. This does not change the primary category.
+                </p>
+                {secondaryFoldersLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading additional categories...
+                  </div>
+                ) : (
+                  <>
+                    {availableSecondaryFolders.length > 0 ? (
+                      <fieldset
+                        className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                        disabled={!canManageFolders || secondaryFoldersSaving}
+                      >
+                        <legend className="sr-only">Additional categories</legend>
+                        {availableSecondaryFolders
+                          .map((folder) => {
+                            const normalizedId = String(folder.folder_id);
+                            const checked = secondaryFolderIds.includes(normalizedId);
+                            const atCap = !checked && secondaryFolderIds.length >= 10;
+                            return (
+                              <label
+                                key={folder.folder_id}
+                                className={`flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 ${atCap ? 'opacity-50' : ''}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={atCap}
+                                  onChange={(e) => toggleSecondaryFolder(folder.folder_id, e.target.checked)}
+                                />
+                                {folder.name}
+                              </label>
+                            );
+                          })}
+                      </fieldset>
+                    ) : (
+                      <p className="text-sm text-slate-500">No other categories available yet.</p>
+                    )}
+                    <div className="flex items-center justify-between gap-3">
+                      {canManageFolders ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={saveSecondaryFolders}
+                          disabled={secondaryFoldersSaving}
+                        >
+                          {secondaryFoldersSaving ? 'Saving...' : 'Save Additional Categories'}
+                        </Button>
+                      ) : (
+                        <p role="status" className="text-xs text-slate-500">
+                          You can review additional categories, but your role cannot change them.
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-400">{secondaryFolderIds.length}/10 selected</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
