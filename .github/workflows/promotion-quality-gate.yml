@@ -1359,6 +1359,16 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
 
+      # #1528: authoring-time counterpart to the runtime workspace-hygiene steps added to every
+      # self-hosted-reachable checkout site. A `sparse-checkout:` on a self-hosted job permanently
+      # poisons the shared `_work` tree for every other job on that box -- this catches the PR that
+      # would (re)introduce one, or that adds a new self-hosted checkout site without the guard.
+      - name: Validate workspace hygiene contract
+        id: validate_workspace_hygiene
+        run: npm run check:workspace-hygiene && npm run test:workspace-hygiene
+        continue-on-error: true
+        timeout-minutes: 5
+
       # #1374 Wave 4: regression coverage for compliance-preflight-sweep.yml's supervised-handoff
       # redesign (the hard-fail-step-is-last invariant, the report step's always()/exit-2-mapping
       # contract, the handoff step's dual guard, classify-pr-create wiring, the numeric-branch-
@@ -1428,6 +1438,7 @@ jobs:
             Run production env fixture checks|${{ steps.run_production_env_fixtures.outcome }}
             Validate PR quality workflow contract|${{ steps.validate_pr_quality_workflow.outcome }}
             Validate runner routing contract|${{ steps.validate_runner_routing.outcome }}
+            Validate workspace hygiene contract|${{ steps.validate_workspace_hygiene.outcome }}
             Validate compliance sweep contract|${{ steps.validate_compliance_sweep.outcome }}
             Run governed documentation lint|${{ steps.run_docs_lint.outcome }}
             Run compatibility-seam contract gate|${{ steps.run_compat_seams.outcome }}

@@ -79,3 +79,14 @@ if [ -n "$DOC_FILES" ]; then
   npm run lint:docs
   echo "[pre-commit] Documentation lint passed."
 fi
+
+# #1528: a sparse-checkout: on a self-hosted-reachable job permanently poisons the shared runner
+# workspace for every other job on that box -- promotion-quality-gate.yml only runs this check
+# advisorily and only on promotion PRs, so this is the actual hard gate for an ordinary PR.
+WORKFLOW_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(\.github/workflows/|scripts/check-workspace-hygiene\.js|scripts/check-runner-routing\.js)" || true)"
+if [ -n "$WORKFLOW_FILES" ]; then
+  echo "[pre-commit] Workflow files changed. Running workspace-hygiene contract check..."
+  echo "$WORKFLOW_FILES"
+  npm run check:workspace-hygiene
+  echo "[pre-commit] Workspace hygiene contract passed."
+fi
