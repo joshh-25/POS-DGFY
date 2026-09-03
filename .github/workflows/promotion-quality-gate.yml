@@ -402,12 +402,54 @@ jobs:
           done
           [ -n "${mysql_ready:-}" ] && [ -n "${redis_ready:-}" ]
 
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
         with:
           fetch-depth: 0
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -670,7 +712,9 @@ jobs:
           STEP_OUTCOMES: |
             Start service containers|${{ steps.start_services.outcome }}
             Wait for service containers|${{ steps.wait_services.outcome }}
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install API dependencies|${{ steps.install_api_deps.outcome }}
             Install migration-runner dependencies|${{ steps.install_migration_runner_deps.outcome }}
@@ -741,10 +785,52 @@ jobs:
           done
           [ -n "${mysql_ready:-}" ]
 
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -797,7 +883,9 @@ jobs:
           STEP_OUTCOMES: |
             Start service containers|${{ steps.start_services.outcome }}
             Wait for service containers|${{ steps.wait_services.outcome }}
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install migration-runner dependencies|${{ steps.install_migration_runner_deps.outcome }}
             Apply migrations against a fresh MySQL schema|${{ steps.apply_migrations.outcome }}
@@ -835,10 +923,52 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -916,7 +1046,9 @@ jobs:
         continue-on-error: true
         env:
           STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
             Run dgfy-ims lint|${{ steps.run_ims_lint.outcome }}
@@ -949,10 +1081,52 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -984,7 +1158,9 @@ jobs:
         continue-on-error: true
         env:
           STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-pos dependencies|${{ steps.install_pos_deps.outcome }}
             Run dgfy-pos lint|${{ steps.run_pos_lint.outcome }}
@@ -1014,10 +1190,52 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -1094,7 +1312,9 @@ jobs:
         continue-on-error: true
         env:
           STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-storefront dependencies|${{ steps.install_storefront_deps.outcome }}
             Run dgfy-storefront lint|${{ steps.run_storefront_lint.outcome }}
@@ -1136,10 +1356,52 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -1227,7 +1489,9 @@ jobs:
         continue-on-error: true
         env:
           STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
             Install dgfy-pos dependencies|${{ steps.install_pos_deps.outcome }}
@@ -1264,12 +1528,54 @@ jobs:
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - id: checkout
         uses: actions/checkout@v4
         continue-on-error: true
         timeout-minutes: 5
         with:
           fetch-depth: 0
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Setup Node.js
         id: setup_node
@@ -1359,6 +1665,16 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
 
+      # #1528: authoring-time counterpart to the runtime workspace-hygiene steps added to every
+      # self-hosted-reachable checkout site. A `sparse-checkout:` on a self-hosted job permanently
+      # poisons the shared `_work` tree for every other job on that box -- this catches the PR that
+      # would (re)introduce one, or that adds a new self-hosted checkout site without the guard.
+      - name: Validate workspace hygiene contract
+        id: validate_workspace_hygiene
+        run: npm run check:workspace-hygiene && npm run test:workspace-hygiene
+        continue-on-error: true
+        timeout-minutes: 5
+
       # #1374 Wave 4: regression coverage for compliance-preflight-sweep.yml's supervised-handoff
       # redesign (the hard-fail-step-is-last invariant, the report step's always()/exit-2-mapping
       # contract, the handoff step's dual guard, classify-pr-create wiring, the numeric-branch-
@@ -1419,7 +1735,9 @@ jobs:
         continue-on-error: true
         env:
           STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
             Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install repository dependencies|${{ steps.install_repo_deps.outcome }}
             Run production dependency audit|${{ steps.run_dependency_audit_prod.outcome }}
@@ -1428,6 +1746,7 @@ jobs:
             Run production env fixture checks|${{ steps.run_production_env_fixtures.outcome }}
             Validate PR quality workflow contract|${{ steps.validate_pr_quality_workflow.outcome }}
             Validate runner routing contract|${{ steps.validate_runner_routing.outcome }}
+            Validate workspace hygiene contract|${{ steps.validate_workspace_hygiene.outcome }}
             Validate compliance sweep contract|${{ steps.validate_compliance_sweep.outcome }}
             Run governed documentation lint|${{ steps.run_docs_lint.outcome }}
             Run compatibility-seam contract gate|${{ steps.run_compat_seams.outcome }}
