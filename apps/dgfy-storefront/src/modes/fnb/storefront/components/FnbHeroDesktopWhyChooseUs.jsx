@@ -6,8 +6,8 @@ const FnbHeroDesktopWhyChooseUs = ({
   heroTheme,
   visibleWhyChooseUs
 }) => {
-  const surfaceAccent = heroTheme.palette?.primary || '#f97316';
-  const surfaceAccentSoft = heroTheme.palette?.accentSoft || '#fff4ec';
+  const surfaceAccent = heroTheme.accent || heroTheme.palette?.primary || '#f97316';
+  const surfaceAccentSoft = heroTheme.accentSoft || heroTheme.palette?.accentSoft || '#fff4ec';
 
   return (
   <div style={{ display: 'grid', gap: 14, alignContent: 'start', alignItems: 'start', paddingLeft: 26, borderLeft: '1px solid #eef2f6' }}>

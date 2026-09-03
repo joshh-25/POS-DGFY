@@ -1,5 +1,6 @@
 import { getStorefrontModeAdapter } from './modePresentationRegistry.js';
 import { getFoodBeverageStorefrontViewModel } from '../../modes/fnb/storefront/model/fnbStorefrontViewModel.js';
+import { formatStorefrontRating } from '../../shared/model/storefrontRating.js';
 import { getServicesStorefrontViewModel } from '../../modes/services/storefront/model/servicesStorefrontViewModel.js';
 import { formatStorefrontBusinessHoursDisplay, normalizeStorefrontBusinessHours } from '../../../../../packages/web-core/src/features/settings/storefrontBusinessHours.js';
 import { resolveStorefrontImageSources } from '../../shared/utils/storefrontImageSources.js';
@@ -404,7 +405,7 @@ export const normalizeStorefrontPageModel = ({
       profileImageUrl: profileImage,
       profileImageSources,
       statusLabel: selectedStore?.storefront_open ? 'Open' : 'Closed',
-      ratingLabel: formatRatingLabel(reviewSummary),
+      ratingLabel: isServicesMode ? formatStorefrontRating(reviewSummary) : formatRatingLabel(reviewSummary),
       modeLabel: primaryCategoryLabel,
       locationLabel: locationSummary,
       primaryCategoryLabel,

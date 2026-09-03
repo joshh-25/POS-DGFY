@@ -14,8 +14,8 @@ export const FnbHeroMobileOverview = ({
   openStorefrontActionLink
 }) => {
   const usesConnectedHeroSurface = modeAdapter?.usesConnectedHeroSurface === true;
-  const surfaceAccent = heroTheme.palette?.primary || '#f97316';
-  const pageBackground = usesConnectedHeroSurface ? (heroTheme.palette?.pageBackground || '#F8FAFC') : '#fff';
+  const surfaceAccent = heroTheme.accent || heroTheme.palette?.primary || '#f97316';
+  const pageBackground = usesConnectedHeroSurface ? (heroTheme.pageBackground || heroTheme.palette?.pageBackground || '#F8FAFC') : '#fff';
 
   return (
   <div style={{ background: pageBackground }}>
@@ -28,7 +28,7 @@ export const FnbHeroMobileOverview = ({
           </GhostButton>
         )}
         {heroSectionModel.actions?.canCall && (
-          <PrimaryButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ flex: 1, background: surfaceAccent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', ...(usesConnectedHeroSurface ? { boxShadow: '0 3px 10px rgba(26,78,141,0.14)' } : {}), fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
+          <PrimaryButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} accentColor={surfaceAccent} accentDarkColor={heroTheme.accentDark} shadowColor={heroTheme.accentShadow} style={{ flex: 1, background: surfaceAccent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', ...(usesConnectedHeroSurface ? { boxShadow: '0 3px 10px rgba(26,78,141,0.14)' } : {}), fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
             <Phone size={16} />
             Call
           </PrimaryButton>
@@ -44,9 +44,11 @@ export const FnbHeroMobileOverview = ({
           followEnabled={followEnabled}
           followState={followState}
           handleFollowAction={handleFollowAction}
+          followAccentColor={heroTheme.followColor || surfaceAccent}
+          followActiveColor={heroTheme.followActiveColor}
         />
         {heroSectionModel.tagline ? (
-          <p style={{ margin: 0, color: surfaceAccent, fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
+          <p style={{ margin: 0, color: heroTheme.taglineColor || heroTheme.accentMuted || surfaceAccent, fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
         ) : (
           <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
         )}

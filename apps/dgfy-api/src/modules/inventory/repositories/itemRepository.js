@@ -59,6 +59,9 @@ export const clearItemRepositorySettingsCache = () => settingsCache.clear();
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const MANUFACTURING_PURCHASABLE_CATEGORIES = Object.freeze(['raw_material', 'packaging', 'supplies']);
 const MSME_PURCHASABLE_CATEGORIES = Object.freeze(['raw_material', 'packaging', 'supplies', 'product']);
+// Phase 257 (#1318) — bounds storefront/POS rail fan-out for secondary
+// category memberships. See ADR 0080 clause 6.
+const MAX_ITEM_FOLDER_MEMBERSHIPS = 10;
 
 export const inventoryRepositoryDependencies = {
     validateComposition: validateCompositionDependency,
@@ -86,6 +89,19 @@ const activeFolderWhere = (where = {}) => ({
 });
 
 const hasOwn = (obj, key) => Boolean(obj) && Object.prototype.hasOwnProperty.call(obj, key);
+
+// Phase 257 (#1318) — belt-and-braces against a tenant whose schema hasn't
+// picked up item_folder_memberships yet (R1 incomplete on some tenant); see
+// docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md. Degrades instead of
+// throwing, matching storeRepository.js's safeGetOptionalModel for
+// FnbFolderModifierGroup.
+const safeGetOptionalModel = (name) => {
+    try {
+        return dbStore.get(name) || null;
+    } catch {
+        return null;
+    }
+};
 
 const normalizeServerVersion = (value) => {
     if (value == null || value === '') return null;
@@ -3641,6 +3657,102 @@ export const itemRepository = {
             if (!transaction.finished) await transaction.rollback();
             throw error;
         }
+    },
+
+    // Phase 257 (#1318) — foundation only. Secondary category memberships,
+    // additive to the existing primary `items.folder_id` pointer (ADR 0080
+    // clause 1/2). Neither function is wired into any of the 34 existing
+    // read sites yet — that opt-in happens per surface in later phases.
+    async listItemFolderMemberships(itemIds = []) {
+        const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+        if (!ItemFolderMembership) return [];
+
+        const ids = [...new Set(
+            (Array.isArray(itemIds) ? itemIds : [itemIds])
+                .map((id) => Number.parseInt(id, 10))
+                .filter((id) => Number.isInteger(id) && id > 0)
+        )];
+        if (ids.length === 0) return [];
+
+        try {
+            const rows = await ItemFolderMembership.findAll({
+                where: { item_id: { [Op.in]: ids } },
+                order: [['item_id', 'ASC'], ['sort_order', 'ASC']]
+            });
+            return rows.map((row) => ({
+                item_id: row.item_id,
+                folder_id: row.folder_id,
+                sort_order: row.sort_order
+            }));
+        } catch (error) {
+            logger.error('Error listing item folder memberships:', error);
+            throw error;
+        }
+    },
+
+    async replaceItemFolderMemberships(itemId, folderIds = [], options = {}) {
+        const Item = dbStore.get('Item');
+        const ItemFolder = dbStore.get('ItemFolder');
+        const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+        if (!ItemFolderMembership) {
+            const error = new Error('Category membership is not available on this tenant yet.');
+            error.statusCode = 503;
+            error.code = 'ITEM_FOLDER_MEMBERSHIPS_UNAVAILABLE';
+            throw error;
+        }
+
+        const parsedItemId = Number.parseInt(itemId, 10);
+        if (!Number.isInteger(parsedItemId) || parsedItemId <= 0) {
+            throw notFoundError('Item not found.');
+        }
+
+        const item = await findVisibleItemById(Item, parsedItemId);
+        if (!item) throw notFoundError('Item not found.');
+
+        // Disjointness (ADR 0080 clause 2 — the join table never mirrors the
+        // primary) + dedupe + cap, in that order.
+        const requested = [...new Set(
+            (Array.isArray(folderIds) ? folderIds : [])
+                .map((id) => Number.parseInt(id, 10))
+                .filter((id) => Number.isInteger(id) && id > 0)
+        )].filter((id) => id !== item.folder_id);
+
+        if (requested.length > MAX_ITEM_FOLDER_MEMBERSHIPS) {
+            const error = new Error(`An item may have at most ${MAX_ITEM_FOLDER_MEMBERSHIPS} secondary category memberships.`);
+            error.statusCode = 400;
+            error.code = 'ITEM_FOLDER_MEMBERSHIPS_CAP_EXCEEDED';
+            throw error;
+        }
+
+        if (requested.length > 0) {
+            const activeFolders = await ItemFolder.findAll({
+                where: activeFolderWhere({ folder_id: { [Op.in]: requested } })
+            });
+            if (activeFolders.length !== requested.length) {
+                const foundIds = new Set(activeFolders.map((folder) => folder.folder_id));
+                const missingIds = requested.filter((id) => !foundIds.has(id));
+                const error = new Error(`One or more categories are inactive or do not exist: ${missingIds.join(', ')}`);
+                error.statusCode = 400;
+                error.code = 'ITEM_FOLDER_MEMBERSHIPS_INVALID_FOLDER';
+                throw error;
+            }
+        }
+
+        await ItemFolderMembership.destroy({
+            where: { item_id: parsedItemId },
+            transaction: options.transaction
+        });
+
+        const rows = requested.map((folderId, index) => ({
+            item_id: parsedItemId,
+            folder_id: folderId,
+            sort_order: index
+        }));
+        if (rows.length > 0) {
+            await ItemFolderMembership.bulkCreate(rows, { transaction: options.transaction });
+        }
+
+        return this.listItemFolderMemberships([parsedItemId]);
     }
 };
 

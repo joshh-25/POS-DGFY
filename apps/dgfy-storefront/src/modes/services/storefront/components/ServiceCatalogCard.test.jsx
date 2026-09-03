@@ -17,11 +17,11 @@ const baseProps = {
   imageSources: { src: '' },
   available: true,
   money: (value) => `PHP ${Number(value).toFixed(2)}`,
-  servicesPrimary: '#0f766e',
-  servicesPrimaryDark: '#134e4a',
-  servicesPrimarySoft: '#ecfeff',
-  servicesPrimaryBorder: 'rgba(15,118,110,0.2)',
-  servicesPrimaryShadow: 'rgba(15,118,110,0.24)',
+  servicesPrimary: '#1A4E8D',
+  servicesPrimaryDark: '#1A4586',
+  servicesPrimarySoft: '#EEF6FD',
+  servicesPrimaryBorder: 'rgba(26,78,141,0.2)',
+  servicesPrimaryShadow: 'rgba(26,78,141,0.24)',
   addActionLabel: 'Add service',
   unavailableLabel: 'Unavailable',
   missingImageLabel: 'No service image',
@@ -69,7 +69,7 @@ describe('ServiceCatalogCard', () => {
     expect(addServiceButton).toBeTruthy();
     expect(addServiceButton.style.width).toBe('100%');
     expect(addServiceButton.style.height).toBe('38px');
-    expect(addServiceButton.textContent).not.toContain('Add service');
+    expect(addServiceButton.textContent).toContain('Add service');
     expect(addServiceButton.querySelector('svg')).toBeTruthy();
   });
 
@@ -117,8 +117,10 @@ describe('ServiceCatalogCard', () => {
       }}
     />);
 
-    expect(screen.getByRole('combobox', { name: 'Package size' }).value).toBe('70');
-    fireEvent.change(screen.getByRole('combobox', { name: 'Package size' }), { target: { value: '71' } });
+    const packageSizeDropdown = screen.getByRole('combobox', { name: 'Package size required' });
+    expect(packageSizeDropdown.textContent).toContain('First 5 kilos');
+    fireEvent.click(packageSizeDropdown);
+    fireEvent.click(screen.getByRole('option', { name: 'Up to 10 kilos (+PHP 50.00)' }));
     expect(screen.getByText('PHP 200.00')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /Add service/i }));
@@ -129,7 +131,7 @@ describe('ServiceCatalogCard', () => {
     }));
   });
 
-  it('shows a configured single-choice add-on in the card dropdown and carries it into the cart', () => {
+  it('keeps configured add-ons out of the catalog card while carrying their groups into the cart', () => {
     render(<ServiceCatalogCard
       {...baseProps}
       item={{
@@ -147,16 +149,15 @@ describe('ServiceCatalogCard', () => {
       }}
     />);
 
-    const addOnDropdown = screen.getByRole('combobox', { name: 'Extra care' });
-    expect(addOnDropdown.value).toBe('');
-    fireEvent.change(addOnDropdown, { target: { value: '91' } });
-    expect(screen.getByText('PHP 175.00')).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: 'Extra care' })).toBeNull();
+    expect(screen.getByText('PHP 150.00')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /Add service/i }));
     expect(baseProps.onAdd).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      selected_option_ids: [91],
-      unit_price: 175,
-      selected_options: [expect.objectContaining({ option_id: 91, group_id: 9, name: 'Stain treatment' })]
+      selected_option_ids: [],
+      unit_price: 150,
+      selected_options: [],
+      service_option_groups: [expect.objectContaining({ group_id: 9, group_type: 'addon' })]
     }));
   });
 });

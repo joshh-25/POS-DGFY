@@ -67,4 +67,16 @@ describe('buildServiceBookingFieldPlan — fulfillment-profile-derived requiresA
     expect(plan.addressField).toBeTruthy();
     expect(plan.requiresAddress).toBe(true);
   });
+
+  it('keeps service-specific unit fields in the generic configured intake list', () => {
+    const plan = buildServiceBookingFieldPlan({
+      fields: [{ id: 'equipment_model', label: 'Equipment model', type: 'select', required: false, options: ['Standard'] }],
+      serviceItem: { service_detail: { service_area_type: 'customer_location' } }
+    });
+
+    expect(plan.unitTypeField).toBeNull();
+    expect(plan.remainingFields).toEqual([
+      { id: 'equipment_model', label: 'Equipment model', type: 'select', required: false, options: ['Standard'] }
+    ]);
+  });
 });

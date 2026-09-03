@@ -43,13 +43,15 @@ const FnbHeroMobileInfoCards = ({
   const [expandedMobileCard, setExpandedMobileCard] = useState(null);
   const mobileInfoCardWidth = 'calc(100% - 32px)';
   const usesConnectedHeroSurface = modeAdapter?.usesConnectedHeroSurface === true;
-  const surfaceAccent = heroTheme.palette?.primary || '#f97316';
-  const surfaceAccentSoft = heroTheme.palette?.accentSoft || '#fff7ed';
-  const infoCardBorder = heroTheme.palette?.secondary || '#ffedd5';
-  const pageBackground = usesConnectedHeroSurface ? (heroTheme.palette?.pageBackground || '#F8FAFC') : 'transparent';
+  const surfaceAccent = heroTheme.accent || heroTheme.palette?.primary || '#f97316';
+  const surfaceAccentSoft = heroTheme.accentSoft || heroTheme.palette?.accentSoft || '#fff7ed';
+  const infoCardBorder = heroTheme.borderSoft || heroTheme.palette?.secondary || '#ffedd5';
+  const pageBackground = usesConnectedHeroSurface ? (heroTheme.pageBackground || heroTheme.palette?.pageBackground || '#F8FAFC') : 'transparent';
   const infoCardShadow = usesConnectedHeroSurface
     ? '0 3px 12px rgba(26,78,141,0.05)'
-    : '0 8px 24px rgba(249,115,22,0.08)';
+    : heroTheme.accentShadow
+      ? '0 8px 24px rgba(26,78,141,0.08)'
+      : '0 8px 24px rgba(249,115,22,0.08)';
   // Mobile merges the gallery into the store-detail hero image instead of showing a
   // separate "Gallery" card: the overlay counts every image other than the one shown
   // (total gallery count - 1), not just the images beyond the desktop 4-tile preview cap.

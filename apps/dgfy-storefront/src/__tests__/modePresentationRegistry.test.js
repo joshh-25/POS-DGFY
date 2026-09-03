@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { getStorefrontModeAdapter, ModePresentationRegistry } from '../app/runtime/modePresentationRegistry.js';
+import { SERVICES_PALETTE } from '../modes/services/servicesPalette.js';
 
 describe('modePresentationRegistry', () => {
   it('returns services-first copy and pin metadata for services tenants', () => {
     const adapter = getStorefrontModeAdapter({ workflow_mode: 'services' });
 
     expect(adapter.isServicesMode).toBe(true);
-    expect(adapter.catalogHeading).toBe('Choose the care you need');
+    expect(adapter.catalogHeading).toBe('Choose the service you need');
+    expect(adapter.catalogPriceAllLabel).toBe('All Price');
+    expect(adapter.catalogCategoryLabel).toBe('Service Categories');
+    expect(adapter.catalogCategoryAllLabel).toBe('All services');
+    expect(adapter.catalogCategoryIconToken).toBe('menu');
     expect(adapter.primaryActionLabel).toBe('Browse Services');
     expect(adapter.pin.label).toBe('Services');
     expect(adapter.sharedSections).toEqual({
@@ -19,6 +24,10 @@ describe('modePresentationRegistry', () => {
     expect(adapter.catalogCardVariant).toBe('service_booking');
     expect(adapter.journeyVariant).toBe('booking');
     expect(adapter.storefrontTemplate.sharedShellVariant).toBe('services_fnb_live_shell');
+    expect(adapter.heroTheme.taglineColor).toBe(SERVICES_PALETTE.primaryLight);
+    expect(adapter.heroTheme.ratingColor).toBe(SERVICES_PALETTE.warning);
+    expect(adapter.heroTheme.followColor).toBe(SERVICES_PALETTE.primary);
+    expect(adapter.heroTheme.directionsColor).toBe(SERVICES_PALETTE.primary);
   });
 
   it('falls back to default presentation for placeholder-taxonomy modes', () => {

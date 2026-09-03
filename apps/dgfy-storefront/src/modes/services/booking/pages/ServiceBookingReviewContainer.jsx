@@ -2,6 +2,7 @@ import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 import { ServiceImage } from '../../ServiceImage.jsx';
+import { SERVICES_PALETTE } from '../../servicesPalette.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the "Review Your Booking" summary
@@ -27,30 +28,31 @@ export function ServiceBookingReviewContainer({
   servicePaymentTiming,
   servicesPrimary,
   servicesPrimaryDark,
+  servicesDisplayFont,
   setCartImageErrors,
   setCheckoutTab,
 }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.25fr) minmax(280px, 360px)' : '1fr', gap: 16, alignItems: 'start' }}>
       <section style={{ display: 'grid', gap: 14 }}>
-        <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 18, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
+        <div style={{ border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 20, padding: 18, background: SERVICES_PALETTE.surface, boxShadow: SERVICES_PALETTE.cardShadow }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Review Your Booking</div>
-              <div style={{ marginTop: 4, fontSize: 13, color: '#64748b' }}>Confirm the selected service, schedule, and booking instructions before you continue.</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont }}>Review Your Booking</div>
+              <div style={{ marginTop: 4, fontSize: 13, color: SERVICES_PALETTE.textMuted }}>Confirm the selected service, schedule, and booking instructions before you continue.</div>
             </div>
             <button
               type="button"
               onClick={openServiceCartEditor}
-              style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '10px 14px', fontWeight: 700, cursor: 'pointer' }}
+              style={{ borderRadius: 12, border: `1px solid ${SERVICES_PALETTE.border}`, background: SERVICES_PALETTE.surface, color: SERVICES_PALETTE.textSecondary, padding: '10px 14px', fontWeight: 700, cursor: 'pointer' }}
             >
               Edit service
             </button>
           </div>
   
-          <div style={{ marginTop: 16, border: '1px solid #e2e8f0', borderRadius: 18, padding: 16, background: '#fcfdff', display: 'grid', gap: 14 }}>
+          <div style={{ marginTop: 16, border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 18, padding: 16, background: SERVICES_PALETTE.primarySoft, display: 'grid', gap: 14 }}>
             <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '88px 1fr auto', gap: 14, alignItems: 'center' }}>
-              <div style={{ width: 88, height: 88, borderRadius: 18, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
+              <div style={{ width: 88, height: 88, borderRadius: 18, overflow: 'hidden', border: `1px solid ${SERVICES_PALETTE.border}`, background: SERVICES_PALETTE.page, display: 'grid', placeItems: 'center' }}>
                 {(firstServiceLine?.thumbnail_url || firstServiceLine?.image_url) && !cartImageErrors.has(Number(firstServiceLine.item_id)) ? (
                   <ServiceImage
                     item={firstServiceLine}
@@ -74,7 +76,7 @@ export function ServiceBookingReviewContainer({
                     }}
                   />
                 ) : (
-                  <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>No image</span>
+                  <span style={{ fontSize: 11, color: SERVICES_PALETTE.textMuted, fontWeight: 700 }}>No image</span>
                 )}
               </div>
               <div style={{ display: 'grid', gap: 8 }}>
@@ -82,41 +84,41 @@ export function ServiceBookingReviewContainer({
                   <div style={{ fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                     {firstServiceLine?.service_detail?.service_type || firstServiceLine?.category || 'Service'}
                   </div>
-                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 900, color: '#0f172a' }}>
+                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 900, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont }}>
                     {firstServiceLine?.variantName || firstServiceLine?.name}
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: SERVICES_PALETTE.textSecondary, background: SERVICES_PALETTE.page, border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 999, padding: '5px 10px' }}>
                     {firstServiceLine?.service_detail?.service_area_type || firstServiceLine?.serviceAreaLabel || 'Service'}
                   </span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: SERVICES_PALETTE.textSecondary, background: SERVICES_PALETTE.page, border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 999, padding: '5px 10px' }}>
                     Qty {firstServiceLine?.quantity || 1}
                   </span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: SERVICES_PALETTE.textSecondary, background: SERVICES_PALETTE.page, border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 999, padding: '5px 10px' }}>
                     {servicePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Payment pending'}
                   </span>
                 </div>
               </div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', textAlign: isMobileViewport ? 'left' : 'right' }}>
+              <div style={{ fontSize: 24, fontWeight: 900, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont, textAlign: isMobileViewport ? 'left' : 'right' }}>
                 {money((Number(firstServiceLine?.price || 0) || 0) * Math.max(1, Number(firstServiceLine?.quantity || 1)))}
               </div>
             </div>
   
             <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-              <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Preferred schedule</div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{serviceBookingSummarySchedule}</div>
+              <div style={{ borderRadius: 16, border: `1px solid ${SERVICES_PALETTE.border}`, background: SERVICES_PALETTE.surface, padding: 14, display: 'grid', gap: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Preferred schedule</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: SERVICES_PALETTE.textPrimary }}>{serviceBookingSummarySchedule}</div>
               </div>
-              <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking instructions</div>
-                <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
+              <div style={{ borderRadius: 16, border: `1px solid ${SERVICES_PALETTE.border}`, background: SERVICES_PALETTE.surface, padding: 14, display: 'grid', gap: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking instructions</div>
+                <div style={{ fontSize: 14, color: SERVICES_PALETTE.textSecondary, lineHeight: 1.5 }}>
                   {String(firstServiceLine?.service_notes || '').trim() || 'No special instructions yet.'}
                 </div>
               </div>
-              <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Validation note</div>
-                <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
+              <div style={{ borderRadius: 16, border: `1px solid ${SERVICES_PALETTE.border}`, background: SERVICES_PALETTE.surface, padding: 14, display: 'grid', gap: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Validation note</div>
+                <div style={{ fontSize: 14, color: SERVICES_PALETTE.textSecondary, lineHeight: 1.5 }}>
                   SKUpervisor confirms conflicts, lead time, and other booking rules when you submit.
                 </div>
               </div>
@@ -124,12 +126,12 @@ export function ServiceBookingReviewContainer({
   
             {serviceIntakeFields.length > 0 && (
               <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Service requirements</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont }}>Service requirements</div>
                 <div style={{ display: 'grid', gap: 8 }}>
                   {serviceIntakeFields.map((field) => (
-                    <div key={`review-${field.id}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '180px 1fr', gap: 10, padding: '10px 0', borderTop: '1px solid #edf2f7' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>{field.label}</div>
-                      <div style={{ fontSize: 13, color: '#334155' }}>
+                    <div key={`review-${field.id}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '180px 1fr', gap: 10, padding: '10px 0', borderTop: `1px solid ${SERVICES_PALETTE.border}` }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: SERVICES_PALETTE.textMuted }}>{field.label}</div>
+                      <div style={{ fontSize: 13, color: SERVICES_PALETTE.textSecondary }}>
                         {field.type === 'checkbox'
                           ? (serviceIntakeResponses[field.id] === true ? 'Confirmed' : 'Not confirmed')
                           : (String(serviceIntakeResponses[field.id] || '').trim() || 'Not provided')}
@@ -144,15 +146,15 @@ export function ServiceBookingReviewContainer({
       </section>
   
       <aside style={{ display: 'grid', gap: 12, position: isDesktopCheckout ? 'sticky' : 'static', top: 0 }}>
-        <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 16, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)', display: 'grid', gap: 12 }}>
+        <div style={{ border: `1px solid ${SERVICES_PALETTE.border}`, borderRadius: 20, padding: 16, background: SERVICES_PALETTE.surface, boxShadow: SERVICES_PALETTE.cardShadow, display: 'grid', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Booking Summary</div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>Move to customer details when the service details look correct.</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: SERVICES_PALETTE.textPrimary, fontFamily: servicesDisplayFont }}>Booking Summary</div>
+            <div style={{ fontSize: 12, color: SERVICES_PALETTE.textMuted }}>Move to customer details when the service details look correct.</div>
           </div>
-          <div style={{ borderRadius: 16, background: `linear-gradient(135deg, ${servicesPrimary}, ${servicesPrimaryDark})`, color: '#fff', padding: 14, display: 'grid', gap: 8 }}>
+          <div style={{ borderRadius: 16, background: `linear-gradient(135deg, ${servicesPrimary}, ${servicesPrimaryDark})`, color: SERVICES_PALETTE.surface, padding: 14, display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, opacity: .95 }}>Service total</span>
-              <strong style={{ fontSize: 18 }}>{money(cartTotal)}</strong>
+              <strong style={{ fontSize: 18, fontFamily: servicesDisplayFont }}>{money(cartTotal)}</strong>
             </div>
             <div style={{ fontSize: 12, opacity: .95 }}>
               {serviceBookingSummarySchedule}
@@ -162,14 +164,14 @@ export function ServiceBookingReviewContainer({
             <button
               type="button"
               onClick={() => setCheckoutTab('checkout')}
-              style={{ borderRadius: 14, border: '1px solid rgba(15,118,110,.15)', background: servicesPrimary, color: '#fff', padding: '12px 14px', fontWeight: 800, cursor: 'pointer' }}
+              style={{ borderRadius: 14, border: `1px solid ${SERVICES_PALETTE.primaryBorder}`, background: servicesPrimary, color: SERVICES_PALETTE.surface, padding: '12px 14px', fontWeight: 800, cursor: 'pointer' }}
             >
               Continue to Checkout
             </button>
             <button
               type="button"
               onClick={() => removeCartItem(firstServiceLine.item_id)}
-              style={{ borderRadius: 14, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', padding: '12px 14px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              style={{ borderRadius: 14, border: `1px solid ${SERVICES_PALETTE.errorBorder}`, background: SERVICES_PALETTE.surface, color: SERVICES_PALETTE.error, padding: '12px 14px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
             >
               <Trash2 size={16} />
               Remove Service

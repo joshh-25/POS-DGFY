@@ -16,6 +16,7 @@ export function useDeliveryPinResolution({
   deliveryLocationDisplayAddress,
   hasPinnedDeliveryLocation,
   isDeliveryOrder,
+  isCustomerLocationFlow = false,
   resolvedDeliveryAddress,
   setCustomerAddress,
   setCustomerPin,
@@ -26,6 +27,7 @@ export function useDeliveryPinResolution({
   setResolvingPinnedDeliveryAddress,
   setSelectedSavedLocationId
 }) {
+  const locationResolutionEnabled = isDeliveryOrder || isCustomerLocationFlow;
   const handlePinMyLocation = () => {
     if (!navigator?.geolocation) {
       setPinLocationError('Geolocation is not supported on this device/browser.');
@@ -69,9 +71,9 @@ export function useDeliveryPinResolution({
   ), [customerAddress, customerPin, deliveryLocationDisplayAddress, resolvedDeliveryAddress]);
 
   useEffect(() => {
-    if (!isDeliveryOrder || !hasPinnedDeliveryLocation) {
+    if (!locationResolutionEnabled || !hasPinnedDeliveryLocation) {
       setResolvingPinnedDeliveryAddress(false);
-      if (!isDeliveryOrder) {
+      if (!locationResolutionEnabled) {
         setResolvedDeliveryAddress('');
       }
       return;
@@ -108,7 +110,7 @@ export function useDeliveryPinResolution({
     };
     resolveAddress();
     return () => controller.abort();
-  }, [customerPin, hasPinnedDeliveryLocation, isDeliveryOrder]);
+  }, [customerPin, hasPinnedDeliveryLocation, isDeliveryOrder, isCustomerLocationFlow, locationResolutionEnabled]);
 
   return {
     activeServiceLocationSummary,

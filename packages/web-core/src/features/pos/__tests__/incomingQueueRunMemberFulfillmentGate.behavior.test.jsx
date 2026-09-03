@@ -37,7 +37,7 @@ vi.mock('sonner', () => ({
 }));
 
 // jsdom has no matchMedia -- default to "wide enough for split" (matches: true), same helper
-// deliveryRunSplitViewDnd.behavior.test.jsx uses for the split tab's >=1280px viewport gate.
+// deliveryRunSplitViewDnd.behavior.test.jsx uses for the split tab's >=768px viewport gate.
 const installMatchMedia = (matches) => {
   const listeners = new Set();
   const mql = {
@@ -211,8 +211,16 @@ describe('Run-member fulfillment gate', () => {
 // IncomingQueueOrderList/OrderCard extraction as the tab view above -- confirms the gate is
 // present there too, not just in the default tab view, after the rebase ported it into the
 // extracted file.
+//
+// #1491 Part 2 (2026-09-03) superseded the first case in this block: an order already assigned to
+// a run no longer renders in the split view's queue AT ALL (see TerminalOperationsPanels.jsx's
+// `splitQueueCandidates`), so the disabled-with-tooltip gate the sibling describe block above
+// still exercises on the standalone Active Queue tab can no longer be reached from the split view
+// -- there's no card left to gate. Replaced with a test for the new behavior (hidden entirely)
+// rather than deleted outright, so this file keeps covering what the split view actually does with
+// a run-assigned order.
 describe('Run-member fulfillment gate (split view)', () => {
-  it('disables "Out for Delivery" with an explanatory tooltip for a packed order in a dispatched run, in the split view', async () => {
+  it('hides an already-run-assigned order from the split view entirely, rather than rendering it disabled (#1491 Part 2)', async () => {
     const order = withRun(buildOrder({ fulfillment_status: 'packed' }), 'dispatched');
     render(<IncomingQueueWorkspace {...baseProps({
       workflowMode: 'retail',
@@ -220,13 +228,10 @@ describe('Run-member fulfillment gate (split view)', () => {
     })} />);
 
     fireEvent.click(await screen.findByRole('tab', { name: /Queue \+ Run/i }));
+    expect(await screen.findByLabelText('Split view target delivery run')).toBeTruthy();
 
-    const button = await screen.findByRole(
-      'button',
-      { name: /delivery run "Morning Run".*Dispatch it from the Delivery Runs tab/i }
-    );
-    expect(button.disabled).toBe(true);
-    expect(button.title).toMatch(/delivery run "Morning Run".*Dispatch it from the Delivery Runs tab/i);
+    expect(screen.queryByRole('button', { name: /Out for Delivery/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /delivery run "Morning Run"/i })).toBeNull();
   });
 
   it('enables "Out for Delivery" for a packed delivery order with no run, in the split view', async () => {
