@@ -85,7 +85,8 @@ describe('POS reports usecases', () => {
     describe('buildExportProcurementCsvUseCase', () => {
         it('rejects a non-object query', async () => {
             const useCase = buildExportProcurementCsvUseCase({
-                posRepository: { listIncomingOnlineOrders: jest.fn() }
+                posRepository: { listIncomingOnlineOrders: jest.fn() },
+                resolveLocationScope: jest.fn()
             });
 
             const result = await useCase({ query: 'bad-query', user: { user_id: 4 } });
@@ -97,7 +98,8 @@ describe('POS reports usecases', () => {
 
         it('requires an authenticated user', async () => {
             const useCase = buildExportProcurementCsvUseCase({
-                posRepository: { listIncomingOnlineOrders: jest.fn() }
+                posRepository: { listIncomingOnlineOrders: jest.fn() },
+                resolveLocationScope: jest.fn()
             });
 
             const result = await useCase({ query: {}, user: undefined });
@@ -109,7 +111,8 @@ describe('POS reports usecases', () => {
 
         it('rejects a non-numeric location_id', async () => {
             const useCase = buildExportProcurementCsvUseCase({
-                posRepository: { listIncomingOnlineOrders: jest.fn() }
+                posRepository: { listIncomingOnlineOrders: jest.fn() },
+                resolveLocationScope: jest.fn()
             });
 
             const result = await useCase({ query: { location_id: 'abc' }, user: { user_id: 4 } });
@@ -121,8 +124,10 @@ describe('POS reports usecases', () => {
 
         it('returns a header-only CSV when there are no pending orders', async () => {
             const listIncomingOnlineOrders = jest.fn().mockResolvedValue([]);
+            const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 4 });
             const useCase = buildExportProcurementCsvUseCase({
-                posRepository: { listIncomingOnlineOrders }
+                posRepository: { listIncomingOnlineOrders },
+                resolveLocationScope
             });
 
             const result = await useCase({ query: {}, user: { user_id: 4 } });
@@ -132,18 +137,68 @@ describe('POS reports usecases', () => {
             expect(result.data.content).toBe(
                 '"Order #","Order Date","Location","Status","Customer Name","Customer Phone","Delivery Address","SKU","Item Name","Quantity","Unit"'
             );
-            expect(listIncomingOnlineOrders).toHaveBeenCalledWith({ locationId: null, limit: 500 });
+            expect(listIncomingOnlineOrders).toHaveBeenCalledWith({ locationId: 4, limit: 500 });
         });
 
-        it('passes location_id through to the repository call', async () => {
+        // RF-1 (PR #1504 review): an unscoped request must never reach the repository with a raw
+        // null/all-locations query -- it has to resolve through resolvePosReadLocationScope first,
+        // same as the sibling buildListOnlineOrderHistoryUseCase read path.
+        it('resolves an unscoped request to the caller\'s own authorized location scope', async () => {
             const listIncomingOnlineOrders = jest.fn().mockResolvedValue([]);
+            const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 9 });
             const useCase = buildExportProcurementCsvUseCase({
-                posRepository: { listIncomingOnlineOrders }
+                posRepository: { listIncomingOnlineOrders },
+                resolveLocationScope
+            });
+
+            await useCase({ query: {}, user: { user_id: 4 } });
+
+            expect(resolveLocationScope).toHaveBeenCalledWith({
+                requestedLocationId: undefined,
+                userId: 4,
+                operationLabel: 'POS procurement export read'
+            });
+            expect(listIncomingOnlineOrders).toHaveBeenCalledWith({ locationId: 9, limit: 500 });
+        });
+
+        it('resolves a requested location_id through the scope resolver before calling the repository', async () => {
+            const listIncomingOnlineOrders = jest.fn().mockResolvedValue([]);
+            const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 7 });
+            const useCase = buildExportProcurementCsvUseCase({
+                posRepository: { listIncomingOnlineOrders },
+                resolveLocationScope
             });
 
             await useCase({ query: { location_id: 7 }, user: { user_id: 4 } });
 
+            expect(resolveLocationScope).toHaveBeenCalledWith({
+                requestedLocationId: 7,
+                userId: 4,
+                operationLabel: 'POS procurement export read'
+            });
             expect(listIncomingOnlineOrders).toHaveBeenCalledWith({ locationId: 7, limit: 500 });
+        });
+
+        // RF-1: a VIEW_POS user requesting a location they have no grant for must be rejected --
+        // never falls back to an unscoped/all-locations export, and never reaches the repository.
+        it('rejects a request for a location the caller is not authorized for', async () => {
+            const listIncomingOnlineOrders = jest.fn();
+            const deniedError = Object.assign(
+                new Error('You do not have location access to perform POS procurement export read at location 99.'),
+                { statusCode: 403 }
+            );
+            const resolveLocationScope = jest.fn().mockRejectedValue(deniedError);
+            const useCase = buildExportProcurementCsvUseCase({
+                posRepository: { listIncomingOnlineOrders },
+                resolveLocationScope
+            });
+
+            const result = await useCase({ query: { location_id: 99 }, user: { user_id: 4 } });
+
+            expect(result.success).toBe(false);
+            expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+            expect(result.error.statusCode).toBe(403);
+            expect(listIncomingOnlineOrders).not.toHaveBeenCalled();
         });
 
         it('flattens multi-line-item orders into one CSV row per line, falling back to Guest Buyer for guest checkouts', async () => {
@@ -178,7 +233,8 @@ describe('POS reports usecases', () => {
             ];
             const listIncomingOnlineOrders = jest.fn().mockResolvedValue(orders);
             const useCase = buildExportProcurementCsvUseCase({
-                posRepository: { listIncomingOnlineOrders }
+                posRepository: { listIncomingOnlineOrders },
+                resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 4 })
             });
 
             const result = await useCase({ query: {}, user: { user_id: 4 } });
