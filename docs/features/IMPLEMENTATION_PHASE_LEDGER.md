@@ -20094,3 +20094,27 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `apps/dgfy-api/package-lock.json`, `apps/dgfy-pos/package-lock.json`,
   `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issues #1124, #1550, #1551, #1552, #1553, #1157, #1469.
 - Next eligible phase: 273.
+
+## Phase 273 - Discovery from-price rendering: storefront delivery-fee UI (#1333)
+
+- Initiative/release: Discovery pricing honesty epic (#1321) / current release process.
+- Objective and scope: consume the discovery API's already-shipped `store_delivery_fee` (a
+  per-mode from-price: the fixed rate in `fixed` mode, `calc.min_fee` in `calculated` mode, `0` in
+  `free` mode) and `delivery_fee_mode` fields on the storefront discovery card, the last unshipped
+  piece of #1333 (Phase 242 shipped the backend projection/read paths). Renders "Free delivery"
+  (`free` mode), "From ₱X delivery" (`calculated` mode), or plain "₱X delivery" (`fixed` mode) next
+  to the existing distance/ETA row on all three discovery card layouts (grid, mobile list, desktop
+  list). No backend change — `store_delivery_fee`/`delivery_fee_mode` already flowed through
+  `/api/v1/storefront/discovery` unused by the frontend.
+- Status: completed.
+- Dependencies: #1333's own backend half (Phase 242, already shipped) — `resolveAdvertisedDeliveryFromPrice()`
+  (`apps/dgfy-api/src/modules/deliveryPricing/domain/deliveryFromPrice.js`),
+  `StorefrontDiscoveryIndex.js`'s `delivery_fee_mode` column, and the
+  `storefrontDiscoveryRepository.js`/`geoSearchRepository.js` read paths.
+- Acceptance and validation evidence: `npm run build:store` (Vite production build, clean); `npx
+  vitest run src/__tests__/discoveryFlow.integration.test.jsx` (37/37, including a new case
+  asserting all three delivery-fee-mode labels render on discovery cards).
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-storefront/src/features/discovery/renderers/discoveryResultsRenderer.jsx`,
+  `apps/dgfy-storefront/src/__tests__/discoveryFlow.integration.test.jsx`, issue #1333 (epic #1321).
+- Next eligible phase: 274.
