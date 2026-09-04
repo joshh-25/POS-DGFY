@@ -74,7 +74,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260812000007-add-pos-payment-confirmation-and-breakdown.cjs',
     '20260812000008-add-pos-provider-refund-reconciliation.cjs',
     '20260813000001-create-pos-merchant-tender-reconciliations.cjs',
-    '20260813000002-add-pos-parked-sale-revision.cjs'
+    '20260813000002-add-pos-parked-sale-revision.cjs',
+    '20260904000001-create-pos-discount-beneficiaries.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -99,6 +100,8 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     items: ['item_id', 'vat_type', 'tracking_mode', 'tracking_toggle_available'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter', 'is_active'],
     pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available', 'pos_best_seller_mode'],
+    pos_transaction_discount_beneficiaries: ['id', 'transaction_discount_id', 'category', 'customer_name', 'id_number'],
+    pos_transaction_discount_lines: ['id', 'transaction_discount_id', 'beneficiary_id', 'transaction_line_id', 'item_id', 'eligible_quantity'],
     pos_transactions: [
         'pos_transaction_id',
         'document_type',

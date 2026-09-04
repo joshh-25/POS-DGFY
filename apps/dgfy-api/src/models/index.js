@@ -43,6 +43,7 @@ import PosTransactionLine from './PosTransactionLine.js';
 import PosDiscountRule from './PosDiscountRule.js';
 import PosTransactionDiscount from './PosTransactionDiscount.js';
 import PosTransactionDiscountLine from './PosTransactionDiscountLine.js';
+import PosTransactionDiscountBeneficiary from './PosTransactionDiscountBeneficiary.js';
 import PosInvoiceCounter from './PosInvoiceCounter.js';
 import PosZReadingSnapshot from './PosZReadingSnapshot.js';
 import PosOperationReplay from './PosOperationReplay.js';
@@ -634,8 +635,12 @@ PosTransactionDiscount.belongsTo(PosTransaction, { foreignKey: 'transaction_id',
 PosDiscountRule.hasMany(PosTransactionDiscount, { foreignKey: 'discount_rule_id', as: 'transactionDiscounts' });
 PosTransactionDiscount.belongsTo(PosDiscountRule, { foreignKey: 'discount_rule_id', as: 'rule' });
 PosTransactionDiscount.hasMany(PosTransactionDiscountLine, { foreignKey: 'transaction_discount_id', as: 'lines' });
+PosTransactionDiscount.hasMany(PosTransactionDiscountBeneficiary, { foreignKey: 'transaction_discount_id', as: 'beneficiaries' });
+PosTransactionDiscountBeneficiary.belongsTo(PosTransactionDiscount, { foreignKey: 'transaction_discount_id', as: 'discount' });
+PosTransactionDiscountBeneficiary.hasMany(PosTransactionDiscountLine, { foreignKey: 'beneficiary_id', as: 'lines' });
+PosTransactionDiscountLine.belongsTo(PosTransactionDiscountBeneficiary, { foreignKey: 'beneficiary_id', as: 'beneficiary' });
 PosTransactionDiscountLine.belongsTo(PosTransactionDiscount, { foreignKey: 'transaction_discount_id', as: 'discount' });
-PosTransactionLine.hasOne(PosTransactionDiscountLine, { foreignKey: 'transaction_line_id', as: 'discountAllocation' });
+PosTransactionLine.hasOne(PosTransactionDiscountLine, { foreignKey: 'transaction_line_id', as: 'discountAllocation', scope: { beneficiary_id: null } });
 PosTransactionDiscountLine.belongsTo(PosTransactionLine, { foreignKey: 'transaction_line_id', as: 'transactionLine' });
 User.hasMany(PosTransactionDiscount, { foreignKey: 'manager_approval_id', as: 'approvedPosDiscounts' });
 PosTransactionDiscount.belongsTo(User, { foreignKey: 'manager_approval_id', as: 'approvedBy' });
@@ -966,6 +971,7 @@ const db = {
   PosDiscountRule,
   PosTransactionDiscount,
   PosTransactionDiscountLine,
+  PosTransactionDiscountBeneficiary,
   PosInvoiceCounter,
   PosZReadingSnapshot,
   PosOperationReplay,
@@ -1162,6 +1168,7 @@ export {
   PosDiscountRule,
   PosTransactionDiscount,
   PosTransactionDiscountLine,
+  PosTransactionDiscountBeneficiary,
   PosInvoiceCounter,
   PosZReadingSnapshot,
   PosOperationReplay,
