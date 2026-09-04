@@ -1131,13 +1131,26 @@ export default function Items() {
       || null;
   }, [folderByLookupKey, folderByName]);
 
-  const doesItemMatchFolder = useCallback((item, folderName) => {
+  // ADR 0080 Amendment (Phase 285, #1318): `matchSecondary` is opt-in, default false, so
+  // every existing caller of this shared matcher keeps its exact prior (primary-only)
+  // behavior unless it explicitly asks otherwise. This matters beyond caution: `handleDragEnd`
+  // uses this function to skip items "already in" the drop target, and `folderCounts` uses it
+  // for the FolderCard item-count badge -- widening either of those to the membership union
+  // would either silently no-op a drag-to-set-primary-folder action for a secondary member, or
+  // conflate primary and secondary counts in a badge ADR 0080 Consequences item 4 reserves for
+  // a later, separate "N items also list this as a secondary category" line. Only the
+  // folder-chip browse filter (`filteredItems`, below) opts in.
+  const doesItemMatchFolder = useCallback((item, folderName, { matchSecondary = false } = {}) => {
     const normalizedFolderName = normalizeFolderName(folderName);
     if (!normalizedFolderName) return false;
     const folder = findFolderEntry(normalizedFolderName);
     if (folder?.folder_id) {
-      return Number(item?.folder_id) === Number(folder.folder_id)
-        || toFolderLookupKey(item?.product_folder) === toFolderLookupKey(folder.name);
+      if (Number(item?.folder_id) === Number(folder.folder_id)) return true;
+      if (matchSecondary) {
+        const secondaryFolderIds = Array.isArray(item?.secondary_folder_ids) ? item.secondary_folder_ids : [];
+        if (secondaryFolderIds.some((id) => Number(id) === Number(folder.folder_id))) return true;
+      }
+      return toFolderLookupKey(item?.product_folder) === toFolderLookupKey(folder.name);
     }
     return toFolderLookupKey(item?.product_folder) === toFolderLookupKey(normalizedFolderName);
   }, [findFolderEntry]);
@@ -1398,9 +1411,9 @@ export default function Items() {
 
         let matchesFolder = true;
         if (currentFolder !== null) {
-          matchesFolder = doesItemMatchFolder(item, currentFolder);
+          matchesFolder = doesItemMatchFolder(item, currentFolder, { matchSecondary: true });
         } else if (folderFilter !== 'all') {
-          matchesFolder = doesItemMatchFolder(item, folderFilter);
+          matchesFolder = doesItemMatchFolder(item, folderFilter, { matchSecondary: true });
         }
 
         if (statusFilter === 'draft') {

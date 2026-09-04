@@ -2402,9 +2402,19 @@ function ItemsWorkspace({
             return true;
         }
       })();
+      // ADR 0080 Amendment (Phase 285, #1318): the folder:<id> chip filter widens to the
+      // membership union -- an item also matches when the selected category is one of its
+      // SECONDARY categories (item?.secondary_folder_ids), not just its primary folder_id.
+      // The name:<slug> fallback (items without a real folder_id) is unaffected -- no
+      // secondary-category data exists to widen it with.
+      const secondaryFolderIds = Array.isArray(item?.secondary_folder_ids) ? item.secondary_folder_ids : [];
       const matchesCategory = categoryFilter === 'all'
         || (categoryFilter.startsWith('folder:')
-          ? Number(categoryFilter.replace('folder:', '')) === folderId
+          ? (() => {
+            const selectedFolderId = Number(categoryFilter.replace('folder:', ''));
+            return selectedFolderId === folderId
+              || secondaryFolderIds.some((id) => Number(id) === selectedFolderId);
+          })()
           : normalizeFolderNameKey(folderName) === normalizeFolderNameKey(categoryFilter.replace('name:', '')));
       const haystack = [
         item?.name,
