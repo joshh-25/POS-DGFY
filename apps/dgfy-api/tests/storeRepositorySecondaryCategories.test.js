@@ -132,7 +132,7 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
         expect(listItemFolderMembershipsMock).not.toHaveBeenCalled();
     });
 
-    it('drops a membership whose folder was deleted/renamed out from under it to folder_name: null rather than throwing', async () => {
+    it('drops a membership whose folder is simply unresolvable (never returned by the folder lookup) entirely, rather than leaking a null-named entry', async () => {
         itemFindAllMock.mockResolvedValue([buildCatalogRow({ item_id: 400 })]);
         listItemFolderMembershipsMock.mockResolvedValue([
             { item_id: 400, folder_id: 9, sort_order: 0 }
@@ -141,8 +141,64 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
 
         const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
 
+        expect(result[0].secondary_categories).toEqual([]);
+    });
+
+    // RF-1 (PR #1579 review, Codex): the missing-row case above proves nothing about active/
+    // soft-deleted folders specifically -- the folder-name lookup must actively exclude them, not
+    // merely tolerate a row that never comes back. These two cases pin that the ItemFolder query
+    // itself is scoped to is_active/deleted_at, and that a membership pointing at a folder outside
+    // that scope never produces a public category entry, named or unnamed.
+    it('never leaks an inactive folder\'s name into the public catalog -- the membership is dropped, not returned with a name', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({ item_id: 401 })]);
+        listItemFolderMembershipsMock.mockResolvedValue([
+            { item_id: 401, folder_id: 15, sort_order: 0 }
+        ]);
+        // The mock only returns what a real active-scoped query would: folder 15 is inactive, so a
+        // real `is_active: true` where clause would never return it -- simulate that by returning [].
+        itemFolderFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
+        expect(result[0].secondary_categories).toEqual([]);
+        const folderQuery = itemFolderFindAllMock.mock.calls[0][0];
+        expect(folderQuery.where.is_active).toBe(true);
+        expect(folderQuery.where.deleted_at).toBeNull();
+    });
+
+    it('never leaks a soft-deleted folder\'s name into the public catalog -- the membership is dropped, not returned with a name', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({ item_id: 402 })]);
+        listItemFolderMembershipsMock.mockResolvedValue([
+            { item_id: 402, folder_id: 16, sort_order: 0 }
+        ]);
+        // deleteFolder sets is_active: false + deleted_at, and leaves the membership row in place
+        // (ADR 0080 Consequences item 4) -- a real active-scoped query would not return folder 16.
+        itemFolderFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
+        expect(result[0].secondary_categories).toEqual([]);
+        const folderQuery = itemFolderFindAllMock.mock.calls[0][0];
+        expect(folderQuery.where.is_active).toBe(true);
+        expect(folderQuery.where.deleted_at).toBeNull();
+    });
+
+    it('keeps a membership whose folder resolves as active, and only that one, when a sibling membership points at an inactive folder', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({ item_id: 403 })]);
+        listItemFolderMembershipsMock.mockResolvedValue([
+            { item_id: 403, folder_id: 20, sort_order: 0 }, // active
+            { item_id: 403, folder_id: 21, sort_order: 1 }  // inactive/soft-deleted
+        ]);
+        // Simulates the real query: folder 21 is filtered out server-side by is_active/deleted_at,
+        // so only folder 20 comes back even though both were requested.
+        itemFolderFindAllMock.mockResolvedValue([
+            { folder_id: 20, name: 'Still Active' }
+        ]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
         expect(result[0].secondary_categories).toEqual([
-            { folder_id: 9, folder_name: null }
+            { folder_id: 20, folder_name: 'Still Active' }
         ]);
     });
 });

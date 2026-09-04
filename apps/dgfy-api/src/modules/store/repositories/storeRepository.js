@@ -552,9 +552,20 @@ const attachSecondaryCategories = async (catalogRows, options = {}) => {
 
         const folderIds = [...new Set(memberships.map((membership) => membership.folder_id))];
         const ItemFolder = dbStore.get('ItemFolder');
+        // RF-1 (PR #1579 review): folder deletion is soft (deleteFolder sets is_active: false +
+        // deleted_at, membership rows are left in place) -- an active-only where clause is the only
+        // thing standing between a merchant-deleted/deactivated category and it silently
+        // reappearing, by name, on the public storefront. Any folder_id this query doesn't return
+        // (inactive, soft-deleted, or simply gone) is dropped from the membership map below rather
+        // than mapped to a null-named entry, so a stale membership can never produce a public
+        // category entry at all -- not even an unnamed one.
         const folders = ItemFolder
             ? await ItemFolder.findAll({
-                where: { folder_id: { [Op.in]: folderIds } },
+                where: {
+                    folder_id: { [Op.in]: folderIds },
+                    is_active: true,
+                    deleted_at: null
+                },
                 attributes: ['folder_id', 'name'],
                 transaction: options.transaction
             })
@@ -563,10 +574,11 @@ const attachSecondaryCategories = async (catalogRows, options = {}) => {
 
         const membershipsByItemId = new Map();
         memberships.forEach((membership) => {
+            if (!folderNameById.has(membership.folder_id)) return;
             const list = membershipsByItemId.get(membership.item_id) || [];
             list.push({
                 folder_id: membership.folder_id,
-                folder_name: folderNameById.get(membership.folder_id) || null
+                folder_name: folderNameById.get(membership.folder_id)
             });
             membershipsByItemId.set(membership.item_id, list);
         });
