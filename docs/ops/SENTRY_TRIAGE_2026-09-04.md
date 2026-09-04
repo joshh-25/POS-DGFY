@@ -50,7 +50,7 @@ in a prior pass.
 | `DGFY-STORE-1J/1K/1H/1G/1F/1E/1D/1C/1B/1A/19/18/17` (13 issues) | PROD, `surebiz-marketing-cd76fa` tenant | 1 each, all last seen 3-4 days ago (rolling off) | one root cause: transient 502s against one tenant, fingerprint-split per URL param, same class as `DGFY-POS-Z`/`#1476` | dedupe candidate, structural noise — none, no new occurrence since 08-30 |
 | `DGFY-POS-11` | PROD | 1 (lifetime 2) | by-design POST-method fingerprint split, `#646` (merged) | none |
 | `DGFY-STORE-6` | PROD | 1 (lifetime 1) | recurring stale-bundle client, `#276` (open — PWA auto-update toast) | none — stays correctly unresolved |
-| `DGFY-POS-12` | PROD | 0 this window (rolling off, lifetime 1, last seen 5 days ago) | camera/`ImageCapture` `UnknownError`, was correlated to `#739` on 08-30; **`#739` merged/closed 2026-08-3x** (barcode scanner re-arm fix) since that comment | no new occurrence since the correlated fix shipped — tentatively **already fixed, unconfirmed**; re-verify next pass |
+| `DGFY-POS-12` | PROD | 0 this window (rolling off, lifetime 1, last seen 5 days ago) | camera/`ImageCapture` `UnknownError`, was correlated to `#739` on 08-30; **`#739` closed 2026-09-03** (barcode scanner re-arm fix) since that comment | no new occurrence since the correlated fix shipped — tentatively **already fixed, unconfirmed**; re-verify next pass |
 | `DGFY-POS-10` | — (lifetime 1, 13 days ago, rolling off) | 0 | matches `#1074`'s own scenario, still open | none |
 | `DGFY-BACKEND-6` | DEV 3 + STAGING 3 (lifetime 11) | 6 | already filed — `#1091` (open) | none — recurrence continues under `#1091`'s own tracked scope, not a new root cause |
 
