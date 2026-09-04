@@ -18,8 +18,8 @@ verification_evidence: packages/web-core/src/features/pos/__tests__/additionalCa
 rollback_note: No schema change, no migration, and no backend route/controller/use-case touched by this phase -- the GET/PUT /items/:item_id/folders endpoints, their requireTenantAdmin gate, the max-10 cap, and the primary/secondary disjointness guard all already existed from Phase 257 (PR #1503) and Phase 268 (PR #1515), completely unchanged here. This phase only adds a second frontend consumer of that existing write API inside packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx (new state, a fetch/save effect pair, and a JSX section), plus one new frontend test file. Fix round 1 (RF-1/RF-2/RF-3) adds more client-side state and a new frontend-only render branch (secondaryFoldersUnavailable); it introduces no new endpoint, no schema change, and no new write path. Rollback is a plain revert of this PR's diff -- no data was written or migrated by this phase itself, no existing response field's meaning changed, and reverting removes only client-side UI/state with no server-side cleanup required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-04T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1318-POS-ADDITIONAL-CATEGORIES-EDIT
+preflight_run_at: 2026-09-04T16:07:17.508Z
+preflight_request_ref: PREFLIGHT-33893050690-2026-09-04-POS-ADDITIONAL-CATEGORIES-EDIT
 ---
 
 # POS's own "Additional Categories" item-edit section (Wave C/C5, #1318)
