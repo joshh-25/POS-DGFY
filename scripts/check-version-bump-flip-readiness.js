@@ -53,10 +53,16 @@
  * `deps.<fetchX>` function) so this file's own tests never touch the network, matching this repo's
  * pure/fast-test convention.
  *
- * CLI: `node scripts/check-version-bump-flip-readiness.js` -- exits 0 (ready) or 1 (not ready).
- * Exit 1 is informational only: this script is not wired into any CI gate and never fails a build
- * by itself; a human runs it by hand (or via `npm run check:version-bump-flip-readiness`) before
- * deciding whether to flip scripts/lib/version-bump-gate-toggle.js's BLOCKING constant.
+ * CLI: `node scripts/check-version-bump-flip-readiness.js` -- exits 0 (ready), 1 (not ready), or 2
+ * (could not measure -- a `gh pr list` call itself failed, e.g. an unsupported --json field, an
+ * auth problem, or a rate limit; see pr-reviewer PR #1572 review RF-1). Exit 1 is informational
+ * only: this script is not wired into any CI gate and never fails a build by itself. Exit 2 is
+ * deliberately distinct from exit 1 -- a failed history query must never be silently read as "zero
+ * evidence found" (that was RF-1's own bug: `captureJson()` swallowing a failed `gh pr list` into
+ * `null`, which downstream code then defaulted to `[]` -- indistinguishable from a real, successful
+ * "nothing merged yet" answer). A human runs this by hand (or via `npm run
+ * check:version-bump-flip-readiness`) before deciding whether to flip
+ * scripts/lib/version-bump-gate-toggle.js's BLOCKING constant.
  */
 
 const { spawnSync } = require('node:child_process');
@@ -108,6 +114,51 @@ function captureJson(command, args, runCapture) {
     } catch {
         return null;
     }
+}
+
+// PR #1572 review RF-1: a failed `gh pr list` call (wrong field name, auth problem, rate limit)
+// must never be read as "zero PRs merged" -- captureJson()'s null-on-failure is fine for a
+// per-commit lookup (resolveCommitOutcome already treats "couldn't confirm" as a conservative
+// "crash", by design), but at the *list* level it previously masked the entire mechanism silently
+// reporting zero evidence forever, regardless of real history. GhPrListError makes that loud.
+class GhPrListError extends Error {
+    constructor(args, result) {
+        super(`gh ${args.join(' ')} failed (exit ${result.status}): ${(result.stderr || result.stdout || '(no output)').trim()}`);
+        this.name = 'GhPrListError';
+    }
+}
+
+// `gh pr list --json` has no "mergeCommitOid" field (confirmed live -- it exits 1 with "Unknown
+// JSON field", the exact RF-1 bug) -- the supported fields are `mergeCommit` (an object; `.oid` is
+// the merge SHA) and `headRefOid` (the PR branch tip, which is what actually carries check-runs --
+// see RF-2 / resolveCommitOutcome's own call sites below). This fetches and normalizes both into a
+// flat shape the rest of this file already expects, and throws (via GhPrListError) rather than
+// returning an empty array on any failure -- a caller must not be able to mistake "the query
+// itself broke" for "the query succeeded and found nothing".
+function fetchGhPrList(args, deps) {
+    const result = deps.runCapture('gh', args);
+    if (result.status !== 0) throw new GhPrListError(args, result);
+
+    let parsed;
+    try {
+        parsed = JSON.parse(result.stdout);
+    } catch (error) {
+        throw new GhPrListError(args, { status: result.status, stdout: '', stderr: `unparseable JSON: ${error.message}` });
+    }
+    if (!Array.isArray(parsed)) throw new GhPrListError(args, { status: result.status, stdout: '', stderr: 'response was not a JSON array' });
+
+    return parsed.map((pr) => ({
+        number: pr.number,
+        mergedAt: pr.mergedAt,
+        headRefName: pr.headRefName,
+        // Ancestry/dedup identity -- the actual commit that landed on the base branch.
+        mergeCommitOid: pr.mergeCommit && pr.mergeCommit.oid ? pr.mergeCommit.oid : null,
+        // What actually carries the PR-time "changes / detect" check run (RF-2) -- GitHub Actions'
+        // pull_request trigger runs checks against the PR's head SHA, never the resulting merge
+        // commit on the base branch. Confirmed live for PR #1562: head e61ec0e7 has 7 check runs
+        // including "changes / detect"; merge commit 5eb17c34 has 0.
+        headRefOid: pr.headRefOid || null,
+    }));
 }
 
 // --- pure classification --------------------------------------------------------------------------
@@ -194,24 +245,25 @@ function resolveCommitOutcome(sha, deps) {
     return { outcome, detail: `check run ${run.id} (${TARGET_CHECK_RUN_NAME}) for ${sha} classified as "${outcome}"` };
 }
 
+// `gh pr list --json` fields, corrected per RF-1: `mergeCommit` (object, `.oid` is the merge SHA),
+// not the nonexistent `mergeCommitOid`; `headRefOid` added for RF-2 (see fetchGhPrList's own
+// comment for why both are needed and what each is used for).
+const PR_LIST_JSON_FIELDS = 'number,mergedAt,mergeCommit,headRefName,headRefOid';
+
 function listDevelopMerges(deps, limit) {
     if (deps.fetchDevelopMerges) return deps.fetchDevelopMerges();
-    const list = captureJson(
-        'gh',
-        ['pr', 'list', '--repo', REPO_SLUG, '--state', 'merged', '--base', 'develop', '--limit', String(limit), '--json', 'number,mergedAt,mergeCommitOid,headRefName'],
-        deps.runCapture,
+    return fetchGhPrList(
+        ['pr', 'list', '--repo', REPO_SLUG, '--state', 'merged', '--base', 'develop', '--limit', String(limit), '--json', PR_LIST_JSON_FIELDS],
+        deps,
     );
-    return Array.isArray(list) ? list : [];
 }
 
 function listPromotionMerges(base, deps, limit) {
     if (deps.fetchPromotionMerges) return deps.fetchPromotionMerges(base);
-    const list = captureJson(
-        'gh',
-        ['pr', 'list', '--repo', REPO_SLUG, '--state', 'merged', '--base', base, '--limit', String(limit), '--json', 'number,mergedAt,mergeCommitOid,headRefName'],
-        deps.runCapture,
+    return fetchGhPrList(
+        ['pr', 'list', '--repo', REPO_SLUG, '--state', 'merged', '--base', base, '--limit', String(limit), '--json', PR_LIST_JSON_FIELDS],
+        deps,
     );
-    return Array.isArray(list) ? list : [];
 }
 
 // --- evidence paths --------------------------------------------------------------------------------
@@ -222,10 +274,14 @@ function listPromotionMerges(base, deps, limit) {
  * check-app-version-bump.js's resolveMode()) -- no separate mode filter is needed here.
  */
 function evaluatePrCountEvidence(deps, { limit = DEFAULT_FETCH_LIMIT } = {}) {
+    // Ancestry stays keyed on the merge commit -- that's the actual commit that landed on
+    // develop, so it's the right identity for "is this since the anchor". RF-2: the check-run
+    // lookup below deliberately uses headRefOid instead -- see resolveCommitOutcome's own call
+    // site comment and fetchGhPrList's header for why the merge commit itself carries none.
     const sinceAnchor = listDevelopMerges(deps, limit)
         .filter((pr) => pr.mergeCommitOid && isDescendantOfAnchor(pr.mergeCommitOid, deps));
 
-    const evaluated = sinceAnchor.map((pr) => ({ ...pr, ...resolveCommitOutcome(pr.mergeCommitOid, deps) }));
+    const evaluated = sinceAnchor.map((pr) => ({ ...pr, ...resolveCommitOutcome(pr.headRefOid, deps) }));
     const counted = evaluated.filter((entry) => entry.outcome === 'pass' || entry.outcome === 'warn');
 
     return { evaluated, counted, count: counted.length, met: counted.length >= PR_EVIDENCE_THRESHOLD };
@@ -238,13 +294,15 @@ function evaluatePrCountEvidence(deps, { limit = DEFAULT_FETCH_LIMIT } = {}) {
  * that logged a version-bump FAIL is a real advisory finding on that leg, not a clean cycle.
  */
 function evaluatePromotionCycleEvidence(deps, { limit = DEFAULT_FETCH_LIMIT } = {}) {
+    // Same split as evaluatePrCountEvidence above: ancestry on the merge commit, check-run lookup
+    // on headRefOid (RF-2).
     const stagingLegs = listPromotionMerges('staging', deps, limit)
         .filter((pr) => /^to-staging\//.test(pr.headRefName || '') && pr.mergeCommitOid && isDescendantOfAnchor(pr.mergeCommitOid, deps))
-        .map((pr) => ({ ...pr, candidateId: extractCandidateIdFromToStaging(pr.headRefName), ...resolveCommitOutcome(pr.mergeCommitOid, deps) }));
+        .map((pr) => ({ ...pr, candidateId: extractCandidateIdFromToStaging(pr.headRefName), ...resolveCommitOutcome(pr.headRefOid, deps) }));
 
     const mainLegs = listPromotionMerges('main', deps, limit)
         .filter((pr) => /^release\//.test(pr.headRefName || '') && pr.mergeCommitOid && isDescendantOfAnchor(pr.mergeCommitOid, deps))
-        .map((pr) => ({ ...pr, candidateId: extractCandidateIdFromRelease(pr.headRefName), ...resolveCommitOutcome(pr.mergeCommitOid, deps) }));
+        .map((pr) => ({ ...pr, candidateId: extractCandidateIdFromRelease(pr.headRefName), ...resolveCommitOutcome(pr.headRefOid, deps) }));
 
     const completedCycles = [];
     for (const stagingLeg of stagingLegs) {
@@ -283,7 +341,18 @@ function formatPromotionCycleSummary(promotionEvidence) {
 }
 
 function main() {
-    const result = evaluateReadiness();
+    let result;
+    try {
+        result = evaluateReadiness();
+    } catch (error) {
+        // RF-1: a failed gh pr list call must be loud, never silently read as "zero evidence".
+        // Exit 2, distinct from both 0 (ready) and 1 (not ready) -- this state means "could not
+        // measure", not "measured and found nothing".
+        console.error(`[check-version-bump-flip-readiness] COULD NOT MEASURE. ${error.message}`);
+        process.exitCode = 2;
+        return;
+    }
+
     const { prCountEvidence, promotionEvidence } = result;
 
     console.log(`[check-version-bump-flip-readiness] ADR 0081 Decision 9 evidence threshold, since ${ANCHOR_MERGE_SHA.slice(0, 7)} (PR #1562, Refs #1560):`);
@@ -314,7 +383,10 @@ module.exports = {
     ANCHOR_MERGE_SHA,
     TARGET_CHECK_RUN_NAME,
     PR_EVIDENCE_THRESHOLD,
+    PR_LIST_JSON_FIELDS,
     MARKERS,
+    GhPrListError,
+    fetchGhPrList,
     classifyLogOutcome,
     extractCandidateIdFromToStaging,
     extractCandidateIdFromRelease,
