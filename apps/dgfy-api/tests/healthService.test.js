@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildHealthResponse, resolveRuntimeShaInfo } from '../src/services/healthService.js';
+import { buildHealthResponse, resolveRuntimeShaInfo, resolveAppVersionInfo } from '../src/services/healthService.js';
 
 const originalEnv = { ...process.env };
 
@@ -549,5 +549,73 @@ describe('healthService', () => {
         expect(statusCode).toBe(503);
         expect(health.success).toBe(false);
         expect(health.capabilities.tokenBlacklist.status).toBe('degraded');
+    });
+
+    describe('resolveAppVersionInfo (ADR 0081 Decision 4, #1548 Wave 3 Phase 278)', () => {
+        it('prefers APP_VERSION over the package.json fallback', () => {
+            expect(resolveAppVersionInfo({
+                env: { APP_VERSION: '1.5.2-staging' },
+                packageJsonPath: path.join(os.tmpdir(), 'sku-health-version-unused.json')
+            })).toEqual({ version: '1.5.2-staging', source: 'env:APP_VERSION' });
+        });
+
+        it('falls back to package.json version when APP_VERSION is unset', () => {
+            const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sku-health-version-'));
+            const packageJsonPath = path.join(rootDir, 'package.json');
+            fs.writeFileSync(packageJsonPath, JSON.stringify({ version: '1.2.0' }));
+
+            expect(resolveAppVersionInfo({
+                env: {},
+                packageJsonPath
+            })).toEqual({ version: '1.2.0', source: 'package_json' });
+        });
+
+        it('treats a blank APP_VERSION the same as unset', () => {
+            const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sku-health-version-'));
+            const packageJsonPath = path.join(rootDir, 'package.json');
+            fs.writeFileSync(packageJsonPath, JSON.stringify({ version: '1.2.0' }));
+
+            expect(resolveAppVersionInfo({
+                env: { APP_VERSION: '   ' },
+                packageJsonPath
+            })).toEqual({ version: '1.2.0', source: 'package_json' });
+        });
+
+        it('returns nulls when neither APP_VERSION nor a readable package.json exist', () => {
+            expect(resolveAppVersionInfo({
+                env: {},
+                packageJsonPath: path.join(os.tmpdir(), 'sku-health-version-missing.json')
+            })).toEqual({ version: null, source: null });
+        });
+
+        it('surfaces version/version_source alongside runtime_sha in /health', async () => {
+            process.env = {
+                ...originalEnv,
+                HOSTING_PROFILE: 'shared',
+                REDIS_URL: '',
+                AUTH_BLACKLIST_FAILURE_MODE: 'fail_open',
+                TEMP_FILE_STORAGE: 'local',
+                APP_VERSION: '1.5.2-staging'
+            };
+
+            const { health, statusCode } = await buildHealthResponse({
+                testConnectionFn: async () => true,
+                isRedisConnectedFn: () => false,
+                getTenantPoolStatsFn: () => ({
+                    total: 1,
+                    pending: 0,
+                    capacity: 20,
+                    utilizationPercent: 5
+                }),
+                getRateLimiterStoreModeFn: () => 'memory',
+                environment: 'test'
+            });
+
+            expect(statusCode).toBe(200);
+            expect(health.services.observability).toEqual(expect.objectContaining({
+                version: '1.5.2-staging',
+                version_source: 'env:APP_VERSION'
+            }));
+        });
     });
 });

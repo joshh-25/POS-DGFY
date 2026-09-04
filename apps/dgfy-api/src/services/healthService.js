@@ -25,6 +25,9 @@ const buildUptime = (seconds) => `${Math.floor(seconds)}s`;
 const currentFilePath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(currentFilePath), '../../..');
 const defaultDeployStatePath = path.join(repoRoot, '.deploy-state', 'last_deployed_commit');
+// apps/dgfy-api's own package.json -- ../../ from src/services, unlike repoRoot above (which
+// climbs one directory further, out of apps/dgfy-api entirely; see that constant's own callers).
+const defaultPackageJsonPath = path.resolve(path.dirname(currentFilePath), '../../package.json');
 
 const runtimeShaPattern = /^[a-f0-9]{7,40}$/i;
 
@@ -80,6 +83,38 @@ export const resolveRuntimeShaInfo = ({
     return { runtimeSha: null, source: null, present: false };
 };
 
+const readPackageJsonVersion = (packageJsonPath) => {
+    try {
+        const parsed = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+        return typeof parsed.version === 'string' && parsed.version.trim() ? parsed.version.trim() : null;
+    } catch {
+        return null;
+    }
+};
+
+// ADR 0081 Decision 4 (#1548 Wave 3, Phase 278): runtime version equals the published image tag,
+// baked in as the APP_VERSION build-arg/env var (Phase 277). Falls back to apps/dgfy-api's own
+// package.json version for a local dev run with no build-arg baked -- keeps this field readable
+// before Phase 277 has actually built/published an image, and after.
+export const resolveAppVersionInfo = ({
+    explicitVersion,
+    packageJsonPath = defaultPackageJsonPath,
+    env = process.env
+} = {}) => {
+    const candidate = explicitVersion ?? env.APP_VERSION;
+    const trimmed = typeof candidate === 'string' ? candidate.trim() : '';
+    if (trimmed) {
+        return { version: trimmed, source: 'env:APP_VERSION' };
+    }
+
+    const packageJsonVersion = readPackageJsonVersion(packageJsonPath);
+    if (packageJsonVersion) {
+        return { version: packageJsonVersion, source: 'package_json' };
+    }
+
+    return { version: null, source: null };
+};
+
 export const buildHealthResponse = async ({
     testConnectionFn,
     isRedisConnectedFn,
@@ -92,6 +127,8 @@ export const buildHealthResponse = async ({
     environment = process.env.NODE_ENV || 'development',
     runtimeSha,
     deployStatePath = defaultDeployStatePath,
+    appVersion,
+    packageJsonPath = defaultPackageJsonPath,
     timestamp = new Date().toISOString(),
     uptimeSeconds = process.uptime()
 } = {}) => {
@@ -102,6 +139,10 @@ export const buildHealthResponse = async ({
         explicitRuntimeSha: runtimeSha,
         deployStatePath,
         environment
+    });
+    const appVersionInfo = resolveAppVersionInfo({
+        explicitVersion: appVersion,
+        packageJsonPath
     });
     const runtimeShaMissingInProduction = environment === 'production' && !runtimeShaInfo.present;
     const health = {
@@ -140,6 +181,8 @@ export const buildHealthResponse = async ({
                 runtime_sha: runtimeShaInfo.runtimeSha,
                 runtime_sha_present: runtimeShaInfo.present,
                 runtime_sha_source: runtimeShaInfo.source,
+                version: appVersionInfo.version,
+                version_source: appVersionInfo.source,
                 telemetry_audit_status: billingFunnelAuditState?.status || 'unknown',
                 telemetry_audit_last_checked_at: billingFunnelAuditState?.last_checked_at || null
             }
