@@ -152,7 +152,16 @@ const resultsSubtitle = isClusterResultsActive
   // mode -- see resolveAdvertisedDeliveryFromPrice() / storefrontDiscoveryRepository.js. This just
   // formats it; no additional per-mode math belongs here.
   const deliveryFeeMode = store?.delivery_fee_mode || 'fixed';
-  const deliveryFromPrice = Number.isFinite(Number(store?.store_delivery_fee)) ? Number(store.store_delivery_fee) : null;
+  // Check the raw value's nullish/empty state BEFORE numeric coercion -- Number(null) and
+  // Number('') both coerce to 0, which is finite, so a naive Number.isFinite(Number(x)) check
+  // would wrongly treat a missing/unresolved fee as a genuine ₱0 fee (ADR 0078 Decision 8 requires
+  // omitting the from-price entirely when no floor can be resolved, not rendering ₱0 for it).
+  const rawDeliveryFee = store?.store_delivery_fee;
+  const hasRawDeliveryFee = rawDeliveryFee !== null && rawDeliveryFee !== undefined && rawDeliveryFee !== '';
+  const coercedDeliveryFee = hasRawDeliveryFee ? Number(rawDeliveryFee) : NaN;
+  const deliveryFromPrice = Number.isFinite(coercedDeliveryFee) && coercedDeliveryFee >= 0
+    ? coercedDeliveryFee
+    : null;
   const formatPeso = (value) => (Number.isInteger(value) ? String(value) : value.toFixed(2));
   const deliveryFeeLabel = deliveryFromPrice === null
     ? null
