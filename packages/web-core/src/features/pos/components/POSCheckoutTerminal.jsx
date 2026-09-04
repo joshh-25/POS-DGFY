@@ -1003,6 +1003,19 @@ export default function POSCheckoutTerminal({
             return line && Number(line.item_id) === Number(entry?.item_id);
         });
         const selectedDiscountItemIds = [...new Set(selectedDiscountItems.map((entry) => Number(entry.item_id)))];
+        const statutoryBeneficiaries = statutory
+            ? [{
+                category: type,
+                name: String(discountDraft.customer_name || '').trim(),
+                id_number: String(discountDraft.id_number || '').trim(),
+                eligible_items: selectedDiscountItems
+            }, ...toArray(discountDraft.beneficiaries).map((beneficiary) => ({
+                category: beneficiary.category || type,
+                name: String(beneficiary.name || '').trim(),
+                id_number: String(beneficiary.id_number || '').trim(),
+                eligible_items: toArray(beneficiary.eligible_items)
+            }))]
+            : [];
         const approvalUserId = Number(discountDraft.approver_user_id);
         if (!Number.isInteger(approvalUserId) || approvalUserId <= 0) {
             toast.error('Select the employee who is authorizing this discount.');
@@ -1025,11 +1038,37 @@ export default function POSCheckoutTerminal({
             toast.error('Customer name is required for this discount.');
             return;
         }
-        if (statutory && (!discountDraft.customer_name.trim() || !discountDraft.id_number.trim())) {
-            toast.error('Customer name and Senior/PWD ID number are required.');
+        if (statutory && statutoryBeneficiaries.some((beneficiary) => !beneficiary.name || !beneficiary.id_number)) {
+            toast.error('Each Senior/PWD beneficiary requires a customer name and ID number.');
             return;
         }
-        if (selectedDiscountItemIds.length === 0) {
+        if (statutory && statutoryBeneficiaries.some((beneficiary) => beneficiary.eligible_items.length === 0)) {
+            toast.error('Select at least one eligible item for each beneficiary.');
+            return;
+        }
+        if (statutory) {
+            const normalizedIds = statutoryBeneficiaries.map((beneficiary) => beneficiary.id_number.toLowerCase());
+            if (new Set(normalizedIds).size !== normalizedIds.length) {
+                toast.error('Each beneficiary ID number must be unique in this order.');
+                return;
+            }
+            const quantitiesByLine = statutoryBeneficiaries.flatMap((beneficiary) => beneficiary.eligible_items).reduce((totals, entry) => {
+                const key = String(entry.line_ref || `item:${entry.item_id}`);
+                totals.set(key, (totals.get(key) || 0) + Number(entry.eligible_quantity || 0));
+                return totals;
+            }, new Map());
+            const overAllocated = [...quantitiesByLine.entries()].some(([key, quantity]) => {
+                const line = key.startsWith('item:')
+                    ? safeCart.find((entry) => Number(entry.item_id) === Number(key.slice(5)))
+                    : cartLinesByRef.get(key);
+                return quantity > Number(line?.quantity || 0);
+            });
+            if (overAllocated) {
+                toast.error('Senior/PWD quantities cannot exceed the quantities in the cart.');
+                return;
+            }
+        }
+        if (!statutory && selectedDiscountItemIds.length === 0) {
             toast.error('Select at least one item for this discount.');
             return;
         }
@@ -1115,7 +1154,8 @@ export default function POSCheckoutTerminal({
                 eligible_item_ids: type === 'promo' ? promoEligibleItemIds : selectedDiscountItemIds,
                 eligible_items: selectedDiscountItems.filter((entry) => (
                     type !== 'promo' || promoEligibleItemIds.includes(Number(entry?.item_id))
-                ))
+                )),
+                beneficiaries: statutory ? statutoryBeneficiaries : undefined
             });
             discountApprovalRef.current = {
                 discount_type: type,

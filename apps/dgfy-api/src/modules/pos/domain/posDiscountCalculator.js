@@ -27,6 +27,50 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
   }
 
   const statutory = STATUTORY_TYPES.has(type);
+  if (statutory && Array.isArray(application.beneficiaries) && application.beneficiaries.length > 0) {
+    const beneficiaryCalculations = application.beneficiaries.map((beneficiary) => ({
+      ...beneficiary,
+      calculation: calculatePosDiscount({
+        lines,
+        application: { ...application, beneficiaries: undefined, type: beneficiary.category || type, lines: beneficiary.lines }
+      })
+    }));
+    const calculatedLines = normalizedLines.map((line) => {
+      const beneficiaryAllocations = beneficiaryCalculations.map((beneficiary, beneficiaryIndex) => {
+        const allocation = beneficiary.calculation.lines.find((entry) => Number(entry.item_id) === Number(line.item_id));
+        return allocation && allocation.eligible_quantity > 0 ? { beneficiary_index: beneficiaryIndex, ...allocation } : null;
+      }).filter(Boolean);
+      const vatRemoved = round4(beneficiaryAllocations.reduce((sum, entry) => sum + entry.vat_removed, 0));
+      const vatExemptAmount = round4(beneficiaryAllocations.reduce((sum, entry) => sum + entry.vat_exempt_amount, 0));
+      const discountAmount = round4(beneficiaryAllocations.reduce((sum, entry) => sum + entry.discount_amount, 0));
+      return {
+        ...line,
+        eligible_quantity: round4(beneficiaryAllocations.reduce((sum, entry) => sum + entry.eligible_quantity, 0)),
+        gross_eligible_amount: round4(beneficiaryAllocations.reduce((sum, entry) => sum + entry.gross_eligible_amount, 0)),
+        vat_removed: vatRemoved,
+        vat_exempt_amount: vatExemptAmount,
+        discount_amount: discountAmount,
+        final_line_amount: round4(line.gross_amount - vatRemoved - discountAmount),
+        beneficiary_allocations: beneficiaryAllocations
+      };
+    });
+    const vatRemoved = round4(calculatedLines.reduce((sum, line) => sum + line.vat_removed, 0));
+    const vatExemptAmount = round4(calculatedLines.reduce((sum, line) => sum + line.vat_exempt_amount, 0));
+    const discountAmount = round4(calculatedLines.reduce((sum, line) => sum + line.discount_amount, 0));
+    return {
+      type,
+      method: 'percentage',
+      rate: 20,
+      subtotal_amount: subtotalAmount,
+      eligible_amount: round4(calculatedLines.reduce((sum, line) => sum + line.gross_eligible_amount, 0)),
+      vat_removed: vatRemoved,
+      vat_exempt_amount: vatExemptAmount,
+      discount_amount: discountAmount,
+      total_amount: round4(subtotalAmount - vatRemoved - discountAmount),
+      lines: calculatedLines,
+      beneficiaries: beneficiaryCalculations
+    };
+  }
   const requestedRate = statutory ? 20 : clamp(application.rate, 0, 100);
   const method = String(application.method || 'percentage').toLowerCase() === 'fixed' ? 'fixed' : 'percentage';
   const selectionEntries = Array.isArray(application.lines) ? application.lines : [];

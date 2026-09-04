@@ -129,4 +129,30 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(workspaceDesktopEmployeeIndex).toBeGreaterThan(workspaceEligibleItemsIndex);
     expect(checkoutViewContent).not.toContain('employeeDiscountIdentityFields');
   });
+
+  it('supports multiple statutory beneficiaries with per-person quantities', () => {
+    expect(discountWorkspaceContent).toContain('Add another Senior/PWD');
+    expect(discountWorkspaceContent).toContain('Additional beneficiary');
+    expect(discountWorkspaceContent).toContain('beneficiary.eligible_items');
+    expect(checkoutContent).toContain('const statutoryBeneficiaries');
+    expect(checkoutContent).toContain('Each beneficiary ID number must be unique in this order.');
+    expect(checkoutContent).toContain('Senior/PWD quantities cannot exceed the quantities in the cart.');
+    expect(checkoutContent).toContain('beneficiaries: statutory ? statutoryBeneficiaries : undefined');
+  });
+
+  it('clears statutory beneficiaries when switching back to Employee', () => {
+    expect(discountWorkspaceContent).toContain("beneficiaries: isStatutoryDiscountType(type)");
+    expect(discountWorkspaceContent).toContain(': []');
+    expect(checkoutContent).toContain('beneficiaries: statutory ? statutoryBeneficiaries : undefined');
+  });
+
+  it('prevents statutory beneficiary quantities from exceeding the unallocated cart quantity', () => {
+    expect(discountWorkspaceContent).toContain('const statutoryAllocatedQuantityByLine');
+    expect(discountWorkspaceContent).toContain('const hasUnallocatedStatutoryQuantity');
+    expect(discountWorkspaceContent).toContain('max={availableQuantity}');
+    expect(discountWorkspaceContent).toContain('disabled={availableQuantity === 0}');
+    expect(discountWorkspaceContent).toContain('disabled={!canAddStatutoryBeneficiary}');
+    expect(discountWorkspaceContent).toContain('All eligible item quantities are already assigned.');
+    expect(discountWorkspaceContent).toContain('Complete the current beneficiary before adding another.');
+  });
 });

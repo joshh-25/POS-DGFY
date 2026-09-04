@@ -107,6 +107,7 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
     const documentLabel = isFiscal ? (isVatRegistered ? 'VAT INVOICE' : 'NON-VAT INVOICE') : '';
     const restaurantServiceChargeAmount = Number(transaction.restaurant_service_charge_amount || 0);
     const governedDiscount = transaction.discount && typeof transaction.discount === 'object' ? transaction.discount : null;
+    const discountBeneficiaries = Array.isArray(governedDiscount?.beneficiaries) ? governedDiscount.beneficiaries : [];
     const showSeniorPwdReceiptFields = isStatutorySeniorPwdDiscount(governedDiscount);
     const businessName = String(businessSettings.pos_business_name || '').trim();
     const registeredName = String(businessSettings.pos_registered_name || '').trim();
@@ -242,6 +243,7 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                     {Number(governedDiscount.vat_exempt_amount || 0) > 0 && <div className="flex justify-between gap-2 text-slate-600"><span>VAT-Exempt Amount</span><span>{money(governedDiscount.vat_exempt_amount)}</span></div>}
                     {governedDiscount.customer_name && <div className="flex justify-between gap-2 text-slate-600"><span>Customer</span><span className="text-right">{governedDiscount.customer_name}</span></div>}
                     {governedDiscount.senior_pwd_id_number && <div className="flex justify-between gap-2 text-slate-600"><span>Senior/PWD ID</span><span className="text-right">{governedDiscount.senior_pwd_id_number}</span></div>}
+                    {discountBeneficiaries.map((beneficiary, index) => <div key={beneficiary.id || `${beneficiary.id_number}-${index}`} className="flex justify-between gap-2 text-slate-600"><span>{String(beneficiary.category || 'Senior/PWD').toUpperCase()} {index + 1}</span><span className="text-right">{beneficiary.customer_name} — {beneficiary.id_number}</span></div>)}
                     {governedDiscount.employee_name && <div className="flex justify-between gap-2 text-slate-600"><span>Employee</span><span className="text-right">{governedDiscount.employee_name}</span></div>}
                     {governedDiscount.employee_id && <div className="flex justify-between gap-2 text-slate-600"><span>Employee ID</span><span className="text-right">{governedDiscount.employee_id}</span></div>}
                     {governedDiscount.promo_code && <div className="flex justify-between gap-2 text-slate-600"><span>{governedDiscount.discount_type === 'voucher' ? 'Voucher Code' : 'Promo Code'}</span><span className="text-right">{governedDiscount.promo_code}</span></div>}
@@ -315,8 +317,15 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                 )}
                 {showSeniorPwdReceiptFields && (
                     <div className="mt-2">
-                        <p>SC/PWD/NAAC/MOV/Solo Parent ID No.: {governedDiscount?.senior_pwd_id_number || '____________'}</p>
-                        <p>Signature: __________________________</p>
+                        {discountBeneficiaries.length > 0 ? discountBeneficiaries.map((beneficiary, index) => (
+                            <div key={beneficiary.id || `${beneficiary.id_number}-${index}`} className="mb-1">
+                                <p>{String(beneficiary.category || 'SC/PWD').toUpperCase()} ID No.: {beneficiary.id_number}</p>
+                                <p>Name/Signature: {beneficiary.customer_name} __________________</p>
+                            </div>
+                        )) : <>
+                            <p>SC/PWD/NAAC/MOV/Solo Parent ID No.: {governedDiscount?.senior_pwd_id_number || '____________'}</p>
+                            <p>Signature: __________________________</p>
+                        </>}
                     </div>
                 )}
             </div>

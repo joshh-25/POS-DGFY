@@ -32,6 +32,25 @@ describe('POS governed discount calculator', () => {
         expect(result.vat_removed).toBe(0);
     });
 
+    test('calculates and reconciles multiple beneficiary allocations', () => {
+        const result = calculatePosDiscount({
+            lines: [{ item_id: 1, quantity: 2, sale_price: 112, vat_type_snapshot: 'vatable', senior_pwd_discount_eligible: true }],
+            application: {
+                type: 'senior',
+                beneficiaries: [
+                    { category: 'senior', lines: [{ item_id: 1, eligible_quantity: 1 }] },
+                    { category: 'senior', lines: [{ item_id: 1, eligible_quantity: 1 }] }
+                ]
+            }
+        });
+
+        expect(result.beneficiaries).toHaveLength(2);
+        expect(result.lines[0].eligible_quantity).toBe(2);
+        expect(result.vat_removed).toBe(24);
+        expect(result.discount_amount).toBe(40);
+        expect(result.total_amount).toBe(160);
+    });
+
     test('treats the MySQL boolean value 1 as Senior/PWD eligible', () => {
         const result = calculatePosDiscount({
             lines: [{ item_id: 1, quantity: 1, sale_price: 112, vat_type_snapshot: 'vatable', senior_pwd_discount_eligible: 1 }],

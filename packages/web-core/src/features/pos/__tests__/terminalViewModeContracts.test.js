@@ -43,6 +43,7 @@ const onlineOrderDetailsModalPath = path.resolve(__dirname, '../components/Onlin
 const onlineOrderReceiptModalPath = path.resolve(__dirname, '../components/OnlineOrderReceiptModal.jsx');
 const posServicePath = path.resolve(__dirname, '../services/posService.js');
 const posCheckoutErrorMessagesPath = path.resolve(__dirname, '../utils/posCheckoutErrorMessages.js');
+const posShiftCloseResolutionPath = path.resolve(__dirname, '../utils/posShiftCloseResolution.js');
 
 describe('POS terminal view-mode contracts', () => {
   let terminalPageContent = '';
@@ -69,6 +70,7 @@ describe('POS terminal view-mode contracts', () => {
   let onlineOrderDetailsModalContent = '';
   let onlineOrderReceiptModalContent = '';
   let posServiceContent = '';
+  let posShiftCloseResolutionContent = '';
 
   beforeAll(() => {
     terminalPageContent = [terminalPagePath, terminalPageDialogLayerPath]
@@ -101,6 +103,7 @@ describe('POS terminal view-mode contracts', () => {
     onlineOrderDetailsModalContent = fs.readFileSync(onlineOrderDetailsModalPath, 'utf8');
     onlineOrderReceiptModalContent = fs.readFileSync(onlineOrderReceiptModalPath, 'utf8');
     posServiceContent = fs.readFileSync(posServicePath, 'utf8');
+    posShiftCloseResolutionContent = fs.readFileSync(posShiftCloseResolutionPath, 'utf8');
   });
 
   it('keeps explicit checkout and operations mode lists in TerminalPage', () => {
@@ -375,6 +378,9 @@ describe('POS terminal view-mode contracts', () => {
 
   it('keeps stale shift recovery master-only, audited, and isolated from generic shift actions', () => {
     expect(terminalPageContent).toContain('canRecoverStaleShifts={terminalUser?.is_master_admin === true}');
+    expect(terminalPageContent).toContain('includeServerParkedSales = true');
+    expect(posShiftCloseResolutionContent).toContain('if (!isOnline || !includeServerParkedSales)');
+    expect(terminalPageContent).toMatch(/getShiftCloseResolutionState\(\{[\s\S]*?shiftId: normalizedShiftId,[\s\S]*?includeServerParkedSales: false[\s\S]*?\}\);/);
     expect(terminalOperationsWorkspaceContent).toContain('Branch Shift Monitor');
     expect(terminalOperationsWorkspaceContent).toContain('Recover Stale Shift');
     expect(terminalOperationsWorkspaceContent).toContain('Force Close Stale Shift');
