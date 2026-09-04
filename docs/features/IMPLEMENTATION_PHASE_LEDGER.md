@@ -20212,16 +20212,25 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   app; opens a `chore(release): bump <apps> to X.(Y+1).0 for candidate <id>` PR into `develop` for
   anything below floor) wired into `.agents/skills/promoter/SKILL.md` and
   `references/promotion-runbook.md`, implementing this PR's `RELEASE_CANDIDATE_POLICY.md` amendment;
-  the staging/prod parity gate (ADR 0081 Decision 8: `X.Y.Z-staging` and the later `X.Y.Z` share the
-  same revision/source SHA); final policy text lands in `docs/testing/release-go-no-go-checklist.md`
-  and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+  the staging/prod parity gate (ADR 0081 Decision 8, revised: `X.Y.Z-staging` and the later `X.Y.Z`
+  share the same *candidate source identity* — the frozen candidate manifest's `source_develop_sha`/
+  `current_staging_sha`, stamped by Phase 277's builder into its own label — not the raw
+  `org.opencontainers.image.revision`/`github.sha` of each environment's own merge commit, which
+  differ by construction across the `to-staging → staging` and `release/* → main` merges even for
+  identical candidate content); final policy text lands in
+  `docs/testing/release-go-no-go-checklist.md` and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
 - Status: planned.
-- Dependencies: Phase 273 / ADR 0081 Decisions 6 and 8; this PR's `RELEASE_CANDIDATE_POLICY.md`
-  amendment (the obligations this phase makes executable). Not yet filed.
+- Dependencies: Phase 273 / ADR 0081 Decisions 6 and 8; Phase 277 (the builder-side label this
+  phase's parity check reads); this PR's `RELEASE_CANDIDATE_POLICY.md` amendment (the obligations
+  this phase makes executable). Not yet filed.
 - Acceptance and validation evidence: not yet started. Expected at implementation: a real
   `to-staging/<candidate_id>` promotion exercising the floor check against at least one app below
-  floor, and a `release/<candidate_id>-rN` → `main` promotion confirming the parity gate passes on
-  an unchanged app and correctly flags a #1007-expedited or hotfix exception per Decision 8.
+  floor; a real `release/<candidate_id>-rN` → `main` promotion on the *normal* three-stage path
+  confirming the parity gate passes on an unchanged app by comparing the candidate-source-identity
+  label (not `org.opencontainers.image.revision`) — the case RF-1 on PR #1561 found the original
+  revision-label wording would have failed even on the normal path; and a second case confirming the
+  gate correctly flags a #1007-expedited or hotfix promotion (no matching staging predecessor under
+  that same identity) as expected evidence, not a defect, per Decision 8.
 - Completion date: not started (planned).
 - Contracts/files (expected): `.agents/skills/promoter/SKILL.md`,
   `.agents/skills/promoter/references/promotion-runbook.md`,

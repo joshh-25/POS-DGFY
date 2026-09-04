@@ -122,9 +122,25 @@ own precedent check, `scripts/check-pos-receipt-version-bump.js`.
    different `org.opencontainers.image.revision`; pushing the same revision again (an idempotent
    re-dispatch) is allowed. This is the one system invariant this ADR asks to be a hard constraint;
    every other clause is `[default]`.
-8. `[default]` Promotion parity gate: for a given app, `X.Y.Z-staging` and the later `X.Y.Z` must
-   share the same `org.opencontainers.image.revision` label (frontends) or the same source commit
-   SHA (backends). A production version published with no matching staging predecessor is expected
+8. `[default]` Promotion parity gate: for a given app, the image published as `X.Y.Z-staging` and
+   the later image published as bare `X.Y.Z` must share the same **candidate source identity** — not
+   `org.opencontainers.image.revision` as-is, which the deploy path stamps from the triggering
+   merge commit's `github.sha` (Decision 1/7) and which therefore differs between the
+   `to-staging/<candidate_id>` → `staging` merge commit and the `release/<candidate_id>-rN` → `main`
+   merge commit even when both carry byte-identical candidate content — comparing raw
+   `github.sha`-derived revisions this way would fail the *normal* three-stage promotion path this
+   gate exists to validate, not just the #1007/hotfix exceptions below. The candidate source
+   identity is instead the frozen promotion candidate's own tracked SHA
+   (`scripts/check-promotion-candidate.js`'s manifest: `source_develop_sha` for a candidate with no
+   staging repairs, or the latest `staging_repair` revision's `sha` — equivalently,
+   `current_staging_sha` — once repairs have landed; `release/<candidate_id>-rN` is itself asserted
+   cut from exactly `current_staging_sha`, so this identity is stable across both merges by
+   construction). Phase 277's builder stamps this identity into a distinct label at build time
+   (naming and mechanics are that phase's job, not this ADR's — `org.opencontainers.image.revision`
+   keeps its existing, unchanged meaning from Decision 1/7, the actual build-commit SHA); Phase 279's
+   parity check compares that label, not `org.opencontainers.image.revision`, between the two
+   images. Applies uniformly to all five apps, matching Decision 1 — no frontend/backend split. A
+   production version published with no matching staging predecessor under this identity is expected
    evidence of a #1007 expedited promotion or a main hotfix, not a defect — the gate documents the
    fact, it does not forbid it.
 9. `[default]` The PR-time version-bump check (issue #1560; base-aware — it applies the level rule

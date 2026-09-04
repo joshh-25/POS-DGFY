@@ -851,6 +851,8 @@ root cause was found and fixed, and #1124 became the current epic this evidence 
 The redirect was correctly implemented but recorded nowhere outside an inline YAML comment; this
 entry, plus a comment on #1063 itself, is the discoverability fix.
 
+PR: `claude/quality-test-gates-hljpv2`. Refs #1124, #1550, #1551, #1552, #1157, #1469. Closes #1553.
+
 ### 2026-09-04: Per-app container SemVer — versioning obligations layered onto every leg of this
 flow (#1559, ADR 0081)
 
@@ -906,5 +908,3 @@ Decision 6 (also `[default]`) — no `[binding]` clause of this policy or of ADR
 this entry.
 
 PR: (this PR). Refs #1559, #1548, #1560. Closes #1559.
-
-PR: `claude/quality-test-gates-hljpv2`. Refs #1124, #1550, #1551, #1552, #1157, #1469. Closes #1553.
