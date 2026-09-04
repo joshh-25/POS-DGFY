@@ -20450,7 +20450,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `apps/dgfy-storefront/src/__tests__/discoveryFlow.integration.test.jsx`, issue #1333 (epic #1321).
 - Next eligible phase: 283.
 
-## Phase 283 - Version-bump check: flip advisory to blocking (epic #1548 Wave 2, not yet filed)
+## Phase 283 - Version-bump check: flip advisory to blocking (#1592, epic #1548 Wave 2)
 
 - Initiative/release: Container semantic versioning epic (#1548) / current release process.
 - **Numbering note (resolved 2026-09-04, merge conflict repair):** this entry was originally written
@@ -20469,26 +20469,39 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   run `node scripts/check-version-bump-flip-readiness.js` (Phase 276) and confirmed the ADR 0081
   Decision 9 evidence threshold is actually met. Explicitly **not** part of #1569's own scope (that
   issue's own "Explicitly out of scope" section) and not part of Phase 276 as re-scoped above.
-- Status: planned. Blocked on Phase 276 merging and then on real evidence actually accumulating —
-  the live dry run backing Phase 276's own acceptance evidence reports 1 of 10 qualifying PRs and no
-  promotion cycle as of this entry, nowhere near the threshold.
+- Status: **completed** (2026-09-05, #1592).
 - Dependencies: Phase 276 (#1569, the readiness mechanism) merged; the evidence threshold itself
-  actually being met, confirmed by re-running `scripts/check-version-bump-flip-readiness.js`. Not
-  yet filed as a GitHub issue — matches Phase 275/276's own original deferred-decomposition posture
-  (`docs/process/ISSUE-TAXONOMY.md`), graduated when epic #1548's Wave 2 is actually scheduled for
-  this piece.
-- Acceptance and validation evidence: not yet started. Expected at implementation: the readiness
-  script's own `READY` output cited as evidence in the flip PR's body, plus confirmation that
-  `check:app-versions` genuinely blocks a PR whose version bump is missing/insufficient after the
-  flip (a real or deliberately-crafted PR exercising the now-blocking check).
-- Completion date: not started (planned).
-- Contracts/files (expected): `scripts/lib/version-bump-gate-toggle.js` (the one-line flip) — no
-  other file needs to change, per that module's and `shared-changed-paths.yml`/`pr-checks.js`'s own
-  single-source-of-truth design (Phase 276).
-- Next eligible phase: 285 (updated 2026-09-04 — 284 was vacated: this entry originally pointed to
-  284, but the Phase 284/285 collision between PR #1578 and PR #1579, described in Phase 285's own
-  "Numbering note" below, resolved with 284 renumbered away and 285 landing first; see Phase 287's
-  own numbering note for the rest of the chain).
+  actually being met, confirmed by re-running `scripts/check-version-bump-flip-readiness.js` —
+  both satisfied. Filed as #1592 once epic #1548's Wave 2 was scheduled for this piece, per Phase
+  275/276's original deferred-decomposition posture (`docs/process/ISSUE-TAXONOMY.md`).
+- Acceptance and validation evidence: re-confirmed live at implementation time (2026-09-05, not
+  reused from #1592's own filing-time snapshot):
+  ```
+  PR-count evidence: 10 of 10 qualifying develop-base PRs.
+  Promotion-cycle evidence: none yet
+  [check-version-bump-flip-readiness] READY -- the ADR 0081 Decision 9 evidence threshold is met.
+  ```
+  10 counted PRs: 7 `pass` (#1591, #1583, #1582, #1581, #1580, #1579, #1578) + 3 `warn` (#1586,
+  #1567, #1566), since PR #1562's merge commit `5eb17c3426251990d364544e3ad5fbb1a839a35e`. Both
+  consuming surfaces confirmed to actually block, not just documented as blocking: (1)
+  `scripts/pr-checks.js` — found and fixed a genuine bug where the check's result was hardcoded to
+  `'pass'`/`'warn'` regardless of the `blocking` argument, so `computeOverallResult()` could never
+  reach `FAIL` for it even with `BLOCKING = true`; fixed via `resolveAppVersionsCheckResult()`,
+  covered by new tests in `scripts/pr-checks.test.js` asserting `FAIL` against the real toggle
+  module; (2) `.github/workflows/shared-changed-paths.yml` — verified via a throwaway branch/PR
+  carrying the flip plus a deliberately unbumped `apps/dgfy-api` change, confirmed the "Enforce
+  per-app version bump on source changes" step actually failed the job, then closed without
+  merging. See PR body (this PR) for the run link.
+- Completion date: 2026-09-05.
+- Contracts/files: `scripts/lib/version-bump-gate-toggle.js` (the one-line flip);
+  `scripts/pr-checks.js` + `scripts/pr-checks.test.js` (the result-severity fix and its regression
+  coverage, found necessary by this phase's own validation step, not anticipated by Phase 276's
+  "no other file needs to change" claim); `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, `.agents/skills/pr-reviewer/SKILL.md` (documentation
+  consequences).
+- Next eligible phase: this entry's own prior pointer (285) is long superseded — the chain moved on
+  through Phases 285-292 while this phase sat planned; Phase 292's own "Next eligible phase" line
+  (293) is the current authoritative tip, not restated here as a fresh claim from this entry.
 
 ## Phase 285 - Wave C/C1: storefront catalog API projection of secondary categories (#1318)
 
