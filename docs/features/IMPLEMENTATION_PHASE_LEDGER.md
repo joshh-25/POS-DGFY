@@ -20152,22 +20152,48 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `.agents/skills/implement/SKILL.md`.
 - Next eligible phase: 276 — flip the version-bump check from advisory to blocking.
 
-## Phase 276 - Version-bump check: advisory to blocking (epic #1548 Wave 2, not yet filed)
+## Phase 276 - Version-bump check flip-readiness mechanism, shipped advisory (#1569, epic #1548 Wave 2)
 
 - Initiative/release: Container semantic versioning epic (#1548) / current release process.
-- Objective and scope: flip Phase 274's PR-time version-bump check from advisory to blocking, once
-  enough clean-run evidence exists (epic #1548's own bar: ≥10 PRs or one full promotion clean) —
-  matching this repo's established advisory-to-blocking rollout pattern (Phase 272, #1550/#1551).
-- Status: planned.
-- Dependencies: Phase 274 (#1560) merged and running advisory for the evidence window; Phase 273 /
-  ADR 0081 Decision 9. Not yet filed.
-- Acceptance and validation evidence: not yet started. Expected at implementation: the same clean-
-  run evidence bar this repo already used for the 2026-09-04 `promotion-quality-gate.yml` blocking
-  flip (RELEASE_CANDIDATE_POLICY.md's matching entry).
-- Completion date: not started (planned).
-- Contracts/files (expected): `scripts/check-app-version-bump.js`,
-  `scripts/check-pr-quality-workflow.js` or equivalent blocking-step registration.
-- Next eligible phase: 277 — builders stamp version tags and labels.
+- Objective and scope: **scope split from this phase's original framing, recorded here rather than
+  silently reinterpreted** — PR #1572 review (pr-reviewer, RF-3) found this entry still describing
+  the flip itself while what actually shipped is the flip-readiness *mechanism*. Confirmed by Pat on
+  #1569 (2026-09-04): "build the gate now, leave the flip itself disabled until the threshold is
+  actually met." This phase now covers exactly that: `scripts/check-version-bump-flip-readiness.js`
+  measures ADR 0081 Decision 9's clean-run evidence bar (≥10 merged `develop`-base PRs since Phase
+  274's (#1560/PR #1562) merge commit with `check:app-versions` recorded pass/warn, or one full
+  `develop → staging → main` promotion cycle green throughout) directly from GitHub's own check-run
+  + job-log history via `gh api` — no local counter file. `scripts/lib/version-bump-gate-
+  toggle.js` is the single repo-level toggle both `shared-changed-paths.yml` and `pr-checks.js` read
+  at runtime, **shipped set to advisory and not flipped**. The actual advisory-to-blocking flip —
+  this phase's original full scope — is split out as its own phase, **Phase 281** below, so its
+  numbering doesn't collide with Phase 277-280 (already filed at the time of this split).
+- Status: in_progress. Mechanism implemented, unit-tested, and confirmed against real GitHub
+  history; PR open, not yet merged (see Acceptance and validation evidence).
+- Dependencies: Phase 274 (#1560/PR #1562) merged and running advisory for the evidence window;
+  Phase 273 / ADR 0081 Decision 9. Filed as #1569.
+- Acceptance and validation evidence: `node --test scripts/check-version-bump-flip-readiness.test.js`
+  → 46/46 pass, covering `classifyLogOutcome` against real log lines fetched live from two different
+  real check runs (PR #1562 and, after PR #1572 review RF-1/RF-2's fixes, PR #1567/#1570's actual
+  head-SHA check runs), candidate-id extraction, ancestry filtering keyed on the merge SHA, the
+  check-run/log lookup keyed on the head SHA (RF-2's own regression coverage — a fixture with
+  distinct merge-SHA/head-SHA values asserts which one is actually passed), a failed `gh pr list`
+  query surfacing as a thrown error rather than a silent empty result (RF-1's own regression
+  coverage), and all four evidence-path cases (met via PR count, met via one promotion cycle, not
+  met via either, a crashed check run excluded from the count). `node
+  scripts/check-version-bump-flip-readiness.js` (live dry run against this repo's real `develop`
+  history, re-run 2026-09-04 after the RF-1/RF-2 fix) → correctly reports real, non-fabricated
+  evidence (1 of 10 qualifying PRs as of the fix — `develop` gained two more merges during this PR's
+  own review cycle — and no promotion cycle), still NOT READY; confirmed `check:app-versions` stays
+  advisory in both `shared-changed-paths.yml` and `pr-checks.js` after this phase's changes.
+- Completion date: not yet — PR #1572 open against `develop`, unmerged as of this entry.
+- Contracts/files: `scripts/check-version-bump-flip-readiness.js`,
+  `scripts/check-version-bump-flip-readiness.test.js`, `scripts/lib/version-bump-gate-toggle.js`,
+  `.github/workflows/shared-changed-paths.yml`, `scripts/pr-checks.js`, `package.json`,
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+- Next eligible phase: 277 — builders stamp version tags and labels (already filed, unaffected by
+  this split). The version-bump check's actual advisory-to-blocking flip is Phase 281, appended
+  after Phase 280 per this ledger's continuous-numbering rule rather than inserted here.
 
 ## Phase 277 - Builders stamp `:X.Y.Z[-channel]` tags, OCI version label, `APP_VERSION` build-arg, and the tag-immutability guard (epic #1548 Wave 3, not yet filed)
 
@@ -20251,5 +20277,36 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   not re-derived here.
 - Completion date: not started (planned).
 - Contracts/files (expected): whatever #1278 itself names; not re-derived here.
-- Next eligible phase: none recorded within epic #1548 — Phase 280 is epic #1548's own final planned
-  wave; further platform-versioning work beyond it is new scope, not part of this sequence.
+- Next eligible phase: none recorded within epic #1548's own planned wave sequence — Phase 280 was
+  epic #1548's final planned wave at filing time. Phase 281 below is not a new wave of that
+  sequence; it's the flip half of Phase 276's original scope, appended here (continuous numbering)
+  rather than renumbered into Phase 276's own slot once that phase split (#1569, PR #1572 review
+  RF-3).
+
+## Phase 281 - Version-bump check: flip advisory to blocking (epic #1548 Wave 2, not yet filed)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: the flip half of what Phase 276 originally scoped, split out by PR #1572
+  review (pr-reviewer, RF-3) once Phase 276 itself narrowed to just the readiness *mechanism* (see
+  that phase's entry above for the full split rationale). This phase is the one-line edit —
+  `scripts/lib/version-bump-gate-toggle.js`'s `BLOCKING` constant, `false → true` — once a human has
+  run `node scripts/check-version-bump-flip-readiness.js` (Phase 276) and confirmed the ADR 0081
+  Decision 9 evidence threshold is actually met. Explicitly **not** part of #1569's own scope (that
+  issue's own "Explicitly out of scope" section) and not part of Phase 276 as re-scoped above.
+- Status: planned. Blocked on Phase 276 merging and then on real evidence actually accumulating —
+  the live dry run backing Phase 276's own acceptance evidence reports 1 of 10 qualifying PRs and no
+  promotion cycle as of this entry, nowhere near the threshold.
+- Dependencies: Phase 276 (#1569, the readiness mechanism) merged; the evidence threshold itself
+  actually being met, confirmed by re-running `scripts/check-version-bump-flip-readiness.js`. Not
+  yet filed as a GitHub issue — matches Phase 275/276's own original deferred-decomposition posture
+  (`docs/process/ISSUE-TAXONOMY.md`), graduated when epic #1548's Wave 2 is actually scheduled for
+  this piece.
+- Acceptance and validation evidence: not yet started. Expected at implementation: the readiness
+  script's own `READY` output cited as evidence in the flip PR's body, plus confirmation that
+  `check:app-versions` genuinely blocks a PR whose version bump is missing/insufficient after the
+  flip (a real or deliberately-crafted PR exercising the now-blocking check).
+- Completion date: not started (planned).
+- Contracts/files (expected): `scripts/lib/version-bump-gate-toggle.js` (the one-line flip) — no
+  other file needs to change, per that module's and `shared-changed-paths.yml`/`pr-checks.js`'s own
+  single-source-of-truth design (Phase 276).
+- Next eligible phase: 282.
