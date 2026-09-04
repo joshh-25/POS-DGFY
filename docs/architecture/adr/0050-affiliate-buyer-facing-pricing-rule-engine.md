@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-29
-last_reviewed: 2026-07-29
+last_reviewed: 2026-08-17
 review_by: 2027-01-29
 applies_to: affiliates_program, storefront, commerce_payments, backend
 topic: affiliate_buyer_facing_pricing_rule_engine
@@ -12,7 +12,7 @@ topic: affiliate_buyer_facing_pricing_rule_engine
 # ADR 0050: Affiliate Buyer-Facing Pricing Rule Engine (Phase 1)
 
 ## Status
-Accepted (2026-07-29)
+Accepted (2026-07-29); amended 2026-08-17 (see Amendments)
 
 ## Context
 [ADR 0036](0036-affiliates-program-commission-and-cashout.md) shipped a commission ledger,
@@ -96,7 +96,8 @@ linked, not restated.
    not close. Left for a future ADR before reseller-margin sees production volume.
 5. **Promo codes stack with affiliate discounts.** Commission computes on the base price (item 3),
    so affiliate earnings are unaffected either way; the exposure is entirely merchant margin, surfaced
-   as a warning in the owner config UI rather than blocked.
+   as a warning in the owner config UI rather than blocked. *Amended 2026-08-17 — see Amendments
+   below for how a voucher composes, and for the one case that is refused rather than warned.*
 
 ## Hardening Contract Status
 Checkout is named explicitly in `ARCHITECTURE_GOVERNANCE.md`'s Implementation Hardening Contract.
@@ -115,6 +116,28 @@ Status of the 10 items for this Phase 1 change:
   it is recorded in
   [the scope doc's environment-readiness section](../../proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md)
   as the explicit remaining work before production.
+
+## Amendments
+
+### 2026-08-17 — Voucher composition and precedence against affiliate pricing
+
+- Clause amended: **Consequences item 5** (untagged, and outside the `## Decision` list — so
+  `default` tier per ADR 0039). Note this is *not* Decision 5, whose fail-closed/fail-open
+  asymmetry is `binding` tier and is inherited unchanged by
+  [ADR 0066](0066-voucher-sale-time-price-resolution.md) Decision 3.
+- Change: an affiliate selling-price rule resolves the **line unit price**; a voucher resolves an
+  **order-level discount** against the resulting subtotal. They compose sequentially, in that
+  order, and never contend for `pos_transaction_lines.price_override_reason`. Item 5's "stack, with
+  a warning" therefore continues to hold for percent-off and amount-off vouchers. **The one
+  exception, refused rather than warned:** a `fixed_price` voucher under an active affiliate
+  attribution fails checkout closed with `VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT`.
+- Reason: a fixed-price voucher and an affiliate price rule both claim the right to set the final
+  unit price. Warning and proceeding would silently make the merchant fund the affiliate's markup
+  with no audit trail — a different class of problem from the merchant-margin exposure item 5
+  contemplates, which is a knowing owner decision about a *computed* discount.
+- Also: Decision 1 keeps affiliate pricing on Storefront only. Vouchers reach POS in their own
+  phase, so the two features do not meet on POS at all under this ADR.
+- PR: #455 (Phase 101). Tracked as #566.
 
 ## References
 1. [ADR 0036](0036-affiliates-program-commission-and-cashout.md) — commission ledger, attribution,

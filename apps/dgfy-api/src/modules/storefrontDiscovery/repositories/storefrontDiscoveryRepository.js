@@ -638,6 +638,7 @@ const toPlainEntry = (row) => {
     supports_pickup: plain.supports_pickup !== false,
     supports_dine_in: plain.supports_dine_in !== false,
     store_delivery_fee: toNumber(plain.store_delivery_fee, 0),
+    delivery_fee_mode: plain.delivery_fee_mode || 'fixed',
     catalog_count: toNumber(plain.catalog_count, 0),
     storefront_cover_image_url: coverImageUrl,
     // Issue #282, Phase D: exposes the AVIF/WebP/srcSet variants that
@@ -672,6 +673,13 @@ const toPlainEntry = (row) => {
         .filter(Boolean),
     storefront_promo: parseJsonObject(plain.storefront_promo) || null,
     storefront_promos: parsePublicCommercialPromos(parseJsonArray(plain.storefront_promos)),
+    // #713 fix: this final row->response mapping is an explicit field allowlist, not a spread --
+    // storefront_vouchers was computed correctly all the way through the index sync (and, after the
+    // 2026-08-20 fix, persisted correctly too) but was never copied into the response here, so it
+    // never reached the frontend regardless of what was in the DB. No further normalization needed
+    // (unlike storefront_promos' parsePublicCommercialPromos) -- buildPublicStorefrontVouchers
+    // already shapes each entry into the exact fields the storefront needs before it's stored.
+    storefront_vouchers: parseJsonArray(plain.storefront_vouchers),
     storefront_ui_v2_enabled: parseBoolean(plain.storefront_ui_v2_enabled, false),
     storefront_categories: normalizeStringList(plain.storefront_categories, 12, 60),
     storefront_gallery_images: normalizeStorefrontGalleryImages(plain.storefront_gallery_images),

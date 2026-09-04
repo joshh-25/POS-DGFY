@@ -1,0 +1,539 @@
+---
+status: amended
+authority_level: authoritative
+owner: architecture
+date: 2026-08-17
+last_reviewed: 2026-09-08
+review_by: 2027-02-17
+applies_to: vouchers, storefront, pos, commerce_payments, backend
+topic: voucher_sale_time_price_resolution
+---
+
+# ADR 0066: Voucher Sale-Time Price Resolution
+
+> Strictness tiers per [ADR 0039](0039-adr-lifecycle-strictness-tiers-and-amendment-path.md):
+> Clauses below are tagged `binding`, `default`, or `snapshot`. `binding` is a system invariant
+> and needs a superseding ADR to change; `default` is amendable in place; `snapshot` records a
+> point-in-time fact. Untagged clauses are `default`.
+
+## Context
+
+[ADR 0033](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) governs commercial promos,
+stored as JSON in `system_settings.storefront_promos` on the explicit premise that "no additional
+database table is required." Issue #454 settles that a promo code is **one kind of voucher**, and
+#455 replaces that JSON with four real tenant tables carrying a redemption ledger.
+
+That creates a decision no existing ADR covers: a voucher can pin a **final unit price**
+(`benefit_class = 'fixed_price'`, the retail-B2B driver in #584), and
+[ADR 0029](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) Decision 2 is `binding`
+that **Catalog owns base sale price**. A sale-time price layer resolved above Catalog's price needs
+its own ADR — the same move [ADR 0050](0050-affiliate-buyer-facing-pricing-rule-engine.md) made for
+affiliate pricing.
+
+This ADR records the decision, not the specification. Schema columns, phasing, and the migration
+plan live in #455 and the implementation phase ledger, and are linked rather than restated.
+
+## Decision
+
+1. **A voucher never mutates a persisted unit price.** It resolves as an order-level discount with
+   per-line allocations, written to `pos_transaction_discounts` and
+   `pos_transaction_discount_lines`. `Item.default_sale_price` and
+   `pos_transaction_lines.sale_price` are never written by a voucher on either channel. `[binding]`
+
+2. **Money inside the voucher domain is integer centavos; rates are basis points.** Every
+   `voucher*` column and every function in `modules/vouchers/domain/` uses integer centavos. Every
+   `pos_transaction_*` money column stays peso `DECIMAL(14,4)` and is unchanged by this ADR.
+   Conversion happens at exactly one boundary per channel — the discount slot — so reconciliation
+   between a fiscal row and its campaign-analytics row is a
+   `Math.round(peso * 100) === centavos` assertion. `[binding]`
+
+3. **Checkout fails closed; catalog display fails open.** An unresolvable, negative, or
+   limit-exhausted voucher blocks checkout with a 422 and a `reason_code`. The same condition at
+   catalog display falls back to the plain catalog price and logs a warning. This inherits ADR 0050
+   Decision 5's asymmetry verbatim rather than inventing a second rule. `[binding]`
+
+4. **`voucher_redemptions` is authoritative; `vouchers.redeemed_*` are a derived cache.** The
+   counters exist to make the atomic reservation a single conditional `UPDATE`; they are never the
+   source of truth for reporting, and a periodic reconciler checks them against the ledger. Where a
+   voucher record and a `pos_transaction_discounts` row disagree on money, **POS wins** — ADR 0033
+   Decision 10 makes it authoritative for receipts, and this ADR does not weaken that. `[binding]`
+
+5. **`fixed_price` is stored as intent and rendered as a derived delta.** The column is
+   `fixed_unit_price_centavos`, never a stored discount amount: `Item.default_sale_price` moves with
+   Dispatch Order dispatches, so a stored delta would silently turn "sells at ₱8" into "sells at
+   ₱11" with no edit and no audit trail. At resolution the benefit becomes
+   `Σ qty × max(0, base_unit − fixed_unit)`, clamped at zero when the base has fallen below the
+   pinned price. `[default]`
+
+6. **The resolution seam is the order-level discount slot, not the line-price seam.** Affiliate
+   pricing owns the line unit price via `prepareCheckoutLines`; a voucher resolves afterwards
+   against the resulting subtotal, in the same slot the promo application occupies today. The two
+   compose sequentially and never contend for `pos_transaction_lines.price_override_reason`, which
+   is a single scalar with one owner. A consequence worth stating: `posDiscountCalculator.js`
+   requires no change for any benefit class. `[default]`
+
+7. **A fixed-price voucher is refused under an active affiliate attribution**
+   (`VOUCHER_FIXED_PRICE_AFFILIATE_CONFLICT`). Two parties both claiming the right to set the final
+   unit price is undefined, and resolving it silently would make the merchant fund the affiliate's
+   markup with no audit trail. `[default]`
+
+8. **POS carries one governed discount per transaction, and a voucher occupies that slot.**
+   `payload.governed_discount` is a single object with a single `type`, and
+   `pos_transaction_discounts` enforces `UNIQUE (transaction_id)`. A voucher applied to a
+   transaction already carrying a statutory, employee, or promo discount is rejected with
+   `VOUCHER_DISCOUNT_SLOT_OCCUPIED`. **This is deliberately wider than #454 decision 10**, which
+   blocks only fixed-price against statutory: the existing single-slot contract blocks every benefit
+   class, including percent-off. Recorded as an inherited constraint rather than a new policy;
+   multi-discount POS is a separate epic. Revisit: #605. `[default]`
+   Scoped to the item axis by the 2026-09-02 amendment below.
+
+9. **Eligibility conditions are first-class indexable columns, never JSON.** A condition that must
+   appear in a `WHERE` clause — redemption count, peso budget, unit quantity, date window,
+   time-of-day, weekday, channel — cannot live in a JSON blob and stay indexable, validatable, and
+   auditable. `vouchers.conditions` is reserved and **always empty** in v1. A condition-plugin
+   registry is built only when a genuinely unanticipated condition arrives; per-customer limits
+   (#606) would be a column, not a registry entry, and do not qualify as the trigger. This is the
+   direct lesson of #459, where a JSON-blob promo config silently dropped three eligibility fields.
+   `[default]`
+
+10. **Eligibility is `NOT NULL` with explicit defaults, encoded as bitmasks.** Channels,
+    fulfillment methods, order timings, and weekday are `TINYINT UNSIGNED` masks
+    (`channels_mask`, `fulfillment_methods_mask`, `order_timings_mask`, `weekday_mask`) — not
+    MySQL `SET`, which #455 originally specified. `DataTypes.SET` does not exist in Sequelize 6.x,
+    and `sequelize.sync()` over these models is how new tenants are provisioned, so a `SET` column
+    is not expressible where it has to be. The invariant that matters is unchanged and is what this
+    clause binds: none of them may be nullable or default-absent, so "eligible everywhere" cannot
+    be produced by omission. That is the structural fix for the #459 class, as distinct from
+    #459's own repair of the promo schema. `[default]`
+
+11. **Folder scope includes descendants, resolved at redemption and snapshotted.** `ItemFolder` is a
+    tree and folders move, so the resolved item-id set is written into `voucher_redemption_lines`
+    with both `base_unit_price_centavos` and `voucher_unit_price_centavos`. A later folder
+    reshuffle cannot retroactively change what a completed redemption meant. `[default]`
+
+## Consequences
+
+1. **VAT moves with the voucher discount**, exactly as it does for a promo today — `vatableSales`
+   derives from the discounted `line_subtotal`. Correct per BIR, and unchanged in mechanism from
+   ADR 0033; noted so it is not rediscovered as a surprise.
+2. **`voucher_redemption_lines` partially duplicates `pos_transaction_discount_lines`.** Both are
+   written. The POS pair is the fiscal record (ADR 0033 Decision 10); the voucher pair is the
+   campaign-analytics record, and it carries the base-price snapshot the POS pair does not.
+3. **Storefront has no refund reversal path.** `buildCancelStoreOrderUseCase` keys on
+   `fulfillment_status` and never sets `status: 'voided'`; there is no storefront refund flow at
+   all. A refunded-but-not-cancelled storefront order will not reverse its redemption and
+   permanently burns a slot. A real gap this ADR does not close.
+4. **Migrated promos lose channel eligibility.** Per #459 those three fields were never actually
+   persisted, so they cannot be carried forward faithfully; every migrated voucher gets
+   `channels = 'storefront'` only. Guessing the merchant's intent would be worse than narrowing it.
+5. **Per-recipient code issuance is not built.** v1 is shared codes (#454 decision 4). The schema is
+   hedged — `voucher_kind` exists and `code` is its own column — so a `voucher_codes` child table
+   can be added later without migrating the campaign table.
+
+## Validation
+
+1. Idempotent replay of a checkout key inserts no second ledger row and does not move the counters.
+2. Each of `max_redemptions`, `max_total_discount_centavos`, and `max_benefit_quantity` rejects at
+   its boundary with a 422 rather than capping at the remainder.
+3. A voided POS transaction and a cancelled storefront order each write an `entry_type: 'reversal'`
+   row inside the same transaction as the lifecycle change.
+4. `npm run check:tenant-schema-coverage` passes with the four new tables registered.
+5. A fixed-price voucher whose base price has dropped below the pinned price yields a zero discount,
+   never a negative one.
+
+## Amendments
+
+### 2026-08-18 — Below-cost enforcement, correcting an unimplemented inheritance claim
+
+- Clause added: a new Decision, below, recording the below-cost floor. `[default]` tier — no
+  existing binding invariant changes.
+- Change: `vouchers.allow_below_cost` (column present since #455/Phase 101, along with a merchant
+  UI toggle) was write-only — validated, persisted, and displayed, but read by no decision path.
+  This amendment makes it real:
+  1. **The below-cost comparison is benefit-class-agnostic.** It compares each eligible, discounted
+     line's resolved `voucherUnitPriceCentavos` (the same value `lineAllocations` already exposes)
+     against that line's `cost_per_unit` — not the raw `fixed_unit_price_centavos` alone. A deep
+     `percent_off` or `amount_off` voucher can undercut cost exactly as easily as a mispriced
+     `fixed_price` line; a check scoped to `fixed_price` would miss those.
+  2. **A line with no recorded cost (`Item.cost_per_unit IS NULL`) is skipped, never treated as a
+     violation** — matching the affiliate guard's own null-cost skip
+     (`affiliatePricingPolicy.js`/`storeUseCases.js`).
+  3. **Redemption fails closed; catalog display fails open per item** — the same asymmetry
+     Decision 3 already establishes, applied to this new condition rather than a new rule.
+  4. **Cost is `Item.cost_per_unit` alone, not `item_cost_breakdown`'s labor/overhead/packaging
+     components.** Matches the affiliate floor's own definition of cost; using a different
+     definition for the two guards would make them disagree on the same item.
+  5. **No config-time (save-time) validation.** `allow_below_cost` lives on the voucher, and a
+     pricelist (if attached) is authored before it is attached to a voucher — so there is nothing
+     concrete to validate a pinned price against at config time in the general case. Enforced at
+     resolution only; the authoring UI may warn.
+- Reason: the flag was live and toggleable in the merchant UI with zero backing enforcement — a
+  merchant could already set a price below cost and nothing stopped them. Filed as #697,
+  independent of any specific benefit-class feature, because the gap predates and is orthogonal to
+  the per-item pricelist work in the same phase.
+- **Correction, not just an addition:** the References section below (item 3, until this
+  amendment) stated this ADR "inherits ADR 0050 Decision 6's resolution-time cost guard" as an
+  already-settled fact. No decision in this ADR ever implemented one. That line is corrected below
+  to point at this amendment instead of asserting an inheritance that was never built.
+- PR: #697 follow-up to Phase 101-109 (#455 lineage).
+
+### 2026-08-18 — Per-item pricelist for `fixed_price` (#696)
+
+- Clause amended: **Decision 5** (`[default]` tier). Previously read as a single scalar
+  (`fixed_unit_price_centavos`) with no alternative. Amended to add a second, mutually-exclusive
+  way to express a fixed price: a `pricelists`/`pricelist_items` pair carrying N prices for N
+  items, referenced from `vouchers.pricelist_id`.
+- Change: `#584`'s own wording — *"per-item, not per-order"* — always meant *scoped to items* with
+  one shared price, never a price *per item*. The one-price-per-voucher shape was an unstated
+  assumption baked into a column's location (`vouchers`, not a child table), not a decision this
+  ADR ever bound. This amendment gives it a second column to point at, still under Decision 5's
+  original framing (intent, not a stored delta) and still resolved the same way at redemption time
+  — `Σ qty × max(0, base_unit − price(item))`, with `price(item)` now either the scalar or a
+  per-item lookup.
+  1. **A `fixed_price` voucher carries EITHER `fixed_unit_price_centavos` OR `pricelist_id`, never
+     both.** Enforced in `voucherUseCases.js`'s `applyBenefitConfig`, the same choke point already
+     re-run on create, update, and activation for the base benefit-column validation.
+  2. **When a pricelist is attached, it IS the scope — `voucher_scopes` is not consulted.**
+     Avoids two sources of truth for "which items does this voucher cover." A voucher may attach
+     only an `active` pricelist (checked at attach time, mirroring how `assertScopeRefsExist`
+     validates scope references at attach time and not continuously).
+  3. **No ledger change.** `voucher_redemption_lines` already snapshots both
+     `base_unit_price_centavos` and `voucher_unit_price_centavos` per line — precisely because
+     `Item.default_sale_price` moves, the same reasoning Decision 5 already gives for the scalar
+     case. A per-item price needs no new column to stay auditable after the fact.
+  4. **`Decision 1` `[binding]` is untouched.** Neither the scalar nor a pricelist row is ever
+     written back to `Item.default_sale_price` or `pos_transaction_lines.sale_price` — a pricelist
+     is exactly as inert with respect to Catalog's own price as the scalar always was.
+  5. **`Decision 7`'s affiliate refusal is inherited unchanged.** A pricelist-backed voucher is
+     refused under active affiliate attribution the same way a scalar-priced one already is —
+     nothing about having N prices instead of one changes which party's price wins.
+- Reason: vouchers are deliberately standing in for a wholesale/B2B-shaped need through a B2C
+  mechanism (#454 decision 2) — a business buys stock from a retailer at negotiated per-item prices
+  by presenting a voucher code. A single shared price across an entire scope cannot express a real
+  wholesale pricelist; #696 is the gap this amendment closes. This is **not** a reversal of #569's
+  B2B deferral — no B2B account, pricing tier, or customer-group concept is introduced here, only a
+  second way to express what a `fixed_price` voucher's existing scalar already could, one item at a
+  time instead of once.
+- PR: #696 follow-up to Phase 101-109 (#455 lineage), stacked on #697.
+
+### 2026-08-19 — QRPh payment-then-redemption race: accepted, made reconcilable (#668)
+
+- Clause amended: **Consequences item 3** (untagged -- Consequences record effects, not Decisions,
+  so no strictness tier applies). Previously stated storefront "has no refund reversal path" for a
+  cancelled order in general. Extended below to name a second, related gap and how it was closed.
+- Change: a QRPh voucher preview (session creation -- `resolveCheckoutContext`'s own comment on the
+  `options?.transaction` gate: no transaction open yet means preview-only, no reservation) can be
+  outrun by a concurrent order that exhausts the same voucher's redemption limit before the
+  webhook-confirmed finalization runs the real `reserveRedemption`. Finalization then fails *after*
+  the customer's payment has already succeeded.
+- **Accepted as-is**, matching this flow's existing, already-accepted stock/location-availability
+  race -- not a new bug class. Reserving at session-creation instead would hold a redemption slot
+  hostage for a session the customer never pays, and this flow has no session-expiry release
+  mechanism to hedge that (`reverseVoucherRedemptionUseCase` exists, from #455's ledger design, but
+  has no live caller anywhere yet).
+- What changed: `finalizePaidCommerceSession.js` previously tagged every finalization failure with
+  the same generic `ORDER_FINALIZATION_FAILED` code. A failure whose `reason_code` is one of the
+  voucher exhaustion/conflict codes (`VOUCHER_REDEMPTION_LIMIT_REACHED`, `VOUCHER_BUDGET_EXHAUSTED`,
+  `VOUCHER_QUANTITY_LIMIT_REACHED`, `VOUCHER_VERSION_CONFLICT`) is now tagged
+  `VOUCHER_REDEMPTION_UNAVAILABLE` instead, so the `paid_manual_resolution_required` queue
+  (`commercePaymentAdminUseCases.js`'s existing retry/refund use cases) surfaces which lever
+  actually applies -- retrying only helps once the voucher's limit frees up; a refund is the other
+  option -- instead of requiring an operator to read a raw error message to tell this apart from
+  every other finalization failure.
+- Reason: the race itself was already accepted precedent (the stock/location case). What #668
+  actually flagged as missing was "no described reconciliation path." The generic
+  `paid_manual_resolution_required` status plus the existing retry/refund admin use cases already
+  provide the mechanism -- the gap closed here was visibility, not a missing capability.
+- PR: #668 follow-up to Phase 105 (#455/#661 lineage).
+
+### 2026-08-19 — Storefront enforces Decision 8; storefront voucher redemptions gain the Decision 10 audit row (#667)
+
+- Clauses fulfilled, not changed: **Decision 8** (`[default]`) and **Decision 10** (inherited from
+  ADR 0033, `[default]` tier there). Both already stated the rule; neither was actually wired up on
+  the storefront checkout path until this PR. This entry records that the gap is closed, not a
+  change to what either clause says.
+- Decision 8 gap: `resolveCheckoutContext` let `voucher_code` and `promo_code` both apply to the
+  same storefront order, summed uncapped into `totalAmount`, with no mutual-exclusivity check --
+  despite `pos_transaction_discounts` already enforcing `UNIQUE (transaction_id)` and Decision 8
+  already stating "a voucher occupies that slot" fleet-wide, not POS-only. Fixed by rejecting a
+  voucher code submitted alongside an already-applied promo code with `VOUCHER_DISCOUNT_SLOT_OCCUPIED`
+  (422), checked before either the promo or voucher benefit resolves against the ledger, so an
+  ineligible attempt never burns a redemption. Not a stacking cap -- mutual exclusivity, the same
+  shape Decision 8 already describes.
+- Decision 10 gap: because the two could stack, a storefront voucher-only order deducted the
+  voucher's discount from `totalAmount` but persisted no `pos_transaction_discounts` audit row and
+  no per-line allocations -- `discount_amount`/`discount_label_snapshot`/`discount_rate_snapshot`
+  on the order header reflected the promo only, or nothing at all on a voucher-only order. Fixed:
+  with Decision 8 now enforced, at most one governed discount exists per order, so a voucher
+  redemption writes the same audit row a promo redemption always has (`discount_type: 'voucher'`,
+  `discount_method` derived from the voucher's `benefit_class`), and the header fields reflect
+  whichever source actually applied.
+- Explicitly not a stacking-cap feature and not #695's migration arriving early: this is the
+  existing single-slot rule reaching a code path it had never been wired into. It composes with
+  #695 unchanged -- "one governed discount slot" reads identically before and after a promo code
+  becomes a `voucher_kind`.
+- Voucher codes are capped at 40 characters (previously up to 64, matching `vouchers.code
+  VARCHAR(64)`), to fit `pos_transaction_discounts.promo_code VARCHAR(40)` -- the fiscal column a
+  voucher redemption now shares with the promo path -- without widening a fiscal table. No
+  production voucher code exists yet to be narrowed out from under a merchant (storefront voucher
+  redemption is not on `main` as of this amendment).
+- PR: #667 (originally proposed, with a since-corrected rationale, as PR #705).
+
+### 2026-08-20 — POS voucher redemption ships; narrows #454 decision 6 to capture a customer name (#712)
+
+- Clause narrowed: **#454 decision 6** (*"POS: redemption is transaction-only, no buyer identity
+  captured -- the cashier just enters or scans the code"*), a closed decision record, not itself an
+  ADR clause, but the governing statement this ADR's Decision 8/Consequences item 2 depend on. Not
+  reversed -- narrowed. This ADR carries no clause of its own asserting POS captures no identity, so
+  nothing here needed a `[binding]`/`[default]` supersession; the narrowing is recorded here because
+  this is where POS voucher redemption's behavior is otherwise documented.
+- Change: POS voucher redemption now requires a customer name, matching the pre-existing POS
+  promo-code requirement (`posDiscountPolicy.js`'s `DISCOUNT_CUSTOMER_NAME_REQUIRED` guard, which
+  already excluded only `employee` and the statutory types -- a `voucher` type falls under it with
+  no code change to that guard itself). Settled by Pat, 2026-08-20, during the same session that
+  scoped #712.
+- What this does NOT change: the name is a free-typed string landing on the existing
+  `pos_transaction_discounts.customer_name` column (nullable, no migration). No
+  `store_customer_id`/`dgfy_account_id` is linked to a POS voucher redemption. #586's two-tier
+  tracking model therefore survives unchanged -- per-campaign tracking (redemption count, peso
+  cost, channel mix) already worked on both channels; per-customer tracking (who redeemed, repeat
+  usage) still only works on storefront, exactly as #454 decision 6 originally scoped it. This is a
+  friction/identity-capture narrowing at the point of sale, not a reversal of what tracking
+  capability POS contributes.
+- Gate, for completeness (not itself a narrowing -- restates what #712 implements): a voucher is
+  redeemable at POS when `voucher_pos_redemption_enabled` (#604, tenant-wide, default off) is on
+  **and** the specific voucher's `channels_mask` includes the POS bit (`VOUCHER_CHANNEL_BITS.pos`,
+  already evaluated by `voucherEligibilityPolicy.js`). No `voucher_kind`-based restriction was added
+  -- `channels_mask` already answers "usable at POS," so a second gating mechanism was rejected as
+  redundant.
+- Approval: a voucher discount requires a manager PIN at POS, parity with every other governed
+  discount type per ADR 0033 Decision 7 -- no exception carved out. Flagged, not silently accepted:
+  a follow-up issue questions whether this parity is right for a voucher specifically, since the
+  discount amount is merchant-set and server-enforced rather than cashier-chosen the way a Manual
+  discount is; that issue does not change today's behavior.
+- Also fixed in the same PR, not a clause change: `redeemVoucherUseCase`'s ledger idempotency key
+  was hardcoded to a `storefront:` prefix regardless of the caller's actual `channel` -- a POS
+  redemption would have shared the storefront idempotency namespace. Now derived from `channel`.
+- Also: POS never runs a voucher's discount through `calculatePosDiscount` (the generic percentage/
+  fixed-amount redistributor already used for promo/senior/pwd/employee/manual). A voucher's
+  per-line discounts are already authoritative, computed once by `calculateVoucherBenefit` --
+  re-deriving them via proportional redistribution would silently diverge from that computation,
+  most visibly for `fixed_price` (Decision 5's per-line delta, not a proportional split of one
+  total). `posVoucherDiscountCalculator.js`'s `buildVoucherGovernedCalculation` builds the same
+  return shape directly from `lineAllocations` instead.
+- PR: #712 (child of epic #453).
+
+### 2026-08-25 — Migrated promos keep POS eligibility and public listing (#695)
+
+- Clause amended: **Consequences item 4** (untagged -- Consequences record effects, not Decisions,
+  so no strictness tier applies, per the same reasoning the 2026-08-19 #668 amendment above already
+  established for this section). Previously stated: "Migrated promos lose channel eligibility. Per
+  #459 those three fields were never actually persisted, so they cannot be carried forward
+  faithfully; every migrated voucher gets `channels = 'storefront'` only."
+- Change: the shipped migration (`apps/dgfy-api/scripts/migrate-promos-to-vouchers.js`, PR #778)
+  does not do this. It sets `channels_mask` to `storefront|pos` (both bits) whenever a promo's own
+  `channels` map derives to zero, and always sets `is_publicly_listed = true`. Corrected here to
+  match what actually shipped.
+- Reason: #459 means `channels`/`fulfillment_methods`/`order_timing` are silently stripped by
+  `settingsValidator.js`'s `stripUnknown: true` on every settings save, so every promo in production
+  is *de facto* eligible on both storefront and POS today -- that bug is the very reason no stored
+  promo carries a real restriction to migrate. Migrating as storefront-only per the original
+  Consequences text would not have been a faithful narrowing; it would have silently deleted every
+  POS promo discount on migration day, since POS has no other path to that discount. Preserving
+  observed behavior (both channels) is the honest transform; guessing storefront-only is not.
+  `is_publicly_listed = true` follows the identical reasoning for public visibility: the legacy
+  engine always advertised every active promo (`parsePublicCommercialPromos`), and #713 added the
+  column specifically so this could be preserved rather than defaulted to the voucher system's
+  normal `false`.
+- Also recorded: the 2026-08-20 dry-run against a restored production snapshot (45 tenants) found
+  zero real promos carrying any per-channel/fulfillment/timing restriction, so deriving from each
+  promo's own (always-permissive) config and hardcoding a flat allow-both value produce an
+  identical result on every real row seen so far. Deriving was kept anyway, as the more correct
+  mechanism if a restricted promo turns up on a tenant not yet migrated.
+- Unchanged by this amendment: Decision 3's fail-closed degenerate/unresolvable-timezone handling,
+  and every other Consequences item, are untouched.
+- PR: #695 tooling shipped as PR #778 (2026-08-20); this amendment reconciles the ADR text with
+  that already-merged behavior and is landed alongside the remaining #695 work (freezing the last
+  live legacy promo authoring surface).
+
+### 2026-09-02 — The single governed-discount slot is an item-axis rule (Phase 240, #1331)
+
+- Clause amended: **Decision 8** (`[default]` tier). Its scope is narrowed — no invariant is
+  weakened and no binding clause changes.
+- Change: Decision 8 read as though "one governed discount per transaction" covered every discount
+  an order can carry. It does not, and epic #1321 decision 9 makes that explicit: **a delivery-fee
+  waiver is a second, independent axis.** A customer may hold 10% off items *and* free delivery on
+  the same order. Decision 8 is hereby scoped to the **item axis** only:
+  1. **The single slot governs item-axis discounts exclusively** — statutory, employee, promo,
+     manual, and any voucher with `benefit_target: 'items'`. Those still contend for one
+     `pos_transaction_discounts` row and still reject with `VOUCHER_DISCOUNT_SLOT_OCCUPIED`.
+     Unchanged in every respect.
+  2. **A delivery-fee waiver never occupies that slot, and never blocks or is blocked by it.** A
+     voucher with `benefit_target: 'delivery'` resolves against the delivery fee, persists to
+     `pos_transactions.delivery_fee_waiver` / `delivery_fee_waiver_voucher_id` /
+     `delivery_fee_waiver_label_snapshot`, and writes **no** `pos_transaction_discounts` row.
+     `UNIQUE (transaction_id)` is therefore untouched — the waiver is excluded from that table by
+     construction (a separate write path and a field-disjoint resolved shape,
+     `storeUseCases.js`), not by a convention a future edit could quietly break.
+  3. **At most one voucher per axis.** Two item vouchers remain impossible; two delivery vouchers
+     are equally impossible. This amendment permits exactly one *additional* application, on a
+     different axis — it is not a general stacking policy, and #782 (voucher-to-voucher stacking
+     within an axis) stays open and unaffected.
+  4. **POS is unchanged.** POS has no delivery-fee resolution path (epic #1321 Wave 0 decision #6
+     scopes the waiver to storefront checkout), and a delivery-targeted voucher typed at a terminal
+     fails closed in the domain layer — `calculateVoucherBenefit` throws
+     `INVALID_DELIVERY_FEE_CENTAVOS` when no fee base is supplied. Decision 8's POS wording
+     therefore still describes POS behaviour exactly.
+- Reason: the epic's decision 9 requires the two axes to be independent, and Decision 8 as written
+  would have made a free-delivery voucher illegal alongside any item discount — the opposite of the
+  intended product behaviour. Recorded as a scope narrowing rather than a new decision because the
+  invariant Decision 8 actually protects (one row in `pos_transaction_discounts`) is preserved
+  exactly.
+- Related: ADR 0078 (fee modes; its Related section anticipated this amendment), epic #1321
+  decision 9, ADR 0012's 2026-09-02 amendment (the totals term this waiver reduces).
+- PR: Phase 240 (#1331).
+
+### 2026-09-02 — Storefront order cancellation reverses its voucher redemption(s) (Phase 242, #1390)
+
+- Clauses amended: **Consequences item 3** and **Validation item 3** (both untagged -- Consequences
+  and Validation record effects/checks, not Decisions, so no strictness tier applies).
+- Change: `buildCancelStoreOrderUseCase` now calls `reverseVoucherRedemptionUseCase` (unchanged
+  itself -- it was already complete, per the 2026-08-19 QRPh entry above, just uncalled) for every
+  redemption a cancelled order recorded, item and/or delivery axis, in the same transaction as the
+  `fulfillment_status: 'cancelled'` flip and before commit -- exactly what Validation item 3 already
+  required. Locating which redemption row(s) belong to an order needed a new link:
+  `voucher_redemptions.pos_transaction_id` (indexed since #455, written by nothing until now) is
+  set at checkout time, in the same transaction the redemption itself is written in, immediately
+  after the two `VOUCHER_REDEMPTION_UNRECORDED` guards. Cancel reads it back via a new
+  `voucherRepository.listRedemptionsByTransactionId`.
+- **Consequences item 3, precisely: only its *cancelled-order* half is closed.** Its
+  *refunded-but-not-cancelled* half is unchanged and still open — there is still no storefront
+  refund flow at all, so there is nothing to hook a reversal into for that case.
+- **Validation item 3, precisely: only its storefront half is now satisfied as written.** Its other
+  named half -- a voided POS transaction reversing its own redemption -- is still open;
+  `posUseCases.js` has no `status: 'voided'` reversal path.
+- **Fail-closed, deliberately the opposite of this same function's payment-lifecycle block** (the
+  `commerceOrderLifecycleUseCase` call, further down in the same function, which fails open with a
+  logged warning). That block is cross-database/cross-provider (ADR 0052's Architecture Boundaries
+  carve-out: a provider failure cannot roll back the tenant order decision already committed). The
+  voucher reversal is same-database, same-transaction, so a failure is atomically undoable -- it
+  throws and rolls the entire cancellation back, surfacing a retryable error to the customer rather
+  than silently failing to return a campaign budget.
+- **Legacy orders** (placed before this shipped, `pos_transaction_id IS NULL` on their redemption
+  rows) are handled two ways: an optional data-only backfill migration exact-key-matches existing
+  storefront redemptions to their order (never a `LIKE` scan); for any redemption a cancel still
+  can't find, the delivery axis is exactly reconstructable from the order header's
+  `delivery_fee_waiver_voucher_id` (the ledger idempotency key is deterministic from it), while the
+  item axis is not — its key's voucher-id segment isn't stored anywhere on the order, and a prefix
+  scan was rejected as a mechanism because it collides against client-supplied idempotency keys.
+  That residual gap is logged (`logger.warn`), not silently dropped.
+- `reverseVoucherRedemptionUseCase`'s own header comment, and `finalizePaidCommerceSession.js`'s
+  2026-08-19 comment (this ADR's entry above), both previously stated it had no live caller. It now
+  does; both comments are updated in the same PR as this amendment.
+- Reason: this closes a real, customer-facing correctness bug (a cancelled order permanently burned
+  its voucher's redemption slot/budget) and is a named blocking prerequisite for #1332 (auto-applied
+  free-delivery campaigns) — a campaign whose budget never releases on cancellation cannot be
+  trusted to auto-apply.
+- PR: Phase 242 (#1390, epic #1321).
+
+### 2026-09-08 -- Account-restricted issuance: an allowlist child table, and a ledger-column type repair (Phase 269, #788)
+
+- Clauses amended: **Decision 9** and **Decision 10** (both `[default]` tier -- amendable in place
+  per ADR 0039, no invariant weakened, no `[binding]` clause changed). **Decisions 3 and 4 are
+  inherited exactly and are explicitly not modified**; this entry records how the new condition
+  routes through them rather than around them.
+- Change: a voucher may now be restricted to one or more named DGFY accounts, so that holding the
+  code is no longer sufficient to redeem it. This is the "later" #454 decision 4 deferred
+  (*"the schema is deliberately hedged so a `voucher_codes` child table can be added later without
+  migrating the campaign table"*) and Consequences item 5 above still records as unbuilt -- arriving
+  keyed on the **account** rather than on a per-recipient code, which is what #788 actually asks
+  for. Per-recipient unique-code issuance stays unbuilt and unaffected.
+  1. **Decision 9 extended, not contradicted.** That clause forbids putting an eligibility condition
+     in a JSON blob, on the grounds that anything appearing in a `WHERE` clause must stay indexable,
+     validatable, and auditable. An allowlist is a variable-length set, so it cannot be a column --
+     it is a child table, `voucher_account_grants`, structurally a twin of `voucher_scopes`
+     (`int` PK, `CASCADE` FK to `vouchers`, one composite unique key, `created_at` only). Every
+     property Decision 9 protects is preserved; only the arity changes. `vouchers.conditions`
+     remains reserved and empty, and no condition-plugin registry is introduced.
+  2. **Decision 10 applied to the derived gate.** `vouchers.is_account_restricted` is
+     `NOT NULL DEFAULT false` -- never nullable, so "unrestricted" cannot be produced by a NULL
+     nobody wrote. It is derived server-side from the grants array inside the same transaction that
+     writes the child rows, is in the validator's `FORBIDDEN_FIELDS`, and is absent from
+     `WRITABLE_VOUCHER_COLUMNS`, so flag and rows cannot drift. That is what lets the eligibility
+     policy trust `false` to mean "no rows exist" without a `COUNT` on every checkout.
+  3. **Fail-closed extends to an unevaluatable restriction.** `voucher_account_grants` is a child
+     table the pure policy module cannot read, so a restricted voucher whose allowlist a caller
+     never hydrated blocks (`VOUCHER_ACCOUNT_GRANTS_UNRESOLVED`) rather than evaluating as
+     unrestricted -- Decision 10's "absent must be unrepresentable" rule, relocated from a column
+     default to a caller convention. Checked *after* the no-authenticated-buyer case, so the two
+     display surfaces -- which legitimately have no buyer identity and therefore do not hydrate --
+     report the accurate `VOUCHER_ACCOUNT_REQUIRED` instead of a spurious server-defect code.
+  4. **Decision 3's asymmetry is inherited verbatim.** Checkout fails closed with a 422 and a
+     `reason_code`; catalog display falls back to the plain catalog price. The three account codes
+     join `DISPLAY_RELEVANT_REASON_CODES`, which is also what
+     `storefrontDiscoveryIndexService.js`'s public-listing projection consumes -- so an
+     account-restricted voucher is omitted from the public snapshot. That is load-bearing, not
+     cosmetic: the projection publishes each listed voucher's literal `code`, so a publicly-listed
+     restricted voucher would broadcast the very code this feature exists to withhold. Authoring
+     independently refuses that combination (`VOUCHER_ACCOUNT_RESTRICTED_NOT_PUBLICLY_LISTABLE`).
+  5. **Decision 4 is respected.** The eligibility check lives in the same domain layer that already
+     reads and writes `voucher_redemptions`; no second counter, cache, or parallel resolution path
+     is introduced, and the ledger stays authoritative.
+- **A type repair recorded here because it corrects this ADR's own lineage.**
+  `voucher_redemptions.dgfy_account_id` has been declared `INTEGER` since #455/Phase 102, while
+  `DgfyAccount.id` is and always has been a UUID -- the column could never have held a real account
+  id. Latent rather than live: nothing in the repository ever wrote it, so every row is NULL and the
+  retype to `CHAR(36)` is lossless on real data. Phase 269 is its first writer, on every storefront
+  redemption (restricted or not -- it is the per-customer half of #586's two-tier tracking model,
+  and gating it on the restriction would leave the same gap open). `sync-tenant-schemas.js`'s
+  repair pass is column-*presence* based and structurally cannot repair a type change, the same
+  limitation already recorded there for ENUM widenings; a tenant that misses the migration keeps the
+  pre-#788 INT column, where the new write fails loudly rather than silently mis-recording.
+- **POS: #454 decision 6 re-verified against current code, not inherited from a plan.**
+  `posUseCases.js`'s `redeemVoucher` binding still passes `storeCustomerId: null` and no account
+  identity of any kind; the 2026-08-20 amendment above narrowed that decision only as far as a
+  free-typed customer *name*. A name is not an authenticated account, so POS reaches the shared
+  check with no account and fails closed on the same path a storefront guest does -- **with no POS
+  file changed**, and with no POS-specific rule that could drift out of sync. This amendment does
+  not narrow #454 decision 6 any further than the 2026-08-20 entry already did.
+- **Named limitation, not a silent gap:** neither display surface receives a `storeCustomer`, so a
+  *granted* buyer also sees no display price on a browse page and learns the voucher applies only at
+  checkout. Conservative in the safe direction (a price is never advertised to someone who may not
+  get it); closing it means threading buyer identity into the two catalog read paths, which is a
+  separate change.
+- **Relationship to #606, stated so the two are not conflated:** #606 is a per-customer *quantity*
+  cap on a voucher a buyer may already use; this is an *audience allowlist* deciding who may redeem
+  at all. Orthogonal, and composable -- a voucher can carry both. The
+  `idx_voucher_redemptions_account` index added here is the one #606 will need unchanged.
+- PR: Phase 269 (#788, epic #453).
+
+## Decision (continued)
+
+12. **A voucher redemption fails closed when it would sell an eligible, discounted line below that
+    line's `cost_per_unit`, unless `vouchers.allow_below_cost` is `true`.** Catalog display fails
+    open on the same condition — the affected item shows its plain catalog price instead of a
+    voucher price, per item, matching Decision 3's asymmetry. Lines with no recorded cost are
+    exempt from the check. `[default]`
+
+## References
+1. [ADR 0029](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) — Decision 2
+   `binding` tier, Catalog owns base sale price; this ADR layers above it and never writes back
+2. [ADR 0033](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) — Decisions 8 and 10,
+   and the JSON-storage premise this work retires; amended alongside this ADR
+3. [ADR 0050](0050-affiliate-buyer-facing-pricing-rule-engine.md) — Decision 5's fail-closed/
+   fail-open asymmetry, inherited here as Decision 3. Decision 6's resolution-time cost guard is
+   the model this ADR's own Decision 12 (2026-08-18 amendment, above) follows — not something this
+   ADR inherited automatically, corrected from the prior wording of this line
+4. [ADR 0039](0039-adr-lifecycle-strictness-tiers-and-amendment-path.md) — strictness tiers
+5. Issue #454 — voucher decision record; #455 — entity and ledger; #453 — epic; #697 — this
+   amendment's below-cost enforcement gap; #696 — the per-item pricelist amendment above; #584 —
+   the `fixed_price` benefit class this extends; #569 — B2B deferral, not reversed by #696
+   (#454 decision 2 is the carve-out); #661 — the storefront voucher redemption PR both #667 and
+   #668 are follow-ups to; #668 — the QRPh payment-then-redemption race amendment above; #1321 —
+   Customer delivery pricing epic; #1331 — the item/delivery axis split, 2026-09-02 amendment above;
+   #1390 — storefront cancellation voucher-reversal amendment above, blocking prerequisite for #1332;
+   #788 — account-restricted issuance, the 2026-09-08 amendment above; #606 — per-customer
+   voucher limits, orthogonal to #788 and explicitly not conflated with it
+6. [ADR 0078](0078-customer-delivery-fee-modes.md) — customer delivery fee modes
+   (fixed/calculated/free) and the `finalFee = max(0, baseFee - waiverAmount)` formula the
+   2026-09-02 amendment's waiver reduces; its own Related section anticipated this amendment

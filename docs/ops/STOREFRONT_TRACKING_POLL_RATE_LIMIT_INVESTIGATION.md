@@ -2,12 +2,20 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-07-23
+last_reviewed: 2026-08-15
 applies_to: storefront_frontend, backend_rate_limiting
 topic: storefront_tracking_poll_rate_limit_investigation
 ---
 
 # Storefront Tracking Poll / Rate-Limit Investigation
+
+> **2026-08-15 update (Observer triage, `docs/ops/SENTRY_TRIAGE_2026-08-15.md`):** the leading
+> suspect below (`useFnbTrackingRuntime.js`) is confirmed fixed — see "Leading suspect" section.
+> Open question #3 (the `generalLimiter` health-check skip) is confirmed a non-issue in the current
+> tree — see "Open questions" item 3. A stronger live suspect for the same request pattern,
+> `useCustomerDashboardLiveSync.js`, has been identified and filed as
+> [#509](https://github.com/Sieitzz/dgfy-platform/issues/509) — see item 4 below, now resolved
+> into a filed issue rather than an open question.
 
 ## Ticket
 1. Ticket ID: `OPS-RATELIMIT-001`
@@ -44,7 +52,24 @@ every route, including `/api/v1/health` itself.
    question — health checks can get caught in the same bucket as everything
    else once it's exhausted. **Not fixed yet** (see Open Questions).
 
-## Leading suspect (not yet confirmed as root cause)
+## Leading suspect — confirmed fixed (2026-08-15)
+
+`apps/dgfy-web/apps/store/src/modes/fnb/tracking/hooks/useFnbTrackingRuntime.js`
+(path corrected from the `frontend/apps/store/...` reference below, which
+predates the `apps/dgfy-web` monorepo restructure) no longer runs the
+2s/8s/12s/30s interval pattern this section originally flagged. The file now
+defines a single `BACKGROUND_PIN_POLL_MS = { visible: 60000, hidden: 120000 }`
+— a 60s/120s cadence, not the 2s/12s one below. Whatever fixed it landed
+outside this investigation's own workaround (which only touched local-test
+rate-limit env vars); no corresponding commit/PR reference was recovered
+during the 2026-08-15 Observer pass, so treat "when/why" as unresolved even
+though "is it fixed" is confirmed by reading the current source.
+
+The original finding is kept below for historical record — it no longer
+reflects the current file.
+
+<details>
+<summary>Original 2026-07-23 finding (superseded)</summary>
 
 `frontend/apps/store/src/modes/fnb/tracking/hooks/useFnbTrackingRuntime.js`,
 lines ~106-107:
@@ -55,24 +80,19 @@ const backgroundTimer = backgroundPins.length ? window.setInterval(() => backgro
 ```
 
 While the order-tracking drawer/tab is open (`checkoutTab === 'track' &&
-isFnbOrderSubpage`), this polls the selected pin every **2 seconds**
+isFnbOrderSubpage`), this polled the selected pin every **2 seconds**
 (8s if the tab is backgrounded) and every background-tracked pin every 12s
 (30s backgrounded) — indefinitely, with no upper bound on how long a tab can
 sit open on this view.
 
-The `refresh()` function's catch block (lines ~100-102) only sets
-`trackingError` for the "selected" pin case and otherwise swallows the
-error — **there is no backoff, no circuit breaker, and no handling of 429 /
-`Retry-After` at all.** Once this poller starts getting rate-limited, it does
-not slow down or stop; it keeps firing on the same fixed interval forever.
-At a 2s interval, one tab left open for the length of a workday would, on its
-own, generate tens of thousands of requests — plausibly explaining the 5,853
-cumulative `store_tracking` 429s observed.
+The `refresh()` function's catch block (lines ~100-102) only set
+`trackingError` for the "selected" pin case and otherwise swallowed the
+error — no backoff, no circuit breaker, no handling of 429 /
+`Retry-After` at all. This was a plausible root cause, not a confirmed one —
+it was never proven that this specific poller (rather than something else)
+generated the observed volume.
 
-This is a plausible root cause, not a confirmed one. It has not been proven
-that this specific poller (rather than something else — a stray automated
-test loop, a leftover browser tab, a different endpoint miscounted under the
-same `store_tracking` scope, etc.) generated the observed volume.
+</details>
 
 ## Workaround shipped (2026-07-23)
 
@@ -98,14 +118,20 @@ configuration was changed.
    `retryAfterSeconds` and sets the `Retry-After` header), and consider
    whether a 2-second interval is necessary at all for order tracking versus
    something like 10-15s.
-3. **Separately**, the `generalLimiter` health-check skip bug
-   (`req.path === '/health'` never matching the mount-relative
-   `/v1/health`) should be fixed on its own merits — health checks should
-   never be subject to the shared IP bucket, regardless of what's causing
-   the volume. Not done in this pass since it's a backend source change and
-   the immediate ask was to unblock local QA at the env level only.
-4. Check whether this pattern (fixed-interval polling with no backoff) exists
-   elsewhere in the storefront — `useCustomerDashboardTracking.js` and
-   `customer-dashboard/hooks/useCustomerAccountPanel.js` also touch
-   `store/track`/`store/orders` per a repo-wide grep and haven't been
-   checked yet.
+3. ~~**Separately**, the `generalLimiter` health-check skip bug...~~ **Confirmed a non-issue,
+   2026-08-15.** In the current tree, `generalLimiter` mounts at `app.use('/api', generalLimiter)`
+   (`apps/dgfy-api/src/server.js:424`) while the health route is `app.get('/health', ...)`
+   (`server.js:700`) — mounted outside `/api` entirely, so it never reaches the limiter regardless
+   of the dead `req.path === '/health'` check. There is no `/api/v1/health` route in the current
+   API surface for that check to have mattered against. No fix needed.
+4. **Checked, 2026-08-15 (Observer triage).** `customer-dashboard/hooks/useCustomerAccountPanel.js`
+   does touch this surface indirectly, via its own live-sync hook —
+   `useCustomerDashboardLiveSync.js` polls `loadDgfyPanel`'s 11-request fan-out every **3 seconds**
+   while a customer has an active order, despite the same hook already holding a live `EventSource`
+   channel for the same updates. This is a stronger, currently-live candidate for exactly this
+   pattern (fixed-interval polling, no backoff) than the original `useFnbTrackingRuntime.js`
+   suspect, which is now fixed (see above). Filed as
+   [#509](https://github.com/Sieitzz/dgfy-platform/issues/509) rather than left as an open
+   question — see `docs/ops/SENTRY_TRIAGE_2026-08-15.md`'s second pass for the full root-cause
+   writeup. `useCustomerDashboardTracking.js` was not found under that name in the current tree;
+   likely a stale reference from before a rename/consolidation, not re-investigated separately.

@@ -7,7 +7,7 @@ workflow modes (retail, F&B, services, hospitality, food manufacturing,
 MSME, and more), not a single-vertical SKU tool.
 **Status**: Active development
 # CLAUDE.md - DGFY Platform Context
-> **Last reviewed:** 2026-08-09 (targeted identity/navigation refresh; the
+> **Last reviewed:** 2026-08-26 (#365 targeted stale-reference pass; the
 > rest of this file predates the multi-vertical/workflow-mode architecture
 > below and is not fully current — verify anything load-bearing against the
 > docs in "Mandatory Lookup Order" and `docs/ai/CLAUDE.md`'s own later
@@ -15,9 +15,12 @@ MSME, and more), not a single-vertical SKU tool.
 
 ## Mandatory Lookup Order
 
-This file (`docs/ai/CLAUDE.md`) is a working-context supplement, not the
-top of the documentation hierarchy. Before implementing anything
-non-trivial, follow the same lookup order every other doc in this repo
+**`AGENTS.md` is the actual top of the hierarchy** — it's what root
+`CLAUDE.md` auto-loads (`@AGENTS.md`), and it's canonical. This file
+(`docs/ai/CLAUDE.md`) is a working-context supplement one level below it,
+not the top of the documentation hierarchy itself. Before implementing
+anything non-trivial, read `AGENTS.md` first, then follow the same lookup
+order every other doc in this repo
 points to:
 
 1. `docs/START_HERE.md` — canonical entry point and folder usage guide.
@@ -46,7 +49,13 @@ Capability Modules rather than hard-coding one behavior set per industry.
 > removed. `apps/dgfy-api/` *is* the backend, refactored into `apps/`; the Sequelize
 > migration domain lives separately in `apps/dgfy-migration-runner/`. Path references
 > below that still say `backend/` in prose are historical. `frontend/` and `android/`
-> were relocated the same way, to `apps/dgfy-web/` and `apps/dgfy-android-bridge/`. For
+> were relocated the same way — `android/` to `apps/dgfy-android-bridge/`, and `frontend/`
+> first to a single `apps/dgfy-web/` package
+> ([ADR 0059](../architecture/adr/0059-frontend-relocation-to-apps-dgfy-web.md)), which has
+> since been split into three independent frontend apps — `apps/dgfy-ims/`,
+> `apps/dgfy-pos/`, `apps/dgfy-storefront/` — plus the shared `packages/web-core/` trunk
+> ([ADR 0071](../architecture/adr/0071-frontend-split-into-three-apps.md)).
+> `apps/dgfy-web/` no longer exists on disk. For
 > the full path map and how local run/deploy commands changed, read
 > [docs/architecture/apps-layout-migration.md](../architecture/apps-layout-migration.md).
 > If `develop` receives `backend/`/`frontend/`/`android/` changes during the transition
@@ -104,11 +113,13 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 - **Markdown Rendering**: AI responses rendered with full markdown support (tables, bold, code, lists)
 - **Diagnostics Endpoint**: `GET /api/v1/ai/diagnostics` — on-demand capability gap report (no DB writes)
 
-**Frontend Components:**
-- `Components/ai/MarkdownRenderer.jsx` - Markdown rendering with Tailwind styling
-- `Components/ai/ActionResultCard.jsx` - Structured result display
-- `Components/ai/ConfirmActionDialog.jsx` - Write operation confirmation
-- `Components/ai/AiDiagnosticsPanel.jsx` - AI capability & knowledge gap checker panel
+**Frontend Components** (shared trunk — `packages/web-core/`):
+- `packages/web-core/Components/ai/MarkdownRenderer.jsx` - Markdown rendering with Tailwind styling
+- `packages/web-core/Components/ai/ActionResultCard.jsx` - Structured result display
+- `packages/web-core/Components/ai/ConfirmActionDialog.jsx` - Write operation confirmation
+- `packages/web-core/Components/ai/AiDiagnosticsPanel.jsx` - AI capability & knowledge gap checker panel
+
+The AI Chat route itself is IMS-only: `apps/dgfy-ims/Pages/AiChat.jsx`.
 
 **Files**: See `docs/ai/AI_GUIDELINES.md` for full documentation.
 
@@ -136,11 +147,21 @@ Before attempting ANY bug fix, the following steps MUST be taken:
 
 # 🚨 Critical Rules (MUST FOLLOW)
 ### Frontend Rules:
-1.  **Component Structure**: All components in `apps/dgfy-web/Components/` folder, organized by feature (e.g., `items/`, `products/`).
-2.  **UI Components**: Use Shadcn UI components from `apps/dgfy-web/Components/ui/` - DO NOT create custom UI from scratch.
+There are three frontend apps — `apps/dgfy-ims/` (SKUpervisor/IMS, dev port 5173),
+`apps/dgfy-pos/` (dev port 5174), `apps/dgfy-storefront/` (dev port 5175) — plus the
+shared `packages/web-core/` package (`@sieitzz/web-core`), which has no build step, no
+`node_modules`, and no lockfile of its own. Each app declares
+`"@sieitzz/web-core": "file:../../packages/web-core"` in its `package.json`, and its
+`vite.config.js` aliases `@/components`, `@/src`, `@/services`, `@/hooks`, and `@/lib`
+into `packages/web-core` while a bare `@/…` resolves to that app's own root. Put shared
+code in `packages/web-core/`, app-specific code in that app. Always say which app you are
+working on.
+
+1.  **Component Structure**: Shared components live in `packages/web-core/Components/`, organized by feature (e.g., `items/`, `products/`). App-only components live under that app's own `src/`.
+2.  **UI Components**: Use Shadcn UI components from `packages/web-core/Components/ui/` - DO NOT create custom UI from scratch.
 3.  **State Management**: Use local state (`useState`) for forms, `Zustand` for global user/settings data.
 4.  **Styling**: detailed TailwindCSS classes. No custom CSS files unless absolutely necessary.
-5.  **API Calls**: Use `apps/dgfy-web/src/services/` for ALL API requests. No `axios` calls in components.
+5.  **API Calls**: Use `packages/web-core/src/services/` for ALL API requests. No `axios` calls in components.
 6.  **Validation**: Use `Joi` or manual validation before sending data.
 
 ### Backend Rules:
@@ -152,6 +173,31 @@ Before attempting ANY bug fix, the following steps MUST be taken:
 6.  **Error Handling**: Use the central error handler. Throw normal Errors with `statusCode` property.
 7.  **CSV Imports**: NEVER trust client-supplied validation flags in `confirmImport`. Always re-validate and sanitize row data on the backend before persistence.
 8.  **CSV Exports**: ALWAYS use the `escapeCSVCell` logic (or equivalent prefixing for `=`, `+`, `-`, `@`) when exporting text to CSV to prevent spreadsheet formula injection. Favor export-side sanitization over import-side mutation.
+
+### Secrets Rules (production, `Sieitzz/dgfy-secrets`, `/opt/dgfy-platform`)
+See ADR 0060 and `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md` for the full
+design. Once the cutover in that runbook has executed:
+1.  **SOPS-encrypted `secrets/*.env` files are safe to read.** Ciphertext
+    only — `KEY=ENC[...]` lines. Reading, listing, or grepping them is fine
+    and expected.
+2.  **Never run `sops decrypt` (or equivalent) to a file, and never `source
+    <(sops decrypt ...)`** — the latter executes decrypted output as shell
+    script and corrupts any value containing a literal `$` (e.g. a bcrypt
+    hash). If a deploy script needs decrypted values, it reads them with a
+    `read -r key value` + `export` loop, per the runbook.
+3.  **Never paste a decrypted value into a commit, PR, issue, doc, or chat
+    message** — this is the exact failure mode that produced #239.
+4.  **Do not migrate an existing real secret value out of a live server's
+    plaintext `.env` into SOPS, even via a command whose output is never
+    displayed.** The execution environment has full read access in that
+    moment regardless of what a transcript shows, and a failed/interrupted
+    command risks the plaintext landing in the transcript itself — worse
+    than the status quo. That one-time migration is a human-operator step.
+    Helping **rotate** a secret to a brand-new value (not extracting an
+    existing one) is fine.
+5.  This repo (`dgfy-platform`) does not hold ciphertext for production
+    secrets — that lives in the separate `Sieitzz/dgfy-secrets` repo. Only
+    `.sops.yaml` (public recipient keys) and deploy tooling live here.
 
 # 📂 Project Structure
 ```text
@@ -169,186 +215,107 @@ Before attempting ANY bug fix, the following steps MUST be taken:
 │   ├── dgfy-migration-runner/  # Sequelize migration domain (one-shot container)
 │   ├── dgfy-android-bridge/    # Android hosts for POS hardware (formerly android/)
 │   │   └── imin-wrapper/       # iMin WebView wrapper + native printer/drawer bridge
-│   └── dgfy-web/               # React/Vite frontend (formerly frontend/)
-│       ├── Components/
-│       │   ├── ai/             # AI chat components (NEW)
-│       │   ├── items/          # Item forms, lists
-│       │   ├── products/       # Recipe wizard, product views
-│       │   ├── ui/             # Shadcn UI (Buttons, Inputs, etc.)
-│       │   └── wizard/         # Shared wizard logic
-│       ├── Pages/              # Main route views (incl. AiChat.jsx)
-│       └── src/
-│           ├── lib/            # Utils (formatting, classes)
-│           └── services/       # API wrappers (incl. aiService)
+│   ├── dgfy-ims/               # React/Vite IMS (SKUpervisor) app — dev port 5173
+│   │   ├── Pages/              # IMS route views (incl. AiChat.jsx, admin/)
+│   │   ├── src/main.jsx        # Vite entry point
+│   │   └── vite.config.js
+│   ├── dgfy-pos/               # React/Vite POS app — dev port 5174
+│   │   ├── desktop/pos-electron/  # Electron shell for the POS
+│   │   └── src/main.jsx        # Entry point; POS features live in web-core/src/features/pos/
+│   └── dgfy-storefront/        # React/Vite customer storefront — dev port 5175
+│       └── src/modes/          # Per-workflow-mode storefront surfaces
+├── packages/
+│   ├── web-core/               # @sieitzz/web-core — shared frontend trunk (no build step)
+│   │   ├── Components/
+│   │   │   ├── ai/             # AI chat components
+│   │   │   ├── items/          # Item forms, lists
+│   │   │   ├── products/       # Recipe wizard, product views
+│   │   │   └── ui/             # Shadcn UI (Buttons, Inputs, etc.)
+│   │   ├── Pages/              # DGFY auth pages only (DgfyAuthPage, RegisterCompany, …)
+│   │   ├── src/
+│   │   │   ├── lib/            # Utils (formatting, classes)
+│   │   │   └── services/       # API wrappers (incl. aiService)
+│   │   └── vite/               # Shared Vite helpers (sentryViteConfig, runtime deps)
+│   ├── shared-constants/       # Cross-app constant vocabulary
+│   └── pos-receipt/            # Receipt rendering shared by POS surfaces
 ├── docs/                   # Detailed documentation (incl. ai/AI_GUIDELINES.md)
 └── CLAUDE.md               # Context file
 ```
 
 # 🛠️ Common Commands
 
-## Production (PM2 - Recommended)
-The project uses PM2 for process management in production:
+## Production / Staging deploys (#365: PM2 commands removed here)
+This section used to recommend `pm2 restart all` / `scripts/deploy.sh` / `scripts/deploy-remote.sh`
+for production, and a manual PM2 `ecosystem.config.cjs` invocation for staging. That's the ADR-0030
+signed-controller/PM2 model, which `docs/ops/DEPLOYMENT_GUIDE.md` (line 94 of that file) itself now
+states is superseded — current production secret handling and deploy run through `docker compose`
+via `.github/workflows/publish-platform.yml`, not PM2. Rather than restate specific deploy commands
+here (risk of the same drift), see the actual current, authoritative process:
 
-```bash
-# Restart all services (backend + frontend)
-pm2 restart all
+- `docs/ops/RELEASE_CANDIDATE_POLICY.md` — the authoritative release/promotion policy.
+- `AGENTS.md`'s `promoter` and `incident-responder` role skills — the actual DEV/STAGING/PROD
+  deploy-dispatch procedure (`deploy.yml`, `deploy-main.yml`, `publish-platform.yml`).
 
-# View running processes
-pm2 list
-
-# View logs
-pm2 logs
-
-# Full deployment (pulls code, installs deps, builds, migrates, restarts)
-./scripts/deploy.sh
-
-# Remote Deployment Trigger (from local machine)
-bash scripts/deploy-remote.sh
-```
-
-## Staging (PM2 - Manual)
-`staging.dgfy.ph` runs the IMS (SKUpervisor) app against a separate backend.
-Staging is **not** deployed by `deploy.sh` — manage it manually.
-
-```bash
-# Start staging processes (first time or after ecosystem.config.cjs changes)
-pm2 start ecosystem.config.cjs --only sku-staging-backend,sku-staging-frontend --env staging
-pm2 save
-
-# Restart staging only
-pm2 restart sku-staging-backend sku-staging-frontend
-
-# Verify staging health
-curl -fsS http://127.0.0.1:5002/health
-curl -fsS http://127.0.0.1:5183
-```
-
-Port map: staging backend → `5002`, staging IMS frontend → `5183`.
-See `docs/ops/DEPLOYMENT_GUIDE.md` § Staging Environment for full setup runbook.
+Do not run `scripts/deploy.sh`, `scripts/deploy-remote.sh`, or PM2 process commands based on this
+file — see `docs/ops/DEPLOYMENT_GUIDE.md`'s own superseded-model notice for why.
 
 ## Development (Local testing only)
-> ⚠️ These commands are for local development only. Use PM2 commands for production.
+> ⚠️ These commands are for local development only. Production/staging deploy is not PM2 — see
+> "Production / Staging deploys" above.
 
 ```bash
-# Install dependencies (one-time setup)
+# Install dependencies (one-time setup — root + all three frontend apps + api + migration runner)
 npm run install:all
 
-# Start dev servers (NOT for production)
+# Start dev servers (NOT for production) — API + device bridge + IMS only
 npm run dev
+
+# Per-frontend-app dev servers (ports 5173 / 5174 / 5175)
+npm run dev:skupervisor    # apps/dgfy-ims   — or: cd apps/dgfy-ims && npm run dev
+npm run dev:pos            # apps/dgfy-pos   — or: cd apps/dgfy-pos && npm run dev
+npm run dev:store          # apps/dgfy-storefront — or: cd apps/dgfy-storefront && npm run dev
+
+# Builds — there is no `build:all`; build only the app(s) actually affected
+npm run build:skupervisor  # → apps/dgfy-ims/dist/
+npm run build:pos          # → apps/dgfy-pos/dist/
+npm run build:store        # → apps/dgfy-storefront/dist/
+
+# Frontend tests (IMS suite; also runs packages/web-core's own tests)
+npm run test:frontend      # or: cd apps/dgfy-ims && npm test
 ```
+
+`packages/web-core` has no build of its own — it is compiled into each app's build.
 
 ## Database
 ```bash
-# Migrations (handled automatically by deploy.sh)
+# Migrations — run manually here for local dev; the current deploy pipeline (docker-compose/GHA,
+# see "Production / Staging deploys" above) handles this in CI/CD, not the retired deploy.sh
 cd apps/dgfy-migration-runner && npx sequelize-cli db:migrate
 
-# Sync tenant schemas (handled automatically by deploy.sh)
+# Sync tenant schemas — same caveat, local-dev use only
 node apps/dgfy-api/scripts/sync-tenant-schemas.js
 ```
 
 # 🔗 Documentation Links
-- [Detailed API Spec](docs/api/specification.md)
-- [Deployment Guide](DEPLOYMENT_GUIDE.md)
-- [Nested Products Guide](docs/features/NESTED_PRODUCTS.md)
-- [Quick Reference](docs/reference/QUICK_REFERENCE.md)
-- [Store Templates & Profiles (system reference)](docs/features/STORE_TEMPLATES_AND_PROFILES.md)
-- [Store Templates Developer Handoff (how to extend)](docs/development/STORE_TEMPLATES_HANDOFF.md)
-- [Mode Development Playbook](docs/development/MODE_DEVELOPMENT_PLAYBOOK.md)
-```
-
----
-
-## 📂 Project Structure at a Glance
-
-```
-SKU-Inventory-Manager/                    # Monorepo root
-├── apps/dgfy-web/                         # React/Vite frontend (formerly frontend/)
-│   ├── Components/                       # React components by feature
-│   │   ├── dashboard/                    # Dashboard widgets
-│   │   ├── items/                        # Item/SKU management
-│   │   ├── po/                           # Purchase Orders
-│   │   ├── jo/                           # Job Orders
-│   │   ├── movements/                    # Stock movements
-│   │   ├── products/                     # Product creation wizard
-│   │   ├── suppliers/                    # Supplier management + Item Coverage
-│   │   ├── users/                        # User management
-│   │   ├── ui/                           # Shadcn UI components
-│   │   ├── data/                         # dummyData.js (dev only)
-│   │   └── utils/                        # fifoCalculations.js
-│   ├── Entities/                         # Frontend data models
-│   ├── Pages/                            # Page components (routed)
-│   │   ├── Dashboard.jsx
-│   │   ├── FeedbackViewer.jsx            # Admin feedback dashboard (standalone)
-│   │   ├── Items.jsx
-│   │   ├── Login.jsx
-│   │   ├── Register.jsx
-│   │   └── Settings.jsx
-│   ├── src/
-│   │   ├── main.jsx                      # Vite entry point
-│   │   ├── services/                     # API service layer
-│   │   │   ├── api.js                    # Axios instance
-│   │   │   ├── itemService.js
-│   │   │   ├── userService.js
-│   │   │   └── settingsService.js
-│   │   └── store/                        # Zustand stores
-│   ├── Layout.jsx                        # Main layout wrapper
-│   ├── package.json
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── index.html
-│
-├── apps/dgfy-api/                         # The app (source of truth; formerly backend/)
-│   ├── src/
-│   │   ├── routes/                       # Express routes
-│   │   │   ├── auth.js
-│   │   │   ├── items.js
-│   │   │   ├── users.js
-│   │   │   ├── purchaseOrders.js
-│   │   │   ├── jobOrders.js
-│   │   │   ├── stockMovements.js
-│   │   │   ├── suppliers.js
-│   │   │   └── settings.js
-│   │   ├── controllers/                  # Business logic
-│   │   │   ├── authController.js
-│   │   │   ├── adminAuthController.js     # Developer portal auth
-│   │   │   ├── userController.js
-│   │   │   └── settingsController.js
-│   │   ├── models/                       # Sequelize models
-│   │   │   ├── Item.js
-│   │   │   ├── User.js
-│   │   │   ├── PurchaseOrder.js
-│   │   │   └── ...
-│   │   ├── middleware/
-│   │   │   ├── auth.js                   # JWT authentication
-│   │   │   └── errorHandler.js
-│   │   ├── services/                     # Complex operations
-│   │   │   ├── authService.js
-│   │   │   ├── userService.js
-│   │   │   └── settingsService.js
-│   │   ├── validators/                   # Input validation
-│   │   └── server.js                     # Express app entry
-│   ├── .env                              # Environment variables
-│   └── package.json
-│
-├── apps/dgfy-migration-runner/            # Migration domain: migrations/, seeders/, database-setup.sql
-│
-├── apps/dgfy-android-bridge/              # Android hosts (formerly android/)
-│   └── imin-wrapper/                      # iMin WebView wrapper; built via scripts/build-android-release.sh
-│
-├── docs/                                 # Documentation
-│   └── QUICK_REFERENCE.md
-
-├── .claude/                              # Claude Code config
-│   └── hooks/
-│       └── session-start.sh
-├── package.json                          # Root monorepo config
-├── docker-compose.yml
-└── CLAUDE.md                             # This file
-```
+- [Detailed API Spec](../api/specification.md)
+- [Deployment Guide](../ops/DEPLOYMENT_GUIDE.md)
+- [Nested Products Guide](../features/NESTED_PRODUCTS.md)
+- [Quick Reference](../reference/QUICK_REFERENCE.md)
+- [Store Templates & Profiles (system reference)](../features/STORE_TEMPLATES_AND_PROFILES.md)
+- [Store Templates Developer Handoff (how to extend)](../development/STORE_TEMPLATES_HANDOFF.md)
+- [Mode Development Playbook](../development/MODE_DEVELOPMENT_PLAYBOOK.md)
 
 ---
 
 ## 🔑 Key Components Reference
+
+> **#365 note:** a second, duplicate "Project Structure at a Glance" section used to live here. It
+> was redundant with the accurate structure block earlier in this file ("📂 Project Structure") and
+> was itself stale (root labeled `SKU-Inventory-Manager/`, `docker-compose.yml` shown at repo root
+> — actually `infrastructure/docker/docker-compose.yml` — and a `.claude/` listing showing only
+> `hooks/session-start.sh`, omitting the hooks actually registered in `.claude/settings.json` and
+> `.claude/agents/`/`.claude/skills/`). Removed rather than fixed in place — see the earlier
+> "📂 Project Structure" section for the current, accurate tree.
 
 ### Frontend Components
 
@@ -460,12 +427,13 @@ SKU-Inventory-Manager/                    # Monorepo root
 
 | Issue | Solution |
 |-------|----------|
-| Port 5173 in use | `lsof -ti:5173 \| xargs kill -9` or change vite port |
+| Port 5173 in use | IMS dev server — `lsof -ti:5173 \| xargs kill -9` or change the vite port |
+| Port 5174 / 5175 in use | POS / storefront dev servers — same fix, `lsof -ti:<port> \| xargs kill -9` |
 | Port 5000 in use | `lsof -ti:5000 \| xargs kill -9` |
 | Port 5002 or 5183 in use | Staging port conflict — `lsof -ti:5002 \| xargs kill -9` |
 | Frontend can't reach backend | Check CORS settings in `apps/dgfy-api/src/server.js` |
-| `staging.dgfy.ph` blocked by Vite | Add `staging.dgfy.ph` to `allowedHosts` in `apps/dgfy-web/apps/skupervisor/vite.config.js` |
-| Components not rendering | Check import paths - use `@/Components/...` |
+| `staging.dgfy.ph` blocked by Vite | Add `staging.dgfy.ph` to `allowedHosts` in `apps/dgfy-ims/vite.config.js` |
+| Components not rendering | Check import paths - use `@/components/...` (lowercase; it resolves into `packages/web-core/Components/`) |
 | API won't start | Check `.env` file exists in `apps/dgfy-api/` folder |
 | Database connection error | Verify MySQL is running, check credentials in `.env` |
 | Redis connection error | Ensure Redis is running on port 6379 |
@@ -493,26 +461,28 @@ SKU-Inventory-Manager/                    # Monorepo root
 - `docs/api/specification.md` - All endpoint details
 - `docs/api/integration-guide.md` - Frontend-backend integration
 - `docs/architecture/system-architecture.md` - System architecture diagrams
-- `docs/AI_GUIDELINES.md` - AI Assistant capabilities, limitations, and workflows
+- `docs/ai/AI_GUIDELINES.md` - AI Assistant capabilities, limitations, and workflows
 
 ---
 
 ## 🔗 When You Need More Context
 
 **Working on Frontend Components?**
-→ Check `apps/dgfy-web/Components/` folder structure
+→ Check `packages/web-core/Components/` (shared by all three apps); app-only surfaces live
+under `apps/dgfy-ims/Pages/`, `apps/dgfy-pos/src/`, or `apps/dgfy-storefront/src/`
 
 **Working on Backend API?**
 → Check `apps/dgfy-api/src/routes/` and `apps/dgfy-api/src/controllers/`
 
 **Working on Database Models?**
-→ Check `apps/dgfy-api/src/models/` (Sequelize) and `apps/dgfy-web/Entities/` (frontend models)
+→ Check `apps/dgfy-api/src/models/` (Sequelize); the frontend has no separate model layer —
+normalization lives alongside the callers in `packages/web-core/src/`
 
 **Working on Authentication?**
 → Check `apps/dgfy-api/src/middleware/auth.js` and `apps/dgfy-api/src/services/authService.js`
 
 **Need API Integration?**
-→ Check `apps/dgfy-web/src/services/` for API service layer
+→ Check `packages/web-core/src/services/` for the API service layer
 
 **Need Full Specs?**
 → See `docs/` directory
@@ -521,9 +491,9 @@ SKU-Inventory-Manager/                    # Monorepo root
 
 ## 📝 Notes for Claude Code
 
-- This is a **monorepo** structure with `apps/dgfy-web/` (formerly `frontend/`) and `apps/dgfy-api/` (the app; formerly `backend/`)
-- Always specify which part you're working on (frontend vs API)
-- Frontend uses relative imports (`@/Components/...`)
+- This is a **monorepo**: three frontend apps (`apps/dgfy-ims/`, `apps/dgfy-pos/`, `apps/dgfy-storefront/`) over the shared `packages/web-core/` trunk, plus `apps/dgfy-api/` (the app; formerly `backend/`)
+- Always specify which app you're working on (IMS vs POS vs storefront vs web-core vs API)
+- Frontend uses alias imports (`@/components/...` → `packages/web-core/Components/`)
 - The API (`apps/dgfy-api`) is served on port `5100` (via nginx same-origin `/api`)
 - API calls from frontend go to the same-origin `/api/v1` path
 - This file is optimized for Claude Code context efficiency

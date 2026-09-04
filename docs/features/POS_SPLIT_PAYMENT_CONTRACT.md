@@ -24,7 +24,7 @@ correction, the Phase 82 sequential cashier-flow simplification, and the Phase
 83 Cash-and-GCash two-field cashier flow, and the Phase 84 configurable
 payment-row cashier flow.
 The governing architecture decision is
-[ADR 0062](../architecture/adr/0062-pos-split-tender-and-manual-walk-in-payment-recording.md).
+[ADR 0063](../architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md).
 
 ## Goal
 
@@ -140,7 +140,7 @@ cash, create a second transaction, or create a second inventory movement.
   replace allocation rows as the financial source of truth.
 - `employee_credit` remains governed by ADR 0051 and is not accepted as one
   leg of a V1 split session.
-- Parked carts remain non-financial snapshots under ADR 0060. Resuming a
+- Parked carts remain non-financial snapshots under ADR 0061. Resuming a
   parked cart into split collection is explicit and must not merge carts.
 - Split collection is online-only until a separate offline contract is
   approved.
@@ -180,7 +180,7 @@ completed sale or inventory effect by itself.
 
 ## Acceptance gates for Phase 57
 
-- [x] ADR 0061 accepted and linked from the feature contract.
+- [x] ADR 0062 accepted and linked from the feature contract.
 - [x] V1 method scope and deferred capabilities are explicit.
 - [x] Session/allocation lifecycle and server invariants are explicit.
 - [x] Existing checkout, parked-sale, offline, Employee Credit, receipt, and
@@ -354,3 +354,43 @@ change is calculated against the final digital balance. Successful earlier
 rows remain visible and are cleared from the retry form if a later row fails.
 The server-owned allocation, recovery, automatic-completion, and PayMongo
 boundaries are unchanged.
+
+## Phase 94 status
+
+Phase 94 adds a visible discount summary to Confirm Checkout with the applied
+discount label, amount, and an explicit trash action for unsaved discounts.
+Removing the discount clears the local governed, preset, and manual discount
+state and recalculates the server-bound checkout snapshot before payment is
+recorded.
+
+All valid discounts may use split tender. The server-owned quote applies the
+discount before calculating the split-session total, and the final checkout
+revalidates the governed discount against the current rules and lines. For
+every governed POS discount type (Senior, PWD, Employee, Promo, and Manual),
+the split-session request verifies the selected authorized employee PIN once
+and stores only a non-secret server approval proof; the raw PIN is never
+stored, returned, or sent to the completion checkout. Senior/PWD beneficiary
+validation remains server-authoritative. An active split-payment session
+prevents changing or removing the discount until the session is completed or
+cancelled.
+
+## Completed-transaction allocation reversal
+
+After a completed split transaction is internally voided, each successful
+allocation is reversed independently through
+`POST /api/v1/pos/transactions/:id/split-allocations/:allocation_id/reversal`.
+The server resolves the allocation, payment session, tender ownership, and
+remaining reversible amount.
+
+- Cash requires the actual refunding cashier's owned open shift and creates one
+  linked `cash_out` event.
+- Merchant-owned digital tender starts as external evidence under manual review
+  and requires explicit same-reference confirmation.
+- Provider-owned allocation evidence must match the provider payment/session;
+  this split endpoint does not submit a partial provider mutation.
+- The transaction remains `refund_pending` while evidence is unresolved,
+  becomes `partial_refunded` when only part is terminal, and becomes `refunded`
+  only when every successful allocation is fully reversed.
+
+Every reversal is append-only and idempotent. It preserves original cashier and
+shift attribution and records the actual refund actor/shift separately.

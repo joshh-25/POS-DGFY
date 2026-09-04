@@ -7,6 +7,11 @@ import { finalizePaidCommerceSession } from './finalizePaidCommerceSession.js';
 import { buildProcessVerifiedPaidCommerceSessionUseCase } from './processVerifiedPaidCommerceSession.js';
 import { tenantRevenueSharingEnabled } from '../../../config/tenantRevenueFeature.js';
 import { recordSucceededTenantRevenueRefundUseCase } from '../../tenantRevenue/index.js';
+import {
+  buildRefundLedgerIdempotencyKey,
+  mapRefundStatusToLedgerStatus,
+  writeTenantOrderPaymentEntry
+} from '../repositories/tenantOrderPaymentLedgerRepository.js';
 
 const randomReference = (prefix) => `${prefix}-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
 const toInt = (value, fallback = null) => {
@@ -27,6 +32,11 @@ const ACTIVE_REFUND_STATUSES = ['pending', 'succeeded'];
 const SUCCEEDED_REFUND_STATUSES = ['succeeded'];
 const SETTLEMENT_REPORT_STATUSES = ['finalized', 'paid', 'refund_pending', 'partial_refunded', 'refunded', 'split_failed_manual_settlement_required'];
 const PAID_PROVIDER_STATUSES = new Set(['paid', 'succeeded', 'success', 'completed']);
+
+const isAmbiguousProviderRefundError = (error = {}) => {
+  const status = Number(error?.response?.status || 0);
+  return !error?.response || status === 408 || status === 429 || status >= 500;
+};
 
 const serializeAccount = (account = {}) => ({
   account_id: account.account_id,
@@ -57,6 +67,9 @@ const serializeSession = (session = {}, refunds = []) => ({
   idempotency_key: session.idempotency_key,
   total_amount: session.total_amount,
   total_amount_centavos: session.total_amount_centavos,
+  currency: session.currency,
+  qr_code_image_url: session.qr_code_image_url,
+  expires_at: session.expires_at,
   service_fee_amount: session.service_fee_amount,
   platform_fee_centavos: session.platform_fee_centavos,
   tenant_transfer_merchant_id: session.tenant_transfer_merchant_id,
@@ -241,6 +254,34 @@ const updateTenantPaymentStatus = async ({ commercePaymentRepository, session, p
     { where: { pos_transaction_id: session.pos_transaction_id } }
   );
 };
+
+// Phase 144 (#824): mirror every refund attempt into the tenant's own per-order ledger
+// (`pos_order_payments`, kind 'refund'), so a downpayment order's reversal is visible in the same
+// place its capture was recorded rather than only landlord-side. Gated internally to downpayment
+// sessions and best-effort by contract -- see repositories/tenantOrderPaymentLedgerRepository.js.
+//
+// Deliberately NOT accompanied by any edit to the order's amount_paid/balance_due: ADR 0052
+// clause 4 requires corrections to be expressed as reversal entries, never as edits to the
+// original figures. `updateTenantPaymentStatus` (below) already moves payment_status to
+// refund_pending/partial_refunded/refunded, which is the only order-row change a refund makes.
+const recordTenantRefundLedgerEntry = async ({
+  writeOrderPaymentLedgerEntry = writeTenantOrderPaymentEntry,
+  commercePaymentRepository,
+  session,
+  refund,
+  status
+}) => (
+  writeOrderPaymentLedgerEntry({
+    commercePaymentRepository,
+    session,
+    kind: 'refund',
+    status: mapRefundStatusToLedgerStatus(status),
+    amountCentavos: Number(refund?.amount_centavos || 0),
+    paymentMethod: session?.capture_payment_method || null,
+    paymentReference: refund?.provider_payment_id || session?.provider_payment_id || null,
+    idempotencyKey: buildRefundLedgerIdempotencyKey(refund?.public_reference)
+  })
+);
 
 const getBasePaidSessionStatus = (session = {}) => {
   if (session.status === 'split_failed_manual_settlement_required') return session.status;
@@ -796,7 +837,7 @@ export const buildOperateTenantPayMongoChildAccountUseCase = ({
   }
 };
 
-export const buildRetryCommercePaymentFinalizationUseCase = ({ commercePaymentRepository }) => async ({ paymentSessionId }) => {
+export const buildRetryCommercePaymentFinalizationUseCase = ({ commercePaymentRepository, partnerClient }) => async ({ paymentSessionId }) => {
   try {
     const reference = normalizeReference(paymentSessionId);
     const session = await commercePaymentRepository.findSessionByPublicReference(reference);
@@ -808,7 +849,8 @@ export const buildRetryCommercePaymentFinalizationUseCase = ({ commercePaymentRe
       session,
       resource: session.provider_payload || {},
       providerEventId: session.provider_event_id,
-      commercePaymentRepository
+      commercePaymentRepository,
+      partnerClient
     });
     await writePaymentAudit({
       commercePaymentRepository,
@@ -828,7 +870,8 @@ export const buildRetryCommercePaymentFinalizationUseCase = ({ commercePaymentRe
 
 export const buildReconcileCommercePaymentSessionUseCase = ({
   commercePaymentRepository,
-  paymongoService
+  paymongoService,
+  partnerClient
 }) => async ({ paymentSessionId, actor = 'paymongo_admin_reconciliation' }) => {
   try {
     const reference = normalizeReference(paymentSessionId);
@@ -871,7 +914,8 @@ export const buildReconcileCommercePaymentSessionUseCase = ({
     }
 
     const processVerifiedPaidCommerceSession = buildProcessVerifiedPaidCommerceSessionUseCase({
-      commercePaymentRepository
+      commercePaymentRepository,
+      partnerClient
     });
     const processed = await processVerifiedPaidCommerceSession({
       session,
@@ -908,10 +952,97 @@ export const buildReconcileCommercePaymentSessionUseCase = ({
   }
 };
 
+// #1268: admin-authenticated mirror of `buildConfirmStoreCheckoutSandboxPaymentUseCase`
+// (apps/dgfy-api/src/modules/store/usecases/storeUseCases.js). Deliberately duplicates that use
+// case's status/expiry/amount validation rather than sharing it, so the storefront use case (and
+// its loopback-gated route) stays completely untouched, per the issue's own non-goals. This is a
+// second, independent entry point into the same already-safe `confirmSandboxQrphPayment` call —
+// not a proxy to the loopback route.
+export const buildConfirmCommercePaymentSessionSandboxUseCase = ({
+  commercePaymentRepository,
+  paymongoService
+}) => async ({ paymentSessionId, actor = 'paymongo_admin_sandbox_confirmation' }) => {
+  try {
+    if (process.env.PAYMONGO_MODE !== 'test') {
+      throw new DomainError(
+        DomainErrorCode.RESOURCE_NOT_FOUND,
+        'Sandbox payment confirmation is not available.',
+        { statusCode: 404 }
+      );
+    }
+
+    const reference = normalizeReference(paymentSessionId);
+    const session = await commercePaymentRepository.findSessionByPublicReference(reference);
+    if (!session) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+
+    const refunds = await commercePaymentRepository.listRefundsBySession(session.session_id);
+
+    if (session.status === 'finalized') {
+      return ok({
+        confirmation_requested: false,
+        idempotent_replay: true,
+        payment_session: serializeSession(session, refunds)
+      });
+    }
+    if (session.status !== 'awaiting_payment') {
+      throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        `Payment session cannot be confirmed while ${String(session.status || 'unknown').replaceAll('_', ' ')}.`,
+        { statusCode: 409 }
+      );
+    }
+    if (!session.provider_payment_intent_id) {
+      throw new DomainError(DomainErrorCode.CONFLICT, 'Payment session has no PayMongo payment intent.', { statusCode: 409 });
+    }
+    if (session.expires_at && new Date(session.expires_at).getTime() <= Date.now()) {
+      throw new DomainError(DomainErrorCode.CONFLICT, 'The PayMongo QR Ph payment has expired.', { statusCode: 409 });
+    }
+
+    const providerResult = await paymongoService.confirmSandboxQrphPayment({
+      paymentIntentId: session.provider_payment_intent_id,
+      expectedAmount: session.total_amount_centavos,
+      expectedCurrency: session.currency || 'PHP'
+    });
+    const providerAttributes = providerResult.paymentIntent?.attributes || {};
+    if (
+      Number(providerAttributes.amount) !== Number(session.total_amount_centavos)
+      || String(providerAttributes.currency || '').toUpperCase() !== String(session.currency || 'PHP').toUpperCase()
+    ) {
+      throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        'PayMongo sandbox payment amount or currency does not match this checkout.',
+        { statusCode: 409 }
+      );
+    }
+
+    await writePaymentAudit({
+      commercePaymentRepository,
+      entityId: session.session_id,
+      action: 'UPDATE',
+      actor,
+      changes: {
+        event: 'commerce_payment_sandbox_confirmation_requested',
+        payment_session_id: reference
+      }
+    });
+
+    return ok({
+      confirmation_requested: true,
+      idempotent_replay: false,
+      payment_session: serializeSession(session, refunds)
+    });
+  } catch (error) {
+    return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message));
+  }
+};
+
 export const buildCreateCommercePaymentRefundUseCase = ({
   commercePaymentRepository,
   paymongoService,
-  revenueSharingEnabled = tenantRevenueSharingEnabled
+  revenueSharingEnabled = tenantRevenueSharingEnabled,
+  // Phase 144 (#824): injected so the tenant-ledger wiring is assertable without module mocking,
+  // matching how commerceOrderLifecycleUseCase takes its own writer.
+  writeOrderPaymentLedgerEntry = writeTenantOrderPaymentEntry
 }) => async ({ paymentSessionId, payload = {}, actor = null }) => {
   try {
     const reference = normalizeReference(paymentSessionId);
@@ -997,12 +1128,30 @@ export const buildCreateCommercePaymentRefundUseCase = ({
         splitRefund
       });
     } catch (error) {
+      const pendingReconciliation = isAmbiguousProviderRefundError(error);
       const failed = await commercePaymentRepository.updateRefundById(refund.refund_id, {
-        status: 'failed',
-        failure_code: 'PROVIDER_REFUND_FAILED',
+        status: pendingReconciliation ? 'pending' : 'failed',
+        failure_code: pendingReconciliation
+          ? 'PROVIDER_REFUND_PENDING_RECONCILIATION'
+          : 'PROVIDER_REFUND_FAILED',
         failure_reason: error.response?.data?.errors?.[0]?.detail || error.message || 'PayMongo refund failed'
       });
-      return ok({ refund: serializeRefund(failed) });
+      await recordTenantRefundLedgerEntry({
+        writeOrderPaymentLedgerEntry, commercePaymentRepository, session, refund, status: failed?.status
+      });
+      if (pendingReconciliation) {
+        const pendingSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });
+        return ok({
+          refund: serializeRefund(failed),
+          payment_session: serializeSession(
+            pendingSession,
+            await commercePaymentRepository.listRefundsBySession(session.session_id)
+          ),
+          provider_confirmation_required: true,
+          retryable: false
+        });
+      }
+      return ok({ refund: serializeRefund(failed), retryable: true });
     }
 
     const providerStatus = String(providerRefund?.attributes?.status || 'pending').toLowerCase();
@@ -1015,6 +1164,9 @@ export const buildCreateCommercePaymentRefundUseCase = ({
       provider_payload: providerRefund,
       failure_code: nextRefundStatus === 'failed' ? 'PROVIDER_REFUND_FAILED' : null,
       failure_reason: nextRefundStatus === 'failed' ? (providerRefund?.attributes?.failed_message || 'PayMongo reported refund failure.') : null
+    });
+    await recordTenantRefundLedgerEntry({
+      writeOrderPaymentLedgerEntry, commercePaymentRepository, session, refund, status: nextRefundStatus
     });
 
     const updatedSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });

@@ -13,6 +13,7 @@ import {
     getAffiliateSettingsUseCase,
     inviteAffiliateUseCase,
     listAffiliateCashoutsUseCase,
+    listAffiliateEnrollmentStatusEventsUseCase,
     listAffiliateInvitesUseCase,
     listAffiliatesUseCase,
     listAffiliatePayoutMethodsUseCase,
@@ -20,15 +21,20 @@ import {
     listMyAffiliateEnrollmentsUseCase,
     markAffiliateCashoutPaidUseCase,
     provisionAffiliateUseCase,
+    reactivateAffiliateEnrollmentUseCase,
     rejectAffiliateCashoutUseCase,
     requestAffiliateCashoutUseCase,
+    resolveAffiliateShareCodeUseCase,
     setDefaultAffiliatePayoutMethodUseCase,
     updateAffiliateEnrollmentUseCase,
     updateAffiliatePayoutMethodUseCase,
     updateAffiliateSettingsUseCase,
     listAffiliatePriceRulesUseCase,
     upsertAffiliatePriceRuleUseCase,
-    deactivateAffiliatePriceRuleUseCase
+    deactivateAffiliatePriceRuleUseCase,
+    listAffiliateCategoryRatesUseCase,
+    upsertAffiliateCategoryRateUseCase,
+    deactivateAffiliateCategoryRateUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { setAffiliateAttributionCookie } from '../../../utils/browserSessionCookies.js';
@@ -85,7 +91,14 @@ export const listAffiliates = async (req, res, next) => {
 
 export const provisionAffiliate = async (req, res, next) => {
     try {
-        return send(res, await provisionAffiliateUseCase({ tenantId: req.user?.tenant_id, body: req.body }), {
+        return send(res, await provisionAffiliateUseCase({
+            tenantId: req.user?.tenant_id,
+            body: req.body,
+            actorUserId: req.user?.user_id ?? null,
+            // #1202 (Phase 214, F4) - denormalized at write time so the status-events history can
+            // render "by Ana" instead of an unresolvable "by user #7". Same shape auth.js:481 uses.
+            actorUsername: String(req.user?.username || req.user?.email || '').trim().slice(0, 120) || null
+        }), {
             status: 201,
             message: 'Affiliate provisioned successfully'
         });
@@ -136,10 +149,45 @@ export const updateAffiliateEnrollment = async (req, res, next) => {
         return send(res, await updateAffiliateEnrollmentUseCase({
             tenantId: req.user?.tenant_id,
             enrollmentId: req.params.enrollment_id,
-            body: req.body
+            body: req.body,
+            revokedBy: req.user?.user_id ?? null,
+            // #1202 (Phase 214, F4) - same denormalization as provisionAffiliate above.
+            revokedByUsername: String(req.user?.username || req.user?.email || '').trim().slice(0, 120) || null
         }), {
             message: 'Affiliate enrollment updated successfully'
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const reactivateAffiliateEnrollment = async (req, res, next) => {
+    try {
+        return send(res, await reactivateAffiliateEnrollmentUseCase({
+            tenantId: req.user?.tenant_id,
+            enrollmentId: req.params.enrollment_id,
+            reactivatedBy: req.user?.user_id ?? null,
+            reactivatedByUsername: String(req.user?.username || req.user?.email || '').trim().slice(0, 120) || null,
+            // #1202 (Phase 214) J4, implemented per PR #1232 review RF-3 - optional, additive: an
+            // omitted body or missing `reason` key is unaffected, no existing caller breaks.
+            reason: req.body?.reason
+        }), {
+            message: 'Affiliate enrollment reactivated successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// #1202 (Phase 214, J7) - GET /affiliates/:enrollment_id/status-events. Read permission
+// (VIEW_AFFILIATES), matching GET /affiliates and /qr, not MANAGE_AFFILIATES.
+export const listAffiliateEnrollmentStatusEvents = async (req, res, next) => {
+    try {
+        return send(res, await listAffiliateEnrollmentStatusEventsUseCase({
+            tenantId: req.user?.tenant_id,
+            enrollmentId: req.params.enrollment_id,
+            limit: req.query?.limit
+        }));
     } catch (error) {
         next(error);
     }
@@ -171,6 +219,36 @@ export const deactivateAffiliatePriceRule = async (req, res, next) => {
             tenantId: req.user?.tenant_id,
             priceRuleId: req.params.price_rule_id
         }), { message: 'Affiliate price rule deactivated' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// #448 (Phase 209) - affiliate category rates, the category tier of the commission rate ladder.
+export const listAffiliateCategoryRates = async (req, res, next) => {
+    try {
+        return send(res, await listAffiliateCategoryRatesUseCase({ tenantId: req.user?.tenant_id }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const upsertAffiliateCategoryRate = async (req, res, next) => {
+    try {
+        return send(res, await upsertAffiliateCategoryRateUseCase({ tenantId: req.user?.tenant_id, body: req.body }), {
+            message: 'Affiliate category rate saved successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deactivateAffiliateCategoryRate = async (req, res, next) => {
+    try {
+        return send(res, await deactivateAffiliateCategoryRateUseCase({
+            tenantId: req.user?.tenant_id,
+            categoryRateId: req.params.category_rate_id
+        }), { message: 'Affiliate category rate deactivated' });
     } catch (error) {
         next(error);
     }
@@ -359,6 +437,22 @@ export const captureAffiliateAttribution = async (req, res, next) => {
             setAffiliateAttributionCookie(req, res, result.data.tenant_id, result.data.enrollment_id);
         }
         return send(res, result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Public, unauthenticated (#452, Phase 212): resolves /s/{short_code} to the store the affiliate is
+// sharing, so the storefront can boot the right store from a path-only share link. Always responds
+// success (resolved: true/false) - never a 4xx for an unknown/inactive code, so the endpoint can't
+// be used to enumerate either (see ADR 0036's Amendments block for the honest qualification of that
+// property). Deliberately returns only a store slug and the code - no tenant_id, enrollment_id, or
+// affiliate identity.
+export const resolveAffiliateShareCode = async (req, res, next) => {
+    try {
+        return send(res, await resolveAffiliateShareCodeUseCase({
+            shortCode: req.params.short_code
+        }));
     } catch (error) {
         next(error);
     }

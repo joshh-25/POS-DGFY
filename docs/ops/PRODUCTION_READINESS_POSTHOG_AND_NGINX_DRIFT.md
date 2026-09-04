@@ -19,6 +19,25 @@ The rest of this document (GitHub Actions variables, connection budget) describe
 
 ---
 
+## Update (2026-08-23): the nginx-drift finding below is now stale
+
+The "actual blocker" finding in the Nginx section below — **"Copying the repo template over the
+live file as-is would delete the entire `_PROD` block set — taking down `dgfy.ph`,
+`skupervisor.dgfy.ph`, and `pos.dgfy.ph` production routing"** — no longer holds. As part of the
+#329 beta-deprecation epic (#894/#896), the repo's `infrastructure/docker/nginx/nginx.conf.template`
+was updated to carry the `_PROD` dual-domain structure this doc's finding says was missing, and that
+updated template was copied onto the live server and reloaded with zero downtime — the exact
+reconciliation this section recommended as prerequisite work. `diff`ing live vs. repo at that point
+showed only one unmerged line (the `resolver ... ipv6=off` fix, #431), since closed by the same
+copy. The topology itself has also changed since this finding was written: the beta domain group no
+longer proxies to its own `frontend-beta` container at all — every `*.beta.dgfy.ph` host now
+`301`-redirects to its `*.dgfy.ph` equivalent (#894/#896), and `deploy-main.yml` no longer builds or
+deploys a `frontend-beta` image (#895). The rest of this section (the deploy pipeline not syncing
+`nginx/` automatically, the manual `scp`+reload step, DEV being dormant) remains accurate and
+unaffected by this update — only the specific "drift would break prod" danger is resolved.
+
+---
+
 ## Purpose
 
 `docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md` fixed MySQL connection exhaustion and the PostHog CSP block on `stage.dgfy.ph`. Both are documented there as production-readiness risks, not staging-only quirks. This doc is the checklist for what's actually needed before either fix is real in **PROD** and **BETA** — gathered by directly inspecting those environments' live GitHub Actions configuration and servers (read-only; nothing in PROD/BETA was changed while gathering this).
@@ -93,7 +112,7 @@ Apply to the storefront/POS/skupervisor blocks for both the beta and prod domain
 
 ### The deploy pipeline does not sync this file automatically
 
-Confirmed: `infrastructure/docker/docker-compose.yml`'s own header comment states the `nginx/` directory must be **manually copied** alongside the compose file — no CI workflow does this. Merging an `nginx.conf.template` change to `main` will build and push new backend/frontend images and (per `deploy-production.yml`) deploy them, but the **nginx container will keep running its old, already-copied config** until someone manually re-copies the file and reloads. This is the same class of gap that produced the stage host-nginx surprise, just for the containerized case. Not fixing the pipeline itself here — documenting the required manual step:
+Confirmed: `infrastructure/docker/docker-compose.yml`'s own header comment states the `nginx/` directory must be **manually copied** alongside the compose file — no CI workflow does this. Dispatching `deploy-main.yml` (manual-only as of 2026-08-14, #417; formerly `build-main.yml` on `push: [main]`) after an `nginx.conf.template` change will build and push new backend/frontend images and deploy them, but the **nginx container will keep running its old, already-copied config** until someone manually re-copies the file and reloads. This is the same class of gap that produced the stage host-nginx surprise, just for the containerized case. Not fixing the pipeline itself here — documenting the required manual step:
 
 ```bash
 # after infrastructure/docker/nginx/nginx.conf.template changes land on main:

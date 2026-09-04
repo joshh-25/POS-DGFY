@@ -13,7 +13,7 @@ import { resolveEffectiveItemTaxonomy } from '../src/modules/shared/constants/mo
 import { STOREFRONT_ORDER_METHODS, POS_ORDER_METHODS } from '../src/modules/shared/constants/orderMethods.js';
 // Imported through the frontend path deliberately: the harness proves the
 // profile materializes exactly what the admin POS terminal resolves.
-import { resolvePosWorkflow } from '../../dgfy-web/src/features/pos/utils/posWorkflowResolver.js';
+import { resolvePosWorkflow } from '../../../packages/web-core/src/features/pos/utils/posWorkflowResolver.js';
 import {
     POS_DEFAULTS_AND_TERMINOLOGY_VOCABULARY_ALIGNED,
     resolvePosDefaultsAndTerminology
@@ -101,6 +101,7 @@ describe('store profile equivalence harness (issue #178 Phase 11)', () => {
         expect(servicesProfile.pos_defaults.show_online_queue).toBe(false);
         expect(fnbProfile.pos_defaults.show_online_queue).toBe(true);
         expect(retailProfile.pos_defaults.show_online_queue).toBe(true);
+        expect(buildStoreProfile({ workflowMode: 'msme' }).pos_defaults.show_online_queue).toBe(true);
     });
 
     it('applies the enabled-capabilities overlay exactly as the runtime does', () => {

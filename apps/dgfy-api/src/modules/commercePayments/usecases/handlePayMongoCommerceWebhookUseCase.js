@@ -9,15 +9,23 @@ import {
   recordSucceededTenantRevenueRefundUseCase
 } from '../../tenantRevenue/index.js';
 import { buildProcessVerifiedPaidCommerceSessionUseCase } from './processVerifiedPaidCommerceSession.js';
+import {
+  buildRefundLedgerIdempotencyKey,
+  mapRefundStatusToLedgerStatus,
+  updateTenantOrderPaymentEntryStatus
+} from '../repositories/tenantOrderPaymentLedgerRepository.js';
+import { cancelDglaundryBookingReservations, notifyDglaundryBookingRefund } from './finalizeDglaundryBookingSession.js';
 
 const toPlain = (value) => (value?.get ? value.get({ plain: true }) : value);
 
-const getEventType = (body = {}) => (
-  body?.data?.attributes?.type
-  || body?.type
-  || body?.event
-  || ''
-);
+const getEventType = (body = {}) => {
+  const envelopeType = String(body?.data?.type || '').trim();
+  return body?.data?.attributes?.type
+    || (envelopeType && envelopeType !== 'event' ? envelopeType : '')
+    || body?.type
+    || body?.event
+    || '';
+};
 
 const getEventId = (body = {}, headers = {}) => (
   body?.data?.id
@@ -28,7 +36,8 @@ const getEventId = (body = {}, headers = {}) => (
 );
 
 const getEventResource = (body = {}) => (
-  body?.data?.attributes?.data
+  body?.data?.data
+  || body?.data?.attributes?.data
   || body?.resource
   || body?.data
   || {}
@@ -66,9 +75,14 @@ const hasExplicitChargeEvidence = (resource = {}) => {
 
 const getPaymentIntentId = (resource = {}) => {
   const attrs = getAttributes(resource);
+  const nestedPayment = Array.isArray(attrs.payments) ? (attrs.payments[0]?.data || attrs.payments[0]) : null;
+  const nestedPaymentAttrs = getAttributes(nestedPayment || {});
   return attrs.payment_intent_id
     || attrs.payment_intent?.id
     || attrs.payment_intent
+    || nestedPaymentAttrs.payment_intent_id
+    || nestedPaymentAttrs.payment_intent?.id
+    || nestedPaymentAttrs.payment_intent
     || resource?.id
     || null;
 };
@@ -86,8 +100,21 @@ const getSessionReference = (resource = {}) => {
   const attrs = getAttributes(resource);
   return attrs.metadata?.commerce_payment_session
     || attrs.metadata?.payment_session
+    || attrs.reference_number
     || attrs.payment_intent?.metadata?.commerce_payment_session
     || null;
+};
+
+const getCheckoutPaymentResource = (resource = {}) => {
+  const attrs = getAttributes(resource);
+  const payment = Array.isArray(attrs.payments)
+    ? attrs.payments.find((entry) => {
+      const candidate = entry?.data || entry;
+      const status = String(getAttributes(candidate).status || '').toLowerCase();
+      return status === 'paid' || status === 'succeeded';
+    }) || attrs.payments[0]
+    : null;
+  return payment?.data || payment || resource;
 };
 
 export const buildHandlePayMongoCommerceWebhookUseCase = ({
@@ -96,10 +123,14 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
   logger,
   recordSucceededRevenueRefund = recordSucceededTenantRevenueRefundUseCase,
   raiseOperationalAlert = async () => {},
-  processVerifiedPaidCommerceSession: processVerifiedPaidCommerceSessionOverride = null
+  processVerifiedPaidCommerceSession: processVerifiedPaidCommerceSessionOverride = null,
+  partnerClient,
+  // Phase 144 (#824): injected so the tenant-ledger wiring is assertable without module mocking,
+  // matching how commerceOrderLifecycleUseCase takes its own writer.
+  updateOrderPaymentLedgerEntryStatus = updateTenantOrderPaymentEntryStatus
 }) => {
   const processVerifiedPaidCommerceSession = processVerifiedPaidCommerceSessionOverride
-    || buildProcessVerifiedPaidCommerceSessionUseCase({ commercePaymentRepository });
+    || buildProcessVerifiedPaidCommerceSessionUseCase({ commercePaymentRepository, partnerClient });
 
   const writeWebhookAudit = async ({
     eventType,
@@ -174,6 +205,21 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
       failure_code: status === 'failed' ? 'PROVIDER_REFUND_FAILED' : null,
       failure_reason: status === 'failed' ? (attrs.failed_message || 'PayMongo reported refund failure.') : null
     });
+    // Phase 144 (#824): promote the tenant-side `pos_order_payments` refund row this refund was
+    // submitted with (written pending by createCommercePaymentRefundUseCase) to its terminal
+    // status. This is the async half of a PayMongo refund -- the reason that ledger row carries a
+    // status enum at all rather than only ever being written on success.
+    //
+    // The helper never throws (see repositories/tenantOrderPaymentLedgerRepository.js): an unreachable tenant
+    // database must not fail webhook acknowledgement, or PayMongo retries a money event.
+    await updateOrderPaymentLedgerEntryStatus({
+      commercePaymentRepository,
+      session,
+      idempotencyKey: buildRefundLedgerIdempotencyKey(refund.public_reference),
+      status: mapRefundStatusToLedgerStatus(status),
+      providerEventId
+    });
+
     const updatedSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });
     if (status === 'succeeded') {
       const revenueResult = await recordSucceededRevenueRefund({
@@ -182,6 +228,9 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
         actor: 'paymongo_webhook'
       });
       if (!revenueResult.success) throw revenueResult.error;
+      await notifyDglaundryBookingRefund({ session: updatedSession, refund: updatedRefund, providerEventId, partnerClient }).catch((error) => {
+        logger?.warn?.('DGLaundry refund notification is pending retry.', { error: error?.message, paymentSession: session.public_reference });
+      });
     }
     await commercePaymentRepository.createAuditLog?.({
       user_id: null,
@@ -295,6 +344,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
     let eventType = null;
     let providerEventId = null;
     let resource = {};
+    let paymentResource = {};
     let session = null;
 
     try {
@@ -306,10 +356,13 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
       eventType = getEventType(body);
       providerEventId = getEventId(body, headers);
       resource = toPlain(getEventResource(body));
+      paymentResource = eventType.startsWith('checkout_session.payment.')
+        ? toPlain(getCheckoutPaymentResource(resource))
+        : resource;
       await writeWebhookAudit({
         eventType,
         providerEventId,
-        providerPaymentId: getPaymentId(resource),
+        providerPaymentId: getPaymentId(paymentResource),
         outcome: 'received'
       });
 
@@ -320,22 +373,42 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
         return handleRefundEvent({ resource, providerEventId });
       }
 
-      session = await findSessionForResource(resource);
+      session = await findSessionForResource(resource) || await findSessionForResource(paymentResource);
 
       if (!session) {
         logger?.warn?.('PayMongo commerce webhook ignored: session not found', {
           eventType,
           providerEventId,
-          paymentIntentId: getPaymentIntentId(resource),
+          paymentIntentId: getPaymentIntentId(paymentResource),
           sessionReference: getSessionReference(resource)
         });
         await writeWebhookAudit({
           eventType,
           providerEventId,
-          providerPaymentId: getPaymentId(resource),
+          providerPaymentId: getPaymentId(paymentResource),
           outcome: 'ignored',
           status: 'session_not_found'
         });
+        // #476: a paid event with no local session is money collected with no order record.
+        // Scoped to the money-bearing event types only -- refunds/account-lifecycle events
+        // already logger.warn and return the same way, and alerting on every ignored event
+        // type would bury this signal in noise.
+        if (eventType === 'payment.paid' || eventType === 'checkout_session.payment.paid') {
+          await Promise.resolve(raiseOperationalAlert({
+            key: 'paymongo.commerce_webhook_unknown_session_paid',
+            level: 'error',
+            message: 'PayMongo reported a paid payment for an unknown commerce payment session.',
+            context: {
+              event_type: eventType,
+              provider_event_id: providerEventId,
+              provider_payment_id: getPaymentId(paymentResource),
+              payment_intent_id: getPaymentIntentId(paymentResource),
+              session_reference: getSessionReference(resource)
+            }
+          })).catch((alertError) => {
+            logger?.warn?.('PayMongo commerce webhook unknown-session alert failed', { error: alertError?.message });
+          });
+        }
         return ok({ handled: false, reason: 'session_not_found' });
       }
 
@@ -362,17 +435,17 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
         });
       }
 
-      if (eventType === 'payment.paid') {
+      if (eventType === 'payment.paid' || eventType === 'checkout_session.payment.paid') {
         const processed = await processVerifiedPaidCommerceSession({
           session,
-          resource,
+          resource: paymentResource,
           providerEventId,
           actor: 'paymongo_webhook'
         });
         await writeWebhookAudit({
           eventType,
           providerEventId,
-          providerPaymentId: getPaymentId(resource),
+          providerPaymentId: getPaymentId(paymentResource),
           session,
           outcome: 'processed',
           status: processed?.status
@@ -380,19 +453,22 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
         return ok(processed);
       }
 
-      if (eventType === 'payment.failed') {
+      if (eventType === 'payment.failed' || eventType === 'checkout_session.payment.failed') {
         const failed = await commercePaymentRepository.updateSessionById(session.session_id, {
           status: 'failed',
           provider_event_id: providerEventId || session.provider_event_id,
-          provider_payment_id: getPaymentId(resource) || session.provider_payment_id,
-          provider_payload: resource,
+          provider_payment_id: getPaymentId(paymentResource) || session.provider_payment_id,
+          provider_payload: paymentResource,
           failure_code: 'PAYMENT_FAILED',
-          failure_reason: getAttributes(resource)?.failed_message || 'PayMongo reported payment failure.'
+          failure_reason: getAttributes(paymentResource)?.failed_message || 'PayMongo reported payment failure.'
         });
+        if (session.target_type === 'dglaundry_booking') {
+          await cancelDglaundryBookingReservations({ session: failed, reason: 'PAYMENT_FAILED', providerEventId, commercePaymentRepository, partnerClient });
+        }
         await writeWebhookAudit({
           eventType,
           providerEventId,
-          providerPaymentId: getPaymentId(resource),
+          providerPaymentId: getPaymentId(paymentResource),
           session: failed,
           outcome: 'processed',
           status: failed.status
@@ -404,14 +480,17 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
         const expired = await commercePaymentRepository.updateSessionById(session.session_id, {
           status: 'expired',
           provider_event_id: providerEventId || session.provider_event_id,
-          provider_payload: resource,
+          provider_payload: paymentResource,
           failure_code: 'QRPH_EXPIRED',
           failure_reason: 'PayMongo QR Ph code expired before payment.'
         });
+        if (session.target_type === 'dglaundry_booking') {
+          await cancelDglaundryBookingReservations({ session: expired, reason: 'QRPH_EXPIRED', providerEventId, commercePaymentRepository, partnerClient });
+        }
         await writeWebhookAudit({
           eventType,
           providerEventId,
-          providerPaymentId: getPaymentId(resource),
+          providerPaymentId: getPaymentId(paymentResource),
           session: expired,
           outcome: 'processed',
           status: expired.status
@@ -422,7 +501,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
       await writeWebhookAudit({
         eventType,
         providerEventId,
-        providerPaymentId: getPaymentId(resource),
+        providerPaymentId: getPaymentId(paymentResource),
         session,
         outcome: 'ignored',
         status: 'event_type_ignored'
@@ -433,7 +512,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
         eventType,
         providerEventId,
         paymentSession: session?.public_reference || null,
-        providerPaymentId: getPaymentId(resource),
+        providerPaymentId: getPaymentId(paymentResource),
         error: error?.message,
         stack: error?.stack
       });
@@ -455,7 +534,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           context: {
             event_type: eventType,
             provider_event_id: providerEventId,
-            provider_payment_id: getPaymentId(resource),
+            provider_payment_id: getPaymentId(paymentResource),
             payment_session: session?.public_reference || null
           }
         })).catch((alertError) => {

@@ -60,11 +60,13 @@ describe('posRepository catalog image mapping', () => {
     const ItemBarcode = {
       findAll: jest.fn().mockResolvedValue([
         {
+          source: 'tenant_generated',
           scope: 'pos',
           toJSON: () => ({
             item_barcode_id: 501,
             item_id: 101,
             code: 'CHEESE-101',
+            source: 'tenant_generated',
             scope: 'pos',
             is_primary: true
           })
@@ -92,6 +94,7 @@ describe('posRepository catalog image mapping', () => {
       primary_barcode: {
         item_barcode_id: 501,
         code: 'CHEESE-101',
+        source: 'tenant_generated',
         scope: 'pos',
         is_primary: true
       }
@@ -99,7 +102,60 @@ describe('posRepository catalog image mapping', () => {
     expect(ItemBarcode.findAll).toHaveBeenCalledTimes(1);
   });
 
-  it('never returns a stale pos_catalog_overrides image once a storefront image exists', async () => {
+  it('shows legacy inventory-scoped manufacturer GTINs so POS edits can repair their scope', async () => {
+    const Item = {
+      findAll: jest.fn().mockResolvedValue([{
+        toJSON: () => ({
+          item_id: 176,
+          name: 'Stabilo Boss original',
+          sku_code: 'STABILO-176',
+          category: 'product',
+          product_type: 'finished_goods',
+          unit_of_measure: 'pcs',
+          current_stock: 1,
+          cost_per_unit: 10,
+          default_sale_price: 20,
+          vat_type: 'vatable'
+        })
+      }])
+    };
+    const ItemBarcode = {
+      findAll: jest.fn().mockResolvedValue([{
+        source: 'manufacturer',
+        scope: 'inventory',
+        toJSON: () => ({
+          item_barcode_id: 26,
+          item_id: 176,
+          code: '4006381333672',
+          source: 'manufacturer',
+          scope: 'inventory',
+          is_primary: true
+        })
+      }])
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ItemBarcode') return ItemBarcode;
+      if (name === 'PosCatalogOverride') return { findAll: jest.fn().mockResolvedValue([]) };
+      if (name === 'StorefrontCatalogOverride') return { findAll: jest.fn().mockResolvedValue([]) };
+      if (name === 'ItemLocationStock') return null;
+      if (['ServiceItemDetail', 'FnbModifierGroup', 'FnbModifierOption', 'FnbItemKitchenRoute', 'FnbKitchenStation'].includes(name)) return null;
+      return {};
+    });
+
+    const result = await posRepository.listCatalog({ limit: 10 });
+
+    expect(result[0].primary_barcode).toEqual({
+      item_barcode_id: 26,
+      code: '4006381333672',
+      source: 'manufacturer',
+      scope: 'inventory',
+      is_primary: true
+    });
+  });
+
+  it('prefers a working POS-specific override image over the Storefront fallback when both exist (#871)', async () => {
     const Item = {
       findAll: jest.fn().mockResolvedValue([
         {
@@ -124,8 +180,8 @@ describe('posRepository catalog image mapping', () => {
           toJSON: () => ({
             item_id: 202,
             pos_visible: true,
-            pos_image_path: 'pos/stale-iced-latte.png',
-            pos_image_url: '/uploads/pos/stale-iced-latte.png'
+            pos_image_path: 'pos/current-iced-latte.png',
+            pos_image_url: '/uploads/pos/current-iced-latte.png'
           })
         }
       ])
@@ -164,8 +220,75 @@ describe('posRepository catalog image mapping', () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual(expect.objectContaining({
       item_id: 202,
-      pos_image_url: '/uploads/storefront/new-iced-latte.png',
+      // #871: a working POS-specific image must win over the Storefront
+      // fallback -- applyCatalogOverrides() previously always used the
+      // Storefront image unconditionally, silently dropping a valid
+      // pos_catalog_overrides image whenever both existed.
+      pos_image_url: '/uploads/pos/current-iced-latte.png',
+      // storefront_image_url is a separate, Storefront-facing field and is
+      // unaffected by which image POS chooses to display.
       storefront_image_url: '/uploads/storefront/new-iced-latte.png'
+    }));
+  });
+
+  it('prefers a working POS-specific override image over the Storefront fallback in getCatalogReadinessByItemId (#871)', async () => {
+    const Item = {
+      findOne: jest.fn().mockResolvedValue({
+        toJSON: () => ({
+          item_id: 303,
+          name: 'Mango Shake',
+          sku_code: 'BEV-303-MANGO-SHAKE',
+          category: 'product',
+          product_type: 'finished_goods',
+          status: 'active',
+          default_sale_price: 90,
+          current_stock: 10,
+          folder_id: null,
+          product_folder: null
+        })
+      })
+    };
+    const PosCatalogOverride = {
+      findOne: jest.fn().mockResolvedValue({
+        toJSON: () => ({
+          item_id: 303,
+          pos_visible: true,
+          pos_image_path: 'pos/current-mango-shake.png',
+          pos_image_url: '/uploads/pos/current-mango-shake.png'
+        })
+      })
+    };
+    const StorefrontCatalogOverride = {
+      findAll: jest.fn().mockResolvedValue([
+        {
+          toJSON: () => ({
+            item_id: 303,
+            storefront_image_path: 'storefront/new-mango-shake.png',
+            storefront_image_url: '/uploads/storefront/new-mango-shake.png',
+            storefront_image_gallery: null
+          })
+        }
+      ])
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'PosCatalogOverride') return PosCatalogOverride;
+      if (name === 'StorefrontCatalogOverride') return StorefrontCatalogOverride;
+      if (name === 'SystemSetting') return null;
+      if (name === 'ItemFolder') return null;
+      if (['ServiceItemDetail', 'FnbModifierGroup', 'FnbModifierOption', 'FnbItemKitchenRoute', 'FnbKitchenStation'].includes(name)) return null;
+      return {};
+    });
+
+    const result = await posRepository.getCatalogReadinessByItemId(303);
+
+    expect(result).toEqual(expect.objectContaining({
+      item_id: 303,
+      // #871: same fallback-order bug as listCatalog()'s applyCatalogOverrides(),
+      // fixed via the same shared resolvePosDisplayImage() helper.
+      pos_image_url: '/uploads/pos/current-mango-shake.png',
+      storefront_image_url: '/uploads/storefront/new-mango-shake.png'
     }));
   });
 

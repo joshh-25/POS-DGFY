@@ -2,20 +2,28 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { routeCalculatorEnabled, routeCalculatorDefaultProfile } from '../../../config/routeCalculatorFeature.js';
 
+// `reasonCode`, where present, marks a mapped error as an expected precondition (missing/disabled
+// optional config) rather than a genuine fault -- carried through as DomainError's
+// `observabilityReasonCode`, never `details`, so it's never serialized into the response body
+// (see domainErrors.js's isExpectedDomainFailure, #508 / PR #791 RF-1). ROUTE_TIMEOUT/
+// ROUTE_UNREACHABLE are deliberately left untagged: those are real transient or infra failures
+// and should keep reporting to Sentry.
 const REPOSITORY_ERROR_TO_DOMAIN = {
-    ROUTE_CALCULATOR_DISABLED: { code: DomainErrorCode.SERVICE_UNAVAILABLE, statusCode: 503 },
+    ROUTE_CALCULATOR_DISABLED: { code: DomainErrorCode.SERVICE_UNAVAILABLE, statusCode: 503, reasonCode: 'ROUTE_CALCULATOR_NOT_CONFIGURED' },
     ROUTE_TIMEOUT: { code: DomainErrorCode.SERVICE_UNAVAILABLE, statusCode: 503 },
     ROUTE_UNREACHABLE: { code: DomainErrorCode.SERVICE_UNAVAILABLE, statusCode: 503 },
     ROUTE_NOT_FOUND: { code: DomainErrorCode.VALIDATION_FAILED, statusCode: 422 }
 };
 
 export const buildCalculateRouteUseCase = ({ routeCalculatorRepository }) => {
-    return async ({ originLat, originLng, destLat, destLng, profile }) => {
+    // `timeoutMs` is optional and additive (#1328/epic #1321) -- omitted by every existing caller,
+    // which keeps falling through to the repository's own env-driven default unchanged.
+    return async ({ originLat, originLng, destLat, destLng, profile, timeoutMs }) => {
         if (!routeCalculatorEnabled()) {
             return fail(new DomainError(
                 DomainErrorCode.SERVICE_UNAVAILABLE,
                 'Route calculator is not configured for this environment.',
-                { statusCode: 503 }
+                { statusCode: 503, observabilityReasonCode: 'ROUTE_CALCULATOR_NOT_CONFIGURED' }
             ));
         }
 
@@ -27,7 +35,8 @@ export const buildCalculateRouteUseCase = ({ routeCalculatorRepository }) => {
                 originLng,
                 destLat,
                 destLng,
-                profile: resolvedProfile
+                profile: resolvedProfile,
+                timeoutMs
             });
             return ok(route);
         } catch (error) {
@@ -35,7 +44,10 @@ export const buildCalculateRouteUseCase = ({ routeCalculatorRepository }) => {
             return fail(new DomainError(
                 mapped.code,
                 error?.message || 'Route calculation failed.',
-                { statusCode: mapped.statusCode }
+                {
+                    statusCode: mapped.statusCode,
+                    observabilityReasonCode: mapped.reasonCode || null
+                }
             ));
         }
     };

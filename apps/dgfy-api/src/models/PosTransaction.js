@@ -39,6 +39,10 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.INTEGER,
         allowNull: true
     },
+    operator_session_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
     terminal_id: {
         type: DataTypes.STRING(100),
         allowNull: true
@@ -58,6 +62,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
             'placed',
             'confirmed',
             'preparing',
+            'packed',
             'ready_for_pickup',
             'out_for_delivery',
             'completed',
@@ -134,6 +139,81 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         defaultValue: false
     },
+    // Phase 236 (#1328, epic #1321): observation-only server-side road-distance capture. Neither
+    // field feeds delivery_fee/total_amount computation anywhere in this codebase -- see
+    // docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md.
+    delivery_distance_meters: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    delivery_distance_source: {
+        type: DataTypes.ENUM('road', 'fallback', 'none'),
+        allowNull: false,
+        defaultValue: 'none'
+    },
+    // Phase 237 (#1329, epic #1321). Money-provenance columns for the resolved delivery-fee
+    // breakdown -- see
+    // docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md
+    // and the ADR 0012 amendment dated 2026-09-02. The invariant has two halves, and BOTH hold
+    // (corrected 2026-09-04 by #1564, which restated the second half and made the write that
+    // upholds it real):
+    //   - delivery_fee_override IS NULL      -> delivery_fee_base - delivery_fee_waiver === delivery_fee
+    //   - delivery_fee_override IS NOT NULL  -> delivery_fee === delivery_fee_override, and
+    //                                          base/waiver are RETAINED as the pre-override
+    //                                          provenance and deliberately no longer reconcile.
+    // Reading only the first half and finding it violated is not evidence of corruption -- check
+    // delivery_fee_override first. Before #1564 the staff override
+    // (modules/pos/usecases/deliveryFeeOverrideUseCases.js) wrote delivery_fee/total_amount and
+    // left the override column NULL, which broke the first half with no signal at all; that is the
+    // exact failure this two-part statement exists to make unrepresentable.
+    // fallbackApplied/outOfRange are
+    // deliberately NOT persisted here -- fully derivable from `delivery_fee_mode = 'calculated' AND
+    // delivery_distance_source <> 'road'` (plus the config-malformed case), so a derivable boolean
+    // never drifts out of sync with the columns it's derived from.
+    delivery_fee_mode: {
+        type: DataTypes.ENUM('fixed', 'calculated', 'free'),
+        allowNull: false,
+        defaultValue: 'fixed'
+    },
+    delivery_fee_base: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    delivery_fee_waiver: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    // Nullable is load-bearing: NULL means "no override", 0.0000 means "staff set it free" -- the
+    // same null-vs-zero convention Phase 140 already established for downpayment_amount.
+    delivery_fee_override: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: true,
+        defaultValue: null
+    },
+    delivery_fee_calc_version: {
+        type: DataTypes.SMALLINT.UNSIGNED,
+        allowNull: false,
+        defaultValue: 1
+    },
+    // #1331 (Phase 240, epic #1321 decision 9). Provenance for delivery_fee_waiver above: which
+    // voucher waived it, and what it was called at the time. Both nullable-with-NULL-default --
+    // the overwhelming majority of orders have no waiver, and NULL (no waiver) must stay
+    // distinguishable from a ₱0 waiver on a free-mode tenant. ON DELETE SET NULL (declared on the
+    // migration's FK, mirrored here via `references`) rather than RESTRICT: an order's fiscal
+    // record must survive a voucher being purged; the label snapshot preserves the human-readable
+    // trace regardless, same reasoning discount_label_snapshot already embodies.
+    delivery_fee_waiver_voucher_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: 'vouchers', key: 'voucher_id' },
+        onDelete: 'SET NULL'
+    },
+    delivery_fee_waiver_label_snapshot: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
     accepted_by: {
         type: DataTypes.INTEGER,
         allowNull: true
@@ -142,8 +222,37 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.DATE,
         allowNull: true
     },
+    // Phase 210 (#1179). Separate from accepted_by/accepted_at because a reject can now happen
+    // after an accept (confirmed -> rejected) -- the two events have different actors and times.
+    rejection_reason: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    rejected_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    rejected_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    // Phase 211 (#1180). Retail-only "packed" fulfillment step: two nullable, additive columns
+    // attributing the event. No Sequelize association (mirrors rejected_by/rejected_at, which
+    // also has none).
+    packed_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    packed_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
     payment_type: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit'),
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085). Split-tender allocations copy their method onto this column
+        // (splitPaymentUseCases.js), so it has to widen alongside pos_order_payments and
+        // pos_payment_allocations or a cheque split allocation fails at the write.
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque'),
         allowNull: false,
         defaultValue: 'cash'
     },
@@ -155,7 +264,9 @@ const PosTransaction = sequelize.define('PosTransaction', {
     cash_received: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
     change_amount: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
     payment_status: {
-        type: DataTypes.ENUM('unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'),
+        // 'partially_paid' added by ADR 0069 clause 4 (carried over from ADR 0068 clause 4,
+        // unchanged by the supersession) -- Phase 137 (#819).
+        type: DataTypes.ENUM('unpaid', 'payment_pending', 'paid', 'partially_paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'),
         allowNull: false,
         defaultValue: 'paid'
     },
@@ -295,6 +406,18 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: false,
         defaultValue: 0
     },
+    amount_paid: {
+        // ADR 0069 clause 4a (carried over from ADR 0068 clause 4a): peso DECIMAL(14,4),
+        // matching every other pos_transaction_* money column -- never centavos.
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    balance_due: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
     status: {
         type: DataTypes.ENUM('completed', 'voided'),
         allowNull: false,
@@ -361,6 +484,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
         { fields: ['fnb_server_id'] },
         { fields: ['cashier_id'] },
         { fields: ['shift_id'] },
+        { name: 'idx_pos_transactions_operator_session_id', fields: ['operator_session_id'] },
         { fields: ['fiscal_document_hash'] },
         { fields: ['fiscal_lifecycle_state'] },
         { fields: ['created_at'] },

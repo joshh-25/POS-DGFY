@@ -16,6 +16,10 @@ const phase63MigrationSource = fs.readFileSync(
     path.resolve(process.cwd(), '../dgfy-migration-runner/migrations/20260812000008-add-pos-provider-refund-reconciliation.cjs'),
     'utf8'
 );
+const phase129MigrationSource = fs.readFileSync(
+    path.resolve(process.cwd(), '../dgfy-migration-runner/migrations/20260819000002-add-pos-split-allocation-reversal-state.cjs'),
+    'utf8'
+);
 const tenantSchemaSource = fs.readFileSync(
     path.resolve(process.cwd(), 'scripts/sync-tenant-schemas.js'),
     'utf8'
@@ -44,18 +48,33 @@ describe('split payment schema contract', () => {
             'cancelled',
             'reversed'
         ]);
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085).
         expect(defaultDb.PosPaymentAllocation.rawAttributes.payment_method.values).toEqual([
             'cash',
             'gcash',
             'maya',
             'card',
-            'bank_transfer'
+            'bank_transfer',
+            'cheque'
         ]);
         expect(defaultDb.PosPaymentAllocation.rawAttributes.cash_tendered.allowNull).toBe(true);
         expect(defaultDb.PosPaymentAllocation.rawAttributes.change_amount.allowNull).toBe(true);
         expect(defaultDb.PosPaymentAllocation.rawAttributes.provider_event_id.allowNull).toBe(true);
         expect(defaultDb.PosPaymentAllocation.rawAttributes.provider_refund_ids.type.toString()).toContain('JSON');
         expect(defaultDb.PosPaymentAllocation.rawAttributes.provider_refund_event_id.allowNull).toBe(true);
+        expect(defaultDb.PosPaymentAllocation.rawAttributes.reversed_amount.allowNull).toBe(false);
+        expect(defaultDb.PosPaymentAllocation.rawAttributes.reversal_status.values).toEqual([
+            'none',
+            'pending',
+            'partial',
+            'completed',
+            'manual_review_required'
+        ]);
+        expect(defaultDb.PosTransactionAdjustment).toBeDefined();
+        expect(defaultDb.PosTransactionAdjustment.rawAttributes.pos_payment_allocation_id.allowNull).toBe(true);
+        expect(defaultDb.PosPaymentAllocation.associations.transactionAdjustments).toBeDefined();
+        expect(defaultDb.PosTransactionAdjustment.associations.paymentAllocation).toBeDefined();
         expect(defaultDb.PosTransaction.rawAttributes.payment_breakdown.type.toString()).toContain('JSON');
         expect(defaultDb.PosPaymentSession.associations.allocations).toBeDefined();
         expect(defaultDb.PosPaymentAllocation.associations.session).toBeDefined();
@@ -67,6 +86,19 @@ describe('split payment schema contract', () => {
         expect(phase63MigrationSource).toContain("'provider_refund_status'");
         expect(phase63MigrationSource).toContain('uq_pos_payment_allocations_provider_refund_event_id');
         expect(phase63MigrationSource).not.toContain('createRefund');
+    });
+
+    it('adds allocation-level reversal state and attribution without provider writes in Phase 129', () => {
+        expect(phase129MigrationSource).toContain("'reversed_amount'");
+        expect(phase129MigrationSource).toContain("'reversal_status'");
+        expect(phase129MigrationSource).toContain("'pos_payment_allocation_id'");
+        expect(phase129MigrationSource).toContain("name: ALLOCATION_ADJUSTMENT_FK");
+        expect(phase129MigrationSource).toContain("const ALLOCATION_ADJUSTMENT_FK = 'fk_pos_adjustment_payment_allocation'");
+        expect(phase129MigrationSource).toContain('idx_pos_payment_allocations_session_reversal_status');
+        expect(phase129MigrationSource).toContain('idx_pos_transaction_adjustments_allocation_created');
+        expect(phase129MigrationSource).toContain("references: { table: 'pos_payment_allocations', field: 'pos_payment_allocation_id' }");
+        expect(phase129MigrationSource).not.toContain('createRefund');
+        expect(phase129MigrationSource).not.toContain('Payment.create');
     });
 
     it('uses an additive migration with dependency-ordered tables and no payment writes', () => {
@@ -93,6 +125,12 @@ describe('split payment schema contract', () => {
         expect(tenantSchemaSource).toContain('pos_payment_sessions_ibfk_4');
         expect(tenantSchemaSource).toContain('pos_payment_allocations_ibfk_1');
         expect(tenantSchemaSource).toContain('provider_refund_event_id');
+        expect(tenantSchemaSource).toContain('reversed_amount');
+        expect(tenantSchemaSource).toContain('reversal_status');
+        expect(tenantSchemaSource).toContain('pos_payment_allocation_id');
+        expect(tenantSchemaSource).toContain('ADD COLUMN `pos_payment_allocation_id`');
+        expect(tenantSchemaSource).toContain('idx_pos_payment_allocations_session_reversal_status');
+        expect(tenantSchemaSource).toContain('idx_pos_transaction_adjustments_allocation_created');
         expect(TENANT_LOCATION_REFERENCE_SOURCES).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 modelName: 'PosPaymentSession',

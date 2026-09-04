@@ -13,7 +13,7 @@ import { trackEngagementEvent } from '../../services/engagementService.js';
 import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrationApproval.js';
 import { tenantAdminRepository } from './repositories/tenantAdminRepository.js';
 import { companyRegistrationRepository } from './repositories/companyRegistrationRepository.js';
-import { dgfyAccountRepository } from '../dgfy/index.js';
+import { dgfyAccountRepository, dgfyAffiliateRepository } from '../dgfy/index.js';
 import { registrationIndustryRepository } from '../registration/index.js';
 import { createTenantPayMongoChildAccountUseCase } from '../commercePayments/index.js';
 import { buildRegisterCompanyRequestUseCase } from './usecases/registerCompanyRequestUseCase.js';
@@ -35,10 +35,15 @@ import { buildUpdateTenantCapabilitiesUseCase } from './usecases/updateTenantCap
 import { buildApplyTemplateToTenantUseCase } from './usecases/applyTemplateToTenantUseCase.js';
 import {
     buildListTenantCapabilityAuditLogsUseCase,
-    buildListTenantPosMetadataAuditLogsUseCase
+    buildListTenantPosMetadataAuditLogsUseCase,
+    buildListTenantAffiliateSlotsAuditLogsUseCase
 } from './usecases/listTenantCapabilityAuditLogsUseCase.js';
 import { buildGetTenantPosMetadataUseCase } from './usecases/getTenantPosMetadataUseCase.js';
 import { buildUpdateTenantPosMetadataUseCase } from './usecases/updateTenantPosMetadataUseCase.js';
+import {
+    buildGetTenantAffiliateSlotsUseCase,
+    buildUpdateTenantAffiliateSlotsUseCase
+} from './usecases/updateTenantAffiliateSlotsUseCase.js';
 import { updateSettingsUseCase } from '../settings/index.js';
 import { readTenantCapabilities } from './usecases/tenantCapabilitySettings.js';
 import tenantConnector from '../../utils/TenantConnector.js';
@@ -164,6 +169,23 @@ export const updateTenantPosMetadataUseCase = buildUpdateTenantPosMetadataUseCas
     tenantAdminRepository,
     tenantConnector,
     updateSettingsUseCase,
+    logger
+});
+
+export const getTenantAffiliateSlotsUseCase = buildGetTenantAffiliateSlotsUseCase({
+    tenantAdminRepository,
+    dgfyAffiliateRepository,
+    logger
+});
+
+export const updateTenantAffiliateSlotsUseCase = buildUpdateTenantAffiliateSlotsUseCase({
+    tenantAdminRepository,
+    dgfyAffiliateRepository,
+    logger
+});
+
+export const listTenantAffiliateSlotsAuditLogsUseCase = buildListTenantAffiliateSlotsAuditLogsUseCase({
+    tenantAdminRepository,
     logger
 });
 

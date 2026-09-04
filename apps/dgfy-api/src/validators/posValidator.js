@@ -8,13 +8,14 @@ const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employ
 const PAYMENT_STATUSES = ['unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'];
 const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
-const REPORT_SECTIONS = ['daily', 'monthly', 'yearly', 'comparison', 'profit_loss'];
+const REPORT_SECTIONS = ['daily', 'monthly', 'yearly', 'comparison', 'profit_loss', 'attendance', 'cashiers', 'registers', 'handoffs'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
-const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+// 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202 (#1085).
+const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque'];
 const SPLIT_PAYMENT_OUTCOMES = ['pending', 'successful', 'failed'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
-const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
+const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'packed', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const DISCOUNT_BENEFICIARY_CATEGORIES = ['senior', 'pwd', 'national_athlete'];
 const FNB_COURSES = ['appetizer', 'main', 'dessert', 'drink', 'other'];
 
@@ -27,6 +28,7 @@ const restaurantServiceChargeSchema = Joi.object({
 });
 
 const checkoutLineSchema = Joi.object({
+    line_ref: Joi.string().trim().max(160).allow(null, '').optional(),
     item_id: Joi.number().integer().positive().required().messages({
         'any.required': 'Item ID is required',
         'number.positive': 'Item ID must be positive'
@@ -45,6 +47,32 @@ const checkoutLineSchema = Joi.object({
     special_instructions: Joi.string().trim().max(1000).allow(null, '').optional(),
     kitchen_station_id: Joi.number().integer().positive().allow(null).optional(),
     selected_option_ids: Joi.array().items(Joi.number().integer().positive()).max(100).unique().optional(),
+    item_discount: Joi.object({
+        discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').default('manual'),
+        label: Joi.string().trim().max(100).allow('', null).optional(),
+        method: Joi.string().valid('percentage', 'fixed').required(),
+        rate: Joi.number().min(0).max(100).precision(4).allow(null).optional(),
+        amount: Joi.number().min(0).precision(4).allow(null).optional(),
+        customer_name: Joi.string().trim().max(255).allow('', null).optional(),
+        id_number: Joi.string().trim().max(100).allow('', null).optional(),
+        employee_name: Joi.string().trim().max(255).allow('', null).optional(),
+        employee_id: Joi.string().trim().max(100).allow('', null).optional(),
+        employee_directory_id: Joi.when('discount_type', {
+            is: 'employee',
+            then: Joi.number().integer().positive().required(),
+            otherwise: Joi.number().integer().positive().allow(null).optional()
+        }),
+        promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
+        reason: Joi.string().trim().max(500).allow('', null).optional(),
+        approver_user_id: Joi.number().integer().positive().allow(null).optional()
+    }).unknown(false).allow(null).optional(),
+    item_discount_approval: Joi.object({
+        approver_user_id: Joi.number().integer().positive().allow(null).optional(),
+        manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
+        employee_user_id: Joi.number().integer().positive().allow(null).optional(),
+        employee_directory_id: Joi.number().integer().positive().allow(null).optional(),
+        discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').optional()
+    }).unknown(false).allow(null).optional(),
     scan_metadata: Joi.object({
         barcode_id: Joi.number().integer().positive().optional(),
         code: Joi.string().trim().max(512).optional(),
@@ -71,7 +99,10 @@ const governedDiscountBeneficiarySchema = discountBeneficiarySchema.keys({
 });
 
 const governedDiscountSchema = Joi.object({
-    type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').required(),
+    // #712: sale-level only -- a voucher's own voucher_scopes/pricelist decides which lines it
+    // touches, matching how the storefront already works. No per-line voucher entry
+    // (checkoutLineSchema.item_discount, below) is added for this type.
+    type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher').required(),
     label: Joi.string().trim().max(100).allow('', null).optional(),
     method: Joi.string().valid('percentage', 'fixed').optional(),
     rate: Joi.number().min(0).max(100).allow(null).optional(),
@@ -80,12 +111,22 @@ const governedDiscountSchema = Joi.object({
     id_number: Joi.string().trim().max(100).allow('', null).optional(),
     employee_name: Joi.string().trim().max(255).allow('', null).optional(),
     employee_id: Joi.string().trim().max(100).allow('', null).optional(),
+    employee_directory_id: Joi.when('type', {
+        is: 'employee',
+        then: Joi.number().integer().positive().required(),
+        otherwise: Joi.number().integer().positive().allow(null).optional()
+    }),
     approver_user_id: Joi.number().integer().positive().allow(null).optional(),
     promo_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
+    // 40 matches VOUCHER_CODE_PATTERN's own cap (voucherValidator.js) -- narrower than
+    // vouchers.code's VARCHAR(64) because the fiscal audit column this rides on
+    // (pos_transaction_discounts.promo_code) is itself VARCHAR(40).
+    voucher_code: Joi.string().trim().uppercase().max(40).allow('', null).optional(),
     reason: Joi.string().trim().max(500).allow('', null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     eligible_item_ids: Joi.array().items(Joi.number().integer().positive()).unique().default([]),
     eligible_items: Joi.array().items(Joi.object({
+        line_ref: Joi.string().trim().max(160).allow(null, '').optional(),
         item_id: Joi.number().integer().positive().required(),
         eligible_quantity: Joi.number().positive().required()
     }).unknown(false)).max(100).default([]),
@@ -99,7 +140,12 @@ const posDiscountApprovalSchema = Joi.object({
     approver_user_id: Joi.number().integer().positive().allow(null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     employee_user_id: Joi.number().integer().positive().allow(null).optional(),
-    discount_type: Joi.string().valid('employee', 'manual').optional()
+    employee_directory_id: Joi.when('discount_type', {
+        is: 'employee',
+        then: Joi.number().integer().positive().required(),
+        otherwise: Joi.number().integer().positive().allow(null).optional()
+    }),
+    discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher').optional()
 });
 
 const checkoutPosSchema = Joi.object({
@@ -135,6 +181,7 @@ const checkoutPosSchema = Joi.object({
     restaurant_service_charge: restaurantServiceChargeSchema.optional(),
     discount_mode: Joi.string().valid(...DISCOUNT_MODES).optional(),
     discount_amount: Joi.number().min(0).precision(4).default(0),
+    item_discount_amount: Joi.number().min(0).precision(4).default(0),
     discount_profile_name: Joi.string().trim().max(80).allow('', null).optional(),
     discount_rate: Joi.number().min(0).max(100).precision(2).allow(null).optional(),
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),
@@ -147,15 +194,27 @@ const checkoutPosSchema = Joi.object({
     special_instructions: Joi.string().trim().max(500).allow('', null).optional(),
     scheduled_for: Joi.date().iso().allow(null).optional(),
     discount_beneficiary: discountBeneficiarySchema.optional(),
+    discount_approval: posDiscountApprovalSchema.optional(),
     governed_discount: governedDiscountSchema.optional(),
+    // #1239 (Phase 222): declared so `stripUnknown: true` (see validateSchema below) stops
+    // deleting it. Deliberately permissive - validity is not decided here. posUseCases.js:2982-2990
+    // resolves the code and hard-rejects an unknown one with a reason-coded
+    // 422 AFFILIATE_CODE_INVALID; a stricter shape here would produce a second, different error
+    // contract for the same user mistake. No .uppercase() (hashAffiliateShareCode already
+    // trim/uppercases, dgfyAffiliateRepository.js:60) and no .pattern() (the AF-XXXXXX format is a
+    // generation detail, not a request contract). '' / null are accepted because the use case maps
+    // them to "no attribution", never to an error.
+    affiliate_code: Joi.string().trim().max(40).allow('', null).optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
         'array.min': 'At least one line item is required'
     })
 }).custom((value, helpers) => {
     const discountAmount = Number(value?.discount_amount || 0);
+    const itemDiscountAmount = Number(value?.item_discount_amount || 0);
+    const globalDiscountAmount = Math.max(0, discountAmount - itemDiscountAmount);
     const hasProfile = Boolean(String(value?.discount_profile_name || '').trim());
     const hasDiscountRate = value?.discount_rate !== undefined && value?.discount_rate !== null;
-    const discountMode = String(value?.discount_mode || '').trim() || (hasProfile ? 'preset' : (hasDiscountRate ? 'percentage' : (discountAmount > 0 ? 'amount' : 'none')));
+    const discountMode = String(value?.discount_mode || '').trim() || (hasProfile ? 'preset' : (hasDiscountRate ? 'percentage' : (globalDiscountAmount > 0 ? 'amount' : 'none')));
 
     if (value.payment_type === 'employee_credit' && !value.employee_credit) {
         return helpers.error('any.invalid', {
@@ -169,7 +228,7 @@ const checkoutPosSchema = Joi.object({
         });
     }
 
-    if (discountMode === 'none' && (hasProfile || hasDiscountRate || discountAmount > 0)) {
+    if (discountMode === 'none' && (hasProfile || hasDiscountRate || globalDiscountAmount > 0)) {
         return helpers.error('any.invalid', {
             message: 'discount_mode none cannot include discount values'
         });
@@ -193,14 +252,14 @@ const checkoutPosSchema = Joi.object({
         });
     }
 
-    if (hasDiscountRate && !hasProfile && discountAmount <= 0) {
+    if (hasDiscountRate && !hasProfile && globalDiscountAmount <= 0) {
         return helpers.error('any.invalid', {
             message: 'manual discount_rate requires discount_amount'
         });
     }
 
     // Manual discount (without profile) is allowed in MSME-friendly checkout.
-    if (discountAmount > 0 && !hasProfile) {
+    if (globalDiscountAmount > 0 && !hasProfile) {
         return value;
     }
 
@@ -217,6 +276,7 @@ const listTransactionsQuerySchema = Joi.object({
     date_from: Joi.date().iso().optional(),
     date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
     cashier_id: Joi.number().integer().positive().optional(),
+    cashier_name: Joi.string().trim().max(120).allow('', null).optional(),
     location_id: Joi.number().integer().positive().optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
     payment_status: Joi.string().valid(...PAYMENT_STATUSES).optional(),
@@ -233,6 +293,7 @@ const parkedSaleLineSchema = Joi.object({
 const createPosParkedSaleSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
     shift_id: Joi.number().integer().positive().required(),
+    transaction_id: Joi.number().integer().positive().allow(null).optional(),
     terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
     location_id: Joi.number().integer().positive().optional(),
     snapshot: Joi.object({
@@ -435,6 +496,13 @@ const posTransactionIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
 
+// Phase 204 (#965): params-only -- the multipart body on the POST carries only the file, and the
+// GET has no body at all.
+const balancePaymentProofParamsSchema = Joi.object({
+    id: Joi.number().integer().positive().required(),
+    payment_id: Joi.number().integer().positive().required()
+});
+
 const posCatalogOverrideParamSchema = Joi.object({
     item_id: Joi.number().integer().positive().required()
 });
@@ -477,6 +545,15 @@ const terminalCurrentShiftQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional()
 });
 
+const terminalShiftHistoryQuerySchema = Joi.object({
+    date_from: Joi.date().iso().optional(),
+    date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    status: Joi.string().valid('all', 'open', 'closed').default('all'),
+    page: Joi.number().integer().min(1).max(100000).default(1),
+    limit: Joi.number().integer().min(1).max(50).default(20)
+});
+
 const terminalDashboardTodayQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     location_id: Joi.number().integer().positive().optional(),
@@ -493,7 +570,9 @@ const posReportsQuerySchema = Joi.object({
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
     source: Joi.string().valid(...REPORT_SOURCE_FILTERS).optional(),
     category_id: Joi.number().integer().positive().optional(),
-    category: Joi.string().trim().max(120).allow('', null).optional()
+    category: Joi.string().trim().max(120).allow('', null).optional(),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(200).default(50)
 });
 
 const posReportsExportQuerySchema = posReportsQuerySchema.keys({
@@ -505,6 +584,10 @@ const incomingOnlineOrdersQuerySchema = Joi.object({
     shift_id: Joi.number().integer().positive().required(),
     location_id: Joi.number().integer().positive().optional(),
     limit: Joi.number().integer().min(1).max(500).default(200)
+});
+
+const procurementExportQuerySchema = Joi.object({
+    location_id: Joi.number().integer().positive().optional()
 });
 
 const onlineOrderHistoryQuerySchema = Joi.object({
@@ -545,6 +628,84 @@ const openTerminalShiftSchema = Joi.object({
     opening_note: Joi.string().trim().max(255).allow(null, '').optional()
 });
 
+const attendanceMutationSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    employee_id: Joi.number().integer().positive().allow(null).optional()
+});
+
+const attendanceQuerySchema = Joi.object({
+    location_id: Joi.number().integer().positive().optional(),
+    limit: Joi.number().integer().min(1).max(100).default(30)
+});
+
+const attendanceConfigUpdateSchema = Joi.object({
+    enabled: Joi.boolean().required(),
+    location_ids: Joi.array()
+        .items(Joi.number().integer().positive())
+        .unique()
+        .when('enabled', {
+            is: true,
+            then: Joi.array().min(1).required(),
+            otherwise: Joi.array().default([])
+        })
+        .messages({
+            'array.min': 'Select at least one active location before enabling cashier attendance.',
+            'array.unique': 'Cashier attendance locations must not contain duplicates.'
+        }),
+    revision: Joi.string().hex().length(64).allow(null).required()
+});
+
+const attendanceCorrectionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    attendance_session_id: Joi.number().integer().positive().required(),
+    correction_action: Joi.string().valid('end_break', 'end_attendance').required(),
+    location_id: Joi.number().integer().positive().required(),
+    reason: Joi.string().trim().min(8).max(500).required()
+});
+
+const cashierPinSchema = Joi.object({
+    user_id: Joi.number().integer().positive().allow(null).optional(),
+    pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).required().messages({
+        'any.required': 'Cashier PIN is required',
+        'string.pattern.base': 'Cashier PIN must contain 4 to 12 digits'
+    }),
+    location_id: Joi.number().integer().positive().allow(null).optional()
+});
+
+const operatorTransitionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    user_id: Joi.number().integer().positive().allow(null).optional(),
+    incoming_user_id: Joi.number().integer().positive().allow(null).optional(),
+    pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).required().messages({
+        'any.required': 'Cashier PIN is required',
+        'string.pattern.base': 'Cashier PIN must contain 4 to 12 digits'
+    }),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    counted_cash_amount: Joi.number().min(0).precision(4).allow(null).optional(),
+    outgoing_acknowledged: Joi.boolean().default(false),
+    incoming_acknowledged: Joi.boolean().default(false),
+    note: Joi.string().trim().max(500).allow(null, '').optional()
+}).custom((value, helpers) => {
+    if (!value.user_id && !value.incoming_user_id) return helpers.error('any.custom');
+    return value;
+}).messages({ 'any.custom': 'A target cashier is required' });
+
+const operatorCurrentQuerySchema = Joi.object({
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    shift_id: Joi.number().integer().positive().optional()
+});
+
+const cashierResumeSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().required(),
+    shift_id: Joi.number().integer().positive().required()
+});
+
 const switchTerminalShiftLocationSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
@@ -559,6 +720,48 @@ const cashDrawerEventSchema = Joi.object({
     event_type: Joi.string().valid('cash_in', 'cash_out', 'opening_adjustment', 'closing_adjustment').required(),
     amount: Joi.number().positive().precision(4).required(),
     reason: Joi.string().trim().min(3).max(255).required()
+});
+
+const cashRefundPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    reason: Joi.string().trim().min(3).max(255).required()
+});
+
+const externalRefundPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    external_reference: Joi.string().trim().min(3).max(255).required(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    completion_confirmed: Joi.boolean().default(false)
+});
+
+const providerRefundPosTransactionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    provider_reason: Joi.string().valid('requested_by_customer', 'duplicate', 'fraudulent', 'others').default('others')
+});
+
+const splitAllocationReversalSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+        'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
+    }),
+    amount: Joi.number().positive().precision(4).allow(null).optional(),
+    external_reference: Joi.string().trim().min(3).max(255).allow('', null).optional(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    completion_confirmed: Joi.boolean().default(false)
 });
 
 const closeTerminalShiftSchema = Joi.object({
@@ -585,6 +788,19 @@ const updateOnlineOrderStatusSchema = Joi.object({
     })
 });
 
+// Phase 210 (#1179). Staff-only post-placement delivery address/pin edit. `.and(...)` because a
+// pin is a pair or it is nothing -- a half-updated pin is worse than none. `change_reason` is
+// required: this is a staff mutation of customer-supplied data on a money-bearing order with no
+// customer confirmation loop, so an unexplained change is not acceptable. `precision(8)` matches
+// DECIMAL(10,8)/DECIMAL(11,8) on the model.
+const updateOnlineOrderDeliveryAddressSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    delivery_address: Joi.string().trim().min(3).max(500).required(),
+    delivery_latitude: Joi.number().min(-90).max(90).precision(8).allow(null).optional(),
+    delivery_longitude: Joi.number().min(-180).max(180).precision(8).allow(null).optional(),
+    change_reason: Joi.string().trim().min(3).max(255).required()
+}).and('delivery_latitude', 'delivery_longitude');
+
 const updateDeliveryJobStatusSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     status: Joi.string().valid('assigned', 'picked_up', 'delivered').required()
@@ -596,10 +812,117 @@ const assignDeliveryPersonnelSchema = Joi.object({
     delivery_personnel_name: Joi.string().trim().min(1).max(255).optional()
 }).or('delivery_personnel_id', 'delivery_personnel_name')
     .oxor('delivery_personnel_id', 'delivery_personnel_name');
+
+// Phase 225 (#1273/#1081): delivery run CRUD + membership schemas.
+const DELIVERY_RUN_UPDATABLE_STATUSES = ['draft', 'scheduled', 'cancelled'];
+
+// Phase 260 (#1489): scheduled_date_end makes a run span a date RANGE instead of a single day.
+// `.min(Joi.ref('scheduled_date'))` rejects end < start within one create request; `.with(...)` is
+// one-directional -- an end date requires a start date, but a start date alone (today's single-day
+// shape) stays valid with no end.
+const createDeliveryRunSchema = Joi.object({
+    label: Joi.string().trim().min(1).max(120).required(),
+    scheduled_date: Joi.date().iso().optional(),
+    scheduled_date_end: Joi.date().iso().min(Joi.ref('scheduled_date')).optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    notes: Joi.string().trim().max(2000).allow('', null).optional()
+}).with('scheduled_date_end', 'scheduled_date');
+
+// Deliberately no Joi.ref cross-check between scheduled_date/scheduled_date_end here -- a PATCH
+// can touch either field alone, and Joi can only see fields present in this one request, not the
+// row's existing value for whichever field wasn't sent. The real start<=end invariant is enforced
+// in buildUpdateDeliveryRunUseCase against the merged (existing row + patch) effective state.
+const updateDeliveryRunSchema = Joi.object({
+    label: Joi.string().trim().min(1).max(120).optional(),
+    scheduled_date: Joi.date().iso().allow(null).optional(),
+    scheduled_date_end: Joi.date().iso().allow(null).optional(),
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    // dispatched/completed are deliberately excluded -- Phase 228 (#1271) owns those transitions.
+    status: Joi.string().valid(...DELIVERY_RUN_UPDATABLE_STATUSES).optional()
+}).min(1);
+
+const deliveryRunIdParamSchema = Joi.object({
+    deliveryRunId: Joi.number().integer().positive().required()
+});
+
+const deliveryRunMemberParamSchema = Joi.object({
+    deliveryRunId: Joi.number().integer().positive().required(),
+    posTransactionId: Joi.number().integer().positive().required()
+});
+
+// Same XOR the per-order assignDeliveryPersonnelSchema enforces (ADR 0034, 2026-08-12 amendment):
+// each roster row is either a registered courier or a free-text one, never both, never neither.
+const deliveryRunPersonnelRowSchema = Joi.object({
+    delivery_personnel_id: Joi.number().integer().positive().optional(),
+    delivery_personnel_name: Joi.string().trim().min(1).max(255).optional(),
+    is_accountable: Joi.boolean().required()
+}).or('delivery_personnel_id', 'delivery_personnel_name')
+    .oxor('delivery_personnel_id', 'delivery_personnel_name');
+
+const setDeliveryRunPersonnelSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    personnel: Joi.array().items(deliveryRunPersonnelRowSchema).min(1).max(20).required()
+});
+
+const addDeliveryRunMembersSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    pos_transaction_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(500).unique().required()
+});
+
+// Phase 228 (#1273/#1271): dispatch takes no member selection -- it dispatches every eligible
+// member of the run, best-effort. Body is just the idempotency key.
+const dispatchDeliveryRunSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required()
+});
+
+const deliveryRunListQuerySchema = Joi.object({
+    status: Joi.string().valid('draft', 'scheduled', 'dispatched', 'completed', 'cancelled').optional(),
+    scheduled_date_from: Joi.date().iso().optional(),
+    scheduled_date_to: Joi.date().iso().optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    page: Joi.number().integer().positive().optional(),
+    limit: Joi.number().integer().positive().max(100).optional()
+});
 const collectCashPickupOrderSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
     terminal_id: Joi.string().trim().max(100).required(),
     cash_received: Joi.number().positive().precision(4).required()
+});
+
+// Phase 148 (#825): staff-recorded settlement of a downpayment order's remaining balance. Distinct
+// from collectCashPickupOrderSchema above -- that one is the plain-COD path and is deliberately
+// untouched. Method set was ADR 0063 clause 4 [binding]'s merchant-owned V1 set; `card` is a
+// store-owned terminal, never PayMongo card. Phase 202 (#1085) adds `cheque` as a sixth method --
+// ADR 0077 scoped-supersedes clause 4 for exactly this widening, ADR 0063 itself is otherwise
+// unchanged.
+//
+// The cash/non-cash split is structural, not cosmetic: cash is TENDERED (change is possible, so
+// the server computes it from cash_received), while a merchant-owned digital tender is an EXACT
+// amount the client must echo back. `manual_payment_received` is ADR 0063 clause 6 [binding]'s
+// explicit request-side confirmation -- required for every non-cash method and forbidden as a
+// substitute for it on cash, so it can never be sent as a blanket "trust me" flag. Cheque falls on
+// the non-cash branch by construction, so it inherits the same fail-closed attestation and the
+// same optional `payment_reference` (the cheque number) with no new branch or guard.
+const recordOrderBalancePaymentSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    terminal_id: Joi.string().trim().max(100).required(),
+    payment_method: Joi.string().trim().lowercase().valid('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque').required(),
+    cash_received: Joi.number().positive().precision(4).when('payment_method', {
+        is: 'cash',
+        then: Joi.required(),
+        otherwise: Joi.forbidden()
+    }),
+    amount: Joi.number().positive().precision(4).when('payment_method', {
+        is: 'cash',
+        then: Joi.forbidden(),
+        otherwise: Joi.required()
+    }),
+    manual_payment_received: Joi.boolean().when('payment_method', {
+        is: 'cash',
+        then: Joi.forbidden(),
+        otherwise: Joi.valid(true).required()
+    }),
+    payment_reference: Joi.string().trim().max(120).allow('', null).optional()
 });
 
 // A client-side driver (iMin native bridge, a future Web Bluetooth ESC/POS
@@ -620,6 +943,11 @@ const devicePrintReceiptSchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     client_driver_id: Joi.string().trim().max(60).optional(),
     client_result: deviceClientResultSchema.optional()
+});
+
+const onlineOrderReceiptAutoPrintClaimSchema = Joi.object({
+    transaction_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required()
 });
 
 const devicePrintShiftSummarySchema = Joi.object({
@@ -648,8 +976,18 @@ const deviceOpenDrawerSchema = Joi.object({
     transaction_id: Joi.number().integer().positive().allow(null).optional(),
     reason: Joi.string().trim().min(3).max(255).required(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    drawer_authorization_token: Joi.string().trim().min(20).max(2048).optional(),
     client_driver_id: Joi.string().trim().max(60).optional(),
     client_result: deviceClientResultSchema.optional()
+});
+
+const deviceDrawerAuthorizationSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    shift_id: Joi.number().integer().positive().required(),
+    transaction_id: Joi.number().integer().positive().allow(null).optional(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    authorization_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional()
 });
 
 const fiscalPrintEventSchema = Joi.object({
@@ -658,8 +996,16 @@ const fiscalPrintEventSchema = Joi.object({
 
 const voidPosTransactionSchema = Joi.object({
     reason: Joi.string().trim().min(3).max(255).required(),
-    shift_id: Joi.number().integer().positive().required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+});
+
+// Phase 238 (#1330): staff delivery-fee override, unsettled payment only. delivery_fee is the new
+// absolute value to charge (not a delta) -- resending the same value on a retry is a no-op at the
+// use-case layer, so no separate idempotency_key is required here the way void/refund need one.
+const overrideDeliveryFeeSchema = Joi.object({
+    delivery_fee: Joi.number().min(0).precision(4).required(),
+    reason: Joi.string().trim().min(3).max(255).required()
 });
 
 const esalesGenerateSchema = Joi.object({
@@ -698,6 +1044,92 @@ const mobilePosCheckoutSyncSchema = Joi.object({
     entries: Joi.array().items(mobilePosCheckoutSyncEntrySchema).required()
 });
 
+const mobilePosTransactionCheckpointQuerySchema = Joi.object({
+    cursor: Joi.string().trim().max(1000).allow('', null).optional(),
+    limit: Joi.number().integer().min(1).max(200).default(100),
+    location_id: Joi.number().integer().positive().optional()
+});
+
+const mobilePosVoidSyncEntrySchema = Joi.object({
+    local_transaction_id: Joi.string().trim().max(160).required(),
+    payload: Joi.object({
+        idempotency_key: Joi.string().trim().min(8).max(160).required(),
+        local_availment_id: Joi.string().trim().max(120).required(),
+        transaction_id: Joi.number().integer().positive().allow(null).required(),
+        reason: Joi.string().trim().min(3).max(255).required(),
+        shift_id: Joi.number().integer().positive().allow(null).required(),
+        terminal_id: Joi.string().trim().max(100).required(),
+        expected_status: Joi.string().valid('completed').required(),
+        expected_server_version: Joi.date().iso().allow(null).optional()
+    }).required().unknown(true)
+});
+
+const mobilePosVoidSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(160).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosVoidSyncEntrySchema).required()
+});
+
+const mobilePosRefundSyncEntrySchema = Joi.object({
+    local_operation_id: Joi.string().trim().max(160).required(),
+    payload: Joi.object({
+        workflow: Joi.string().valid('cash', 'external', 'provider', 'split').required(),
+        idempotency_key: Joi.string().trim().min(8).max(160).required(),
+        local_availment_id: Joi.string().trim().max(120).required(),
+        transaction_id: Joi.number().integer().positive().required(),
+        reason: Joi.string().trim().min(3).max(255).required(),
+        shift_id: Joi.number().integer().positive().required(),
+        terminal_id: Joi.string().trim().max(100).required(),
+        expected_status: Joi.string().valid('voided').required(),
+        expected_payment_status: Joi.string().trim().lowercase().valid('paid', 'refund_pending', 'partial_refunded').required(),
+        expected_server_version: Joi.date().iso().required(),
+        external_reference: Joi.string().trim().min(3).max(255).when('workflow', {
+            is: Joi.valid('external'), then: Joi.required(), otherwise: Joi.optional()
+        }),
+        completion_confirmed: Joi.boolean().optional(),
+        provider_reason: Joi.string().trim().max(255).allow('', null).optional(),
+        allocation_id: Joi.number().integer().positive().when('workflow', {
+            is: 'split', then: Joi.required(), otherwise: Joi.forbidden()
+        }),
+        amount: Joi.number().positive().precision(4).optional()
+    }).required().unknown(true)
+});
+
+const mobilePosRefundSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(160).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosRefundSyncEntrySchema).required()
+});
+
+const mobilePosOrderActionSyncEntrySchema = Joi.object({
+    local_operation_id: Joi.string().trim().max(160).required(),
+    payload: Joi.object({
+        operation_type: Joi.string().valid('status_transition', 'cash_collection').required(),
+        order_id: Joi.number().integer().positive().required(),
+        idempotency_key: Joi.string().trim().min(8).max(160).required(),
+        expected_status: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required(),
+        expected_payment_status: Joi.string().trim().lowercase().valid(...PAYMENT_STATUSES).required(),
+        expected_server_version: Joi.date().iso().required(),
+        fulfillment_status: Joi.when('operation_type', {
+            is: 'status_transition', then: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required(), otherwise: Joi.forbidden()
+        }),
+        terminal_id: Joi.when('operation_type', {
+            is: 'cash_collection', then: Joi.string().trim().max(100).required(), otherwise: Joi.forbidden()
+        }),
+        cash_received: Joi.when('operation_type', {
+            is: 'cash_collection', then: Joi.number().positive().precision(4).required(), otherwise: Joi.forbidden()
+        })
+    }).required()
+});
+
+const mobilePosOrderActionSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(160).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosOrderActionSyncEntrySchema).required()
+});
+
 const mobilePosShiftSyncEntrySchema = Joi.object({
     local_operation_id: Joi.string().trim().max(120).required(),
     operation_type: Joi.string().valid('shift_open', 'switch_location', 'cash_event', 'shift_close').required(),
@@ -732,7 +1164,8 @@ const mobilePosItemSyncEntrySchema = Joi.object({
     // entry envelope for every entity (see checkout sync above), so the
     // repository can only shape what's inside payload itself.
     payload: Joi.object({
-        op: Joi.string().valid('create', 'update', 'delete').required()
+        op: Joi.string().valid('create', 'update', 'delete').required(),
+        expected_server_version: Joi.date().iso().optional()
     }).required().unknown(true)
 });
 
@@ -783,6 +1216,30 @@ const employeeUpdateSchema = Joi.object({
     is_active: Joi.boolean().optional()
 }).min(1);
 
+const deliveryPersonnelRegistryQuerySchema = Joi.object({
+    include_inactive: Joi.boolean().truthy('true').falsy('false').default(true)
+});
+
+const deliveryPersonnelParamSchema = Joi.object({
+    deliveryPersonnelId: Joi.number().integer().positive().required()
+});
+
+const deliveryPersonnelCreateSchema = Joi.object({
+    display_name: Joi.string().trim().min(2).max(255).required(),
+    phone: Joi.string().trim().max(40).allow('', null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    is_active: Joi.boolean().default(true)
+});
+
+const deliveryPersonnelUpdateSchema = Joi.object({
+    display_name: Joi.string().trim().min(2).max(255).optional(),
+    phone: Joi.string().trim().max(40).allow('', null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    is_active: Joi.boolean().optional()
+}).min(1);
+
 const employeeCreditAccountUpdateSchema = Joi.object({
     is_eligible: Joi.boolean().optional(),
     credit_limit: Joi.number().min(0).precision(4).allow(null).optional(),
@@ -792,10 +1249,12 @@ const employeeCreditAccountUpdateSchema = Joi.object({
 }).or('is_eligible', 'credit_limit', 'adjustment_amount');
 
 const employeeCreditRepaymentSchema = Joi.object({
-    amount: Joi.number().positive().precision(4).required(),
+    amount: Joi.number().positive().precision(4),
+    repay_all: Joi.boolean().valid(true),
+    expected_version: Joi.number().integer().min(0),
     reason: Joi.string().trim().min(3).max(500).required(),
     idempotency_key: Joi.string().trim().min(8).max(120).required()
-});
+}).xor('amount', 'repay_all').with('repay_all', 'expected_version');
 
 const employeeCreditOutstandingAdjustmentSchema = Joi.object({
     adjustment_amount: Joi.number().precision(4).invalid(0).required(),
@@ -810,6 +1269,7 @@ const employeeCreditLookupQuerySchema = Joi.object({
 const employeeCreditCheckoutOptionsQuerySchema = Joi.object({
     search: Joi.string().trim().max(100).allow('').default(''),
     location_id: Joi.number().integer().positive().optional(),
+    employee_id: Joi.number().integer().positive().optional(),
     limit: Joi.number().integer().min(1).max(100).default(50)
 });
 
@@ -882,33 +1342,70 @@ export const validateCloseDayBody = validateSchema(closeDaySchema, 'body', 'vali
 export const validateXReadingQuery = validateSchema(xReadingQuerySchema, 'query', 'validatedQuery');
 export const validateGovernedResetBody = validateSchema(governedResetSchema, 'body', 'validatedData');
 export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentShiftQuerySchema, 'query', 'validatedQuery');
+export const validateTerminalShiftHistoryQuery = validateSchema(terminalShiftHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
+export const validateProcurementExportQuery = validateSchema(procurementExportQuerySchema, 'query', 'validatedQuery');
 export const validateOnlineOrderHistoryQuery = validateSchema(onlineOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateDeliveryPersonnelListQuery = validateSchema(deliveryPersonnelListQuerySchema, 'query', 'validatedQuery');
 export const validateAdminLocationMonitorQuery = validateSchema(adminLocationMonitorQuerySchema, 'query', 'validatedQuery');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
+export const validateAttendanceMutation = validateSchema(attendanceMutationSchema, 'body', 'validatedData');
+export const validateAttendanceQuery = validateSchema(attendanceQuerySchema, 'query', 'validatedQuery');
+export const validateAttendanceConfigUpdate = validateSchema(attendanceConfigUpdateSchema, 'body', 'validatedData');
+export const validateAttendanceCorrection = validateSchema(attendanceCorrectionSchema, 'body', 'validatedData');
+export const validateCashierPin = validateSchema(cashierPinSchema, 'body', 'validatedData');
+export const validateOperatorTransition = validateSchema(operatorTransitionSchema, 'body', 'validatedData');
+export const validateOperatorCurrentQuery = validateSchema(operatorCurrentQuerySchema, 'query', 'validatedQuery');
+export const validateCashierResume = validateSchema(cashierResumeSchema, 'body', 'validatedData');
+export const validateOperatorEnd = validateSchema(Joi.object({
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional()
+}), 'body', 'validatedData');
 export const validateSwitchTerminalShiftLocation = validateSchema(switchTerminalShiftLocationSchema, 'body', 'validatedData');
 export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
+export const validateCashRefundPosTransaction = validateSchema(cashRefundPosTransactionSchema, 'body', 'validatedData');
+export const validateExternalRefundPosTransaction = validateSchema(externalRefundPosTransactionSchema, 'body', 'validatedData');
+export const validateProviderRefundPosTransaction = validateSchema(providerRefundPosTransactionSchema, 'body', 'validatedData');
+export const validateSplitAllocationReversal = validateSchema(splitAllocationReversalSchema, 'body', 'validatedData');
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
 export const validateForceCloseStaleTerminalShift = validateSchema(forceCloseStaleTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
+export const validateUpdateOnlineOrderDeliveryAddress = validateSchema(updateOnlineOrderDeliveryAddressSchema, 'body', 'validatedData');
 export const validateUpdateDeliveryJobStatus = validateSchema(updateDeliveryJobStatusSchema, 'body', 'validatedData');
 export const validateAssignDeliveryPersonnel = validateSchema(assignDeliveryPersonnelSchema, 'body', 'validatedData');
+export const validateDeliveryRunCreate = validateSchema(createDeliveryRunSchema, 'body', 'validatedData');
+export const validateDeliveryRunUpdate = validateSchema(updateDeliveryRunSchema, 'body', 'validatedData');
+export const validateDeliveryRunIdParam = validateSchema(deliveryRunIdParamSchema, 'params', 'validatedParams');
+export const validateDeliveryRunMemberParam = validateSchema(deliveryRunMemberParamSchema, 'params', 'validatedParams');
+export const validateDeliveryRunPersonnelSet = validateSchema(setDeliveryRunPersonnelSchema, 'body', 'validatedData');
+export const validateDeliveryRunMembersAdd = validateSchema(addDeliveryRunMembersSchema, 'body', 'validatedData');
+export const validateDeliveryRunDispatch = validateSchema(dispatchDeliveryRunSchema, 'body', 'validatedData');
+export const validateDeliveryRunListQuery = validateSchema(deliveryRunListQuerySchema, 'query', 'validatedQuery');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
+export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
+export const validatePosBalancePaymentProofParams = validateSchema(balancePaymentProofParamsSchema, 'params', 'validatedParams');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
+export const validateOnlineOrderReceiptAutoPrintClaim = validateSchema(onlineOrderReceiptAutoPrintClaimSchema, 'body', 'validatedData');
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');
 export const validatePosDeviceZReadingPrint = validateSchema(devicePrintZReadingSchema, 'body', 'validatedData');
 export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema, 'body', 'validatedData');
+export const validatePosDrawerAuthorization = validateSchema(deviceDrawerAuthorizationSchema, 'body', 'validatedData');
 export const validateFiscalPrintEvent = validateSchema(fiscalPrintEventSchema, 'body', 'validatedData');
 export const validateVoidPosTransaction = validateSchema(voidPosTransactionSchema, 'body', 'validatedData');
+export const validateOverrideDeliveryFee = validateSchema(overrideDeliveryFeeSchema, 'body', 'validatedData');
 export const validateGenerateESalesReport = validateSchema(esalesGenerateSchema, 'body', 'validatedData');
 export const validateUpdateESalesReportStatus = validateSchema(esalesStatusSchema, 'body', 'validatedData');
 export const validateFiscalTerminalRegistration = validateSchema(fiscalTerminalRegistrationSchema, 'body', 'validatedData');
 export const validateMobilePosCheckoutSync = validateSchema(mobilePosCheckoutSyncSchema, 'body', 'validatedData');
+export const validateMobilePosTransactionCheckpointQuery = validateSchema(mobilePosTransactionCheckpointQuerySchema, 'query', 'validatedQuery');
+export const validateMobilePosVoidSync = validateSchema(mobilePosVoidSyncSchema, 'body', 'validatedData');
+export const validateMobilePosRefundSync = validateSchema(mobilePosRefundSyncSchema, 'body', 'validatedData');
+export const validateMobilePosOrderActionSync = validateSchema(mobilePosOrderActionSyncSchema, 'body', 'validatedData');
 export const validateMobilePosItemSync = validateSchema(mobilePosItemSyncSchema, 'body', 'validatedData');
 export const validateMobilePosShiftSync = validateSchema(mobilePosShiftSyncSchema, 'body', 'validatedData');
 export const validateMobilePosHardwareEventSync = validateSchema(mobilePosHardwareEventSyncSchema, 'body', 'validatedData');
@@ -919,6 +1416,10 @@ export const validateEmployeeParam = validateSchema(employeeParamSchema, 'params
 export const validateEmployeeListQuery = validateSchema(employeeListQuerySchema, 'query', 'validatedQuery');
 export const validateEmployeeCreate = validateSchema(employeeCreateSchema, 'body', 'validatedData');
 export const validateEmployeeUpdate = validateSchema(employeeUpdateSchema, 'body', 'validatedData');
+export const validateDeliveryPersonnelRegistryQuery = validateSchema(deliveryPersonnelRegistryQuerySchema, 'query', 'validatedQuery');
+export const validateDeliveryPersonnelParam = validateSchema(deliveryPersonnelParamSchema, 'params', 'validatedParams');
+export const validateDeliveryPersonnelCreate = validateSchema(deliveryPersonnelCreateSchema, 'body', 'validatedData');
+export const validateDeliveryPersonnelUpdate = validateSchema(deliveryPersonnelUpdateSchema, 'body', 'validatedData');
 export const validateEmployeeCreditAccountUpdate = validateSchema(employeeCreditAccountUpdateSchema, 'body', 'validatedData');
 export const validateEmployeeCreditRepayment = validateSchema(employeeCreditRepaymentSchema, 'body', 'validatedData');
 export const validateEmployeeCreditOutstandingAdjustment = validateSchema(employeeCreditOutstandingAdjustmentSchema, 'body', 'validatedData');

@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-27
-last_reviewed: 2026-04-27
+last_reviewed: 2026-08-27
 review_by: 2026-10-27
 applies_to: architecture_decision
 topic: multi_template_modes_pos_offline_sync_and_storefront_cache_contracts
@@ -142,3 +142,13 @@ This addendum strengthens and supersedes any earlier language in this ADR that p
 - Manual sync allowance is consumed only when the active scope has at least one replay candidate. Reconnect, reload, Service Worker events, and empty Sync presses do not replay records or consume the daily allowance.
 
 Rollback is non-destructive: the versioned snapshot and sync-policy keys can be abandoned without reading another tenant's data; the versioned Service Worker caches can be deleted on activation; and quarantined legacy queue records remain untouched for explicit support-led recovery.
+
+## Amendment: Native Mobile Financial Replay (2026-08-27)
+
+ADR 0075 supersedes this ADR only for the native cashier app's Phase 3
+financial ledger. The native app may automatically retry its durable,
+idempotent checkout and void outbox after connectivity returns. Cash checkout
+is locally complete; non-cash checkout and offline voids remain explicitly
+provisional until server acknowledgement. This amendment does not change the
+web POS rule that replay is operator-controlled, and it does not permit fiscal
+issuance or server-authoritative account and permission decisions offline.

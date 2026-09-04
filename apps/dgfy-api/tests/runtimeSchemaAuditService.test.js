@@ -74,7 +74,14 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260812000007-add-pos-payment-confirmation-and-breakdown.cjs' },
         { name: '20260812000008-add-pos-provider-refund-reconciliation.cjs' },
         { name: '20260813000001-create-pos-merchant-tender-reconciliations.cjs' },
-        { name: '20260813000002-add-pos-parked-sale-revision.cjs' }
+        { name: '20260813000002-add-pos-parked-sale-revision.cjs' },
+        { name: '20260815000002-add-pos-parked-sale-origin-ownership.cjs' },
+        { name: '20260819000001-create-pos-transaction-adjustments.cjs' },
+        { name: '20260819000002-add-pos-split-allocation-reversal-state.cjs' },
+        { name: '20260824000001-create-pos-cashier-attendance-operator-sessions.cjs' },
+        { name: '20260824000002-add-pos-attendance-idempotency.cjs' },
+        { name: '20260824000003-add-pos-cashier-pin-and-operator-authority.cjs' },
+        { name: '20260825000001-add-pos-operator-protected-operation-lease.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -107,7 +114,11 @@ const buildHealthySequelizeMock = () => ({
                     is_master_admin: {},
                     deleted_at: {},
                     pos_approval_pin_hash: {},
-                    pos_day_close_pin_hash: {}
+                    pos_day_close_pin_hash: {},
+                    pos_cashier_pin_hash: {},
+                    pos_cashier_pin_failed_attempts: {},
+                    pos_cashier_pin_locked_until: {},
+                    pos_cashier_pin_changed_at: {}
                 },
                 items: {
                     item_id: {},
@@ -121,6 +132,15 @@ const buildHealthySequelizeMock = () => ({
                     name: {},
                     show_in_pos_filter: {},
                     is_active: {}
+                },
+                // #1124/#1469: added alongside src/services/runtimeSchemaAuditService.js's
+                // Phase 257 (#1318) required-columns entry -- this fixture fell out of sync with
+                // that entry, which flipped status to 'degraded' for every test below.
+                item_folder_memberships: {
+                    item_folder_membership_id: {},
+                    item_id: {},
+                    folder_id: {},
+                    sort_order: {}
                 },
                 pos_catalog_overrides: {
                     pos_catalog_override_id: {},
@@ -172,7 +192,76 @@ const buildHealthySequelizeMock = () => ({
                     employee_credit_balance_after: {},
                     employee_credit_outstanding_after: {},
                     employee_credit_authorization_reference: {},
-                    payment_breakdown: {}
+                    payment_breakdown: {},
+                    operator_session_id: { allowNull: true }
+                },
+                employee_attendance_sessions: {
+                    employee_attendance_session_id: {},
+                    employee_id: {},
+                    user_id: {},
+                    location_id: {},
+                    duty_type: {},
+                    status: {},
+                    active_user_id: {},
+                    started_at: {},
+                    ended_at: {},
+                    closed_by: {},
+                    start_idempotency_key: {},
+                    end_idempotency_key: {}
+                },
+                employee_break_segments: {
+                    employee_break_segment_id: {},
+                    employee_attendance_session_id: {},
+                    status: {},
+                    active_attendance_session_id: {},
+                    started_at: {},
+                    ended_at: {},
+                    ended_by: {},
+                    start_idempotency_key: {},
+                    end_idempotency_key: {}
+                },
+                pos_terminal_operator_sessions: {
+                    pos_terminal_operator_session_id: {},
+                    pos_terminal_shift_id: {},
+                    terminal_id: {},
+                    location_id: {},
+                    user_id: {},
+                    employee_attendance_session_id: {},
+                    status: {},
+                    active_terminal_id: {},
+                    active_operator_user_id: {},
+                    started_at: {},
+                    ended_at: {},
+                    ended_reason: {},
+                    authority_token_hash: {},
+                    authority_expires_at: {},
+                    revoked_at: {},
+                    revoked_reason: {},
+                    idempotency_key: {},
+                    protected_operation_key: {},
+                    protected_operation_type: {},
+                    protected_operation_started_at: {}
+                },
+                pos_drawer_handoff_events: {
+                    pos_drawer_handoff_event_id: {},
+                    pos_terminal_shift_id: {},
+                    terminal_id: {},
+                    location_id: {},
+                    event_type: {},
+                    custody_mode: {},
+                    outgoing_operator_user_id: {},
+                    incoming_operator_user_id: {},
+                    expected_cash_amount: {},
+                    counted_cash_amount: {},
+                    variance_amount: {},
+                    outgoing_acknowledged_by: {},
+                    outgoing_acknowledged_at: {},
+                    incoming_acknowledged_by: {},
+                    incoming_acknowledged_at: {},
+                    recorded_by: {},
+                    event_at: {},
+                    idempotency_key: {},
+                    note: {}
                 },
                 pos_payment_sessions: {
                     pos_payment_session_id: {},
@@ -197,7 +286,9 @@ const buildHealthySequelizeMock = () => ({
                     provider_refund_ids: {},
                     provider_refund_event_id: {},
                     provider_refund_status: {},
-                    provider_refunded_at: {}
+                    provider_refunded_at: {},
+                    reversed_amount: {},
+                    reversal_status: {}
                 },
                 pos_merchant_tender_reconciliations: {
                     pos_merchant_tender_reconciliation_id: {},
@@ -219,6 +310,43 @@ const buildHealthySequelizeMock = () => ({
                     reviewed_at: {},
                     supersedes_reconciliation_id: {}
                 },
+                pos_transaction_adjustments: {
+                    pos_transaction_adjustment_id: {},
+                    adjustment_reference: {},
+                    pos_transaction_id: {},
+                    pos_payment_allocation_id: {},
+                    original_cashier_id: {},
+                    original_shift_id: {},
+                    original_terminal_id: {},
+                    original_location_id: {},
+                    actor_user_id: {},
+                    actor_shift_id: {},
+                    actor_terminal_id: {},
+                    actor_location_id: {},
+                    adjustment_type: {},
+                    tender_type: {},
+                    amount: {},
+                    currency: {},
+                    status: {},
+                    reason: {},
+                    idempotency_key: {},
+                    request_hash: {},
+                    approved_by: {},
+                    approved_at: {},
+                    external_reference: {},
+                    provider: {},
+                    provider_reference: {},
+                    provider_event_id: {},
+                    cash_drawer_event_id: {},
+                    failure_code: {},
+                    failure_reason: {},
+                    retry_count: {},
+                    last_retry_at: {},
+                    completed_at: {},
+                    failed_at: {},
+                    cancelled_at: {},
+                    metadata: {}
+                },
                 pos_parked_sales: {
                     pos_parked_sale_id: {},
                     park_reference: {},
@@ -226,6 +354,8 @@ const buildHealthySequelizeMock = () => ({
                     revision: {},
                     cashier_id: {},
                     shift_id: {},
+                    origin_cashier_id: {},
+                    origin_shift_id: {},
                     terminal_id: {},
                     location_id: {},
                     snapshot: {}
@@ -350,7 +480,8 @@ const buildHealthySequelizeMock = () => ({
                     stock_effect_type: { allowNull: false },
                     stock_exempt_reason: { allowNull: true },
                     item_name_snapshot: {},
-                    sku_snapshot: {}
+                    sku_snapshot: {},
+                    item_discount_snapshot: {}
                 },
                 pos_terminal_shifts: {
                     pos_terminal_shift_id: {},

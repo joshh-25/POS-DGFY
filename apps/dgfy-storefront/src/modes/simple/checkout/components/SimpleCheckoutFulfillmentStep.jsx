@@ -1,0 +1,280 @@
+import { ChevronLeft, ChevronRight, Maximize, MapPin, Navigation, Plus } from 'lucide-react';
+import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
+import { hasExplicitDeliveryAddressEdit } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
+import { SimpleCheckoutExpandedMapModal } from './SimpleCheckoutExpandedMapModal.jsx';
+import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentChoices.jsx';
+import { SimpleCheckoutSavedAddressesModal } from './SimpleCheckoutSavedAddressesModal.jsx';
+import { SimpleCheckoutSavedAddressSelector } from './SimpleCheckoutSavedAddressSelector.jsx';
+import { SimpleSpecialInstructionsField } from './SimpleSpecialInstructionsField.jsx';
+import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
+import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
+import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
+
+const SIMPLE_BRAND = '#176B3A';
+const SIMPLE_BRAND_DARK = '#0F5A30';
+const SIMPLE_BRAND_SOFT = '#E4C98E';
+
+export function SimpleCheckoutFulfillmentStep({
+  canAddPinnedLocation = false,
+  canUseGuestCheckoutFlow = false,
+  guestCheckoutAllowed = true,
+  customerAddress = '',
+  customerPin = null,
+  deliveryLocationAction = 'saved',
+  deliveryLocationDisplayAddress = '',
+  deliverySavedLocations = [],
+  fnbScheduleMode = 'asap',
+  isDeliveryOrder = false,
+  isDgfyCustomerSignedIn = false,
+  isMobileViewport = false,
+  orderMethod = 'delivery',
+  pinLocationError = '',
+  pinLocationLoading = false,
+  renderGuestCheckoutEntry,
+  scheduledFor = '',
+  selectedLocation = null,
+  orderTimingPolicy,
+  selectedSavedLocationId = '',
+  servicesBodyFont,
+  servicesDisplayFont,
+  showExpandedDeliveryMap = false,
+  showSimpleMobileAddressModal = false,
+  simpleOrderMethodOptions = [],
+  simpleStepOneReady = false,
+  specialInstructions = '',
+  onAddPinnedLocation,
+  onBack,
+  onCloseExpandedMap,
+  onCloseMobileAddressModal,
+  onContinue,
+  onCustomerAddressChange = () => {},
+  onOpenExpandedMap,
+  onOpenMobileAddressList,
+  onOrderMethodChange,
+  onPinChange,
+  onPinMyLocation,
+  onScheduleModeChange,
+  onScheduledForChange,
+  onSelectAddress,
+  onSpecialInstructionsChange,
+  onStartMapPin
+}) {
+  if (!isDgfyCustomerSignedIn && !canUseGuestCheckoutFlow) {
+    return renderGuestCheckoutEntry({
+      title: 'Continue to your order',
+      // #622: see SimpleCheckoutCustomerStep.jsx's matching comment -- same fix, same reason.
+      description: guestCheckoutAllowed
+        ? 'Create an account or continue as guest to continue this order.'
+        : 'This store requires a DGFY account to check out. Create one or log in to continue.',
+      resumeTarget: {
+        checkoutTab: 'checkout',
+        simpleOrderStep: 2
+      }
+    });
+  }
+
+  const stopMapOverlayInteraction = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const resolvedOrderTimingPolicy = orderTimingPolicy || resolveOrderTimingPolicy();
+  const sectionNumbers = buildCheckoutSectionNumbers({
+    showOrderMethodSelector: resolveFulfillmentSelectorPresentation(simpleOrderMethodOptions).showSelector,
+    showTimingStep: resolvedOrderTimingPolicy.showTimingStep,
+    isDeliveryOrder
+  });
+  const typography = getCheckoutStepTypography();
+
+  return (
+    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16, fontFamily: CHECKOUT_FONT_FAMILY }}>
+      <div style={{ ...typography.title, color: '#1e293b' }}>Step 2: Fulfillment</div>
+
+      <SimpleCheckoutFulfillmentChoices
+        fnbScheduleMode={fnbScheduleMode}
+        fnbScheduledFor={scheduledFor}
+        isDeliveryOrder={isDeliveryOrder}
+        isMobileViewport={isMobileViewport}
+        onOrderMethodChange={onOrderMethodChange}
+        onScheduleModeChange={onScheduleModeChange}
+        onScheduledForChange={onScheduledForChange}
+        orderMethod={orderMethod}
+        simpleOrderMethodOptions={simpleOrderMethodOptions}
+        orderTimingPolicy={orderTimingPolicy || resolveOrderTimingPolicy()}
+      />
+
+      {isDeliveryOrder && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{ display: 'grid', gap: 4 }}>
+            <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.address}. Where should we deliver your order?</div>
+            <div style={{ fontSize: 12, color: '#64748b', textTransform: isMobileViewport ? 'none' : 'uppercase', letterSpacing: isMobileViewport ? 'normal' : '0.04em' }}>
+              {isMobileViewport ? 'Select or pin your location on the map.' : 'Saved locations'}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '280px minmax(0, 1fr)', gap: 16, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+            <SimpleCheckoutSavedAddressSelector
+              addresses={deliverySavedLocations}
+              deliveryLocationAction={deliveryLocationAction}
+              isMobileViewport={isMobileViewport}
+              onOpenMobileAddressList={onOpenMobileAddressList}
+              onSelectAddress={onSelectAddress}
+              onStartMapPin={onStartMapPin}
+              selectedAddressId={selectedSavedLocationId}
+            />
+            <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: '100%', minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, display: isMobileViewport ? 'none' : 'block' }}>
+                Tap anywhere on the map, drag the pin, or use your current location.
+              </div>
+              <div style={{ position: 'relative', width: '100%', minWidth: 0 }}>
+                <DeliveryPinMap
+                  pin={customerPin}
+                  onPinChange={onPinChange}
+                  disabled={false}
+                  height={isMobileViewport ? 'clamp(230px, 34svh, 280px)' : 260}
+                  highlighted={deliveryLocationAction === 'map'}
+                  highlightColor={SIMPLE_BRAND}
+                  highlightGlow="rgba(23,107,58,0.16)"
+                  overlayControls={(
+                    <>
+                      <button
+                        type="button"
+                        onClick={onPinMyLocation}
+                        disabled={pinLocationLoading}
+                        style={{ position: 'absolute', top: 12, left: 12, maxWidth: isMobileViewport ? 'calc(100% - 68px)' : 'none', minHeight: 38, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'current' ? SIMPLE_BRAND : '#dbe5ee'}`, background: deliveryLocationAction === 'current' ? '#FFF8E7' : '#ffffff', color: deliveryLocationAction === 'current' ? SIMPLE_BRAND_DARK : '#1e293b', padding: '0 12px', fontSize: 12, fontWeight: 700, cursor: pinLocationLoading ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', zIndex: 11, pointerEvents: 'auto', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                      >
+                        <Navigation size={15} />
+                        {pinLocationLoading ? 'Locating...' : 'Use Current Location'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onStartMapPin}
+                        style={{ position: 'absolute', right: 12, bottom: 12, minHeight: 34, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'map' ? SIMPLE_BRAND_SOFT : '#dbe5ee'}`, background: deliveryLocationAction === 'map' ? '#FFF8E7' : 'rgba(255,255,255,0.96)', color: deliveryLocationAction === 'map' ? SIMPLE_BRAND_DARK : '#334155', padding: '0 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', zIndex: 11, pointerEvents: 'auto' }}
+                      >
+                        <MapPin size={14} />
+                        Drag to adjust pin
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onOpenExpandedMap}
+                        aria-label="Open large map"
+                        title="Open large map"
+                        style={{ position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: 10, background: '#fff', border: '1px solid #cbd5e1', boxShadow: '0 4px 12px rgba(15,23,42,0.1)', display: 'grid', placeItems: 'center', cursor: 'pointer', color: '#334155', zIndex: 12, pointerEvents: 'auto' }}
+                      >
+                        <Maximize size={18} />
+                      </button>
+                    </>
+                  )}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                <div style={{ minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? SIMPLE_BRAND_SOFT : '#dbe5ee'}`, background: '#fff', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8', ...typography.control, minWidth: 0 }}>
+                  {isMobileViewport ? (
+                    <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#FFF8E7', color: SIMPLE_BRAND, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
+                      <MapPin size={13} />
+                    </span>
+                  ) : null}
+                  <input
+                    type="text"
+                    value={hasExplicitDeliveryAddressEdit(customerAddress, deliveryLocationDisplayAddress) ? customerAddress : deliveryLocationDisplayAddress}
+                    onChange={(event) => onCustomerAddressChange(event.target.value)}
+                    placeholder="Pinned delivery address will appear here."
+                    aria-label="Delivery address"
+                    style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...typography.control, color: 'inherit', minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, fontFamily: CHECKOUT_FONT_FAMILY }}
+                  />
+                </div>
+                <button type="button" aria-label={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} title={isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'} onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${SIMPLE_BRAND}`, background: canAddPinnedLocation ? SIMPLE_BRAND : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: isMobileViewport ? 0 : '0 14px', cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? CHECKOUT_CONTROL_MIN_HEIGHT : 132, width: isMobileViewport ? CHECKOUT_CONTROL_MIN_HEIGHT : 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(23,107,58,0.15)' : 'none', fontFamily: CHECKOUT_FONT_FAMILY, display: 'inline-grid', placeItems: 'center' }}>
+                  {isMobileViewport ? <span aria-hidden="true" style={{ position: 'relative', display: 'grid', placeItems: 'center' }}><MapPin size={18} /><Plus size={10} strokeWidth={3} style={{ position: 'absolute', right: -5, bottom: -3, background: canAddPinnedLocation ? SIMPLE_BRAND : '#f8fafc', borderRadius: 999 }} /></span> : (isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location')}
+                </button>
+              </div>
+              {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
+            </div>
+          </div>
+          <SimpleCheckoutExpandedMapModal
+            bodyFont={servicesBodyFont}
+            displayFont={servicesDisplayFont}
+            isMobileViewport={isMobileViewport}
+            isOpen={showExpandedDeliveryMap}
+            onClose={onCloseExpandedMap}
+          >
+            <DeliveryPinMap
+              pin={customerPin}
+              onPinChange={onPinChange}
+              disabled={false}
+              height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}
+              highlighted
+              highlightColor={SIMPLE_BRAND}
+              highlightGlow="rgba(23,107,58,0.16)"
+              overlayControls={(
+                <>
+                  <button
+                    type="button"
+                    onMouseDown={stopMapOverlayInteraction}
+                    onPointerDown={stopMapOverlayInteraction}
+                    onTouchStart={stopMapOverlayInteraction}
+                    onClick={(event) => {
+                      stopMapOverlayInteraction(event);
+                      onPinMyLocation();
+                    }}
+                    disabled={pinLocationLoading}
+                    style={{ position: 'absolute', top: 12, left: 12, minHeight: 38, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'current' ? SIMPLE_BRAND : '#dbe5ee'}`, background: deliveryLocationAction === 'current' ? '#FFF8E7' : '#ffffff', color: deliveryLocationAction === 'current' ? SIMPLE_BRAND_DARK : '#1e293b', padding: '0 12px', fontSize: 12, fontWeight: 700, cursor: pinLocationLoading ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', pointerEvents: 'auto', zIndex: 11 }}
+                  >
+                    <Navigation size={15} />
+                    {pinLocationLoading ? 'Locating...' : 'Use Current Location'}
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={stopMapOverlayInteraction}
+                    onPointerDown={stopMapOverlayInteraction}
+                    onTouchStart={stopMapOverlayInteraction}
+                    onClick={(event) => {
+                      stopMapOverlayInteraction(event);
+                      onStartMapPin();
+                    }}
+                    style={{ position: 'absolute', right: 12, bottom: 12, minHeight: 34, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'map' ? SIMPLE_BRAND_SOFT : '#dbe5ee'}`, background: deliveryLocationAction === 'map' ? '#FFF8E7' : 'rgba(255,255,255,0.96)', color: deliveryLocationAction === 'map' ? SIMPLE_BRAND_DARK : '#334155', padding: '0 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', pointerEvents: 'auto', zIndex: 11 }}
+                  >
+                    <MapPin size={14} />
+                    Drag to Pin
+                  </button>
+                </>
+              )}
+            />
+          </SimpleCheckoutExpandedMapModal>
+          <SimpleCheckoutSavedAddressesModal
+            addresses={deliverySavedLocations}
+            deliveryLocationAction={deliveryLocationAction}
+            isOpen={showSimpleMobileAddressModal}
+            onAddNewLocation={() => {
+              onStartMapPin();
+              onCloseMobileAddressModal();
+            }}
+            onClose={onCloseMobileAddressModal}
+            onSelectAddress={(location) => {
+              onSelectAddress(location);
+              onCloseMobileAddressModal();
+            }}
+            selectedAddressId={selectedSavedLocationId}
+          />
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.notes}. Anything else we should know?</div>
+        <SimpleSpecialInstructionsField
+          specialInstructions={specialInstructions}
+          onSpecialInstructionsChange={onSpecialInstructionsChange}
+        />
+      </div>
+
+      {!isMobileViewport && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <button type="button" onClick={onBack} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: CHECKOUT_FONT_FAMILY }}><ChevronLeft size={18} /> Back</button>
+          <button type="button" onClick={onContinue} disabled={!simpleStepOneReady} style={{ ...typography.action, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: 'none', background: simpleStepOneReady ? `linear-gradient(180deg, ${SIMPLE_BRAND} 0%, ${SIMPLE_BRAND_DARK} 100%)` : '#cbd5e1', color: '#fff', cursor: simpleStepOneReady ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: CHECKOUT_FONT_FAMILY }}>Continue <ChevronRight size={18} /></button>
+        </div>
+      )}
+      {selectedLocation?.is_open === false && (
+        <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
+          Selected location is closed and cannot accept orders right now.
+        </div>
+      )}
+    </section>
+  );
+}

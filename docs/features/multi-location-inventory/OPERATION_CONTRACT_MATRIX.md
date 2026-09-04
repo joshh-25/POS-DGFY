@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-04-18
+last_reviewed: 2026-08-21
 applies_to: multi_location_inventory_rollout
 topic: frontend_backend_operation_contracts
 ---
@@ -45,6 +45,7 @@ All rows below are currently `resolved` and must be re-audited before each rollo
 | OP-17 | Expiry/aging report location parity | `/reports/expiry`, `/reports/stock-aging-enhanced`, and `/reports/export` honor optional `location_id`; payload/CSV includes location identity | Reports page exposes location filter and location column in expiry/aging tables | resolved:`missing_field` | `backend/src/modules/reports/controllers/reportHandlers.js`, `backend/src/services/reportService.js`, `frontend/Pages/Reports.jsx`, `frontend/src/hooks/useReports.js` |
 | OP-18 | Stock movement export location dimensions | `/stock-movements/export?format=csv` includes movement, source, and destination location columns | Stock movements list/details surfaces render single-location and transfer labels consistently | resolved:`wrong_error_mapping` | `backend/src/services/stockMovementService.js`, `frontend/src/features/stockMovements/pages/StockMovementsPage.jsx`, `frontend/Components/movements/MovementDetailsModal.jsx` |
 | OP-19 | Active SKU conflict hardening | Item create/update/finalize paths trim SKU and normalize DB unique conflict to deterministic 409 | Item/product wizards preserve manual SKU override while using deterministic suggestion seed | resolved:`missing_field` | `backend/src/modules/inventory/repositories/itemRepository.js`, `backend/tests/inventoryItemRepository.test.js`, `frontend/Components/items/ItemFormModal.jsx`, `frontend/Components/products/ProductCreateWizard.jsx` |
+| OP-20 | Items list branch-scoped stock | `GET /items` accepts optional `location_id`, grant-checked via `resolveMovementLocation`, overlays `current_stock` from `item_location_stocks` with a `location_scope.resolved` schema-missing fallback flag | Items admin page exposes an explicit Branch selector defaulting to "All Locations" and shows an honest zero/fallback-aware empty state instead of a bare 0 | resolved:`ui_missing_selector` | `backend/src/modules/inventory/repositories/itemRepository.js`, `backend/src/modules/inventory/usecases/getItemsUseCase.js`, `backend/src/modules/shared/repositories/itemLocationStockOverlay.js`, `backend/tests/inventoryItemRepository.test.js`, `frontend/src/features/inventory/pages/ItemsPage.jsx`, `frontend/src/features/inventory/utils/branchScopedStock.js` |
 
 ## Re-Audit Gate
 1. If any row regresses, mark row status as `open` in PR notes and block wave closure.

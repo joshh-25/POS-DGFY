@@ -60,7 +60,7 @@ describe('observability release gate script', () => {
         fs.mkdirSync(path.join(rootDir, 'backend', 'src', 'middleware'), { recursive: true });
         fs.mkdirSync(path.join(rootDir, 'scripts'), { recursive: true });
         fs.copyFileSync(
-            path.resolve(process.cwd(), '..', 'scripts', 'create-incident-bundle.js'),
+            path.resolve(process.cwd(), '..', '..', 'scripts', 'create-incident-bundle.js'),
             path.join(rootDir, 'scripts', 'create-incident-bundle.js')
         );
         fs.writeFileSync(path.join(rootDir, 'backend', 'src', 'middleware', 'requestOutcomeLogger.js'), 'present');
@@ -117,7 +117,7 @@ describe('observability release gate script', () => {
         fs.mkdirSync(path.join(rootDir, 'backend', 'src', 'middleware'), { recursive: true });
         fs.mkdirSync(path.join(rootDir, 'scripts'), { recursive: true });
         fs.copyFileSync(
-            path.resolve(process.cwd(), '..', 'scripts', 'create-incident-bundle.js'),
+            path.resolve(process.cwd(), '..', '..', 'scripts', 'create-incident-bundle.js'),
             path.join(rootDir, 'scripts', 'create-incident-bundle.js')
         );
         fs.writeFileSync(path.join(rootDir, 'backend', 'src', 'middleware', 'requestOutcomeLogger.js'), 'present');

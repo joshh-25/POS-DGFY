@@ -14,7 +14,7 @@ on:
         description: JSON array passed to runs-on for this build job
         required: false
         type: string
-        default: '["ubuntu-latest"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
     outputs:
       sha_tag:
         value: ${{ jobs.build-and-push.outputs.sha_tag }}
@@ -24,7 +24,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/sieitzz/dgfy-platform/api
+  IMAGE_NAME: ghcr.io/sieitzz/dgfy-api
 
 jobs:
   build-and-push:
@@ -34,7 +34,45 @@ jobs:
     outputs:
       sha_tag: ${{ steps.meta.outputs.sha_tag }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - uses: actions/checkout@v4
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Compute image tags
         id: meta
@@ -66,6 +104,10 @@ jobs:
       # without ever writing back to it.
       - uses: docker/setup-buildx-action@v3
 
+      # Revision label is what makes "what SHA is actually deployed?"
+      # answerable after builds stop being tied to a push event -- read back
+      # with `docker buildx imagetools inspect <image>:<tag>` without needing
+      # to correlate the mutable tag to a sha-<short> tag by hand.
       - name: Build and push api image
         uses: docker/build-push-action@v6
         with:
@@ -73,6 +115,18 @@ jobs:
           file: infrastructure/docker/dgfy-api/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          # Registry cache (type=registry) removed 2026-08-14 (#427) -- it
+          # was added in #415 as "reachable from either runner type," a
+          # reason that stopped applying once #386 recorded self-hosted as
+          # the only CI tier (type=gha is already reachable from
+          # self-hosted). It also doubled every build's GHCR push volume,
+          # which is what actually tripped GHCR's secondary rate limit in
+          # run 31728787346 (deploy-main.yml's frontend-prod, 2026-08-13,
+          # same job graph this workflow shares registry pressure with).
+          # type=gha,scope=api is unaffected and stays as the only cache.
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 

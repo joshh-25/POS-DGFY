@@ -138,5 +138,39 @@ describe('useCaseResponder', () => {
 
       expect(captureExceptionMock).not.toHaveBeenCalled();
     });
+
+    // #508 -- a DomainError shaped as 503 for a known missing/disabled optional
+    // integration (no printer configured, route calculator unconfigured) is expected
+    // client/environment state, not a fault. This is the actual live capture path for
+    // both endpoints named in the issue -- shouldReportErrorToSentry (sentry.js) never
+    // runs for a sendUseCaseResult-based response, so this needs its own coverage.
+    it('does not capture a SERVICE_UNAVAILABLE domain failure with a known expected-precondition reason_code', () => {
+      const res = createMockRes();
+      const result = fail(new DomainError(
+        DomainErrorCode.SERVICE_UNAVAILABLE,
+        'No cash drawer is configured for this terminal.',
+        { statusCode: 503, details: { reason_code: 'NO_PRINTER_CONFIGURED' } }
+      ));
+
+      sendUseCaseResult(res, result);
+
+      expect(captureExceptionMock).not.toHaveBeenCalled();
+    });
+
+    // Regression guard: an unrecognized reason_code on a SERVICE_UNAVAILABLE failure
+    // (e.g. a genuine transient ROUTE_TIMEOUT) must still capture -- the allowlist must
+    // not become a blanket "any 503 is fine".
+    it('still captures a SERVICE_UNAVAILABLE domain failure with an unrecognized reason_code', () => {
+      const res = createMockRes();
+      const result = fail(new DomainError(
+        DomainErrorCode.SERVICE_UNAVAILABLE,
+        'Route calculation failed.',
+        { statusCode: 503, details: { reason_code: 'ROUTE_TIMEOUT' } }
+      ));
+
+      sendUseCaseResult(res, result);
+
+      expect(captureExceptionMock).toHaveBeenCalledTimes(1);
+    });
   });
 });

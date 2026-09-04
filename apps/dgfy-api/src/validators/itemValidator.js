@@ -33,7 +33,8 @@ const manufacturerBarcodeSchema = Joi.object({
     hasValidGtinCheckDigit(value) ? value : helpers.error('barcode.checkDigit')
   )).required().messages({
     'barcode.checkDigit': 'Manufacturer barcode has an invalid GTIN check digit.'
-  })
+  }),
+  scope: Joi.string().valid('inventory', 'pos').default('inventory')
 }).allow(null).optional();
 
 const internalBarcodeSchema = Joi.object({
@@ -573,6 +574,22 @@ const replaceItemSuppliersSchema = Joi.object({
   })
 });
 
+// Phase 257 (#1318) — secondary category memberships. A brand-new schema, not
+// a widening of the existing `folder_id` scalar (ADR 0080 clause 1/2): the
+// primary category stays a single required/optional integer everywhere else
+// in this file, untouched.
+const replaceItemFolderMembershipsSchema = Joi.object({
+  folder_ids: Joi.array().items(Joi.number().integer().positive().messages({
+    'number.base': 'Each folder_ids entry must be a number',
+    'number.integer': 'Each folder_ids entry must be an integer',
+    'number.positive': 'Each folder_ids entry must be a positive number'
+  })).max(10).required().messages({
+    'array.base': 'folder_ids must be an array',
+    'array.max': 'An item may have at most 10 secondary category memberships',
+    'any.required': 'folder_ids is required'
+  })
+});
+
 const barcodeSourceSchema = Joi.string().valid(
   'manufacturer',
   'supplier',
@@ -700,6 +717,7 @@ export const validateCreateFolder = validateSchema(createFolderSchema, 'body', '
 export const validateUpdateFolder = validateSchema(updateFolderSchema, 'body', 'validatedData');
 export const validateDeleteFolder = validateSchema(deleteFolderSchema, 'body', 'validatedData');
 export const validateReplaceItemSuppliers = validateSchema(replaceItemSuppliersSchema, 'body', 'validatedData');
+export const validateReplaceItemFolderMemberships = validateSchema(replaceItemFolderMembershipsSchema, 'body', 'validatedData');
 export const validateBarcodeResolveQuery = validateSchema(barcodeResolveQuerySchema, 'query', 'validatedQuery');
 export const validateExternalProductLookupQuery = validateSchema(externalProductLookupQuerySchema, 'query', 'validatedQuery');
 export const validateExternalProductImageImport = validateSchema(externalProductImageImportSchema, 'body', 'validatedData');

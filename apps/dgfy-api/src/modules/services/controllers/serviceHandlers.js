@@ -182,7 +182,11 @@ export const updateBookingStatus = async (req, res, next) => {
     try {
         const result = await updateServiceBookingStatusUseCase({
             bookingId: req.validatedParams?.booking_id || req.params.booking_id,
-            payload: req.validatedData || req.body
+            payload: req.validatedData || req.body,
+            // Phase 100 of #482 -- attributes the status-transition event to the staff user
+            // making the call (ServiceBookingStatusEvent.actor_user_id), mirroring settleBooking
+            // below.
+            user: req.user
         });
         return sendResult(req, res, result, { message: 'Service booking updated successfully' });
     } catch (error) {

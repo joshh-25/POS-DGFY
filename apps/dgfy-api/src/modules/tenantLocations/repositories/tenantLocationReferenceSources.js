@@ -18,10 +18,26 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'deliveryRuns',
+        label: 'delivery runs',
+        modelName: 'DeliveryRun',
+        association: 'DeliveryRun.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'itemLocationStocks',
         label: 'item location stock rows',
         modelName: 'ItemLocationStock',
         association: 'ItemLocationStock.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'inventoryReservations',
+        label: 'inventory reservations',
+        modelName: 'InventoryReservation',
+        association: 'InventoryReservation.location',
         foreignKeys: ['location_id'],
         where: (locationId) => ({ location_id: locationId })
     },
@@ -104,6 +120,27 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'posTransactionAdjustments',
+        label: 'POS transaction adjustments',
+        modelName: 'PosTransactionAdjustment',
+        association: 'PosTransactionAdjustment.originalLocation,PosTransactionAdjustment.actorLocation',
+        foreignKeys: ['original_location_id', 'actor_location_id'],
+        where: (locationId) => ({
+            [Op.or]: [
+                { original_location_id: locationId },
+                { actor_location_id: locationId }
+            ]
+        })
+    },
+    {
+        key: 'posMerchantTenderReconciliations',
+        label: 'POS merchant tender reconciliations',
+        modelName: 'PosMerchantTenderReconciliation',
+        association: 'PosMerchantTenderReconciliation.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'posFiscalTerminalRegistrations',
         label: 'POS fiscal terminal registrations',
         modelName: 'PosFiscalTerminalRegistration',
@@ -116,6 +153,27 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         label: 'POS terminal shifts',
         modelName: 'PosTerminalShift',
         association: 'PosTerminalShift.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        // #1022: added by b86b01704 ("feat(pos): add cashier attendance and operator authority")
+        // but never added here -- caught by tests/tenantLocationReferenceSources.coverage.test.js,
+        // which diffs every direct TenantLocation.belongsTo association in models/index.js against
+        // this manifest.
+        key: 'posTerminalOperatorSessions',
+        label: 'POS terminal operator sessions',
+        modelName: 'PosTerminalOperatorSession',
+        association: 'PosTerminalOperatorSession.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        // #1022: same gap as posTerminalOperatorSessions above, same commit.
+        key: 'posDrawerHandoffEvents',
+        label: 'POS drawer handoff events',
+        modelName: 'PosDrawerHandoffEvent',
+        association: 'PosDrawerHandoffEvent.location',
         foreignKeys: ['location_id'],
         where: (locationId) => ({ location_id: locationId })
     },
@@ -162,6 +220,16 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        // #1022: same gap as posTerminalOperatorSessions/posDrawerHandoffEvents above, same
+        // b86b01704 commit.
+        key: 'employeeAttendanceSessions',
+        label: 'employee attendance sessions',
+        modelName: 'EmployeeAttendanceSession',
+        association: 'EmployeeAttendanceSession.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'employeeCreditLedgerEntries',
         label: 'employee credit ledger entries',
         modelName: 'EmployeeCreditLedgerEntry',
@@ -202,6 +270,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'serviceBookingHandoffLegs',
+        label: 'service booking handoff legs',
+        modelName: 'ServiceBookingHandoffLeg',
+        association: 'ServiceBookingHandoffLeg.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'hospitalityRoomTypes',
         label: 'hospitality room types',
         modelName: 'HospitalityRoomType',
@@ -230,6 +306,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         label: 'hospitality facilities',
         modelName: 'HospitalityFacility',
         association: 'HospitalityFacility.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'voucherRedemptions',
+        label: 'voucher redemptions',
+        modelName: 'VoucherRedemption',
+        association: 'VoucherRedemption.location',
         foreignKeys: ['location_id'],
         where: (locationId) => ({ location_id: locationId })
     }

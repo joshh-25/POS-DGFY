@@ -7,12 +7,12 @@ const path = require('path');
 const { validateManifest, MergeAdoptionError } = require('./check-merge-adoption');
 
 const HIGH_RISK_PATH_PATTERNS = [
-  /^apps\/dgfy-web\/apps\/store\/src\//,
-  /^apps\/dgfy-web\/Pages\/DgfyAuthPage\.jsx$/,
-  /^apps\/dgfy-web\/Pages\/RegisterCompany\.jsx$/,
-  /^apps\/dgfy-web\/src\/features\/dgfy\//,
-  /^apps\/dgfy-web\/src\/services\/dgfyAuthService\.js$/,
-  /^apps\/dgfy-web\/src\/services\/authService\.js$/,
+  /^apps\/dgfy-storefront\/src\//,
+  /^packages\/web-core\/Pages\/DgfyAuthPage\.jsx$/,
+  /^packages\/web-core\/Pages\/RegisterCompany\.jsx$/,
+  /^packages\/web-core\/src\/features\/dgfy\//,
+  /^packages\/web-core\/src\/services\/dgfyAuthService\.js$/,
+  /^packages\/web-core\/src\/services\/authService\.js$/,
   /^apps\/dgfy-api\/src\/middleware\/storeAuth\.js$/,
   /^apps\/dgfy-api\/src\/modules\/dgfy\//,
   /^apps\/dgfy-api\/src\/modules\/store\//,

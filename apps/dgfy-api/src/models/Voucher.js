@@ -1,0 +1,273 @@
+import { DataTypes } from 'sequelize';
+import sequelize from '../config/database.js';
+
+// Tenant-local voucher campaign. Governed by ADR 0066 (#455, epic #453).
+//
+// `redeemed_count` / `redeemed_value_centavos` / `redeemed_quantity` are a DERIVED CACHE of
+// `voucher_redemptions`, not the source of truth (ADR 0066 decision 4). They exist so the three
+// exhaustion limits can be enforced by one atomic conditional UPDATE at redemption time.
+//
+// Eligibility is bitmask-encoded rather than MySQL SET: `DataTypes.SET` does not exist in
+// Sequelize 6.x, and `sequelize.sync()` over these models is how new tenants are provisioned. The
+// property that matters is preserved -- NOT NULL with an explicit default, so "eligible everywhere"
+// cannot be produced by omission (the #459 failure mode).
+const Voucher = sequelize.define('Voucher', {
+  voucher_id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  // Uniqueness is declared in the `indexes` block below, not with `unique: true` here. Both produce
+  // a unique key, but the attribute form makes Sequelize name it `code`, while the migration and the
+  // tenant-repair registry both name it `uq_vouchers_code` -- and
+  // inspectRequiredTenantSchemaIndexes matches by name, so the two forms are not interchangeable.
+  code: {
+    type: DataTypes.STRING(64),
+    allowNull: false
+  },
+  // #1331 (Phase 240): 'delivery_campaign' identifies a code whose benefit targets the delivery
+  // fee rather than items. Enum values are APPENDED LAST -- MySQL stores ENUM ordinals, and
+  // inserting a value mid-list silently reinterprets every existing row across every tenant DB.
+  voucher_kind: {
+    type: DataTypes.ENUM('promo_code', 'delivery_campaign'),
+    allowNull: false,
+    defaultValue: 'promo_code'
+  },
+  title: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  subtitle: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  badge: {
+    type: DataTypes.STRING(80),
+    allowNull: true
+  },
+  validity_text: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  // #1331: 'free_delivery' appended last, same ordinal-safety rule as voucher_kind above.
+  benefit_class: {
+    type: DataTypes.ENUM('percent_off', 'amount_off', 'fixed_price', 'free_delivery'),
+    allowNull: false
+  },
+  // #1331: orthogonal to benefit_class -- Phase 239's voucherBenefitPolicy.js was built expecting
+  // this exact column. 'items' (default) keeps every existing voucher byte-identical; 'delivery'
+  // resolves the benefit against the delivery fee instead of the item subtotal. Not derived from
+  // benefit_class === 'free_delivery': a future percent_off-targeting-delivery voucher is a real,
+  // expressible combination this axis exists to allow.
+  benefit_target: {
+    type: DataTypes.ENUM('items', 'delivery'),
+    allowNull: false,
+    defaultValue: 'items'
+  },
+  // #1332 (Phase 244): the auto-apply flag. `false` (default) keeps every existing voucher
+  // byte-identical -- code-entered only. NOT NULL with an explicit default, same "eligible
+  // everywhere cannot be produced by omission" property ADR 0066 Decision 10 requires elsewhere
+  // (#459). v1 auto-apply is delivery-axis only -- voucherUseCases.js's applyBenefitConfig rejects
+  // `auto_apply: true` on anything but `benefit_target: 'delivery'` at authoring time.
+  auto_apply: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  percent_off_bps: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  amount_off_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
+  fixed_unit_price_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
+  // #1331: the free_delivery benefit's own amount column, distinct from amount_off_centavos so
+  // "amount off items" and "amount off delivery" stay distinguishable in benefit_config_snapshot.
+  // NULL means "waive the whole fee"; a positive integer caps the waiver (a partial waiver).
+  delivery_amount_off_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
+  max_discount_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
+  min_spend_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
+  // #1490: the mirror image of min_spend_centavos above -- an eligibility CAP, not a discount cap
+  // (that's max_discount_centavos, a different axis). Compared against the same ITEM subtotal
+  // min_spend_centavos already uses (excludes the delivery fee) -- see voucherEligibilityPolicy.js.
+  // Nullable: null means "no cap," matching every other optional voucher field's default.
+  max_order_value_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
+  min_quantity: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  allow_below_cost: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  // #696: a fixed_price voucher carries EITHER fixed_unit_price_centavos (one price, above) OR a
+  // pricelist (N prices for N items), never both -- enforced in voucherUseCases.js's
+  // applyBenefitConfig, not the schema. Nullable: most vouchers never attach one.
+  pricelist_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: { model: 'pricelists', key: 'pricelist_id' },
+    // A pricelist in use by a voucher must not vanish out from under it.
+    onDelete: 'RESTRICT'
+  },
+  stackable_with_statutory: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  valid_from: {
+    type: DataTypes.DATEONLY,
+    allowNull: true
+  },
+  valid_until: {
+    type: DataTypes.DATEONLY,
+    allowNull: true
+  },
+  valid_time_start: {
+    type: DataTypes.STRING(5),
+    allowNull: true
+  },
+  valid_time_end: {
+    type: DataTypes.STRING(5),
+    allowNull: true
+  },
+  weekday_mask: {
+    type: DataTypes.TINYINT.UNSIGNED,
+    allowNull: false,
+    defaultValue: 127
+  },
+  channels_mask: {
+    type: DataTypes.TINYINT.UNSIGNED,
+    allowNull: false,
+    defaultValue: 1
+  },
+  // #713: independent of channels_mask above. channels_mask controls where a code is USABLE
+  // (storefront/POS); this controls whether the voucher is ADVERTISED on the public storefront
+  // discovery page. A B2B pricelist voucher (#696) wants POS-usable and unadvertised -- the reverse
+  // combination channels_mask alone can't express.
+  is_publicly_listed: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  // #788 (Phase 269): the indexable gate for account-restricted issuance. DERIVED, never
+  // client-writable -- `voucherUseCases.js` sets it from the `account_grant_ids` payload array in
+  // the same transaction that writes `voucher_account_grants`, so the flag and the child rows can
+  // never disagree. It exists (rather than deriving the restriction from a COUNT on every
+  // resolution) for two reasons: an unrestricted voucher -- the overwhelming majority -- pays no
+  // extra query on the checkout hot path, and a caller that forgets to hydrate the allowlist for a
+  // restricted voucher is detectable and fails CLOSED in voucherEligibilityPolicy.js rather than
+  // silently evaluating as unrestricted.
+  //
+  // Deliberately NOT indexed: it is a two-valued flag that no query ever filters on (the redemption
+  // path already holds the voucher row when it reads this), and a boolean index is near-useless to
+  // the optimizer anyway. `voucher_redemptions.dgfy_account_id` DOES get one -- that column is a
+  // high-cardinality UUID serving a real per-account audit read.
+  is_account_restricted: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  fulfillment_methods_mask: {
+    type: DataTypes.TINYINT.UNSIGNED,
+    allowNull: false,
+    defaultValue: 3
+  },
+  order_timings_mask: {
+    type: DataTypes.TINYINT.UNSIGNED,
+    allowNull: false,
+    defaultValue: 3
+  },
+  max_redemptions: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  max_total_discount_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: true
+  },
+  max_benefit_quantity: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  redeemed_count: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
+  redeemed_value_centavos: {
+    type: DataTypes.BIGINT,
+    allowNull: false,
+    defaultValue: 0
+  },
+  redeemed_quantity: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
+  // Reserved, always empty in v1. ADR 0066 decision 9 -- a condition that must appear in a WHERE
+  // clause belongs in a column, not here.
+  conditions: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
+  status: {
+    type: DataTypes.ENUM('draft', 'active', 'paused', 'expired', 'archived'),
+    allowNull: false,
+    defaultValue: 'draft'
+  },
+  // #1494: accountable creating/modifying officer. Plain value-link INTEGER, no DB-level FK --
+  // see this phase's plan doc / migration header for why (cross-tenant-DB migration risk +
+  // sync-tenant-schemas.js's column-presence-only repair gate would silently starve already-active
+  // tenants of the constraint). Association declared in models/index.js with `constraints: false`
+  // so sequelize.sync() (new-tenant provisioning) stays byte-identical to the migration path.
+  created_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  updated_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  // Manual optimistic locking, same convention as EmployeeCreditAccount.version.
+  version: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  }
+}, {
+  tableName: 'vouchers',
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at',
+  // Mirrors the migration's addIndex calls one for one, by name. sequelize.sync() -- how
+  // tenantProvisioningService.js provisions a NEW tenant -- creates only what the model declares, so
+  // without this block a new tenant gets none of these.
+  indexes: [
+    { name: 'uq_vouchers_code', unique: true, fields: ['code'] },
+    { name: 'idx_vouchers_status_validity', fields: ['status', 'valid_from', 'valid_until'] },
+    { name: 'idx_vouchers_kind', fields: ['voucher_kind'] },
+    { name: 'idx_vouchers_pricelist', fields: ['pricelist_id'] },
+    { name: 'idx_vouchers_auto_apply', fields: ['auto_apply', 'status', 'benefit_target'] }
+  ]
+});
+
+export default Voucher;

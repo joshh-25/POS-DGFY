@@ -1,0 +1,202 @@
+import React, { useState } from 'react';
+import { Lock, MapPin } from 'lucide-react';
+import { AddressEditorModal } from './AddressEditorModal.jsx';
+import { SavedAddressCard, SavedAddressCardEmpty } from '../../shared/components/checkout/SavedAddressCard.jsx';
+import {
+  createCustomerAddressDraft,
+  getCustomerAddressActionMeta,
+  getCustomerAddressLine,
+  getCustomerAddressTitle,
+  isCustomerAddressDefault
+} from '../model/customerAddressPresentation.js';
+import { CUSTOMER_DASHBOARD_TYPOGRAPHY } from '../model/customerDashboardPresentation.jsx';
+export function AddressesSection({
+  addresses,
+  isMobileViewport,
+  onSaveAddress,
+  onDeleteAddress,
+  onSetDefaultAddress,
+  onUseAddressForCheckout,
+  renderAddressPinEditor,
+  accountAddressActionId,
+  theme
+}) {
+  const allAddresses = Array.isArray(addresses) ? addresses : [];
+  const THEME = theme;
+  const [addressDraft, setAddressDraft] = useState({ label: '', address_line: '', latitude: null, longitude: null, is_default: true });
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+  const [addressModalMode, setAddressModalMode] = useState('create');
+  const [deletingAddressId, setDeletingAddressId] = useState(null);
+  const fieldStyle = {
+    width: '100%',
+    minHeight: 44,
+    border: `1px solid ${THEME.border}`,
+    borderRadius: 10,
+    padding: '0 14px',
+    fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.body,
+    color: THEME.text,
+    outline: 'none',
+    boxSizing: 'border-box',
+    background: THEME.surface,
+    transition: 'border-color 0.2s'
+  };
+
+  // Sort addresses to pin default to top
+  const sortedAddresses = [...allAddresses].sort((a, b) => {
+    if (isCustomerAddressDefault(a)) return -1;
+    if (isCustomerAddressDefault(b)) return 1;
+    return 0;
+  });
+
+  const handleOpenAddAddressModal = () => {
+    setAddressModalMode('create');
+    setAddressDraft({ label: '', address_line: '', latitude: null, longitude: null, is_default: true });
+    setIsAddressModalOpen(true);
+  };
+
+  const handleOpenEditAddressModal = (address) => {
+    setAddressModalMode(`edit-${address.address_id}`);
+    setAddressDraft(createCustomerAddressDraft(address, { keepDefaultFlag: true }));
+    setIsAddressModalOpen(true);
+  };
+
+  const handleSaveAddressModal = async (e) => {
+    e.preventDefault();
+    // Auto-set as default if it's a new address
+    const draftPayload = { ...addressDraft };
+    if (addressModalMode === 'create') draftPayload.is_default = true;
+
+    const payload = {
+      label: String(draftPayload.label || '').trim(),
+      address_line: String(draftPayload.address_line || '').trim(),
+      latitude: draftPayload.latitude,
+      longitude: draftPayload.longitude,
+      is_default: Boolean(draftPayload.is_default)
+    };
+
+    const isEdit = String(addressModalMode).startsWith('edit-');
+    const targetAddress = isEdit ? allAddresses.find(a => a.address_id === addressDraft.address_id) : null;
+
+    const success = await onSaveAddress?.(payload, targetAddress);
+    if (success !== false) { // Assuming returning nothing or true means success
+      setIsAddressModalOpen(false);
+    }
+    return success;
+  };
+
+  const confirmDelete = async (address) => {
+    await onDeleteAddress?.(address);
+    setDeletingAddressId(null);
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 22 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitle.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitle.desktop, fontWeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitleWeight, color: THEME.text }}>Saved Locations</h2>
+          <p style={{ margin: '6px 0 0', color: THEME.muted, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.pageSubtitle }}>Locations saved here are available during checkout.</p>
+        </div>
+        {typeof onSaveAddress === 'function' && (
+          <button
+            type="button"
+            onClick={handleOpenAddAddressModal}
+            style={{ background: THEME.primary, color: '#fff', border: 'none', borderRadius: 10, minHeight: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.desktop, padding: '0 18px', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'all 0.2s ease', flexShrink: 0 }}
+            onMouseOver={e => { e.currentTarget.style.opacity = '0.9'; }}
+            onMouseOut={e => { e.currentTarget.style.opacity = '1'; }}
+          >
+            <MapPin size={16} /> Add New Address
+          </button>
+        )}
+      </div>
+
+      <section style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {sortedAddresses.length === 0 ? (
+            <SavedAddressCardEmpty message="No addresses saved. Add one below for faster checkout." />
+          ) : sortedAddresses.map((address) => {
+            const isDefault = isCustomerAddressDefault(address);
+            const isDeleting = deletingAddressId === address.address_id;
+            const actionMeta = getCustomerAddressActionMeta(accountAddressActionId);
+            const isAddressActionTarget = actionMeta.id === String(address.address_id);
+            const busy = isDeleting || isAddressActionTarget;
+
+            return (
+              <div key={`dashboard-addr-wrapper-${address.address_id}`} style={{ display: 'grid', gap: 10 }}>
+                <SavedAddressCard
+                  address={{
+                    id: `dashboard-address-${address.address_id}`,
+                    addressId: address.address_id,
+                    label: getCustomerAddressTitle(address),
+                    fullAddress: getCustomerAddressLine(address),
+                    isDefault,
+                    source: 'account'
+                  }}
+                  isSelected={isDefault}
+                  isBusy={busy}
+                  layoutVariant="dashboard"
+                  isMobileViewport={isMobileViewport}
+                  onSelect={isAddressActionTarget ? undefined : (() => onUseAddressForCheckout?.(address))}
+                  onSetDefault={!isDefault ? () => onSetDefaultAddress?.(address) : undefined}
+                  onEdit={() => handleOpenEditAddressModal(address)}
+                  onRemove={() => setDeletingAddressId(address.address_id)}
+                  showActions={!isDeleting}
+                  themeColor={THEME.primary}
+                  themeBg="#eff6ff"
+                  themeHoverBorder="#93c5fd"
+                  themeHoverBg="#f8fbff"
+                  themeShadowColor="rgba(59,130,246,0.16)"
+                  themeShadowColorSoft="rgba(59,130,246,0.12)"
+                />
+                {isDeleting ? (
+                  <div style={{ marginTop: -2, padding: '0 8px 0 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, fontWeight: 600, color: THEME.orange }}>Delete this address?</span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => setDeletingAddressId(null)} style={{ minHeight: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.desktop, border: `1px solid ${THEME.border}`, background: 'transparent', padding: '0 12px', borderRadius: 8, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                      <button onClick={() => confirmDelete(address)} style={{ minHeight: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.desktop, border: 'none', background: THEME.orange, color: '#fff', padding: '0 12px', borderRadius: 8, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, fontWeight: 600, cursor: 'pointer' }}>Delete</button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: THEME.muted, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption, marginTop: 8 }}>
+          <Lock size={14} /> Your addresses are private and secure.
+        </div>
+      </section>
+
+      {/* Modal Overlay */}
+      {isAddressModalOpen ? (
+        <AddressEditorModal
+          isMobileViewport={isMobileViewport}
+          theme={THEME}
+          addressModalMode={addressModalMode}
+          addressDraft={addressDraft}
+          setAddressDraft={setAddressDraft}
+          onClose={() => setIsAddressModalOpen(false)}
+          onSubmit={handleSaveAddressModal}
+          renderAddressPinEditor={renderAddressPinEditor}
+          accountAddressActionId={accountAddressActionId}
+          fieldStyle={fieldStyle}
+        />
+      ) : null}
+
+      {/* CSS for animations */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        @keyframes zoomIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+      `}} />
+    </div>
+  );
+}

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-08-09
+last_reviewed: 2026-08-15
 applies_to: catalog,inventory,pos,services,storefront,settings
 topic: store_templates_and_profiles
 ---
@@ -162,7 +162,7 @@ section used to describe as open.
 
 **The merchant and admin surfaces render differently as of issue #178
 Phase 38.** `/business/grow` and `/register-company` use `IndustrySelect`
-(`apps/dgfy-web/src/features/registration/IndustrySelect.jsx`) — a dropdown of
+(`packages/web-core/src/features/registration/IndustrySelect.jsx`) — a dropdown of
 industry names, with an (i) button opening a catalog-detail modal and a
 per-selection "What you'll get" modal, and **no engine classification
 display at all**. The admin assisted-provisioning panel keeps the original
@@ -316,7 +316,7 @@ out"). Two remain open; the third has since shipped (issue #178 Phases
 - **The public storefront doesn't see subtraction.**
   `storeUseCases.js`'s catalog listing reads only the enabled overlay from
   `resolveWorkflowCapabilitySettings()`, never the disabled one, and
-  `apps/dgfy-web/apps/store`'s own capability model
+  `apps/dgfy-storefront`'s own capability model
   (`shared/model/workflowCapabilities.js`, `modePresentationRegistry.js`)
   has no subtractive concept at all — a counter-service tenant's backend
   and admin POS both correctly deny table/kitchen capabilities, but its
@@ -366,7 +366,7 @@ module set instead of the base mode alone.
 
 ## Frontend affordance consumers now read the Profile (issue #178 Phase 18)
 
-`apps/dgfy-web/src/features/settings/WorkflowModeContext.jsx` distributes the
+`packages/web-core/src/features/settings/WorkflowModeContext.jsx` distributes the
 tenant's Store Profile (`profile`) and `disabledCapabilities` alongside the
 existing `workflowMode`/`enabledCapabilities`. The Profile it distributes is
 the tenant's own shadow-written `ops_store_profile` setting when present
@@ -378,7 +378,7 @@ than going through that resolver's flag/differ machinery, because a stale
 POS default is cosmetic where a stale capability grant is a security
 concern; the resolver stays reserved for Phase 19's gate flip.
 
-`apps/dgfy-web/src/features/pos/pages/TerminalPage.jsx` reads `profile.pos_defaults`
+`packages/web-core/src/features/pos/pages/TerminalPage.jsx` reads `profile.pos_defaults`
 instead of recomputing it from `businessModeTemplates.js`'s frontend-only
 copy. Tracing every other original Phase 12 affordance candidate found two
 corrections to make while implementing, not just a flip:
@@ -530,9 +530,9 @@ later fully restores whatever the previous one granted. Every write is also
 recorded in `TenantAdminAuditLog` (before/after settings snapshot), the same
 trail `PATCH /:id/capabilities` uses.
 
-Frontend: a per-tenant template picker on `apps/dgfy-web/Pages/admin/TenantManager.jsx`
+Frontend: a per-tenant template picker on `apps/dgfy-ims/Pages/admin/TenantManager.jsx`
 (published templates only, loaded via `listStoreTemplates` from
-`apps/dgfy-web/src/services/adminService.js`), gated to active tenants, with the
+`packages/web-core/src/services/adminService.js`), gated to active tenants, with the
 same reason-required confirmation-modal pattern the capability controls on
 the same page already use.
 
@@ -542,7 +542,7 @@ the same page already use.
 only (`resolvePlatformAdminRoutePolicy` in `apps/dgfy-api/src/middleware/auth.js`
 routes it to `masterOnly`, not a delegable page permission: a published
 template shapes what every future tenant provisions with, platform-wide).
-Frontend: `apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx`, wired into
+Frontend: `apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx`, wired into
 `AdminLayout.jsx`'s sidebar as "Store Templates".
 
 - `POST /admin/templates` — create a draft. `base_mode` must be an
@@ -600,7 +600,7 @@ grantable capability vocabulary, and fail template validation if selected.
   `ops_store_profile_read` flag is read in the same cached query as
   mode/enabled/disabled, so the common flag-off gate check pays no extra
   cost.
-- `apps/dgfy-web/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
+- `packages/web-core/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
   (issue #178 Phase 18) — the context distributes the server-persisted
   profile when present and an identical local rebuild otherwise.
 - `apps/dgfy-api/tests/storeProfile.equivalence.contract.test.js` — `pos_defaults`/
@@ -675,7 +675,7 @@ grantable capability vocabulary, and fail template validation if selected.
   the same additive-then-subtracted taxonomy fix at the item-validation
   layer, plus proof that disabling a base-mode (non-taxonomy-overlay)
   capability leaves taxonomy resolution unaffected.
-- `apps/dgfy-web/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
+- `packages/web-core/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
   (issue #178 Phase 21 addition) — `hasCapability` honors the disabled
   overlay, the exact gap that let the 3-arg call survive Phase 19.
 - `apps/dgfy-api/tests/fnbKitchenQueueTemplateGate.route.test.js` (issue #178

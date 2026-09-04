@@ -10,6 +10,10 @@ import { getVariations } from '../../../config/searchSynonyms.js';
 import { buildVisibleWhere, notFoundError } from '../../../utils/softDeletePolicy.js';
 import { assertItemRepositoryContract } from '../contracts/itemRepository.contract.js';
 import {
+    loadItemLocationStockMap,
+    applyItemLocationStockMap
+} from '../../shared/repositories/itemLocationStockOverlay.js';
+import {
     DEFAULT_WORKFLOW_MODE,
     normalizeWorkflowMode,
     resolveWorkflowModeFamily,
@@ -55,6 +59,9 @@ export const clearItemRepositorySettingsCache = () => settingsCache.clear();
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const MANUFACTURING_PURCHASABLE_CATEGORIES = Object.freeze(['raw_material', 'packaging', 'supplies']);
 const MSME_PURCHASABLE_CATEGORIES = Object.freeze(['raw_material', 'packaging', 'supplies', 'product']);
+// Phase 257 (#1318) — bounds storefront/POS rail fan-out for secondary
+// category memberships. See ADR 0080 clause 6.
+const MAX_ITEM_FOLDER_MEMBERSHIPS = 10;
 
 export const inventoryRepositoryDependencies = {
     validateComposition: validateCompositionDependency,
@@ -82,6 +89,102 @@ const activeFolderWhere = (where = {}) => ({
 });
 
 const hasOwn = (obj, key) => Boolean(obj) && Object.prototype.hasOwnProperty.call(obj, key);
+
+// Phase 257 (#1318) — belt-and-braces against a tenant whose schema hasn't
+// picked up item_folder_memberships yet (R1 incomplete on some tenant); see
+// docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md. Degrades instead of
+// throwing, matching storeRepository.js's safeGetOptionalModel for
+// FnbFolderModifierGroup.
+const safeGetOptionalModel = (name) => {
+    try {
+        return dbStore.get(name) || null;
+    } catch {
+        return null;
+    }
+};
+
+// #1318 follow-up (ADR 0080 Consequences item 4) — the pre-Phase-257 folder
+// delete warning and folder list only ever counted items whose PRIMARY
+// folder_id matched, so an item that carries this folder only as a
+// SECONDARY category (item_folder_memberships) was invisible to both. This
+// counts, for a batch of folders, how many *visible* items reference each
+// as a secondary category — excluding any item already present in that
+// folder's primary set (ADR 0080 clause 2 allows that overlap to exist; it
+// must not be double-counted as "also secondary" here) — so `listFolders`
+// and `deleteFolder` can share one counting rule instead of drifting apart.
+const countSecondaryFolderMemberships = async (folderIds, primaryItemIdsByFolder = new Map(), options = {}) => {
+    const ids = [...new Set(
+        (folderIds || [])
+            .map((id) => Number.parseInt(id, 10))
+            .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    const counts = new Map();
+    if (ids.length === 0) return counts;
+
+    const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+    if (!ItemFolderMembership || typeof ItemFolderMembership.findAll !== 'function') return counts;
+
+    const membershipRows = await ItemFolderMembership.findAll({
+        where: { folder_id: { [Op.in]: ids } },
+        attributes: ['item_id', 'folder_id'],
+        transaction: options.transaction
+    });
+    if (membershipRows.length === 0) return counts;
+
+    const candidateItemIds = [...new Set(
+        membershipRows
+            .filter((row) => !primaryItemIdsByFolder.get(row.folder_id)?.has(row.item_id))
+            .map((row) => row.item_id)
+    )];
+    if (candidateItemIds.length === 0) return counts;
+
+    const Item = dbStore.get('Item');
+    const visibleItems = typeof Item?.findAll === 'function'
+        ? await Item.findAll({
+            where: visibleItemWhere({ item_id: { [Op.in]: candidateItemIds } }),
+            attributes: ['item_id'],
+            transaction: options.transaction
+        })
+        : [];
+    const visibleItemIds = new Set(visibleItems.map((item) => item.item_id));
+
+    const itemsByFolder = new Map();
+    for (const row of membershipRows) {
+        if (primaryItemIdsByFolder.get(row.folder_id)?.has(row.item_id)) continue;
+        if (!visibleItemIds.has(row.item_id)) continue;
+        const set = itemsByFolder.get(row.folder_id) || new Set();
+        set.add(row.item_id);
+        itemsByFolder.set(row.folder_id, set);
+    }
+
+    for (const [folderId, itemSet] of itemsByFolder.entries()) {
+        counts.set(folderId, itemSet.size);
+    }
+    return counts;
+};
+
+const normalizeServerVersion = (value) => {
+    if (value == null || value === '') return null;
+    const parsed = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const assertExpectedItemServerVersion = (item, expectedServerVersion) => {
+    const expected = normalizeServerVersion(expectedServerVersion);
+    if (!expected) return;
+    const actual = normalizeServerVersion(item?.updated_at ?? item?.updatedAt);
+    if (actual === expected) return;
+
+    const error = new Error('The item changed on the server before the offline request was replayed');
+    error.code = 'CONFLICT';
+    error.statusCode = 409;
+    error.details = {
+        reason_code: 'MOBILE_ITEM_VERSION_CONFLICT',
+        expected_server_version: expected,
+        actual_server_version: actual
+    };
+    throw error;
+};
 
 const isMissingStorefrontCatalogOverrideTableError = (error) => {
     if (!error) return false;
@@ -510,6 +613,65 @@ const auditBarcodeEvent = async ({
     }, { transaction });
 };
 
+const ITEM_AUDIT_FIELDS = Object.freeze([
+    'name',
+    'sku_code',
+    'category',
+    'product_type',
+    'status',
+    'folder_id',
+    'product_folder',
+    'cost_per_unit',
+    'default_sale_price',
+    'unit_of_measure',
+    'vat_type',
+    'tracking_mode',
+    'current_stock',
+    'senior_pwd_discount_eligible'
+]);
+
+const auditValue = (value) => {
+    if (value === undefined) return null;
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'string') return value.slice(0, 500);
+    if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value;
+    return null;
+};
+
+const buildItemAuditChanges = (before = {}, after = {}, requested = {}) => ITEM_AUDIT_FIELDS.reduce((changes, field) => {
+    if (!Object.prototype.hasOwnProperty.call(requested, field)) return changes;
+    const previous = auditValue(before?.[field]);
+    const next = auditValue(after?.[field]);
+    if (String(previous ?? '') !== String(next ?? '')) {
+        changes[field] = { from: previous, to: next };
+    }
+    return changes;
+}, {});
+
+const auditInventoryEvent = async ({
+    userId = null,
+    entityType = 'item',
+    entityId = null,
+    action = 'UPDATE',
+    eventType,
+    changes = {},
+    transaction = null
+} = {}) => {
+    const AuditLog = dbStore.get('AuditLog');
+    if (typeof AuditLog?.create !== 'function' || !eventType) return null;
+    return AuditLog.create({
+        user_id: userId || null,
+        entity_type: entityType,
+        entity_id: entityId || null,
+        action,
+        event_type: eventType,
+        changes: {
+            event: eventType,
+            ...changes
+        }
+    }, { transaction });
+};
+
 const getCurrentWorkflowMode = async () => {
     const settings = await getCachedSettingsForTenant();
     const configuredMode = settings?.[WORKFLOW_MODE_SETTING_KEY]?.value;
@@ -754,6 +916,18 @@ export const itemRepository = {
         return sequelize.transaction();
     },
 
+    async createAuditLog(payload = {}, options = {}) {
+        return auditInventoryEvent({
+            userId: payload.user_id,
+            entityType: payload.entity_type,
+            entityId: payload.entity_id,
+            action: payload.action,
+            eventType: payload.event_type,
+            changes: payload.changes,
+            transaction: options.transaction
+        });
+    },
+
     async getItems(queryParams = {}) {
         const Item = dbStore.get('Item');
         const ProductComposition = dbStore.get('ProductComposition');
@@ -801,13 +975,27 @@ export const itemRepository = {
             search,
             sortBy = 'name',
             sortOrder = 'asc',
-            status
+            status,
+            location_id: locationId = null
         } = queryParams;
+
+        // #682: an already-resolved (grant-checked) location_id, passed by getItemsUseCase.
+        // Omitted -> current_stock stays the tenant-wide aggregate exactly as before this change.
+        const parsedLocationId = Number.parseInt(locationId, 10);
+        const hasLocationFilter = Number.isInteger(parsedLocationId) && parsedLocationId > 0;
 
         const parsedPage = parseInt(page, 10);
         const parsedLimit = parseInt(limit, 10);
         const offset = (parsedPage - 1) * parsedLimit;
-        const where = visibleItemWhere({});
+        // #1495 Part A: include_inactive is already coerced to a real boolean and permission-gated
+        // by getItemsUseCase before it reaches here -- this only decides the where-clause shape.
+        // includeDeleted: true (RF-1 fix, PR #1502 review) drops the deleted_at: null constraint
+        // entirely -- without it buildVisibleWhere always forces deleted_at: null, so a deleted
+        // row (the exact state deleteItem leaves a row in) could never come back through this
+        // "show inactive" path, defeating the restore feature's own list view.
+        const where = queryParams.include_inactive
+            ? buildVisibleWhere({}, { statusField: 'status', excludeInactiveStatus: false, includeDeleted: true })
+            : visibleItemWhere({});
 
         let semanticIds = [];
 
@@ -929,10 +1117,27 @@ export const itemRepository = {
             locationId: hasValuationLocation ? valuationLocationId : null
         });
 
-        const itemsWithCostMetrics = transformedItems.map((item) => ({
+        let itemsWithCostMetrics = transformedItems.map((item) => ({
             ...item,
             cost_metrics: costMetricsByItemId.get(Number(item.item_id))
         }));
+
+        // #682: branch-scoped stock overlay -- mirrors POS's /pos/catalog handling of
+        // item_location_stocks exactly (same shared helpers), so Items and Sell never disagree
+        // about what a given branch actually has on hand. Honest fallback (not a hard error) when
+        // an older tenant schema doesn't have item_location_stocks yet -- location_scope.resolved
+        // tells the caller whether the overlay actually happened.
+        let locationScopeResolved = true;
+        if (hasLocationFilter) {
+            const { stockMap, locationScopeResolved: resolved } = await loadItemLocationStockMap(
+                itemsWithCostMetrics.map((item) => item.item_id),
+                parsedLocationId
+            );
+            locationScopeResolved = resolved;
+            itemsWithCostMetrics = resolved
+                ? applyItemLocationStockMap(itemsWithCostMetrics, stockMap)
+                : itemsWithCostMetrics;
+        }
 
         return {
             items: itemsWithCostMetrics,
@@ -941,7 +1146,10 @@ export const itemRepository = {
                 limit: parsedLimit,
                 total: count,
                 pages: Math.ceil(count / parsedLimit)
-            }
+            },
+            location_scope: hasLocationFilter
+                ? { location_id: parsedLocationId, resolved: locationScopeResolved }
+                : { location_id: null, resolved: true }
         };
     },
     async getItemById(itemId, queryParams = {}) {
@@ -969,7 +1177,7 @@ export const itemRepository = {
             hasLocationStocksAssociation && ItemLocationStock?.associations?.location && TenantLocation
         );
 
-        const item = await findVisibleItemById(Item, itemId, {
+        const itemQueryOptions = {
             include: [
                 { model: ItemNutrition, as: 'nutrition', required: false },
                 { model: ItemAllergen, as: 'allergens', required: false },
@@ -1017,7 +1225,19 @@ export const itemRepository = {
                 },
                 { model: ItemFolder, as: 'folder', required: false }
             ]
-        });
+        };
+
+        // #1495 Part A: include_inactive is already coerced to a real boolean and
+        // permission-gated by getItemByIdUseCase before it reaches here. findVisibleItemById would
+        // always 404 on an inactive item (it excludes status: 'inactive'), which is what made the
+        // "view details" action on a restore-list item silently fall back to degraded data --
+        // bypass it here the same way restoreItem's own lookup does.
+        const item = queryParams.include_inactive
+            ? await Item.findOne({
+                ...itemQueryOptions,
+                where: buildVisibleWhere({ item_id: itemId }, { statusField: 'status', excludeInactiveStatus: false })
+            })
+            : await findVisibleItemById(Item, itemId, itemQueryOptions);
 
         if (!item) {
             throw notFoundError('Item not found');
@@ -1318,7 +1538,7 @@ export const itemRepository = {
                 ? {
                     code: manufacturer_barcode.code,
                     source: 'manufacturer',
-                    scope: 'inventory',
+                    scope: normalizeBarcodeScope(manufacturer_barcode.scope, 'inventory'),
                     metadata: { attached_via: 'external_registry_prefill' }
                 }
                 : internal_barcode?.code
@@ -1411,6 +1631,23 @@ export const itemRepository = {
                 });
             }
 
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'CREATE',
+                eventType: 'item_created',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    sku_code: item.sku_code,
+                    status: item.status,
+                    category: item.category,
+                    cost_per_unit: auditValue(item.cost_per_unit),
+                    default_sale_price: auditValue(item.default_sale_price)
+                },
+                transaction
+            });
+
             await transaction.commit();
             invalidateItemCostMetricsCache({ itemIds: [item.item_id] });
 
@@ -1447,6 +1684,10 @@ export const itemRepository = {
         const transaction = await sequelize.transaction();
 
         try {
+            const expectedServerVersion = itemData?.expected_server_version;
+            itemData = { ...(itemData || {}) };
+            delete itemData.expected_server_version;
+            delete itemData.server_item_id;
             const workflowMode = await getCurrentWorkflowMode();
             if (Object.prototype.hasOwnProperty.call(itemData || {}, 'sku_code')) {
                 itemData.sku_code = String(itemData.sku_code || '').trim();
@@ -1528,6 +1769,8 @@ export const itemRepository = {
             if (!item) {
                 throw notFoundError('Item not found');
             }
+            assertExpectedItemServerVersion(item, expectedServerVersion);
+            const beforeSnapshot = { ...toPlain(item) };
 
             assertMsmePricingRequirements({
                 workflowMode,
@@ -1668,6 +1911,24 @@ export const itemRepository = {
                 });
             }
 
+            if (typeof item.reload === 'function') {
+                await item.reload({ transaction });
+            }
+            const changedFields = buildItemAuditChanges(beforeSnapshot, toPlain(item), itemData);
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'UPDATE',
+                eventType: 'item_updated',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    changed_fields: changedFields,
+                    changed_field_names: Object.keys(itemData || {}).filter((field) => field !== 'wizard_metadata')
+                },
+                transaction
+            });
+
             await transaction.commit();
             invalidateItemCostMetricsCache({ itemIds: [itemId] });
             return itemRepository.getItemById(itemId);
@@ -1796,6 +2057,19 @@ export const itemRepository = {
             };
 
             await item.update(updateData, { transaction });
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'UPDATE',
+                eventType: 'item_finalized',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    previous_status: 'draft',
+                    status: 'active'
+                },
+                transaction
+            });
             await transaction.commit();
 
             inventoryRepositoryDependencies.syncItemEmbedding(item).catch((error) => (
@@ -1846,7 +2120,7 @@ export const itemRepository = {
             throw error;
         }
     },
-    async deleteItem(itemId, userId) {
+    async deleteItem(itemId, userId, { expectedServerVersion = null } = {}) {
         const Item = dbStore.get('Item');
         const ProductComposition = dbStore.get('ProductComposition');
         const POLineItem = dbStore.get('POLineItem');
@@ -1916,13 +2190,175 @@ export const itemRepository = {
             throw error;
         }
 
-        await item.update({
-            status: 'inactive',
-            deleted_by: userId,
-            deleted_at: new Date()
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        await sequelize.transaction(async (transaction) => {
+            const lockedItem = await findVisibleItemById(Item, itemId, {
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!lockedItem) throw notFoundError('Item not found');
+            assertExpectedItemServerVersion(lockedItem, expectedServerVersion);
+            const previousStatus = lockedItem.status;
+            await lockedItem.update({
+                status: 'inactive',
+                deleted_by: userId,
+                deleted_at: new Date()
+            }, { transaction });
+            await auditInventoryEvent({
+                userId,
+                entityId: lockedItem.item_id,
+                action: 'DELETE',
+                eventType: 'item_deleted',
+                changes: {
+                    item_id: lockedItem.item_id,
+                    item_name: lockedItem.name,
+                    sku_code: lockedItem.sku_code,
+                    previous_status: previousStatus,
+                    status: 'inactive'
+                },
+                transaction
+            });
         });
 
         return true;
+    },
+    // #1495 Part A: the reverse of deleteItem above. Deliberately does NOT use
+    // findVisibleItemById -- that helper excludes status: 'inactive', which is exactly the state
+    // the row being restored is in, so using it here would always 404. Gate on deleted_at (not
+    // status) so an item merely deactivated via a plain PUT (status: 'inactive', deleted_at still
+    // null) is correctly rejected as "not deleted" rather than silently accepted as restorable.
+    async restoreItem(itemId, userId, { expectedServerVersion = null } = {}) {
+        const Item = dbStore.get('Item');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
+        await sequelize.transaction(async (transaction) => {
+            const item = await Item.findOne({
+                where: { item_id: itemId },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!item) {
+                throw notFoundError('Item not found');
+            }
+            assertExpectedItemServerVersion(item, expectedServerVersion);
+
+            if (!item.deleted_at) {
+                const error = new Error('Item is not deleted');
+                error.statusCode = 400;
+                throw error;
+            }
+
+            const previousStatus = item.status;
+            // V1 (#1495 Part A): always restore to 'active', the literal reverse of deleteItem's
+            // unconditional 'inactive' write. A draft item deleted while still a draft will restore
+            // to 'active' and skip finalizeItem's validation gate -- a deliberately deferred edge
+            // case (see the PR description); recovering the true pre-delete status would require
+            // reading it back out of the item_deleted AuditLog row, which this path intentionally
+            // does not depend on.
+            const targetStatus = 'active';
+
+            try {
+                await item.update({
+                    status: targetStatus,
+                    deleted_by: null,
+                    deleted_at: null
+                }, { transaction });
+            } catch (error) {
+                // active_sku_code is a generated, uniquely-indexed column -- restoring can collide
+                // with another currently-active item's SKU. Reuse the same detection/normalization
+                // already used by create/update/finalize.
+                throw normalizeSkuConflictError(error);
+            }
+
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'RESTORE',
+                eventType: 'item_restored',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    sku_code: item.sku_code,
+                    previous_status: previousStatus,
+                    status: targetStatus
+                },
+                transaction
+            });
+        });
+
+        return itemRepository.getItemById(itemId);
+    },
+    // #1495 Part B (CSV sync import): a bulk-import-safe sibling of restoreItem above, not a
+    // replacement for it. Two deliberate differences, both driven by what a CSV row can match:
+    //
+    //   1. restoreItem gates on `deleted_at` and rejects a row that was merely deactivated by a
+    //      plain PUT (status 'inactive', deleted_at still null) as "not deleted". That shape is a
+    //      perfectly ordinary match target for an import row, so this method gates on the
+    //      *effective* deactivated state -- status 'inactive' OR deleted_at set -- and clears both.
+    //   2. It returns a boolean rather than re-reading the item, because the CSV import path
+    //      immediately applies its own field update to the row afterwards; a getItemById per
+    //      reactivated row would be a wasted query per row on a bulk import.
+    //
+    // Identical to restoreItem on the part that actually matters: reactivation re-materializes the
+    // generated active_sku_code column (NULL while deleted_at IS NOT NULL OR status IN
+    // ('draft','inactive')), so uq_items_active_sku_code can fire against a *different* currently-
+    // active item already holding that SKU. That write goes through the same
+    // normalizeSkuConflictError normalization every other create/update/finalize/restore path uses,
+    // so the caller sees the same 409 instead of a raw SequelizeUniqueConstraintError.
+    async reactivateItem(itemId, userId) {
+        const Item = dbStore.get('Item');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
+        let reactivated = false;
+
+        await sequelize.transaction(async (transaction) => {
+            const item = await Item.findOne({
+                where: { item_id: itemId },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!item) {
+                throw notFoundError('Item not found');
+            }
+
+            const previousStatus = item.status;
+            if (previousStatus !== 'inactive' && !item.deleted_at) {
+                // Already visible. Not an error: an item restored by hand between the import
+                // preview and its confirm is a benign race, and the caller still has field updates
+                // to apply either way. Report "nothing reactivated" rather than throwing.
+                return;
+            }
+
+            try {
+                await item.update({
+                    status: 'active',
+                    deleted_by: null,
+                    deleted_at: null
+                }, { transaction });
+            } catch (error) {
+                throw normalizeSkuConflictError(error);
+            }
+
+            await auditInventoryEvent({
+                userId,
+                entityId: item.item_id,
+                action: 'RESTORE',
+                eventType: 'item_reactivated',
+                changes: {
+                    item_id: item.item_id,
+                    item_name: item.name,
+                    sku_code: item.sku_code,
+                    previous_status: previousStatus,
+                    status: 'active',
+                    source: 'csv_import'
+                },
+                transaction
+            });
+
+            reactivated = true;
+        });
+
+        return reactivated;
     },
     async getItemStockHistory(itemId, queryParams = {}) {
         const Item = dbStore.get('Item');
@@ -2515,7 +2951,18 @@ export const itemRepository = {
         try {
             return await StorefrontCatalogOverride.findOne({
                 where: { item_id: itemId },
-                attributes: ['storefront_catalog_override_id', 'item_id', 'storefront_visible', 'storefront_image_path', 'storefront_image_url', 'storefront_image_gallery'],
+                attributes: [
+                    'storefront_catalog_override_id',
+                    'item_id',
+                    'storefront_visible',
+                    'storefront_image_path',
+                    'storefront_image_url',
+                    'storefront_image_gallery',
+                    'image_fingerprint',
+                    'optimization_version',
+                    'processing_status',
+                    'variant_metadata'
+                ],
                 transaction: options.transaction
             });
         } catch (error) {
@@ -2525,7 +2972,17 @@ export const itemRepository = {
             if (isMissingStorefrontCatalogGalleryColumnError(error)) {
                 return StorefrontCatalogOverride.findOne({
                     where: { item_id: itemId },
-                    attributes: ['storefront_catalog_override_id', 'item_id', 'storefront_visible', 'storefront_image_path', 'storefront_image_url'],
+                    attributes: [
+                        'storefront_catalog_override_id',
+                        'item_id',
+                        'storefront_visible',
+                        'storefront_image_path',
+                        'storefront_image_url',
+                        'image_fingerprint',
+                        'optimization_version',
+                        'processing_status',
+                        'variant_metadata'
+                    ],
                     transaction: options.transaction
                 });
             }
@@ -3163,6 +3620,19 @@ export const itemRepository = {
                 ]
             });
 
+            // #1318 follow-up (ADR 0080 Consequences item 4) — `item_count` above
+            // is primary-only by design (Decision 1); this adds the secondary
+            // count the folder-delete warning needs so an operator isn't shown an
+            // under-count for a folder that's only referenced as a secondary
+            // category.
+            const primaryItemIdsByFolder = new Map(
+                folders.map((folder) => [folder.folder_id, new Set((folder.items || []).map((item) => item.item_id))])
+            );
+            const secondaryCountByFolder = await countSecondaryFolderMemberships(
+                folders.map((folder) => folder.folder_id),
+                primaryItemIdsByFolder
+            );
+
             return folders.map((folder) => ({
                 folder_id: folder.folder_id,
                 name: folder.name,
@@ -3170,7 +3640,8 @@ export const itemRepository = {
                 show_in_pos_filter: folder.show_in_pos_filter !== false,
                 is_active: folder.is_active !== false,
                 parent_id: folder.parent_id,
-                item_count: folder.items?.length || 0
+                item_count: folder.items?.length || 0,
+                secondary_item_count: secondaryCountByFolder.get(folder.folder_id) || 0
             }));
         } catch (error) {
             logger.error('Error listing inventory folders:', error);
@@ -3356,12 +3827,40 @@ export const itemRepository = {
             const assignedItemCount = assignedItems.length;
             let replacementFolder = null;
 
+            // #1318 follow-up (ADR 0080 Consequences item 4) — `assignedItemCount`
+            // above is primary-only; this adds the secondary-membership count so
+            // the warning doesn't under-count an item that lists this folder only
+            // as a secondary category. Deliberately excludes any item already in
+            // `assignedItems` (ADR 0080 clause 2's overlap case) so it's never
+            // double-counted across the two figures. `ON DELETE CASCADE` on
+            // `item_folder_memberships.folder_id` still removes those rows
+            // correctly regardless — this is warning accuracy only, not a change
+            // to the reassignment requirement, which stays primary-only.
+            const targetFolderId = folder.folder_id || folderId;
+            const secondaryCountByFolder = await countSecondaryFolderMemberships(
+                [targetFolderId],
+                new Map([[targetFolderId, new Set(assignedItems.map((item) => item.item_id))]]),
+                { transaction }
+            );
+            const secondaryItemCount = secondaryCountByFolder.get(targetFolderId) || 0;
+            const secondaryNote = secondaryItemCount > 0
+                ? ` ${secondaryItemCount} item(s) also list this as a secondary category and will lose that link.`
+                : '';
+
             if (assignedItemCount > 0) {
                 const replacementId = Number(replacementFolderId);
                 if (!Number.isInteger(replacementId) || replacementId <= 0) {
-                    const error = new Error(`Category "${folder.name}" is assigned to ${assignedItemCount} item(s). Choose an active replacement category before deleting it.`);
+                    const error = new Error(`Category "${folder.name}" is assigned to ${assignedItemCount} item(s). Choose an active replacement category before deleting it.${secondaryNote}`);
                     error.statusCode = 409;
                     error.code = 'CATEGORY_REASSIGNMENT_REQUIRED';
+                    error.secondary_items_affected = secondaryItemCount;
+                    // #1318 PR #1578 review (RF-1) -- itemHandlers.js's mapInventoryControllerError
+                    // only forwards `error.details` into the DomainError it builds (a bare
+                    // top-level property like the one above is dropped), and
+                    // defaultErrorPayload serializes only `failure.details` as the response's
+                    // `errors` field. Without this, secondary_items_affected never reached the
+                    // 409 response body -- only the message string did.
+                    error.details = { secondary_items_affected: secondaryItemCount };
                     throw error;
                 }
                 if (replacementId === Number(folder.folder_id || folderId)) {
@@ -3410,14 +3909,117 @@ export const itemRepository = {
                 success: true,
                 replacement_folder_id: replacementFolder?.folder_id || null,
                 items_moved: assignedItemCount,
-                message: assignedItemCount > 0
+                secondary_items_affected: secondaryItemCount,
+                message: (assignedItemCount > 0
                     ? `Category "${folder.name}" deleted and ${assignedItemCount} item(s) moved to "${replacementFolder.name}".`
-                    : `Category "${folder.name}" deleted successfully.`
+                    : `Category "${folder.name}" deleted successfully.`) + secondaryNote
             };
         } catch (error) {
             if (!transaction.finished) await transaction.rollback();
             throw error;
         }
+    },
+
+    // Phase 257 (#1318) — foundation only. Secondary category memberships,
+    // additive to the existing primary `items.folder_id` pointer (ADR 0080
+    // clause 1/2). Neither function is wired into any of the 34 existing
+    // read sites yet — that opt-in happens per surface in later phases.
+    async listItemFolderMemberships(itemIds = [], options = {}) {
+        const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+        if (!ItemFolderMembership) return [];
+
+        const ids = [...new Set(
+            (Array.isArray(itemIds) ? itemIds : [itemIds])
+                .map((id) => Number.parseInt(id, 10))
+                .filter((id) => Number.isInteger(id) && id > 0)
+        )];
+        if (ids.length === 0) return [];
+
+        try {
+            const rows = await ItemFolderMembership.findAll({
+                where: { item_id: { [Op.in]: ids } },
+                order: [['item_id', 'ASC'], ['sort_order', 'ASC']],
+                transaction: options.transaction
+            });
+            return rows.map((row) => ({
+                item_id: row.item_id,
+                folder_id: row.folder_id,
+                sort_order: row.sort_order
+            }));
+        } catch (error) {
+            logger.error('Error listing item folder memberships:', error);
+            throw error;
+        }
+    },
+
+    async replaceItemFolderMemberships(itemId, folderIds = [], options = {}) {
+        const Item = dbStore.get('Item');
+        const ItemFolder = dbStore.get('ItemFolder');
+        const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+        if (!ItemFolderMembership) {
+            const error = new Error('Category membership is not available on this tenant yet.');
+            error.statusCode = 503;
+            error.code = 'ITEM_FOLDER_MEMBERSHIPS_UNAVAILABLE';
+            throw error;
+        }
+
+        const parsedItemId = Number.parseInt(itemId, 10);
+        if (!Number.isInteger(parsedItemId) || parsedItemId <= 0) {
+            throw notFoundError('Item not found.');
+        }
+
+        const item = await findVisibleItemById(Item, parsedItemId);
+        if (!item) throw notFoundError('Item not found.');
+
+        // Disjointness (ADR 0080 clause 2 — the join table never mirrors the
+        // primary) + dedupe + cap, in that order.
+        const requested = [...new Set(
+            (Array.isArray(folderIds) ? folderIds : [])
+                .map((id) => Number.parseInt(id, 10))
+                .filter((id) => Number.isInteger(id) && id > 0)
+        )].filter((id) => id !== item.folder_id);
+
+        if (requested.length > MAX_ITEM_FOLDER_MEMBERSHIPS) {
+            const error = new Error(`An item may have at most ${MAX_ITEM_FOLDER_MEMBERSHIPS} secondary category memberships.`);
+            error.statusCode = 400;
+            error.code = 'ITEM_FOLDER_MEMBERSHIPS_CAP_EXCEEDED';
+            throw error;
+        }
+
+        if (requested.length > 0) {
+            const activeFolders = await ItemFolder.findAll({
+                where: activeFolderWhere({ folder_id: { [Op.in]: requested } })
+            });
+            if (activeFolders.length !== requested.length) {
+                const foundIds = new Set(activeFolders.map((folder) => folder.folder_id));
+                const missingIds = requested.filter((id) => !foundIds.has(id));
+                const error = new Error(`One or more categories are inactive or do not exist: ${missingIds.join(', ')}`);
+                error.statusCode = 400;
+                error.code = 'ITEM_FOLDER_MEMBERSHIPS_INVALID_FOLDER';
+                throw error;
+            }
+        }
+
+        await ItemFolderMembership.destroy({
+            where: { item_id: parsedItemId },
+            transaction: options.transaction
+        });
+
+        const rows = requested.map((folderId, index) => ({
+            item_id: parsedItemId,
+            folder_id: folderId,
+            sort_order: index
+        }));
+        if (rows.length > 0) {
+            await ItemFolderMembership.bulkCreate(rows, { transaction: options.transaction });
+        }
+
+        // Phase 268 fix: thread `options` (the caller's transaction, if any)
+        // through this read-after-write too — otherwise, when the caller
+        // wraps destroy+bulkCreate above in an open transaction, this read
+        // runs on a separate connection and (correctly, per MVCC) can't see
+        // the still-uncommitted rows it just wrote, returning stale data.
+        return this.listItemFolderMemberships([parsedItemId], options);
     }
 };
 

@@ -12,7 +12,8 @@ import { requireItemImageGenerationConfig } from '../../../config/itemImageFeatu
 
 const PERMISSION_EDIT_ITEMS = 'items:edit';
 export const STOREFRONT_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
-const STOREFRONT_CATALOG_GALLERY_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const STOREFRONT_CATALOG_GALLERY_IMAGE_MAX_BYTES = STOREFRONT_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES;
+const BULK_CATALOG_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const STOREFRONT_CATALOG_GALLERY_MAX_IMAGES = 5;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
@@ -33,6 +34,32 @@ const toSerializable = (value) => (
     ? value.toJSON()
     : value
 );
+
+const writeCatalogAudit = async ({
+  itemRepository,
+  user,
+  item,
+  entityType = 'item_storefront_catalog_override',
+  eventType,
+  action = 'UPDATE',
+  changes = {},
+  transaction = null
+}) => {
+  if (typeof itemRepository.createAuditLog !== 'function') return;
+  await itemRepository.createAuditLog({
+    user_id: user?.user_id || null,
+    entity_type: entityType,
+    entity_id: item?.item_id || changes.item_id || null,
+    action,
+    event_type: eventType,
+    changes: {
+      item_id: item?.item_id || changes.item_id || null,
+      item_name: item?.name || null,
+      surface: 'storefront',
+      ...changes
+    }
+  }, transaction ? { transaction } : {});
+};
 
 // itemImageWorker.js runs minutes later with no request context, so it needs
 // an explicit permissions array rather than a role it could re-resolve
@@ -65,6 +92,39 @@ const cleanupTempFile = async (file) => {
   } catch {
     // Best-effort temp cleanup.
   }
+};
+
+const buildStorefrontImageFailure = ({
+  error,
+  code,
+  message,
+  reasonCode,
+  itemId,
+  file,
+  user
+}) => {
+  logger.error('Storefront catalog image operation failed', {
+    event_type: 'storefront_catalog_image_operation_failed',
+    item_id: itemId,
+    tenant_id: user?.tenant_id || null,
+    failure_code: code,
+    reason_code: reasonCode,
+    original_name: String(file?.originalname || '').slice(0, 180) || null,
+    reported_mime: String(file?.mimetype || '').trim().toLowerCase() || null,
+    file_size: Number.isFinite(file?.size) ? file.size : null,
+    cause_code: error?.code || null,
+    cause_message: error?.message || 'Unknown image operation error',
+    cause_stack: error?.stack || null
+  });
+
+  return new DomainError(code, message, {
+    statusCode: 500,
+    details: {
+      reason_code: reasonCode,
+      item_id: itemId
+    },
+    cause: error
+  });
 };
 
 const createBulkImageSummary = () => ({
@@ -248,6 +308,18 @@ export const buildUpdateStorefrontCatalogOverrideUseCase = ({ itemRepository }) 
         )
         : new Map();
 
+      await writeCatalogAudit({
+        itemRepository,
+        user,
+        item,
+        eventType: 'storefront_catalog_override_updated',
+        changes: {
+          ...(hasStorefrontVisiblePatch ? { storefront_visible: payload.storefront_visible } : {}),
+          ...(hasLocationAvailabilityPatch ? { location_availability: payload.location_availability } : {})
+        },
+        transaction
+      });
+
       if (transaction) await transaction.commit();
 
       return {
@@ -301,6 +373,17 @@ export const buildUpdateBulkStorefrontCatalogOverridesUseCase = ({ itemRepositor
 
         const updated = await itemRepository.upsertStorefrontCatalogOverride(itemId, {
           storefront_visible: payload.storefront_visible
+        });
+        await writeCatalogAudit({
+          itemRepository,
+          user,
+          item: readinessEnvelope,
+          eventType: 'storefront_catalog_override_updated',
+          changes: {
+            item_id: itemId,
+            storefront_visible: payload.storefront_visible,
+            bulk_update: true
+          }
         });
         results.push({
           item_id: itemId,
@@ -418,6 +501,19 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
       response.storefront_image_variants = stored.image_variants || null;
       response.storefront_image_original_path = stored.original?.path || null;
       response.storefront_image_classification = stored.classification || null;
+      await writeCatalogAudit({
+        itemRepository,
+        user,
+        item,
+        entityType: 'item_catalog_image',
+        eventType: 'item_catalog_image_uploaded',
+        action: 'CREATE',
+        changes: {
+          original_filename: String(file.originalname || '').slice(0, 180) || null,
+          replaced_existing_image: Boolean(existing?.storefront_image_path),
+          image_source: provenance?.type || 'manual_upload'
+        }
+      });
       return response;
     } catch (error) {
       if (stored && !storedCommitted) {
@@ -510,12 +606,25 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
           );
         }
 
-        const stored = await imageStorage.store({
-          itemId: normalizedItemId,
-          originalName: file.originalname,
-          reportedMime: file.mimetype,
-          tempPath: file.path
-        });
+        let stored;
+        try {
+          stored = await imageStorage.store({
+            itemId: normalizedItemId,
+            originalName: file.originalname,
+            reportedMime: file.mimetype,
+            tempPath: file.path
+          });
+        } catch (error) {
+          throw buildStorefrontImageFailure({
+            error,
+            code: DomainErrorCode.STOREFRONT_IMAGE_PROCESSING_FAILED,
+            reasonCode: 'STOREFRONT_IMAGE_PROCESSING_FAILED',
+            message: 'The server could not process this image. Try a different JPG, PNG, or WebP image and save again.',
+            itemId: normalizedItemId,
+            file,
+            user
+          });
+        }
         storedImages.push(stored);
       }
 
@@ -527,19 +636,45 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
         classification: stored.classification || null
       }))]);
       const primary = gallery[0] || null;
-      const data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {
-        path: primary?.path || null,
-        url: primary?.url || null,
-        gallery
-      }, {
-        keepVisible: effective?.storefront_visible !== false
-      });
+      let data;
+      try {
+        data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {
+          path: primary?.path || null,
+          url: primary?.url || null,
+          gallery
+        }, {
+          keepVisible: effective?.storefront_visible !== false
+        });
+      } catch (error) {
+        throw buildStorefrontImageFailure({
+          error,
+          code: DomainErrorCode.STOREFRONT_IMAGE_PERSIST_FAILED,
+          reasonCode: 'STOREFRONT_IMAGE_PERSIST_FAILED',
+          message: 'The image was processed but could not be saved to the item. Nothing was changed; try Save Item again.',
+          itemId: normalizedItemId,
+          file: normalizedFiles[0],
+          user
+        });
+      }
       storedCommitted = true;
 
       const response = toSerializable(data);
       response.storefront_image_variants = primary?.variants || null;
       response.storefront_image_original_path = primary?.original_path || null;
       response.storefront_image_classification = primary?.classification || null;
+      await writeCatalogAudit({
+        itemRepository,
+        user,
+        item,
+        entityType: 'item_catalog_image',
+        eventType: 'item_catalog_images_uploaded',
+        action: 'CREATE',
+        changes: {
+          uploaded_count: storedImages.length,
+          image_count: gallery.length,
+          original_filenames: normalizedFiles.map((file) => String(file.originalname || '').slice(0, 180))
+        }
+      });
       return response;
     } catch (error) {
       if (!storedCommitted) {
@@ -630,7 +765,7 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
           const fileValidation = await validateImageUploadFile({
             file,
             allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
-            maxBytes: STOREFRONT_CATALOG_GALLERY_IMAGE_MAX_BYTES
+            maxBytes: BULK_CATALOG_IMAGE_MAX_BYTES
           });
           if (!fileValidation.ok) {
             await cleanupTempFile(file);
@@ -684,6 +819,20 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
             keepVisible: effectiveVisible
           });
           storedCommitted = true;
+
+          await writeCatalogAudit({
+            itemRepository,
+            user,
+            item,
+            entityType: 'item_catalog_image',
+            eventType: 'item_catalog_image_uploaded',
+            action: 'CREATE',
+            changes: {
+              original_filename: String(file.originalname || '').slice(0, 180) || null,
+              replaced_existing_image: Boolean(existing?.storefront_image_path),
+              bulk_upload: true
+            }
+          });
 
           if (existing?.storefront_image_path && existing.storefront_image_path !== stored.path) {
             try {
@@ -762,6 +911,15 @@ export const buildUpdateStorefrontCatalogGalleryUseCase = ({ itemRepository, ima
       ].filter(Boolean);
       await Promise.all([...new Set(paths)].map((path) => imageStorage.remove({ path })));
       const data = await itemRepository.clearStorefrontCatalogImage(normalizedItemId);
+      await writeCatalogAudit({
+        itemRepository,
+        user,
+        item,
+        entityType: 'item_catalog_image',
+        eventType: 'item_catalog_images_deleted',
+        action: 'DELETE',
+        changes: { deleted_count: existingGallery.length }
+      });
       return toSerializable(data);
     }
 
@@ -788,6 +946,21 @@ export const buildUpdateStorefrontCatalogGalleryUseCase = ({ itemRepository, ima
       ...existingGallery.map((entry) => entry.path)
     ].filter((path) => path && !requestedPaths.has(path));
     await Promise.all([...new Set(removedPaths)].map((path) => imageStorage.remove({ path })));
+
+    await writeCatalogAudit({
+      itemRepository,
+      user,
+      item,
+      entityType: 'item_catalog_image',
+      eventType: 'item_catalog_gallery_updated',
+      changes: {
+        previous_image_count: existingGallery.length,
+        image_count: requestedGallery.length,
+        removed_count: removedPaths.length,
+        primary_image_changed: (existingGallery[0]?.path || existingGallery[0]?.url || null)
+          !== (requestedGallery[0]?.path || requestedGallery[0]?.url || null)
+      }
+    });
 
     return toSerializable(data);
   };
@@ -826,6 +999,20 @@ export const buildDeleteStorefrontCatalogGalleryImageUseCase = ({ itemRepository
       await imageStorage.remove({ path: removed.path });
     }
 
+    const item = await itemRepository.getItemById(normalizedItemId);
+    await writeCatalogAudit({
+      itemRepository,
+      user,
+      item,
+      entityType: 'item_catalog_image',
+      eventType: 'item_catalog_image_deleted',
+      action: 'DELETE',
+      changes: {
+        image_index: normalizedImageIndex,
+        remaining_image_count: nextGallery.length
+      }
+    });
+
     return toSerializable(data);
   };
 };
@@ -847,6 +1034,16 @@ export const buildDeleteStorefrontCatalogImageUseCase = ({ itemRepository, image
     await Promise.all([...new Set(paths)].map((path) => imageStorage.remove({ path })));
 
     const data = await itemRepository.clearStorefrontCatalogImage(normalizedItemId);
+    const item = await itemRepository.getItemById(normalizedItemId);
+    await writeCatalogAudit({
+      itemRepository,
+      user,
+      item,
+      entityType: 'item_catalog_image',
+      eventType: 'item_catalog_images_deleted',
+      action: 'DELETE',
+      changes: { deleted_count: existingGallery.length || (existing?.storefront_image_path ? 1 : 0) }
+    });
     return toSerializable(data);
   };
 };

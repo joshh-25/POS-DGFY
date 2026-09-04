@@ -9,16 +9,16 @@ This workflow performs a complete check of code quality and system health.
 
 ### 1. Frontend Lint Check
 ```bash
-cd apps/dgfy-web
-npm run lint
-cd ../..
+cd apps/dgfy-ims && npm run lint && cd ../..
+cd apps/dgfy-pos && npm run lint && cd ../..
+cd apps/dgfy-storefront && npm run lint && cd ../..
 ```
 
 ### 2. Backend Lint Check
 ```bash
-cd backend
+cd apps/dgfy-api
 npm run lint
-cd ..
+cd ../..
 ```
 
 ### 3. Endpoint Verification

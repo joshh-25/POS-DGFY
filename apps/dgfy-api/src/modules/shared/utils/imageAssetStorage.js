@@ -227,7 +227,8 @@ export const storeOptimizedImageAsset = async ({
     assetBaseName = 'asset',
     originalName,
     reportedMime,
-    tempPath
+    tempPath,
+    retainOriginal = true
 }) => {
     if (!uploadsRoot || !surfaceFolder || !tempPath) {
         throw new Error('uploadsRoot, surfaceFolder, and tempPath are required');
@@ -310,6 +311,9 @@ export const storeOptimizedImageAsset = async ({
             throw new Error('Large image variant was not generated');
         }
 
+        const originalPath = retainOriginal
+            ? toPosixRelative(path.relative(uploadsRoot, originalAbsolutePath))
+            : null;
         const manifest = {
             version: RESPONSIVE_ASSET_VERSION,
             asset_id: assetId,
@@ -317,7 +321,8 @@ export const storeOptimizedImageAsset = async ({
             scope_segments: normalizedScopeSegments,
             classification,
             original: {
-                path: toPosixRelative(path.relative(uploadsRoot, originalAbsolutePath)),
+                path: originalPath,
+                retained: Boolean(retainOriginal),
                 filename: originalFilename,
                 mime: String(reportedMime || '').trim().toLowerCase() || null,
                 width: sourceWidth,
@@ -337,6 +342,10 @@ export const storeOptimizedImageAsset = async ({
         };
         const manifestPath = path.join(publicAssetDir, 'asset.json');
         await fsPromises.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+        if (!retainOriginal) {
+            await fsPromises.rm(originalAssetDir, { recursive: true, force: true });
+        }
 
         return {
             path: largeVariant.path,
@@ -382,7 +391,16 @@ export const removeOptimizedImageAsset = async ({ uploadsRoot, storedPath }) => 
     const relativeDir = path.dirname(normalized);
     const assetFolderAbsolute = path.resolve(uploadsRoot, relativeDir);
     const assetFolderRelative = toPosixRelative(relativeDir);
-    const assetFolderExists = await fileExists(assetFolderAbsolute);
+    // #1379/#871: `relativeDir` is only safe to recurse into when it is a real
+    // per-asset optimized-variant folder (`<base>-<ts>-v2-<hash>/`), the same
+    // shape `deriveImageAssetVariantUrls` above already recognizes. For a
+    // legacy flat path (`<surface>/<tenant>/item-41-<ts>.jpg`), `relativeDir`
+    // resolves to the tenant's *entire* catalog directory -- recursing there
+    // deleted every image for that tenant (confirmed live in production,
+    // 2026-09-01/02). A legacy path must only ever unlink the single file.
+    const assetFolderName = path.posix.basename(assetFolderRelative);
+    const isResponsiveAssetFolder = /-v2-[0-9a-f]{8}$/i.test(assetFolderName);
+    const assetFolderExists = isResponsiveAssetFolder && await fileExists(assetFolderAbsolute);
     if (assetFolderExists) {
         await fsPromises.rm(assetFolderAbsolute, { recursive: true, force: true });
     } else {
@@ -396,7 +414,7 @@ export const removeOptimizedImageAsset = async ({ uploadsRoot, storedPath }) => 
     }
 
     const assetFolderParts = assetFolderRelative.split('/').filter(Boolean);
-    if (assetFolderParts.length >= 2) {
+    if (isResponsiveAssetFolder && assetFolderParts.length >= 2) {
         const originalFolderAbsolute = path.join(uploadsRoot, 'originals', ...assetFolderParts);
         if (await fileExists(originalFolderAbsolute)) {
             await fsPromises.rm(originalFolderAbsolute, { recursive: true, force: true });

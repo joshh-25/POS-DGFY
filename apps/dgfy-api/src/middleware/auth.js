@@ -10,6 +10,9 @@ import {
   ADMIN_FINANCIAL_ROLES,
   getAdminAccounts
 } from '../config/adminAuthConfig.js';
+import { isAdminLikeRole } from '../config/userRoles.js';
+import logger from '../config/logger.js';
+import { resolveDegradedTenantContextFailure, sendTenantContextError } from './tenantHandler.js';
 
 const resolveAdminFinancialRole = (username, isMaster = false) => {
   const normalizedUsername = String(username || '').trim().toLowerCase();
@@ -157,58 +160,72 @@ export const authenticate = async (req, res, next) => {
     // Cache key includes the company token so tenants with the same numeric user_id
     // don't cross-contaminate each other (user_id=1 is very common across tenants).
     const tenantContext = dbStore.getStore();
-    if (!tenantContext || tenantContext.tenantId === 'default') {
-      return res.status(400).json({
-        success: false,
-        data: null,
-        message: 'Valid tenant context is required for authenticated requests.',
-        error_code: 'TENANT_CONTEXT_REQUIRED',
-        timestamp: new Date().toISOString()
-      });
-    }
-
     const contextTenantId = String(req?.tenant?.id || tenantContext?.tenantId || '').trim();
     const tokenTenantId = String(decoded?.tenant_id || '').trim();
 
-    if (!tokenTenantId) {
-      return res.status(401).json({
-        success: false,
-        data: null,
-        message: 'Token is missing tenant binding.',
-        error_code: 'TENANT_BINDING_REQUIRED',
-        timestamp: new Date().toISOString()
-      });
+    // Binding checks run first, ahead of the tenant-context-availability gate below.
+    // They're decidable from the JWT claims plus req.tenant -- set by tenantHandler as
+    // soon as a company token resolves to a tenant, *before* it attempts the per-tenant
+    // DB connection -- so none of the three needs dbStore's context to actually be
+    // live. Gating them behind a live tenant DB connection (issue #916) meant a tenant
+    // DB outage masked a real binding-required / binding-mismatch / stale-cookie
+    // rejection behind one generic 400, instead of the 401 / 403 / 409 the caller
+    // actually needs in order to know whether to re-authenticate, switch company, or
+    // retry. A request with no tenant resolved at all (req.tenant unset -- no company
+    // token was ever provided) has nothing to bind against; it falls through
+    // unconditionally to the context-availability gate below, same as before.
+    if (req?.tenant?.id) {
+      if (!tokenTenantId) {
+        return res.status(401).json({
+          success: false,
+          data: null,
+          message: 'Token is missing tenant binding.',
+          error_code: 'TENANT_BINDING_REQUIRED',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      if (tokenTenantId !== contextTenantId) {
+        return res.status(403).json({
+          success: false,
+          data: null,
+          message: 'Token tenant binding does not match request tenant context.',
+          error_code: 'TENANT_BINDING_MISMATCH',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const activeBrowserCompanyToken = String(
+        getCookie(req, SESSION_COOKIE_NAMES.tenantContext) || ''
+      ).trim();
+      const requestCompanyToken = String(
+        req?.tenant?.company_token || req.headers['x-company-token'] || ''
+      ).trim();
+
+      if (
+        activeBrowserCompanyToken
+        && requestCompanyToken
+        && activeBrowserCompanyToken !== requestCompanyToken
+      ) {
+        return res.status(409).json({
+          success: false,
+          data: null,
+          message: 'The active company changed. Refresh the POS and retry.',
+          error_code: 'TENANT_SESSION_CONTEXT_MISMATCH',
+          timestamp: new Date().toISOString()
+        });
+      }
     }
 
-    if (!contextTenantId || tokenTenantId !== contextTenantId) {
-      return res.status(403).json({
-        success: false,
-        data: null,
-        message: 'Token tenant binding does not match request tenant context.',
-        error_code: 'TENANT_BINDING_MISMATCH',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    const activeBrowserCompanyToken = String(
-      getCookie(req, SESSION_COOKIE_NAMES.tenantContext) || ''
-    ).trim();
-    const requestCompanyToken = String(
-      req?.tenant?.company_token || req.headers['x-company-token'] || ''
-    ).trim();
-
-    if (
-      activeBrowserCompanyToken
-      && requestCompanyToken
-      && activeBrowserCompanyToken !== requestCompanyToken
-    ) {
-      return res.status(409).json({
-        success: false,
-        data: null,
-        message: 'The active company changed. Refresh the POS and retry.',
-        error_code: 'TENANT_SESSION_CONTEXT_MISMATCH',
-        timestamp: new Date().toISOString()
-      });
+    // Tenant-context availability gate. A degraded context (tenantId === 'default')
+    // can mean several different things -- no company token at all, an invalid one, a
+    // lookup failure, or the tenant DB itself being unreachable -- and each warrants a
+    // different status code, not one flat 400 (issue #916). Delegates to the same
+    // mapping tenantHandler.js already applies to strict-auth and storefront routes,
+    // rather than a second, divergent implementation of the same decision.
+    if (!tenantContext || tenantContext.tenantId === 'default') {
+      const failure = resolveDegradedTenantContextFailure(tenantContext);
+      return sendTenantContextError(res, failure.statusCode, failure.message, failure.errorCode);
     }
 
     const cacheKey = `${contextTenantId}:${decoded.user_id}`;
@@ -351,12 +368,36 @@ export const checkPermission = (requiredPermission) => {
       return next();
     }
 
+    // #1045: additive only (message/required unchanged) — gives callers a
+    // machine-readable reason code instead of forcing them to parse `message`.
     return res.status(403).json({
       success: false,
       message: 'Access denied: Insufficient permissions',
-      required: requiredPermission
+      required: requiredPermission,
+      error_code: 'PERMISSION_DENIED',
+      errors: {
+        reason_code: 'PERMISSION_DENIED',
+        required_permission: requiredPermission
+      }
     });
   };
+};
+
+// Audit history is intentionally narrower than the generic audit:view
+// permission: only tenant admins and master admins may inspect the complete
+// activity stream because it includes cashier, terminal, and discount data.
+export const requireTenantAdminRole = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  if (req.user.is_master_admin || isAdminLikeRole(req.user.role)) {
+    return next();
+  }
+  return res.status(403).json({
+    success: false,
+    message: 'Tenant admin role is required to view audit history.',
+    error_code: 'AUDIT_ADMIN_ROLE_REQUIRED'
+  });
 };
 
 /**
@@ -411,10 +452,70 @@ const filterCapabilityDisabledPermissions = async (req, permissions = []) => {
   return permissions.filter((permission) => !isPosPermission(permission));
 };
 
+const persistModeRbacFallbackAudit = async (req, { primaryPermission, fallbackPermission }) => {
+  const userId = Number.parseInt(req.user?.user_id, 10) || null;
+  const tenantId = req.user?.tenant_id || req.tenant?.id || null;
+  const requestPath = String(req.originalUrl || req.url || '').split('?')[0] || null;
+
+  try {
+    logger.warn('[Auth] Mode RBAC generic fallback used', {
+      tenant_id: tenantId,
+      user_id: userId,
+      primary_permission: primaryPermission,
+      fallback_permission: fallbackPermission,
+      method: req.method || null,
+      path: requestPath
+    });
+
+    const AuditLog = dbStore.get('AuditLog');
+    if (!AuditLog?.create) {
+      throw new Error('AuditLog model is unavailable');
+    }
+
+    await AuditLog.create({
+      user_id: userId,
+      entity_type: 'authorization_fallback',
+      entity_id: userId,
+      action: 'VIEW',
+      event_type: 'mode_rbac_generic_fallback_used',
+      actor_username: String(req.user?.username || req.user?.email || '').trim().slice(0, 120) || null,
+      location_id: Number.parseInt(req.user?.location_id || req.location?.id, 10) || null,
+      request_id: req.requestId || null,
+      ip_address: req.ip || req.socket?.remoteAddress || null,
+      user_agent: req.get?.('user-agent') || req.headers?.['user-agent'] || null,
+      changes: {
+        event: 'mode_rbac_generic_fallback_used',
+        tenant_id: tenantId,
+        primary_permission: primaryPermission,
+        fallback_permission: fallbackPermission,
+        method: req.method || null,
+        path: requestPath
+      }
+    });
+  } catch (error) {
+    logger.warn('[Auth] Failed to persist mode RBAC fallback audit', {
+      error: error.message,
+      tenant_id: tenantId,
+      user_id: userId,
+      primary_permission: primaryPermission,
+      fallback_permission: fallbackPermission,
+      path: requestPath
+    });
+  }
+};
+
 export const checkAnyPermission = (requiredPermissions) => {
   const permissions = Array.isArray(requiredPermissions)
     ? requiredPermissions.filter(Boolean)
     : [requiredPermissions].filter(Boolean);
+  if (Array.isArray(requiredPermissions) && requiredPermissions.__modeRbacFallback) {
+    Object.defineProperty(permissions, '__modeRbacFallback', {
+      value: requiredPermissions.__modeRbacFallback,
+      enumerable: false,
+      configurable: false,
+      writable: false
+    });
+  }
 
   return async (req, res, next) => {
     if (!req.user) {
@@ -431,7 +532,20 @@ export const checkAnyPermission = (requiredPermissions) => {
     try {
       const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
       const effectivePermissions = await filterCapabilityDisabledPermissions(req, permissions);
-      if (effectivePermissions.some((permission) => userPermissions.includes(permission))) {
+      const matchedPermissionIndex = effectivePermissions.findIndex((permission) => userPermissions.includes(permission));
+      if (matchedPermissionIndex >= 0) {
+        const modeFallback = permissions.__modeRbacFallback;
+        if (
+          modeFallback
+          && matchedPermissionIndex > 0
+          && effectivePermissions[0] === modeFallback.primary
+          && effectivePermissions[matchedPermissionIndex] === modeFallback.fallback
+        ) {
+          await persistModeRbacFallbackAudit(req, {
+            primaryPermission: effectivePermissions[0],
+            fallbackPermission: effectivePermissions[matchedPermissionIndex]
+          });
+        }
         return next();
       }
 

@@ -46,13 +46,22 @@ ${classification}
 `;
 
 const runCheck = ({ changedFiles = [], stagedFiles = [], args = [] } = {}) => {
+    // #1063 root cause: this suite runs inside real GitHub Actions PR jobs, so an un-isolated
+    // spawn inherits the runner's own GITHUB_BASE_REF/GITHUB_HEAD_REF. On a real promotion PR
+    // those can match isAggregatePromotionPr()'s exemption shape and silently skip the
+    // classification-floor check these tests assert on. Deleted (not just overwritten with '')
+    // so isolation doesn't depend on isAggregatePromotionPr()'s current falsy-check behavior.
+    const env = { ...process.env };
+    delete env.GITHUB_BASE_REF;
+    delete env.GITHUB_HEAD_REF;
+
     return spawnSync(
         process.execPath,
         ['scripts/check-compliance-impact.js', ...args],
         {
             cwd: repoRoot,
             env: {
-                ...process.env,
+                ...env,
                 COMPLIANCE_CHANGED_FILES: changedFiles.join('\n'),
                 COMPLIANCE_STAGED_FILES: stagedFiles.join('\n')
             },
@@ -99,7 +108,7 @@ describe('check-compliance-impact script integration', () => {
         try {
             const result = runCheck({
                 changedFiles: [
-                    'apps/dgfy-web/src/features/compliance/components/ComplianceProgramPanel.jsx',
+                    'packages/web-core/src/features/compliance/components/ComplianceProgramPanel.jsx',
                     declaration.relativePath
                 ]
             });
@@ -139,12 +148,59 @@ describe('check-compliance-impact script integration', () => {
 
     it('passes when changed files are non-sensitive', () => {
         const result = runCheck({
-            changedFiles: ['apps/dgfy-web/src/utils/non-sensitive-file.js']
+            changedFiles: ['packages/web-core/src/utils/non-sensitive-file.js']
         });
 
         const output = `${result.stdout}${result.stderr}`;
         expect(result.status).toBe(0);
         expect(output).toContain('No compliance-sensitive changes detected');
+    });
+
+    // #707: modules/commercePayments/ (QRPh money-capture) and its route file were absent from
+    // COMPLIANCE_SENSITIVE_RULES despite modules/payments/ and modules/store/ both being covered.
+    it('fails when commercePayments module changes without declaration', () => {
+        const result = runCheck({
+            changedFiles: ['apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js']
+        });
+
+        const output = `${result.stdout}${result.stderr}`;
+        expect(result.status).toBe(1);
+        expect(output).toContain('Compliance-sensitive files changed without a declaration file');
+        expect(output).toContain('apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js');
+    });
+
+    it('fails when the commercePayments route file changes without declaration', () => {
+        const result = runCheck({
+            changedFiles: ['apps/dgfy-api/src/routes/commercePayments.js']
+        });
+
+        const output = `${result.stdout}${result.stderr}`;
+        expect(result.status).toBe(1);
+        expect(output).toContain('Compliance-sensitive files changed without a declaration file');
+        expect(output).toContain('apps/dgfy-api/src/routes/commercePayments.js');
+    });
+
+    it('passes commercePayments module changes with a matching major/payments declaration', () => {
+        const declaration = writeTempDeclaration(buildDeclaration({
+            declarationId: '2026-04-07-test-commerce-payments-floor',
+            classification: 'major',
+            surfaces: 'payments'
+        }));
+
+        try {
+            const result = runCheck({
+                changedFiles: [
+                    'apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js',
+                    declaration.relativePath
+                ]
+            });
+
+            const output = `${result.stdout}${result.stderr}`;
+            expect(result.status).toBe(0);
+            expect(output).toContain('PASS');
+        } finally {
+            cleanupTempDeclaration(declaration.absolutePath);
+        }
     });
 
     it('supports staged-mode parity via COMPLIANCE_STAGED_FILES override', () => {
@@ -200,7 +256,7 @@ describe('check-compliance-impact script integration', () => {
         try {
             const result = runCheck({
                 changedFiles: [
-                    'apps/dgfy-web/src/services/adminService.js',
+                    'packages/web-core/src/services/adminService.js',
                     declaration.relativePath
                 ]
             });

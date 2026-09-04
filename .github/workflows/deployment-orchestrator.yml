@@ -22,12 +22,22 @@ on:
         type: boolean
         default: false
       build_api:
-        description: Whether to build/push the dgfy-api and dgfy-migration-runner images. Defaults true so staging/main/manual callers are unaffected; only build-develop.yml gates this on changed paths.
+        description: Whether to build/push the dgfy-api and dgfy-migration-runner images. Defaults true so deploy-main.yml's all-components dispatch is unaffected; deploy.yml sets this from its own explicit components input.
         required: false
         type: boolean
         default: true
-      build_frontend:
-        description: Whether to build/push the frontend image. Defaults true so staging/main/manual callers are unaffected; only build-develop.yml gates this on changed paths.
+      build_frontend_ims:
+        description: Whether to build/push the dgfy-ims image. Defaults true so deploy-main.yml's all-components dispatch is unaffected; deploy.yml sets this from its own explicit components input.
+        required: false
+        type: boolean
+        default: true
+      build_frontend_pos:
+        description: Whether to build/push the dgfy-pos image. Defaults true so deploy-main.yml's all-components dispatch is unaffected; deploy.yml sets this from its own explicit components input.
+        required: false
+        type: boolean
+        default: true
+      build_frontend_storefront:
+        description: Whether to build/push the dgfy-storefront image. Defaults true so deploy-main.yml's all-components dispatch is unaffected; deploy.yml sets this from its own explicit components input.
         required: false
         type: boolean
         default: true
@@ -35,10 +45,14 @@ on:
         description: JSON array passed to runs-on for build/publish jobs
         required: false
         type: string
-        default: '["ubuntu-latest"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
     outputs:
-      frontend_sha_tag:
-        value: ${{ jobs.frontend.outputs.sha_tag }}
+      frontend_ims_sha_tag:
+        value: ${{ jobs.frontend-ims.outputs.sha_tag }}
+      frontend_pos_sha_tag:
+        value: ${{ jobs.frontend-pos.outputs.sha_tag }}
+      frontend_storefront_sha_tag:
+        value: ${{ jobs.frontend-storefront.outputs.sha_tag }}
       dgfy_api_sha_tag:
         value: ${{ jobs.dgfy-api.outputs.sha_tag }}
       migration_runner_sha_tag:
@@ -78,13 +92,45 @@ jobs:
       contents: read
       packages: write
 
-  frontend:
-    # Builds/pushes the single combined `frontend` image (skupervisor + pos
-    # + storefront, all 3 SPAs, one nginx serving them on 3 internal ports)
-    # -- see infrastructure/docker/frontend/Dockerfile.
-    if: inputs.build_frontend
+  frontend-ims:
+    # Builds/pushes the dgfy-ims image -- see
+    # infrastructure/docker/dgfy-ims/Dockerfile. One image per app since
+    # issue #322 Phase 6 (previously one combined `frontend` image built all
+    # 3 SPAs).
+    if: inputs.build_frontend_ims
     uses: ./.github/workflows/deploy-frontend.yml
     with:
+      app: dgfy-ims
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  frontend-pos:
+    # Builds/pushes the dgfy-pos image -- see
+    # infrastructure/docker/dgfy-pos/Dockerfile.
+    if: inputs.build_frontend_pos
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-pos
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  frontend-storefront:
+    # Builds/pushes the dgfy-storefront image -- see
+    # infrastructure/docker/dgfy-storefront/Dockerfile.
+    if: inputs.build_frontend_storefront
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-storefront
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
@@ -94,10 +140,10 @@ jobs:
       packages: write
 
   publish:
-    needs: [ dgfy-api, dgfy-migration-runner, frontend ]
-    # dgfy-api/dgfy-migration-runner/frontend are conditionally skipped
+    needs: [ dgfy-api, dgfy-migration-runner, frontend-ims, frontend-pos, frontend-storefront ]
+    # dgfy-api/dgfy-migration-runner/frontend-* are conditionally skipped
     # (build_api/build_frontend above), and `needs.<job>.result` on a skipped
-    # job is 'skipped', not 'success' -- so this can't require all three to be
+    # job is 'skipped', not 'success' -- so this can't require all five to be
     # 'success' like it used to. `!cancelled()` is required too: without a
     # status-check function here, a skipped need would skip this job as well.
     # Publish goes ahead as long as none of the built jobs actually failed and
@@ -106,8 +152,11 @@ jobs:
       inputs.publish && !cancelled() &&
       needs.dgfy-api.result != 'failure' &&
       needs.dgfy-migration-runner.result != 'failure' &&
-      needs.frontend.result != 'failure' &&
-      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' || needs.frontend.result == 'success')
+      needs.frontend-ims.result != 'failure' &&
+      needs.frontend-pos.result != 'failure' &&
+      needs.frontend-storefront.result != 'failure' &&
+      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' ||
+       needs.frontend-ims.result == 'success' || needs.frontend-pos.result == 'success' || needs.frontend-storefront.result == 'success')
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: ${{ inputs.environment }}

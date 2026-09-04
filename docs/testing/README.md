@@ -5,6 +5,31 @@ When to use:
 2. Measurement and telemetry verification rules
 3. Production-readiness evidence
 
+## Frontend Workspace Layout (read before running any frontend command)
+
+The frontend is three independent Vite apps plus one shared package (ADR 0071,
+`docs/architecture/adr/0071-frontend-split-into-three-apps.md`):
+
+| Workspace | Surface | Dev port | Root dev script | Root build script |
+|---|---|---|---|---|
+| `apps/dgfy-ims` | SKUpervisor / IMS | 5173 | `npm run dev:skupervisor` | `npm run build:skupervisor` |
+| `apps/dgfy-pos` | Standalone POS | 5174 | `npm run dev:pos` | `npm run build:pos` |
+| `apps/dgfy-storefront` | Public Storefront | 5175 | `npm run dev:store` | `npm run build:store` |
+| `packages/web-core` | Shared trunk (`@sieitzz/web-core`) | n/a | n/a | no build step |
+
+There is no aggregate `build:all` script — run only the app builds actually affected.
+
+`packages/web-core` deliberately has no `node_modules` and no Vitest setup of its own. **Its tests
+run from `apps/dgfy-ims`**, whose Vitest `include` covers
+`../../packages/web-core/**/*.{test,spec}.*`. So a shared-trunk test is invoked as:
+
+```bash
+npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/<path>/<file>.test.js
+```
+
+App-owned tests run from their own workspace (`npm --prefix apps/dgfy-pos test -- ...`,
+`npm --prefix apps/dgfy-storefront test -- ...`). Every command below already follows this rule.
+
 ## Evidence Classification (Phase 65.2)
 
 Use this table to avoid over-claiming what a green test run proves.
@@ -37,10 +62,10 @@ Browser session security evidence is mandatory for auth, POS, DGFY, storefront, 
 Required commands:
 1. `npm --prefix backend test -- --runTestsByPath tests/browserSessionCookies.test.js`
 2. `npm --prefix backend test -- --runTestsByPath tests/rtr_verification.test.js`
-3. `npm --prefix apps/dgfy-web test -- --run src/services/__tests__/browserTokenStorage.guard.test.js`
+3. `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/services/__tests__/browserTokenStorage.guard.test.js`
 4. For DGFY-to-SKUpervisor tenant-session handoff, tenant-session rate limiting, or tenant refresh routing changes: `npm --prefix backend test -- --runTestsByPath tests/rateLimiter.behavior.test.js tests/dgfyTenantSession.transport.test.js tests/dgfyAdminAccountRoutes.contract.test.js tests/tenantHandler.emailOtp.test.js tests/browserSessionCookies.test.js`
 5. For DGFY account company switching or invitation Business-tab changes: include backend DGFY company-list/switch/invitation tests, `tests/dgfyAuthMiddleware.test.js` for the IMS tenant-session membership bridge, frontend IMS switcher tests, Storefront account Business-tab tests, and browser storage guards proving DGFY, refresh, tenant, and company tokens are not persisted in browser-readable storage.
-6. For explicit DGFY sign-out or customer-login launcher changes: `npm --prefix apps/dgfy-web test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx --testTimeout 30000`. This proves `reason=signed-out` suppresses cookie auto-restore, only the signed-out email is prefilled, the password remains blank for browser password managers, and discovery/storefront **Log in / Sign up** does not reopen the old dashboard.
+6. For explicit DGFY sign-out or customer-login launcher changes: `npm --prefix apps/dgfy-ims test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx --testTimeout 30000` and `npm --prefix apps/dgfy-storefront test -- src/__tests__/discoveryHeaderAccount.integration.test.jsx --testTimeout 30000`. Together these prove `reason=signed-out` suppresses cookie auto-restore, only the signed-out email is prefilled, the password remains blank for browser password managers, and discovery/storefront **Log in / Sign up** does not reopen the old dashboard.
 
 Evidence semantics:
 1. Backend cookie tests prove refresh/session authority is issued and cleared with the ADR 0026 cookie attributes.
@@ -54,6 +79,13 @@ Evidence semantics:
 ## PayMongo Webhook Security Gates
 
 PayMongo webhook integrity evidence is mandatory when subscription/payment workflows or payment-provider configuration change.
+
+The complete provider-backed verification process for direct Storefront GCash,
+Maya, and credit-card authorization is maintained in
+[direct-paymongo-payment-verification.md](direct-paymongo-payment-verification.md).
+It covers local preflight, method-specific UI checks, Payment Intent/API
+contracts, signed webhook finalization, duplicate protection, 3-D Secure, live
+configuration, canary evidence, and rollback.
 
 Required command:
 1. `npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js`
@@ -87,13 +119,13 @@ Required commands:
 1. `npm --prefix backend test -- --runTestsByPath tests/settingsCompanyInfo.usecase.test.js tests/settingsHandlers.companyInfo.test.js tests/userManagementToolRegistry.test.js tests/aiTools.test.js tests/emailTemplates.invitation.test.js`
 2. `npm --prefix backend test -- --runTestsByPath tests/authTenantIsolation.hardening.test.js tests/authUsecases.applicationResult.test.js tests/tenantHandler.emailOtp.test.js tests/emailOtpService.test.js`
 3. `npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyLegacyLinkService.test.js tests/dgfyTenantSession.transport.test.js tests/auth.test.js`
-4. `npm --prefix apps/dgfy-web test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js`
-5. `npm --prefix apps/dgfy-web test -- --run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx Components/users/__tests__/UserInvitationModal.dgfy.test.jsx src/services/__tests__/dgfyAuthService.cookieSession.test.js --testTimeout 20000`
+4. `npm --prefix apps/dgfy-ims test -- --run Pages/__tests__/AcceptInvite.test.jsx packages/web-core/Components/users/__tests__/UserManagementModal.rbacContract.test.js`
+5. `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx packages/web-core/Components/users/__tests__/UserInvitationModal.dgfy.test.jsx packages/web-core/src/services/__tests__/dgfyAuthService.cookieSession.test.js --testTimeout 20000`
 6. For platform-admin assisted provisioning: `npm --prefix backend test -- --runTestsByPath tests/dgfyAdminAccountUseCases.test.js tests/adminAssistedProvisioningUseCase.test.js tests/dgfyAdminAccountRoutes.contract.test.js tests/adminAssistedProvisioningRoutes.contract.test.js tests/tenantAdminAuditLogActions.contract.test.js`
-7. For the Tenant Manager and DGFY Accounts admin panels: `npm --prefix apps/dgfy-web test -- --run src/services/__tests__/adminService.adminOperations.contract.test.js src/pages/__tests__/DgfyAccountManager.integration.test.jsx src/pages/__tests__/TenantManager.capabilities.integration.test.jsx`
+7. For the Tenant Manager and DGFY Accounts admin panels: `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/services/__tests__/adminService.adminOperations.contract.test.js packages/web-core/src/pages/__tests__/DgfyAccountManager.integration.test.jsx packages/web-core/src/pages/__tests__/TenantManager.capabilities.integration.test.jsx`
 8. `npm run smoke:dgfy-access-ui` after local IMS, POS, and Storefront dev or preview servers are running.
 9. `DGFY_ACCESS_STRICT_NETWORK=true npm run smoke:dgfy-access-ui` for seeded local-stack or staging proof; local HTTPS-enforced backend smoke may also set `DGFY_ACCESS_FORWARDED_PROTO=https`.
-10. `npm --prefix apps/dgfy-web run build:skupervisor`, `npm --prefix apps/dgfy-web run build:store`, and `npm --prefix apps/dgfy-web run build:pos`.
+10. `npm run build:skupervisor`, `npm run build:store`, and `npm run build:pos`.
 
 Evidence semantics:
 1. Settings company-info tests prove the API no longer returns `registration_link`.
@@ -125,14 +157,15 @@ Evidence semantics:
 Tenant capability messaging evidence is mandatory when changing platform-admin IMS/POS/Storefront capability controls, tenant-visible disabled-state UI, global API error normalization, POS terminal availability messaging, or Storefront access-mode blocked-action copy.
 
 Required commands:
-1. From `apps/dgfy-web/`: `npm exec vitest run src/utils/__tests__/tenantCapabilityMessages.test.js src/utils/__tests__/errorHandler.test.js src/components/common/__tests__/GlobalApiErrorListener.test.js src/components/common/__tests__/TenantCapabilityNotice.test.jsx src/components/common/__tests__/TenantCapabilityLayout.render.test.jsx src/components/common/__tests__/tenantCapabilityNotice.contract.test.js src/features/pos/__tests__/TerminalPageLayout.capabilityNotice.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/services/__tests__/api.globalErrors.test.js apps/store/src/__tests__/customerAccess.test.js apps/store/src/__tests__/storefrontErrorMessages.test.js src/pages/__tests__/TenantManager.capabilities.integration.test.jsx -- --pool=threads`
-2. `npm --prefix apps/dgfy-web run build:skupervisor`
-3. `npm --prefix apps/dgfy-web run build:pos`
-4. `npm --prefix apps/dgfy-web run build:store`
-5. `npm run lint:docs`
-6. `npm run check:architecture`
-7. `npm run check:compliance`
-8. `git diff --check`
+1. Shared-trunk coverage, from `apps/dgfy-ims/`: `npm exec vitest run ../../packages/web-core/src/utils/__tests__/tenantCapabilityMessages.test.js ../../packages/web-core/src/utils/__tests__/errorHandler.test.js ../../packages/web-core/src/components/common/__tests__/GlobalApiErrorListener.test.js ../../packages/web-core/src/components/common/__tests__/TenantCapabilityNotice.test.jsx ../../packages/web-core/src/components/common/__tests__/TenantCapabilityLayout.render.test.jsx ../../packages/web-core/src/components/common/__tests__/tenantCapabilityNotice.contract.test.js ../../packages/web-core/src/features/pos/__tests__/TerminalPageLayout.capabilityNotice.test.jsx ../../packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js ../../packages/web-core/src/services/__tests__/api.globalErrors.test.js ../../packages/web-core/src/pages/__tests__/TenantManager.capabilities.integration.test.jsx -- --pool=threads`
+2. Storefront-owned coverage, from `apps/dgfy-storefront/`: `npm exec vitest run src/__tests__/customerAccess.test.js src/__tests__/storefrontErrorMessages.test.js -- --pool=threads`
+3. `npm run build:skupervisor`
+4. `npm run build:pos`
+5. `npm run build:store`
+6. `npm run lint:docs`
+7. `npm run check:architecture`
+8. `npm run check:compliance`
+9. `git diff --check`
 
 Evidence semantics:
 1. The focused Vitest set proves backend `code` / `error_code` compatibility is normalized for `TENANT_CAPABILITY_DISABLED` and `CUSTOMER_ACCESS_MODE_BLOCKED`, tenant-wide IMS notices render after settings hydration or blocked-action events, POS terminal surfaces show POS-specific blocked copy, Storefront catalog/checkout helpers use mode-specific public copy, and Tenant Manager shows capability impact before the audit reason is submitted.
@@ -147,7 +180,7 @@ Required command:
 1. `npm run test:backend:matrix`
 
 Evidence semantics:
-1. The matrix discovers active backend Jest test files from the backend Jest config, then runs them in bounded groups with one file per chunk by default.
+1. The matrix discovers active backend Jest test files from the backend Jest config, partitions them into a "fast" tier (no real DB, one worker-mode Jest invocation with real worker parallelism, not one file per chunk) and a "db" tier (the `scripts/backend-db-dependent-tests.js` manifest, chunked 8 files at a time, `--runInBand`, grouped by domain). See `docs/testing/backend-test-suite-value-audit.md` for the #1441 value audit of what's in each tier and why.
 2. The matrix writes `.tmp/release-gates/<sha>/backend-test-matrix/backend_test_matrix.json` with target SHA, active test count, group count, schema preflight result, per-chunk duration, status, timeout, and log path.
 3. Schema preflight must pass before test execution; it verifies the matrix is pointed at a test database and repairs only known test-schema drift needed for current suites.
 4. The local release gate runs `npm run test:backend:matrix` through `scripts/gate-release-local.js`.
@@ -157,22 +190,23 @@ Evidence semantics:
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:
-1. `npm run check:frontend-budgets` owns a fresh `npm --prefix apps/dgfy-web run build:all` execution by default, then enforces route-chunk ceilings for login, POS, terminal, and sales surfaces.
-2. The gate requires all three current app artifact directories: `dist-apps/skupervisor/assets`, `dist-apps/pos/assets`, and `dist-apps/store/assets`. Falling back to a partial or legacy artifact set is not release evidence.
+1. `npm run check:frontend-budgets` owns a fresh build of all three apps by default (`npm --prefix apps/dgfy-ims run build`, `npm --prefix apps/dgfy-pos run build`, `npm --prefix apps/dgfy-storefront run build`), then enforces route-chunk ceilings for login, POS, terminal, and sales surfaces.
+2. The gate requires all three current per-app artifact directories: `apps/dgfy-ims/dist/assets`, `apps/dgfy-pos/dist/assets`, and `apps/dgfy-storefront/dist/assets`. Each app now emits into its own `dist/` instead of a shared top-level output directory. Falling back to a partial or legacy artifact set is not release evidence.
 3. Freshness is checked against the build start time for every budgeted route chunk. A missing, renamed, or stale route chunk fails the gate before it can be treated as a passing budget verdict.
 4. Prebuilt artifacts are allowed only through the explicit contract `npm run check:frontend-budgets -- --skip-build --built-after <ISO timestamp or epoch ms>`. This mode is for CI jobs that have already run the same multi-app build and need a timestamped freshness proof.
 5. The default standalone report is `.tmp/frontend-budgets/frontend_budget_report.json`. The local release gate writes the release-owned report to `.tmp/release-gates/<sha>/frontend-budgets/frontend_budget_report.json`.
 6. The shared MapLibre dependency is intentionally isolated as `vendor-maplibre-*`; it is large but lazy-loaded by map-picker surfaces and is checked against the dedicated build cap instead of being treated as a generic vendor regression.
 7. Other vendor growth still remains actionable through the largest-chunk report.
 8. After the PR #11 DGFY POS surface split, the budget gate enforces the renamed SKUpervisor POS route chunk and the standalone POS checkout chunk separately. Do not treat a missing or renamed route chunk as harmless without updating the budget script and recording new evidence in `docs/testing/pos-readiness-status.md`.
-9. The merged frontend toolchain targets Vite 8 / `@vitejs/plugin-react` 6. Deterministic installs for frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`), even though backend runtime support can remain broader.
+9. Each app is a separate npm workspace with its own `package.json` and `package-lock.json`; `packages/web-core` is linked in with `file:../../packages/web-core` and has no lockfile of its own. Budget regressions must be attributed to the app that owns the chunk.
+10. The frontend toolchain targets Vite 8 / `@vitejs/plugin-react` 6. Deterministic installs for frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`), even though backend runtime support can remain broader.
 
 ## MapLibre Picker Runtime Gate
 
 Use this focused gate when changing the shared IMS MapLibre picker used by onboarding primary-location setup and Settings > Storefront location editing:
 
-1. `npm --prefix apps/dgfy-web test -- --run src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx`
-2. `npm --prefix apps/dgfy-web test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx`
+1. `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx`
+2. `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx packages/web-core/src/pages/__tests__/Settings.deepLinking.integration.test.jsx`
 
 Evidence semantics:
 1. The focused MapLibre suite proves the picker initializes with the shared Storefront MapLibre basemap over Iloilo City, preserves the Settings locked mode and onboarding first-pin adjust mode, keeps click/geolocation/drag coordinate updates inside the explicit adjust contract, ignores stale reverse-geocode responses, reverse-geocodes selected pins into editable address suggestions when possible, keeps coordinate updates usable when reverse geocoding fails, disables MapLibre's internal resize tracker for modal/panel teardown safety, skips unsafe hidden-container resize calls, and keeps the coordinate fallback usable when tile resource requests emit MapLibre errors.
@@ -184,7 +218,7 @@ Evidence semantics:
 Use this focused gate when changing onboarding starter-item images, Storefront Catalog item images, or the shared selected-image carousel:
 
 Commands:
-1. `npm --prefix apps/dgfy-web test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/features/inventory/__tests__/itemProductWizard.contract.test.js`
+1. `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx packages/web-core/src/features/inventory/__tests__/itemProductWizard.contract.test.js`
 
 Expected evidence:
 1. F&B onboarding exposes `Menu Item` as the first-login starter choice and submits the customer-facing `menu_item` preset.
@@ -199,10 +233,10 @@ Use this gate when changing tenant provisioning, onboarding primary-location set
 Required commands:
 1. `npm run audit:storefront-public-visibility -- --json`
 2. `npm --prefix backend test -- --runTestsByPath tests/tenantProvisioning.storefrontBootstrap.test.js tests/onboardingUsecases.applicationResult.test.js tests/onboardingValidator.test.js tests/storefrontPublicVisibilityAuditService.test.js`
-3. From `apps/dgfy-web/`: `npm exec vitest run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads`
+3. From `apps/dgfy-ims/`: `npm exec vitest run ../../packages/web-core/src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx ../../packages/web-core/src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads`
 4. `npm run lint:docs`
 5. `npm run check:architecture`
-6. `npm --prefix apps/dgfy-web run build:skupervisor`
+6. `npm run build:skupervisor`
 7. `git diff --check`
 
 Evidence semantics:
@@ -235,7 +269,7 @@ Use this checklist for final cashier/admin acceptance before changing status fro
   - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
 
 Repeatable DGFY POS split-surface smoke:
-1. Start standalone POS locally, for example `npm --prefix apps/dgfy-web run dev:pos -- --port 5174`.
+1. Start standalone POS locally: `npm run dev:pos` (equivalently `npm --prefix apps/dgfy-pos run dev`). The app's own Vite config already pins port `5174`.
 2. Run `npm run smoke:pos-terminal-ui`.
 3. Expected proof:
    - desktop `1440x960`, tablet `820x1180`, and mobile `390x844` render terminal identity, POS catalog, current sale, and lock drawer
@@ -245,7 +279,7 @@ Repeatable DGFY POS split-surface smoke:
    - no console errors
 
 Targeted DGFY POS split-surface contract checks:
-1. Run `npm --prefix apps/dgfy-web test -- --run src/features/pos/utils/__tests__/checkoutSurfaceContract.test.js src/features/pos/__tests__/checkoutSurfaceParity.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/receiptContractConformance.contract.test.js`.
+1. Run `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js packages/web-core/src/features/pos/__tests__/receiptContractConformance.contract.test.js`. The shared checkout payload builder itself lives at `packages/web-core/src/features/pos/utils/checkoutSurfaceContract.js`; there is no longer a dedicated `checkoutSurfaceContract`/`checkoutSurfaceParity` test file in the tree, so its behavior is covered through the contract suites above plus `packages/web-core/src/features/fnb/__tests__/fnbMode.contract.test.js`.
 2. Expected proof:
    - standalone POS and SKUpervisor POS use the shared checkout payload builder
    - terminal ID, payment handoff, discount, F&B metadata, modifiers, kitchen station, and scan metadata stay aligned
@@ -259,15 +293,16 @@ Current price/cost readiness checks:
 - Cost fields remain internal evidence for stock movements, valuation, COGS, and profitability reporting.
 
 Targeted UX regression tests for PO/JO quantity controls and numeric step policy:
-1. `npm --prefix apps/dgfy-web test -- --run src/components/common/__tests__/NumberStepper.behavior.test.jsx`
-2. `npm --prefix apps/dgfy-web test -- --run src/features/__tests__/poJoQuantityUx.contract.test.js`
-3. `npm --prefix apps/dgfy-web test -- --run src/features/__tests__/numericStepperPolicy.contract.test.js`
+1. `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/components/common/__tests__/NumberStepper.behavior.test.jsx`
+2. `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/features/__tests__/poJoQuantityUx.contract.test.js`
+3. `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/features/__tests__/numericStepperPolicy.contract.test.js`
 
 Historical note:
 - Early exploratory Phase 32 Gemini QA artifacts were archived to `docs/archive/testing/2026-02/`.
 - Legacy receive-token verification notes were archived to `docs/archive/testing/2026-02/receive-token-fix-evaluation.md`.
 - Legacy SKU expansion manual walkthrough notes were archived to `docs/archive/testing/2026-03/sku-expansion-manual-test-runbook-2026-03-31.md`.
 - Dated release go/no-go snapshot was archived to `docs/archive/testing/2026-04/release-go-no-go-checklist-2026-04-21.md`.
+- `docs/testing/release-go-no-go-checklist.md`'s historical evidence log was archived to `docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md`; the live doc is now the `npm run gate:release:local` runbook (#375).
 - Active POS readiness source of truth is `docs/testing/pos-readiness-status.md`; historical run logs remain evidence-only and must not be used as current behavior contracts.
 - Latest DGFY POS/SKUpervisor surface split review and post-fix ratings are recorded in section `3.24` of `docs/testing/pos-readiness-status.md`.
 
@@ -283,7 +318,7 @@ Operational note:
 2. Browser E2E matrix (Chromium, desktop + mobile profiles):
    - `npm --prefix backend run test:frontend-compliance-e2e:matrix`
 3. Frontend component/integration coverage (compliance panel, settings remediation deep links, POS blocker contracts, admin review contracts):
-   - `npm --prefix apps/dgfy-web test -- --run src/features/settings/__tests__/settingsDeepLink.contract.test.js src/pages/__tests__/Settings.deepLinking.integration.test.jsx src/features/compliance/__tests__/ComplianceProgramPanel.integration.test.jsx src/features/compliance/__tests__/complianceProgramContracts.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/receiptContractConformance.contract.test.js src/pages/__tests__/TenantManager.complianceReviewContracts.test.js src/services/__tests__/complianceService.preflight.test.js`
+   - `npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/features/settings/__tests__/settingsDeepLink.contract.test.js packages/web-core/src/pages/__tests__/Settings.deepLinking.integration.test.jsx packages/web-core/src/features/compliance/__tests__/ComplianceProgramPanel.integration.test.jsx packages/web-core/src/features/compliance/__tests__/complianceProgramContracts.test.js packages/web-core/src/features/pos/__tests__/terminalViewModeContracts.test.js packages/web-core/src/features/pos/__tests__/receiptContractConformance.contract.test.js packages/web-core/src/pages/__tests__/TenantManager.complianceReviewContracts.test.js packages/web-core/src/services/__tests__/complianceService.preflight.test.js`
 4. Backend residual-risk hardening suites (transport security, documentary readiness, incident dispatch):
    - `npm --prefix backend test -- backend/tests/securityTransport.middleware.test.js backend/tests/complianceRepository.documentaryReadiness.test.js backend/tests/complianceSecuritySignal.usecase.test.js backend/tests/complianceSecurityIncidents.usecase.test.js backend/tests/rbacRouteCoverage.contract.test.js backend/tests/posOperationReplayParity.usecase.test.js`
 
@@ -373,9 +408,14 @@ Backend:
 npm --prefix backend test -- onboardingRepository.schemaCompatibility.test.js catalogVisibilityPolicy.test.js storeUsecases.applicationResult.test.js servicesMode.usecases.test.js settingsValidator.customerAccessModes.test.js onboardingUsecases.applicationResult.test.js customerAccessPolicy.test.js storefrontDiscoveryRepository.test.js settingsHandlers.transport.test.js runtimeSchemaAuditService.test.js
 ```
 
-Frontend:
+Frontend (Storefront-owned suites):
 ```bash
-npm --prefix apps/dgfy-web test -- apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/customerAccess.test.js src/features/settings/__tests__/settingsDeepLink.contract.test.js src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx
+npm --prefix apps/dgfy-storefront test -- src/__tests__/checkoutRules.test.js src/__tests__/customerAccess.test.js
+```
+
+Frontend (shared-trunk suites, run from the IMS workspace):
+```bash
+npm --prefix apps/dgfy-ims test -- packages/web-core/src/features/settings/__tests__/settingsDeepLink.contract.test.js packages/web-core/src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx
 ```
 
 Build and governance:
@@ -383,7 +423,7 @@ Build and governance:
 npm run lint:docs
 npm run check:architecture
 npm run build:store
-npm --prefix apps/dgfy-web run build:skupervisor
+npm run build:skupervisor
 git diff --check
 ```
 
@@ -414,9 +454,10 @@ Fresh-schema proof:
 5. Confirm delegated Platform Admin users cannot call routes outside their live database grants.
 6. Confirm QA invoices remain `TEST-` numbered, cash-only, privately stored, hash-verified, and blocked from live fiscal/email behavior unless the QA delivery sink/allowlist is configured.
 
-Targeted frontend suite:
+Targeted frontend suites:
 ```bash
-npm --prefix apps/dgfy-web test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx apps/store/src/__tests__/businessRegistrationApprovalHandoff.contract.test.js src/features/pos/__tests__/serviceWorkerCaching.contract.test.js
+npm --prefix apps/dgfy-ims test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx packages/web-core/src/features/pos/__tests__/serviceWorkerCaching.contract.test.js
+npm --prefix apps/dgfy-storefront test -- src/__tests__/businessRegistrationApprovalHandoff.contract.test.js
 ```
 
 Manual smoke:
@@ -439,8 +480,8 @@ npm --prefix backend test -- --runTestsByPath tests/complianceModeDowngrade.usec
 
 Targeted frontend suites:
 ```bash
-cd apps/dgfy-web
-npm exec vitest run src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.compliancePartialLoad.integration.test.jsx
+cd apps/dgfy-ims
+npm exec vitest run ../../packages/web-core/src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx ../../packages/web-core/src/pages/__tests__/TenantManager.capabilities.integration.test.jsx ../../packages/web-core/src/pages/__tests__/TenantManager.compliancePartialLoad.integration.test.jsx
 ```
 
 Governance gates:
@@ -496,9 +537,9 @@ Targeted backend regression suites:
 npm --prefix backend test -- --runTestsByPath tests/productionEnvValidation.test.js tests/productionEnvGuard.test.js tests/hostingProfilePreflight.test.js tests/tempFileService.local.test.js tests/healthService.test.js tests/authFailClosed.test.js tests/rateLimiterStoreMode.test.js tests/ai_export_e2e.test.js tests/securityTransport.middleware.test.js
 ```
 
-Frontend/admin readiness check:
+Frontend/admin readiness check (Admin > Hosting lives in IMS):
 ```bash
-npm --prefix apps/dgfy-web run build
+npm run build:skupervisor
 ```
 
 Manual UI verification:

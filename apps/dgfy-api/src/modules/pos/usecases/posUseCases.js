@@ -16,6 +16,7 @@ import { resolveMovementLocation } from '../../inventory/index.js';
 import {
     accrueEarnedForInStoreSale,
     resolveActiveAffiliateEnrollment,
+    resolveActiveAffiliateEnrollmentById,
     reverseAffiliateCommissionForOrder,
     settleAffiliateCommissionForOrder
 } from '../../dgfy/utils/affiliateCommissionAccrual.js';
@@ -37,12 +38,27 @@ import {
 } from '../../shared/utils/stockBearingPolicy.js';
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
+import {
+    buildOnlineInventoryEffects,
+    buildLineStockPolicySubject
+} from '../../shared/utils/onlineInventoryEffects.js';
 import { isCodDelivery } from '../../shared/utils/paymentTimingPolicy.js';
 import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
+import { buildVoucherGovernedCalculation } from '../domain/posVoucherDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
+// #712: direct ESM import of the singleton use case, matching the one existing cross-module
+// precedent (storeUseCases.js imports the same set from '../../vouchers/index.js').
+import {
+    previewVoucherEligibilityUseCase,
+    redeemVoucherUseCase,
+    VoucherReasonCode
+} from '../../vouchers/index.js';
+import { calculatePosItemDiscounts } from '../domain/posItemDiscountCalculator.js';
+import { resolvePosItemDiscount } from '../domain/posItemDiscountPolicy.js';
+import { resolvePosVoidFinancialOutcome } from '../domain/posVoidFinancialOutcome.js';
 import { verifyPosDiscountApprover } from '../domain/posDiscountApprovalPolicy.js';
 import { verifyPosDayCloseOperator } from '../domain/posDayClosePinPolicy.js';
 import { authorizePosShiftMutation } from '../domain/posShiftAuthorizationPolicy.js';
@@ -56,7 +72,7 @@ import {
     STOREFRONT_PROMOS_SETTING_KEY,
     buildCommercialPromoUsageUpdate
 } from '../../shared/utils/commercialPromoPolicy.js';
-import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -67,11 +83,12 @@ const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
 const FISCAL_DOCUMENT_TEMPLATE_VERSION = 'rmo-24-2023-prep-v1';
 const ORDER_METHODS = POS_ORDER_METHODS;
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
-const ONLINE_ORDER_SOURCE = 'online_store';
+export const ONLINE_ORDER_SOURCE = 'online_store';
 const ONLINE_FULFILLMENT_STATUSES = [
     'placed',
     'confirmed',
     'preparing',
+    'packed',
     'ready_for_pickup',
     'out_for_delivery',
     'completed',
@@ -80,14 +97,28 @@ const ONLINE_FULFILLMENT_STATUSES = [
 ];
 const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
     placed: ['confirmed', 'rejected'],
-    confirmed: ['preparing'],
-    preparing: ['ready_for_pickup', 'out_for_delivery'],
+    // Phase 210 (#1179). A merchant who has already accepted an order can still discover it is
+    // out-of-route and must be able to reject it with a reason. A store-initiated reject ALWAYS
+    // refunds (commerceOrderLifecycleUseCase.js:109-113, Phase 144/#824) -- widening this edge
+    // does not widen forfeiture.
+    confirmed: ['preparing', 'rejected'],
+    preparing: ['packed', 'ready_for_pickup', 'out_for_delivery'],
+    // Phase 211 (#1180). ADDITIVE and optional: `preparing` keeps both original onward edges, and
+    // `packed` offers exactly the same two. F&B gains no mandatory step; an order that never
+    // enters `packed` behaves identically to before this phase.
+    packed: ['ready_for_pickup', 'out_for_delivery'],
     ready_for_pickup: ['completed'],
     out_for_delivery: ['completed'],
     completed: [],
     cancelled: [],
     rejected: []
 });
+// Phase 210 (#1179). Pat's confirmed decision: a staff delivery-address/pin edit is restricted to
+// pre-dispatch statuses only. `out_for_delivery` is deliberately EXCLUDED -- once a delivery job has
+// been dispatched the driver already holds the original address, so a silent server-side edit could
+// diverge from what is physically in the driver's hand. Rejected the same way as a terminal state,
+// with the same 409.
+const DELIVERY_ADDRESS_EDITABLE_STATUSES = Object.freeze(['placed', 'confirmed', 'preparing']);
 const DELIVERY_JOB_STATUS_VALUES = Object.freeze([
     'pending_dispatch',
     'assigned',
@@ -110,21 +141,26 @@ const CASH_EVENT_EFFECT = Object.freeze({
     cash_out: -1,
     closing_adjustment: -1
 });
+const POS_SHIFT_SALES_WINDOW_PRECISION_BUFFER_MS = 1000;
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
 const PERMISSION_SWITCH_LOCATION = 'pos:switch_location';
 const POS_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 const POS_CATALOG_BULK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+// Phase 204 (#965): mirrors uploadConfig.js's PAYMENT_PROOF_SOURCE_MAX_BYTES -- kept as a local
+// constant here rather than an import, matching this file's own convention for the catalog-image
+// limit above.
+const BALANCE_PROOF_SOURCE_MAX_BYTES = 15 * 1024 * 1024;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
 const SPECIAL_DISCOUNT_BENEFICIARY_TYPES = new Set(['senior', 'pwd', 'national_athlete']);
 const RECEIPT_CONTRACT_VERSION = '2026.04.08';
-const OPERATION_REPLAY_STATUS = Object.freeze({
+export const OPERATION_REPLAY_STATUS = Object.freeze({
     PROCESSED: 'processed',
     BLOCKED: 'blocked'
 });
-const POS_OPERATION_KEYS = Object.freeze({
+export const POS_OPERATION_KEYS = Object.freeze({
     SHIFT_OPEN: 'terminal.shift_open',
     SHIFT_SWITCH: 'terminal.shift_switch_location',
     CASH_EVENT: 'terminal.cash_event',
@@ -134,7 +170,39 @@ const POS_OPERATION_KEYS = Object.freeze({
     PICKUP_CASH_COLLECTION: 'terminal.pickup_cash_collection',
     DELIVERY_CASH_COLLECTION: 'terminal.delivery_cash_collection',
     DELIVERY_JOB_ASSIGNMENT: 'terminal.delivery_job_assignment',
-    DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update'
+    DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update',
+    ORDER_BALANCE_SETTLEMENT: 'terminal.order_balance_settlement',
+    ORDER_DELIVERY_ADDRESS_UPDATE: 'terminal.order_delivery_address_update',
+    // Phase 225 (#1273/#1081): delivery run membership/personnel mutations. Distinct operation
+    // keys from DELIVERY_JOB_ASSIGNMENT because these are batch/run-scoped idempotency fingerprints,
+    // not per-job ones.
+    DELIVERY_RUN_MEMBERSHIP: 'terminal.delivery_run_membership',
+    DELIVERY_RUN_PERSONNEL: 'terminal.delivery_run_personnel',
+    // Phase 228 (#1273/#1271): run-scoped, not per-order -- hashed on { delivery_run_id } only, so
+    // a legitimate retry with a different (e.g. one member removed) member set still replays
+    // correctly. See buildDispatchDeliveryRunUseCase's own idempotency comment for the full
+    // two-layer design (durable replay + per-member ALREADY_DISPATCHED skip).
+    DELIVERY_RUN_DISPATCH: 'terminal.delivery_run_dispatch'
+});
+
+// Phase 148 (#825): the methods staff may record a downpayment order's remaining balance with.
+// This was ADR 0063 clause 4 [binding]'s V1 set verbatim -- cash plus the four store-owned digital
+// tenders it classifies as `merchant_owned`. #825's own scope line named only "cash + gcash"; that
+// reads as an example rather than an exhaustive list, since clause 5 (what an attestation must
+// persist) and clause 6 (explicit confirmation) already govern all four identically and nothing
+// per-method has to be invented. `card` here is a store-owned card terminal, never PayMongo card --
+// no balance leg ever touches a provider (ADR 0069 clause 2 [binding], carried forward verbatim by
+// ADR 0070; ADR 0063 clause 12 [binding]).
+//
+// Phase 202 (#1085) adds `cheque` as a sixth method. ADR 0063 clause 4 is `[binding]`, so widening
+// it took a scoped-supersession ADR rather than an amendment: ADR 0077 supersedes clause 4 only,
+// replacing the V1 five-tender enumeration with this six-tender set; every other clause of ADR 0063
+// is unaffected. Cheque is merchant-owned by construction (no branch added below), and its number
+// is `payment_reference` under this method -- no new column.
+const BALANCE_SETTLEMENT_METHODS = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque']);
+const BALANCE_SETTLEMENT_HANDOVER_STATUS_BY_METHOD = Object.freeze({
+    pickup: 'ready_for_pickup',
+    delivery: 'out_for_delivery'
 });
 const TERMINAL_POLICY_MODES = new Set(['warn', 'enforce']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -153,13 +221,9 @@ const LOCATION_SCOPE_REASON_CODES = Object.freeze({
     LOCATION_ACCESS_DENIED: 'POS_LOCATION_ACCESS_DENIED',
     TERMINAL_HOME_LOCATION_MISMATCH: 'POS_TERMINAL_HOME_LOCATION_MISMATCH',
     TERMINAL_HOME_LOCATION_REQUIRED: 'POS_TERMINAL_HOME_LOCATION_REQUIRED',
-    SHIFT_LOCATION_MISMATCH: 'POS_SHIFT_LOCATION_MISMATCH'
+    SHIFT_LOCATION_MISMATCH: 'POS_SHIFT_LOCATION_MISMATCH',
+    TRANSACTION_LOCATION_MISMATCH: 'POS_TRANSACTION_LOCATION_MISMATCH'
 });
-const isAdminLikeUser = (user = {}) => {
-    const role = String(user?.role || '').trim().toLowerCase();
-    return user?.is_master_admin === true || role === 'admin';
-};
-
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
     const tenantId = store.tenantId;
@@ -200,7 +264,7 @@ const assertPosComplianceAllowed = async ({ operation, context = {}, settings = 
     return result.data.decision;
 };
 
-const parsePositiveInt = (value) => {
+export const parsePositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
     if (!Number.isInteger(normalized) || normalized <= 0) return null;
     return normalized;
@@ -229,8 +293,123 @@ const normalizeBusinessDateInput = (value) => {
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toCurrencyCents = (value) => Math.max(0, Math.round((Number(value) || 0) * 100));
 const fromCurrencyCents = (value) => round4((Number(value) || 0) / 100);
+const normalizedEmail = (value) => String(value || '').trim().toLowerCase();
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const normalizeTrustedDiscountApproval = (approval = null) => {
+    if (!isPlainObject(approval)) return null;
+    const discountType = String(approval.discount_type || '').trim().toLowerCase();
+    if (!['senior', 'pwd', 'employee', 'promo', 'manual', 'voucher'].includes(discountType)) return null;
+    const approverUserId = parsePositiveInt(approval.approver_user_id);
+    if (!approverUserId) return null;
+    return {
+        discount_type: discountType,
+        approver_user_id: approverUserId,
+        employee_user_id: discountType === 'employee' ? parsePositiveInt(approval.employee_user_id) : null,
+        employee_directory_id: discountType === 'employee' ? parsePositiveInt(approval.employee_directory_id) : null,
+        self_approved: approval.self_approved === true,
+        approved_at: approval.approved_at || null,
+        operator_user_id: parsePositiveInt(approval.operator_user_id)
+    };
+};
+
+const trustedDiscountApprovalMatches = (approval, governedDraft, governedApplication) => {
+    if (!approval || !governedDraft || !governedApplication) return false;
+    if (approval.discount_type !== governedApplication.type) return false;
+    if (approval.approver_user_id !== parsePositiveInt(governedDraft.approver_user_id)) return false;
+    if (approval.discount_type === 'employee') {
+        if (approval.employee_directory_id || parsePositiveInt(governedApplication.employee_directory_id)) {
+            return approval.employee_directory_id === parsePositiveInt(governedApplication.employee_directory_id);
+        }
+        return approval.employee_user_id === parsePositiveInt(governedApplication.employee_id);
+    }
+    return true;
+};
+const normalizeTrustedItemDiscountApprovals = (approvals = null) => {
+    if (!Array.isArray(approvals)) return new Map();
+    return new Map(approvals.map((approval) => {
+        if (!isPlainObject(approval)) return [null, null];
+        const itemId = parsePositiveInt(approval.item_id);
+        const discountType = String(approval.discount_type || '').trim().toLowerCase();
+        const approverUserId = parsePositiveInt(approval.approver_user_id);
+        if (!itemId || !['senior', 'pwd', 'employee', 'promo', 'manual'].includes(discountType) || !approverUserId) {
+            return [null, null];
+        }
+        return [itemId, {
+            item_id: itemId,
+            discount_type: discountType,
+            approver_user_id: approverUserId,
+            employee_user_id: discountType === 'employee' ? parsePositiveInt(approval.employee_user_id) : null,
+            employee_directory_id: discountType === 'employee' ? parsePositiveInt(approval.employee_directory_id) : null,
+            self_approved: approval.self_approved === true,
+            approved_at: approval.approved_at || null,
+            operator_user_id: parsePositiveInt(approval.operator_user_id)
+        }];
+    }).filter(([itemId, approval]) => itemId && approval));
+};
+const trustedItemDiscountApprovalMatches = (approval, draft, application) => {
+    if (!approval || !draft || !application) return false;
+    if (approval.item_id !== parsePositiveInt(application.item_id)) return false;
+    if (approval.discount_type !== application.discount_type) return false;
+    if (approval.approver_user_id !== parsePositiveInt(draft.approver_user_id)) return false;
+    if (approval.discount_type === 'employee') {
+        return approval.employee_directory_id === parsePositiveInt(application.employee_directory_id);
+    }
+    return true;
+};
+const assertTrustedEmployeeApprovalIdentity = ({
+    approval,
+    application,
+    approver,
+    applyingUserId,
+    allowSelfApproval
+}) => {
+    const approverUserId = parsePositiveInt(approver?.user_id);
+    const applyingUserIdNormalized = parsePositiveInt(applyingUserId);
+    const beneficiaryMatchesApprover = Boolean(
+        (parsePositiveInt(application?.employee_user_id)
+            && parsePositiveInt(application.employee_user_id) === approverUserId)
+        || (normalizedEmail(application?.employee_email)
+            && normalizedEmail(application.employee_email) === normalizedEmail(approver?.email))
+    );
+    if (parsePositiveInt(application?.employee_directory_id)
+        && applyingUserIdNormalized === approverUserId
+        && !normalizedEmail(application?.employee_email)) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'The selected employee needs an email before self-approval can be verified.',
+            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_IDENTITY_UNVERIFIED' } }
+        );
+    }
+    if (beneficiaryMatchesApprover !== (approval?.self_approved === true)) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'The saved discount approval no longer matches the employee identity.',
+            { statusCode: 403, details: { reason_code: 'DISCOUNT_APPROVAL_IDENTITY_CHANGED' } }
+        );
+    }
+    if (beneficiaryMatchesApprover && allowSelfApproval !== true) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Employees cannot approve their own discount.',
+            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_BLOCKED' } }
+        );
+    }
+    if (beneficiaryMatchesApprover && applyingUserIdNormalized !== approverUserId) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Self-approval must be completed by the authenticated cashier receiving the discount.',
+            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_ACTOR_MISMATCH' } }
+        );
+    }
+    if (approval?.operator_user_id && approval.operator_user_id !== applyingUserIdNormalized) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'The saved discount approval belongs to a different cashier session.',
+            { statusCode: 403, details: { reason_code: 'DISCOUNT_APPROVAL_OPERATOR_MISMATCH' } }
+        );
+    }
+};
 const normalizeJsonObject = (value, fallback = {}) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) return value;
     if (typeof value !== 'string') return fallback;
@@ -266,7 +445,7 @@ const stableStringify = (value) => {
     return JSON.stringify(value);
 };
 
-const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
+export const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
 
 const settingString = (settings = {}, key) => String(settings?.[key]?.value ?? '').trim();
 
@@ -278,7 +457,7 @@ const settingBoolean = (settings = {}, key) => {
     return ['1', 'true', 'yes', 'on'].includes(normalized);
 };
 
-const normalizeOptionalIdempotencyKey = (value) => {
+export const normalizeOptionalIdempotencyKey = (value) => {
     const normalized = String(value || '').trim();
     return normalized.length >= 8 ? normalized : null;
 };
@@ -297,7 +476,7 @@ const buildOperationReplayConflictError = () => new DomainError(
     }
 );
 
-const serializeReplayFailure = (error) => ({
+export const serializeReplayFailure = (error) => ({
     message: error?.message || 'Operation blocked',
     error_code: error?.code || DomainErrorCode.VALIDATION_FAILED,
     status_code: Number.parseInt(error?.statusCode || 422, 10) || 422,
@@ -319,7 +498,7 @@ const buildReplayBlockedError = (payload = {}) => new DomainError(
     }
 );
 
-const findOperationReplayEntry = async ({
+export const findOperationReplayEntry = async ({
     posRepository,
     operationKey,
     idempotencyKey,
@@ -361,7 +540,7 @@ const findOperationReplayEntry = async ({
     };
 };
 
-const persistOperationReplay = async ({
+export const persistOperationReplay = async ({
     posRepository,
     operationKey,
     idempotencyKey,
@@ -425,11 +604,83 @@ const buildBusinessDateRange = (dateInput) => {
     };
 };
 
-const toSerializable = (value) => (
+export const toSerializable = (value) => (
     value && typeof value.toJSON === 'function'
         ? value.toJSON()
         : value
 );
+
+const toPublicPosTransactionAdjustment = (value) => {
+    const serialized = toSerializable(value) || {};
+    const metadata = normalizeJsonObject(serialized.metadata);
+    return {
+        pos_transaction_adjustment_id: serialized.pos_transaction_adjustment_id || null,
+        adjustment_reference: serialized.adjustment_reference || null,
+        pos_transaction_id: serialized.pos_transaction_id || null,
+        pos_payment_allocation_id: serialized.pos_payment_allocation_id || null,
+        original_cashier_id: serialized.original_cashier_id || null,
+        original_cashier_name: serialized.originalCashier?.username || null,
+        original_shift_id: serialized.original_shift_id || null,
+        original_terminal_id: serialized.original_terminal_id || null,
+        original_location_id: serialized.original_location_id || null,
+        actor_user_id: serialized.actor_user_id || null,
+        actor_name: serialized.actorUser?.username || null,
+        actor_shift_id: serialized.actor_shift_id || null,
+        actor_terminal_id: serialized.actor_terminal_id || null,
+        actor_location_id: serialized.actor_location_id || null,
+        adjustment_type: serialized.adjustment_type || null,
+        tender_type: serialized.tender_type || null,
+        amount: serialized.amount ?? null,
+        currency: serialized.currency || 'PHP',
+        status: serialized.status || null,
+        reason: serialized.reason || null,
+        approved_by: serialized.approved_by || null,
+        approved_by_name: serialized.approvedByUser?.username || null,
+        approved_at: serialized.approved_at || null,
+        external_reference: serialized.external_reference || null,
+        provider: serialized.provider || null,
+        provider_reference: serialized.provider_reference || null,
+        provider_event_id: serialized.provider_event_id || null,
+        cash_drawer_event_id: serialized.cash_drawer_event_id || null,
+        failure_code: serialized.failure_code || null,
+        failure_reason: serialized.failure_reason || null,
+        retry_count: serialized.retry_count || 0,
+        last_retry_at: serialized.last_retry_at || null,
+        completed_at: serialized.completed_at || null,
+        failed_at: serialized.failed_at || null,
+        cancelled_at: serialized.cancelled_at || null,
+        created_at: serialized.created_at || null,
+        updated_at: serialized.updated_at || null,
+        financial_outcome: metadata.financial_outcome || null
+    };
+};
+
+const scopePosReportQueryToActor = ({ query = {}, user = {} } = {}) => {
+    const role = String(user?.role || '').trim().toLowerCase();
+    if (role !== 'cashier') return query;
+
+    const actorId = parsePositiveInt(user?.user_id);
+    const requestedCashierId = parsePositiveInt(query?.cashier_id);
+    if (!actorId) {
+        throw new DomainError(
+            DomainErrorCode.AUTHENTICATION_FAILED,
+            'Authenticated cashier is required to view POS reports',
+            { statusCode: 401 }
+        );
+    }
+    if (requestedCashierId && requestedCashierId !== actorId) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Cashiers may only view their own POS report',
+            { statusCode: 403 }
+        );
+    }
+
+    return {
+        ...query,
+        cashier_id: actorId
+    };
+};
 
 export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
     const baseUseCase = buildReadScopedPosReportUseCase({
@@ -454,9 +705,13 @@ export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
             if (dateFrom > dateTo) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date_from must not be after date_to', { statusCode: 400 });
             }
+            const rangeDays = Math.round((new Date(`${dateTo}T00:00:00.000Z`) - new Date(`${dateFrom}T00:00:00.000Z`)) / 86400000) + 1;
+            if (rangeDays > 366) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'POS report range cannot exceed 366 days', { statusCode: 422 });
+            }
             return baseUseCase({
                 query: {
-                    ...query,
+                    ...scopePosReportQueryToActor({ query, user }),
                     date_from: dateFrom,
                     date_to: dateTo
                 },
@@ -477,7 +732,31 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
         const summary = overviewResult.data?.daily_report?.summary || {};
         const discountRows = overviewResult.data?.daily_report?.discount_breakdown || [];
         const cashierRows = overviewResult.data?.daily_report?.cashier_summary || [];
-        const rows = [
+        const transactionRows = overviewResult.data?.daily_report?.transaction_rows || [];
+        const lifecycle = overviewResult.data?.cashier_lifecycle || {};
+        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
+        const lifecycleRows = section === 'attendance'
+            ? [
+                ['Cashier', 'Duty Type', 'Status', 'Started At', 'Ended At', 'Break Minutes', 'Worked Minutes', 'Location'],
+                ...(lifecycle.attendance?.rows || []).map((row) => [row.cashier_name, row.duty_type, row.status, row.started_at, row.ended_at, row.break_minutes, row.worked_minutes, row.location_id])
+            ]
+            : section === 'cashiers'
+                ? [
+                    ['Cashier', 'Transactions', 'Gross Sales', 'Net Sales', 'Operator Attribution'],
+                    ...cashierRows.map((row) => [row.cashier_name, row.summary?.total_transactions, row.summary?.gross_sales, row.summary?.net_sales, 'Authenticated operator where operator_session_id exists; otherwise legacy cashier snapshot'])
+                ]
+                : section === 'registers'
+                    ? [
+                        ['Opening Cashier', 'Shift IDs', 'Opening Float', 'Cash Sales', 'Cash In', 'Cash Out', 'Expected Cash', 'Closing Cash', 'Variance', 'Notice'],
+                        ...(lifecycle.registers || []).map((row) => [row.opening_cashier_name, (row.shift_ids || []).join('|'), row.opening_float_amount, row.cash_sales_amount, row.cash_in_total, row.cash_out_total, row.expected_cash_amount, row.closing_cash_amount, row.variance_amount, row.attribution_notice])
+                    ]
+                    : section === 'handoffs'
+                        ? [
+                            ['Event At', 'Terminal', 'Shift', 'Type', 'Custody Mode', 'Outgoing', 'Incoming', 'Expected Cash', 'Counted Cash', 'Variance', 'Attribution'],
+                            ...(lifecycle.handoffs?.rows || []).map((row) => [row.event_at, row.terminal_id, row.shift_id, row.event_type, row.custody_mode, row.outgoing_operator_name, row.incoming_operator_name, row.expected_cash_amount, row.counted_cash_amount, row.variance_amount, row.variance_attribution])
+                        ]
+                        : null;
+        const rows = lifecycleRows || [
             ['Metric', 'Value'],
             ['Gross Sales', summary.gross_sales || 0],
             ['Net Sales', summary.net_sales || 0],
@@ -487,10 +766,31 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
             ['Discount', 'Type', 'Transactions', 'Discount Total', 'VAT Removed'],
             ...discountRows.map((row) => [row.discount_label, row.discount_type, row.transaction_count, row.discount_amount, row.vat_removed]),
             [],
-            ['Cashier', 'Closed Shifts', 'Expected Cash', 'Cash After Shift', 'Variance'],
-            ...cashierRows.map((row) => [row.cashier_name, row.shift_money?.closed_shift_count, row.shift_money?.expected_cash_amount, row.shift_money?.closing_cash_amount, row.shift_money?.cash_variance_amount])
+            ['Cashier', 'Shift Count', 'Closed Shifts', 'Opening Float', 'Cash Sales', 'Cash In', 'Cash Out', 'Expected Cash', 'Cash After Shift', 'Variance'],
+            ...cashierRows.map((row) => [
+                row.cashier_name,
+                row.shift_money?.shift_count,
+                row.shift_money?.closed_shift_count,
+                row.shift_money?.opening_float_amount,
+                row.shift_money?.cash_sales_amount,
+                row.shift_money?.cash_in_total,
+                row.shift_money?.cash_out_total,
+                row.shift_money?.expected_cash_amount,
+                row.shift_money?.closing_cash_amount,
+                row.shift_money?.cash_variance_amount
+            ]),
+            [],
+            ['Invoice', 'Datetime', 'Cashier', 'Payment', 'Status', 'Total', 'Reported Net Sales'],
+            ...transactionRows.map((row) => [
+                row.invoice_number || row.pos_transaction_id,
+                row.created_at || '',
+                row.cashier_name || '',
+                row.payment_type || '',
+                row.status || '',
+                row.total_amount || 0,
+                row.net_sales || 0
+            ])
         ];
-        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
         return ok({
             filename: `pos-${section}-report.csv`,
             content_type: 'text/csv; charset=utf-8',
@@ -498,6 +798,66 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
         });
     } catch (error) {
         return fail(mapPosUseCaseError(error, 'Failed to export POS reports'));
+    }
+};
+
+// Phase 261 (#1488, RF-1 fix per #1504 review): pre-run procurement CSV export. Deliberately
+// reuses posRepository.listIncomingOnlineOrders() directly rather than
+// buildListIncomingOnlineOrdersUseCase -- this list must be usable before a run is built (no
+// open shift required). It is NOT aggregated across all locations, though -- like the other
+// shift-independent read path (buildListOnlineOrderHistoryUseCase), it resolves the caller's
+// authorized location via resolvePosReadLocationScope so a VIEW_POS user can only ever export
+// pending-order PII (customer name, phone, delivery address) for a location they're actually
+// granted access to. See the implementation plan's section 1 for the reuse reasoning, and PR
+// #1504's review (RF-1) for the location-scope fix.
+export const buildExportProcurementCsvUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => async ({ query = {}, user } = {}) => {
+    try {
+        if (query !== undefined && !isPlainObject(query)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'query must be an object', { statusCode: 400 });
+        }
+        const normalizedUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedUserId) {
+            throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated user is required to export procurement data', { statusCode: 401 });
+        }
+        if (query?.location_id != null && !parsePositiveInt(query.location_id)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'location_id must be a positive integer', { statusCode: 422 });
+        }
+
+        const locationScope = await resolveLocationScope({
+            requestedLocationId: query?.location_id,
+            userId: normalizedUserId,
+            operationLabel: 'POS procurement export read'
+        });
+
+        const orders = await posRepository.listIncomingOnlineOrders({ locationId: locationScope.location_id, limit: 500 });
+
+        const rows = [
+            ['Order #', 'Order Date', 'Location', 'Status', 'Customer Name', 'Customer Phone', 'Delivery Address', 'SKU', 'Item Name', 'Quantity', 'Unit'],
+            ...orders.flatMap((order) => (order.lines || []).map((line) => [
+                order.invoice_number || order.pos_transaction_id,
+                order.created_at || '',
+                order.location?.name || '',
+                order.fulfillment_status || '',
+                order.customer_name || 'Guest Buyer',
+                order.customer_phone || '',
+                order.delivery_address || '',
+                line.item?.sku_code || '',
+                line.item?.name || '',
+                line.quantity,
+                line.item?.unit_of_measure || ''
+            ]))
+        ];
+
+        return ok({
+            filename: `pos-procurement-export-${nowInManilaBusinessDate()}.csv`,
+            content_type: 'text/csv; charset=utf-8',
+            content: rows.map((row) => row.map(escapeCsvValue).join(',')).join('\n')
+        });
+    } catch (error) {
+        return fail(mapPosUseCaseError(error, 'Failed to export procurement data'));
     }
 };
 
@@ -528,6 +888,9 @@ const normalizeZReadingSummary = (summary = {}) => ({
     void_transaction_count: Number.parseInt(summary?.void_transaction_count || 0, 10),
     void_amount: round4(summary?.void_amount),
     voided_item_count: round4(summary?.voided_item_count),
+    post_close_void_transaction_count: Number.parseInt(summary?.post_close_void_transaction_count || 0, 10),
+    post_close_void_amount: round4(summary?.post_close_void_amount),
+    post_close_voided_item_count: round4(summary?.post_close_voided_item_count),
     refund_amount: round4(summary?.refund_amount),
     refunded_item_count: round4(summary?.refunded_item_count),
     provider_refunds_included: summary?.provider_refunds_included === true,
@@ -569,6 +932,29 @@ const normalizeZReadingSummary = (summary = {}) => ({
             amount: round4(entry?.amount)
         }))
         : []
+});
+
+const createCatalogAuditLog = async ({
+    posRepository,
+    user,
+    item,
+    eventType,
+    action = 'UPDATE',
+    changes = {}
+}) => posRepository.createAuditLog({
+    user_id: parsePositiveInt(user?.user_id),
+    actor_username: String(user?.username || '').trim() || null,
+    entity_type: eventType.includes('image') ? 'item_catalog_image' : 'pos_catalog_override',
+    entity_id: parsePositiveInt(item?.item_id || changes.item_id),
+    action,
+    event_type: eventType,
+    changes: {
+        event: eventType,
+        item_id: parsePositiveInt(item?.item_id || changes.item_id),
+        item_name: String(item?.name || '').trim() || null,
+        surface: 'pos',
+        ...changes
+    }
 });
 
 const buildPersistedZReadingData = ({
@@ -846,6 +1232,13 @@ const hasPermission = (user, permission) => {
     return parseUserPermissions(user).includes(permission);
 };
 
+const isPosAdminOperator = (user = {}) => (
+    user?.is_master_admin === true
+    || user?.is_master_admin === 1
+    || user?.is_master_admin === '1'
+    || String(user?.role || '').trim().toLowerCase() === 'admin'
+);
+
 const buildLocationScopeDeniedError = ({ message, reasonCode, statusCode = 403, details = {} }) => (
     new DomainError(
         statusCode === 403 ? DomainErrorCode.AUTHORIZATION_FAILED : DomainErrorCode.VALIDATION_FAILED,
@@ -955,7 +1348,7 @@ const resolvePosReadLocationScope = async ({
     };
 };
 
-const resolvePosOperationalLocationScope = async ({
+export const resolvePosOperationalLocationScope = async ({
     requestedLocationId = null,
     userId = null,
     transaction = null,
@@ -1052,12 +1445,16 @@ const enforceTerminalHomeLocationPolicy = ({
     return normalizedTargetLocationId;
 };
 
-const normalizeOnlineFulfillmentStatus = (value) => {
+// Phase 228 (#1273/#1271): exported (no behavior change) so
+// buildDispatchDeliveryRunUseCase (deliveryRunUseCases.js) can reuse the same per-order
+// fulfillment-status guard chain the per-order online-order status endpoint uses, rather than
+// forking a second copy of ONLINE_FULFILLMENT_TRANSITIONS.
+export const normalizeOnlineFulfillmentStatus = (value) => {
     const status = String(value || '').trim();
     return ONLINE_FULFILLMENT_STATUSES.includes(status) ? status : null;
 };
 
-const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod }) => {
+export const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod }) => {
     if (currentStatus === nextStatus) {
         return;
     }
@@ -1166,6 +1563,29 @@ const assertDeliveryCompletionReadiness = (order) => {
     }
 
     const paymentStatus = String(order?.payment_status || '').trim().toLowerCase();
+
+    // Phase 148 (#825): completion requires a zero balance, not merely a `paid` label. Before this
+    // there was no way to reach `paid` on a downpayment order at all, so `paid` and "fully settled"
+    // were the same thing by construction; now that staff can settle a balance, the two can
+    // disagree if anything ever writes one without the other, and completion must follow the money.
+    const outstandingBalance = round4(order?.balance_due);
+    if (outstandingBalance > 0) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Delivery orders must have a fully settled balance before completion.',
+            {
+                statusCode: 409,
+                details: {
+                    order_lifecycle: {
+                        reason_code: 'DELIVERY_BALANCE_DUE_OUTSTANDING',
+                        balance_due: outstandingBalance,
+                        payment_status: paymentStatus || null
+                    }
+                }
+            }
+        );
+    }
+
     if (!isCodDelivery({
         orderMethod: order?.order_method,
         paymentType: order?.payment_type,
@@ -1189,13 +1609,22 @@ const assertDeliveryCompletionReadiness = (order) => {
         return;
     }
 
-    const hasCollectionEvidence = Boolean(paymentStatus === 'paid'
-        && order?.cash_received != null
-        && order?.change_amount != null
-        && order?.payment_collected_at
+    // Phase 148 (#825): a downpayment order is persisted as COD (payment_type forced to 'cash' by
+    // Phase 141, because the balance IS collected in person), so it lands in this branch too -- but
+    // its balance may have been settled by a merchant-owned digital tender, which legitimately has
+    // no cash_received/change_amount to show (ADR 0063 clause 5 [binding]: never claim what didn't
+    // happen). Discriminate on amount_paid: only an order that captured money online carries a
+    // nonzero amount_paid, since resolveStorefrontPaymentSnapshot's non-capture branch never sets
+    // it and the column defaults to 0. A plain COD order therefore keeps the original, unchanged
+    // rule -- pinned by test, so this discriminator cannot rot silently.
+    const settledFromDownpayment = round4(order?.amount_paid) > 0;
+    const hasStaffCollectionAttribution = Boolean(order?.payment_collected_at
         && parsePositiveInt(order?.payment_collected_by)
         && parsePositiveInt(order?.payment_collected_shift_id)
         && String(order?.payment_collected_terminal_id || '').trim());
+    const hasCollectionEvidence = Boolean(paymentStatus === 'paid'
+        && hasStaffCollectionAttribution
+        && (settledFromDownpayment || (order?.cash_received != null && order?.change_amount != null)));
 
     if (!hasCollectionEvidence) {
         throw new DomainError(
@@ -1487,12 +1916,14 @@ export const buildGetPairedPosTerminalUseCase = ({
     };
 };
 
-const assertOpenShiftForPosMutation = async ({
+export const assertOpenShiftForPosMutation = async ({
     posRepository,
     cashierId,
     shiftId = null,
     terminalId = null,
     locationId = null,
+    authorizedOperatorUserId = null,
+    shiftOwnerCashierId = null,
     transaction = null,
     lock = true
 } = {}) => {
@@ -1506,6 +1937,7 @@ const assertOpenShiftForPosMutation = async ({
     }
 
     const normalizedShiftId = parsePositiveInt(shiftId);
+    const normalizedShiftOwnerCashierId = parsePositiveInt(shiftOwnerCashierId) || normalizedCashierId;
     if (shiftId != null && !normalizedShiftId) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
@@ -1519,14 +1951,16 @@ const assertOpenShiftForPosMutation = async ({
         ? await posRepository.getTerminalShiftById(normalizedShiftId, options)
         : await posRepository.findOpenTerminalShift({
             terminalId: terminalId || null,
-            cashierId: normalizedCashierId,
+            cashierId: normalizedShiftOwnerCashierId,
             locationId: locationId || null
         }, options);
 
     if (!shift || shift.status !== 'open') {
         throw buildShiftClosedError();
     }
-    if (Number(shift.cashier_id) !== normalizedCashierId) {
+    const normalizedAuthorizedOperatorUserId = parsePositiveInt(authorizedOperatorUserId);
+    if (Number(shift.cashier_id) !== normalizedShiftOwnerCashierId
+        && normalizedAuthorizedOperatorUserId !== normalizedCashierId) {
         throw new DomainError(
             DomainErrorCode.AUTHORIZATION_FAILED,
             'Shift does not belong to the authenticated cashier.',
@@ -1555,6 +1989,19 @@ const assertOpenShiftForPosMutation = async ({
     }
 
     return toSerializable(shift);
+};
+
+// Phase 228 (#1273/#1271): exported (no behavior change) -- see normalizeOnlineFulfillmentStatus's
+// own comment above for why.
+export const buildOnlineOrderShiftAttributionPayload = ({ order = {}, activeShift = {} } = {}) => {
+    const activeShiftId = parsePositiveInt(activeShift?.pos_terminal_shift_id);
+    if (parsePositiveInt(order?.shift_id) || !activeShiftId) return {};
+
+    // Storefront creates online orders outside POS, so they have no register
+    // shift at creation time. The first POS handling action claims the order
+    // for the active shift; later actions and payment collection preserve their
+    // established accountability instead of moving the sale between shifts.
+    return { shift_id: activeShiftId };
 };
 
 const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, options = {} } = {}) => {
@@ -1598,83 +2045,26 @@ const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, optio
         compositions: productCompositions,
         locationId: order.location_id || null
     });
-
-    return lines.flatMap((line, index) => {
-        const itemId = parsePositiveInt(line?.item_id);
-        const lineReference = parsePositiveInt(line?.line_id) || `${itemId}-${index + 1}`;
-        const recipeMovements = recipePlan.movementsByLineIndex[index] || [];
-
-        // Recipe consumption always fires when the line has one, regardless of
-        // the finished item's own stock effect - see the matching fix in the
-        // in-person POS checkout movement loop above. The finished item's own
-        // (movement-exempt) effect is skipped below via stock_effect_type,
-        // trusted directly on the persisted line rather than recomputed from
-        // category, since the checkout path that created this line now sets it
-        // correctly for every mode (untracked/toggle/service alike).
-        const modifierMovements = (Array.isArray(line?.fnb_modifiers_snapshot)
-            ? line.fnb_modifiers_snapshot
-            : [])
-            .map((modifier) => ({
-                item_id: parsePositiveInt(modifier?.sku_item_id),
-                quantity: Number(line?.quantity) * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
-                movement_type: 'goods_issue',
-                location_id: parsePositiveInt(modifier?.location_id) || order.location_id || null,
-                reference_type: 'POS',
-                reference_id: `ONLINE:${orderId}:${lineReference}:MOD:${parsePositiveInt(modifier?.modifier_option_id) || parsePositiveInt(modifier?.sku_item_id)}`,
-                notes: `Online F&B modifier consumption for ${modifier?.option_name || `item ${modifier?.sku_item_id}`} on ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
-            }))
-            .filter((movement) => movement.item_id && Number.isFinite(movement.quantity) && movement.quantity > 0);
-
-        if (recipeMovements.length > 0) {
-            if (!itemId) {
-                throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    `Online order line ${index + 1} has invalid inventory movement data`,
-                    { statusCode: 409 }
-                );
-            }
-            return [...recipeMovements.map((movement) => ({
-                item_id: movement.ingredient_item_id,
-                quantity: movement.quantity,
-                movement_type: 'goods_issue',
-                location_id: order.location_id || null,
-                reference_type: 'POS',
-                reference_id: `ONLINE:${orderId}:${lineReference}:ING:${movement.ingredient_item_id}`,
-                notes: `Online F&B recipe consumption for ${movement.product_name || `item ${itemId}`} on ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
-            })), ...modifierMovements];
-        }
-
-        const isStockExemptLine = line?.stock_effect_type
-            ? line.stock_effect_type === 'stock_exempt'
-            : !isStockBearingItem(buildLineStockPolicySubject(line));
-        if (isStockExemptLine) return modifierMovements;
-
-        const quantity = Number(line?.quantity);
-        if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
-            throw new DomainError(
-                DomainErrorCode.CONFLICT,
-                `Online order line ${index + 1} has invalid inventory movement data`,
-                { statusCode: 409 }
-            );
-        }
-
-        return [{
-            item_id: itemId,
-            quantity,
-            movement_type: 'goods_issue',
-            location_id: order.location_id || null,
-            reference_type: 'POS',
-            reference_id: `ONLINE:${orderId}:${lineReference}`,
-            notes: `Online order completion ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
-        }, ...modifierMovements];
+    const effects = buildOnlineInventoryEffects({
+        lines,
+        itemMap,
+        recipePlan,
+        locationId: order.location_id || null,
+        orderId,
+        invoiceNumber: order.invoice_number || null,
+        trackingPin: order.tracking_pin || null,
+        strict: true
     });
+    return effects.map((effect) => ({
+        item_id: effect.item_id,
+        quantity: effect.quantity,
+        movement_type: 'goods_issue',
+        location_id: effect.location_id || order.location_id || null,
+        reference_type: 'POS',
+        reference_id: effect.reference_id,
+        notes: effect.notes
+    }));
 };
-
-const buildLineStockPolicySubject = (line = {}) => ({
-    ...(line || {}),
-    ...(line?.item || {}),
-    category: line?.item?.category ?? line?.category
-});
 
 const executeInventoryStockCommand = async ({
     inventoryCommandService,
@@ -1699,6 +2089,27 @@ const getPosSettings = async () => unwrapApplicationResultOrThrow(
     'Failed to retrieve POS setup settings'
 );
 
+const POS_EMPLOYEE_DISCOUNT_SELF_APPROVAL_SETTING = 'pos_employee_discount_self_approval_enabled';
+
+export const buildListPosDiscountEmployeesUseCase = ({ posRepository }) => {
+    return async () => {
+        try {
+            const rows = await posRepository.listActiveDiscountEmployees();
+            return ok({
+                employees: rows.map((row) => ({
+                    employee_id: Number(row.employee_id),
+                    employee_code: String(row.employee_code || '').trim(),
+                    full_name: String(row.full_name || '').trim(),
+                    location_id: parsePositiveInt(row.location_id),
+                    location_name: String(row.location?.name || '').trim() || 'All branches / unassigned'
+                }))
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list POS discount employees'));
+        }
+    };
+};
+
 export const buildListPosDiscountApproversUseCase = ({ posRepository }) => {
     return async () => {
         try {
@@ -1708,7 +2119,9 @@ export const buildListPosDiscountApproversUseCase = ({ posRepository }) => {
                     user_id: Number(row.user_id),
                     username: String(row.username || '').trim(),
                     role: String(row.role || '').trim().toLowerCase(),
-                    is_master_admin: row.is_master_admin === true
+                    is_master_admin: row.is_master_admin === true,
+                    can_authorize_discounts: row.can_authorize_discounts === true,
+                    pos_approval_pin_configured: row.pos_approval_pin_configured === true
                 }))
             });
         } catch (error) {
@@ -1720,27 +2133,32 @@ export const buildListPosDiscountApproversUseCase = ({ posRepository }) => {
 export const buildVerifyPosDiscountApprovalUseCase = ({ posRepository }) => {
     return async ({ payload = {}, user = null } = {}) => {
         try {
-            const bypassEmployeePin = String(payload?.discount_type || '').trim().toLowerCase() === 'employee'
-                && isAdminLikeUser(user);
-            if (bypassEmployeePin) {
-                return ok({
-                    approver: {
-                        user_id: Number(user?.user_id),
-                        username: String(user?.username || '').trim(),
-                        role: String(user?.role || '').trim().toLowerCase(),
-                        bypassed_pin: true
-                    }
-                });
-            }
             const approverId = parsePositiveInt(payload.approver_user_id);
             if (!approverId) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'approver_user_id is required', { statusCode: 422 });
             }
+            const discountType = String(payload.discount_type || '').trim().toLowerCase();
+            const employeeDirectoryId = parsePositiveInt(payload.employee_directory_id);
+            const employee = employeeDirectoryId
+                ? await posRepository.findActiveDiscountEmployeeById(employeeDirectoryId)
+                : null;
+            if (employeeDirectoryId && !employee) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Employee does not match an active registered employee.', {
+                    statusCode: 422,
+                    details: { reason_code: 'EMPLOYEE_DIRECTORY_NOT_FOUND' }
+                });
+            }
+            const settings = await getPosSettings();
             const approver = await posRepository.findActiveDiscountApproverById(approverId);
             const verified = await verifyPosDiscountApprover({
                 approver,
                 pin: payload.manager_pin,
-                employeeUserId: parsePositiveInt(payload.employee_user_id)
+                employeeUserId: parsePositiveInt(payload.employee_user_id),
+                employeeDirectoryId,
+                employeeEmail: employee?.email,
+                allowSelfApproval: discountType === 'employee'
+                    && settingBoolean(settings, POS_EMPLOYEE_DISCOUNT_SELF_APPROVAL_SETTING),
+                applyingUserId: parsePositiveInt(user?.user_id)
             });
             return ok({ approver: verified });
         } catch (error) {
@@ -1929,9 +2347,9 @@ const resolveFnbLineModifiers = ({ item, line, hasFnbCheckoutContext, locationId
         }
         const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
         const required = through.is_required_override == null
-            ? group.required === true || Number.parseInt(group.min_select || 0, 10) > 0
+            ? group.required === true
             : through.is_required_override === true;
-        const minSelect = required ? Math.max(1, Number.parseInt(group.min_select || 0, 10) || 0) : Number.parseInt(group.min_select || 0, 10) || 0;
+        const minSelect = required ? Math.max(1, Number.parseInt(group.min_select || 0, 10) || 0) : 0;
         const maxSelect = Math.max(1, Number.parseInt(group.max_select || 1, 10) || 1);
         const selectedOptionIds = requestedByGroup.get(groupId) || [];
         if (selectedOptionIds.length < minSelect || selectedOptionIds.length > maxSelect) {
@@ -2091,7 +2509,7 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
             }
             return {
                 discountAmount: Math.min(requestedDiscount, subtotalAmount),
-                discountLabelSnapshot: requestedDiscount > 0 ? 'Manual Discount' : null,
+                discountLabelSnapshot: requestedDiscount > 0 ? 'Other Discount' : null,
                 discountRateSnapshot: null
             };
         }
@@ -2107,7 +2525,7 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
             const manualRate = round4(requestedRate);
             return {
                 discountAmount: Math.min(round4(subtotalAmount * (manualRate / 100)), subtotalAmount),
-                discountLabelSnapshot: manualRate > 0 ? 'Manual Discount' : null,
+                discountLabelSnapshot: manualRate > 0 ? 'Other Discount' : null,
                 discountRateSnapshot: manualRate
             };
         }
@@ -2119,7 +2537,7 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
                 : round4(subtotalAmount * (manualRate / 100));
             return {
                 discountAmount: Math.min(manualDiscountAmount, subtotalAmount),
-                discountLabelSnapshot: 'Manual Discount',
+                discountLabelSnapshot: 'Other Discount',
                 discountRateSnapshot: manualRate
             };
         }
@@ -2393,15 +2811,31 @@ export const buildCheckoutPosUseCase = ({
         payload,
         userId,
         user,
+        operatorSessionId = null,
         transaction: providedTransaction = null,
         beforeCommit = null,
-        quoteOnly = false
+        quoteOnly = false,
+        discountApproval = null,
+        trustedDiscountApproval = null,
+        trustedOfflineStatutoryPolicy = null,
+        itemDiscountApprovals = null,
+        trustedItemDiscountApprovals = null
     }) => {
         const normalizedUserId = parsePositiveInt(userId);
         if (!normalizedUserId) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'userId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        const normalizedOperatorSessionId = operatorSessionId == null
+            ? null
+            : parsePositiveInt(operatorSessionId);
+        if (operatorSessionId != null && !normalizedOperatorSessionId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'operatorSessionId must be a positive integer when provided',
                 { statusCode: 400 }
             ));
         }
@@ -2415,6 +2849,25 @@ export const buildCheckoutPosUseCase = ({
         }
 
         const lines = Array.isArray(payload.lines) ? payload.lines : [];
+        const itemDiscountApprovalByItemId = new Map(
+            lines
+                .map((line) => [
+                    Number.parseInt(line?.item_id, 10),
+                    isPlainObject(line?.item_discount_approval) ? line.item_discount_approval : null
+                ])
+                .filter(([itemId]) => Number.isInteger(itemId) && itemId > 0)
+        );
+        if (Array.isArray(itemDiscountApprovals)) {
+            itemDiscountApprovals.forEach((approval) => {
+                const itemId = parsePositiveInt(approval?.item_id);
+                if (itemId && isPlainObject(approval)) {
+                    itemDiscountApprovalByItemId.set(itemId, approval);
+                }
+            });
+        }
+        const trustedItemDiscountApprovalByItemId = normalizeTrustedItemDiscountApprovals(
+            trustedItemDiscountApprovals
+        );
         if (lines.length === 0) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -2531,15 +2984,22 @@ export const buildCheckoutPosUseCase = ({
                     amount: payload.governed_discount.amount == null ? null : round4(payload.governed_discount.amount),
                     customer_name: String(payload.governed_discount.customer_name || '').trim() || null,
                     id_number: String(payload.governed_discount.id_number || '').trim() || null,
+                    employee_name: String(payload.governed_discount.employee_name || '').trim() || null,
                     employee_id: String(payload.governed_discount.employee_id || '').trim() || null,
+                    employee_directory_id: parsePositiveInt(payload.governed_discount.employee_directory_id),
                     approver_user_id: parsePositiveInt(payload.governed_discount.approver_user_id),
                     reason: String(payload.governed_discount.reason || '').trim() || null,
                     promo_code: String(payload.governed_discount.promo_code || '').trim().toUpperCase() || null,
+                    // #712: must be in the idempotency request hash -- without it, two checkouts
+                    // differing only by voucher code would hash identically and the second would be
+                    // served as a false idempotent replay.
+                    voucher_code: String(payload.governed_discount.voucher_code || '').trim().toUpperCase() || null,
                     eligible_item_ids: [...new Set((payload.governed_discount.eligible_item_ids || [])
                         .map((itemId) => parsePositiveInt(itemId))
                         .filter(Boolean))],
                     eligible_items: (payload.governed_discount.eligible_items || [])
                         .map((entry) => ({
+                            line_ref: String(entry?.line_ref || '').trim() || null,
                             item_id: parsePositiveInt(entry?.item_id),
                             eligible_quantity: round4(entry?.eligible_quantity)
                         }))
@@ -2549,6 +3009,7 @@ export const buildCheckoutPosUseCase = ({
                         name: String(beneficiary?.name || '').trim() || null,
                         id_number: String(beneficiary?.id_number || '').trim() || null,
                         eligible_items: (beneficiary?.eligible_items || []).map((entry) => ({
+                            line_ref: String(entry?.line_ref || '').trim() || null,
                             item_id: parsePositiveInt(entry?.item_id),
                             eligible_quantity: round4(entry?.eligible_quantity)
                         })).filter((entry) => entry.item_id && entry.eligible_quantity > 0)
@@ -2558,6 +3019,7 @@ export const buildCheckoutPosUseCase = ({
             lines: lines
                 .map((line, index) => ({
                     sequence: index,
+                    line_ref: String(line.line_ref || '').trim() || null,
                     item_id: Number.parseInt(line.item_id, 10),
                     quantity: round4(line.quantity),
                     sale_price: line.sale_price == null ? null : round4(line.sale_price),
@@ -2569,7 +3031,26 @@ export const buildCheckoutPosUseCase = ({
                     ...(normalizeServiceOptionIds(line.selected_option_ids).length > 0
                         ? { selected_option_ids: normalizeServiceOptionIds(line.selected_option_ids) }
                         : {}),
-                    scan_metadata: isPlainObject(line.scan_metadata) ? line.scan_metadata : null
+                    scan_metadata: isPlainObject(line.scan_metadata) ? line.scan_metadata : null,
+                    ...(isPlainObject(line.item_discount)
+                        ? {
+                            item_discount: {
+                                discount_type: String(line.item_discount.discount_type || line.item_discount.type || 'manual').trim().toLowerCase(),
+                                label: String(line.item_discount.label || '').trim() || 'Item Discount',
+                                method: String(line.item_discount.method || '').trim().toLowerCase(),
+                                rate: line.item_discount.rate == null ? null : round4(line.item_discount.rate),
+                                amount: line.item_discount.amount == null ? null : round4(line.item_discount.amount),
+                                customer_name: String(line.item_discount.customer_name || '').trim() || null,
+                                id_number: String(line.item_discount.id_number || '').trim() || null,
+                                employee_name: String(line.item_discount.employee_name || '').trim() || null,
+                                employee_id: String(line.item_discount.employee_id || '').trim() || null,
+                                employee_directory_id: parsePositiveInt(line.item_discount.employee_directory_id),
+                                promo_code: String(line.item_discount.promo_code || '').trim().toUpperCase() || null,
+                                reason: String(line.item_discount.reason || '').trim().slice(0, 500) || null,
+                                approver_user_id: parsePositiveInt(line.item_discount.approver_user_id)
+                            }
+                        }
+                        : {})
                 }))
                 .sort((a, b) => a.item_id - b.item_id)
         };
@@ -2598,6 +3079,30 @@ export const buildCheckoutPosUseCase = ({
             }
 
             const settings = await getPosSettings();
+            const governedDraft = isPlainObject(payload.governed_discount) ? payload.governed_discount : null;
+            const hasItemPromo = lines.some((line) => String(line?.item_discount?.discount_type || '').trim().toLowerCase() === 'promo');
+            let discountSettings = settings;
+            if (governedDraft?.type === 'promo' || hasItemPromo) {
+                const promoSetting = await posRepository.findSystemSettingByKey(
+                    STOREFRONT_PROMO_SETTING_KEY,
+                    { transaction, lock: true }
+                );
+                const promosSetting = await posRepository.findSystemSettingByKey(
+                    STOREFRONT_PROMOS_SETTING_KEY,
+                    { transaction, lock: true }
+                );
+                discountSettings = {
+                    ...settings,
+                    [STOREFRONT_PROMO_SETTING_KEY]: {
+                        ...(settings?.[STOREFRONT_PROMO_SETTING_KEY] || {}),
+                        value: normalizeJsonObject(promoSetting?.setting_value, {})
+                    },
+                    [STOREFRONT_PROMOS_SETTING_KEY]: {
+                        ...(settings?.[STOREFRONT_PROMOS_SETTING_KEY] || {}),
+                        value: normalizeJsonArray(promosSetting?.setting_value, [])
+                    }
+                };
+            }
             const resolvedCheckoutLocation = await resolveLocationScope({
                 requestedLocationId,
                 userId: normalizedUserId,
@@ -2656,11 +3161,12 @@ export const buildCheckoutPosUseCase = ({
             };
             const requestHash = hashPayload({
                 ...normalizedRequestPayload,
+                operator_session_id: normalizedOperatorSessionId,
                 terminal_id: normalizedTerminalId || null,
                 location_id: enforcedCheckoutLocationId,
                 restaurant_service_charge: normalizeRestaurantServiceChargeInput({
                     payload,
-                    settings,
+                    settings: discountSettings,
                     useSettings: hasFnbCheckoutContext
                 })
             });
@@ -2766,15 +3272,54 @@ export const buildCheckoutPosUseCase = ({
                 });
             }
 
+            let operatorSession = null;
+            if (normalizedOperatorSessionId) {
+                if (typeof posRepository.getTerminalOperatorSessionById !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'POS operator-session persistence is unavailable.',
+                        { statusCode: 500 }
+                    );
+                }
+                operatorSession = await posRepository.getTerminalOperatorSessionById(normalizedOperatorSessionId, {
+                    transaction,
+                    lock: true
+                });
+                const operatorExpired = operatorSession?.authority_expires_at
+                    && new Date(operatorSession.authority_expires_at).getTime() <= Date.now();
+                if (!operatorSession
+                    || operatorSession.status !== 'active'
+                    || operatorSession.revoked_at
+                    || operatorExpired
+                    || Number(operatorSession.user_id) !== normalizedUserId
+                    || (normalizedTerminalId && String(operatorSession.terminal_id) !== String(normalizedTerminalId))
+                    || (enforcedCheckoutLocationId && Number(operatorSession.location_id) !== Number(enforcedCheckoutLocationId))) {
+                    throw new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'The active cashier authority is no longer valid for this checkout.',
+                        { statusCode: 403, details: { reason_code: 'POS_OPERATOR_AUTHORITY_INVALID' } }
+                    );
+                }
+            }
+
             const activeShift = await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId: normalizedUserId,
-                shiftId: payload.shift_id,
+                shiftId: payload.shift_id || operatorSession?.pos_terminal_shift_id,
                 terminalId: normalizedTerminalId || null,
                 locationId: enforcedCheckoutLocationId || null,
+                authorizedOperatorUserId: operatorSession?.user_id || null,
                 transaction,
                 lock: true
             });
+            if (operatorSession
+                && Number(operatorSession.pos_terminal_shift_id) !== Number(activeShift.pos_terminal_shift_id)) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'The active cashier authority does not match this register shift.',
+                    { statusCode: 403, details: { reason_code: 'POS_OPERATOR_SHIFT_MISMATCH' } }
+                );
+            }
             const normalizedShiftId = parsePositiveInt(activeShift?.pos_terminal_shift_id);
             const shiftLocationId = parsePositiveInt(activeShift?.location_id);
             if (!shiftLocationId) {
@@ -2975,7 +3520,13 @@ export const buildCheckoutPosUseCase = ({
                 subtotalAmount += lineSubtotal;
 
                 preparedLines.push({
+                    line_ref: String(line.line_ref || '').trim() || null,
                     item_id: item.item_id,
+                    // #448 (Phase 209) - snapshotted so post-commit affiliate accrual can resolve
+                    // a per-category commission rate without re-querying the item. Nullable:
+                    // an uncategorized item matches no category rate and falls to the tenant
+                    // default, which is correct, not an error.
+                    folder_id_snapshot: Number.isInteger(item.folder_id) ? item.folder_id : null,
                     item_name: item.name,
                     item_name_snapshot: item.name || null,
                     sku_snapshot: item.sku_code || null,
@@ -3001,97 +3552,370 @@ export const buildCheckoutPosUseCase = ({
                     fnb_special_instructions: String(line.special_instructions || '').trim().slice(0, 1000) || null,
                     fnb_kitchen_station_snapshot: parsePositiveInt(line.kitchen_station_id)
                         ? { kitchen_station_id: parsePositiveInt(line.kitchen_station_id) }
-                        : null
+                        : null,
+                    item_discount_draft: line.item_discount || null,
+                    item_discount_snapshot: null
                 });
                 recipeMovementPlanByPreparedLine.push(lineRecipeMovements);
             }
 
             subtotalAmount = round4(subtotalAmount);
-            const governedDraft = isPlainObject(payload.governed_discount) ? payload.governed_discount : null;
-            let discountSettings = settings;
-            if (governedDraft?.type === 'promo') {
-                const promoSetting = await posRepository.findSystemSettingByKey(
-                    STOREFRONT_PROMO_SETTING_KEY,
-                    { transaction, lock: true }
+            const itemDiscountApplications = [];
+            let itemPromoResolution = null;
+            const employeeDiscountSelfApprovalEnabled = settingBoolean(
+                discountSettings,
+                POS_EMPLOYEE_DISCOUNT_SELF_APPROVAL_SETTING
+            );
+            for (const line of preparedLines) {
+                if (!line.item_discount_draft) continue;
+                const approval = itemDiscountApprovalByItemId.get(Number(line.item_id));
+                const itemApplication = await resolvePosItemDiscount({
+                    draft: line.item_discount_draft,
+                    itemId: line.item_id,
+                    itemName: line.item_name,
+                    preparedLine: line,
+                    settings: discountSettings,
+                    orderMethod: normalizedOrderMethod,
+                    findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
+                    findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction }),
+                    findActiveEmployeeDirectory: (employeeId) => posRepository.findActiveDiscountEmployeeById(employeeId, { transaction })
+                });
+                const trustedApproval = trustedItemDiscountApprovalByItemId.get(Number(line.item_id));
+                const trustedApprovalMatches = trustedItemDiscountApprovalMatches(
+                    trustedApproval,
+                    line.item_discount_draft,
+                    itemApplication
                 );
-                const promosSetting = await posRepository.findSystemSettingByKey(
-                    STOREFRONT_PROMOS_SETTING_KEY,
-                    { transaction, lock: true }
-                );
-                discountSettings = {
-                    ...settings,
-                    [STOREFRONT_PROMO_SETTING_KEY]: {
-                        ...(settings?.[STOREFRONT_PROMO_SETTING_KEY] || {}),
-                        value: normalizeJsonObject(promoSetting?.setting_value, {})
-                    },
-                    [STOREFRONT_PROMOS_SETTING_KEY]: {
-                        ...(settings?.[STOREFRONT_PROMOS_SETTING_KEY] || {}),
-                        value: normalizeJsonArray(promosSetting?.setting_value, [])
+                if (trustedApprovalMatches) {
+                    const activeApprover = await posRepository.findActiveDiscountApproverById(
+                        trustedApproval.approver_user_id,
+                        { transaction }
+                    );
+                    const activeApproverRole = String(activeApprover?.role || '').trim().toLowerCase();
+                    const activeApproverAuthorized = activeApprover?.can_authorize_discounts === true
+                        || activeApprover?.is_master_admin === true
+                        || ['admin', 'manager'].includes(activeApproverRole);
+                    if (!activeApprover || activeApproverAuthorized !== true) {
+                        throw new DomainError(
+                            DomainErrorCode.VALIDATION_FAILED,
+                            'The saved item discount approver is no longer active.',
+                            { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_INACTIVE', item_id: line.item_id } }
+                        );
                     }
-                };
+                    if (itemApplication.discount_type === 'employee') {
+                        assertTrustedEmployeeApprovalIdentity({
+                            approval: trustedApproval,
+                            application: itemApplication,
+                            approver: activeApprover,
+                            applyingUserId: normalizedUserId,
+                            allowSelfApproval: employeeDiscountSelfApprovalEnabled
+                        });
+                    } else if (parsePositiveInt(activeApprover.user_id) === normalizedUserId) {
+                        throw new DomainError(
+                            DomainErrorCode.AUTHORIZATION_FAILED,
+                            'Employees cannot approve their own discount.',
+                            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_BLOCKED' } }
+                        );
+                    }
+                    itemApplication.manager_approval_id = activeApprover.user_id;
+                    itemApplication.manager_approval_name = String(activeApprover.username || '').trim() || null;
+                    const approvedAt = trustedApproval.approved_at ? new Date(trustedApproval.approved_at) : null;
+                    itemApplication.manager_approved_at = approvedAt && !Number.isNaN(approvedAt.getTime())
+                        ? approvedAt
+                        : new Date();
+                    itemApplication.self_approved = trustedApproval.self_approved === true;
+                } else {
+                    const approverId = parsePositiveInt(
+                        line.item_discount_draft.approver_user_id
+                        || approval?.approver_user_id
+                    );
+                    if (!approverId) {
+                        throw new DomainError(
+                            DomainErrorCode.VALIDATION_FAILED,
+                            'An authorized employee PIN is required for every item discount.',
+                            { statusCode: 422, details: { reason_code: 'ITEM_DISCOUNT_APPROVER_REQUIRED', item_id: line.item_id } }
+                        );
+                    }
+                    const approver = await posRepository.findActiveDiscountApproverById(approverId, { transaction });
+                    const verifiedApprover = await verifyPosDiscountApprover({
+                        approver,
+                        pin: approval?.manager_pin,
+                        employeeUserId: itemApplication.discount_type === 'employee'
+                            ? itemApplication.employee_user_id
+                            : normalizedUserId,
+                        employeeDirectoryId: itemApplication.employee_directory_id,
+                        employeeEmail: itemApplication.employee_email,
+                        allowSelfApproval: itemApplication.discount_type === 'employee'
+                            && employeeDiscountSelfApprovalEnabled,
+                        applyingUserId: normalizedUserId
+                    });
+                    itemApplication.manager_approval_id = verifiedApprover.user_id;
+                    itemApplication.manager_approval_name = verifiedApprover.username || null;
+                    itemApplication.manager_approved_at = new Date();
+                    itemApplication.self_approved = verifiedApprover.self_approved === true;
+                }
+                if (!itemPromoResolution && itemApplication.promo_application?.applied) {
+                    itemPromoResolution = itemApplication.promo_application;
+                }
+                itemDiscountApplications.push(itemApplication);
             }
+            const itemDiscountCalculation = calculatePosItemDiscounts({
+                lines: preparedLines,
+                applications: itemDiscountApplications
+            });
+            preparedLines.forEach((line, index) => {
+                line.global_discount_base_amount = itemDiscountCalculation.lines[index].global_discount_base_amount;
+                line.item_discount_snapshot = itemDiscountCalculation.lines[index].item_discount_snapshot;
+                delete line.item_discount_draft;
+            });
+            // #712: bound with the checkout's own transaction/idempotency key/channel so
+            // posDiscountPolicy.js stays DB-agnostic -- same shape as findActiveRule/
+            // findActiveEmployee just above. `quoteOnly` is the only discriminator POS has for
+            // preview-vs-redeem (storefront uses `options?.transaction` presence instead, but POS
+            // always has an open transaction) -- a mis-wired quote path would otherwise burn a real
+            // redemption on every price check.
+            const redeemVoucher = governedDraft?.type === 'voucher'
+                ? async ({ code, lines: voucherLines }) => {
+                    const resolve = quoteOnly ? previewVoucherEligibilityUseCase : redeemVoucherUseCase;
+                    const context = {
+                        channel: 'pos',
+                        fulfillmentMethod: null,
+                        orderTiming: 'asap',
+                        subtotalCentavos: toCurrencyCents(itemDiscountCalculation.total_amount),
+                        quantity: preparedLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0)
+                    };
+                    if (quoteOnly) {
+                        return resolve({ code, context, lines: voucherLines });
+                    }
+                    return resolve({
+                        code,
+                        context,
+                        lines: voucherLines,
+                        idempotencyKey,
+                        channel: 'pos',
+                        storeCustomerId: null,
+                        locationId: requestedLocationId,
+                        transaction
+                    });
+                }
+                : null;
             const governedResolution = governedDraft
                 ? await resolvePosGovernedDiscount({
                     draft: governedDraft,
                     preparedLines,
-                    subtotalAmount,
+                    subtotalAmount: itemDiscountCalculation.total_amount,
                     settings: discountSettings,
                     orderMethod: normalizedOrderMethod,
                     findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
-                    findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction })
+                    findActiveEmployeeDirectory: (employeeId) => posRepository.findActiveDiscountEmployeeById(employeeId, { transaction }),
+                    redeemVoucher
                 })
                 : null;
             const governedApplication = governedResolution?.application || null;
-            if (governedApplication && ['employee', 'manual'].includes(governedApplication.type)) {
-                const employeeAdminBypass = governedApplication.type === 'employee' && isAdminLikeUser(user);
-                if (employeeAdminBypass) {
-                    governedApplication.manager_approval_id = Number(user?.user_id) || null;
-                    governedApplication.manager_approved_at = new Date();
-                    governedApplication.self_approved = true;
+            const governedVoucher = governedResolution?.voucher || null;
+            if ((governedResolution?.promo?.applied || governedVoucher?.applied) && itemPromoResolution?.applied) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Only one promo code can be applied to a sale.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: governedVoucher?.applied
+                                ? VoucherReasonCode.VOUCHER_DISCOUNT_SLOT_OCCUPIED
+                                : 'MULTIPLE_PROMO_CODES_NOT_ALLOWED'
+                        }
+                    }
+                );
+            }
+            const normalizedTrustedDiscountApproval = normalizeTrustedDiscountApproval(trustedDiscountApproval);
+            const normalizedDiscountApproval = isPlainObject(discountApproval)
+                ? {
+                    approver_user_id: parsePositiveInt(discountApproval.approver_user_id),
+                    manager_pin: String(discountApproval.manager_pin || '').trim(),
+                    employee_user_id: parsePositiveInt(discountApproval.employee_user_id),
+                    employee_directory_id: parsePositiveInt(discountApproval.employee_directory_id),
+                    discount_type: String(discountApproval.discount_type || '').trim().toLowerCase()
+                }
+                : (isPlainObject(payload.discount_approval)
+                    ? {
+                        approver_user_id: parsePositiveInt(payload.discount_approval.approver_user_id),
+                        manager_pin: String(payload.discount_approval.manager_pin || '').trim(),
+                        employee_user_id: parsePositiveInt(payload.discount_approval.employee_user_id),
+                        employee_directory_id: parsePositiveInt(payload.discount_approval.employee_directory_id),
+                        discount_type: String(payload.discount_approval.discount_type || '').trim().toLowerCase()
+                    }
+                    : null);
+            // #712: voucher requires a manager PIN, parity with ADR 0033 Decision 7 (Pat's call,
+            // 2026-08-20) -- the amount is merchant-set and server-enforced, not cashier-chosen, but
+            // the same approval discipline applies to every governed discount type without
+            // exception today. See the follow-up issue filed against this decision.
+            if (governedApplication && ['senior', 'pwd', 'employee', 'promo', 'manual', 'voucher'].includes(governedApplication.type)) {
+                if (normalizedDiscountApproval?.discount_type
+                    && normalizedDiscountApproval.discount_type !== governedApplication.type) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'The discount approval type does not match the applied discount.',
+                        { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVAL_TYPE_MISMATCH' } }
+                    );
+                }
+                if (normalizedDiscountApproval?.approver_user_id
+                    && governedDraft?.approver_user_id
+                    && normalizedDiscountApproval.approver_user_id !== parsePositiveInt(governedDraft.approver_user_id)) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'The discount approval employee does not match the applied discount.',
+                        { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_MISMATCH' } }
+                    );
+                }
+                const trustedApprovalMatches = trustedDiscountApprovalMatches(
+                    normalizedTrustedDiscountApproval,
+                    governedDraft,
+                    governedApplication
+                );
+                const offlineStatutoryPolicyMatches = isPlainObject(trustedOfflineStatutoryPolicy)
+                    && ['senior', 'pwd'].includes(governedApplication.type)
+                    && trustedOfflineStatutoryPolicy.discountType === governedApplication.type
+                    && String(trustedOfflineStatutoryPolicy.version || '').trim();
+                if (offlineStatutoryPolicyMatches) {
+                    const policyVersion = String(trustedOfflineStatutoryPolicy.version).trim();
+                    governedApplication.manager_approval_id = null;
+                    governedApplication.manager_approval_name = `Verified mobile policy ${policyVersion.slice(0, 12)}`;
+                    governedApplication.manager_approved_at = new Date(trustedOfflineStatutoryPolicy.verifiedAt || Date.now());
+                    governedApplication.self_approved = false;
+                    governedApplication.reason = [
+                        String(governedApplication.reason || '').trim(),
+                        `Offline statutory policy ${policyVersion}`
+                    ].filter(Boolean).join(' · ').slice(0, 500);
+                } else if (trustedApprovalMatches) {
+                    if (governedApplication.type === 'employee'
+                        && normalizedTrustedDiscountApproval.self_approved === true
+                        && employeeDiscountSelfApprovalEnabled !== true) {
+                        throw new DomainError(
+                            DomainErrorCode.AUTHORIZATION_FAILED,
+                            'Employees cannot approve their own discount.',
+                            { statusCode: 403, details: { reason_code: 'DISCOUNT_SELF_APPROVAL_BLOCKED' } }
+                        );
+                    }
+                    const activeApprover = await posRepository.findActiveDiscountApproverById(
+                        normalizedTrustedDiscountApproval.approver_user_id,
+                        { transaction }
+                    );
+                    const activeApproverRole = String(activeApprover?.role || '').trim().toLowerCase();
+                    const activeApproverAuthorized = activeApprover?.can_authorize_discounts === true
+                        || activeApprover?.is_master_admin === true
+                        || ['admin', 'manager'].includes(activeApproverRole);
+                    if (!activeApprover || activeApproverAuthorized !== true) {
+                        throw new DomainError(
+                            DomainErrorCode.VALIDATION_FAILED,
+                            'The saved discount approver is no longer active.',
+                            { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_INACTIVE' } }
+                        );
+                    }
+                    if (governedApplication.type === 'employee') {
+                        assertTrustedEmployeeApprovalIdentity({
+                            approval: normalizedTrustedDiscountApproval,
+                            application: governedApplication,
+                            approver: activeApprover,
+                            applyingUserId: normalizedUserId,
+                            allowSelfApproval: employeeDiscountSelfApprovalEnabled
+                        });
+                    }
+                    governedApplication.manager_approval_id = activeApprover.user_id;
+                    governedApplication.manager_approval_name = String(activeApprover.username || '').trim() || null;
+                    const approvedAt = normalizedTrustedDiscountApproval.approved_at
+                        ? new Date(normalizedTrustedDiscountApproval.approved_at)
+                        : null;
+                    governedApplication.manager_approved_at = approvedAt && !Number.isNaN(approvedAt.getTime())
+                        ? approvedAt
+                        : new Date();
+                    governedApplication.self_approved = normalizedTrustedDiscountApproval.self_approved === true;
                 } else {
-                    const approverId = parsePositiveInt(governedDraft.approver_user_id);
+                    const approverId = parsePositiveInt(
+                        governedDraft.approver_user_id
+                        || normalizedDiscountApproval?.approver_user_id
+                    );
                     if (!approverId) {
                         throw new DomainError(
                             DomainErrorCode.VALIDATION_FAILED,
-                            'A POS discount approver is required.',
+                            'An authorized employee PIN is required for every POS discount.',
                             { statusCode: 422, details: { reason_code: 'DISCOUNT_APPROVER_REQUIRED' } }
                         );
                     }
                     const approver = await posRepository.findActiveDiscountApproverById(approverId, { transaction });
                     const verifiedApprover = await verifyPosDiscountApprover({
                         approver,
-                        pin: governedDraft.manager_pin,
-                        employeeUserId: governedApplication.type === 'employee' ? governedApplication.employee_id : null
+                        pin: normalizedDiscountApproval?.manager_pin || governedDraft.manager_pin,
+                        employeeUserId: governedApplication.type === 'employee' ? governedApplication.employee_user_id : null,
+                        employeeDirectoryId: governedApplication.type === 'employee'
+                            ? governedApplication.employee_directory_id
+                            : null,
+                        employeeEmail: governedApplication.type === 'employee' ? governedApplication.employee_email : null,
+                        allowSelfApproval: governedApplication.type === 'employee'
+                            && employeeDiscountSelfApprovalEnabled,
+                        applyingUserId: normalizedUserId
                     });
                     governedApplication.manager_approval_id = verifiedApprover.user_id;
+                    governedApplication.manager_approval_name = verifiedApprover.username || null;
                     governedApplication.manager_approved_at = new Date();
-                    governedApplication.self_approved = false;
+                    governedApplication.self_approved = verifiedApprover.self_approved === true;
                 }
             }
-            const governedCalculation = governedApplication ? calculatePosDiscount({
-                lines: preparedLines,
-                application: {
-                    type: governedApplication.type,
-                    method: governedApplication.method,
-                    rate: governedApplication.rate,
-                    amount: governedApplication.amount,
-                    max_discount_amount: governedApplication.max_discount_amount,
-                    lines: governedApplication.lines || [],
-                    beneficiaries: governedApplication.beneficiaries || []
-                }
-            }) : null;
-            const discountResolution = governedCalculation ? {
+            // #712: a voucher's per-line discounts are already authoritative (computed once inside
+            // redeemVoucher, above) -- calculatePosDiscount's generic rate/amount redistribution
+            // must never re-derive them. See posVoucherDiscountCalculator.js's header comment for
+            // why the two are not interchangeable, especially for fixed_price.
+            const governedDiscountLines = preparedLines.map((line, index) => ({
+                ...line,
+                global_discount_base_amount: itemDiscountCalculation.lines[index].global_discount_base_amount
+            }));
+            const governedCalculation = governedApplication
+                ? (governedApplication.type === 'voucher'
+                    ? buildVoucherGovernedCalculation({ lines: governedDiscountLines, voucher: governedVoucher })
+                    : calculatePosDiscount({
+                        lines: governedDiscountLines,
+                        application: {
+                            type: governedApplication.type,
+                            method: governedApplication.method,
+                            rate: governedApplication.rate,
+                            amount: governedApplication.amount,
+                            max_discount_amount: governedApplication.max_discount_amount,
+                            lines: governedApplication.lines || [],
+                            beneficiaries: governedApplication.beneficiaries || []
+                        }
+                    }))
+                : null;
+            const itemDiscountAmount = itemDiscountCalculation.discount_amount;
+            const globalDiscountResolution = governedCalculation ? {
                 discountAmount: governedCalculation.discount_amount,
                 discountLabelSnapshot: governedApplication.label,
                 discountRateSnapshot: governedCalculation.rate
-            } : resolveCheckoutDiscount({ payload, subtotalAmount, settings });
-            const discountAmount = round4(discountResolution.discountAmount);
+            } : resolveCheckoutDiscount({
+                payload: {
+                    ...payload,
+                    discount_amount: round4(Math.max(0, Number(payload.discount_amount || 0) - itemDiscountAmount))
+                },
+                subtotalAmount: itemDiscountCalculation.total_amount,
+                settings
+            });
+            const globalDiscountAmount = round4(globalDiscountResolution.discountAmount);
+            const discountAmount = round4(itemDiscountAmount + globalDiscountAmount);
+            const hasLegacyDiscount = !governedApplication && (
+                globalDiscountAmount > 0
+                || globalDiscountResolution.discountRateSnapshot != null
+            );
+            if (hasLegacyDiscount) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Every POS discount must be authorized with an employee PIN.',
+                    { statusCode: 403, details: { reason_code: 'DISCOUNT_APPROVAL_REQUIRED' } }
+                );
+            }
             const primaryGovernedBeneficiary = governedApplication?.beneficiaries?.[0];
             const discountBeneficiary = primaryGovernedBeneficiary
                 ? { category: primaryGovernedBeneficiary.category, name: primaryGovernedBeneficiary.name, id_number: primaryGovernedBeneficiary.id_number }
                 : normalizeDiscountBeneficiary({
                     payload,
-                    discountLabelSnapshot: discountResolution.discountLabelSnapshot
+                    discountLabelSnapshot: globalDiscountResolution.discountLabelSnapshot
                 });
             const discountBeneficiaries = governedApplication?.beneficiaries?.map((beneficiary, index) => ({
                 category: beneficiary.category,
@@ -3108,8 +3932,8 @@ export const buildCheckoutPosUseCase = ({
                 receiptContract: resolvedReceiptContract
             });
             const netItemsTotal = governedCalculation
-                ? round4(governedCalculation.total_amount)
-                : round4(subtotalAmount - discountAmount);
+                ? round4(itemDiscountCalculation.total_amount - governedCalculation.vat_removed - governedCalculation.discount_amount)
+                : round4(itemDiscountCalculation.total_amount - globalDiscountAmount);
             const serviceFeeResolution = resolveCheckoutServiceFee({
                 payload: { ...payload, order_method: normalizedOrderMethod },
                 grossSubtotal: subtotalAmount
@@ -3132,7 +3956,26 @@ export const buildCheckoutPosUseCase = ({
                         discount_amount: discountAmount,
                         service_fee_amount: serviceFeeAmount,
                         restaurant_service_charge_amount: restaurantServiceChargeAmount,
-                        total_amount: totalAmount
+                        total_amount: totalAmount,
+                        discount_approval: governedApplication ? {
+                            discount_type: governedApplication.type,
+                            approver_user_id: governedApplication.manager_approval_id || null,
+                            employee_user_id: governedApplication.employee_user_id || null,
+                            employee_directory_id: governedApplication.employee_directory_id || null,
+                            self_approved: governedApplication.self_approved === true,
+                            approved_at: governedApplication.manager_approved_at || null,
+                            operator_user_id: normalizedUserId
+                        } : null,
+                        item_discount_approvals: itemDiscountApplications.map((application) => ({
+                            item_id: application.item_id,
+                            discount_type: application.discount_type,
+                            approver_user_id: application.manager_approval_id || null,
+                            employee_user_id: application.employee_user_id || null,
+                            employee_directory_id: application.employee_directory_id || null,
+                            self_approved: application.self_approved === true,
+                            approved_at: application.manager_approved_at || null,
+                            operator_user_id: normalizedUserId
+                        }))
                     }
                 });
             }
@@ -3158,12 +4001,10 @@ export const buildCheckoutPosUseCase = ({
                     transaction
                 });
             }
-            const adjustmentFactor = subtotalAmount > 0 ? (netItemsTotal / subtotalAmount) : 1;
-
             for (const [index, line] of preparedLines.entries()) {
                 line.line_subtotal = governedCalculation
                     ? round4(governedCalculation.lines[index].final_line_amount)
-                    : round4(line.line_subtotal * adjustmentFactor);
+                    : round4(itemDiscountCalculation.lines[index].global_discount_base_amount);
             }
 
             const adjustedSubtotal = round4(
@@ -3277,6 +4118,7 @@ export const buildCheckoutPosUseCase = ({
                     idempotency_key: idempotencyKey,
                     request_hash: requestHash,
                     cashier_id: normalizedUserId,
+                    operator_session_id: normalizedOperatorSessionId,
                     shift_id: normalizedShiftId || null,
                     terminal_id: normalizedTerminalId || null,
                     order_source: 'in_store',
@@ -3323,8 +4165,17 @@ export const buildCheckoutPosUseCase = ({
                     vat_exempt_sales: vatExemptSales,
                     zero_rated_sales: zeroRatedSales,
                     discount_amount: discountAmount,
-                    discount_label_snapshot: discountResolution.discountLabelSnapshot,
-                    discount_rate_snapshot: discountResolution.discountRateSnapshot,
+                    discount_label_snapshot: [
+                        itemDiscountAmount > 0 ? 'Item Discount' : null,
+                        globalDiscountAmount > 0 ? globalDiscountResolution.discountLabelSnapshot : null
+                    ].filter(Boolean).join(' + ') || null,
+                    discount_rate_snapshot: itemDiscountAmount > 0 && globalDiscountAmount > 0
+                        ? null
+                        : (globalDiscountAmount > 0
+                            ? globalDiscountResolution.discountRateSnapshot
+                            : (itemDiscountApplications.length === 1 && itemDiscountApplications[0].method === 'percentage'
+                                ? itemDiscountApplications[0].rate
+                                : null)),
                     service_fee_amount: serviceFeeAmount,
                     service_fee_label_snapshot: serviceFeeResolution.serviceFeeLabelSnapshot,
                     service_fee_method_snapshot: serviceFeeResolution.serviceFeeMethodSnapshot,
@@ -3386,28 +4237,104 @@ export const buildCheckoutPosUseCase = ({
                     entity_type: 'pos_discount',
                     entity_id: posTransactionId,
                     action: 'CREATE',
+                    event_type: 'pos_discount_applied',
+                    shift_id: normalizedShiftId,
+                    terminal_id: normalizedTerminalId,
+                    location_id: enforcedCheckoutLocationId,
                     changes: {
+                        event: 'pos_discount_applied',
                         transaction_id: posTransactionId,
+                        invoice_number: invoiceNumber,
                         discount_type: governedApplication.type,
+                        discount_method: governedCalculation.method,
+                        discount_rate: governedCalculation.rate,
                         discount_amount: governedCalculation.discount_amount,
+                        original_total: subtotalAmount,
+                        final_total: totalAmount,
                         selected_employee_id: governedApplication.type === 'employee'
                             ? governedApplication.employee_id || null
+                            : null,
+                        selected_employee_directory_id: governedApplication.type === 'employee'
+                            ? governedApplication.employee_directory_id || null
                             : null,
                         selected_employee_name: governedApplication.type === 'employee'
                             ? governedApplication.employee_name || null
                             : null,
                         applied_by_user_id: normalizedUserId,
+                        applied_by_name: String(user?.username || '').trim() || null,
+                        cashier_user_id: normalizedUserId,
+                        cashier_name: String(user?.username || '').trim() || null,
+                        authorized_by_user_id: governedApplication.manager_approval_id || null,
+                        authorized_by_name: governedApplication.manager_approval_name || null,
+                        authorized_at: governedApplication.manager_approved_at || null,
                         approved_by_user_id: governedApplication.manager_approval_id || null,
+                        approved_by_name: governedApplication.manager_approval_name || null,
                         approved_at: governedApplication.manager_approved_at || null,
                         self_approved: governedApplication.self_approved === true,
                         beneficiary_count: governedApplication.beneficiaries?.length || 0
                     }
                 }, { transaction });
             }
+            if (itemDiscountAmount > 0 && typeof posRepository.createAuditLog === 'function') {
+                for (const line of preparedLines) {
+                    const snapshot = line.item_discount_snapshot;
+                    const lineDiscountAmount = round4(snapshot?.discount_amount || 0);
+                    if (!snapshot || lineDiscountAmount <= 0) continue;
+                    await posRepository.createAuditLog({
+                        user_id: normalizedUserId,
+                        entity_type: 'pos_item_discount',
+                        entity_id: posTransactionId,
+                        action: 'CREATE',
+                        event_type: 'pos_item_discount_applied',
+                        shift_id: normalizedShiftId,
+                        terminal_id: normalizedTerminalId,
+                        location_id: enforcedCheckoutLocationId,
+                        changes: {
+                            event: 'pos_item_discount_applied',
+                            transaction_id: posTransactionId,
+                            invoice_number: invoiceNumber,
+                            item_id: line.item_id,
+                            item_name: line.item_name,
+                            discount_type: snapshot.discount_type || 'manual',
+                            discount_method: snapshot.method || null,
+                            discount_rate: snapshot.rate ?? null,
+                            discount_amount: lineDiscountAmount,
+                            original_line_total: round4(Number(line.quantity || 0) * Number(line.sale_price || 0)),
+                            final_line_total: round4(line.global_discount_base_amount || 0),
+                            selected_employee_id: snapshot.employee_id || null,
+                            selected_employee_directory_id: snapshot.employee_directory_id || null,
+                            selected_employee_name: snapshot.employee_name || null,
+                            applied_by_user_id: normalizedUserId,
+                            applied_by_name: String(user?.username || '').trim() || null,
+                            cashier_user_id: normalizedUserId,
+                            cashier_name: String(user?.username || '').trim() || null,
+                            authorized_by_user_id: snapshot.approver_user_id || null,
+                            authorized_by_name: snapshot.approver_name || null,
+                            authorized_at: snapshot.approved_at || null,
+                            approved_by_user_id: snapshot.approver_user_id || null,
+                            approved_by_name: snapshot.approver_name || null,
+                            approved_at: snapshot.approved_at || null,
+                            self_approved: snapshot.self_approved === true
+                        }
+                    }, { transaction });
+                }
+            }
             if (governedResolution?.promo?.applied) {
                 const promoUsageUpdate = buildCommercialPromoUsageUpdate({
                     settings: discountSettings,
                     promoApplication: governedResolution.promo
+                });
+                if (promoUsageUpdate) {
+                    await posRepository.updateSystemSettingValueByKey(
+                        promoUsageUpdate.key,
+                        promoUsageUpdate.value,
+                        { transaction, lock: true }
+                    );
+                }
+            } else if (itemPromoResolution?.applied) {
+                const promoUsageUpdate = buildCommercialPromoUsageUpdate({
+                    settings: discountSettings,
+                    promoApplication: itemPromoResolution
                 });
                 if (promoUsageUpdate) {
                     await posRepository.updateSystemSettingValueByKey(
@@ -3464,6 +4391,7 @@ export const buildCheckoutPosUseCase = ({
                     pos_transaction_id: posTransactionId,
                     check_id: fnbCheckId,
                     table_id: fnbTableId,
+                    order_notes: String(payload.special_instructions || '').trim() || null,
                     server_id: fnbServerId,
                     guest_count: fnbGuestCount,
                     order_method: normalizedOrderMethod,
@@ -3578,13 +4506,51 @@ export const buildCheckoutPosUseCase = ({
             // the sale that already succeeded - mirrors recordDgfyOrderActivity's convention.
             if (affiliateEnrollment) {
                 try {
-                    await accrueEarnedForInStoreSale({
+                    // #1199 (Phase 220, decided 2026-08-31): re-verify the enrollment against the
+                    // database at commit time rather than trusting the pre-commit resolve above.
+                    // affiliateEnrollment is a snapshot taken before the transaction ran; a checkout
+                    // can span real work in between (inventory movements, discount approval, the
+                    // commit itself), and if the affiliate was revoked/suspended - or the tenant's
+                    // program disabled - inside that window, the cached object is stale. This is
+                    // the same by-id re-verify Phase 206 (#450 D2) already applies on the storefront
+                    // checkout path, extended to in-store. Plain, non-locking read on the default
+                    // connection - no lock, no FOR UPDATE, no transaction handle needed or wanted
+                    // here (accrual is already idempotent on (tenant_id, order_reference)).
+                    const verifiedEnrollment = await resolveActiveAffiliateEnrollmentById({
                         tenantId,
-                        enrollment: affiliateEnrollment,
-                        orderReference: String(posTransactionId),
-                        posTransactionId,
-                        commissionableBaseCentavos: Math.max(0, toCurrencyCents(subtotalAmount) - toCurrencyCents(discountAmount))
+                        enrollmentId: affiliateEnrollment.enrollment_id
                     });
+                    if (verifiedEnrollment) {
+                        await accrueEarnedForInStoreSale({
+                            tenantId,
+                            enrollment: verifiedEnrollment,
+                            orderReference: String(posTransactionId),
+                            posTransactionId,
+                            commissionableBaseCentavos: Math.max(0, toCurrencyCents(subtotalAmount) - toCurrencyCents(discountAmount)),
+                            // #448 (Phase 209): per-line weights ONLY - the commissionable base above is
+                            // unchanged and stays the single source of the total. line_subtotal here is
+                            // already discount-allocated (see the rewrite ~:3877) but its SUM is
+                            // netItemsTotal, which subtracts vat_removed on the governed senior/PWD
+                            // branch - so these are relative weights, never absolute bases.
+                            commissionLines: preparedLines.map((line) => ({
+                                folderId: line.folder_id_snapshot ?? null,
+                                weightCentavos: Math.max(0, toCurrencyCents(line.line_subtotal))
+                            }))
+                        });
+                    } else {
+                        // In-flight attribution drop (#1199 D2, mirroring #450 D2 on storefront):
+                        // the entry-time 422 gate (~:2984) already hard-rejects an unresolvable code
+                        // before any write, so on POS - unlike storefront - a null re-check here is
+                        // always the in-flight case, never an already-stale one. A bare else, not
+                        // else-if. The sale stands; only the commission is withheld. Logged (never
+                        // thrown) so the drop is attributable later - same non-blocking convention
+                        // as the catch block below.
+                        logger.warn('[PosUseCases] Affiliate attribution dropped: enrollment inactive at commit', {
+                            tenantId,
+                            posTransactionId,
+                            enrollment_id: affiliateEnrollment.enrollment_id
+                        });
+                    }
                 } catch (accrualError) {
                     logger.warn('[PosUseCases] Failed to accrue affiliate commission for in-store sale', {
                         tenantId,
@@ -3698,12 +4664,21 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
     const stockCommands = inventoryCommandService;
-    return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
+    return async ({ posTransactionId, payload = {}, user = {}, trustedMobileReplay = false } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
+        const operatorSessionId = parsePositiveInt(user?.operator_session_id);
         const reason = String(payload.reason || '').trim();
+        const hasShiftIdPayload = Object.prototype.hasOwnProperty.call(payload || {}, 'shift_id')
+            && payload.shift_id != null
+            && String(payload.shift_id).trim() !== '';
         const activeShiftId = parsePositiveInt(payload.shift_id);
         const activeTerminalId = sanitizeTerminalId(payload.terminal_id) || null;
+        const terminalLocationId = parsePositiveInt(payload.terminal_location_id);
+        const requestedVoidIdempotencyKey = String(payload.idempotency_key || '').trim();
+        const expectedStatus = String(payload.expected_status || '').trim().toLowerCase() || null;
+        const expectedServerVersion = String(payload.expected_server_version || '').trim() || null;
+        const adminShiftBypass = isPosAdminOperator(user) && !activeShiftId;
         if (!normalizedTransactionId) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -3718,7 +4693,21 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 { statusCode: 422 }
             ));
         }
-        if (!activeShiftId) {
+        if (!actorUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required to void a POS transaction',
+                { statusCode: 401 }
+            ));
+        }
+        if (hasShiftIdPayload && !activeShiftId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'shift_id must be a positive integer when provided',
+                { statusCode: 422 }
+            ));
+        }
+        if (!activeShiftId && !adminShiftBypass && !trustedMobileReplay) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'An active shift is required to void a POS transaction',
@@ -3730,22 +4719,117 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         const transaction = await sequelize.transaction();
         try {
             const existing = await posRepository.getTransactionById(normalizedTransactionId, { transaction, lock: true });
-            if (!existing || existing.status === 'voided') {
+            if (!existing) {
                 throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    'POS transaction is not available for voiding',
-                    { statusCode: 409 }
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'POS transaction was not found',
+                    { statusCode: 404 }
                 );
             }
 
-            await assertOpenShiftForPosMutation({
-                posRepository,
-                cashierId: actorUserId,
-                shiftId: activeShiftId,
-                terminalId: activeTerminalId,
-                transaction,
-                lock: true
-            });
+            if (activeShiftId && !trustedMobileReplay) {
+                await assertOpenShiftForPosMutation({
+                    posRepository,
+                    cashierId: actorUserId,
+                    shiftId: activeShiftId,
+                    terminalId: activeTerminalId,
+                    locationId: terminalLocationId,
+                    shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                    authorizedOperatorUserId: user?.register_shift_owner_user_id ? actorUserId : null,
+                    transaction,
+                    lock: true
+                });
+            }
+
+            const transactionShiftId = parsePositiveInt(existing.shift_id);
+            const transactionLocationId = parsePositiveInt(existing.location_id);
+            if (terminalLocationId && transactionLocationId !== terminalLocationId) {
+                throw buildLocationScopeDeniedError({
+                    message: 'POS transaction location does not match the registered terminal location.',
+                    reasonCode: LOCATION_SCOPE_REASON_CODES.TRANSACTION_LOCATION_MISMATCH,
+                    statusCode: 403,
+                    details: {
+                        transaction_id: normalizedTransactionId,
+                        transaction_location_id: transactionLocationId,
+                        terminal_location_id: terminalLocationId
+                    }
+                });
+            }
+            const auditShiftId = transactionShiftId || activeShiftId || null;
+            const authorizationMode = trustedMobileReplay
+                ? 'mobile_offline_replay'
+                : (adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift');
+            const originalCashierId = parsePositiveInt(existing.cashier_id);
+            const tenderType = String(existing.payment_type || 'unknown').trim().toLowerCase() || 'unknown';
+            const paymentStatusBeforeVoid = String(existing.payment_status || 'unknown').trim().toLowerCase() || 'unknown';
+            const financialOutcome = resolvePosVoidFinancialOutcome(existing);
+            const voidAdjustmentIdempotencyKey = requestedVoidIdempotencyKey || `pos-void:${normalizedTransactionId}`;
+            const voidAdjustmentPayload = {
+                pos_transaction_id: normalizedTransactionId,
+                reason,
+                actor_user_id: actorUserId,
+                actor_shift_id: activeShiftId || null,
+                actor_terminal_id: activeTerminalId || null,
+                actor_location_id: terminalLocationId || null,
+                original_cashier_id: originalCashierId,
+                original_shift_id: transactionShiftId,
+                original_terminal_id: existing.terminal_id || null,
+                original_location_id: transactionLocationId,
+                tender_type: tenderType,
+                payment_status: paymentStatusBeforeVoid,
+                amount: round4(Number(existing.total_amount || 0)),
+                authorization_mode: authorizationMode,
+                financial_outcome: financialOutcome
+            };
+            const voidAdjustmentRequestHash = hashPayload(voidAdjustmentPayload);
+            const existingVoidAdjustment = await posRepository.findPosTransactionAdjustmentByIdempotencyKey(
+                normalizedTransactionId,
+                voidAdjustmentIdempotencyKey,
+                { transaction, lock: true }
+            );
+            if (existingVoidAdjustment) {
+                if (String(existingVoidAdjustment.request_hash || '') !== voidAdjustmentRequestHash) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'POS void evidence already exists for a different request',
+                        { statusCode: 409 }
+                    );
+                }
+                await transaction.commit();
+                return ok({
+                    transaction: toSerializable(existing),
+                    stock_reversals: [],
+                    authorization_mode: authorizationMode,
+                    transaction_shift_id: transactionShiftId,
+                    financial_outcome: financialOutcome,
+                    idempotent_replay: true,
+                    replay_outcome: 'idempotent_replay'
+                });
+            }
+            if (existing.status === 'voided') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'POS transaction is not available for voiding',
+                    { statusCode: 409, details: { reason_code: 'POS_TRANSACTION_ALREADY_VOIDED' } }
+                );
+            }
+            if (expectedStatus && String(existing.status || '').trim().toLowerCase() !== expectedStatus) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'POS transaction status changed before the offline void was applied',
+                    { statusCode: 409, details: { reason_code: 'MOBILE_VOID_STATUS_CONFLICT', expected_status: expectedStatus, actual_status: existing.status } }
+                );
+            }
+            const actualServerVersion = existing.updated_at instanceof Date
+                ? existing.updated_at.toISOString()
+                : String(existing.updated_at || '').trim();
+            if (expectedServerVersion && actualServerVersion && expectedServerVersion !== actualServerVersion) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'POS transaction changed before the offline void was applied',
+                    { statusCode: 409, details: { reason_code: 'MOBILE_VOID_VERSION_CONFLICT', expected_server_version: expectedServerVersion, actual_server_version: actualServerVersion } }
+                );
+            }
 
             const stockMovements = typeof posRepository.listStockMovementsForPosTransaction === 'function'
                 ? await posRepository.listStockMovementsForPosTransaction(normalizedTransactionId, { transaction })
@@ -3805,13 +4889,84 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     transaction
                 });
             }
+            const voidedAt = new Date();
             const updated = await posRepository.updateTransactionLifecycle(normalizedTransactionId, {
                 status: 'voided',
-                voided_at: new Date(),
+                voided_at: voidedAt,
                 voided_by: actorUserId,
                 void_reason: reason,
                 fiscal_lifecycle_state: existing.document_type === 'fiscal_invoice' ? 'voided' : existing.fiscal_lifecycle_state,
                 fiscal_void_event_hash: fiscalEvent?.event_hash || existing.fiscal_void_event_hash || null
+            }, { transaction });
+
+            const voidAdjustment = await posRepository.createPosTransactionAdjustment({
+                adjustment_reference: `POS-VOID-${normalizedTransactionId}`,
+                pos_transaction_id: normalizedTransactionId,
+                original_cashier_id: originalCashierId,
+                original_shift_id: transactionShiftId,
+                original_terminal_id: existing.terminal_id || null,
+                original_location_id: transactionLocationId,
+                actor_user_id: actorUserId,
+                actor_shift_id: activeShiftId || null,
+                actor_terminal_id: activeTerminalId || null,
+                actor_location_id: terminalLocationId || null,
+                adjustment_type: 'void',
+                tender_type: tenderType,
+                amount: round4(Number(existing.total_amount || 0)),
+                currency: 'PHP',
+                status: 'succeeded',
+                reason,
+                idempotency_key: voidAdjustmentIdempotencyKey,
+                request_hash: voidAdjustmentRequestHash,
+                completed_at: voidedAt,
+                metadata: {
+                    evidence_scope: 'internal_void_only',
+                    operator_session_id: operatorSessionId,
+                    authorization_mode: authorizationMode,
+                    payment_status_before_void: paymentStatusBeforeVoid,
+                    transaction_shift_id: transactionShiftId,
+                    actor_shift_id: activeShiftId || null,
+                    financial_outcome: financialOutcome
+                }
+            }, { transaction });
+            if (!voidAdjustment || String(voidAdjustment.request_hash || '') !== voidAdjustmentRequestHash) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'POS void evidence could not be recorded consistently',
+                    { statusCode: 409 }
+                );
+            }
+
+            await posRepository.createAuditLog({
+                user_id: actorUserId,
+                entity_type: 'pos_transaction',
+                entity_id: normalizedTransactionId,
+                action: 'UPDATE',
+                event_type: 'pos_transaction_voided',
+                terminal_id: activeTerminalId || existing.terminal_id || null,
+                shift_id: auditShiftId,
+                location_id: existing.location_id || null,
+                reason,
+                changes: {
+                    event: 'pos_transaction_voided',
+                    operator_session_id: operatorSessionId,
+                    status: 'voided',
+                    reason,
+                    invoice_number: existing.invoice_number || null,
+                    total_amount: Number(existing.total_amount || 0),
+                    shift_id: auditShiftId,
+                    transaction_shift_id: transactionShiftId,
+                    actor_shift_id: activeShiftId || null,
+                    original_cashier_id: originalCashierId,
+                    voided_by: actorUserId,
+                    authorization_mode: authorizationMode,
+                    terminal_id: activeTerminalId || existing.terminal_id || null,
+                    location_id: existing.location_id || null,
+                        stock_reversals: stockReversals,
+                        fiscal_event_hash: fiscalEvent?.event_hash || null,
+                        adjustment_reference: voidAdjustment.adjustment_reference,
+                        financial_outcome: financialOutcome
+                }
             }, { transaction });
 
             await transaction.commit();
@@ -3833,7 +4988,10 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
 
             return ok({
                 transaction: toSerializable(updated),
-                stock_reversals: stockReversals
+                stock_reversals: stockReversals,
+                authorization_mode: authorizationMode,
+                transaction_shift_id: transactionShiftId,
+                financial_outcome: financialOutcome
             });
         } catch (error) {
             if (!transaction.finished) {
@@ -4198,6 +5356,22 @@ export const buildLoginPosCashierUseCase = ({ authService }) => {
     };
 };
 
+// #1492: which voucher (if any) a transaction row redeemed, projected from the
+// posRepository.listTransactions() voucherRedemptions include (already scoped to
+// entry_type: 'redemption' at the query level) into the same shape
+// storeUseCases.js's serializeAppliedVoucher produces, for one consistent frontend contract across
+// both the authenticated storefront order history and this POS/IMS transaction history.
+const serializeAppliedVouchers = (row) => (
+    Array.isArray(row?.voucherRedemptions)
+        ? row.voucherRedemptions.map((redemption) => ({
+            voucher_id: redemption?.voucher_id ?? null,
+            code: redemption?.code_snapshot ?? null,
+            benefit_target: redemption?.benefit_config_snapshot?.benefit_target === 'delivery' ? 'delivery' : 'items',
+            discount_amount: redemption?.discount_centavos != null ? fromCurrencyCents(redemption.discount_centavos) : null
+        }))
+        : []
+);
+
 export const buildListPosTransactionsUseCase = ({ posRepository }) => {
     return async ({ query, user }) => {
         if (query !== undefined && !isPlainObject(query)) {
@@ -4238,7 +5412,8 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
                         ...row,
                         receipt_print_status: status?.status || 'pending',
                         receipt_printed_at: status?.printed_at || null,
-                        receipt_print_failure_reason: status?.reason_code || null
+                        receipt_print_failure_reason: status?.reason_code || null,
+                        applied_vouchers: serializeAppliedVouchers(row)
                     };
                 })
             });
@@ -4533,11 +5708,48 @@ export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
                 ));
             }
             const serialized = toSerializable(data);
+            const adjustments = typeof posRepository?.listPosTransactionAdjustmentsForTransaction === 'function'
+                ? await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedId)
+                : [];
+            const adjustmentEvidence = (Array.isArray(adjustments) ? adjustments : [])
+                .map(toPublicPosTransactionAdjustment);
+            const latestFinancialOutcome = [...adjustmentEvidence]
+                .reverse()
+                .find((adjustment) => adjustment.financial_outcome)?.financial_outcome || null;
+            const paymentSession = typeof posRepository?.findPosPaymentSessionByCompletedTransactionId === 'function'
+                ? await posRepository.findPosPaymentSessionByCompletedTransactionId(normalizedId)
+                : null;
+            const paymentAllocations = paymentSession && typeof posRepository?.listPosPaymentAllocationsForSession === 'function'
+                ? await posRepository.listPosPaymentAllocationsForSession(paymentSession.pos_payment_session_id)
+                : [];
             const printStatuses = typeof posRepository?.getReceiptPrintStatuses === 'function'
                 ? await posRepository.getReceiptPrintStatuses([normalizedId])
                 : {};
             return ok({
                 ...serialized,
+                adjustments: adjustmentEvidence,
+                payment_session: paymentSession ? {
+                    pos_payment_session_id: paymentSession.pos_payment_session_id,
+                    session_reference: paymentSession.session_reference || null,
+                    status: paymentSession.status || null,
+                    total_amount: paymentSession.total_amount ?? null,
+                    paid_amount: paymentSession.paid_amount ?? null
+                } : null,
+                payment_allocations: (Array.isArray(paymentAllocations) ? paymentAllocations : []).map((allocation) => ({
+                    pos_payment_allocation_id: allocation.pos_payment_allocation_id,
+                    allocation_reference: allocation.allocation_reference || null,
+                    status: allocation.status || null,
+                    payment_method: allocation.payment_method || null,
+                    payment_handoff_mode: allocation.payment_handoff_mode || null,
+                    applied_amount: allocation.applied_amount ?? null,
+                    payment_reference: allocation.payment_reference || null,
+                    payment_provider: allocation.payment_provider || null,
+                    reversed_amount: allocation.reversed_amount ?? 0,
+                    reversal_status: allocation.reversal_status || 'none',
+                    reversed_at: allocation.reversed_at || null,
+                    reversal_reason: allocation.reversal_reason || null
+                })),
+                financial_outcome: latestFinancialOutcome,
                 receipt_print_status: printStatuses?.[normalizedId]?.status || 'pending',
                 receipt_printed_at: printStatuses?.[normalizedId]?.printed_at || null,
                 receipt_print_failure_reason: printStatuses?.[normalizedId]?.reason_code || null
@@ -5131,6 +6343,23 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
                     ? { pos_best_seller_mode: payload.pos_best_seller_mode }
                     : {})
             });
+            await createCatalogAuditLog({
+                posRepository,
+                user,
+                item,
+                eventType: 'pos_catalog_override_updated',
+                changes: {
+                    ...(Object.prototype.hasOwnProperty.call(payload, 'pos_visible')
+                        ? { pos_visible: payload.pos_visible }
+                        : {}),
+                    ...(Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')
+                        ? { pos_always_available: payload.pos_always_available === true }
+                        : {}),
+                    ...(Object.prototype.hasOwnProperty.call(payload, 'pos_best_seller_mode')
+                        ? { pos_best_seller_mode: payload.pos_best_seller_mode }
+                        : {})
+                }
+            });
             return ok(toSerializable(data));
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to update POS catalog override'));
@@ -5255,6 +6484,18 @@ export const buildUpdateBulkPosCatalogOverridesUseCase = ({ posRepository }) => 
                     const updated = await posRepository.upsertCatalogOverride(itemId, {
                         ...(hasPosVisible ? { pos_visible: payload.pos_visible } : {}),
                         ...(hasPosAlwaysAvailable ? { pos_always_available: payload.pos_always_available } : {})
+                    });
+                    await createCatalogAuditLog({
+                        posRepository,
+                        user,
+                        item: readinessEnvelope,
+                        eventType: 'pos_catalog_override_updated',
+                        changes: {
+                            item_id: itemId,
+                            ...(hasPosVisible ? { pos_visible: payload.pos_visible } : {}),
+                            ...(hasPosAlwaysAvailable ? { pos_always_available: payload.pos_always_available } : {}),
+                            bulk_update: true
+                        }
                     });
                     results.push({
                         item_id: itemId,
@@ -5382,6 +6623,17 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
             response.pos_image_variants = stored.image_variants || null;
             response.pos_image_original_path = stored.original?.path || null;
             response.pos_image_classification = stored.classification || null;
+            await createCatalogAuditLog({
+                posRepository,
+                user,
+                item,
+                eventType: 'pos_catalog_image_uploaded',
+                action: 'CREATE',
+                changes: {
+                    original_filename: String(file.originalname || '').slice(0, 180) || null,
+                    replaced_existing_image: Boolean(existing?.pos_image_path)
+                }
+            });
             return ok(response);
         } catch (error) {
             if (stored && !storedCommitted) {
@@ -5530,6 +6782,19 @@ export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageSto
                     });
                     storedCommitted = true;
 
+                    await createCatalogAuditLog({
+                        posRepository,
+                        user,
+                        item,
+                        eventType: 'pos_catalog_image_uploaded',
+                        action: 'CREATE',
+                        changes: {
+                            original_filename: String(file.originalname || '').slice(0, 180) || null,
+                            replaced_existing_image: Boolean(existing?.pos_image_path),
+                            bulk_upload: true
+                        }
+                    });
+
                     if (existing?.pos_image_path && existing.pos_image_path !== stored.path) {
                         try {
                             await imageStorage.remove({ path: existing.pos_image_path });
@@ -5610,6 +6875,16 @@ export const buildDeletePosCatalogImageUseCase = ({ posRepository, imageStorage 
             }
 
             const data = await posRepository.clearCatalogImage(normalizedItemId);
+            await createCatalogAuditLog({
+                posRepository,
+                user,
+                item: { item_id: normalizedItemId },
+                eventType: 'pos_catalog_image_deleted',
+                action: 'DELETE',
+                changes: {
+                    had_image: Boolean(existing?.pos_image_path || existing?.pos_image_url)
+                }
+            });
             return ok(toSerializable(data));
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to delete POS catalog image'));
@@ -5665,6 +6940,8 @@ const buildShiftCashSummary = ({ shift, cashSalesAmount }) => {
     };
 };
 
+const cashSalesFromSalesSummary = (salesSummary) => getPosCashPaymentAmount(salesSummary?.payment_breakdown);
+
 const resolveShiftSalesWindow = (shift = {}) => {
     const startAt = new Date(shift?.opened_at || '');
     if (!Number.isFinite(startAt.getTime())) return {};
@@ -5673,7 +6950,13 @@ const resolveShiftSalesWindow = (shift = {}) => {
     const endAt = Number.isFinite(requestedEndAt.getTime()) && requestedEndAt > startAt
         ? requestedEndAt
         : new Date();
-    return { startAt, endAt };
+    return {
+        // Tenant POS timestamps use DATETIME(0). Buffer both boundaries so a
+        // shift-linked sale created in the same database second as opening or
+        // closing cannot fall outside a millisecond-precision JavaScript window.
+        startAt: new Date(startAt.getTime() - POS_SHIFT_SALES_WINDOW_PRECISION_BUFFER_MS),
+        endAt: new Date(endAt.getTime() + POS_SHIFT_SALES_WINDOW_PRECISION_BUFFER_MS)
+    };
 };
 
 const buildShiftSalesSummary = async ({ posRepository, shiftId, shift, transaction }) => {
@@ -5686,10 +6969,57 @@ const buildShiftSalesSummary = async ({ posRepository, shiftId, shift, transacti
     );
 };
 
+const buildCashierHistorySalesSummary = async ({ posRepository, shiftId, shift }) => {
+    const summary = await buildShiftSalesSummary({ posRepository, shiftId, shift });
+    if (
+        !summary
+        || !shift?.closed_at
+        || String(shift?.status || '').trim().toLowerCase() !== 'closed'
+    ) {
+        return summary;
+    }
+
+    const scope = {
+        shiftId,
+        closedAt: shift.closed_at,
+        terminalId: shift.terminal_id || null,
+        locationId: shift.location_id || null
+    };
+    const [postCloseVoids, postCloseAdjustments] = await Promise.all([
+        typeof posRepository?.getPostCloseVoidSummaryForShift === 'function'
+            ? posRepository.getPostCloseVoidSummaryForShift(scope)
+            : null,
+        typeof posRepository?.getPostCloseAdjustmentSummaryForShift === 'function'
+            ? posRepository.getPostCloseAdjustmentSummaryForShift(scope)
+            : null
+    ]);
+    const postCloseVoidTransactionCount = Number.parseInt(postCloseVoids?.post_close_void_transaction_count || 0, 10);
+    const postCloseVoidAmount = round4(postCloseVoids?.post_close_void_amount);
+    const postCloseVoidedItemCount = round4(postCloseVoids?.post_close_voided_item_count);
+
+    return {
+        ...summary,
+        void_transaction_count: summary.void_transaction_count + postCloseVoidTransactionCount,
+        void_amount: round4(summary.void_amount + postCloseVoidAmount),
+        voided_item_count: round4(summary.voided_item_count + postCloseVoidedItemCount),
+        post_close_void_transaction_count: postCloseVoidTransactionCount,
+        post_close_void_amount: postCloseVoidAmount,
+        post_close_voided_item_count: postCloseVoidedItemCount,
+        post_close_adjustment_count: Number.parseInt(postCloseAdjustments?.post_close_adjustment_count || 0, 10),
+        post_close_refund_amount: round4(postCloseAdjustments?.post_close_refund_amount),
+        post_close_pending_amount: round4(postCloseAdjustments?.post_close_pending_amount),
+        post_close_manual_review_amount: round4(postCloseAdjustments?.post_close_manual_review_amount),
+        post_close_adjustments: Array.isArray(postCloseAdjustments?.post_close_adjustments)
+            ? postCloseAdjustments.post_close_adjustments
+            : []
+    };
+};
+
 export const buildOpenTerminalShiftUseCase = ({
     posRepository,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
-    resolveLocationScope = resolvePosOperationalLocationScope
+    resolveLocationScope = resolvePosOperationalLocationScope,
+    onShiftOpened = null
 }) => {
     return async ({ payload, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
@@ -5855,11 +7185,22 @@ export const buildOpenTerminalShiftUseCase = ({
                         }
                     });
                 }
+                const lifecycle = typeof onShiftOpened === 'function'
+                    ? await onShiftOpened({
+                        shift: existing,
+                        user,
+                        payload,
+                        requestId: idempotencyKey,
+                        tenantId,
+                        transaction
+                    })
+                    : null;
                 const replayPayload = {
                     reused_existing: true,
                     compliance_decision: complianceDecision,
                     terminal_identity_policy: terminalPolicyContext,
-                    shift: toSerializable(existing)
+                    shift: toSerializable(existing),
+                    ...(lifecycle ? { cashier_lifecycle: lifecycle } : {})
                 };
                 await persistOperationReplay({
                     posRepository,
@@ -5932,11 +7273,22 @@ export const buildOpenTerminalShiftUseCase = ({
                 { transaction }
             );
 
+            const lifecycle = typeof onShiftOpened === 'function'
+                ? await onShiftOpened({
+                    shift: hydratedCreated || created,
+                    user,
+                    payload,
+                    requestId: idempotencyKey,
+                    tenantId,
+                    transaction
+                })
+                : null;
             const replayPayload = {
                 reused_existing: false,
                 compliance_decision: complianceDecision,
                 terminal_identity_policy: terminalPolicyContext,
-                shift: toSerializable(hydratedCreated || created)
+                shift: toSerializable(hydratedCreated || created),
+                ...(lifecycle ? { cashier_lifecycle: lifecycle } : {})
             };
             await createShiftAuditLog({
                 posRepository,
@@ -6205,6 +7557,7 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 event: 'shift_location_switched',
                 changes: {
                     authorization_mode: shiftAuthorization.mode,
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     override_reason: shiftAuthorization.override_reason || null,
                     from_location_id: sourceLocationId,
                     to_location_id: enforcedTargetLocationId,
@@ -6295,7 +7648,7 @@ export const buildGetCurrentTerminalShiftUseCase = ({
                 // Terminal context never grants ownership of another cashier's
                 // drawer. Admin monitoring is exposed through a separate
                 // read-only endpoint below.
-                cashierId: normalizedUserId,
+                cashierId: parsePositiveInt(user?.register_shift_owner_user_id) || normalizedUserId,
                 locationId: requestedLocationId
             });
 
@@ -6370,12 +7723,12 @@ export const buildGetCurrentTerminalShiftUseCase = ({
                 });
             }
 
-            const cashSales = await posRepository.getShiftCashSalesTotal(shift.pos_terminal_shift_id);
             const salesSummary = await buildShiftSalesSummary({
                 posRepository,
                 shiftId: shift.pos_terminal_shift_id,
                 shift
             });
+            const cashSales = cashSalesFromSalesSummary(salesSummary);
             return ok({
                 shift: toSerializable(shift),
                 cash_summary: buildShiftCashSummary({ shift: toSerializable(shift), cashSalesAmount: cashSales }),
@@ -6385,6 +7738,82 @@ export const buildGetCurrentTerminalShiftUseCase = ({
             });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to load current terminal shift'));
+        }
+    };
+};
+
+export const buildGetCashierShiftHistoryUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
+    return async ({ query = {}, user }) => {
+        const normalizedUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to view cashier shift history',
+                { statusCode: 401 }
+            ));
+        }
+
+        try {
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: query?.location_id,
+                userId: normalizedUserId,
+                operationLabel: 'POS cashier history read'
+            });
+            const result = await posRepository.listCashierShiftHistory({
+                cashierId: normalizedUserId,
+                locationId: locationScope.location_id,
+                dateFrom: query?.date_from,
+                dateTo: query?.date_to,
+                status: query?.status || 'all',
+                page: query?.page || 1,
+                limit: query?.limit || 20
+            });
+            const rows = Array.isArray(result?.rows) ? result.rows : [];
+            const records = await Promise.all(rows.map(async (row) => {
+                const shift = toSerializable(row);
+                const shiftId = parsePositiveInt(shift?.pos_terminal_shift_id);
+                const salesSummary = shiftId
+                    ? await buildCashierHistorySalesSummary({
+                        posRepository,
+                        shiftId,
+                        shift
+                    })
+                    : null;
+                const cashSales = cashSalesFromSalesSummary(salesSummary);
+                return {
+                    shift,
+                    cash_summary: buildShiftCashSummary({
+                        shift,
+                        cashSalesAmount: cashSales
+                    }),
+                    sales_summary: salesSummary
+                };
+            }));
+
+            return ok({
+                cashier: {
+                    cashier_id: normalizedUserId,
+                    cashier_name: String(user?.username || user?.email || '').trim() || null
+                },
+                records,
+                pagination: result?.pagination || {
+                    page: 1,
+                    limit: 20,
+                    total: records.length,
+                    totalPages: 1
+                },
+                applied_filters: {
+                    location_id: locationScope.location_id,
+                    date_from: normalizeBusinessDateInput(query?.date_from) || null,
+                    date_to: normalizeBusinessDateInput(query?.date_to) || null,
+                    status: query?.status || 'all'
+                }
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to load cashier shift history'));
         }
     };
 };
@@ -6500,6 +7929,7 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
                 event: 'cash_drawer_event_recorded',
                 changes: {
                     authorization_mode: shiftAuthorization.mode,
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     override_reason: shiftAuthorization.override_reason || null,
                     cash_drawer_event_id: created.pos_cash_drawer_event_id || null,
                     event_type: eventType,
@@ -6545,20 +7975,23 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
 };
 
 const assertNoUnresolvedParkedSalesForShift = async ({ posRepository, shiftId, transaction }) => {
-    const activeParkedSaleCount = await posRepository.countActiveParkedSalesForShift(shiftId, {
+    const claimedParkedSaleCount = await posRepository.countActiveParkedSalesForShift(shiftId, {
         transaction,
         lock: true
     });
-    if (Number(activeParkedSaleCount || 0) <= 0) return;
+    if (Number(claimedParkedSaleCount || 0) <= 0) return;
 
     throw new DomainError(
         DomainErrorCode.CONFLICT,
-        `Resolve ${activeParkedSaleCount} active parked sale${Number(activeParkedSaleCount) === 1 ? '' : 's'} before closing this shift.`,
+        `Resolve ${claimedParkedSaleCount} claimed parked sale${Number(claimedParkedSaleCount) === 1 ? '' : 's'} before closing this shift.`,
         {
             statusCode: 409,
             details: {
                 reason_code: 'POS_PARKED_SALES_UNRESOLVED',
-                active_parked_sale_count: Number(activeParkedSaleCount),
+                // Keep the legacy detail key for older clients while exposing
+                // the exact blocking state to newer clients.
+                active_parked_sale_count: Number(claimedParkedSaleCount),
+                claimed_parked_sale_count: Number(claimedParkedSaleCount),
                 shift_id: Number(shiftId)
             }
         }
@@ -6593,7 +8026,57 @@ const assertNoUnresolvedFundedPaymentSessionsForShift = async ({ posRepository, 
     );
 };
 
-export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
+const assertNoInFlightPaymentSessionsForShift = async ({ posRepository, shiftId, transaction }) => {
+    const sessions = typeof posRepository.listInFlightPaymentSessionsForShift === 'function'
+        ? await posRepository.listInFlightPaymentSessionsForShift(shiftId, { transaction, lock: true })
+        : [];
+    if (sessions.length === 0) return;
+
+    throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        `Complete or cancel ${sessions.length} in-flight payment session${sessions.length === 1 ? '' : 's'} before closing this shift.`,
+        {
+            statusCode: 409,
+            details: {
+                reason_code: 'POS_PAYMENT_SESSIONS_IN_FLIGHT',
+                active_payment_session_count: sessions.length,
+                shift_id: Number(shiftId),
+                sessions: sessions.map((session) => ({
+                    pos_payment_session_id: Number(session.pos_payment_session_id),
+                    session_reference: session.session_reference,
+                    status: session.status
+                }))
+            }
+        }
+    );
+};
+
+const assertNoInFlightOperatorMutationForShift = async ({ posRepository, shiftId, transaction }) => {
+    const mutation = typeof posRepository.findInFlightOperatorMutationForShift === 'function'
+        ? await posRepository.findInFlightOperatorMutationForShift(shiftId, {
+            staleBefore: new Date(Date.now() - (5 * 60 * 1000)),
+            transaction,
+            lock: true
+        })
+        : null;
+    if (!mutation) return;
+
+    throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        'Wait for the active cashier operation to finish before closing this shift.',
+        {
+            statusCode: 409,
+            details: {
+                reason_code: 'POS_OPERATOR_MUTATION_IN_FLIGHT',
+                operator_session_id: Number(mutation.pos_terminal_operator_session_id),
+                operation_type: mutation.protected_operation_type || null,
+                shift_id: Number(shiftId)
+            }
+        }
+    );
+};
+
+export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSessionsForTerminal = null, onShiftClosing = null }) => {
     return async ({ shiftId, payload, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
         const normalizedShiftId = parsePositiveInt(shiftId);
@@ -6674,6 +8157,16 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 shiftId: normalizedShiftId,
                 transaction
             });
+            await assertNoInFlightOperatorMutationForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+            await assertNoInFlightPaymentSessionsForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
             await assertNoUnresolvedFundedPaymentSessionsForShift({
                 posRepository,
                 shiftId: normalizedShiftId,
@@ -6681,25 +8174,31 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
             });
 
             const shiftPayload = toSerializable(shift);
-            const cashSales = await posRepository.getShiftCashSalesTotal(
-                normalizedShiftId,
-                { transaction }
-            );
-            const cashEvents = await posRepository.listCashDrawerEventsByShiftId(
-                normalizedShiftId,
-                { transaction }
-            );
-            const tempShift = { ...shiftPayload, cashEvents };
-            const summary = buildShiftCashSummary({ shift: tempShift, cashSalesAmount: cashSales });
             const salesSummary = await buildShiftSalesSummary({
                 posRepository,
                 shiftId: normalizedShiftId,
                 shift: shiftPayload,
                 transaction
             });
+            const cashSales = cashSalesFromSalesSummary(salesSummary);
+            const cashEvents = await posRepository.listCashDrawerEventsByShiftId(
+                normalizedShiftId,
+                { transaction }
+            );
+            const tempShift = { ...shiftPayload, cashEvents };
+            const summary = buildShiftCashSummary({ shift: tempShift, cashSalesAmount: cashSales });
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
             const variance = round4(closingCashAmount - expectedCashAmount);
 
+            const cashierLifecycle = typeof onShiftClosing === 'function'
+                ? await onShiftClosing({
+                    shift,
+                    user,
+                    payload,
+                    requestId: idempotencyKey,
+                    transaction
+                })
+                : null;
             const closed = await posRepository.closeTerminalShift(normalizedShiftId, {
                 closing_cash_amount: closingCashAmount,
                 expected_cash_amount: expectedCashAmount,
@@ -6712,6 +8211,14 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 transaction,
                 lock: true
             });
+            if (typeof revokeOperatorSessionsForTerminal === 'function') {
+                await revokeOperatorSessionsForTerminal({
+                    terminalId: shiftPayload.terminal_id,
+                    reason: 'register_closed',
+                    transaction,
+                    at: new Date()
+                });
+            }
             const shiftLocationId = parsePositiveInt(shiftPayload?.location_id);
             const remainingOpenShifts = shiftLocationId
                 ? await posRepository.listOpenTerminalShiftsForLocation(
@@ -6723,6 +8230,7 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 compliance_decision: complianceDecision,
                 shift_authorization: shiftAuthorization,
                 shift: toSerializable(closed),
+                ...(cashierLifecycle ? { cashier_lifecycle: cashierLifecycle } : {}),
                 cash_summary: {
                     ...summary,
                     closing_cash_amount: closingCashAmount,
@@ -6790,6 +8298,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
 
 export const buildForceCloseStaleTerminalShiftUseCase = ({
     posRepository,
+    revokeOperatorSessionsForTerminal = null,
+    onShiftClosing = null,
     now = () => new Date(),
     staleAfterHours = resolvePosStaleShiftHours()
 }) => {
@@ -6878,6 +8388,16 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                 shiftId: normalizedShiftId,
                 transaction
             });
+            await assertNoInFlightOperatorMutationForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+            await assertNoInFlightPaymentSessionsForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
             await assertNoUnresolvedFundedPaymentSessionsForShift({
                 posRepository,
                 shiftId: normalizedShiftId,
@@ -6885,10 +8405,13 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
             });
 
             const shiftPayload = toSerializable(shift);
-            const cashSales = await posRepository.getShiftCashSalesTotal(
-                normalizedShiftId,
-                { transaction }
-            );
+            const salesSummary = await buildShiftSalesSummary({
+                posRepository,
+                shiftId: normalizedShiftId,
+                shift: shiftPayload,
+                transaction
+            });
+            const cashSales = cashSalesFromSalesSummary(salesSummary);
             const cashEvents = await posRepository.listCashDrawerEventsByShiftId(
                 normalizedShiftId,
                 { transaction }
@@ -6897,14 +8420,17 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                 shift: { ...shiftPayload, cashEvents },
                 cashSalesAmount: cashSales
             });
-            const salesSummary = await buildShiftSalesSummary({
-                posRepository,
-                shiftId: normalizedShiftId,
-                shift: shiftPayload,
-                transaction
-            });
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
             const variance = round4(closingCashAmount - expectedCashAmount);
+            const cashierLifecycle = typeof onShiftClosing === 'function'
+                ? await onShiftClosing({
+                    shift,
+                    user,
+                    payload,
+                    requestId: idempotencyKey,
+                    transaction
+                })
+                : null;
             const closed = await posRepository.closeTerminalShift(normalizedShiftId, {
                 closing_cash_amount: closingCashAmount,
                 expected_cash_amount: expectedCashAmount,
@@ -6917,10 +8443,19 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                 transaction,
                 lock: true
             });
+            if (typeof revokeOperatorSessionsForTerminal === 'function') {
+                await revokeOperatorSessionsForTerminal({
+                    terminalId: shiftPayload.terminal_id,
+                    reason: 'register_force_closed',
+                    transaction,
+                    at: recoveredAt
+                });
+            }
 
             const replayPayload = {
                 compliance_decision: complianceDecision,
                 recovery_authorization: recoveryAuthorization,
+                ...(cashierLifecycle ? { cashier_lifecycle: cashierLifecycle } : {}),
                 shift: toSerializable(closed),
                 cash_summary: {
                     ...summary,
@@ -7021,13 +8556,18 @@ export const buildGetTerminalTodayDashboardUseCase = ({ posRepository }) => {
             });
             const openShift = await posRepository.findOpenTerminalShift({
                 terminalId,
-                cashierId: normalizedUserId,
+                cashierId: parsePositiveInt(user?.register_shift_owner_user_id) || normalizedUserId,
                 locationId: locationScope.location_id
             });
             const shiftPayload = openShift ? toSerializable(openShift) : null;
-            const shiftCashSales = openShift
-                ? await posRepository.getShiftCashSalesTotal(openShift.pos_terminal_shift_id)
-                : 0;
+            const activeShiftSalesSummary = shiftPayload
+                ? await buildShiftSalesSummary({
+                    posRepository,
+                    shiftId: shiftPayload.pos_terminal_shift_id,
+                    shift: shiftPayload
+                })
+                : null;
+            const shiftCashSales = cashSalesFromSalesSummary(activeShiftSalesSummary);
 
             return ok({
                 business_date: businessDate,
@@ -7093,6 +8633,8 @@ export const buildListIncomingOnlineOrdersUseCase = ({
                 posRepository,
                 cashierId: normalizedUserId,
                 shiftId,
+                shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                authorizedOperatorUserId: user?.operator_session_id ? normalizedUserId : null,
                 lock: false
             });
             const shiftLocationId = parsePositiveInt(activeShift?.location_id);
@@ -7133,15 +8675,24 @@ export const buildListIncomingOnlineOrdersUseCase = ({
             const printStatuses = typeof posRepository?.getReceiptPrintStatuses === 'function'
                 ? await posRepository.getReceiptPrintStatuses(orders.map((order) => order?.pos_transaction_id))
                 : {};
+            // Phase 204 (#965): "View proof" affordance data for the queue card. Batched the same
+            // way as printStatuses above -- one query for the whole page, not N+1 per order.
+            const proofStatuses = typeof posRepository?.getBalancePaymentProofStatuses === 'function'
+                ? await posRepository.getBalancePaymentProofStatuses(orders.map((order) => order?.pos_transaction_id))
+                : {};
             return ok({
                 orders: orders.map((order) => {
                     const serialized = toSerializable(order);
                     const status = printStatuses?.[serialized?.pos_transaction_id];
+                    const proofStatus = proofStatuses?.[serialized?.pos_transaction_id];
                     return {
                         ...serialized,
                         receipt_print_status: status?.status || 'pending',
                         receipt_printed_at: status?.printed_at || null,
-                        receipt_print_failure_reason: status?.reason_code || null
+                        receipt_print_failure_reason: status?.reason_code || null,
+                        // Never proof_file_path itself -- a storage key is not a URL (section 5.4).
+                        has_payment_proof: proofStatus?.has_payment_proof === true,
+                        balance_payment_id: proofStatus?.pos_order_payment_id || null
                     };
                 })
             });
@@ -7289,6 +8840,11 @@ const buildCollectCashOnlineOrderUseCase = ({
         const terminalId = sanitizeTerminalId(payload?.terminal_id);
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const cashReceived = round4(payload?.cash_received);
+        const expectedStatus = String(payload?.expected_status || '').trim() || null;
+        const expectedPaymentStatus = String(payload?.expected_payment_status || '').trim().toLowerCase() || null;
+        const expectedServerVersion = payload?.expected_server_version instanceof Date
+            ? payload.expected_server_version.toISOString()
+            : String(payload?.expected_server_version || '').trim() || null;
         if (!orderId || !cashierId || !terminalId || !idempotencyKey || cashReceived <= 0) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -7297,10 +8853,16 @@ const buildCollectCashOnlineOrderUseCase = ({
             ));
         }
 
+        const hasExpectedState = Boolean(expectedStatus || expectedPaymentStatus || expectedServerVersion);
         const requestHash = hashPayload({
             pos_transaction_id: orderId,
             terminal_id: terminalId,
-            cash_received: cashReceived
+            cash_received: cashReceived,
+            ...(hasExpectedState ? {
+                expected_status: expectedStatus,
+                expected_payment_status: expectedPaymentStatus,
+                expected_server_version: expectedServerVersion
+            } : {})
         });
         let transaction = null;
         try {
@@ -7332,6 +8894,28 @@ const buildCollectCashOnlineOrderUseCase = ({
             if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Online ${orderLabel} order not found.`, { statusCode: 404 });
             }
+            const actualServerVersion = order.updated_at instanceof Date
+                ? order.updated_at.toISOString()
+                : String(order.updated_at || '').trim();
+            if (
+                (expectedStatus && String(order.fulfillment_status || '').trim() !== expectedStatus)
+                || (expectedPaymentStatus && String(order.payment_status || '').trim().toLowerCase() !== expectedPaymentStatus)
+                || (expectedServerVersion && actualServerVersion !== expectedServerVersion)
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order changed on the server before the offline cash collection could sync.',
+                    { statusCode: 409, details: {
+                        reason_code: 'MOBILE_ORDER_VERSION_CONFLICT',
+                        expected_status: expectedStatus,
+                        actual_status: String(order.fulfillment_status || '').trim(),
+                        expected_payment_status: expectedPaymentStatus,
+                        actual_payment_status: String(order.payment_status || '').trim().toLowerCase(),
+                        expected_server_version: expectedServerVersion,
+                        actual_server_version: actualServerVersion
+                    } }
+                );
+            }
             if (order.order_method !== orderMethod) {
                 throw new DomainError(DomainErrorCode.CONFLICT, `Cash collection is available only for ${orderLabel} orders.`, { statusCode: 409 });
             }
@@ -7357,6 +8941,8 @@ const buildCollectCashOnlineOrderUseCase = ({
                 cashierId,
                 terminalId,
                 locationId: order.location_id || null,
+                shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                authorizedOperatorUserId: user?.register_shift_owner_user_id ? cashierId : null,
                 transaction,
                 lock: true
             });
@@ -7389,6 +8975,7 @@ const buildCollectCashOnlineOrderUseCase = ({
                 action: 'UPDATE',
                 changes: {
                     event: `${orderLabel}_cash_collected`,
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     payment_type: 'cash',
                     payment_timing: paymentTiming,
                     payment_status: 'paid',
@@ -7460,6 +9047,504 @@ export const buildCollectCashDeliveryOrderUseCase = ({ posRepository }) => build
     fulfillmentLabel: 'out for delivery'
 });
 
+// Phase 148 (#825): staff-recorded settlement of a downpayment order's remaining balance at
+// handover -- the missing middle of epic #815/#273. Phase 141 (#822) captures the downpayment
+// online and leaves the order `partially_paid`; Phase 144 (#824) shows staff how much is still
+// owed; nothing until now could actually record the balance being paid, so such an order could
+// never reach `paid` and never complete.
+//
+// Deliberately a SIBLING of buildCollectCashOnlineOrderUseCase, not an extension of it. #825's
+// first requirement is "extend, don't loosen" -- collect-cash's `payment_status === 'unpaid'` and
+// `cash_received >= total_amount` guards protect the live plain-COD path and are not touched. The
+// two use cases' domains are disjoint by construction: collect-cash owns `unpaid`, this owns
+// `partially_paid`. Everything else here (durable operation replay, request-hash fingerprinting,
+// open-shift assertion, locked order read, audit row) reuses collect-cash's proven scaffolding
+// rather than inventing a second version of it.
+//
+// ADR 0069 clause 2 [binding], carried forward verbatim by ADR 0070 (authoritative): the balance
+// is collected out-of-band by staff and no automatic second PayMongo charge may ever be initiated
+// for it. That clause also requires this action to carry its own single-use confirmation guard
+// following ADR 0063 clause 6 -- a distinct concern from webhook-replay dedupe. Both are present:
+// the durable operation replay makes a duplicate submit a no-op, and a non-cash method fails
+// closed without an explicit `manual_payment_received` attestation.
+//
+// ADR 0069 clause 9 [default]: the VAT/BIR/fiscal treatment of a balance-settlement event is
+// explicitly deferred and is NOT decided here. This writes payment state and ledger evidence only.
+export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
+    return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const terminalId = sanitizeTerminalId(payload?.terminal_id);
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const paymentMethod = String(payload?.payment_method || '').trim().toLowerCase();
+        const paymentReference = String(payload?.payment_reference || '').trim() || null;
+        const manualPaymentReceived = payload?.manual_payment_received === true;
+        const isCashSettlement = paymentMethod === 'cash';
+        // Cash is tendered (change is possible); a digital tender is an exact amount. Read the
+        // relevant field per method rather than overloading one name with two meanings.
+        const cashReceived = isCashSettlement ? round4(payload?.cash_received) : null;
+        const declaredAmount = isCashSettlement ? null : round4(payload?.amount);
+
+        if (!orderId || !cashierId || !terminalId || !idempotencyKey) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Valid order, terminal, and idempotency key are required.',
+                { statusCode: 422 }
+            ));
+        }
+        if (!BALANCE_SETTLEMENT_METHODS.includes(paymentMethod)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Unsupported balance settlement method.',
+                {
+                    statusCode: 422,
+                    details: {
+                        reason_code: 'BALANCE_SETTLEMENT_METHOD_UNSUPPORTED',
+                        supported_methods: [...BALANCE_SETTLEMENT_METHODS]
+                    }
+                }
+            ));
+        }
+        // ADR 0063 clause 6 [binding]: the confirmation must be explicit in the request, not
+        // implied by picking a digital method, and a missing confirmation fails closed. ADR 0063
+        // clause 5 [binding] is what that confirmation attests to -- that the STORE received the
+        // money; DGFY verified nothing.
+        if (!isCashSettlement && !manualPaymentReceived) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Merchant-owned balance settlement requires an explicit confirmation that the store received the payment.',
+                { statusCode: 422, details: { reason_code: 'BALANCE_SETTLEMENT_CONFIRMATION_REQUIRED' } }
+            ));
+        }
+        if (isCashSettlement ? !(cashReceived > 0) : !(declaredAmount > 0)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A positive settlement amount is required.',
+                { statusCode: 422, details: { reason_code: 'BALANCE_SETTLEMENT_AMOUNT_REQUIRED' } }
+            ));
+        }
+
+        const requestHash = hashPayload({
+            pos_transaction_id: orderId,
+            terminal_id: terminalId,
+            payment_method: paymentMethod,
+            cash_received: cashReceived,
+            amount: declaredAmount,
+            manual_payment_received: manualPaymentReceived,
+            payment_reference: paymentReference || ''
+        });
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_BALANCE_SETTLEMENT,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            // Recheck inside the transaction so a concurrent duplicate submit that waited on the
+            // first one returns its durable replay instead of settling the balance twice.
+            const lockedReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_BALANCE_SETTLEMENT,
+                idempotencyKey,
+                requestHash,
+                transaction
+            });
+            if (lockedReplay) {
+                await transaction.rollback();
+                transaction = null;
+                return ok(lockedReplay);
+            }
+
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online order not found.', { statusCode: 404 });
+            }
+            // The disjoint-domain guard. An `unpaid` order belongs to collect-cash; a `paid` one is
+            // already settled. Neither is an error this endpoint may quietly absorb.
+            if (String(order.payment_status || '').trim().toLowerCase() !== 'partially_paid') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Balance settlement is available only for partially paid orders.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'BALANCE_SETTLEMENT_NOT_PARTIALLY_PAID',
+                            payment_status: String(order.payment_status || '').trim().toLowerCase() || null
+                        }
+                    }
+                );
+            }
+            const orderMethod = String(order.order_method || '').trim().toLowerCase();
+            const requiredFulfillmentStatus = BALANCE_SETTLEMENT_HANDOVER_STATUS_BY_METHOD[orderMethod];
+            if (!requiredFulfillmentStatus) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Balance settlement is available only for pickup and delivery orders.',
+                    { statusCode: 409, details: { reason_code: 'BALANCE_SETTLEMENT_ORDER_METHOD_UNSUPPORTED' } }
+                );
+            }
+            if (String(order.fulfillment_status || '').trim() !== requiredFulfillmentStatus) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'The balance can be settled only when the order reaches handover.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'BALANCE_SETTLEMENT_FULFILLMENT_NOT_READY',
+                            required_fulfillment_status: requiredFulfillmentStatus,
+                            fulfillment_status: String(order.fulfillment_status || '').trim() || null
+                        }
+                    }
+                );
+            }
+
+            const balanceDue = round4(order.balance_due);
+            if (!(balanceDue > 0)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order has no outstanding balance to settle.',
+                    { statusCode: 409, details: { reason_code: 'BALANCE_SETTLEMENT_NO_BALANCE_DUE' } }
+                );
+            }
+
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId,
+                terminalId,
+                locationId: order.location_id || null,
+                shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                authorizedOperatorUserId: user?.register_shift_owner_user_id ? cashierId : null,
+                transaction,
+                lock: true
+            });
+
+            // v1 settles the FULL remaining balance in one action (#825). The ledger schema
+            // supports N rows per order, so instalments are a later UI concern, not a schema one.
+            if (isCashSettlement) {
+                if (cashReceived < balanceDue) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Cash received must cover the remaining balance.',
+                        { statusCode: 422, details: { reason_code: 'BALANCE_SETTLEMENT_CASH_SHORT', balance_due: balanceDue, cash_received: cashReceived } }
+                    );
+                }
+            } else if (declaredAmount !== balanceDue) {
+                // No change is possible on a digital tender, so the client must settle the exact
+                // remaining balance -- and echoing it back proves the terminal was not acting on a
+                // stale balance it read before some other event moved it.
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'A merchant-owned settlement must be for the exact remaining balance.',
+                    { statusCode: 422, details: { reason_code: 'BALANCE_SETTLEMENT_AMOUNT_MISMATCH', balance_due: balanceDue, amount: declaredAmount } }
+                );
+            }
+
+            const settledAt = new Date();
+            const changeAmount = isCashSettlement ? round4(cashReceived - balanceDue) : null;
+            const totalAmount = round4(order.total_amount);
+
+            const updated = await posRepository.updateOrderById(orderId, {
+                payment_status: 'paid',
+                amount_paid: totalAmount,
+                balance_due: 0,
+                // Cash-only. A merchant-owned digital settlement leaves these null rather than
+                // claiming cash changed hands -- ADR 0063 clause 5's "must never claim" applied to
+                // the cash-reconciliation fields, not just to provider verification.
+                ...(isCashSettlement ? { cash_received: cashReceived, change_amount: changeAmount } : {}),
+                payment_collected_at: settledAt,
+                payment_collected_by: cashierId,
+                payment_collected_shift_id: activeShift.pos_terminal_shift_id,
+                payment_collected_terminal_id: terminalId,
+                cashier_id: parsePositiveInt(order.cashier_id) || cashierId,
+                shift_id: activeShift.pos_terminal_shift_id
+            }, { transaction, lock: true });
+
+            // Ledger row 2, written in the SAME transaction as the order update -- there is no
+            // window where the order reads `paid` and the ledger has no matching event, mirroring
+            // how Phase 141 writes row 1 alongside order creation. ADR 0069 clause 4b [default],
+            // carried forward by ADR 0070.
+            const downpaymentEntry = await posRepository.findOrderPaymentEntryByKind(
+                orderId,
+                'downpayment',
+                { transaction }
+            );
+            const ledgerEntryId = await posRepository.createOrderPaymentEntry({
+                posTransactionId: orderId,
+                kind: 'balance',
+                status: 'successful',
+                // The balance settled, never the cash tendered -- change is not revenue.
+                amount: balanceDue,
+                paymentMethod,
+                // ADR 0063 clause 4 [binding]: a store-owned digital tender is `merchant_owned`,
+                // categorically separate from PayMongo. Cash has no provider at all.
+                paymentProvider: isCashSettlement ? null : 'merchant_owned',
+                // ADR 0063 clause 5 [binding]: never claim a provider event or provider
+                // verification for a manually attested payment.
+                providerEventId: null,
+                paymentReference,
+                idempotencyKey,
+                relatedPosOrderPaymentId: downpaymentEntry?.pos_order_payment_id || null,
+                recordedBy: cashierId
+            }, { transaction });
+
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'pos_transaction',
+                entity_id: orderId,
+                action: 'UPDATE',
+                changes: {
+                    event: 'order_balance_settled',
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
+                    payment_method: paymentMethod,
+                    payment_provider: isCashSettlement ? null : 'merchant_owned',
+                    manual_payment_received: manualPaymentReceived,
+                    payment_reference: paymentReference,
+                    balance_settled: balanceDue,
+                    cash_received: cashReceived,
+                    change_amount: changeAmount,
+                    pos_order_payment_id: ledgerEntryId,
+                    shift_id: activeShift.pos_terminal_shift_id,
+                    terminal_id: terminalId,
+                    settled_at: settledAt.toISOString()
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            const responsePayload = {
+                order: toSerializable(updated),
+                settlement: {
+                    order_method: orderMethod,
+                    payment_method: paymentMethod,
+                    payment_provider: isCashSettlement ? null : 'merchant_owned',
+                    balance_settled: balanceDue,
+                    cash_received: cashReceived,
+                    change_amount: changeAmount,
+                    payment_reference: paymentReference,
+                    pos_order_payment_id: ledgerEntryId,
+                    settled_at: settledAt.toISOString(),
+                    settled_by: cashierId,
+                    shift_id: activeShift.pos_terminal_shift_id,
+                    terminal_id: terminalId
+                },
+                idempotency: {
+                    key: idempotencyKey,
+                    request_fingerprint: requestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_BALANCE_SETTLEMENT,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload,
+                createdBy: cashierId,
+                transaction
+            });
+            await transaction.commit();
+            return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            return fail(mapPosUseCaseError(error, 'Failed to record the balance payment for this order'));
+        }
+    };
+};
+
+// Phase 204 (#965): attaches a proof-of-payment image to an already-recorded 'balance' ledger
+// row. Deliberately a SEPARATE route/use case from buildRecordOrderBalancePaymentUseCase above,
+// not a fold-in -- so hashPayload's replay fingerprint (POS_OPERATION_KEYS.ORDER_BALANCE_
+// SETTLEMENT) stays untouched by construction, and so a binary payload never has to travel
+// through JSON body validation. Attach-once: a second attempt on a payment that already has a
+// proof fails closed with 409 rather than silently replacing evidence (ADR 0063 clause 10
+// [binding]'s append-only posture, restated by the Amendments block this phase adds).
+export const buildAttachOrderBalancePaymentProofUseCase = ({ posRepository, proofStorage }) => {
+    return async ({ posTransactionId, paymentId, file, user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const normalizedPaymentId = parsePositiveInt(paymentId);
+        const cashierId = parsePositiveInt(user?.user_id);
+
+        const cleanupTempFile = async () => {
+            if (file?.path) {
+                try {
+                    await fs.unlink(file.path);
+                } catch {
+                    // ignore cleanup errors for temp uploads
+                }
+            }
+        };
+
+        if (!orderId || !normalizedPaymentId || !cashierId) {
+            await cleanupTempFile();
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A valid order, payment, and authenticated user are required.',
+                { statusCode: 422 }
+            ));
+        }
+        if (!file) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A proof image file is required.',
+                { statusCode: 422 }
+            ));
+        }
+
+        let transaction = null;
+        let storedProof = null;
+        try {
+            const fileValidation = await validateImageUploadFile({
+                file,
+                maxBytes: BALANCE_PROOF_SOURCE_MAX_BYTES
+            });
+            if (!fileValidation.ok) {
+                logger.warn('[PosUseCases] Rejected balance-payment proof upload due to file validation failure', {
+                    event_type: 'security_signal',
+                    signal_code: 'balance_payment_proof_upload_rejected',
+                    reason: fileValidation.reason,
+                    reported_mime: String(file?.mimetype || '').trim().toLowerCase() || null
+                });
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Only a valid image file may be attached as proof of payment.',
+                    { statusCode: 422, details: { reason_code: 'BALANCE_PROOF_IMAGE_REJECTED', reason: fileValidation.reason } }
+                );
+            }
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online order not found.', { statusCode: 404 });
+            }
+
+            // The ownership check: a payment_id from another order (or of any kind other than
+            // 'balance') simply does not resolve here -- stops a caller attaching evidence to
+            // another order's ledger row.
+            const paymentEntry = await posRepository.findOrderPaymentEntryById(normalizedPaymentId, { transaction, lock: true });
+            if (
+                !paymentEntry
+                || parsePositiveInt(paymentEntry.pos_transaction_id) !== orderId
+                || paymentEntry.kind !== 'balance'
+            ) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Balance payment not found for this order.', { statusCode: 404 });
+            }
+
+            if (paymentEntry.proof_file_path) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'A proof image has already been attached to this payment.',
+                    { statusCode: 409, details: { reason_code: 'BALANCE_PROOF_ALREADY_ATTACHED' } }
+                );
+            }
+
+            storedProof = await proofStorage.store({ orderId, tempPath: file.path });
+
+            const attachedAt = new Date();
+            const updated = await posRepository.updateOrderPaymentEntryProof(normalizedPaymentId, {
+                proof_file_path: storedProof.storage_key,
+                proof_mime_type: storedProof.mime_type,
+                proof_file_size_bytes: storedProof.size_bytes,
+                proof_sha256: storedProof.sha256,
+                proof_attached_at: attachedAt,
+                proof_attached_by: cashierId
+            }, { transaction });
+
+            // Never log the file bytes or a URL -- only the integrity fingerprint and size.
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'pos_transaction',
+                entity_id: orderId,
+                action: 'UPDATE',
+                changes: {
+                    event: 'order_balance_payment_proof_attached',
+                    pos_order_payment_id: normalizedPaymentId,
+                    mime_type: storedProof.mime_type,
+                    size_bytes: storedProof.size_bytes,
+                    sha256: storedProof.sha256,
+                    attached_at: attachedAt.toISOString()
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            await transaction.commit();
+            transaction = null;
+
+            return ok({
+                pos_order_payment_id: normalizedPaymentId,
+                has_payment_proof: true,
+                proof_mime_type: updated.proof_mime_type,
+                proof_file_size_bytes: updated.proof_file_size_bytes,
+                proof_attached_at: updated.proof_attached_at
+            });
+        } catch (error) {
+            // A rolled-back transaction must never orphan a PII file on disk.
+            if (transaction && !transaction.finished) await transaction.rollback();
+            if (storedProof) {
+                try {
+                    await proofStorage.remove(storedProof.storage_key);
+                } catch {
+                    // ignore cleanup errors for orphaned proof files
+                }
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to attach proof of payment for this balance settlement'));
+        } finally {
+            await cleanupTempFile();
+        }
+    };
+};
+
+// Phase 204 (#965): the authed-serving half. Tenant scoping is structural (dbStore, resolved by
+// tenantHandler before this ever runs) rather than a filter here -- see PHASE_204_PLAN.md
+// section 4. Returns 404, never 403, whether the row doesn't exist, belongs to another order, or
+// simply carries no proof -- the route must not leak which case it is.
+export const buildGetOrderBalancePaymentProofUseCase = ({ posRepository, proofStorage }) => {
+    return async ({ posTransactionId, paymentId } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const normalizedPaymentId = parsePositiveInt(paymentId);
+        if (!orderId || !normalizedPaymentId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A valid order and payment id are required.',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const paymentEntry = await posRepository.findOrderPaymentEntryById(normalizedPaymentId);
+            if (
+                !paymentEntry
+                || parsePositiveInt(paymentEntry.pos_transaction_id) !== orderId
+                || paymentEntry.kind !== 'balance'
+                || !paymentEntry.proof_file_path
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'No proof of payment is available for this balance settlement.',
+                    { statusCode: 404 }
+                );
+            }
+
+            return ok({
+                mime_type: paymentEntry.proof_mime_type,
+                size_bytes: paymentEntry.proof_file_size_bytes,
+                stream: proofStorage.createReadStream(paymentEntry.proof_file_path)
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to read the proof of payment for this balance settlement'));
+        }
+    };
+};
+
 export const buildListActiveDeliveryPersonnelUseCase = ({
     posRepository,
     resolveLocationScope = resolvePosReadLocationScope
@@ -7509,6 +9594,89 @@ export const buildListActiveDeliveryPersonnelUseCase = ({
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to list delivery personnel'));
         }
+    };
+};
+
+// Phase 225 (#1273/#1081): the write half of delivery-personnel assignment, extracted from
+// buildAssignDeliveryPersonnelUseCase below so the delivery-run write-through
+// (deliveryRunUseCases.js) can share it rather than authoring a second path that writes
+// delivery_personnel_id/_name/assigned_by/assigned_shift_id/assigned_at. This remains the ONLY
+// code in the repo that writes those fields. `advanceJobStatus: true` reproduces the original
+// per-order assignment endpoint's behavior byte-for-byte (job status advances to `assigned`);
+// `advanceJobStatus: false` is the run write-through path, which populates the assignment fields
+// while leaving delivery_jobs.status untouched (still `pending_dispatch`) -- see ADR 0034's
+// 2026-08-07 and 2026-08-31 amendments for why that split is governance-correct.
+export const applyDeliveryPersonnelAssignment = async ({
+    posRepository,
+    orderId,
+    deliveryJob,
+    personnel,
+    hasRegisteredPersonnel,
+    deliveryPersonnelName,
+    cashierId,
+    activeShift,
+    orderLocationId,
+    advanceJobStatus = false,
+    auditContext = {},
+    transaction
+}) => {
+    const hasThirdPartyPersonnel = !hasRegisteredPersonnel && Boolean(deliveryPersonnelName);
+    const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
+    const nextStatus = advanceJobStatus ? 'assigned' : currentStatus;
+    const assignedAt = new Date();
+
+    const updatedDeliveryJob = await posRepository.assignDeliveryPersonnelToJob(orderId, {
+        delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
+        delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
+        assigned_by: cashierId,
+        assigned_shift_id: activeShift.pos_terminal_shift_id,
+        assigned_at: assignedAt,
+        ...(advanceJobStatus ? { status: nextStatus } : {})
+    }, {
+        transaction,
+        lock: true
+    });
+    if (!updatedDeliveryJob) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'The delivery assignment could not be saved.',
+            {
+                statusCode: 409,
+                details: { reason_code: 'DELIVERY_ASSIGNMENT_UPDATE_FAILED' }
+            }
+        );
+    }
+
+    await posRepository.createAuditLog({
+        user_id: cashierId,
+        entity_type: 'delivery_job',
+        entity_id: parsePositiveInt(deliveryJob.delivery_job_id) || null,
+        action: 'UPDATE',
+        changes: {
+            event: 'delivery_personnel_assigned',
+            pos_transaction_id: orderId,
+            provider: deliveryJob.provider,
+            previous_status: currentStatus,
+            status: nextStatus,
+            previous_delivery_personnel_id: parsePositiveInt(deliveryJob.delivery_personnel_id) || null,
+            previous_delivery_personnel_name: String(deliveryJob.delivery_personnel_name || '').trim() || null,
+            delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
+            delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
+            assigned_by: cashierId,
+            assigned_shift_id: activeShift.pos_terminal_shift_id,
+            location_id: orderLocationId,
+            assigned_at: assignedAt.toISOString()
+        },
+        ip_address: auditContext.ipAddress || null,
+        user_agent: auditContext.userAgent || null
+    }, { transaction });
+
+    return {
+        updatedDeliveryJob,
+        assignedAt,
+        currentStatus,
+        nextStatus,
+        hasThirdPartyPersonnel
     };
 };
 
@@ -7668,6 +9836,16 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 transaction,
                 lock: true
             });
+            const shiftAttributionPayload = buildOnlineOrderShiftAttributionPayload({
+                order,
+                activeShift
+            });
+            if (Object.keys(shiftAttributionPayload).length > 0) {
+                await posRepository.updateOrderById(orderId, shiftAttributionPayload, {
+                    transaction,
+                    lock: true
+                });
+            }
             let personnel = null;
             if (hasRegisteredPersonnel) {
                 personnel = await posRepository.findActiveDeliveryPersonnelById(deliveryPersonnelId, {
@@ -7696,56 +9874,29 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 };
             }
 
-            const assignedAt = new Date();
-            const nextStatus = 'assigned';
-            const updatedDeliveryJob = await posRepository.assignDeliveryPersonnelToJob(orderId, {
-                delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
-                delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
-                assigned_by: cashierId,
-                assigned_shift_id: activeShift.pos_terminal_shift_id,
-                assigned_at: assignedAt,
-                status: nextStatus
-            }, {
-                transaction,
-                lock: true
+            const {
+                updatedDeliveryJob,
+                assignedAt,
+                currentStatus: previousStatus,
+                nextStatus
+            } = await applyDeliveryPersonnelAssignment({
+                posRepository,
+                orderId,
+                deliveryJob,
+                personnel,
+                hasRegisteredPersonnel,
+                deliveryPersonnelName,
+                cashierId,
+                activeShift,
+                orderLocationId,
+                advanceJobStatus: true,
+                auditContext,
+                transaction
             });
-            if (!updatedDeliveryJob) {
-                throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    'The delivery assignment could not be saved.',
-                    {
-                        statusCode: 409,
-                        details: { reason_code: 'DELIVERY_ASSIGNMENT_UPDATE_FAILED' }
-                    }
-                );
-            }
-
-            await posRepository.createAuditLog({
-                user_id: cashierId,
-                entity_type: 'delivery_job',
-                entity_id: parsePositiveInt(deliveryJob.delivery_job_id) || null,
-                action: 'UPDATE',
-                changes: {
-                    event: 'delivery_personnel_assigned',
-                    pos_transaction_id: orderId,
-                    provider: deliveryJob.provider,
-                    previous_status: currentStatus,
-                    status: nextStatus,
-                    previous_delivery_personnel_id: parsePositiveInt(deliveryJob.delivery_personnel_id) || null,
-                    previous_delivery_personnel_name: String(deliveryJob.delivery_personnel_name || '').trim() || null,
-                    delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
-                    delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
-                    assigned_by: cashierId,
-                    assigned_shift_id: activeShift.pos_terminal_shift_id,
-                    location_id: orderLocationId,
-                    assigned_at: assignedAt.toISOString()
-                },
-                ip_address: auditContext.ipAddress || null,
-                user_agent: auditContext.userAgent || null
-            }, { transaction });
 
             const updatedOrder = {
                 ...order,
+                ...shiftAttributionPayload,
                 deliveryJob: updatedDeliveryJob
             };
             const responsePayload = {
@@ -7757,7 +9908,7 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                     assigned_by: cashierId,
                     assigned_shift_id: activeShift.pos_terminal_shift_id,
                     assigned_at: assignedAt.toISOString(),
-                    outcome: currentStatus === nextStatus ? 'reassigned' : 'assigned'
+                    outcome: previousStatus === nextStatus ? 'reassigned' : 'assigned'
                 },
                 idempotency: {
                     key: idempotencyKey,
@@ -7922,6 +10073,16 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                 transaction,
                 lock: true
             });
+            const shiftAttributionPayload = buildOnlineOrderShiftAttributionPayload({
+                order,
+                activeShift
+            });
+            if (Object.keys(shiftAttributionPayload).length > 0) {
+                await posRepository.updateOrderById(orderId, shiftAttributionPayload, {
+                    transaction,
+                    lock: true
+                });
+            }
             const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
             const hasPersonnel = Boolean(
                 parsePositiveInt(deliveryJob.delivery_personnel_id)
@@ -8024,6 +10185,7 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
 
             const updatedOrder = {
                 ...order,
+                ...shiftAttributionPayload,
                 deliveryJob: updatedDeliveryJob
             };
             const responsePayload = {
@@ -8081,7 +10243,8 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
     posRepository,
     inventoryCommandService,
     commerceOrderLifecycleUseCase = null,
-    activityRecorder = recordDgfyOrderActivity
+    activityRecorder = recordDgfyOrderActivity,
+    inventoryReservationService = null
 }) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
@@ -8112,9 +10275,20 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             ));
         }
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const expectedStatus = String(payload?.expected_status || '').trim() || null;
+        const expectedPaymentStatus = String(payload?.expected_payment_status || '').trim().toLowerCase() || null;
+        const expectedServerVersion = payload?.expected_server_version instanceof Date
+            ? payload.expected_server_version.toISOString()
+            : String(payload?.expected_server_version || '').trim() || null;
+        const hasExpectedState = Boolean(expectedStatus || expectedPaymentStatus || expectedServerVersion);
         const replayRequestHash = hashPayload({
             pos_transaction_id: normalizedTransactionId,
-            fulfillment_status: targetStatus
+            fulfillment_status: targetStatus,
+            ...(hasExpectedState ? {
+                expected_status: expectedStatus,
+                expected_payment_status: expectedPaymentStatus,
+                expected_server_version: expectedServerVersion
+            } : {})
         });
 
         const actingUserId = parsePositiveInt(user?.user_id);
@@ -8158,7 +10332,29 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     { statusCode: 409 }
                 );
             }
-            await assertOpenShiftForPosMutation({
+            const actualServerVersion = existing.updated_at instanceof Date
+                ? existing.updated_at.toISOString()
+                : String(existing.updated_at || '').trim();
+            if (
+                (expectedStatus && String(existing.fulfillment_status || '').trim() !== expectedStatus)
+                || (expectedPaymentStatus && String(existing.payment_status || '').trim().toLowerCase() !== expectedPaymentStatus)
+                || (expectedServerVersion && actualServerVersion !== expectedServerVersion)
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order changed on the server before the offline status update could sync.',
+                    { statusCode: 409, details: {
+                        reason_code: 'MOBILE_ORDER_VERSION_CONFLICT',
+                        expected_status: expectedStatus,
+                        actual_status: String(existing.fulfillment_status || '').trim(),
+                        expected_payment_status: expectedPaymentStatus,
+                        actual_payment_status: String(existing.payment_status || '').trim().toLowerCase(),
+                        expected_server_version: expectedServerVersion,
+                        actual_server_version: actualServerVersion
+                    } }
+                );
+            }
+            const activeShift = await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId: actingUserId,
                 locationId: existing.location_id || null,
@@ -8179,6 +10375,33 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 nextStatus: targetStatus,
                 orderMethod: existing.order_method
             });
+            // Phase 148 (#825): the pickup twin of assertDeliveryCompletionReadiness's own
+            // zero-balance gate. Kept as a separate check with its own reason_code rather than
+            // folded into the `!== 'paid'` condition below -- a partially_paid order failing here
+            // is a different operational situation ("collect the balance first") from an unpaid one
+            // ("collect payment first"), and the terminal should be able to tell them apart.
+            //
+            // Ordered BEFORE the unpaid check deliberately: a partially_paid order fails both, and
+            // whichever runs first is the reason_code the terminal sees. The balance one is the
+            // actionable one.
+            if (
+                currentStatus === 'ready_for_pickup'
+                && targetStatus === 'completed'
+                && existing.order_method === 'pickup'
+                && round4(existing.balance_due) > 0
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Settle the remaining balance before marking this pickup order as picked up.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'PICKUP_BALANCE_DUE_OUTSTANDING',
+                            balance_due: round4(existing.balance_due)
+                        }
+                    }
+                );
+            }
             if (
                 currentStatus === 'ready_for_pickup'
                 && targetStatus === 'completed'
@@ -8200,32 +10423,50 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             }
             const mutationTimestamp = new Date();
 
-            if (
-                currentStatus !== 'completed'
-                && targetStatus === 'completed'
-                && (stockCommands?.issueStockForOnlineFulfillment || stockCommands?.createStockMovement)
-            ) {
-                const stockMovements = await buildOnlineOrderStockMovements({
-                    order: existing,
-                    posRepository,
-                    options: {
-                        transaction,
-                        lock: true
+            if (currentStatus !== 'completed' && targetStatus === 'completed') {
+                if (stockCommands?.issueStockForOnlineFulfillment || stockCommands?.createStockMovement) {
+                    const stockMovements = await buildOnlineOrderStockMovements({
+                        order: existing,
+                        posRepository,
+                        options: {
+                            transaction,
+                            lock: true
+                        }
+                    });
+                    for (const movement of stockMovements) {
+                        await executeInventoryStockCommand({
+                            inventoryCommandService: stockCommands,
+                            command: 'issueStockForOnlineFulfillment',
+                            movementData: movement,
+                            userId: actingUserId,
+                            transaction
+                        });
                     }
-                });
-                for (const movement of stockMovements) {
-                    await executeInventoryStockCommand({
-                        inventoryCommandService: stockCommands,
-                        command: 'issueStockForOnlineFulfillment',
-                        movementData: movement,
-                        userId: actingUserId,
+                }
+                if (inventoryReservationService?.convertOnlineOrderInventory) {
+                    await inventoryReservationService.convertOnlineOrderInventory({
+                        sourceId: normalizedTransactionId,
                         transaction
                     });
                 }
+            } else if (
+                currentStatus !== targetStatus
+                && ['cancelled', 'rejected'].includes(targetStatus)
+                && inventoryReservationService?.releaseOnlineOrderInventory
+            ) {
+                await inventoryReservationService.releaseOnlineOrderInventory({
+                    sourceId: normalizedTransactionId,
+                    transaction,
+                    reason: targetStatus
+                });
             }
 
             const updatePayload = {
-                fulfillment_status: targetStatus
+                fulfillment_status: targetStatus,
+                ...buildOnlineOrderShiftAttributionPayload({
+                    order: existing,
+                    activeShift
+                })
             };
 
             // Online orders are created without a cashier. Capture the first staff
@@ -8233,9 +10474,31 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             if (!parsePositiveInt(existing.cashier_id)) {
                 updatePayload.cashier_id = actingUserId;
             }
+            // Phase 210 (#1179). Only the placed -> confirmed|rejected edge stamps accepted_by/at --
+            // a later confirmed -> rejected must NOT overwrite that pair, since it genuinely was
+            // accepted first. Leave this guard as-is; do not "fix" it to also fire on the reject edge.
             if (currentStatus === 'placed' && (targetStatus === 'confirmed' || targetStatus === 'rejected')) {
                 updatePayload.accepted_by = actingUserId;
                 updatePayload.accepted_at = mutationTimestamp;
+            }
+
+            if (targetStatus === 'rejected') {
+                updatePayload.rejection_reason = String(payload?.reason || '').trim().slice(0, 255) || null;
+                updatePayload.rejected_by = actingUserId;
+                updatePayload.rejected_at = mutationTimestamp;
+            }
+
+            // Phase 211 (#1180). Retail-only in the UI, additive in the state machine.
+            // PHASE_211_PLAN.md's own text assumed validateOnlineOrderTransition's
+            // currentStatus === nextStatus early-return would make a repeat packed -> packed PATCH
+            // a no-op here too -- investigated and found FALSE: that early-return only skips the
+            // allowed-transition check, it does not stop this block from running, so an
+            // unconditional `targetStatus === 'packed'` guard (matching the shape used for
+            // `rejected` above) WOULD restamp packed_at/packed_by on every repeat call. Guarded
+            // explicitly on `currentStatus !== targetStatus` instead -- confirmed by test.
+            if (currentStatus !== targetStatus && targetStatus === 'packed') {
+                updatePayload.packed_by = actingUserId;
+                updatePayload.packed_at = mutationTimestamp;
             }
 
             await posRepository.updateOrderById(normalizedTransactionId, updatePayload, {
@@ -8363,6 +10626,233 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 });
             }
             return fail(mapPosUseCaseError(error, 'Failed to update online order status'));
+        }
+    };
+};
+
+// Phase 210 (#1179). Staff-only post-placement delivery-address/pin edit. Pat's confirmed decision:
+// pre-dispatch only (DELIVERY_ADDRESS_EDITABLE_STATUSES) -- an order already out_for_delivery, or in
+// any terminal state, is rejected with a 409. No radius recomputation here: outside_radius_flag is
+// left at whatever it was set to at checkout -- re-enforcing the delivery radius on an address
+// change is #478's job, not this phase's; touching it here would silently change acceptance
+// behaviour for every existing order path.
+export const buildUpdateOnlineOrderDeliveryAddressUseCase = ({
+    posRepository,
+    activityRecorder = recordDgfyOrderActivity
+}) => {
+    return async ({ posTransactionId, payload, user }) => {
+        const normalizedTransactionId = parsePositiveInt(posTransactionId);
+        if (!normalizedTransactionId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'posTransactionId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        if (!isPlainObject(payload)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'payload must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const newAddress = String(payload?.delivery_address || '').trim();
+        if (!newAddress) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'delivery_address is required',
+                { statusCode: 422 }
+            ));
+        }
+        const hasLatitude = payload?.delivery_latitude !== undefined && payload?.delivery_latitude !== null;
+        const hasLongitude = payload?.delivery_longitude !== undefined && payload?.delivery_longitude !== null;
+        if (hasLatitude !== hasLongitude) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'delivery_latitude and delivery_longitude must be provided together',
+                { statusCode: 422 }
+            ));
+        }
+        const newLatitude = hasLatitude ? Number(payload.delivery_latitude) : null;
+        const newLongitude = hasLongitude ? Number(payload.delivery_longitude) : null;
+        const changeReason = String(payload?.change_reason || '').trim();
+        if (!changeReason) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'change_reason is required',
+                { statusCode: 422 }
+            ));
+        }
+
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const replayRequestHash = hashPayload({
+            pos_transaction_id: normalizedTransactionId,
+            delivery_address: newAddress,
+            delivery_latitude: newLatitude,
+            delivery_longitude: newLongitude,
+            change_reason: changeReason
+        });
+
+        const actingUserId = parsePositiveInt(user?.user_id);
+        if (!actingUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_DELIVERY_ADDRESS_UPDATE,
+                idempotencyKey,
+                requestHash: replayRequestHash
+            });
+            if (replay) {
+                return ok(replay);
+            }
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            const existing = await posRepository.getOrderByIdForLifecycle(normalizedTransactionId, {
+                transaction,
+                lock: true
+            });
+            if (!existing) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    `POS transaction not found: ${normalizedTransactionId}`,
+                    { statusCode: 404 }
+                );
+            }
+            if (existing.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Only online store orders can be updated through this endpoint',
+                    { statusCode: 409 }
+                );
+            }
+            if (existing.order_method !== 'delivery') {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Only delivery orders have a delivery address to edit',
+                    { statusCode: 422, details: { reason_code: 'ORDER_ADDRESS_EDIT_NOT_DELIVERY' } }
+                );
+            }
+            const currentStatus = normalizeOnlineFulfillmentStatus(existing.fulfillment_status);
+            if (!currentStatus || !DELIVERY_ADDRESS_EDITABLE_STATUSES.includes(currentStatus)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This order can no longer have its delivery address edited',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'ORDER_ADDRESS_EDIT_TERMINAL_STATE',
+                            current_status: currentStatus,
+                            editable_statuses: DELIVERY_ADDRESS_EDITABLE_STATUSES
+                        }
+                    }
+                );
+            }
+
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId: actingUserId,
+                locationId: existing.location_id || null,
+                transaction,
+                lock: true
+            });
+            const mutationTimestamp = new Date();
+
+            await posRepository.createAddressChange({
+                posTransactionId: normalizedTransactionId,
+                previousAddress: existing.delivery_address || null,
+                previousLatitude: existing.delivery_latitude ?? null,
+                previousLongitude: existing.delivery_longitude ?? null,
+                newAddress,
+                newLatitude,
+                newLongitude,
+                changeReason,
+                changedBy: actingUserId,
+                changedByShiftId: parsePositiveInt(activeShift?.pos_terminal_shift_id) || null,
+                changedAt: mutationTimestamp
+            }, { transaction });
+
+            const updated = await posRepository.updateOrderById(normalizedTransactionId, {
+                delivery_address: newAddress,
+                delivery_latitude: newLatitude,
+                delivery_longitude: newLongitude
+                // outside_radius_flag is deliberately NOT recomputed here -- see #478.
+            }, { transaction, lock: true });
+
+            await transaction.commit();
+
+            const currentTenantId = dbStore.getStore()?.tenantId || null;
+            await activityRecorder({
+                tenantId: currentTenantId,
+                order: updated,
+                storeCustomer: updated?.storeCustomer || updated?.store_customer || null
+            }).catch((activityError) => {
+                logger.warn('Failed to sync DGFY order activity after POS delivery-address update', {
+                    pos_transaction_id: normalizedTransactionId,
+                    tracking_pin: updated?.tracking_pin || null,
+                    error: activityError?.message || activityError
+                });
+            });
+
+            const replayPayload = {
+                order: toSerializable(updated),
+                address_change: {
+                    previous_address: existing.delivery_address || null,
+                    previous_latitude: existing.delivery_latitude ?? null,
+                    previous_longitude: existing.delivery_longitude ?? null,
+                    new_address: newAddress,
+                    new_latitude: newLatitude,
+                    new_longitude: newLongitude,
+                    change_reason: changeReason,
+                    changed_by: actingUserId,
+                    changed_at: mutationTimestamp.toISOString()
+                },
+                idempotency: {
+                    key: idempotencyKey || null,
+                    request_fingerprint: replayRequestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.ORDER_DELIVERY_ADDRESS_UPDATE,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload: replayPayload,
+                createdBy: actingUserId
+            });
+            return ok({
+                ...replayPayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            });
+        } catch (error) {
+            if (transaction && !transaction.finished) {
+                await transaction.rollback();
+            }
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.ORDER_DELIVERY_ADDRESS_UPDATE,
+                    idempotencyKey,
+                    requestHash: replayRequestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: actingUserId
+                });
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to update online order delivery address'));
         }
     };
 };

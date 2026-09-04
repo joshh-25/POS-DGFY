@@ -20,13 +20,37 @@ must include the two headers the `changes` job in `.github/workflows/shared-chan
 - `## Testing Evidence` — how the change was tested
 
 Fill in whichever other template sections apply to the change (Architecture Impact,
-Compliance Evidence, Batch Inventory, etc.) — leave inapplicable ones as unchecked
+Compliance Evidence, Rollout And Safety, etc.) — leave inapplicable ones as unchecked
 boxes rather than deleting them.
+
+### Promotion PR body requirement
+
+A PR whose base branch is `staging` or `main` must include the template's `## Promotion Summary`
+table filled in — one row per item it bundles, each citing its source issue and/or PR, per the
+`Area | Change | Source` shape PR #510 and PR #545 already used by author habit before this was a
+rule (#554). Not required on an ordinary `develop`-based PR — leave the section out or mark it N/A
+there.
+
+### Verified AI/model attribution
+
+When the current runtime has a valid local attribution session, the first content line under
+`## Summary` must be formatter output, for example `Opened by (Codex GPT-5.6 Terra, worker)`.
+Use `node scripts/ai-attribution.js format <runtime> <session-id> Opened <role>`. The session ID
+isn't something to hunt for — Claude Code and Codex both print it, and the exact command to run,
+as plain-text context at session start (`docs/ai/AI_MODEL_ATTRIBUTION.md`). Do not guess a model,
+reuse another session's record, or write `unknown-AI`: if it emits no line, omit attribution.
 
 ## PR base branch
 
-- Non `rc/*` branches (features, fixes, chores, docs) target `develop` as base
-- `rc/*` branches target `main` as base
+- Ordinary branches (features, fixes, chores, docs) target `develop` as base
+- A promotion PR targets `staging`, headed from a `to-staging/<label>` branch, or targets `main`,
+  headed from a `release/<label>` branch — per `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+  (authoritative) and the `promoter` role (`.agents/skills/promoter/SKILL.md`, #512)
+
+Corrected 2026-08-16: this previously referenced an `rc/*` prefix that is not used anywhere else in
+the repo — the actual promotion-branch prefixes are `to-staging/*` and `release/*`, which is also
+what `scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_PREFIX_BY_BASE` and
+`.github/branch-cleanup-policy.json`'s `protectedHeadPrefixes` already match against.
 
 ## Pre-commit safety check
 

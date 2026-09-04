@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-03-06
+last_reviewed: 2026-08-25
 applies_to: all_agents_and_engineers
 topic: documentation_discovery
 ---
@@ -47,16 +47,20 @@ untagged clauses are `default`.
 - `docs/templates`: planning templates
 - `docs/generated`: generated artifacts (non-authoritative unless explicitly stated)
 - `docs/_meta`: machine-readable registry and lint metadata
+- `docs/meetings`: raw stakeholder meeting capture (`authority_level: historical` — never a rule
+  source; decisions worth keeping are routed into an ADR, a governed doc, or an issue)
 
 ## Mandatory Checks Before Implementation Plan
 1. Confirm boundaries and governance docs are cited.
 2. Confirm ADR impact (`new`, `update`, or `not needed`).
 3. Confirm planning does not rely on deprecated docs.
 4. Run `npm run check:architecture` for architecture-sensitive changes.
-5. For release, CI/CD, branch, or production-promotion work, read `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`.
+5. For release, CI/CD, branch, or production-promotion work, read `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+   (`docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`, previously pointed to here, is superseded by it).
 6. For questions about the repository layout under `apps/`, path relocations from the
-   pre-refactor `backend/`/`frontend/`/`android/` trees, or local run/deploy commands, read
-   `docs/architecture/apps-layout-migration.md`.
+   pre-refactor `backend/`/`frontend/`/`android/` trees or the pre-split `apps/dgfy-web/` tree
+   (now `apps/dgfy-ims`/`apps/dgfy-pos`/`apps/dgfy-storefront`/`packages/web-core`), or local
+   run/deploy commands, read `docs/architecture/apps-layout-migration.md`.
 
 ## Deprecated or Historical Material
 Use only for context. Do not use these as a source of architectural truth.

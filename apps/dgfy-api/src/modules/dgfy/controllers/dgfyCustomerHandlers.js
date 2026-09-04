@@ -3,6 +3,7 @@ import {
     createDgfyCustomerAddressUseCase,
     deleteDgfyCustomerAddressUseCase,
     getDgfyCustomerDashboardUseCase,
+    getDgfyCustomerOrderDetailsUseCase,
     getDgfyCustomerLoyaltyUseCase,
     listDgfyCustomerReviewsForModerationUseCase,
     listDgfyCustomerAddressesUseCase,
@@ -59,6 +60,17 @@ export const getDgfyCustomerDashboard = async (req, res, next) => {
 export const listDgfyCustomerOrders = async (req, res, next) => {
     try {
         return send(res, await listDgfyCustomerOrdersUseCase({ account: req.dgfyAccount, query: req.query }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDgfyCustomerOrderDetails = async (req, res, next) => {
+    try {
+        return send(res, await getDgfyCustomerOrderDetailsUseCase({
+            account: req.dgfyAccount,
+            reference: req.params.reference
+        }));
     } catch (error) {
         next(error);
     }

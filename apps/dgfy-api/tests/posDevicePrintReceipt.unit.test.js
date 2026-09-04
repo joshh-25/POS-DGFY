@@ -7,12 +7,14 @@ jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
 }));
 
 let buildPrintPosReceiptUseCase;
+let buildClaimOnlineOrderReceiptAutoPrintUseCase;
 let buildPrintPosShiftSummaryUseCase;
 let buildPrintPosZReadingUseCase;
 
 beforeAll(async () => {
     ({
         buildPrintPosReceiptUseCase,
+        buildClaimOnlineOrderReceiptAutoPrintUseCase,
         buildPrintPosShiftSummaryUseCase,
         buildPrintPosZReadingUseCase
     } = await import('../src/modules/pos/usecases/posDeviceUseCases.js'));
@@ -25,7 +27,14 @@ const buildTransaction = () => ({
     lines: []
 });
 
-const buildPosRepositoryStub = ({ transaction = buildTransaction() } = {}) => ({
+const buildPosRepositoryStub = ({
+    transaction = buildTransaction(),
+    postCloseVoids = {
+        post_close_void_transaction_count: 0,
+        post_close_void_amount: 0,
+        post_close_voided_item_count: 0
+    }
+} = {}) => ({
     findOperationReplayByKey: jest.fn().mockResolvedValue(null),
     findOpenTerminalShift: jest.fn().mockResolvedValue({ pos_terminal_shift_id: 9 }),
     getTransactionById: jest.fn().mockResolvedValue(transaction),
@@ -42,6 +51,7 @@ const buildPosRepositoryStub = ({ transaction = buildTransaction() } = {}) => ({
         closing_cash_amount: 250,
         expected_cash_amount: 250,
         cash_variance_amount: 0,
+        closed_at: '2026-08-07T12:00:00.000Z',
         cashEvents: []
     }),
     getShiftCashSalesTotal: jest.fn().mockResolvedValue(150),
@@ -53,6 +63,7 @@ const buildPosRepositoryStub = ({ transaction = buildTransaction() } = {}) => ({
         total_amount: 150,
         payment_breakdown: [{ payment_type: 'cash', count: 1, amount: 150 }]
     }),
+    getPostCloseVoidSummaryForShift: jest.fn().mockResolvedValue(postCloseVoids),
     getLatestZReadingSnapshotByBusinessDate: jest.fn().mockResolvedValue({
         pos_z_reading_snapshot_id: 12,
         business_date: '2026-08-07',
@@ -144,6 +155,86 @@ describe('buildPrintPosReceiptUseCase — client-delegated printing', () => {
         expect(deviceDriver.printReceipt).toHaveBeenCalledTimes(1);
         expect(result.data.bridge).toEqual({ ok: true, result: { copies: 1 } });
     });
+
+    // logo_raster (issue #321): the LAN/USB bridge path pre-rasterizes the
+    // configured company icon via resolveReceiptLogoRaster (see
+    // receiptLogoRaster.unit.test.js for the encoding itself) and folds it into
+    // the receipt's business settings. This only checks the wiring -- that the
+    // field is present and null when no icon is configured -- not the encoding.
+    it('includes a null business.logo_raster when no company icon is configured', async () => {
+        const posRepository = buildPosRepositoryStub();
+        const deviceDriver = {
+            id: 'lan_escpos_bridge',
+            printReceipt: jest.fn().mockResolvedValue({ ok: true, result: { copies: 1 } })
+        };
+        const useCase = buildPrintPosReceiptUseCase({ posRepository, deviceDriver });
+
+        await useCase({
+            payload: { transaction_id: 42 },
+            user: { user_id: 1 }
+        });
+
+        const [printCall] = deviceDriver.printReceipt.mock.calls;
+        expect(printCall[0].receipt.business).toHaveProperty('logo_raster', null);
+    });
+});
+
+describe('buildClaimOnlineOrderReceiptAutoPrintUseCase', () => {
+    const eligibleTransaction = {
+        pos_transaction_id: 42,
+        order_source: 'online_store',
+        fulfillment_status: 'confirmed',
+        payment_status: 'paid',
+        payment_provider: 'paymongo',
+        balance_due: 0,
+        location_id: 3
+    };
+
+    it('atomically grants only one automatic receipt claim across terminals', async () => {
+        let storedReplay = null;
+        const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue({ location_id: 3 }),
+            getTransactionById: jest.fn().mockResolvedValue(eligibleTransaction),
+            createOperationReplay: jest.fn(async (payload) => {
+                storedReplay ||= payload;
+                return storedReplay;
+            })
+        };
+        const claim = buildClaimOnlineOrderReceiptAutoPrintUseCase({ posRepository });
+
+        const first = await claim({
+            payload: { transaction_id: 42, terminal_id: 'COUNTER-01' },
+            user: { user_id: 7 }
+        });
+        const second = await claim({
+            payload: { transaction_id: 42, terminal_id: 'COUNTER-02' },
+            user: { user_id: 8 }
+        });
+
+        expect(first).toMatchObject({ success: true, data: { claimed: true, eligible: true } });
+        expect(second).toMatchObject({ success: true, data: { claimed: false, eligible: true } });
+    });
+
+    it.each([
+        ['cash on delivery', { payment_provider: null, payment_status: 'unpaid' }],
+        ['downpayment', { payment_provider: 'paymongo', payment_status: 'partially_paid', balance_due: 75 }],
+        ['unconfirmed order', { fulfillment_status: 'placed' }]
+    ])('does not auto-print an ineligible %s order', async (_label, override) => {
+        const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue({ location_id: 3 }),
+            getTransactionById: jest.fn().mockResolvedValue({ ...eligibleTransaction, ...override }),
+            createOperationReplay: jest.fn()
+        };
+        const claim = buildClaimOnlineOrderReceiptAutoPrintUseCase({ posRepository });
+
+        const result = await claim({
+            payload: { transaction_id: 42, terminal_id: 'COUNTER-01' },
+            user: { user_id: 7 }
+        });
+
+        expect(result).toMatchObject({ success: true, data: { claimed: false, eligible: false } });
+        expect(posRepository.createOperationReplay).not.toHaveBeenCalled();
+    });
 });
 
 describe('buildPrintPosShiftSummaryUseCase', () => {
@@ -172,7 +263,13 @@ describe('buildPrintPosShiftSummaryUseCase', () => {
     });
 
     it('dispatches the closed shift summary to the server printer driver', async () => {
-        const posRepository = buildPosRepositoryStub();
+        const posRepository = buildPosRepositoryStub({
+            postCloseVoids: {
+                post_close_void_transaction_count: 1,
+                post_close_void_amount: 125,
+                post_close_voided_item_count: 1
+            }
+        });
         const deviceDriver = {
             id: 'lan_escpos_bridge',
             printShiftSummary: jest.fn().mockResolvedValue({ ok: true, result: { copies: 1 } })
@@ -190,9 +287,21 @@ describe('buildPrintPosShiftSummaryUseCase', () => {
             copies: 1,
             paper_width: '80mm',
             shift_summary: expect.objectContaining({
-                cash_summary: expect.objectContaining({ cash_sales_amount: 150 })
+                cash_summary: expect.objectContaining({ cash_sales_amount: 150 }),
+                sales_summary: expect.objectContaining({
+                    void_transaction_count: 1,
+                    void_amount: 125,
+                    post_close_void_transaction_count: 1,
+                    post_close_void_amount: 125
+                })
             })
         }));
+        expect(posRepository.getPostCloseVoidSummaryForShift).toHaveBeenCalledWith({
+            shiftId: 9,
+            closedAt: '2026-08-07T12:00:00.000Z',
+            terminalId: 'POS-01',
+            locationId: 1
+        }, { transaction: undefined });
     });
 });
 

@@ -1,4 +1,5 @@
 import { tenantRepository } from '../tenants/repositories/tenantRepository.js';
+import { tenantLocationRepository } from '../tenantLocations/repositories/tenantLocationRepository.js';
 import { settingsRepository } from './repositories/settingsRepository.js';
 import { buildGetCompanyInfoUseCase } from './usecases/getCompanyInfoUseCase.js';
 import { buildGetAllSettingsUseCase } from './usecases/getAllSettingsUseCase.js';
@@ -23,11 +24,15 @@ export const getAllSettingsUseCase = buildGetAllSettingsUseCase({ settingsReposi
 export const getSettingByKeyUseCase = buildGetSettingByKeyUseCase({ settingsRepository });
 export const updateSettingsUseCase = buildUpdateSettingsUseCase({
     settingsRepository,
-    storefrontAssetStorage
+    storefrontAssetStorage,
+    tenantLocationRepository,
+    tenantRepository
 });
 export const updateSettingByKeyUseCase = buildUpdateSettingByKeyUseCase({
     settingsRepository,
-    storefrontAssetStorage
+    storefrontAssetStorage,
+    tenantLocationRepository,
+    tenantRepository
 });
 export const generateStorefrontSlugUseCase = buildGenerateStorefrontSlugUseCase({
     settingsRepository,

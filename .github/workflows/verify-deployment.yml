@@ -1,0 +1,238 @@
+name: Verify Deployment Health
+
+# Manually-dispatched health verification for a deployed environment -- fills the gap named in
+# #514: nothing today verifies a deploy actually came up healthy. `deploy.yml`/`deploy-main.yml`
+# hand off to `publish-platform.yml`, which runs `docker compose pull && docker compose up -d`
+# with no post-deploy check at all.
+#
+# Why polling, not a single snapshot: docs/ops/STAGING_TO_MAIN_PROMOTION_INCIDENT_2026-07-28.md
+# is a worked incident where a clean `exit(1)` crash-loop was invisible in `docker inspect`'s
+# OOMKilled/Error fields and only showed up as `RestartCount` climbing across repeated checks. A
+# container also reports "Up" immediately after `up -d` even if it is about to die -- a check run
+# right after deploy cannot catch that. This workflow polls `docker compose ps` health status and
+# each service's `RestartCount` over a window instead of checking once.
+#
+# v1 is report-only (#514's own stated scope): it detects and reports (workflow run conclusion +
+# step summary), it does not roll back or remediate -- #495 (no rollback mechanism for this deploy
+# path) doesn't exist yet. Matches the report-only-first pattern already used for Observer,
+# PR Reviewer, and Worker before any of them were trusted to act unsupervised.
+#
+# Every remote command below is READ-ONLY (`docker compose ps`, `docker inspect`, an in-container
+# `curl` against dgfy-api's own health endpoint) -- unlike publish-platform.yml's `docker compose
+# up -d`, nothing here mutates server state. Reuses that same workflow's established
+# SSH_PRIVATE_KEY/SSH_TARGET-per-GitHub-Environment secret pattern for the same 3 environments
+# (DEV/STAGING/PROD -- BETA retired 2026-08-23, #329/#895); see
+# docs/ops/RELEASE_CANDIDATE_POLICY.md for the current release-flow authority governing that
+# secret-handling pattern.
+#
+# `dgfy-api` has no host port published (compose: `networks: [dgfy_internal]` only), so `/health`
+# is polled via `docker compose exec` into the container itself, exactly like the container's own
+# healthcheck does -- not via a public domain, which would need per-environment domain knowledge.
+#
+# VPN: both registered self-hosted runners (vm-sieitzstaging, vm-openproject) sit on the same
+# internal LAN as the DEV/STAGING server (vm-sieitzstaging IS that server -- confirmed #598/#599),
+# so no environment needs an OpenVPN hop today. The `vpn_required` input below exists solely as a
+# fallback for a GitHub-hosted runner, which *would* need it -- see docs/ops/
+# CI_RUNNER_MIGRATION_HANDOFF.md for the switch-back procedure. Bringing up OpenVPN on a runner
+# already on the target network rewrites its own default route/DNS and can strand the job with no
+# path back to GitHub's control plane -- this is what happened on run 31957380863 (#598): it hung
+# past its own timeout-minutes and ignored `gh run cancel`.
+#
+# Does NOT resolve #514's own "open question": whether Claude Code Cloud's GitHub App grants
+# `actions:write` (to dispatch this) and `actions:read` (to poll the run conclusion) is left
+# unconfirmed here -- this workflow only needs to work when dispatched by any identity that does
+# have that scope, by hand or otherwise.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployed environment to verify (resolves SSH_PRIVATE_KEY/SSH_TARGET from that GitHub Environment)
+        type: choice
+        options:
+          - DEV
+          - STAGING
+          - PROD
+        required: true
+      poll_minutes:
+        description: Minutes to poll for (a single snapshot can't catch a crash-loop -- see header comment)
+        type: string
+        default: '5'
+      vpn_required:
+        description: Connect to a VPN (OVPN_CONFIG/OVPN_USERNAME/OVPN_PASSWORD secrets) before SSH-ing in -- only needed on a GitHub-hosted runner, see header comment
+        type: boolean
+        default: false
+      runner_labels_json:
+        description: 'JSON array of runner labels to dispatch onto (Phase 234 Wave 2, #1365) -- default is unchanged self-hosted behavior; every remote command here is read-only'
+        type: string
+        default: '["sieitz-runner"]'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}  # #923: generic, either box; #1365 Wave 2: dispatch-input override, default unchanged
+    timeout-minutes: 15
+    environment: ${{ inputs.environment }}
+    steps:
+      # VPN gating mirrors publish-platform.yml: opt-in only, for a GitHub-hosted runner fallback.
+      # Every self-hosted runner already sits on the DEV/STAGING network -- see header comment.
+      - name: Write OpenVPN config
+        if: inputs.vpn_required
+        env:
+          OVPN_CONFIG: ${{ secrets.OVPN_CONFIG }}
+        run: |
+          printf '%s\n' "$OVPN_CONFIG" > /tmp/client.ovpn
+
+      - name: Install OpenVPN
+        if: inputs.vpn_required
+        run: |
+          sudo apt update
+          sudo apt install -y openvpn openvpn-systemd-resolved
+
+      - name: Connect to VPN
+        if: inputs.vpn_required
+        uses: kota65535/github-openvpn-connect-action@v2
+        with:
+          config_file: /tmp/client.ovpn
+          username: ${{ secrets.OVPN_USERNAME }}
+          password: ${{ secrets.OVPN_PASSWORD }}
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${SSH_TARGET#*@}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Poll deployed containers for health / crash-loop signature
+        id: poll
+        env:
+          SSH_TARGET: ${{ secrets.SSH_TARGET }}
+          DOCKER_DIR: ${{ secrets.DOCKER_DIR }}
+          POLL_MINUTES: ${{ inputs.poll_minutes }}
+        run: |
+          set -euo pipefail
+
+          # Written to a file rather than inlined into the ssh command: this loop is long enough
+          # that a single-quoted heredoc (no local expansion) reads far more clearly than an
+          # escaped one-liner. DOCKER_DIR/POLL_MINUTES cross the SSH boundary as remote env vars
+          # in the command line below, not by local expansion into this heredoc.
+          cat > /tmp/remote-verify.sh <<'REMOTE_SCRIPT'
+          set -uo pipefail
+          cd "$DOCKER_DIR" || exit 1
+
+          # SERVICES was previously a hardcoded "mysql redis dgfy-api frontend nginx" -- stale
+          # after ADR 0071 (#322/#915) retired `frontend` in favor of dgfy-ims/dgfy-pos/dgfy-
+          # storefront, and also wrong on DEV/STAGING even before that split: they've never run a
+          # containerized nginx (fronted by a separate host nginx process, not part of this compose
+          # file), so the hardcoded list made every DEV/STAGING dispatch fail on "service nginx has
+          # no container at poll start" -- a pre-existing bug, not introduced by the frontend split.
+          # Deriving the list from the server's own compose config instead of hardcoding it fixes
+          # both, and self-adapts to any future service rename without another edit here: whatever
+          # this specific server's docker-compose.yml actually defines (frontend today, dgfy-ims/
+          # dgfy-pos/dgfy-storefront once the cutover runbook runs; nginx only where it's actually
+          # defined) is exactly what gets health-checked.
+          #
+          # dgfy-migration-runner is excluded: it's a one-shot (restart: "no",
+          # infrastructure/docker/docker-compose.yml) that has already exited by the time
+          # verification runs. `docker compose ps -q` lists running containers only, so leaving it
+          # in SERVICES turned every dispatch into a false FAIL ("no container at poll start")
+          # regardless of actual health -- caught in review (RF-2, PR #513). If a second one-shot
+          # service is ever added, extend this filter rather than re-deriving it from restart
+          # policy -- that needs jq, which nothing else in this remote script currently depends on.
+          SERVICES="$(docker compose config --services | grep -vx dgfy-migration-runner)"
+
+          POLLS=$(( POLL_MINUTES * 3 ))  # ~20s apart
+          FAIL=0
+
+          declare -A START_RC
+          for s in $SERVICES; do
+            cid="$(docker compose ps -q "$s")"
+            if [ -n "$cid" ]; then
+              START_RC[$s]="$(docker inspect --format '{{.RestartCount}}' "$cid")"
+            else
+              START_RC[$s]="missing"
+              echo "::error::service $s has no container at poll start"
+              FAIL=1
+            fi
+          done
+
+          for i in $(seq 1 "$POLLS"); do
+            echo "--- poll $i/$POLLS ---"
+            docker compose ps
+
+            for s in $SERVICES; do
+              cid="$(docker compose ps -q "$s")"
+              if [ -z "$cid" ]; then
+                echo "::error::service $s has no running container"
+                FAIL=1
+                continue
+              fi
+              rc="$(docker inspect --format '{{.RestartCount}}' "$cid")"
+              echo "$s RestartCount=$rc (started at ${START_RC[$s]})"
+              if [ "$rc" != "${START_RC[$s]}" ]; then
+                echo "::error::service $s RestartCount increased during the poll window (${START_RC[$s]} -> $rc) -- crash-loop signature"
+                FAIL=1
+              fi
+            done
+
+            if docker compose exec -T dgfy-api curl -fsS http://localhost:5100/api/v1/health; then
+              echo "dgfy-api /health: OK"
+            else
+              echo "::warning::dgfy-api /health did not return 200 on this poll"
+            fi
+
+            if [ "$i" -lt "$POLLS" ]; then
+              sleep 20
+            fi
+          done
+
+          echo "--- final ---"
+          docker compose ps
+          exit "$FAIL"
+          REMOTE_SCRIPT
+
+          if ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
+               "DOCKER_DIR='$DOCKER_DIR' POLL_MINUTES='$POLL_MINUTES' bash -s" \
+               < /tmp/remote-verify.sh > /tmp/verify-output.log 2>&1; then
+            echo "result=PASS" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=FAIL" >> "$GITHUB_OUTPUT"
+          fi
+          cat /tmp/verify-output.log
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy verification -- ${{ inputs.environment }}"
+            echo ""
+            echo "**Result: ${{ steps.poll.outputs.result || 'FAIL (no result recorded -- workflow error before the poll step completed)' }}**"
+            echo ""
+            echo "<details><summary>Raw poll transcript</summary>"
+            echo ""
+            echo '```'
+            cat /tmp/verify-output.log 2>/dev/null || echo "(no output captured)"
+            echo '```'
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail the run on a bad result
+        if: steps.poll.outputs.result != 'PASS'
+        run: |
+          echo "::error::Deployment verification failed for ${{ inputs.environment }} -- see the step summary for the poll transcript."
+          exit 1
+
+      # Same rationale as publish-platform.yml: the self-hosted runner is persistent, not
+      # ephemeral -- clean up regardless of outcome.
+      - name: Clean up deploy credentials
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key /tmp/client.ovpn

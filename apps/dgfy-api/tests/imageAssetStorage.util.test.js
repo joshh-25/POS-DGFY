@@ -66,6 +66,39 @@ describe('imageAssetStorage utility', () => {
         expect(stored.variants.large.size).toBeLessThanOrEqual(MAX_PUBLIC_IMAGE_BYTES);
     });
 
+    it('discards the temporary original after optimized variants are committed when requested', async () => {
+        const tempPath = path.join(uploadsRoot, 'upload-photo-discard.jpg');
+        await sharp({
+            create: {
+                width: 1200,
+                height: 900,
+                channels: 3,
+                background: { r: 80, g: 140, b: 200 }
+            }
+        }).jpeg({ quality: 92 }).toFile(tempPath);
+
+        const stored = await storeOptimizedImageAsset({
+            uploadsRoot,
+            surfaceFolder: 'storefront-catalog',
+            scopeSegments: ['tenant-discard'],
+            assetBaseName: 'item-11',
+            originalName: 'menu-photo.jpg',
+            reportedMime: 'image/jpeg',
+            tempPath,
+            retainOriginal: false
+        });
+
+        expect(stored.original.path).toBeNull();
+        await expect(fs.access(path.join(uploadsRoot, stored.path))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(
+            uploadsRoot,
+            'originals',
+            path.dirname(stored.path),
+            'original.jpg'
+        )))
+            .rejects.toThrow();
+    });
+
     it('creates every delivery variant for small graphics without upscaling', async () => {
         const tempPath = path.join(uploadsRoot, 'upload-graphic.png');
         await sharp({
@@ -130,5 +163,65 @@ describe('imageAssetStorage utility', () => {
 
         await expect(fs.access(publicAssetDir)).rejects.toThrow();
         await expect(fs.access(originalAssetDir)).rejects.toThrow();
+    });
+
+    it('#1379/#871: deleting a legacy flat-path image only removes that file, never the tenant directory', async () => {
+        const tenantDir = path.join(uploadsRoot, 'storefront-catalog', 'tenant-legacy');
+        await fs.mkdir(tenantDir, { recursive: true });
+
+        const targetFile = 'item-41-1783000000000.jpg';
+        const siblingFile = 'item-83-1783000000111.jpg';
+        await fs.writeFile(path.join(tenantDir, targetFile), 'target-image-bytes');
+        await fs.writeFile(path.join(tenantDir, siblingFile), 'sibling-image-bytes');
+
+        const legacyOriginalDir = path.join(uploadsRoot, 'originals', 'storefront-catalog', 'tenant-legacy');
+        await fs.mkdir(legacyOriginalDir, { recursive: true });
+        await fs.writeFile(path.join(legacyOriginalDir, siblingFile), 'sibling-original-bytes');
+
+        const storedPath = `storefront-catalog/tenant-legacy/${targetFile}`;
+        await removeOptimizedImageAsset({ uploadsRoot, storedPath });
+
+        // The deleted file is gone...
+        await expect(fs.access(path.join(tenantDir, targetFile))).rejects.toThrow();
+        // ...but every sibling in the tenant directory, and the tenant's
+        // originals mirror, survive -- this is the #1379/#871 regression:
+        // before the fix, the recursive rm targeted `tenantDir` itself and
+        // wiped both.
+        await expect(fs.access(path.join(tenantDir, siblingFile))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(legacyOriginalDir, siblingFile))).resolves.toBeUndefined();
+    });
+
+    it('still recurses and removes the full asset footprint for a v2 optimized-asset path (no regression)', async () => {
+        const tempPath = path.join(uploadsRoot, 'upload-photo-v2-guard.jpg');
+        await sharp({
+            create: {
+                width: 1800,
+                height: 1200,
+                channels: 3,
+                background: { r: 40, g: 80, b: 160 }
+            }
+        }).jpeg({ quality: 90 }).toFile(tempPath);
+
+        const stored = await storeOptimizedImageAsset({
+            uploadsRoot,
+            surfaceFolder: 'storefront-catalog',
+            scopeSegments: ['tenant-v2-guard'],
+            assetBaseName: 'item-99',
+            originalName: 'v2-guard.jpg',
+            reportedMime: 'image/jpeg',
+            tempPath
+        });
+
+        const publicAssetDir = path.join(uploadsRoot, path.dirname(stored.path));
+        const originalAssetDir = path.join(uploadsRoot, stored.original.path.split('/').slice(0, -1).join(path.sep));
+        const tenantDir = path.dirname(publicAssetDir);
+
+        await removeOptimizedImageAsset({ uploadsRoot, storedPath: stored.path });
+
+        await expect(fs.access(publicAssetDir)).rejects.toThrow();
+        await expect(fs.access(originalAssetDir)).rejects.toThrow();
+        // The v2 asset's own folder is gone, but the parent tenant directory
+        // itself is untouched.
+        await expect(fs.access(tenantDir)).resolves.toBeUndefined();
     });
 });

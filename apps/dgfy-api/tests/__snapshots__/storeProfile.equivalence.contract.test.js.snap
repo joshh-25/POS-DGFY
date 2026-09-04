@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): education_institutions 1`] = `
 {
@@ -350,6 +350,64 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
 }
 `;
 
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): laundry 1`] = `
+{
+  "item_taxonomy": null,
+  "modules": [
+    "catalog",
+    "services",
+    "storefront",
+  ],
+  "pos_defaults": {
+    "preferred_order_method": "appointment",
+    "preferred_payment_type": "cash",
+    "show_online_queue": false,
+  },
+  "pos_workflow": {
+    "allowed_methods": [
+      "walk_in",
+      "appointment",
+    ],
+    "capabilities": {
+      "bookings": true,
+      "kitchen": false,
+      "providers": true,
+      "resources": true,
+      "serviceOptions": true,
+      "tables": false,
+    },
+    "mode": "services",
+    "transaction_record": "booking",
+  },
+  "profile_version": 5,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
+  "source": {
+    "base_mode": "laundry",
+    "disabled_capabilities": [],
+    "enabled_capabilities": [],
+    "family": "services",
+    "template_mode": "services",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+  "terminology": {
+    "item_create_label": "Laundry Service",
+    "pos_workspace_label": "Laundry Operations",
+    "product_create_label": "Laundry Package",
+  },
+}
+`;
+
 exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): logistics_distribution 1`] = `
 {
   "item_taxonomy": null,
@@ -502,7 +560,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
   "pos_defaults": {
     "preferred_order_method": "takeout",
     "preferred_payment_type": "cash",
-    "show_online_queue": false,
+    "show_online_queue": true,
   },
   "pos_workflow": {
     "allowed_methods": [

@@ -1,4 +1,6 @@
 import {
+  confirmCommercePaymentSessionSandboxUseCase,
+  createDglaundryBookingPaymentSessionUseCase,
   createCommercePaymentRefundUseCase,
   createTenantPayMongoChildAccountUseCase,
   getCommercePaymentSessionUseCase,
@@ -44,6 +46,23 @@ export const handlePayMongoWebhook = async (req, res, next) => {
     return sendResult(res, result);
   } catch (error) {
     next(error);
+  }
+};
+
+export const createDglaundryBookingPaymentSession = async (req, res, next) => {
+  try {
+    const result = await createDglaundryBookingPaymentSessionUseCase({
+      // Tenant context is resolved by the host middleware; never trust a
+      // client-supplied tenant_id for payment ownership.
+      payload: {
+        ...req.validatedBody,
+        tenant_id: req.tenant?.id || null,
+        company_id: req.tenant?.id || null
+      }
+    });
+    return sendResult(res, result, 201);
+  } catch (error) {
+    return next(error);
   }
 };
 
@@ -103,6 +122,18 @@ export const reconcilePaymentSession = async (req, res, next) => {
       actor: req.admin?.username || req.user?.email || req.user?.username || 'paymongo_admin_reconciliation'
     });
     return sendResult(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const confirmPaymentSessionSandbox = async (req, res, next) => {
+  try {
+    const result = await confirmCommercePaymentSessionSandboxUseCase({
+      paymentSessionId: (req.validatedParams || req.params).payment_session_id,
+      actor: req.admin?.username || req.user?.email || req.user?.username || 'paymongo_admin_sandbox_confirmation'
+    });
+    return sendResult(res, result, 202);
   } catch (error) {
     next(error);
   }

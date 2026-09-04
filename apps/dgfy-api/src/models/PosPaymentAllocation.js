@@ -30,7 +30,9 @@ const PosPaymentAllocation = sequelize.define('PosPaymentAllocation', {
         defaultValue: 'pending'
     },
     payment_method: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer'),
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085). SPLIT_PAYMENT_METHODS (posValidator.js) is this column's request-side gate.
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque'),
         allowNull: false
     },
     payment_handoff_mode: {
@@ -76,6 +78,16 @@ const PosPaymentAllocation = sequelize.define('PosPaymentAllocation', {
     provider_refunded_at: {
         type: DataTypes.DATE,
         allowNull: true
+    },
+    reversed_amount: {
+        type: DataTypes.DECIMAL(14, 4),
+        allowNull: false,
+        defaultValue: 0
+    },
+    reversal_status: {
+        type: DataTypes.ENUM('none', 'pending', 'partial', 'completed', 'manual_review_required'),
+        allowNull: false,
+        defaultValue: 'none'
     },
     failure_code: {
         type: DataTypes.STRING(80),
@@ -140,6 +152,7 @@ const PosPaymentAllocation = sequelize.define('PosPaymentAllocation', {
         { fields: ['shift_id', 'status'] },
         { fields: ['location_id', 'status'] },
         { fields: ['payment_method', 'status'] },
+        { fields: ['session_id', 'reversal_status'] },
         { fields: ['provider_event_id'], unique: true, name: 'uq_pos_payment_allocations_provider_event_id' },
         { fields: ['provider_refund_event_id'], unique: true, name: 'uq_pos_payment_allocations_provider_refund_event_id' },
         { fields: ['session_id', 'idempotency_key'], unique: true },

@@ -10,6 +10,7 @@ import { getTenantModels } from '../src/utils/tenantModelFactory.js';
 import {
   getDailyZReadingUseCase,
   getTerminalTodayDashboardUseCase,
+  closeTerminalShiftUseCase,
   collectCashPickupOrderUseCase,
   updateOnlineOrderStatusUseCase
 } from '../src/modules/pos/index.js';
@@ -96,7 +97,7 @@ const runMigrationsForDb = (dbName) => {
       [
         `Migration process error for ${dbName}`,
         `command: ${process.execPath} ${args.join(' ')}`,
-        `cwd: ${backendRoot}`,
+        `cwd: ${migrationRunnerRoot}`,
         `error: ${migrationResult.error.message}`
       ].join('\n')
     );
@@ -107,7 +108,7 @@ const runMigrationsForDb = (dbName) => {
       [
         `Migration failed for ${dbName}`,
         `command: ${process.execPath} ${args.join(' ')}`,
-        `cwd: ${backendRoot}`,
+        `cwd: ${migrationRunnerRoot}`,
         `exit_status: ${migrationResult.status}`,
         `signal: ${migrationResult.signal || 'none'}`,
         `stdout:`,
@@ -532,14 +533,6 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     });
 
     await setSetting('pos_strict_compliance_enabled', 'false', 'boolean');
-    await setSetting(
-      'pos_discount_profiles',
-      JSON.stringify([
-        { name: 'Employee Discount', percentage: 6.9767, active: true }
-      ]),
-      'json'
-    );
-
     const checkoutResult = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
       user: cashier,
@@ -547,8 +540,6 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
         idempotency_key: `recon-${crypto.randomUUID()}`,
         payment_type: 'cash',
         order_method: 'dine_in',
-        discount_profile_name: 'Employee Discount',
-        discount_rate: 6.9767,
         lines: [
           { item_id: vatableItem.item_id, quantity: 2, sale_price: 12 },
           { item_id: exemptItem.item_id, quantity: 1, sale_price: 10 },
@@ -776,7 +767,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(result.success).toBe(true);
   });
 
-  itRuntimeReady('accepts legacy string-encoded discount profiles for checkout discount resolution', async () => {
+  itRuntimeReady('parses legacy string-encoded discount profiles but rejects unapproved legacy discounts', async () => {
     const cashier = await createCashier();
     const product = await createFinishedGood({ vat_type: 'vatable', default_sale_price: 100 });
 
@@ -800,13 +791,14 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       })
     }));
 
-    expect(checkout.success).toBe(true);
-    expect(money4(checkout.data.transaction.discount_amount)).toBe(20);
-    expect(checkout.data.transaction.discount_label_snapshot).toBe('Legacy Employee');
-    expect(money4(checkout.data.transaction.discount_rate_snapshot)).toBe(20);
+    expect(checkout.success).toBe(false);
+    expect(checkout.error.code).toBe('AUTHORIZATION_FAILED');
+    expect(checkout.error.details).toEqual(expect.objectContaining({
+      reason_code: 'DISCOUNT_APPROVAL_REQUIRED'
+    }));
   });
 
-  itRuntimeReady('auto-repairs double-encoded POS JSON settings on read path and still computes discounts/fees correctly', async () => {
+  itRuntimeReady('auto-repairs double-encoded POS JSON settings while rejecting an unapproved legacy discount', async () => {
     const cashier = await createCashier();
     const product = await createFinishedGood({ vat_type: 'vatable', default_sale_price: 100 });
 
@@ -829,9 +821,11 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       })
     }));
 
-    expect(checkout.success).toBe(true);
-    expect(money4(checkout.data.transaction.discount_amount)).toBe(10);
-    expect(money4(checkout.data.transaction.service_fee_amount)).toBe(0);
+    expect(checkout.success).toBe(false);
+    expect(checkout.error.code).toBe('AUTHORIZATION_FAILED');
+    expect(checkout.error.details).toEqual(expect.objectContaining({
+      reason_code: 'DISCOUNT_APPROVAL_REQUIRED'
+    }));
 
     const repairedDiscountSetting = await models.SystemSetting.findOne({ where: { setting_key: 'pos_discount_profiles' } });
 
@@ -1147,6 +1141,79 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(
       dashboardResult.data.sales_summary.transaction_count - baselineDashboard.data.sales_summary.transaction_count
     ).toBe(2);
+  });
+
+  itRuntimeReady('includes prepaid online orders handled by the shift in Close Shift sales summary without adding cash', async () => {
+    const cashier = await createCashier();
+    const item = await createFinishedGood({
+      vat_type: 'vatable',
+      default_sale_price: 100,
+      cost_per_unit: 35
+    });
+    const location = await createTenantLocation();
+    await models.UserLocationGrant.create({
+      user_id: cashier.user_id,
+      location_id: location.location_id,
+      created_by: cashier.user_id
+    });
+    await seedItemLocationStock({
+      itemId: item.item_id,
+      locationId: location.location_id,
+      quantityOnHand: 20
+    });
+    await setSetting('pos_strict_compliance_enabled', 'false', 'boolean');
+
+    const shift = await createOpenTerminalShift({
+      cashierId: cashier.user_id,
+      terminalId: 'COUNTER-CLOSE-ONLINE',
+      locationId: location.location_id,
+      openingFloatAmount: 0
+    });
+    const onlineOrder = await runInTenantContext(() => createOnlineOrderTransaction({
+      item,
+      cashierId: cashier.user_id,
+      locationId: location.location_id,
+      fulfillmentStatus: 'ready_for_pickup',
+      orderMethod: 'pickup',
+      paymentType: 'qrph',
+      paymentStatus: 'paid',
+      totalAmount: 150
+    }));
+
+    const completion = await runInTenantContext(() => updateOnlineOrderStatusUseCase({
+      posTransactionId: onlineOrder.pos_transaction_id,
+      payload: { fulfillment_status: 'completed' },
+      user: { user_id: cashier.user_id }
+    }));
+
+    expect(completion.success).toBe(true);
+    expect(completion.data.order).toMatchObject({
+      fulfillment_status: 'completed',
+      shift_id: shift.pos_terminal_shift_id
+    });
+
+    const closeResult = await runInTenantContext(() => closeTerminalShiftUseCase({
+      shiftId: shift.pos_terminal_shift_id,
+      payload: {
+        closing_cash_amount: 0,
+        idempotency_key: `close-online-${crypto.randomUUID()}`
+      },
+      user: { user_id: cashier.user_id }
+    }));
+
+    expect(closeResult.success).toBe(true);
+    expect(closeResult.data.sales_summary).toMatchObject({
+      transaction_count: 1,
+      total_amount: 150,
+      payment_breakdown: expect.arrayContaining([
+        expect.objectContaining({ payment_type: 'other', amount: 150 })
+      ])
+    });
+    expect(closeResult.data.cash_summary).toMatchObject({
+      cash_sales_amount: 0,
+      expected_cash_amount: 0,
+      cash_variance_amount: 0
+    });
   });
 
   itRuntimeReady('deducts inventory exactly once when online orders transition to completed', async () => {

@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-07
-last_reviewed: 2026-07-08
+last_reviewed: 2026-08-28
 review_by: 2027-01-07
 applies_to: architecture_decision
 topic: commercial_promo_and_statutory_pos_discount_boundaries
@@ -43,11 +43,15 @@ item targets, time window, and usage limit.
    configured rule value or maximum discount.
 6. Employee discount identity is resolved from an active tenant user by `user_id`.
    The persisted name is the server-resolved username, not submitted free text.
-7. Employee and manual discounts require an individual approval PIN belonging to
-   an active Admin or Manager. Only the Master Admin may set, replace, or clear
-   that PIN, and APIs expose only whether it is configured. Checkout verifies the
-   selected approver and persists `manager_approval_id` and approval time.
-   Employee self-approval is prohibited.
+7. Every governed POS discount (Senior, PWD, Employee, Promo, and Manual)
+   requires an individual approval PIN belonging to an active authorized
+   employee. Authorization is granted by the existing Admin/Manager defaults or
+   the explicit `pos:discount_authorize` permission; there is no Admin bypass.
+   Only the Master Admin may set, replace, or clear that PIN, and APIs expose
+   only whether it is configured. Checkout verifies the selected PIN owner and
+   persists `manager_approval_id` and approval time. Employee self-approval is
+   prohibited, and the cashier who applies the discount remains a separate
+   audit identity when the PIN owner is different.
 8. Persist the active rule ID, canonical employee identity, commercial promo code,
    line allocations, and `pos-discount.v2` calculation version. Client-provided
    VAT and discount totals are ignored.
@@ -73,8 +77,9 @@ item targets, time window, and usage limit.
     in the tenant storefront timezone. The accepted transaction retains its saved
     promo allocation; it is not repriced after acceptance.
 14. Governed POS discount audit evidence records the applying cashier, the selected
-    employee identity for employee discounts, and the manager/admin approver when
-    approval applies. These audit fields supplement, rather than replace, the saved
+    employee identity for employee discounts, the discount type/rate/amount,
+    transaction reference, and the canonical authorized employee plus approval
+    time. These audit fields supplement, rather than replace, the saved
     transaction and `pos_transaction_discounts` snapshots.
 
 ## Boundary Consequences
@@ -112,7 +117,8 @@ both Storefront and POS without affecting completed transactions.
 3. POS frontend discount-card contract test and production build.
 4. Backend lint, architecture guardrails, docs lint, and compliance gates.
 5. Rendered POS checks for desktop and tablet before release approval.
-6. Individual approval tests for invalid PIN, invalid role, self-approval, and
+6. Individual approval tests for invalid PIN, missing authorization, explicit
+   cashier authorization, self-approval, PIN-owner/cashier separation, and
    persisted approver identity.
 7. Storefront promo persistence tests covering canonical promo code, header
    totals, per-line allocation reconciliation, usage-counter atomicity, and POS
@@ -138,6 +144,35 @@ historical singular snapshots remain supported. Normalized beneficiary evidence 
 per-beneficiary allocation rows are additive; client-calculated totals remain
 non-authoritative. The calculation version for these records is `pos-discount.v3`.
 
+### 2026-08-28 — Unified six-type selector and exact cart-line discount scope
+
+- Clause amended: Decision 9 (untagged, therefore `default` tier per ADR 0039).
+- The POS Apply Discount modal exposes six visible type cards: Employee, Senior
+  Citizen, PWD, Promo, Voucher, and Other. They share one item-selection surface,
+  including Select all and per-line discount quantities; the canonical API value
+  for Other remains `manual`.
+- A selected discount quantity is bound to the exact cart line through the
+  request-only `line_ref`, in addition to `item_id`. The server validates that
+  the line reference and item ID still match before calculating the discount.
+  This prevents one selected line from multiplying across duplicate cart lines
+  that carry the same catalog item ID.
+- Legacy clients may continue to omit `line_ref`. An item-ID-only selection still
+  targets all matching lines, but a quantity-bearing legacy selection is rejected
+  when duplicate matching lines make its intent ambiguous. The server never
+  guesses which duplicate line the cashier intended.
+- `line_ref` is transient checkout input and calculation context. It does not add
+  a database column or change the persisted fiscal allocation schema.
+
+### 2026-08-27 — Signed native statutory-policy exception
+
+ADR 0075 adds one narrow native-mobile exception to the PIN-driven governed
+discount rule. Senior and PWD checkout may be created offline only when the
+request carries an unexpired, server-signed statutory-policy snapshot that
+matches the server's current rules version. The mobile sync boundary verifies
+the signature and version before passing an internal trusted-policy marker to
+checkout. Employee, manual, promo, voucher, and arbitrary discount authority
+remain online-only and continue to require their existing authorization.
+
 ### 2026-08-07 — Explicit payment timing for delivery cash orders
 
 The existing `payment_type: cash` value is retained as the tender type. A
@@ -162,6 +197,71 @@ Prepaid delivery requires `payment_status=paid`; COD delivery additionally
 requires the server-recorded cash collection evidence before inventory deduction
 and order completion. Missing delivery proof or payment proof returns a
 deterministic conflict and leaves the order unchanged.
+
+### 2026-08-15 — PIN-driven authorization for every governed POS discount
+
+All five governed POS discount types now require a server-verified PIN from an
+active authorized employee. Existing Admin/Manager role defaults remain valid,
+and `pos:discount_authorize` allows an explicitly delegated employee to
+authorize discounts. The applying cashier and PIN owner are recorded as
+separate identities; the raw PIN is transient request data and is never stored
+in transaction, payment-session, or audit records. A manual reason is optional
+and no longer blocks checkout. Legacy generic discount fields without a
+governed discount plus verified PIN are rejected server-side.
+Migration `20260815000003-align-audit-log-context.cjs` adds the nullable audit
+actor/context columns required by the existing append-only audit contract to
+older tenant schemas; it does not add or store raw PIN data.
+
+### 2026-08-17 — Commercial promos are superseded by the voucher entity
+
+- Clause amended: the `## Migration and Rollback` JSON-storage premise, and Decision 13
+  (both untagged, therefore `default` tier per ADR 0039).
+- Change: this ADR's statement that multiple commercial promos are stored as JSON in
+  `system_settings.storefront_promos` "so no additional database table is required" no
+  longer holds. A promo code becomes one `voucher_kind` within the voucher entity
+  ([ADR 0066](0066-voucher-sale-time-price-resolution.md), issues #454/#455), backed by four
+  real tenant tables with a redemption ledger. The `storefront_promos` setting key is
+  migrated and retired.
+- Reason: the JSON premise was sound for small, hand-authored, tenant-wide promos. It does
+  not survive a server-owned redemption ledger, unique-code generation, per-transaction
+  attribution, or eligibility conditions that must appear in a `WHERE` clause. Issue #459 is
+  the concrete failure of the JSON approach: three eligibility fields declared in Decision 13
+  were silently stripped on every save and gated nothing in production.
+- Unchanged by this amendment: Decision 8 and Decision 10 remain in force. A voucher
+  redemption still persists a `pos_transaction_discounts` audit row plus per-line allocations
+  in the same tenant transaction, and POS remains authoritative for receipts on any fiscal
+  disagreement with the voucher ledger.
+- Also recorded: POS carries exactly one governed discount per transaction
+  (`UNIQUE (transaction_id)` plus a single-typed `governed_discount` payload). A voucher
+  occupies that one slot and is rejected when it is already taken. See ADR 0066 Decision 8.
+- PR: #455 (Phase 101)
+
+### 2026-08-17 — Cashier-facing label for the generic discount type
+
+The governed generic discount keeps the existing `manual` API/database value
+for backward compatibility, but POS displays it as **Other**. This is a
+presentation-only label change; validation, PIN authorization, stored audit
+records, reports, and receipts continue to use the existing `manual` value
+where they require the canonical type.
+
+### 2026-08-25 — Controlled employee-discount self-approval and directory identity
+
+- Clauses amended: Decision 6 and the employee self-approval prohibition in
+  Decision 7 (both untagged, therefore `default` tier per ADR 0039).
+- Employee discount identity is now selected from the active tenant Employee
+  Directory. The server persists the canonical employee name and employee code
+  snapshot; a numeric employee code is never interpreted as a POS user ID.
+- Employee self-approval remains disabled by default. A tenant administrator may
+  explicitly enable `pos_employee_discount_self_approval_enabled`. When enabled,
+  an active authorized cashier with a configured valid POS approval PIN may
+  approve an Employee discount applied to that cashier's own directory identity.
+- A successful self-approval persists `self_approved=true` with the applying
+  cashier, selected directory employee, PIN-owner approver, and approval time.
+  The raw PIN remains transient request data and is never stored.
+- Senior, PWD, Promo, Voucher, and Other discount authorization rules are
+  unchanged. Disabling the setting immediately restores the separate-approver
+  requirement for new Employee discount approvals.
+- Issue: #1020.
 
 ## Authoritative Sources
 

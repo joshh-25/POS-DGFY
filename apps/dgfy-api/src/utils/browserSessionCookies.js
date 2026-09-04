@@ -8,6 +8,7 @@ export const SESSION_COOKIE_NAMES = Object.freeze({
   storefront: 'sku_store_session',
   admin: 'sku_admin_session',
   posTerminalPairing: 'sku_pos_terminal_pairing',
+  posOperatorAuthority: 'sku_pos_operator_authority',
   affiliateAttribution: 'sku_aff_attr'
 });
 

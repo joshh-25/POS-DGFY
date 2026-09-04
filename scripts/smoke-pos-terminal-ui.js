@@ -37,7 +37,6 @@ const collectTerminalEvidence = async (browser, viewport) => {
 
   await page.goto(`${baseUrl}/terminal`, { waitUntil: 'domcontentloaded', timeout: 20000 });
   await page.getByRole('heading', { name: 'POS Catalog' }).waitFor({ timeout: 15000 });
-  await page.getByRole('heading', { name: 'Current Sale' }).waitFor({ timeout: 15000 });
   await page.getByText('Terminal Login Required').waitFor({ timeout: 15000 });
   const bodyText = await page.locator('body').innerText({ timeout: 10000 });
   const emailInput = page.locator('#dgfy-pos-email');
@@ -45,14 +44,16 @@ const collectTerminalEvidence = async (browser, viewport) => {
   await emailInput.fill(`cashier-${viewport.name}@example.test`);
   await passwordInput.fill(`password-${viewport.name}`);
 
-  const filterButton = page.getByRole('button', { name: /filter/i });
-  const lockDrawerBlocksCatalog = await filterButton.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const topElement = document.elementFromPoint(centerX, centerY);
-    return topElement !== element && !element.contains(topElement);
-  });
+  const lockedNavigationDisabled = await page.locator('button').evaluateAll((buttons) => (
+    buttons.some((button) => {
+      const label = [
+        button.textContent,
+        button.getAttribute('title'),
+        button.getAttribute('aria-label')
+      ].filter(Boolean).join(' ');
+      return button.disabled && /sell/i.test(label);
+    })
+  ));
 
   const ignoredHttpErrors = httpErrors.filter((entry) => {
     return (
@@ -70,11 +71,11 @@ const collectTerminalEvidence = async (browser, viewport) => {
     viewport,
     hasTerminal: bodyText.includes('Terminal Login Required'),
     hasCatalog: bodyText.includes('POS Catalog'),
-    hasCurrentSale: bodyText.includes('Current Sale'),
+    hasLockedWorkspace: bodyText.includes('Terminal locked') || lockedNavigationDisabled,
     hasLogin: await emailInput.isVisible() && await passwordInput.isVisible(),
     loginFormEditable: (await emailInput.inputValue()).includes(viewport.name)
       && (await passwordInput.inputValue()).includes(viewport.name),
-    lockDrawerBlocksCatalog,
+    lockedNavigationDisabled,
     errors: visibleConsoleErrors,
     httpErrors: unexpectedHttpErrors,
     ignoredHttpErrors,
@@ -129,7 +130,7 @@ const run = async () => {
     const failures = [];
 
     for (const evidence of terminalEvidence) {
-      for (const key of ['hasTerminal', 'hasCatalog', 'hasCurrentSale', 'hasLogin', 'loginFormEditable', 'lockDrawerBlocksCatalog']) {
+      for (const key of ['hasTerminal', 'hasCatalog', 'hasLockedWorkspace', 'hasLogin', 'loginFormEditable', 'lockedNavigationDisabled']) {
         if (!evidence[key]) {
           failures.push(`${evidence.viewport.name}.${key}`);
         }

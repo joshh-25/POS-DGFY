@@ -91,10 +91,15 @@ If a server deploy lock is stale, first prove no deploy process is active. Clear
 
 Production SSH keys, database credentials, tokens, and signing private keys must not appear in GitHub, repository files, workflow inputs, commands, logs, or evidence artifacts. Store them only in the controller/production OS-protected secret stores.
 
+This document describes the release-controller/PM2 model that ADR 0030 records as never built for this repository (see that ADR's own superseded notice and `docs/ops/RELEASE_CANDIDATE_POLICY.md`). The actual current production secret handling is a single plaintext `/opt/dgfy-platform/.env`, consumed by `docker compose` per `.github/workflows/publish-platform.yml`. A planned replacement — SOPS-encrypted secrets, scoped per service, config left in a smaller plaintext `.env` — is recorded in ADR 0060 and `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md`. Not yet executed; consult the runbook, not this section, for the actual current-and-planned secret-handling mechanics.
+
 ## References
 
-1. `docs/architecture/adr/0030-free-tier-signed-release-authorization.md`
-2. `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`
-3. `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
-4. `docs/ops/QA_ISOLATION_PROFILE.md`
-5. `docs/ops/PRODUCTION_CHECKLIST.md`
+1. `docs/ops/RELEASE_CANDIDATE_POLICY.md` — the current, authoritative release policy. This document
+   itself still describes the ADR-0030 signed-controller model throughout, which is superseded —
+   flagged here rather than rewritten in this PR, see #1019's follow-up note.
+2. `docs/architecture/adr/0030-free-tier-signed-release-authorization.md` — superseded, historical only.
+3. `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md` — superseded, historical only.
+4. `docs/ops/NO_STAGING_RELEASE_STANDARD.md` — superseded, historical only.
+5. `docs/ops/QA_ISOLATION_PROFILE.md`
+6. `docs/ops/PRODUCTION_CHECKLIST.md`

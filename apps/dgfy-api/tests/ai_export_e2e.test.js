@@ -50,7 +50,9 @@ jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
             User
         }, next);
     },
-    invalidateTenantLookupCache: jest.fn()
+    invalidateTenantLookupCache: jest.fn(),
+    resolveDegradedTenantContextFailure: jest.fn(),
+    sendTenantContextError: jest.fn()
 }));
 
 const { default: app } = await import('../src/server.js');
@@ -80,6 +82,7 @@ describe('AI Export E2E Test (System Audit 8.2)', () => {
     beforeAll(async () => {
         await sequelize.authenticate();
         await ensureColumn('users', 'role_preset_key', '`role_preset_key` VARCHAR(80) NULL');
+        await ensureColumn('users', 'pos_day_close_pin_hash', '`pos_day_close_pin_hash` VARCHAR(255) NULL');
         await User.destroy({
             where: {
                 email: ['ai-export-admin@example.com', 'ai-export-second@example.com', 'ai-export-staff@example.com']

@@ -2,9 +2,13 @@ name: Shared Changed Paths
 
 # Tells callers which image builds a given range of commits actually needs, so
 # a backend-only change doesn't spend a runner rebuilding the frontend image
-# (and vice versa). Used both by pr-checks.yml (PR mode) and build-develop.yml
-# (push mode), so every push to develop is gated the same way a PR already is
-# instead of unconditionally rebuilding both images every time.
+# (and vice versa). Used by pr-checks.yml (PR mode) -- the only remaining
+# caller since every push-triggered build/deploy was removed 2026-08-14
+# (#417) and deploy.yml's build_sha-diffing "auto" mode was removed 2026-08-14
+# (#420, same day -- Pat's own pushback: manual dispatch should mean you pick,
+# not something detecting for you). `base_sha` (push mode) is now unused by
+# any live caller but kept -- cheap to keep, and a future reusable-workflow
+# caller diffing a push range is a reasonable thing to want again.
 #
 # Deliberately does this with plain git rather than a third-party
 # paths-filter action -- the same `git merge-base`/`git diff --name-only`
@@ -38,7 +42,7 @@ on:
         description: JSON array passed to runs-on for this job
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["sieitz-runner"]'  # #923: generic, either box
       validate_pr_metadata:
         description: >-
           Also validate PR title/body format and check for a missing
@@ -63,9 +67,15 @@ on:
         type: boolean
         default: false
     outputs:
-      frontend:
-        description: '"true" when this range touches anything the frontend image is built from'
-        value: ${{ jobs.detect.outputs.frontend }}
+      frontend_ims:
+        description: '"true" when this range touches anything the dgfy-ims image is built from'
+        value: ${{ jobs.detect.outputs.frontend_ims }}
+      frontend_pos:
+        description: '"true" when this range touches anything the dgfy-pos image is built from'
+        value: ${{ jobs.detect.outputs.frontend_pos }}
+      frontend_storefront:
+        description: '"true" when this range touches anything the dgfy-storefront image is built from'
+        value: ${{ jobs.detect.outputs.frontend_storefront }}
       dgfy_api:
         description: '"true" when this range touches anything the dgfy-api image is built from'
         value: ${{ jobs.detect.outputs.dgfy_api }}
@@ -81,14 +91,54 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     timeout-minutes: 5
     outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
+      frontend_ims: ${{ steps.filter.outputs.frontend_ims }}
+      frontend_pos: ${{ steps.filter.outputs.frontend_pos }}
+      frontend_storefront: ${{ steps.filter.outputs.frontend_storefront }}
       dgfy_api: ${{ steps.filter.outputs.dgfy_api }}
       migration_runner: ${{ steps.filter.outputs.migration_runner }}
       android: ${{ steps.filter.outputs.android }}
     steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
 
       - name: Detect changed paths
         id: filter
@@ -119,7 +169,9 @@ jobs:
 
           if [ -n "${REASON}" ]; then
             FILES="(unavailable: ${REASON})"
-            FRONTEND=true
+            FRONTEND_IMS=true
+            FRONTEND_POS=true
+            FRONTEND_STOREFRONT=true
             DGFY_API=true
             MIGRATION_RUNNER=true
             ANDROID=true
@@ -135,18 +187,30 @@ jobs:
             # .github/workflows/ only lists the workflows that actually affect
             # each image build, not the whole directory -- editing e.g. the PR
             # conventional-commits check shouldn't force every Docker build.
-            FRONTEND=false
+            #
+            # Each frontend app depends on packages/web-core (the shared trunk)
+            # and packages/shared-constants; dgfy-ims/dgfy-pos additionally
+            # depend on packages/pos-receipt (dgfy-storefront doesn't -- see
+            # its package.json). All three share the reusable deploy-frontend.yml
+            # workflow, so a change there invalidates all three, not just one.
+            FRONTEND_IMS=false
+            FRONTEND_POS=false
+            FRONTEND_STOREFRONT=false
             DGFY_API=false
             MIGRATION_RUNNER=false
             ANDROID=false
-            matches '^(apps/dgfy-web/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
-            matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|build-develop|build-staging|build-main)\.yml)' && DGFY_API=true || true
-            matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|build-develop|build-staging|build-main)\.yml)' && MIGRATION_RUNNER=true || true
+            matches '^(apps/dgfy-ims/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-ims/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_IMS=true || true
+            matches '^(apps/dgfy-pos/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-pos/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_POS=true || true
+            matches '^(apps/dgfy-storefront/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-storefront/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_STOREFRONT=true || true
+            matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)' && DGFY_API=true || true
+            matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)' && MIGRATION_RUNNER=true || true
             matches '^(apps/dgfy-android-bridge/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
           fi
 
           {
-            echo "frontend=${FRONTEND}"
+            echo "frontend_ims=${FRONTEND_IMS}"
+            echo "frontend_pos=${FRONTEND_POS}"
+            echo "frontend_storefront=${FRONTEND_STOREFRONT}"
             echo "dgfy_api=${DGFY_API}"
             echo "migration_runner=${MIGRATION_RUNNER}"
             echo "android=${ANDROID}"
@@ -161,7 +225,9 @@ jobs:
             fi
             echo "| Image build | Needed |"
             echo "|-------------|--------|"
-            echo "| Frontend | ${FRONTEND} |"
+            echo "| dgfy-ims | ${FRONTEND_IMS} |"
+            echo "| dgfy-pos | ${FRONTEND_POS} |"
+            echo "| dgfy-storefront | ${FRONTEND_STOREFRONT} |"
             echo "| DGFY API | ${DGFY_API} |"
             echo "| Migration Runner | ${MIGRATION_RUNNER} |"
             echo "| Android | ${ANDROID} |"
@@ -205,12 +271,52 @@ jobs:
             exit 1
           fi
 
+      - name: Set up Node
+        if: inputs.validate_pr_metadata
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # This step exited 127 ("node: command not found") on every run before
+      # the setup-node step above was added -- continue-on-error swallowed
+      # it silently, so the check had been effectively not running since the
+      # self-hosted cutover. An advisory check that always fails is worse
+      # than none (see the compliance-guardrail comment below for why this
+      # repo takes that seriously) -- see #412.
       - name: Enforce pos-receipt package version bump on source changes
         if: inputs.validate_pr_metadata
         continue-on-error: true
         env:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: node scripts/check-pos-receipt-version-bump.js
+
+      # #1569: single repo-level toggle for the step below, instead of a hardcoded
+      # continue-on-error literal -- see scripts/lib/version-bump-gate-toggle.js's own
+      # header for why this is a genuine runtime read, not a hand-kept-in-sync pair.
+      # Flipping that one module flips this step *and* scripts/pr-checks.js's own
+      # blocking argument for the same check together; nothing else to edit here.
+      - name: Load check:app-versions gate toggle
+        if: inputs.validate_pr_metadata
+        id: app_versions_gate
+        run: |
+          echo "continue_on_error=$(node -e "console.log(require('./scripts/lib/version-bump-gate-toggle').BLOCKING ? 'false' : 'true')")" >> "$GITHUB_OUTPUT"
+
+      # #1560 (#1548 Wave 1): advisory per-app container SemVer bump check --
+      # generalizes the pos-receipt check above to all five deployable apps, with a
+      # real semver-increase requirement and a (base, head) mode switch (see the
+      # script's own header). #1569: continue-on-error now reads the toggle step
+      # above (scripts/lib/version-bump-gate-toggle.js's BLOCKING) instead of a
+      # hardcoded literal -- a later phase flips that one module to blocking once
+      # scripts/check-version-bump-flip-readiness.js reports enough clean-run
+      # evidence exists and a human confirms it. Shipped advisory (BLOCKING: false) --
+      # see docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md.
+      - name: Enforce per-app version bump on source changes
+        if: inputs.validate_pr_metadata
+        continue-on-error: ${{ steps.app_versions_gate.outputs.continue_on_error == 'true' }}
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: node scripts/check-app-version-bump.js
 
       # Deliberately NOT continue-on-error, unlike every other folded-in step
       # above. This check previously lived in a `code-quality` job that WAS

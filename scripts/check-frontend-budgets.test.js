@@ -20,8 +20,16 @@ function makeTempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'frontend-budget-gate-'));
 }
 
+// Matches REQUIRED_APP_ASSET_DIRS in check-frontend-budgets.js (issue #322
+// Phase 6 -- each app builds inside its own standalone package now).
+const APP_DIR = {
+  skupervisor: 'apps/dgfy-ims',
+  pos: 'apps/dgfy-pos',
+  store: 'apps/dgfy-storefront',
+};
+
 function writeAsset(projectRoot, app, name, sizeBytes, mtime = new Date()) {
-  const dir = path.join(projectRoot, 'dist-apps', app, 'assets');
+  const dir = path.join(projectRoot, APP_DIR[app], 'dist', 'assets');
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, name);
   fs.writeFileSync(filePath, Buffer.alloc(sizeBytes, 1));
@@ -46,11 +54,11 @@ test('prebuilt mode requires an explicit freshness timestamp', () => {
   );
 });
 
-test('fails before budget verdict when required multi-app assets are missing', () => {
+test('fails before budget verdict when required multi-app assets are missing', async () => {
   const projectRoot = makeTempProject();
   try {
     writeAsset(projectRoot, 'skupervisor', 'Login-test.js', 9 * 1024);
-    assert.throws(
+    await assert.rejects(
       () => checkFrontendBudgets({
         projectRoot,
         skipBuild: true,
@@ -64,12 +72,12 @@ test('fails before budget verdict when required multi-app assets are missing', (
   }
 });
 
-test('rejects stale prebuilt route chunks with a clear freshness failure', () => {
+test('rejects stale prebuilt route chunks with a clear freshness failure', async () => {
   const projectRoot = makeTempProject();
   try {
     const staleMtime = new Date('2026-01-01T00:00:00.000Z');
     writePassingAssets(projectRoot, staleMtime);
-    assert.throws(
+    await assert.rejects(
       () => checkFrontendBudgets({
         projectRoot,
         skipBuild: true,
@@ -85,12 +93,12 @@ test('rejects stale prebuilt route chunks with a clear freshness failure', () =>
   }
 });
 
-test('passes fresh prebuilt assets and writes a reusable budget report', () => {
+test('passes fresh prebuilt assets and writes a reusable budget report', async () => {
   const projectRoot = makeTempProject();
   try {
     const freshMtime = new Date();
     writePassingAssets(projectRoot, freshMtime);
-    const report = checkFrontendBudgets({
+    const report = await checkFrontendBudgets({
       projectRoot,
       skipBuild: true,
       builtAfterMs: freshMtime.getTime() - 5000,

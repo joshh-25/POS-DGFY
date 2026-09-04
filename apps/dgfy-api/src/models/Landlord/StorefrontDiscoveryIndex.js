@@ -112,6 +112,17 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: 0
         },
+        // Phase 242 (#1333, epic #1321). `store_delivery_fee` above is a FROM-price as of this
+        // phase, not the charged fee -- this column is what makes it interpretable. Mirrors the
+        // configured mode resolveDeliveryFeeConfig() reports (and pos_transactions.delivery_fee_mode
+        // persists), including for a calculated-mode store whose calc blob is malformed: that store
+        // stays `calculated` here and falls open to its fixed rate at checkout, same as everywhere
+        // else in the epic.
+        delivery_fee_mode: {
+            type: DataTypes.STRING(32),
+            allowNull: false,
+            defaultValue: 'fixed'
+        },
         catalog_count: {
             type: DataTypes.INTEGER.UNSIGNED,
             allowNull: false,
@@ -162,6 +173,18 @@ export default (sequelize) => {
             allowNull: true
         },
         storefront_promos: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        // #713: fix -- this column was never declared here, so
+        // syncStorefrontDiscoveryIndexForTenant's `.create(snapshot)` silently dropped
+        // `storefront_vouchers` before it ever reached the DB (Sequelize only persists attributes
+        // the model declares). storefrontDiscoveryIndexService.js's buildPublicStorefrontVouchers
+        // computed the right value in memory the whole time; it just never survived a save. Caught
+        // 2026-08-20 via live testing against a real voucher, not by the original test suite --
+        // that suite asserted the builder function's return value directly and never exercised a
+        // real persist-and-read round trip through this model.
+        storefront_vouchers: {
             type: DataTypes.JSON,
             allowNull: true
         },

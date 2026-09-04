@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+    getPosCashPaymentAmount,
     normalizePosPaymentBreakdown,
     resolvePosPaymentCategory
 } from '../src/modules/pos/utils/paymentBreakdown.js';
@@ -41,6 +42,11 @@ describe('POS close-report payment breakdown', () => {
         expect(resolvePosPaymentCategory('employee_credit')).toBe('employee_credit');
     });
 
+    it('derives cash sales from the normalized payment breakdown', () => {
+        expect(getPosCashPaymentAmount(rawBreakdown)).toBe(100);
+        expect(getPosCashPaymentAmount([{ payment_type: 'gcash', amount: 250 }])).toBe(0);
+    });
+
     it('includes zero-value rows and remains stable when normalizing an existing snapshot', () => {
         const firstPass = normalizePosPaymentBreakdown([
             { payment_type: 'cash', count: 2, amount: 250 }
@@ -64,6 +70,8 @@ describe('POS close-report payment breakdown', () => {
                 total_amount: 1050,
                 void_transaction_count: 2,
                 void_amount: 125,
+                post_close_void_transaction_count: 1,
+                post_close_void_amount: 125,
                 payment_breakdown: paymentBreakdown
             }
         });
@@ -85,7 +93,17 @@ describe('POS close-report payment breakdown', () => {
         expect(shiftLines).toContainEqual(expect.stringContaining('Other (2)'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('GCash (2)'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('Maya (1)'));
-        expect(shiftLines).toContainEqual(expect.stringContaining('POS voids'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('Transactions'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('Subtotal'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('Discounts'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('VAT'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('Total sales'));
+        expect(shiftLines).not.toContainEqual(expect.stringContaining('POS voids'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Transactions'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Subtotal'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Discounts'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('VAT'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Total sales'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('POS voids'));
         expect(zReadingLines).toContain('Provider refunds are reconciled separately.');
     });

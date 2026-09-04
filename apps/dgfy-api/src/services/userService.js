@@ -671,6 +671,22 @@ export const toggleUserStatus = async (adminUserId, targetUserId, isActive) => {
   validateAdminHierarchy(adminUser, targetUser, 'change status for');
 
   await targetUser.update({ is_active: isActive });
+  if (!isActive) {
+    try {
+      const PosTerminalOperatorSession = dbStore.get('PosTerminalOperatorSession');
+      const revokedAt = new Date();
+      await PosTerminalOperatorSession.update({
+        status: 'ended',
+        ended_at: revokedAt,
+        ended_reason: 'account_disabled',
+        revoked_at: revokedAt,
+        revoked_reason: 'account_disabled',
+        authority_token_hash: null
+      }, { where: { user_id: targetUser.user_id, status: 'active' } });
+    } catch (revocationError) {
+      console.warn('Failed to revoke POS operator authority after account disable:', revocationError.message);
+    }
+  }
 
   // Update email-tenant mapping based on active status
   const store = dbStore.getStore();
@@ -752,6 +768,20 @@ export const removeUserFromCompany = async (adminUserId, targetUserId) => {
     deleted_by: adminUserId,
     is_active: false
   });
+  try {
+    const PosTerminalOperatorSession = dbStore.get('PosTerminalOperatorSession');
+    const revokedAt = new Date();
+    await PosTerminalOperatorSession.update({
+      status: 'ended',
+      ended_at: revokedAt,
+      ended_reason: 'account_removed',
+      revoked_at: revokedAt,
+      revoked_reason: 'account_removed',
+      authority_token_hash: null
+    }, { where: { user_id: targetUser.user_id, status: 'active' } });
+  } catch (revocationError) {
+    console.warn('Failed to revoke POS operator authority after account removal:', revocationError.message);
+  }
 
   // Remove email-tenant mapping
   const store = dbStore.getStore();
@@ -829,8 +859,14 @@ export const updatePosApprovalPin = async (adminUserId, targetUserId, { pin = ''
     throw notFoundError('Target user not found');
   }
   assertAcceptedUserEditable(targetUser, 'manage POS approval PIN');
-  if (!targetUser.is_active || !['admin', 'manager'].includes(String(targetUser.role || '').toLowerCase())) {
-    throw createError('POS approval PINs can only be configured for active Admin or Manager users', 422);
+  if (!targetUser.is_active) {
+    throw createError('POS approval PINs can only be configured for active employees', 422);
+  }
+  const targetRole = String(targetUser.role || '').trim().toLowerCase();
+  const isBuiltInDiscountAuthorizer = targetUser.is_master_admin === true
+    || ['admin', 'manager'].includes(targetRole);
+  if (!isBuiltInDiscountAuthorizer && !hasPermission(targetUser, 'pos:discount_authorize')) {
+    throw createError('Grant POS discount authorization before configuring an approval PIN', 422);
   }
 
   const normalizedPin = String(pin || '').trim();

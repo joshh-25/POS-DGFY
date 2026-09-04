@@ -9,9 +9,13 @@ name: Build Android Release (manual)
 # against, independent of the flavor. That's what makes it possible to
 # build a `dev` or `staging` APK straight off an unmerged feature branch --
 # install it on a real iMin device and verify hardware behavior there --
-# before that branch ever reaches `main` (which is what `prod`/`beta` are
-# routed to). See apps/dgfy-android-bridge/imin-wrapper/README.md for the flavor table
+# before that branch ever reaches `main` (which is what `prod` is routed
+# to). See apps/dgfy-android-bridge/imin-wrapper/README.md for the flavor table
 # and the on-device verification steps.
+#
+# The `beta` flavor was removed 2026-08-23 (#329/#897) -- beta.dgfy.ph now
+# redirects to prod, and a WebView origin allowlist doesn't follow a
+# cross-origin redirect, so a beta-flavored build would ship broken.
 on:
   workflow_dispatch:
     inputs:
@@ -21,7 +25,6 @@ on:
         options:
           - dev
           - staging
-          - beta
           - prod
         default: dev
       clean:
@@ -42,7 +45,16 @@ permissions:
 
 jobs:
   build:
+    # Stays hosted: vm-sieitzstaging (the online self-hosted runner) has no
+    # Android SDK installed, so a Gradle build fails there regardless of
+    # billing status ("SDK location not found"). Revisit once the SDK is
+    # set up on that box.
     runs-on: ubuntu-latest
+    # No timeout previously set -- a hung Gradle build would have run to
+    # GitHub's 6-hour default. 45min covers a cold cache + two release
+    # assembles with real margin; see the PR checks' android-build-check
+    # equivalent (currently disabled) for the measured baseline.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4

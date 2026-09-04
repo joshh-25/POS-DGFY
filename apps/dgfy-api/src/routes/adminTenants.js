@@ -15,6 +15,9 @@ import {
     getTenantPosMetadata,
     listTenantPosMetadataAuditLogs,
     updateTenantPosMetadata,
+    getTenantAffiliateSlots,
+    listTenantAffiliateSlotsAuditLogs,
+    updateTenantAffiliateSlots,
     deleteTenant,
     setupPayPalRecurring,
     adminChangePlan,
@@ -58,7 +61,8 @@ import {
     validateTenantCapabilityAuditLogQuery,
     validateTenantCapabilityPatch,
     validateApplyTemplateToTenant,
-    validateTenantPosMetadataPatch
+    validateTenantPosMetadataPatch,
+    validateTenantAffiliateSlotsPatch
 } from '../validators/adminTenantValidator.js';
 import {
     auditStorefrontDomainDnsDrift,
@@ -138,6 +142,13 @@ router.post('/:id/owner', authenticateAdmin, assignTenantOwnerByAdmin);
 router.get('/:id/pos-metadata', authenticateAdmin, getTenantPosMetadata);
 router.get('/:id/pos-metadata/audit-logs', authenticateAdmin, validateTenantCapabilityAuditLogQuery, listTenantPosMetadataAuditLogs);
 router.patch('/:id/pos-metadata', authenticateAdmin, validateTenantPosMetadataPatch, updateTenantPosMetadata);
+
+// #1190 (Phase 213) - landlord-admin-only write path for max_affiliate_slots (#447 D5:
+// raising the cap is a manual, out-of-band admin action; no self-serve merchant surface).
+// Audited via tenant_admin_audit_logs `action = affiliate_slots_update`.
+router.get('/:id/affiliate-slots', authenticateAdmin, getTenantAffiliateSlots);
+router.get('/:id/affiliate-slots/audit-logs', authenticateAdmin, validateTenantCapabilityAuditLogQuery, listTenantAffiliateSlotsAuditLogs);
+router.patch('/:id/affiliate-slots', authenticateAdmin, validateTenantAffiliateSlotsPatch, updateTenantAffiliateSlots);
 
 // ADMIN: Premium storefront custom-domain lifecycle
 router.get('/:id/storefront-domains', authenticateAdmin, listStorefrontDomains);

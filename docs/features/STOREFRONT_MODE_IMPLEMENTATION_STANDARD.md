@@ -33,6 +33,13 @@ Use a shared presentation shell + mode-specific data and behavior.
 
 Do not create full duplicate page implementations per mode.
 
+Shared section-level composition is limited to the hero/navigation, business
+information, promo, reviews, and footer patterns. Product/menu/service catalogs,
+catalog filters, item cards, product details, checkout/booking, and tracking are
+owned by the relevant mode. These mode-owned pages may reuse neutral controls and
+layout primitives, but shared components must not select industry behavior through
+mode flags.
+
 ## Required Architecture Pattern
 
 ### 1. Shared Presentational Components
@@ -63,6 +70,17 @@ Rules for mode wrappers:
 - own CTA actions and workflow transitions
 - own mode-specific copy and operational rules
 - pass normalized props to shared sections
+
+Mode wrappers also own their catalog, transaction, and tracking composition:
+
+- F&B: menu, item details, checkout, order tracking
+- Retail: product catalog, product details, checkout, order tracking
+- Simple/MSME: product catalog, product details, checkout, order tracking
+- Services: service catalog, booking, booking tracking
+
+Checkout and tracking may share a neutral frame, summary-row primitive, or status
+primitive only when the rendered structure is genuinely identical. Route state,
+adapters, workflow stages, labels, calculations, and navigation remain mode-owned.
 
 ### 3. Backend Alignment Rule (Non-Negotiable)
 Each mode must remain aligned to its own backend contract.

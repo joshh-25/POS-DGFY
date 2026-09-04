@@ -4,9 +4,11 @@ import {
     ALL_ORDER_METHODS,
     POS_ORDER_METHODS,
     STOREFRONT_ORDER_METHODS,
-    ORDER_METHOD_FEE_METHODS
+    ORDER_METHOD_FEE_METHODS,
+    STOREFRONT_FULFILLMENT_ORDER_METHODS,
+    ORDER_METHOD_LOCATION_SUPPORT_KEYS
 } from '../src/modules/shared/constants/orderMethods.js';
-import { POS_WORKFLOW_CONFIGS } from '../../dgfy-web/src/features/pos/utils/posWorkflowResolver.js';
+import { POS_WORKFLOW_CONFIGS } from '../../../packages/web-core/src/features/pos/utils/posWorkflowResolver.js';
 
 describe('order method cross-layer contracts', () => {
     it('keeps ALL_ORDER_METHODS identical to the pos_transactions order_method DB enum', async () => {
@@ -40,6 +42,24 @@ describe('order method cross-layer contracts', () => {
         // Per-method service fees are configurable for every method the enum can hold,
         // matching the service_fee_method_snapshot column.
         expect([...ORDER_METHOD_FEE_METHODS]).toEqual([...ALL_ORDER_METHODS]);
+    });
+
+    it('keeps the storefront fulfillment axis (#1093) scoped to delivery/pickup only', () => {
+        // The ecommerce fulfillment axis never includes dine_in/takeout -- those are in-venue
+        // concerns, not something a public storefront checkout offers. A store that takes no
+        // online orders at all expresses that via customer_access_mode 'catalog', not by
+        // disabling both of these.
+        expect([...STOREFRONT_FULFILLMENT_ORDER_METHODS]).toEqual(['delivery', 'pickup']);
+        STOREFRONT_FULFILLMENT_ORDER_METHODS.forEach((method) => {
+            expect(STOREFRONT_ORDER_METHODS).toContain(method);
+        });
+
+        // Every storefront-checkout-eligible method must resolve to a real tenant_locations
+        // support column, since the storefront's availability resolver and the server's own
+        // checkout enforcement (storeUseCases.js) both key off this map.
+        STOREFRONT_ORDER_METHODS.forEach((method) => {
+            expect(ORDER_METHOD_LOCATION_SUPPORT_KEYS[method]).toBeTruthy();
+        });
     });
 
     it('keeps every POS workflow config writing only methods the DB enum can hold', () => {

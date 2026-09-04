@@ -1,0 +1,139 @@
+{
+  "$comment": [
+    "Suppressions for scripts/audit-dependencies.js (#381/#380). Each entry",
+    "silences one npm-audit top-level finding for one dependency tree.",
+    "",
+    "Fields:",
+    "  tree      - one of the trees audited by audit-dependencies.js:",
+    "              'root' | 'apps/dgfy-api' | 'apps/dgfy-ims' | 'apps/dgfy-pos' |",
+    "              'apps/dgfy-storefront' | 'apps/dgfy-migration-runner' |",
+    "              'tests/frontend-cross-app'",
+    "  package   - the top-level package name as reported by `npm audit --json`",
+    "              (the key under `vulnerabilities`, not necessarily the vulnerable",
+    "              leaf package if the finding is transitive)",
+    "  severity  - informational; the severity npm reported at the time the entry",
+    "              was added, so drift (npm reporting a different/worse severity",
+    "              later) is visible on review",
+    "  reason    - REQUIRED. Why this is safe to ship unpatched right now.",
+    "  reviewBy  - REQUIRED. ISO date this suppression must be re-examined by.",
+    "",
+    "A suppression here means 'known, judged acceptable for now' — not 'fixed'.",
+    "Findings that are actually patched should have the fix applied and the",
+    "entry removed, not left here."
+  ],
+  "version": 1,
+  "entries": [
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "@lhci/cli",
+      "severity": "high",
+      "reason": "DevDependency-only (Lighthouse CI, never ships). Installed version is already latest (0.15.1); `npm audit fix` suggests downgrading to 0.1.0, which is npm's resolver finding an old, unrelated dependency graph rather than a real fix -- @lhci/cli has not yet updated its own puppeteer/lighthouse chain upstream. Moved here from apps/dgfy-web in issue #322 Phase 5, when @lhci/cli moved to tests/frontend-cross-app.",
+      "reviewBy": "2026-09-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "@lhci/utils",
+      "severity": "high",
+      "reason": "Transitive via @lhci/cli; see that entry.",
+      "reviewBy": "2026-09-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "@puppeteer/browsers",
+      "severity": "high",
+      "reason": "Transitive via @lhci/cli; see that entry.",
+      "reviewBy": "2026-09-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "puppeteer-core",
+      "severity": "high",
+      "reason": "Transitive via @lhci/cli; see that entry.",
+      "reviewBy": "2026-09-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "lighthouse",
+      "severity": "high",
+      "reason": "Transitive via @lhci/cli; see that entry.",
+      "reviewBy": "2026-09-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "extract-zip",
+      "severity": "high",
+      "reason": "Transitive via @lhci/cli; see that entry.",
+      "reviewBy": "2026-09-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "tmp",
+      "severity": "high",
+      "reason": "Transitive via @lhci/cli; see that entry.",
+      "reviewBy": "2026-09-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "uuid",
+      "severity": "moderate",
+      "reason": "Transitive via @lhci/cli; see that entry.",
+      "reviewBy": "2026-09-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "inquirer",
+      "severity": "low",
+      "reason": "Transitive via @lhci/cli; see that entry.",
+      "reviewBy": "2026-09-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "external-editor",
+      "severity": "low",
+      "reason": "Transitive via @lhci/cli; see that entry.",
+      "reviewBy": "2026-09-15"
+    },
+    {
+      "tree": "apps/dgfy-api",
+      "package": "express",
+      "severity": "moderate",
+      "reason": "npm audit's only fixAvailable path is express@5.2.1, a semver-major framework upgrade -- out of proportion to bundle into #1431 Phase 2's CI-gate PR. Tracked in #1444 (apps/dgfy-api: migrate Express 4 -> 5); remove this entry once that lands.",
+      "reviewBy": "2026-10-15"
+    },
+    {
+      "tree": "apps/dgfy-api",
+      "package": "body-parser",
+      "severity": "moderate",
+      "reason": "Transitive via express; fixAvailable only through express@5.2.1. See the express entry above; tracked in #1444.",
+      "reviewBy": "2026-10-15"
+    },
+    {
+      "tree": "apps/dgfy-api",
+      "package": "qs",
+      "severity": "moderate",
+      "reason": "Transitive via express/body-parser; fixAvailable only through express@5.2.1. See the express entry above; tracked in #1444.",
+      "reviewBy": "2026-10-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "express",
+      "severity": "moderate",
+      "reason": "Transitive dependency of this tree's own devDependency graph, same underlying express@4.22.2 finding as apps/dgfy-api. fixAvailable only through express@5.2.1; tracked in #1444.",
+      "reviewBy": "2026-10-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "body-parser",
+      "severity": "moderate",
+      "reason": "Transitive via express; see that entry. Tracked in #1444.",
+      "reviewBy": "2026-10-15"
+    },
+    {
+      "tree": "tests/frontend-cross-app",
+      "package": "qs",
+      "severity": "moderate",
+      "reason": "Transitive via express/body-parser; see that entry. Tracked in #1444.",
+      "reviewBy": "2026-10-15"
+    }
+  ]
+}

@@ -6,7 +6,7 @@
 # and /uploads traffic on all three ports goes to dgfy-api -- there is no
 # backend routing here at all. See docker-compose.local-ports.yml.
 
-resolver 127.0.0.11 valid=10s;
+resolver 127.0.0.11 valid=10s ipv6=off;
 
 # skupervisor
 server {
@@ -45,7 +45,7 @@ server {
     }
 
     location / {
-        set $frontend_upstream frontend:8081;
+        set $frontend_upstream dgfy-ims:8081;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -83,7 +83,7 @@ server {
     }
 
     location / {
-        set $frontend_upstream frontend:8082;
+        set $frontend_upstream dgfy-pos:8082;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -137,7 +137,7 @@ server {
     }
 
     location /tenant-store/ {
-        set $frontend_upstream frontend:8083;
+        set $frontend_upstream dgfy-storefront:8083;
         rewrite ^/tenant-store/(.*)$ /$1 break;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
@@ -150,8 +150,32 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 
+    # #452: affiliate short-link alias. /s/{short_code} is a client-side SPA route -- the
+    # storefront app reads the code out of window.location.pathname and resolves it via
+    # GET /api/v1/dgfy/affiliate/s/{short_code}. nginx only has to hand it the app shell.
+    #
+    # No rewrite (unlike /tenant-store/ above): stripping the prefix would gain nothing --
+    # the container's try_files falls through to /index.html either way -- and the browser
+    # URL is untouched by a rewrite regardless, so the SPA sees /s/... in both cases.
+    #
+    # This block is functionally covered by `location /` today. It exists so the contract is
+    # explicit: narrowing `location /` later must not silently break every printed QR code.
+    location /s/ {
+        set $frontend_upstream dgfy-storefront:8083;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        add_header Cache-Control "no-store";
+    }
+
     location / {
-        set $frontend_upstream frontend:8083;
+        set $frontend_upstream dgfy-storefront:8083;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;

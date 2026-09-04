@@ -9,6 +9,7 @@ export {
   updateItem,
   finalizeItem,
   deleteItem,
+  restoreItem,
   getItemStockHistory,
   getItemBatches,
   getItemMovements,
@@ -29,6 +30,9 @@ export {
   updateStorefrontCatalogOverride,
   updateBulkStorefrontCatalogOverrides,
   uploadStorefrontCatalogImage,
+  queueStorefrontCatalogImage,
+  queueStorefrontCatalogGalleryImages,
+  getStorefrontCatalogImageUploadStatus,
   importExternalStorefrontCatalogImage,
   generateItemImage,
   getItemImageGenerationStatus,
@@ -41,7 +45,9 @@ export {
   getFolders,
   createFolder,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  listItemFolders,
+  replaceItemFolders
 } from '../modules/inventory/controllers/itemHandlers.js';
 
 import {
@@ -51,6 +57,7 @@ import {
   updateItem,
   finalizeItem,
   deleteItem,
+  restoreItem,
   getItemStockHistory,
   getItemBatches,
   getItemMovements,
@@ -71,6 +78,9 @@ import {
   updateStorefrontCatalogOverride,
   updateBulkStorefrontCatalogOverrides,
   uploadStorefrontCatalogImage,
+  queueStorefrontCatalogImage,
+  queueStorefrontCatalogGalleryImages,
+  getStorefrontCatalogImageUploadStatus,
   importExternalStorefrontCatalogImage,
   generateItemImage,
   getItemImageGenerationStatus,
@@ -83,7 +93,9 @@ import {
   getFolders,
   createFolder,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  listItemFolders,
+  replaceItemFolders
 } from '../modules/inventory/controllers/itemHandlers.js';
 
 export default {
@@ -93,6 +105,7 @@ export default {
   updateItem,
   finalizeItem,
   deleteItem,
+  restoreItem,
   getItemStockHistory,
   getItemBatches,
   getItemMovements,
@@ -113,6 +126,9 @@ export default {
   updateStorefrontCatalogOverride,
   updateBulkStorefrontCatalogOverrides,
   uploadStorefrontCatalogImage,
+  queueStorefrontCatalogImage,
+  queueStorefrontCatalogGalleryImages,
+  getStorefrontCatalogImageUploadStatus,
   importExternalStorefrontCatalogImage,
   generateItemImage,
   getItemImageGenerationStatus,
@@ -125,5 +141,7 @@ export default {
   getFolders,
   createFolder,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  listItemFolders,
+  replaceItemFolders
 };

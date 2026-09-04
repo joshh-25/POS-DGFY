@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
+import { dgfyAffiliateRepository } from './repositories/dgfyAffiliateRepository.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
     buildGetAdminDgfyAccountUseCase,
@@ -40,6 +41,7 @@ import {
 import {
     buildCancelDgfyCustomerOrderUseCase,
     buildGetDgfyCustomerDashboardUseCase,
+    buildGetDgfyCustomerOrderDetailsUseCase,
     buildGetDgfyCustomerLoyaltyUseCase,
     buildDgfyHistoricalBackfillUseCase,
     buildListDgfyCustomerReviewsForModerationUseCase,
@@ -71,6 +73,7 @@ import {
     buildGetAffiliateSettingsUseCase,
     buildInviteAffiliateUseCase,
     buildListAffiliateCashoutsUseCase,
+    buildListAffiliateEnrollmentStatusEventsUseCase,
     buildListAffiliateInvitesUseCase,
     buildListAffiliatesUseCase,
     buildListMyAffiliateCashoutsUseCase,
@@ -78,13 +81,18 @@ import {
     buildManageAffiliatePayoutMethodsUseCases,
     buildMarkAffiliateCashoutPaidUseCase,
     buildProvisionAffiliateUseCase,
+    buildReactivateAffiliateEnrollmentUseCase,
     buildRejectAffiliateCashoutUseCase,
     buildRequestAffiliateCashoutUseCase,
+    buildResolveAffiliateShareCodeUseCase,
     buildUpdateAffiliateEnrollmentUseCase,
     buildUpdateAffiliateSettingsUseCase,
     buildListAffiliatePriceRulesUseCase,
     buildUpsertAffiliatePriceRuleUseCase,
-    buildDeactivateAffiliatePriceRuleUseCase
+    buildDeactivateAffiliatePriceRuleUseCase,
+    buildListAffiliateCategoryRatesUseCase,
+    buildUpsertAffiliateCategoryRateUseCase,
+    buildDeactivateAffiliateCategoryRateUseCase
 } from './usecases/dgfyAffiliateUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
 import {
@@ -196,7 +204,8 @@ export const createDgfyInvitationUseCase = buildCreateDgfyInvitationUseCase({
 });
 
 export const startDgfyTenantSessionUseCase = buildStartDgfyTenantSessionUseCase({
-    createTenantSessionForDgfyAccount
+    createTenantSessionForDgfyAccount,
+    repository: dgfyAccountRepository
 });
 
 export const startDgfyPosSessionUseCase = buildStartDgfyPosSessionUseCase({
@@ -276,6 +285,7 @@ export const deleteAdminDgfyAccountUseCase = buildDeleteAdminDgfyAccountUseCase(
 });
 
 export const getDgfyCustomerDashboardUseCase = buildGetDgfyCustomerDashboardUseCase();
+export const getDgfyCustomerOrderDetailsUseCase = buildGetDgfyCustomerOrderDetailsUseCase();
 export const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
 export const listDgfyCustomerOrdersUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'order' });
 export const listDgfyCustomerBookingsUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'booking' });
@@ -318,9 +328,14 @@ export const acceptAffiliateInviteUseCase = buildAcceptAffiliateInviteUseCase({
     hashInviteToken: hashInvitationToken
 });
 export const updateAffiliateEnrollmentUseCase = buildUpdateAffiliateEnrollmentUseCase();
+export const reactivateAffiliateEnrollmentUseCase = buildReactivateAffiliateEnrollmentUseCase();
+export const listAffiliateEnrollmentStatusEventsUseCase = buildListAffiliateEnrollmentStatusEventsUseCase();
 export const listAffiliatePriceRulesUseCase = buildListAffiliatePriceRulesUseCase();
 export const upsertAffiliatePriceRuleUseCase = buildUpsertAffiliatePriceRuleUseCase();
 export const deactivateAffiliatePriceRuleUseCase = buildDeactivateAffiliatePriceRuleUseCase();
+export const listAffiliateCategoryRatesUseCase = buildListAffiliateCategoryRatesUseCase();
+export const upsertAffiliateCategoryRateUseCase = buildUpsertAffiliateCategoryRateUseCase();
+export const deactivateAffiliateCategoryRateUseCase = buildDeactivateAffiliateCategoryRateUseCase();
 export const getAffiliateQrPayloadUseCase = buildGetAffiliateQrPayloadUseCase();
 export const listMyAffiliateEnrollmentsUseCase = buildListMyAffiliateEnrollmentsUseCase();
 export const enrollSelfServeAffiliateUseCase = buildEnrollSelfServeAffiliateUseCase();
@@ -342,5 +357,7 @@ export const markAffiliateCashoutPaidUseCase = buildMarkAffiliateCashoutPaidUseC
 export const rejectAffiliateCashoutUseCase = buildRejectAffiliateCashoutUseCase();
 
 export const captureAffiliateAttributionUseCase = buildCaptureAffiliateAttributionUseCase();
+export const resolveAffiliateShareCodeUseCase = buildResolveAffiliateShareCodeUseCase();
 
 export { dgfyAccountRepository };
+export { dgfyAffiliateRepository };

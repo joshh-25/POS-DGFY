@@ -2,6 +2,7 @@ import rateLimit from 'express-rate-limit';
 import logger from '../config/logger.js';
 import { isPremiumActiveTenant } from '../utils/tenantPlan.js';
 import { MOBILE_SYNC_LIMIT_PER_DAY } from '../modules/pos/usecases/mobilePosUseCases.js';
+import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
 
 // Get rate limit configuration from environment variables.
 // In development, use more lenient limits to account for React StrictMode double renders.
@@ -29,14 +30,28 @@ const storeTrackingReadWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING
 const storeTrackingReadMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_MAX_REQUESTS) || (isDevelopment ? 600 : 300);
 const storeLocationsWindowMs = parseInt(process.env.RATE_LIMIT_STORE_LOCATIONS_WINDOW_MS) || 60 * 1000; // 1 minute
 const storeLocationsMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_LOCATIONS_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
+// #678 (voucher catalog display seam): a voucher_code query param on the public catalog/QR
+// routes is both a valid/invalid voucher-code oracle and a lever that forces those responses to
+// no-store, bypassing the shared CDN cache. Scoped tightly -- this only gates requests that
+// actually carry voucher_code, never the plain catalog browse path.
+const storeVoucherLookupWindowMs = parseInt(process.env.RATE_LIMIT_STORE_VOUCHER_LOOKUP_WINDOW_MS) || 60 * 1000; // 1 minute
+const storeVoucherLookupMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_VOUCHER_LOOKUP_MAX_REQUESTS) || (isDevelopment ? 120 : 20);
 const storefrontDiscoveryWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontDiscoveryMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
+// #452 (Phase 212): /s/{short_code} resolution is now a boot dependency of the store page, not a
+// fire-and-forget capture -- it must NOT share authLimiter's 5/5min budget (see
+// docs/api/RATE_LIMITING.md). Sized like its browse-tier neighbours above (90/min prod). Inherits
+// the same known shared-IP/CGNAT keying gap tracked in #972 -- not fixed here.
+const affiliateShareResolveWindowMs = parseInt(process.env.RATE_LIMIT_AFFILIATE_SHARE_RESOLVE_WINDOW_MS) || 60 * 1000; // 1 minute
+const affiliateShareResolveMaxRequests = parseInt(process.env.RATE_LIMIT_AFFILIATE_SHARE_RESOLVE_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const storefrontFollowWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontFollowMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
 const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes
 const onboardingEventsMaxRequests = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS) || (isDevelopment ? 180 : 60);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const posMaxRequests = parseInt(process.env.RATE_LIMIT_POS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
+const posDrawerAuthorizationWindowMs = parseInt(process.env.RATE_LIMIT_POS_DRAWER_AUTH_WINDOW_MS) || 10 * 60 * 1000;
+const posDrawerAuthorizationMaxRequests = parseInt(process.env.RATE_LIMIT_POS_DRAWER_AUTH_MAX_REQUESTS) || (isDevelopment ? 20 : 5);
 const dgfyTenantSessionWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const dgfyTenantSessionMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS) || (isDevelopment ? 50 : 10);
 const dgfyAccountSearchWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_ACCOUNT_SEARCH_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -58,6 +73,11 @@ const mobilePosFreeSyncWindowMs = parseInt(process.env.RATE_LIMIT_MOBILE_POS_FRE
 // clients in sync_policy/sync_limit_policy (mobilePosUseCases.js), so the
 // advertised and enforced caps can't drift apart.
 const mobilePosFreeSyncMaxRequests = parseInt(process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_MAX_REQUESTS) || MOBILE_SYNC_LIMIT_PER_DAY;
+// A full mobile drain can require several dependency-ordered endpoint calls.
+// The same client_sync_run_id may reuse one daily slot briefly, while a new
+// run still consumes the next slot. The ordinary POS limiter remains the
+// per-request abuse boundary inside this window.
+const mobilePosSyncRunReuseWindowMs = parseInt(process.env.RATE_LIMIT_MOBILE_POS_SYNC_RUN_REUSE_WINDOW_MS) || 15 * 60 * 1000;
 
 // Standard error response format
 const createRateLimitError = (message, metadata = {}) => ({
@@ -85,11 +105,13 @@ const rateLimitCounters = {
   store_tracking: 0,
   store_tracking_read: 0,
   store_locations: 0,
+  store_voucher_lookup: 0,
   storefront_discovery: 0,
   storefront_follow: 0,
   onboarding_events: 0,
   ai: 0,
   pos: 0,
+  pos_drawer_authorization: 0,
   dgfy_tenant_session: 0,
   dgfy_account_search: 0,
   registration: 0,
@@ -256,15 +278,33 @@ const decodeJwtPayloadUnsafe = (token) => {
   }
 };
 
-const userKeyFromAuthHeader = (authHeader) => {
-  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) return '';
-  const token = authHeader.slice(7).trim();
-  if (!token) return '';
+const userKeyFromToken = (token) => {
+  if (typeof token !== 'string' || !token) return '';
   const payload = decodeJwtPayloadUnsafe(token);
   if (!payload) return '';
-  const userIdCandidate = payload.user_id ?? payload.sub ?? payload.id ?? '';
+  const userIdCandidate = payload.dgfy_account_id ?? payload.user_id ?? payload.sub ?? payload.id ?? '';
   return String(userIdCandidate || '').trim();
 };
+
+const userKeyFromAuthHeader = (authHeader) => {
+  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) return '';
+  return userKeyFromToken(authHeader.slice(7).trim());
+};
+
+// #958: generalLimiter mounts before authentication runs, and its only user
+// identity signal used to be an Authorization bearer header. The DGFY
+// customer dashboard authenticates via the sku_dgfy_session cookie instead
+// (dgfyAuth.js's getDgfyToken() accepts either) -- so every cookie-only
+// request keyed as "anonymous", collapsing every signed-in customer on one
+// network into a single shared bucket. Decoded without signature
+// verification, same as userKeyFromAuthHeader above: this only needs to
+// bucket requests correctly, not authenticate them -- a forged cookie value
+// just buys the forger their own separate bucket, no worse than the
+// existing X-Forwarded-For spoofing gap tracked in #973.
+const userKeyFromRequest = (req) => (
+  userKeyFromAuthHeader(req.headers.authorization)
+  || userKeyFromToken(getCookie(req, SESSION_COOKIE_NAMES.dgfy))
+);
 
 const getScopeFromRequest = (req, fallbackScope) => {
   const path = req.path || '';
@@ -437,12 +477,33 @@ export class DynamicStore {
 
   async decrement(key) {
     const store = this.getStore();
-    return store.decrement(key);
+    try {
+      return await store.decrement(key);
+    } catch (e) {
+      // #958: skipSuccessfulRequests (authLimiter) calls decrement() on every
+      // successful request -- previously unguarded and unexercised, unlike
+      // increment()'s existing fallback. A Redis error here must not become
+      // an unhandled rejection on what is otherwise a normal, successful
+      // request.
+      if (store === this.redisStore && this.memoryStore) {
+        logger.warn(`[RateLimiter] Redis decrement failed for ${key}, falling back to memory`);
+        return this.memoryStore.decrement(key);
+      }
+      throw e;
+    }
   }
 
   async resetKey(key) {
     const store = this.getStore();
-    return store.resetKey(key);
+    try {
+      return await store.resetKey(key);
+    } catch (e) {
+      if (store === this.redisStore && this.memoryStore) {
+        logger.warn(`[RateLimiter] Redis resetKey failed for ${key}, falling back to memory`);
+        return this.memoryStore.resetKey(key);
+      }
+      throw e;
+    }
   }
 }
 
@@ -470,7 +531,9 @@ export const generalLimiter = rateLimit({
     const host = normalizeHostHeader(req.hostname || req.headers.host || '');
     const companyToken = normalizeCompanyTokenHeader(req.headers['x-company-token'])
       || companyTokenFromValidatePath(req.path || req.originalUrl || '');
-    const userKey = userKeyFromAuthHeader(req.headers.authorization);
+    // #958: also checks the DGFY session cookie, not just the bearer header
+    // -- see userKeyFromRequest's own comment for why.
+    const userKey = userKeyFromRequest(req);
     if (host || companyToken || userKey) {
       return `general:${host || 'unknown-host'}:${companyToken || 'default'}:${userKey || 'anonymous'}:${ip}`;
     }
@@ -511,6 +574,27 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
+  // #958: brute force is about failed attempts, not successful ones -- without
+  // this, 5 *successful* logins in the window locks out everyone else sharing
+  // the same ip+email bucket (a shared cashier/office account on one network).
+  //
+  // authLimiter is shared across ~20 mount points beyond login/register
+  // (routes/auth.js, routes/dgfy.js) -- password-reset/request,
+  // email-verification/request, tracking-recovery/request,
+  // legacy-link/request-email-otp, company switch/transfer-ownership, etc.
+  // A bare `skipSuccessfulRequests: true` would exempt every one of those
+  // routes' successful (<400) responses too, not just login/register.
+  // Several of them (password-reset/request in particular) deliberately
+  // return a uniform 2xx regardless of whether the target exists -- for
+  // those, this limiter is the ONLY throttle in front of the endpoint, and
+  // an unscoped skip would make it silently unlimited: a new abuse vector
+  // introduced by a change whose whole point is abuse control. Scope the
+  // skip to the two routes it's actually justified for.
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: (req, res) => {
+    const isLoginOrRegister = /\/(login|register)$/.test(req.path || '');
+    return isLoginOrRegister && res.statusCode < 400;
+  },
   store: new DynamicStore('auth'),
   keyGenerator: (req) => {
     const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
@@ -789,6 +873,42 @@ export const storeLocationsLimiter = rateLimit({
   },
 });
 
+// #678: throttles the voucher_code-bearing path of the public catalog/QR routes specifically
+// (see routes/store.js's limitVoucherCodeLookups) -- a voucher code is both an enumerable
+// oracle and, via the no-store cache bypass it also triggers, a way to force every request to
+// skip the shared CDN cache. IP + store-slug keyed, same shape as storeLocationsLimiter above.
+export const storeVoucherLookupLimiter = rateLimit({
+  windowMs: storeVoucherLookupWindowMs,
+  max: storeVoucherLookupMaxRequests,
+  message: createRateLimitError('Too many voucher lookups. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('store_voucher_lookup'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const storeSlug = normalizeStoreLimiterSlug(req.headers?.['x-store-slug']) || 'unknown-store';
+    return `store_voucher_lookup:${ip}:${storeSlug}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many voucher lookups. Please wait before trying again.',
+      'store_voucher_lookup',
+      'ip_store_slug'
+    );
+    logRateLimitEvent(req, 'store_voucher_lookup', response.retryAfterSeconds, 'ip_store_slug');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 // Public storefront discovery limiter (search/list/map/profile lookups).
 export const storefrontDiscoveryLimiter = rateLimit({
   windowMs: storefrontDiscoveryWindowMs,
@@ -815,6 +935,41 @@ export const storefrontDiscoveryLimiter = rateLimit({
       'ip_query'
     );
     logRateLimitEvent(req, 'storefront_discovery', response.retryAfterSeconds, 'ip_query');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// #452 (Phase 212): browse-tier limiter for GET /affiliate/s/:short_code. Keyed on ip + short_code
+// so one code being scanned repeatedly (an event, a shared wifi) doesn't exhaust budget for other
+// codes on the same IP. Deliberately NOT authLimiter -- see the mount comment in routes/dgfy.js.
+export const affiliateShareResolveLimiter = rateLimit({
+  windowMs: affiliateShareResolveWindowMs,
+  max: affiliateShareResolveMaxRequests,
+  message: createRateLimitError('Too many share link requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('affiliate_share_resolve'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const shortCode = String(req.params?.short_code || '').trim().toUpperCase() || 'unknown-code';
+    return `affiliate_share_resolve:${ip}:${shortCode}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many share link requests. Please wait before trying again.',
+      'affiliate_share_resolve',
+      'ip_short_code'
+    );
+    logRateLimitEvent(req, 'affiliate_share_resolve', response.retryAfterSeconds, 'ip_short_code');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
@@ -1068,6 +1223,45 @@ export const posLimiter = rateLimit({
   },
 });
 
+// Drawer authorization is a PIN-protected operation, so it needs a much
+// smaller bucket than ordinary POS reads/checkouts. Scope it to the tenant,
+// user, shift, terminal, and source address so one cashier cannot consume a
+// different cashier's allowance on a shared terminal.
+export const posDrawerAuthorizationLimiter = rateLimit({
+  windowMs: posDrawerAuthorizationWindowMs,
+  max: posDrawerAuthorizationMaxRequests,
+  message: createRateLimitError('Too many cash drawer authorization attempts. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('pos_drawer_authorization'),
+  keyGenerator: (req) => {
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
+    const userKey = req.user?.user_id || userKeyFromAuthHeader(req.headers.authorization) || 'anonymous';
+    const shiftKey = req.body?.shift_id || 'unknown-shift';
+    const terminalKey = req.headers['x-pos-terminal-id'] || req.body?.terminal_id || 'unknown-terminal';
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    return `pos_drawer_authorization:${tenantKey}:${userKey}:${shiftKey}:${terminalKey}:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many cash drawer authorization attempts. Please wait before trying again.',
+      'pos_drawer_authorization',
+      'tenant_user_shift_terminal_ip'
+    );
+    logRateLimitEvent(req, 'pos_drawer_authorization', response.retryAfterSeconds, 'tenant_user_shift_terminal_ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 // Item operations limiter: tenant/user scoped. All /api/v1/items routes require
 // authentication and are exempted from generalLimiter's shared IP bucket (see
 // isAuthenticatedItemOperation) so a busy store network doesn't block ordinary
@@ -1238,22 +1432,39 @@ export const inventoryPushLimiter = rateLimit({
 // Free-tier cap for the offline-sync API (see dgfy-mobile
 // docs/architecture/SYNC-ARCHITECTURE.md, Channel A). Premium tenants skip
 // this limiter entirely (isPremiumActiveTenant) and sync in realtime; free
-// tenants get up to 2 pushes per rolling 24h window, tenant-keyed - the cap
-// is per business, matching the client's resolveSyncPolicy({ dailyCap: 2 }),
-// not per terminal/device. Only mount this on the write endpoints
+// tenants get up to 2 full sync rounds per rolling 24h window, keyed by
+// business + device. A round can span multiple endpoint calls carrying one
+// client_sync_run_id; mobilePosFreeSyncRoundLimiter below counts that round
+// once for a bounded 15-minute reuse window. Only mount it on write endpoints
 // (POST /mobile-pos/sync/*); GET /mobile-pos/bootstrap/* (Channel B,
 // reference/config) is opportunistic and uncapped for both tiers.
+const normalizeMobileSyncKeyPart = (value, maxLength) => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized || normalized.length > maxLength || !/^[A-Za-z0-9._:-]+$/.test(normalized)) return '';
+  return normalized;
+};
+
+const getMobileSyncIdentity = (req) => ({
+  tenantKey: String(req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant'),
+  deviceId: normalizeMobileSyncKeyPart(req.body?.device_id, 160) || 'unknown-device',
+  runId: normalizeMobileSyncKeyPart(req.body?.client_sync_run_id, 160),
+});
+
 export const mobilePosFreeSyncLimiter = rateLimit({
   windowMs: mobilePosFreeSyncWindowMs,
   max: mobilePosFreeSyncMaxRequests,
   message: createRateLimitError('Free plan is limited to 2 syncs per day. Upgrade to Premium for unlimited sync.', { requiresUpgrade: true }),
   standardHeaders: true,
   legacyHeaders: false,
+  // The product contract limits successful full syncs, not failed validation,
+  // authorization, or transient server attempts. express-rate-limit restores
+  // the slot after a non-success response when this is enabled.
+  skipFailedRequests: true,
   validate: { trustProxy: false },
   store: new DynamicStore('mobile_pos_free_sync'),
   keyGenerator: (req) => {
-    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
-    return `mobile_pos_free_sync:${tenantKey}`;
+    const { tenantKey, deviceId } = getMobileSyncIdentity(req);
+    return `mobile_pos_free_sync:${tenantKey}:${deviceId}`;
   },
   handler: (req, res, _next, options) => {
     const retryAfterSeconds = getRetryAfterSeconds(req, options);
@@ -1262,11 +1473,11 @@ export const mobilePosFreeSyncLimiter = rateLimit({
       {
         retryAfterSeconds,
         limitScope: 'mobile_pos_free_sync',
-        limitKeyType: 'tenant',
+        limitKeyType: 'tenant_device',
         requiresUpgrade: true
       }
     );
-    logRateLimitEvent(req, 'mobile_pos_free_sync', retryAfterSeconds, 'tenant');
+    logRateLimitEvent(req, 'mobile_pos_free_sync', retryAfterSeconds, 'tenant_device');
     res.set('Retry-After', String(retryAfterSeconds));
     res.status(429).json(body);
   },
@@ -1277,6 +1488,62 @@ export const mobilePosFreeSyncLimiter = rateLimit({
     return false;
   },
 });
+
+const mobileSyncRunMemory = new Map();
+const mobileSyncRunCacheKey = ({ tenantKey, deviceId, runId }) =>
+  `mobile_pos_sync_run:${tenantKey}:${deviceId}:${runId}`;
+
+const pruneMobileSyncRunMemory = (now = Date.now()) => {
+  for (const [key, expiresAt] of mobileSyncRunMemory.entries()) {
+    if (expiresAt <= now) mobileSyncRunMemory.delete(key);
+  }
+};
+
+const hasSeenMobileSyncRun = async (key) => {
+  const now = Date.now();
+  pruneMobileSyncRunMemory(now);
+  if ((mobileSyncRunMemory.get(key) || 0) > now) return true;
+  if (!isRedisConnected()) return false;
+  try {
+    return Boolean(await getRedisClient()?.sendCommand(['GET', key]));
+  } catch (error) {
+    logger.warn('[RateLimiter] Redis mobile sync-run lookup failed; using memory fallback', { error: error?.message });
+    return false;
+  }
+};
+
+const rememberMobileSyncRun = async (key) => {
+  mobileSyncRunMemory.set(key, Date.now() + mobilePosSyncRunReuseWindowMs);
+  if (!isRedisConnected()) return;
+  try {
+    await getRedisClient()?.sendCommand(['SET', key, '1', 'PX', String(mobilePosSyncRunReuseWindowMs)]);
+  } catch (error) {
+    logger.warn('[RateLimiter] Redis mobile sync-run write failed; using memory fallback', { error: error?.message });
+  }
+};
+
+// Backward compatible: clients without a valid run id still consume one slot
+// per request. New clients count the first successful request and may finish
+// the same dependency-ordered drain without spending another daily slot.
+export const mobilePosFreeSyncRoundLimiter = async (req, res, next) => {
+  if (isPremiumActiveTenant(req)) return next();
+  if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return next();
+
+  const identity = getMobileSyncIdentity(req);
+  if (!identity.runId) return mobilePosFreeSyncLimiter(req, res, next);
+  const runKey = mobileSyncRunCacheKey(identity);
+  if (await hasSeenMobileSyncRun(runKey)) return next();
+
+  return mobilePosFreeSyncLimiter(req, res, (error) => {
+    if (error) return next(error);
+    res.once('finish', () => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        void rememberMobileSyncRun(runKey);
+      }
+    });
+    return next();
+  });
+};
 
 export default {
   general: generalLimiter,
@@ -1297,5 +1564,6 @@ export default {
   routeCalculator: routeCalculatorLimiter,
   inventoryPush: inventoryPushLimiter,
   mobilePosFreeSync: mobilePosFreeSyncLimiter,
+  mobilePosFreeSyncRound: mobilePosFreeSyncRoundLimiter,
   itemOperations: itemOperationsLimiter,
 };

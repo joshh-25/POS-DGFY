@@ -314,6 +314,64 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     }));
   });
 
+  // #776 (#713 regression): storefront_vouchers was computed correctly all the way through the
+  // index sync, but the row->response mapping below is an explicit field allowlist, not a spread --
+  // this field was missing from it, so it never reached the response even once it was correctly
+  // persisted. Guards the exact gap the original #713 test suite missed: it asserted the
+  // snapshot-builder function's own return value, never this mapping function.
+  it('carries storefront_vouchers through from a materialized discovery-index row', async () => {
+    const repository = await loadRepository();
+    findOneMock.mockResolvedValue({
+      ...makeEntry({ tenant_id: 'tenant-2', tenant_name: 'Bravo', slug: 'bravo-store' }),
+      storefront_vouchers: [
+        { id: 1, code: 'ANNIVERSARY20', title: 'Anniversary Discount', badge: '', subtitle: '', validity_text: '', benefit_class: 'percent_off', percent_off_bps: 2000, active: true }
+      ]
+    });
+
+    const result = await repository.getStorefrontBySlug('bravo-store');
+    expect(result.storefront_vouchers).toEqual([
+      expect.objectContaining({ code: 'ANNIVERSARY20', percent_off_bps: 2000, benefit_class: 'percent_off' })
+    ]);
+  });
+
+  it('defaults storefront_vouchers to an empty array when the discovery-index row has none', async () => {
+    const repository = await loadRepository();
+    findOneMock.mockResolvedValue(makeEntry({ tenant_id: 'tenant-3', tenant_name: 'Charlie', slug: 'charlie-store' }));
+
+    const result = await repository.getStorefrontBySlug('charlie-store');
+    expect(result.storefront_vouchers).toEqual([]);
+  });
+
+  // Phase 242 (#1333, epic #1321): store_delivery_fee is now a FROM-price, ambiguous without
+  // delivery_fee_mode alongside it -- assert the pair travels together through the response mapper
+  // for each of the three modes.
+  it.each([
+    ['calculated', 39],
+    ['free', 0],
+    ['fixed', 50]
+  ])('carries the (%s, %d) store_delivery_fee/delivery_fee_mode pair through from a materialized row', async (mode, fee) => {
+    const repository = await loadRepository();
+    findOneMock.mockResolvedValue({
+      ...makeEntry({ tenant_id: `tenant-mode-${mode}`, tenant_name: `Mode ${mode}`, slug: `mode-${mode}-store` }),
+      store_delivery_fee: fee,
+      delivery_fee_mode: mode
+    });
+
+    const result = await repository.getStorefrontBySlug(`mode-${mode}-store`);
+    expect(result.store_delivery_fee).toBe(fee);
+    expect(result.delivery_fee_mode).toBe(mode);
+  });
+
+  it('defaults delivery_fee_mode to fixed for a legacy row written before this phase (no delivery_fee_mode column value)', async () => {
+    const repository = await loadRepository();
+    const legacyEntry = makeEntry({ tenant_id: 'tenant-legacy', tenant_name: 'Legacy', slug: 'legacy-store' });
+    delete legacyEntry.delivery_fee_mode;
+    findOneMock.mockResolvedValue(legacyEntry);
+
+    const result = await repository.getStorefrontBySlug('legacy-store');
+    expect(result.delivery_fee_mode).toBe('fixed');
+  });
+
   it('uses structured tenant storefront hours for materialized profile rows', async () => {
     const repository = await loadRepository();
     const structuredHours = {

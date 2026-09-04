@@ -1,0 +1,26 @@
+#!/usr/bin/env node
+// Wrap `cursor agent --output-format stream-json`; record only its initialization event.
+const { spawn } = require('node:child_process');
+const path = require('node:path');
+const child = spawn('cursor', process.argv.slice(2), { stdio: ['inherit', 'pipe', 'inherit'] });
+let seen = false;
+let pending = '';
+child.stdout.on('data', (chunk) => {
+  process.stdout.write(chunk);
+  pending += chunk.toString();
+  const lines = pending.split('\n');
+  pending = lines.pop();
+  for (const line of lines) {
+    if (seen) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event.type === 'init' && (event.model_id || event.model) && (event.session_id || event.sessionId)) {
+        seen = true;
+        const hook = path.resolve(__dirname, '../hooks/record-ai-attribution.js');
+        const recorder = spawn(process.execPath, [hook], { stdio: ['pipe', 'ignore', 'ignore'] });
+        recorder.stdin.end(JSON.stringify({ ...event, cwd: process.cwd() }));
+      }
+    } catch { /* split/chunk fragments are not initialization evidence */ }
+  }
+});
+child.on('exit', (code) => process.exit(code ?? 1));

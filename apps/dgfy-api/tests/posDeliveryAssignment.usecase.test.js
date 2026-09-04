@@ -54,6 +54,10 @@ const buildAssignmentRepository = (seed = {}) => {
                 status: 'open'
             };
         },
+        async updateOrderById(_id, payload) {
+            Object.assign(order, payload);
+            return { ...order };
+        },
         async findActiveDeliveryPersonnelById() {
             return {
                 delivery_personnel_id: 21,
@@ -133,6 +137,7 @@ describe('POS delivery personnel assignment', () => {
             assigned_by: 12,
             assigned_shift_id: 9
         });
+        expect(first.data.order).toMatchObject({ shift_id: 9 });
         expect(first.data.assignment).toMatchObject({
             assigned_by: 12,
             assigned_shift_id: 9,

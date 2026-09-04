@@ -7,21 +7,23 @@ import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Color
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.UUID
-import kotlin.math.roundToInt
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 
 class BluetoothEscPosController(
-    private val context: Context
+    private val context: Context,
+    private val logoProvider: ReceiptLogoProvider = ReceiptLogoProvider(context.applicationContext)
 ) {
     private val appContext = context.applicationContext
 
@@ -35,6 +37,8 @@ class BluetoothEscPosController(
     private var lastErrorMessage = ""
     @Volatile
     private var lastPairedCount = 0
+    @Volatile
+    private var lastPrinterCandidateCount = 0
 
     fun openDrawer(): BluetoothCommandResult {
         return sendToFirstPrinterLikeDevice(
@@ -50,7 +54,11 @@ class BluetoothEscPosController(
         )
     }
 
-    fun printReceipt(receiptText: String, openDrawerAfterPrint: Boolean): BluetoothCommandResult {
+    fun printReceipt(
+        receiptText: String,
+        openDrawerAfterPrint: Boolean,
+        logoSource: String = ""
+    ): BluetoothCommandResult {
         val normalizedText = receiptText.trim()
         if (normalizedText.isEmpty()) {
             return BluetoothCommandResult(false, "Receipt text is empty")
@@ -58,7 +66,10 @@ class BluetoothEscPosController(
 
         val payload = mutableListOf<Byte>()
         payload.addAll(INIT_PRINTER_BYTES.toList())
-        receiptLogoRasterBytes()?.let { logoBytes ->
+        // Resolves the tenant's configured company icon when logoSource is reachable,
+        // falling back to the bundled DGFY drawable otherwise -- see issue #321.
+        // Previously this always printed the bundled drawable regardless of branding.
+        logoProvider.resolveRasterBytes(logoSource)?.let { logoBytes ->
             payload.addAll(ALIGN_CENTER_BYTES.toList())
             payload.addAll(logoBytes.toList())
             payload.addAll(byteArrayOf(0x0A, 0x0A).toList())
@@ -100,6 +111,7 @@ class BluetoothEscPosController(
             .put("adapterAvailable", bluetoothAdapterOrNull() != null)
             .put("adapterEnabled", bluetoothAdapterOrNull()?.isEnabled == true)
             .put("pairedCount", pairedDevices.size)
+            .put("printerCandidateCount", pairedDevices.count { isPrinterLikeDevice(it) })
             .put("lastAttemptedDevice", lastAttemptedDevice)
             .put("lastSuccessDevice", lastSuccessDevice)
             .put("lastErrorClass", lastErrorClass)
@@ -139,24 +151,43 @@ class BluetoothEscPosController(
             return BluetoothCommandResult(false, lastErrorMessage)
         }
 
-        val orderedDevices = pairedDevices.sortedByDescending { isPrinterLikeDevice(it) }
+        val orderedDevices = pairedDevices.filter { isPrinterLikeDevice(it) }
+        lastPrinterCandidateCount = orderedDevices.size
+        if (orderedDevices.isEmpty()) {
+            lastErrorClass = "NoPairedBluetoothPrinters"
+            lastErrorMessage = "No paired Bluetooth receipt printer found"
+            return BluetoothCommandResult(false, lastErrorMessage)
+        }
+
+        val deadlineMs = SystemClock.elapsedRealtime() + TOTAL_SEND_TIMEOUT_MS
         var finalError: Throwable? = null
+        var mayHaveExecuted = false
 
         for (device in orderedDevices) {
             lastAttemptedDevice = safeDeviceLabel(device)
+            val remainingMs = deadlineMs - SystemClock.elapsedRealtime()
+            if (remainingMs <= 0L) {
+                finalError = TimeoutException("Bluetooth receipt printer deadline exceeded")
+                break
+            }
             try {
                 adapter.cancelDiscovery()
-                device.createRfcommSocketToServiceRecord(SPP_UUID).use { socket ->
-                    socket.connect()
-                    socket.outputStream.use { outputStream ->
-                        outputStream.write(bytes)
-                        outputStream.flush()
-                    }
+                val attempt = sendWithTimeout(
+                    device = device,
+                    bytes = bytes,
+                    timeoutMs = minOf(PER_DEVICE_SEND_TIMEOUT_MS, remainingMs)
+                )
+                mayHaveExecuted = mayHaveExecuted || attempt.mayHaveExecuted
+                if (attempt.success) {
+                    lastSuccessDevice = lastAttemptedDevice
+                    lastErrorClass = ""
+                    lastErrorMessage = ""
+                    return BluetoothCommandResult(true, "$successMessage via $lastSuccessDevice", true)
                 }
-                lastSuccessDevice = lastAttemptedDevice
-                lastErrorClass = ""
-                lastErrorMessage = ""
-                return BluetoothCommandResult(true, "$successMessage via $lastSuccessDevice")
+                finalError = attempt.error
+                // A timeout after connect/write has an uncertain physical outcome.
+                // Do not try another printer and risk a duplicate receipt/drawer pulse.
+                if (attempt.mayHaveExecuted) break
             } catch (exception: IOException) {
                 finalError = exception
             } catch (exception: RuntimeException) {
@@ -170,8 +201,51 @@ class BluetoothEscPosController(
         // diagnosticsJson() -- no need to also append them to the message
         // DrawerController folds into its own diagnostic dump (or, now, no
         // longer does; see DrawerController.printReceipt).
-        Log.w(TAG, "$lastErrorMessage | pairedCount=$lastPairedCount, lastAttempted=$lastAttemptedDevice")
-        return BluetoothCommandResult(false, lastErrorMessage)
+        Log.w(TAG, "$lastErrorMessage | pairedCount=$lastPairedCount, printerCandidates=$lastPrinterCandidateCount, lastAttempted=$lastAttemptedDevice")
+        return BluetoothCommandResult(false, lastErrorMessage, mayHaveExecuted)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun sendWithTimeout(
+        device: BluetoothDevice,
+        bytes: ByteArray,
+        timeoutMs: Long
+    ): SendAttemptResult {
+        val socket = device.createRfcommSocketToServiceRecord(SPP_UUID)
+        val executor = Executors.newSingleThreadExecutor()
+        val commandMayHaveExecuted = AtomicBoolean(false)
+        val future = executor.submit<Unit> {
+            socket.use {
+                it.connect()
+                it.outputStream.use { outputStream ->
+                    commandMayHaveExecuted.set(true)
+                    outputStream.write(bytes)
+                    outputStream.flush()
+                }
+            }
+        }
+
+        return try {
+            future.get(timeoutMs.coerceAtLeast(1L), TimeUnit.MILLISECONDS)
+            SendAttemptResult(success = true, mayHaveExecuted = true)
+        } catch (exception: TimeoutException) {
+            runCatching { socket.close() }
+            future.cancel(true)
+            SendAttemptResult(success = false, mayHaveExecuted = true, error = exception)
+        } catch (exception: InterruptedException) {
+            Thread.currentThread().interrupt()
+            runCatching { socket.close() }
+            future.cancel(true)
+            SendAttemptResult(success = false, mayHaveExecuted = true, error = exception)
+        } catch (exception: ExecutionException) {
+            SendAttemptResult(
+                success = false,
+                mayHaveExecuted = commandMayHaveExecuted.get(),
+                error = exception.cause ?: exception
+            )
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     private fun pairedDevicesOrEmpty(): Set<BluetoothDevice> {
@@ -234,89 +308,27 @@ class BluetoothEscPosController(
         return listOf(name, address).filter { it.isNotBlank() }.joinToString(" ")
     }
 
-    private fun receiptLogoRasterBytes(): ByteArray? {
-        val source = BitmapFactory.decodeResource(appContext.resources, R.drawable.dgfy_receipt_logo)
-            ?: return null
-        val scaled = scaleBitmapToWidth(source, RECEIPT_LOGO_WIDTH_DOTS)
-        if (scaled !== source) {
-            source.recycle()
-        }
-
-        return try {
-            bitmapToEscPosRaster(scaled)
-        } finally {
-            scaled.recycle()
-        }
-    }
-
-    private fun scaleBitmapToWidth(source: Bitmap, targetWidth: Int): Bitmap {
-        if (source.width <= 0 || source.height <= 0 || source.width == targetWidth) {
-            return source
-        }
-
-        val ratio = targetWidth.toDouble() / source.width.toDouble()
-        val targetHeight = (source.height * ratio).roundToInt().coerceAtLeast(1)
-        return Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
-    }
-
-    private fun bitmapToEscPosRaster(bitmap: Bitmap): ByteArray {
-        val widthBytes = (bitmap.width + 7) / 8
-        val height = bitmap.height
-        val imageBytes = ByteArray(widthBytes * height)
-
-        for (y in 0 until height) {
-            for (xByte in 0 until widthBytes) {
-                var packed = 0
-                for (bit in 0 until 8) {
-                    val x = xByte * 8 + bit
-                    if (x < bitmap.width && isDarkPixel(bitmap.getPixel(x, y))) {
-                        packed = packed or (0x80 shr bit)
-                    }
-                }
-                imageBytes[y * widthBytes + xByte] = packed.toByte()
-            }
-        }
-
-        return ByteArrayOutputStream().use { output ->
-            output.write(byteArrayOf(
-                0x1D,
-                0x76,
-                0x30,
-                0x00,
-                (widthBytes and 0xFF).toByte(),
-                ((widthBytes shr 8) and 0xFF).toByte(),
-                (height and 0xFF).toByte(),
-                ((height shr 8) and 0xFF).toByte()
-            ))
-            output.write(imageBytes)
-            output.toByteArray()
-        }
-    }
-
-    private fun isDarkPixel(pixel: Int): Boolean {
-        val alpha = Color.alpha(pixel)
-        if (alpha < 64) return false
-
-        val red = Color.red(pixel)
-        val green = Color.green(pixel)
-        val blue = Color.blue(pixel)
-        val luminance = (red * 0.299) + (green * 0.587) + (blue * 0.114)
-        return luminance < 190
-    }
-
     data class BluetoothCommandResult(
         val success: Boolean,
-        val message: String
+        val message: String,
+        val mayHaveExecuted: Boolean = false
+    )
+
+    private data class SendAttemptResult(
+        val success: Boolean,
+        val mayHaveExecuted: Boolean,
+        val error: Throwable? = null
     )
 
     companion object {
         private const val TAG = "BluetoothEscPosController"
+        private const val PER_DEVICE_SEND_TIMEOUT_MS = 4_000L
+        private const val TOTAL_SEND_TIMEOUT_MS = 10_000L
         private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
         private val INIT_PRINTER_BYTES = byteArrayOf(0x1B, 0x40)
         private val ALIGN_CENTER_BYTES = byteArrayOf(0x1B, 0x61, 0x01)
         private val ALIGN_LEFT_BYTES = byteArrayOf(0x1B, 0x61, 0x00)
         private val PARTIAL_CUT_BYTES = byteArrayOf(0x1D, 0x56, 0x42, 0x00)
         private val DRAWER_KICK_BYTES = byteArrayOf(0x10, 0x14, 0x00, 0x00, 0x00)
-        private const val RECEIPT_LOGO_WIDTH_DOTS = 256
     }
 }

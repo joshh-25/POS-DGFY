@@ -5,6 +5,7 @@ import {
   INVENTORY_DISPLAY_MODES
 } from '../modules/shared/utils/customerAccessPolicy.js';
 import { ORDER_METHOD_FEE_METHODS } from '../modules/shared/constants/orderMethods.js';
+import { DELIVERY_FEE_MODES } from '../modules/deliveryPricing/index.js';
 
 const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -449,6 +450,24 @@ const posBestSellerSettingsSchema = Joi.object({
   daily_top_enabled: Joi.boolean().default(false)
 }).default({ enabled: true, lookback_days: 30, top_limit: 3, daily_top_enabled: false });
 
+// Phase 233 (#1324, epic #1321): the calculated-mode delivery-fee formula, as ONE JSON blob per
+// Wave 0a decision #1 -- replaced wholesale on write, never merged field-by-field with whatever is
+// already stored. Reference values from the epic (₱50 minimum / first 3 km / ₱10 per km / ₱5 per
+// started 0.5 km / 15 km cap) are not defaults here -- an absent or invalid blob is meaningless
+// until a per-tenant value is actually set, and `deliveryFeeConfig.js`'s normalizer already
+// resolves that case to `mode: 'fixed'` rather than silently assuming a formula. Validated leniently
+// here (allow() rather than required()) so PUTting a `fixed`-mode-only settings body never needs to
+// also supply a calc blob it doesn't use.
+const storeDeliveryFeeCalcSchema = Joi.object({
+  min_fee: Joi.number().min(0).precision(4).required(),
+  included_km: Joi.number().min(0).precision(4).required(),
+  per_km_rate: Joi.number().min(0).precision(4).required(),
+  increment_km: Joi.number().greater(0).precision(4).required(),
+  max_distance_km: Joi.number().greater(0).precision(4).min(Joi.ref('included_km')).required().messages({
+    'number.min': 'Max distance must be greater than or equal to the included distance'
+  })
+}).optional();
+
 // Phase 6 composed-capability overlay: capabilities the master admin has
 // additionally granted on top of the tenant's base ops_workflow_mode.
 const enabledCapabilitiesSchema = Joi.array()
@@ -520,6 +539,7 @@ export const updateSettingsSchema = Joi.object({
   pos_fiscal_buyer_details_required: Joi.boolean().optional(),
   pos_receipt_footer_message: Joi.string().trim().max(300).allow('').optional(),
   pos_discount_profiles: posDiscountProfilesSchema.optional(),
+  pos_employee_discount_self_approval_enabled: Joi.boolean().optional(),
   pos_order_method_fees: posOrderMethodFeesSchema.optional(),
   pos_terminal_registry: posTerminalRegistrySchema.optional(),
   pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).optional().messages({
@@ -527,6 +547,10 @@ export const updateSettingsSchema = Joi.object({
   }),
   pos_hardware_profile: posHardwareProfileSchema.optional(),
   pos_terminal_location_binding_enforced: Joi.boolean().optional(),
+  // #604: tenant-wide POS voucher redemption master switch, default false. Orthogonal to a
+  // voucher's own `channels` mask (VOUCHER_CHANNEL_BITS.pos) -- this can disable POS redemption
+  // tenant-wide even for a voucher whose channels already include `pos`.
+  voucher_pos_redemption_enabled: Joi.boolean().optional(),
   pos_settings_access_pin: Joi.string().trim().pattern(POS_SETTINGS_ACCESS_PIN_PATTERN).allow('').optional().messages({
     'string.pattern.base': 'POS Settings access PIN must be 4 to 12 digits'
   }),
@@ -535,6 +559,12 @@ export const updateSettingsSchema = Joi.object({
   pos_petty_cash_amount: Joi.number().min(0).precision(4).optional(),
   pos_best_seller_settings: posBestSellerSettingsSchema.optional(),
   store_delivery_fee: Joi.number().min(0).precision(4).optional(),
+  // Phase 233 (#1324): fee-mode config schema, fixed-only behavior -- see
+  // modules/deliveryPricing/domain/deliveryFeeConfig.js for the normalization this feeds.
+  store_delivery_fee_mode: Joi.string().trim().lowercase().valid(...DELIVERY_FEE_MODES).optional().messages({
+    'any.only': `Delivery fee mode must be one of: ${DELIVERY_FEE_MODES.join(', ')}`
+  }),
+  store_delivery_fee_calc: storeDeliveryFeeCalcSchema,
   store_tenant_slug: Joi.string().trim().lowercase().max(80).pattern(/^[a-z0-9-]*$/).allow('').optional().messages({
     'string.pattern.base': 'Store tenant slug may only contain lowercase letters, numbers, and hyphens'
   }),
@@ -562,6 +592,8 @@ export const updateSettingsSchema = Joi.object({
   customer_access_mode: customerAccessModeSchema.optional(),
   inventory_display_mode: inventoryDisplayModeSchema.optional(),
   inventory_low_stock_display_threshold: inventoryLowStockDisplayThresholdSchema.optional(),
+  storefront_guest_checkout_enabled: Joi.boolean().optional(),
+  storefront_cash_payment_enabled: Joi.boolean().optional(),
   store_is_visible: Joi.boolean().optional(),
   store_has_no_location: Joi.boolean().optional(),
   pos_open_status: Joi.boolean().optional(),
@@ -692,6 +724,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_fiscal_buyer_details_required: Joi.boolean(),
     pos_receipt_footer_message: Joi.string().trim().max(300).allow(''),
     pos_discount_profiles: posDiscountProfilesSchema,
+    pos_employee_discount_self_approval_enabled: Joi.boolean(),
     pos_order_method_fees: posOrderMethodFeesSchema,
     pos_terminal_registry: posTerminalRegistrySchema,
     pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).messages({
@@ -699,11 +732,16 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     }),
     pos_hardware_profile: posHardwareProfileSchema,
     pos_terminal_location_binding_enforced: Joi.boolean(),
+    voucher_pos_redemption_enabled: Joi.boolean(),
     pos_settings_access_pin_hash: Joi.string().trim().allow(''),
     pos_petty_cash_symbol: Joi.string().trim().max(12).allow(''),
     pos_petty_cash_amount: Joi.number().min(0).precision(4),
     pos_best_seller_settings: posBestSellerSettingsSchema,
     store_delivery_fee: Joi.number().min(0).precision(4),
+    store_delivery_fee_mode: Joi.string().trim().lowercase().valid(...DELIVERY_FEE_MODES).messages({
+      'any.only': `Delivery fee mode must be one of: ${DELIVERY_FEE_MODES.join(', ')}`
+    }),
+    store_delivery_fee_calc: storeDeliveryFeeCalcSchema,
     store_tenant_slug: Joi.string().trim().lowercase().max(80).pattern(/^[a-z0-9-]*$/).allow('').messages({
       'string.pattern.base': 'Store tenant slug may only contain lowercase letters, numbers, and hyphens'
     }),
@@ -731,6 +769,8 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     customer_access_mode: customerAccessModeSchema,
     inventory_display_mode: inventoryDisplayModeSchema,
     inventory_low_stock_display_threshold: inventoryLowStockDisplayThresholdSchema,
+    storefront_guest_checkout_enabled: Joi.boolean(),
+    storefront_cash_payment_enabled: Joi.boolean(),
     store_is_visible: Joi.boolean(),
     store_has_no_location: Joi.boolean(),
     pos_open_status: Joi.boolean(),

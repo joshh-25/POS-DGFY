@@ -31,8 +31,9 @@ const publishedTemplate = (templateKey, modules = []) => ({ template_id: 1, temp
 
 // Rows shaped exactly as registrationIndustryRepository.findAll() returns
 // them, derived from the seed-baseline constant - this is what the
-// migration in Phase 43 actually seeds, so the 11-entry pins below
+// migration in Phase 43 actually seeds, so the SEEDED-length pins below
 // describe the seeded baseline, not the constant directly.
+const SEEDED = Object.keys(REGISTRATION_INDUSTRIES).length;
 const seededCatalogRows = () => Object.entries(REGISTRATION_INDUSTRIES).map(([industryKey, entry]) => ({
     industry_key: industryKey,
     display_order: entry.order,
@@ -62,7 +63,7 @@ describe('GET /api/v1/registration/industries transport contracts', () => {
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
-        expect(response.body.data.industries).toHaveLength(11);
+        expect(response.body.data.industries).toHaveLength(SEEDED);
 
         const microFnb = response.body.data.industries.find((entry) => entry.key === 'micro_fnb');
         expect(microFnb).toEqual(expect.objectContaining({
@@ -82,6 +83,22 @@ describe('GET /api/v1/registration/industries transport contracts', () => {
         // Healthcare has no template_key in the catalog, so the repository is
         // never even asked to look one up for it.
         expect(mockFindByKey).not.toHaveBeenCalledWith('healthcare');
+    });
+
+    it('normalizes a JSON-encoded niches string from the landlord catalog into an array', async () => {
+        mockFindByKey.mockImplementation(async (key) => publishedTemplate(key));
+        mockCatalogFindAll.mockResolvedValue([
+            {
+                ...seededCatalogRows()[0],
+                niches: '["Preschool", "Tutorial center"]'
+            }
+        ]);
+
+        const response = await request(app).get('/api/v1/registration/industries');
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.industries[0].niches).toEqual(['Preschool', 'Tutorial center']);
+        expect(Array.isArray(response.body.data.industries[0].niches)).toBe(true);
     });
 
     it('degrades a single entry to template_key: null when its template is not published', async () => {
@@ -126,7 +143,7 @@ describe('GET /api/v1/registration/industries transport contracts', () => {
     // hidden: true - the array never shortens (the frontend service falls
     // back to the full local constant on an empty array, so omission would
     // silently un-hide everything).
-    it('flags exactly the rows the catalog marks hidden, without shortening the 11-entry array', async () => {
+    it('flags exactly the rows the catalog marks hidden, without shortening the seeded-baseline array', async () => {
         mockFindByKey.mockImplementation(async (key) => publishedTemplate(key));
         const rows = seededCatalogRows().map((row) => (
             ['food_manufacturing', 'hospitality'].includes(row.industry_key) ? { ...row, hidden: true } : row
@@ -136,7 +153,7 @@ describe('GET /api/v1/registration/industries transport contracts', () => {
         const response = await request(app).get('/api/v1/registration/industries');
 
         expect(response.status).toBe(200);
-        expect(response.body.data.industries).toHaveLength(11);
+        expect(response.body.data.industries).toHaveLength(SEEDED);
         const hiddenKeys = response.body.data.industries.filter((entry) => entry.hidden).map((entry) => entry.key);
         expect(hiddenKeys.sort()).toEqual(['food_manufacturing', 'hospitality']);
         const retail = response.body.data.industries.find((entry) => entry.key === 'retail');
@@ -155,7 +172,7 @@ describe('GET /api/v1/registration/industries transport contracts', () => {
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
-        expect(response.body.data.industries).toHaveLength(11);
+        expect(response.body.data.industries).toHaveLength(SEEDED);
         for (const entry of response.body.data.industries) {
             expect(entry.hidden).toBe(false);
         }
@@ -168,7 +185,7 @@ describe('GET /api/v1/registration/industries transport contracts', () => {
         const response = await request(app).get('/api/v1/registration/industries');
 
         expect(response.status).toBe(200);
-        expect(response.body.data.industries).toHaveLength(11);
+        expect(response.body.data.industries).toHaveLength(SEEDED);
     });
 
     it('surfaces an admin-created industry not present in the seed-baseline constant', async () => {
@@ -192,7 +209,7 @@ describe('GET /api/v1/registration/industries transport contracts', () => {
         const response = await request(app).get('/api/v1/registration/industries');
 
         expect(response.status).toBe(200);
-        expect(response.body.data.industries).toHaveLength(12);
+        expect(response.body.data.industries).toHaveLength(SEEDED + 1);
         const petGrooming = response.body.data.industries.find((entry) => entry.key === 'pet_grooming');
         expect(petGrooming).toEqual(expect.objectContaining({
             label: 'Pet Grooming',

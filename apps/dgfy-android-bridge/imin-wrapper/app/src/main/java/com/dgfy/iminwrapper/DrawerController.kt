@@ -10,13 +10,17 @@ import android.util.Log
 import com.imin.printer.INeoPrinterCallback
 import com.imin.printer.PrinterHelper
 import org.json.JSONObject
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 class DrawerController(
     private val context: Context
 ) {
     private val appContext = context.applicationContext
     private val printerHelper = PrinterHelper.getInstance()
-    private val bluetoothEscPosController = BluetoothEscPosController(appContext)
+    private val logoProvider = ReceiptLogoProvider(appContext)
+    private val bluetoothEscPosController = BluetoothEscPosController(appContext, logoProvider)
 
     @Volatile
     private var isPrinterServiceConnected = false
@@ -58,7 +62,9 @@ class DrawerController(
             Log.i(TAG, "Cash drawer open command sent")
             DrawerCommandResult(
                 success = true,
-                message = "Cash drawer open command sent"
+                message = "Cash drawer open command sent",
+                mayHaveExecuted = true,
+                drawerOpened = true
             )
         } catch (exception: RuntimeException) {
             lastCommandSuccess = false
@@ -69,41 +75,12 @@ class DrawerController(
         }
     }
 
-    fun printReceipt(receiptText: String, openDrawerAfterPrint: Boolean): DrawerCommandResult {
+    fun printReceipt(
+        receiptText: String,
+        openDrawerAfterPrint: Boolean,
+        logoSource: String = ""
+    ): DrawerCommandResult {
         lastCommand = if (openDrawerAfterPrint) "print_receipt_and_open_drawer" else "print_receipt"
-        val bluetoothResult = bluetoothEscPosController.printReceipt(receiptText, openDrawerAfterPrint)
-        if (bluetoothResult.success) {
-            lastCommandSuccess = true
-            lastErrorClass = ""
-            lastErrorMessage = ""
-            return DrawerCommandResult(
-                success = true,
-                message = bluetoothResult.message
-            )
-        }
-
-        lastCommandSuccess = false
-        lastErrorClass = "BluetoothReceiptPrintFailed"
-        lastErrorMessage = bluetoothResult.message
-
-        ensurePrinterServiceBound(waitForConnection = true)
-
-        if (!isPrinterServiceConnected) {
-            lastCommandSuccess = false
-            lastErrorClass = "PrinterServiceDisconnected"
-            lastErrorMessage = "iMin printer service is not connected"
-            // Full diagnostic detail (bind state, service visibility, etc.) is
-            // logged and still travels in the separate `diagnostics` JSON
-            // field IminBridge attaches -- it no longer gets stuffed into the
-            // cashier-facing `message`, which used to render as a long
-            // unreadable dump in the WebView.
-            Log.w(TAG, buildDiagnosticMessage("Bluetooth receipt failed: ${bluetoothResult.message}. iMin printer service is not connected"))
-            return DrawerCommandResult(
-                success = false,
-                message = "No receipt printer is connected to this device."
-            )
-        }
-
         val normalizedText = receiptText.trim()
         if (normalizedText.isEmpty()) {
             lastCommandSuccess = false
@@ -115,35 +92,125 @@ class DrawerController(
             )
         }
 
-        return try {
-            printerHelper.printText(
-                normalizedText + "\n\n",
-                object : INeoPrinterCallback() {
-                    @Throws(RemoteException::class)
-                    override fun onRunResult(isSuccess: Boolean) {
-                        Log.i(TAG, "Receipt print command result: $isSuccess")
-                    }
+        ensurePrinterServiceBound(waitForConnection = true)
+        if (isPrinterServiceConnected) {
+            val builtInResult = printReceiptWithBuiltInPrinter(normalizedText, openDrawerAfterPrint, logoSource)
+            if (builtInResult.success || builtInResult.mayHaveExecuted) {
+                return builtInResult
+            }
 
-                    @Throws(RemoteException::class)
-                    override fun onReturnString(result: String?) {
-                        Log.i(TAG, "Receipt print return: ${result ?: ""}")
-                    }
-
-                    @Throws(RemoteException::class)
-                    override fun onRaiseException(code: Int, msg: String?) {
-                        Log.e(TAG, "Receipt print exception $code: ${msg ?: ""}")
-                    }
-
-                    @Throws(RemoteException::class)
-                    override fun onPrintResult(code: Int, msg: String?) {
-                        Log.i(TAG, "Receipt print result $code: ${msg ?: ""}")
-                    }
-                }
+            return printReceiptWithBluetoothFallback(
+                receiptText = normalizedText,
+                openDrawerAfterPrint = openDrawerAfterPrint,
+                logoSource = logoSource,
+                baseMessage = builtInResult.message
             )
+        }
+
+        lastCommandSuccess = false
+        lastErrorClass = "PrinterServiceDisconnected"
+        lastErrorMessage = "iMin printer service is not connected"
+        Log.w(TAG, buildDiagnosticMessage(lastErrorMessage))
+        return printReceiptWithBluetoothFallback(
+            receiptText = normalizedText,
+            openDrawerAfterPrint = openDrawerAfterPrint,
+            logoSource = logoSource,
+            baseMessage = "No built-in receipt printer is connected to this device."
+        )
+    }
+
+    private fun printReceiptWithBuiltInPrinter(
+        receiptText: String,
+        openDrawerAfterPrint: Boolean,
+        logoSource: String
+    ): DrawerCommandResult {
+        val callbackResult = AtomicReference<PrinterCallbackResult?>(null)
+        val callbackLatch = CountDownLatch(1)
+        val callback = object : INeoPrinterCallback() {
+            private fun complete(result: PrinterCallbackResult) {
+                if (callbackResult.compareAndSet(null, result)) {
+                    callbackLatch.countDown()
+                }
+            }
+
+            @Throws(RemoteException::class)
+            override fun onRunResult(isSuccess: Boolean) {
+                Log.i(TAG, "Receipt print command result: $isSuccess")
+                complete(PrinterCallbackResult(
+                    success = isSuccess,
+                    message = if (isSuccess) "Built-in receipt print confirmed" else "Built-in receipt print was rejected"
+                ))
+            }
+
+            @Throws(RemoteException::class)
+            override fun onReturnString(result: String?) {
+                Log.i(TAG, "Receipt print return: ${result ?: ""}")
+            }
+
+            @Throws(RemoteException::class)
+            override fun onRaiseException(code: Int, msg: String?) {
+                val message = msg?.takeIf { it.isNotBlank() } ?: "Built-in receipt print exception $code"
+                Log.e(TAG, "Receipt print exception $code: $message")
+                complete(PrinterCallbackResult(false, message))
+            }
+
+            @Throws(RemoteException::class)
+            override fun onPrintResult(code: Int, msg: String?) {
+                val success = code == 0
+                val message = msg?.takeIf { it.isNotBlank() }
+                    ?: if (success) "Built-in receipt print confirmed" else "Built-in receipt print failed with code $code"
+                Log.i(TAG, "Receipt print result $code: $message")
+                complete(PrinterCallbackResult(success, message))
+            }
+        }
+
+        val logoBitmap = logoProvider.resolveBitmap(logoSource)
+        return try {
+            if (logoBitmap != null) {
+                printerHelper.printBitmapWithAlign(
+                    logoBitmap,
+                    BUILT_IN_LOGO_ALIGNMENT_CENTER,
+                    loggingPrinterCallback("Receipt logo")
+                )
+            }
+            printerHelper.printText(receiptText + "\n\n", callback)
+            val callbackReceived = callbackLatch.await(PRINT_CALLBACK_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            if (!callbackReceived) {
+                lastCommandSuccess = false
+                lastErrorClass = "PrinterCallbackTimeout"
+                lastErrorMessage = "The built-in printer did not confirm the receipt in time. Check the printer before retrying."
+                return DrawerCommandResult(
+                    success = false,
+                    message = lastErrorMessage,
+                    mayHaveExecuted = true
+                )
+            }
+
+            val confirmed = callbackResult.get()
+            if (confirmed?.success != true) {
+                lastCommandSuccess = false
+                lastErrorClass = "PrinterCallbackFailure"
+                lastErrorMessage = confirmed?.message ?: "The built-in printer reported a receipt failure."
+                return DrawerCommandResult(
+                    success = false,
+                    message = lastErrorMessage,
+                    mayHaveExecuted = true
+                )
+            }
+
             printerHelper.printAndFeedPaper(80)
             printerHelper.partialCut()
-
             if (openDrawerAfterPrint) {
+                if (!printerHelper.supportCashBox()) {
+                    lastCommandSuccess = false
+                    lastErrorClass = "CashDrawerUnsupported"
+                    lastErrorMessage = "Receipt printed, but the built-in cash drawer is not supported."
+                    return DrawerCommandResult(
+                        success = false,
+                        message = lastErrorMessage,
+                        mayHaveExecuted = true
+                    )
+                }
                 printerHelper.openDrawer()
             }
 
@@ -153,23 +220,56 @@ class DrawerController(
             DrawerCommandResult(
                 success = true,
                 message = if (openDrawerAfterPrint) {
-                    "Receipt print command sent and cash drawer open command sent"
+                    "Receipt print confirmed and cash drawer open command sent"
                 } else {
-                    "Receipt print command sent"
-                }
+                    confirmed.message
+                },
+                mayHaveExecuted = true,
+                drawerOpened = openDrawerAfterPrint
             )
+        } catch (exception: InterruptedException) {
+            Thread.currentThread().interrupt()
+            lastCommandSuccess = false
+            lastErrorClass = exception.javaClass.name
+            lastErrorMessage = "Receipt printing was interrupted. Check the printer before retrying."
+            DrawerCommandResult(false, lastErrorMessage, mayHaveExecuted = true)
         } catch (exception: RuntimeException) {
             lastCommandSuccess = false
             lastErrorClass = exception.javaClass.name
             lastErrorMessage = exception.message ?: "Failed to print receipt"
             Log.e(TAG, "Failed to print receipt", exception)
-            printReceiptWithBluetoothFallback(
-                receiptText = receiptText,
-                openDrawerAfterPrint = openDrawerAfterPrint,
-                baseMessage = lastErrorMessage
+            DrawerCommandResult(
+                success = false,
+                message = lastErrorMessage,
+                mayHaveExecuted = callbackResult.get() != null
             )
+        } finally {
+            logoBitmap?.recycle()
         }
     }
+
+    private fun loggingPrinterCallback(label: String): INeoPrinterCallback =
+        object : INeoPrinterCallback() {
+            @Throws(RemoteException::class)
+            override fun onRunResult(isSuccess: Boolean) {
+                Log.i(TAG, "$label command result: $isSuccess")
+            }
+
+            @Throws(RemoteException::class)
+            override fun onReturnString(result: String?) {
+                Log.i(TAG, "$label return: ${result ?: ""}")
+            }
+
+            @Throws(RemoteException::class)
+            override fun onRaiseException(code: Int, msg: String?) {
+                Log.e(TAG, "$label exception $code: ${msg ?: ""}")
+            }
+
+            @Throws(RemoteException::class)
+            override fun onPrintResult(code: Int, msg: String?) {
+                Log.i(TAG, "$label print result $code: ${msg ?: ""}")
+            }
+        }
 
     fun diagnosticsJson(): JSONObject {
         val visibility = printerServiceVisibility(
@@ -223,7 +323,9 @@ class DrawerController(
         }
         return DrawerCommandResult(
             success = result.success,
-            message = result.message
+            message = result.message,
+            mayHaveExecuted = result.mayHaveExecuted,
+            drawerOpened = result.success
         )
     }
 
@@ -237,6 +339,13 @@ class DrawerController(
     }
 
     data class DrawerCommandResult(
+        val success: Boolean,
+        val message: String,
+        val mayHaveExecuted: Boolean = false,
+        val drawerOpened: Boolean = false
+    )
+
+    private data class PrinterCallbackResult(
         val success: Boolean,
         val message: String
     )
@@ -261,7 +370,9 @@ class DrawerController(
             lastCommandSuccess = true
             return DrawerCommandResult(
                 success = true,
-                message = "$baseMessage. Fallback succeeded: ${bluetoothResult.message}"
+                message = "$baseMessage. Fallback succeeded: ${bluetoothResult.message}",
+                mayHaveExecuted = true,
+                drawerOpened = true
             )
         }
 
@@ -273,28 +384,33 @@ class DrawerController(
         Log.w(TAG, "${buildDiagnosticMessage(baseMessage)} | Bluetooth fallback failed: ${bluetoothResult.message}")
         return DrawerCommandResult(
             success = false,
-            message = baseMessage
+            message = baseMessage,
+            mayHaveExecuted = bluetoothResult.mayHaveExecuted
         )
     }
 
     private fun printReceiptWithBluetoothFallback(
         receiptText: String,
         openDrawerAfterPrint: Boolean,
+        logoSource: String,
         baseMessage: String
     ): DrawerCommandResult {
-        val bluetoothResult = bluetoothEscPosController.printReceipt(receiptText, openDrawerAfterPrint)
+        val bluetoothResult = bluetoothEscPosController.printReceipt(receiptText, openDrawerAfterPrint, logoSource)
         if (bluetoothResult.success) {
             lastCommandSuccess = true
             return DrawerCommandResult(
                 success = true,
-                message = "$baseMessage. Fallback succeeded: ${bluetoothResult.message}"
+                message = "$baseMessage. Fallback succeeded: ${bluetoothResult.message}",
+                mayHaveExecuted = true,
+                drawerOpened = openDrawerAfterPrint
             )
         }
 
         Log.w(TAG, "${buildDiagnosticMessage(baseMessage)} | Bluetooth fallback failed: ${bluetoothResult.message}")
         return DrawerCommandResult(
             success = false,
-            message = baseMessage
+            message = baseMessage,
+            mayHaveExecuted = bluetoothResult.mayHaveExecuted
         )
     }
 
@@ -413,6 +529,8 @@ class DrawerController(
 
     companion object {
         private const val TAG = "DrawerController"
+        private const val PRINT_CALLBACK_TIMEOUT_MS = 8_000L
+        private const val BUILT_IN_LOGO_ALIGNMENT_CENTER = 1
         private const val PRINTER_SERVICE_PACKAGE = "com.imin.printerservice"
         private const val PRINTER_SERVICE_ACTION = "com.imin.printerservice.NeoPrinterService"
         private const val PRINTER_SERVICE_CLASS =

@@ -14,6 +14,7 @@ let storeTrackingReadLimiter;
 let storeGuestCheckoutOtpRequestLimiter;
 let storeGuestCheckoutOtpVerifyLimiter;
 let mobilePosFreeSyncLimiter;
+let mobilePosFreeSyncRoundLimiter;
 let itemOperationsLimiter;
 let logger;
 let defaultAuthRateLimitWindowMs;
@@ -53,6 +54,7 @@ beforeAll(async () => {
   storeGuestCheckoutOtpRequestLimiter = limiterModule.storeGuestCheckoutOtpRequestLimiter;
   storeGuestCheckoutOtpVerifyLimiter = limiterModule.storeGuestCheckoutOtpVerifyLimiter;
   mobilePosFreeSyncLimiter = limiterModule.mobilePosFreeSyncLimiter;
+  mobilePosFreeSyncRoundLimiter = limiterModule.mobilePosFreeSyncRoundLimiter;
   itemOperationsLimiter = limiterModule.itemOperationsLimiter;
 });
 
@@ -188,15 +190,17 @@ describe('Rate limiter behavior', () => {
   it('keys auth limiter by ip+email so different emails do not share the same bucket', async () => {
     const app = express();
     app.use(express.json());
-    app.post('/api/v1/auth/login', authLimiter, (_req, res) => res.status(200).json({ ok: true }));
+    // Wrong-password responses (401) are what a real /auth/login failure
+    // looks like -- this must still count toward the budget.
+    app.post('/api/v1/auth/login', authLimiter, (_req, res) => res.status(401).json({ ok: false }));
 
-    // First attempt for email A consumes that key's single slot.
+    // First failed attempt for email A consumes that key's single slot.
     await request(app)
       .post('/api/v1/auth/login')
       .send({ email: 'alpha@example.com', password: 'x' })
-      .expect(200);
+      .expect(401);
 
-    // Second attempt for email A is rate-limited.
+    // Second failed attempt for email A is rate-limited.
     const sameEmail = await request(app)
       .post('/api/v1/auth/login')
       .send({ email: 'alpha@example.com', password: 'x' })
@@ -214,7 +218,52 @@ describe('Rate limiter behavior', () => {
     await request(app)
       .post('/api/v1/auth/login')
       .send({ email: 'beta@example.com', password: 'x' })
-      .expect(200);
+      .expect(401);
+  });
+
+  // #958: 5 *successful* logins in the window used to lock out everyone else
+  // sharing the same ip+email bucket -- a real failure mode on a shared
+  // cashier/office account. skipSuccessfulRequests fixes this; confirm a
+  // successful login never even trips a 1-request budget.
+  it('does not count successful logins toward the auth limiter budget', async () => {
+    const app = express();
+    app.use(express.json());
+    app.post('/api/v1/auth/login', authLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+    for (let i = 0; i < 3; i += 1) {
+      await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'gamma@example.com', password: 'correct' })
+        .expect(200);
+    }
+  });
+
+  // #958 review follow-up (RF-1): authLimiter is shared across ~20 routes
+  // beyond login/register, and several of them (password-reset/request is
+  // the sharpest case) deliberately return a uniform 2xx regardless of
+  // whether the target exists -- for those, this limiter is the *only*
+  // throttle in front of the endpoint. skipSuccessfulRequests must not
+  // exempt them, or the endpoint becomes silently unlimited.
+  it('still counts repeated 2xx responses toward the budget on a non-login/register route', async () => {
+    const app = express();
+    app.use(express.json());
+    app.post('/api/v1/dgfy/auth/password-reset/request', authLimiter, (_req, res) => res.status(202).json({ ok: true }));
+
+    await request(app)
+      .post('/api/v1/dgfy/auth/password-reset/request')
+      .send({ email: 'delta@example.com' })
+      .expect(202);
+
+    const secondAttempt = await request(app)
+      .post('/api/v1/dgfy/auth/password-reset/request')
+      .send({ email: 'delta@example.com' })
+      .expect(429);
+
+    expect(secondAttempt.body).toEqual(expect.objectContaining({
+      success: false,
+      limitScope: 'other',
+      limitKeyType: 'ip_email',
+    }));
   });
 
   it('keys lookup limiter by ip+email so shared POS networks do not cross-throttle different cashiers', async () => {
@@ -386,7 +435,7 @@ describe('Rate limiter behavior', () => {
         success: false,
         message: 'Free plan is limited to 2 syncs per day. Upgrade to Premium for unlimited sync.',
         limitScope: 'mobile_pos_free_sync',
-        limitKeyType: 'tenant',
+        limitKeyType: 'tenant_device',
         requiresUpgrade: true,
         retryAfterSeconds: expect.any(Number),
       }));
@@ -434,6 +483,65 @@ describe('Rate limiter behavior', () => {
 
       // Tenant B's budget is untouched by tenant A exhausting theirs.
       await request(app).post('/api/v1/mobile-pos/sync/checkouts').set('x-test-tenant', 'tenant-b').expect(200);
+    });
+
+    it('counts one successful multi-endpoint sync run once for one device', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-free-round', plan: 'free' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncRoundLimiter, (_req, res) => res.status(200).json({ ok: true }));
+      app.post('/api/v1/mobile-pos/sync/shifts', mobilePosFreeSyncRoundLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+      const body = { device_id: 'device-round-1', client_sync_run_id: 'run-1' };
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send(body).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/shifts').send(body).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ ...body, client_sync_run_id: 'run-2' }).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/shifts').send({ ...body, client_sync_run_id: 'run-2' }).expect(200);
+
+      await request(app)
+        .post('/api/v1/mobile-pos/sync/checkouts')
+        .send({ ...body, client_sync_run_id: 'run-3' })
+        .expect(429);
+    });
+
+    it('keeps the free sync-round budget independent per device', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-free-devices', plan: 'free' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncRoundLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+      for (const runId of ['run-1', 'run-2']) {
+        await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: runId }).expect(200);
+      }
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'run-3' }).expect(429);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-b', client_sync_run_id: 'run-1' }).expect(200);
+    });
+
+    it('keeps legacy clients on the per-request fallback when no run id is supplied', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-free-legacy', plan: 'free' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncRoundLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'legacy-device' }).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'legacy-device' }).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'legacy-device' }).expect(429);
+    });
+
+    it('does not spend a free sync-round slot on rejected work', async () => {
+      const app = express();
+      app.use(express.json());
+      app.use(withTenant({ id: 'tenant-free-rejections', plan: 'free' }));
+      app.post('/api/v1/mobile-pos/sync/checkouts', mobilePosFreeSyncRoundLimiter, (req, res) => {
+        if (req.body.reject) return res.status(422).json({ success: false });
+        return res.status(200).json({ ok: true });
+      });
+
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'rejected-1', reject: true }).expect(422);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'rejected-2', reject: true }).expect(422);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'accepted-1' }).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'accepted-2' }).expect(200);
+      await request(app).post('/api/v1/mobile-pos/sync/checkouts').send({ device_id: 'device-a', client_sync_run_id: 'accepted-3' }).expect(429);
     });
   });
 });

@@ -39,7 +39,7 @@ import {
     STORE_PROFILE_READ_SETTING_KEY,
     normalizeStoreProfileReadFlag
 } from '../../shared/constants/storeProfile.js';
-import { applyWorkflowModeAuditLog } from './workflowModeAuditLog.js';
+import { applyWorkflowModeAuditLog, resolveWorkflowModeAuditBeforeValues } from './workflowModeAuditLog.js';
 import logger from '../../../config/logger.js';
 import {
     POS_RECEIPT_METADATA_PENDING_SETTING_KEY,
@@ -58,6 +58,8 @@ import {
 } from './posTerminalRegistrySecrets.js';
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
+import { assertFulfillmentMethodAvailableForAccessModeTransition } from './customerAccessModeFulfillmentPolicy.js';
+import { assertLaundryWorkflowModeRuntimeOwnership } from './laundryWorkflowModeRuntimeGuard.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -159,7 +161,12 @@ const getTenantComplianceSnapshot = () => {
     };
 };
 
-export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontAssetStorage = null }) => {
+export const buildUpdateSettingByKeyUseCase = ({
+    settingsRepository,
+    storefrontAssetStorage = null,
+    tenantLocationRepository = null,
+    tenantRepository = null
+}) => {
     return async ({ key, value, actorUser = null }) => {
         if (!key || typeof key !== 'string') {
             return fail(new DomainError(
@@ -233,6 +240,11 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                     pending_review_keys: [key]
                 });
             }
+            await assertFulfillmentMethodAvailableForAccessModeTransition({
+                settingsData: { [key]: value },
+                settingsRepository,
+                tenantLocationRepository
+            });
             assertStoreProfileNotClientWritten({ settingsData: { [key]: value } });
             if (key === WORKFLOW_MODE_SETTING_KEY) {
                 if (!isWorkflowMode(value)) {
@@ -250,6 +262,11 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                     ));
                 }
                 normalizedValue = normalizeWorkflowMode(value);
+                await assertLaundryWorkflowModeRuntimeOwnership({
+                    requestedMode: normalizedValue,
+                    actorUser,
+                    tenantRepository
+                });
             }
             if (key === ENABLED_CAPABILITIES_SETTING_KEY) {
                 if (!Array.isArray(value) || value.some((entry) => !ALL_WORKFLOW_CAPABILITIES.includes(String(entry || '').trim()))) {
@@ -397,25 +414,20 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                 settingsData: { [key]: normalizedValue }
             });
 
-            let workflowModeAuditBeforeValues = null;
+            // Phase 234 (#1327): fetched unconditionally, but cheap for the
+            // common case - resolveWorkflowModeAuditBeforeValues only hits
+            // the DB when `key` is one of the setting keys this audit log
+            // actually tracks, same as updateSettingsUseCase.js's own
+            // unconditional call.
+            const workflowModeAuditBeforeValues = await resolveWorkflowModeAuditBeforeValues({
+                settingsRepository,
+                settingsData: { [key]: normalizedValue }
+            });
             if (
                 key === WORKFLOW_MODE_SETTING_KEY
                 || key === ENABLED_CAPABILITIES_SETTING_KEY
                 || key === DISABLED_CAPABILITIES_SETTING_KEY
             ) {
-                workflowModeAuditBeforeValues = typeof settingsRepository?.getSettingsByKeys === 'function'
-                    ? await settingsRepository.getSettingsByKeys([
-                        WORKFLOW_MODE_SETTING_KEY,
-                        ENABLED_CAPABILITIES_SETTING_KEY,
-                        DISABLED_CAPABILITIES_SETTING_KEY
-                    ])
-                        .then((current) => ({
-                            [WORKFLOW_MODE_SETTING_KEY]: current?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? null,
-                            [ENABLED_CAPABILITIES_SETTING_KEY]: current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? null,
-                            [DISABLED_CAPABILITIES_SETTING_KEY]: current?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value ?? null
-                        }))
-                    : {};
-
                 const patchedSettingsData = await applyStoreProfileShadowWrite({
                     settingsRepository,
                     settingsData: { [key]: normalizedValue }
@@ -432,18 +444,16 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                 omittedPaths: omittedStorefrontGalleryPaths,
                 storefrontAssetStorage
             });
-            if (workflowModeAuditBeforeValues) {
-                try {
-                    await applyWorkflowModeAuditLog({
-                        settingsData: { [key]: normalizedValue },
-                        beforeValues: workflowModeAuditBeforeValues,
-                        actorUser
-                    });
-                } catch (error) {
-                    logger.warn('[WorkflowModeAudit] failed to record workflow mode change log', {
-                        error: error?.message
-                    });
-                }
+            try {
+                await applyWorkflowModeAuditLog({
+                    settingsData: { [key]: normalizedValue },
+                    beforeValues: workflowModeAuditBeforeValues,
+                    actorUser
+                });
+            } catch (error) {
+                logger.warn('[WorkflowModeAudit] failed to record workflow mode change log', {
+                    error: error?.message
+                });
             }
             return ok(sanitizeSingleSettingForRead({ key, setting: updatedSetting }));
         } catch (error) {

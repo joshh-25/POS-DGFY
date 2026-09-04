@@ -386,7 +386,7 @@ timeout 5 bash -c 'cat < /dev/tcp/<current-smtp-host>/465' && echo "OPEN" || ech
 - In a multi-tenant system, the backend requires the Company Token to know which database to check the refresh token against. Without it, the refresh request fails, leading to a loop of 401s.
 
 **Solution**:
-- **Fixed in Code (Phase 34)**: Updated `apps/dgfy-web/src/services/api.js` to explicitly attach `x-company-token` from `localStorage` during the refresh flow.
+- **Fixed in Code (Phase 34)**: Updated `packages/web-core/src/services/api.js` to explicitly attach `x-company-token` from `localStorage` during the refresh flow.
 - **Verification**:
   1. Open Console.
   2. Log in as Admin.
@@ -560,6 +560,11 @@ DROP DATABASE IF EXISTS `sku_tenant_example_abc12345`;
 - `pm2 logs sku-frontend` shows Vite attempting to serve source files or failing because no entry point exists.
 - The frontend site is unreachable (connection refused on port 5173).
 
+> There are three frontend PM2 processes, one per app: `sku-frontend`
+> (`apps/dgfy-ims`, port 5173), `sku-pos-frontend` (`apps/dgfy-pos`, port 5174),
+> and `sku-store-frontend` (`apps/dgfy-storefront`, port 5175). The same failure
+> and fix apply to each — substitute the process name, `cwd`, and port below.
+
 **Cause**:
 - `ecosystem.config.cjs` was configured to run the Vite **dev server** (`vite --host`) instead of the **preview server** (`vite preview`). The dev server is not suitable for production — it processes unbundled source files and requires full dev dependencies.
 - If `script: 'npm'` + `args: 'run preview'` was used as an intermediate fix, npm intercepts `--host` as an npm config flag (not a vite flag), causing the wrong mode to run and a `npm warn Unknown cli config "--host"` warning.
@@ -569,9 +574,9 @@ DROP DATABASE IF EXISTS `sku_tenant_example_abc12345`;
   ```javascript
   {
       name: 'sku-frontend',
-      script: './node_modules/.bin/vite',
-      args: 'preview --host --port 5173',
-      cwd: './apps/dgfy-web',
+      script: './node_modules/vite/bin/vite.js',
+      args: 'preview --host --port 5173 --strictPort',
+      cwd: './apps/dgfy-ims',
       env: { NODE_ENV: 'production' },
       env_production: { NODE_ENV: 'production' },
   }

@@ -15,8 +15,9 @@ const REASON = 'temporarily pausing this vertical';
 // (issue #316) - exercises the use case logic (validation, audit logging,
 // 404s, idempotency) without a real DB, matching this repo's
 // storeConfigurationTemplateUseCases.test.js convention. Seeded with the
-// 11 baseline industries so list/update/visibility tests have realistic
-// starting state.
+// full REGISTRATION_INDUSTRIES baseline so list/update/visibility tests have
+// realistic starting state.
+const SEEDED = Object.keys(REGISTRATION_INDUSTRIES).length;
 const seedRow = (industryKey, entry, overrides = {}) => ({
     industry_key: industryKey,
     label: entry.label,
@@ -132,11 +133,22 @@ describe('admin registration-industry catalog use cases (issue #316)', () => {
 
             const industries = await listUseCase();
 
-            expect(industries).toHaveLength(11);
+            expect(industries).toHaveLength(SEEDED);
             const retail = industries.find((entry) => entry.key === 'retail');
             expect(retail).toHaveProperty('engine');
             expect(retail.is_system).toBe(true);
             expect(retail.hidden).toBe(false);
+        });
+
+        it('normalizes a JSON-encoded niches string from a legacy catalog row', async () => {
+            const repository = buildFakeRepository();
+            repository.byKey.get('retail').niches = '["Supermarket", "Grocery store"]';
+
+            const listUseCase = buildListAdminRegistrationIndustriesUseCase({ repository });
+            const industries = await listUseCase();
+
+            expect(industries.find((entry) => entry.key === 'retail').niches)
+                .toEqual(['Supermarket', 'Grocery store']);
         });
 
         it('includes an admin-created row alongside the seeded baseline', async () => {
@@ -158,7 +170,7 @@ describe('admin registration-industry catalog use cases (issue #316)', () => {
 
             const industries = await listUseCase();
 
-            expect(industries).toHaveLength(12);
+            expect(industries).toHaveLength(SEEDED + 1);
             const petGrooming = industries.find((entry) => entry.key === 'pet_grooming');
             expect(petGrooming.is_system).toBe(false);
             expect(petGrooming.hidden).toBe(true);
@@ -262,7 +274,7 @@ describe('admin registration-industry catalog use cases (issue #316)', () => {
             const repository = buildFakeRepository();
             const useCase = buildCreateRegistrationIndustryUseCase({ repository, templateRepository: buildFakeTemplateRepository() });
             const result = await useCase(validBody());
-            expect(result.order).toBe(12); // 11 seeded orders 1-11
+            expect(result.order).toBe(SEEDED + 1); // one past the seeded orders 1-SEEDED
         });
 
         it('honors an explicit display_order when supplied', async () => {

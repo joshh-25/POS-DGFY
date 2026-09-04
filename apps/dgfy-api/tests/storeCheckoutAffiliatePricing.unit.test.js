@@ -51,6 +51,15 @@ jest.unstable_mockModule('../src/modules/dgfy/repositories/dgfyAffiliateReposito
     default: mockAffiliateRepo
 }));
 
+const loggerMock = {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn()
+};
+
+jest.unstable_mockModule('../src/config/logger.js', () => ({ default: loggerMock }));
+
 const { buildStoreCheckoutUseCase } = await import('../src/modules/store/usecases/storeUseCases.js');
 const { generateStoreGuestCheckoutProof } = await import('../src/modules/store/utils/storeJwtToken.js');
 
@@ -182,6 +191,10 @@ describe('storefront checkout — no affiliate attribution (regression baseline)
         expect(result.data.totals.subtotal_amount).toBe(100);
         expect(mockAffiliateRepo.findEnrollmentById).not.toHaveBeenCalled();
         expect(mockAffiliateRepo.createPendingCommissionIfMissing).not.toHaveBeenCalled();
+        expect(loggerMock.warn).not.toHaveBeenCalledWith(
+            '[StorefrontCheckout] Affiliate attribution dropped: enrollment inactive at commit',
+            expect.anything()
+        );
     });
 });
 
@@ -338,6 +351,12 @@ describe('storefront checkout — enrollment resolution edge cases', () => {
         expect(result.success).toBe(true);
         expect(result.data.totals.subtotal_amount).toBe(100);
         expect(mockAffiliateRepo.createPendingCommissionIfMissing).not.toHaveBeenCalled();
+        // #450 D2: this enrollment was already inactive at pricing time - there is no in-flight
+        // transition to log, so the drop warn must stay silent (see §3b's `else if` guard).
+        expect(loggerMock.warn).not.toHaveBeenCalledWith(
+            '[StorefrontCheckout] Affiliate attribution dropped: enrollment inactive at commit',
+            expect.anything()
+        );
     });
 
     test('program disabled at the tenant level suppresses affiliate pricing entirely', async () => {
@@ -357,6 +376,90 @@ describe('storefront checkout — enrollment resolution edge cases', () => {
 
         expect(result.success).toBe(true);
         expect(result.data.totals.subtotal_amount).toBe(100);
+        expect(mockAffiliateRepo.createPendingCommissionIfMissing).not.toHaveBeenCalled();
+    });
+});
+
+describe('storefront checkout — #450 D2: enrollment re-verified at commit time', () => {
+    test('still active at commit: commission accrues, findEnrollmentById called exactly twice', async () => {
+        const useCase = buildStoreCheckoutUseCase({ storeRepository: buildFakeStoreRepository() });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            payload: withGuestProof(basePayload({ attribution_enrollment_id: ENROLLMENT_ID }))
+        });
+
+        expect(result.success).toBe(true);
+        expect(mockAffiliateRepo.createPendingCommissionIfMissing).toHaveBeenCalledTimes(1);
+        expect(mockAffiliateRepo.createPendingCommissionIfMissing.mock.calls[0][0].enrollmentId)
+            .toBe(ENROLLMENT_ID);
+        // This is the assertion that actually pins the new behavior - once at pricing, once at the
+        // commit-time re-check. Without it this test would also pass against the pre-Phase-206 code.
+        expect(mockAffiliateRepo.findEnrollmentById).toHaveBeenCalledTimes(2);
+        expect(loggerMock.warn).not.toHaveBeenCalledWith(
+            '[StorefrontCheckout] Affiliate attribution dropped: enrollment inactive at commit',
+            expect.anything()
+        );
+    });
+
+    test('revoked between pricing and commit: order succeeds, no commission, warn fires', async () => {
+        mockAffiliateRepo.findEnrollmentById
+            .mockResolvedValueOnce(activeEnrollment())                        // pricing-time resolve
+            .mockResolvedValueOnce(activeEnrollment({ status: 'revoked' }));  // commit-time re-check
+
+        const useCase = buildStoreCheckoutUseCase({ storeRepository: buildFakeStoreRepository() });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            payload: withGuestProof(basePayload({ attribution_enrollment_id: ENROLLMENT_ID }))
+        });
+
+        expect(result.success).toBe(true);
+        // The buyer keeps the price they were quoted at pricing time - only the commission is
+        // withheld. No price rule is configured in this fixture, so the subtotal is the plain PHP 100.
+        expect(result.data.totals.subtotal_amount).toBe(100);
+        expect(mockAffiliateRepo.createPendingCommissionIfMissing).not.toHaveBeenCalled();
+        expect(mockAffiliateRepo.recordAttribution).not.toHaveBeenCalled();
+        expect(loggerMock.warn).toHaveBeenCalledWith(
+            '[StorefrontCheckout] Affiliate attribution dropped: enrollment inactive at commit',
+            expect.objectContaining({ tenant_id: TENANT_ID, enrollment_id: ENROLLMENT_ID })
+        );
+    });
+
+    test('revoked between pricing and commit, with an active price rule: buyer still pays the discounted price, no commission', async () => {
+        mockAffiliateRepo.resolveActivePriceRule.mockResolvedValue({
+            price_rule_id: 7,
+            rule_type: 'PERCENTAGE_DISCOUNT',
+            rate_bps: 1000, // 10% off
+            amount_centavos: null
+        });
+        mockAffiliateRepo.findEnrollmentById
+            .mockResolvedValueOnce(activeEnrollment())
+            .mockResolvedValueOnce(activeEnrollment({ status: 'revoked' }));
+
+        const useCase = buildStoreCheckoutUseCase({ storeRepository: buildFakeStoreRepository() });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            payload: withGuestProof(basePayload({ attribution_enrollment_id: ENROLLMENT_ID }))
+        });
+
+        expect(result.success).toBe(true);
+        // Sharpest statement of "pricing math untouched, attribution dropped": the buyer still gets
+        // the 10% discount priced under the (then-active) enrollment, but nothing is accrued.
+        expect(result.data.totals.subtotal_amount).toBe(90);
+        expect(mockAffiliateRepo.createPendingCommissionIfMissing).not.toHaveBeenCalled();
+    });
+
+    test('program disabled between pricing and commit: order succeeds, no commission accrues', async () => {
+        mockAffiliateRepo.getSettings
+            .mockResolvedValueOnce(defaultAffiliateSettings())                          // pricing-time
+            .mockResolvedValue({ ...defaultAffiliateSettings(), program_enabled: false }); // commit-time onward
+
+        const useCase = buildStoreCheckoutUseCase({ storeRepository: buildFakeStoreRepository() });
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            payload: withGuestProof(basePayload({ attribution_enrollment_id: ENROLLMENT_ID }))
+        });
+
+        expect(result.success).toBe(true);
         expect(mockAffiliateRepo.createPendingCommissionIfMissing).not.toHaveBeenCalled();
     });
 });

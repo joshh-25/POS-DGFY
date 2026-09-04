@@ -61,6 +61,10 @@ import {
   startItemImageWorker,
   stopItemImageWorker
 } from './workers/itemImageWorker.js';
+import {
+  startCatalogImageUploadWorker,
+  stopCatalogImageUploadWorker
+} from './workers/catalogImageUploadWorker.js';
 import { ITEM_IMAGE_GENERATION_ENABLED, requireItemImageGenerationConfig } from './config/itemImageFeature.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
@@ -732,9 +736,15 @@ import geoSearchRoutes from './routes/geoSearch.js';
 import routeCalculatorRoutes from './routes/routeCalculator.js';
 import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
 import registrationRoutes from './routes/registration.js';
+import dgfyLaundryRoutes from './routes/dgfyLaundry.js';
+import dgfyLaundryOidcRoutes from './routes/dgfyLaundryOidc.js';
+import dgfyLaundryOrderRoutes from './routes/dgfyLaundryOrders.js';
 app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
+app.use(dgfyLaundryOrderRoutes);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
+app.use('/api/v1/partners/dglaundry', dgfyLaundryRoutes);
+app.use('/oidc', dgfyLaundryOidcRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
 app.use('/api/v1/geo', routeCalculatorRoutes);
 // Public - no tenant context needed, called before any tenant exists (all
@@ -762,8 +772,12 @@ import analyticsRoutes from './routes/analytics.js';
 import feedbackRoutes from './routes/feedback.js';
 import aiRoutes from './routes/ai.js';
 import posRoutes from './routes/pos.js';
+import auditRoutes from './routes/audit.js';
 import mobilePosRoutes from './routes/mobilePos.js';
 import affiliateAdminRoutes from './routes/affiliateAdmin.js';
+import downpaymentSettingsRoutes from './routes/downpaymentSettings.js';
+import voucherRoutes from './routes/vouchers.js';
+import pricelistRoutes from './routes/pricelists.js';
 import servicesRoutes from './routes/services.js';
 import fnbRoutes from './routes/fnb.js';
 import hospitalityRoutes, { hospitalityStorefrontRoutes } from './routes/hospitality.js';
@@ -797,8 +811,12 @@ app.use('/api/v1/alerts', alertRoutes);
 app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/pos', posRoutes);
+app.use('/api/v1/audit', auditRoutes);
 app.use('/api/v1/mobile-pos', mobilePosRoutes);
 app.use('/api/v1/affiliates', affiliateAdminRoutes);
+app.use('/api/v1/downpayment', downpaymentSettingsRoutes);
+app.use('/api/v1/vouchers', voucherRoutes);
+app.use('/api/v1/pricelists', pricelistRoutes);
 app.use('/api/v1/services', servicesRoutes);
 app.use('/api/v1/fnb', fnbRoutes);
 app.use('/api/v1/hospitality', hospitalityRoutes);
@@ -917,6 +935,7 @@ const startServer = async () => {
     startStorefrontDiscoveryIndexReconciliationScheduler();
     startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
+    startCatalogImageUploadWorker();
 
     // Batch menu import worker — gated on its own flag (like geo inventory
     // above, its tick() no-ops whenever Redis isn't connected, so it's safe
@@ -1004,6 +1023,7 @@ const startServer = async () => {
       if (ITEM_IMAGE_GENERATION_ENABLED) {
         stopItemImageWorker();
       }
+      stopCatalogImageUploadWorker();
       aiController.stopAiCleanupScheduler?.();
 
       // Close Redis connection

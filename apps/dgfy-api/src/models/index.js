@@ -29,6 +29,7 @@ import PendingAIAction from './PendingAIAction.js';
 import AIConversation from './AIConversation.js';
 import ItemEmbedding from './ItemEmbedding.js';
 import ItemFolder from './ItemFolder.js';
+import ItemFolderMembership from './ItemFolderMembership.js';
 import ItemBarcode from './ItemBarcode.js';
 import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
@@ -36,9 +37,14 @@ import PosTransaction from './PosTransaction.js';
 import PosParkedSale from './PosParkedSale.js';
 import PosPaymentSession from './PosPaymentSession.js';
 import PosPaymentAllocation from './PosPaymentAllocation.js';
+import PosTransactionAdjustment from './PosTransactionAdjustment.js';
+import PosOrderPayment from './PosOrderPayment.js';
+import PosOrderAddressChange from './PosOrderAddressChange.js';
 import PosMerchantTenderReconciliation from './PosMerchantTenderReconciliation.js';
 import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
+import DeliveryRun from './DeliveryRun.js';
+import DeliveryRunPersonnel from './DeliveryRunPersonnel.js';
 import PosTransactionLine from './PosTransactionLine.js';
 import PosDiscountRule from './PosDiscountRule.js';
 import PosTransactionDiscount from './PosTransactionDiscount.js';
@@ -55,14 +61,27 @@ import PosESalesReport from './PosESalesReport.js';
 import Employee from './Employee.js';
 import EmployeeCreditAccount from './EmployeeCreditAccount.js';
 import EmployeeCreditLedgerEntry from './EmployeeCreditLedgerEntry.js';
+import Voucher from './Voucher.js';
+import VoucherScope from './VoucherScope.js';
+import VoucherAccountGrant from './VoucherAccountGrant.js';
+import VoucherRedemption from './VoucherRedemption.js';
+import VoucherRedemptionLine from './VoucherRedemptionLine.js';
+import Pricelist from './Pricelist.js';
+import PricelistItem from './PricelistItem.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
+import EmployeeAttendanceSession from './EmployeeAttendanceSession.js';
+import EmployeeBreakSegment from './EmployeeBreakSegment.js';
+import PosTerminalOperatorSession from './PosTerminalOperatorSession.js';
+import PosDrawerHandoffEvent from './PosDrawerHandoffEvent.js';
 import PosShiftLocationTransition from './PosShiftLocationTransition.js';
 import PosShiftLocationBackfillAudit from './PosShiftLocationBackfillAudit.js';
 import TenantLocation from './TenantLocation.js';
 import ItemLocationStock from './ItemLocationStock.js';
+import InventoryReservation from './InventoryReservation.js';
+import InventoryReservationLine from './InventoryReservationLine.js';
 import UserLocationGrant from './UserLocationGrant.js';
 import StoreCustomer from './StoreCustomer.js';
 import StoreCustomerAddress from './StoreCustomerAddress.js';
@@ -73,6 +92,8 @@ import ServiceProviderAssignment from './ServiceProviderAssignment.js';
 import ServiceBooking from './ServiceBooking.js';
 import ServiceBookingHold from './ServiceBookingHold.js';
 import ServiceBookingLine from './ServiceBookingLine.js';
+import ServiceBookingHandoffLeg from './ServiceBookingHandoffLeg.js';
+import ServiceBookingStatusEvent from './ServiceBookingStatusEvent.js';
 import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
 import ServiceReminderOutbox from './ServiceReminderOutbox.js';
 import WorkflowModeChangeLog from './WorkflowModeChangeLog.js';
@@ -178,7 +199,10 @@ import DgfyAffiliatePayoutMethodFactory from './Landlord/DgfyAffiliatePayoutMeth
 import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
 import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
 import DgfyAffiliatePriceRuleFactory from './Landlord/DgfyAffiliatePriceRule.js';
+import DgfyAffiliateCategoryRateFactory from './Landlord/DgfyAffiliateCategoryRate.js';
+import DgfyAffiliateEnrollmentStatusEventFactory from './Landlord/DgfyAffiliateEnrollmentStatusEvent.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
+import TenantDownpaymentSettingsFactory from './Landlord/TenantDownpaymentSettings.js';
 import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
 import PlatformAdminPermissionFactory from './Landlord/PlatformAdminPermission.js';
 import PlatformAdminSessionFactory from './Landlord/PlatformAdminSession.js';
@@ -252,7 +276,10 @@ const DgfyAffiliatePayoutMethod = DgfyAffiliatePayoutMethodFactory(sequelize);
 const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
 const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
 const DgfyAffiliatePriceRule = DgfyAffiliatePriceRuleFactory(sequelize);
+const DgfyAffiliateCategoryRate = DgfyAffiliateCategoryRateFactory(sequelize);
+const DgfyAffiliateEnrollmentStatusEvent = DgfyAffiliateEnrollmentStatusEventFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
+const TenantDownpaymentSettings = TenantDownpaymentSettingsFactory(sequelize);
 const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
 const PlatformAdminPermission = PlatformAdminPermissionFactory(sequelize);
 const PlatformAdminSession = PlatformAdminSessionFactory(sequelize);
@@ -414,6 +441,8 @@ DgfyAffiliateCashout.hasMany(DgfyAffiliateCommission, { foreignKey: 'cashout_id'
 DgfyAffiliateCommission.belongsTo(DgfyAffiliateCashout, { foreignKey: 'cashout_id', as: 'cashout' });
 Tenant.hasOne(TenantAffiliateSettings, { foreignKey: 'tenant_id', as: 'affiliateSettings' });
 TenantAffiliateSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(TenantDownpaymentSettings, { foreignKey: 'tenant_id', as: 'downpaymentSettings' });
+TenantDownpaymentSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(DgfyAffiliateInvite, { foreignKey: 'tenant_id', as: 'affiliateInvites' });
 DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 // dgfy_affiliate_price_rules only associates on tenant_id: enrollment_id and item_id use the
@@ -423,6 +452,17 @@ DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' })
 // Sequelize include.
 Tenant.hasMany(DgfyAffiliatePriceRule, { foreignKey: 'tenant_id', as: 'affiliatePriceRules' });
 DgfyAffiliatePriceRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+
+// #448 (Phase 209) - same rationale as dgfy_affiliate_price_rules above: enrollment_id/folder_id
+// use the sentinel-0 "applies to all" convention, so only tenant_id gets a strict association.
+// Resolution queries filter directly on tenant_id/enrollment_id/folder_id instead of an include.
+Tenant.hasMany(DgfyAffiliateCategoryRate, { foreignKey: 'tenant_id', as: 'affiliateCategoryRates' });
+DgfyAffiliateCategoryRate.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+
+// #1202 (Phase 214) - deliberately NO Tenant.hasMany/belongsTo association for
+// DgfyAffiliateEnrollmentStatusEvent. tenant_id and enrollment_id are both held by value (ADR 0036
+// Decision 1, no cross-database FK) so a future enrollment hard-delete cannot cascade away audit
+// evidence; reads filter directly on tenant_id/enrollment_id instead of an include.
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -435,6 +475,25 @@ ItemFolder.hasMany(Item, { foreignKey: 'folder_id', as: 'items' });
 ItemFolder.hasMany(ItemFolder, { foreignKey: 'parent_id', as: 'children' });
 ItemFolder.belongsTo(ItemFolder, { foreignKey: 'parent_id', as: 'parent' });
 Item.belongsTo(ItemFolder, { foreignKey: 'folder_id', as: 'folder' });
+
+// Phase 257 (#1318) — secondary item/category memberships. Additive only:
+// the four lines above (the primary-category pointer) are untouched. Aliases
+// are deliberately distinct from 'folder'/'items' to avoid collision. ADR
+// 0080 clause 1/2: `folder_id` is never mirrored into or derived from these.
+Item.belongsToMany(ItemFolder, {
+  through: ItemFolderMembership,
+  foreignKey: 'item_id',
+  otherKey: 'folder_id',
+  as: 'secondaryFolders'
+});
+ItemFolder.belongsToMany(Item, {
+  through: ItemFolderMembership,
+  foreignKey: 'folder_id',
+  otherKey: 'item_id',
+  as: 'memberItems'
+});
+ItemFolderMembership.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+ItemFolderMembership.belongsTo(ItemFolder, { foreignKey: 'folder_id', as: 'folder' });
 
 // Item associations
 Item.hasMany(FIFOBatch, { foreignKey: 'item_id', as: 'fifoBatches' });
@@ -569,12 +628,45 @@ PosTransaction.belongsTo(User, { foreignKey: 'payment_collected_by', as: 'paymen
 PosTransaction.belongsTo(User, { foreignKey: 'voided_by', as: 'voidedByUser' });
 PosTransaction.belongsTo(User, { foreignKey: 'accepted_by', as: 'acceptedByUser' });
 PosTransaction.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
+PosTransaction.belongsTo(PosTerminalOperatorSession, { foreignKey: 'operator_session_id', as: 'operatorSession', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 PosTransaction.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTransaction.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' });
 PosTransaction.belongsTo(EmployeeCreditAccount, { foreignKey: 'employee_credit_account_id', as: 'employeeCreditAccount' });
 PosTransaction.belongsTo(User, { foreignKey: 'employee_credit_user_id', as: 'employeeCreditEmployee' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
+PosTransaction.hasMany(PosTransactionAdjustment, { foreignKey: 'pos_transaction_id', as: 'adjustments' });
+PosTransactionAdjustment.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosTransactionAdjustment.belongsTo(PosPaymentAllocation, { foreignKey: 'pos_payment_allocation_id', as: 'paymentAllocation' });
+PosTransactionAdjustment.belongsTo(User, { foreignKey: 'original_cashier_id', as: 'originalCashier' });
+PosTransactionAdjustment.belongsTo(PosTerminalShift, { foreignKey: 'original_shift_id', as: 'originalShift' });
+PosTransactionAdjustment.belongsTo(TenantLocation, { foreignKey: 'original_location_id', as: 'originalLocation' });
+PosTransactionAdjustment.belongsTo(User, { foreignKey: 'actor_user_id', as: 'actorUser' });
+PosTransactionAdjustment.belongsTo(PosTerminalShift, { foreignKey: 'actor_shift_id', as: 'actorShift' });
+PosTransactionAdjustment.belongsTo(TenantLocation, { foreignKey: 'actor_location_id', as: 'actorLocation' });
+PosTransactionAdjustment.belongsTo(User, { foreignKey: 'approved_by', as: 'approvedByUser' });
+PosTransactionAdjustment.belongsTo(PosCashDrawerEvent, { foreignKey: 'cash_drawer_event_id', as: 'cashDrawerEvent' });
+User.hasMany(PosTransactionAdjustment, { foreignKey: 'original_cashier_id', as: 'originalTransactionAdjustments' });
+User.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_user_id', as: 'actorTransactionAdjustments' });
+User.hasMany(PosTransactionAdjustment, { foreignKey: 'approved_by', as: 'approvedTransactionAdjustments' });
+PosTerminalShift.hasMany(PosTransactionAdjustment, { foreignKey: 'original_shift_id', as: 'originalTransactionAdjustments' });
+PosTerminalShift.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_shift_id', as: 'actorTransactionAdjustments' });
+TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'original_location_id', as: 'originalTransactionAdjustments' });
+TenantLocation.hasMany(PosTransactionAdjustment, { foreignKey: 'actor_location_id', as: 'actorTransactionAdjustments' });
+PosCashDrawerEvent.hasOne(PosTransactionAdjustment, { foreignKey: 'cash_drawer_event_id', as: 'transactionAdjustment' });
+PosPaymentAllocation.hasMany(PosTransactionAdjustment, { foreignKey: 'pos_payment_allocation_id', as: 'transactionAdjustments' });
+// Phase 137 (#819) -- ADR 0069 clause 4 downpayment/balance/refund/forfeiture ledger.
+PosTransaction.hasMany(PosOrderPayment, { foreignKey: 'pos_transaction_id', as: 'orderPayments' });
+PosOrderPayment.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosOrderPayment.belongsTo(PosOrderPayment, { foreignKey: 'related_pos_order_payment_id', as: 'relatedPayment' });
+PosOrderPayment.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
+User.hasMany(PosOrderPayment, { foreignKey: 'recorded_by', as: 'recordedOrderPayments' });
+
+PosTransaction.hasMany(PosOrderAddressChange, { foreignKey: 'pos_transaction_id', as: 'addressChanges' });
+PosOrderAddressChange.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosOrderAddressChange.belongsTo(User, { foreignKey: 'changed_by', as: 'changedByUser' });
+PosOrderAddressChange.belongsTo(PosTerminalShift, { foreignKey: 'changed_by_shift_id', as: 'changedByShift' });
+User.hasMany(PosOrderAddressChange, { foreignKey: 'changed_by', as: 'addressChanges' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosParkedSale.belongsTo(User, { foreignKey: 'claimed_by', as: 'claimedByUser' });
 PosParkedSale.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser' });
@@ -626,6 +718,21 @@ DeliveryPersonnel.hasMany(DeliveryJob, { foreignKey: 'delivery_personnel_id', as
 DeliveryPersonnel.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 DeliveryPersonnel.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser' });
 DeliveryPersonnel.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser' });
+DeliveryRun.hasMany(DeliveryJob, { foreignKey: 'delivery_run_id', as: 'deliveryJobs' });
+DeliveryJob.belongsTo(DeliveryRun, { foreignKey: 'delivery_run_id', as: 'deliveryRun', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+DeliveryRun.hasMany(DeliveryRunPersonnel, { foreignKey: 'delivery_run_id', as: 'personnel' });
+// onDelete: 'RESTRICT', not CASCADE -- delivery_run_id is the base column of
+// DeliveryRunPersonnel's accountable_run_id STORED generated column; see the migration
+// (20260901000005-create-delivery-runs.cjs) for the #1166 InnoDB collision this avoids. Declared
+// explicitly here too, not left to default, because provisionTenant()'s sequelize.sync() path
+// materializes an undeclared association FK as CASCADE/CASCADE rather than the migration's own
+// RESTRICT/RESTRICT -- the same sync()-vs-migration mismatch #1166 already documents.
+DeliveryRunPersonnel.belongsTo(DeliveryRun, { foreignKey: 'delivery_run_id', as: 'run', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+DeliveryRunPersonnel.belongsTo(DeliveryPersonnel, { foreignKey: 'delivery_personnel_id', as: 'deliveryPersonnel', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+DeliveryPersonnel.hasMany(DeliveryRunPersonnel, { foreignKey: 'delivery_personnel_id', as: 'runMemberships' });
+DeliveryRun.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+DeliveryRun.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+DeliveryRun.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 PosTransaction.hasMany(PosFiscalEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalEvents' });
 PosTransaction.hasMany(PosFiscalPrintEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalPrintEvents' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
@@ -651,6 +758,7 @@ User.hasMany(PosTransaction, { foreignKey: 'cashier_id', as: 'posTransactions' }
 User.hasMany(PosTransaction, { foreignKey: 'accepted_by', as: 'acceptedPosTransactions' });
 Item.hasMany(PosTransactionLine, { foreignKey: 'item_id', as: 'posTransactionLines' });
 Item.hasMany(ItemLocationStock, { foreignKey: 'item_id', as: 'locationStocks' });
+Item.hasMany(InventoryReservationLine, { foreignKey: 'item_id', as: 'inventoryReservationLines' });
 ItemLocationStock.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride' });
 PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
@@ -668,6 +776,15 @@ PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' }
 PosTerminalShift.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTerminalShift.hasMany(PosCashDrawerEvent, { foreignKey: 'pos_terminal_shift_id', as: 'cashEvents' });
 PosTerminalShift.hasMany(PosTransaction, { foreignKey: 'shift_id', as: 'transactions' });
+PosTerminalShift.hasMany(PosTerminalOperatorSession, { foreignKey: 'pos_terminal_shift_id', as: 'operatorSessions' });
+PosTerminalOperatorSession.belongsTo(PosTerminalShift, { foreignKey: 'pos_terminal_shift_id', as: 'shift', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosTerminalOperatorSession.belongsTo(User, { foreignKey: 'user_id', as: 'operator', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosTerminalOperatorSession.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosTerminalOperatorSession.belongsTo(EmployeeAttendanceSession, { foreignKey: 'employee_attendance_session_id', as: 'attendanceSession', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+PosTerminalOperatorSession.hasMany(PosTransaction, { foreignKey: 'operator_session_id', as: 'transactions' });
+User.hasMany(PosTerminalOperatorSession, { foreignKey: 'user_id', as: 'posTerminalOperatorSessions' });
+TenantLocation.hasMany(PosTerminalOperatorSession, { foreignKey: 'location_id', as: 'posTerminalOperatorSessions' });
+EmployeeAttendanceSession.hasMany(PosTerminalOperatorSession, { foreignKey: 'employee_attendance_session_id', as: 'operatorSessions' });
 PosTerminalShift.hasMany(DeliveryJob, { foreignKey: 'assigned_shift_id', as: 'assignedDeliveryJobs' });
 PosCashDrawerEvent.belongsTo(PosTerminalShift, { foreignKey: 'pos_terminal_shift_id', as: 'shift' });
 PosCashDrawerEvent.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
@@ -684,6 +801,32 @@ PosShiftLocationBackfillAudit.belongsTo(TenantLocation, { foreignKey: 'resolved_
 PosTerminalShift.hasMany(PosShiftLocationBackfillAudit, { foreignKey: 'shift_id', as: 'locationBackfillAudits' });
 User.hasMany(PosTerminalShift, { foreignKey: 'cashier_id', as: 'posTerminalShifts' });
 User.hasMany(PosCashDrawerEvent, { foreignKey: 'recorded_by', as: 'posCashDrawerEvents' });
+EmployeeAttendanceSession.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employee', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+EmployeeAttendanceSession.belongsTo(User, { foreignKey: 'user_id', as: 'user', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+EmployeeAttendanceSession.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+EmployeeAttendanceSession.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+EmployeeAttendanceSession.hasMany(EmployeeBreakSegment, { foreignKey: 'employee_attendance_session_id', as: 'breakSegments' });
+EmployeeBreakSegment.belongsTo(EmployeeAttendanceSession, { foreignKey: 'employee_attendance_session_id', as: 'attendanceSession', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+EmployeeBreakSegment.belongsTo(User, { foreignKey: 'ended_by', as: 'endedByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+Employee.hasMany(EmployeeAttendanceSession, { foreignKey: 'employee_id', as: 'attendanceSessions' });
+User.hasMany(EmployeeAttendanceSession, { foreignKey: 'user_id', as: 'attendanceSessions' });
+User.hasMany(EmployeeAttendanceSession, { foreignKey: 'closed_by', as: 'closedAttendanceSessions' });
+TenantLocation.hasMany(EmployeeAttendanceSession, { foreignKey: 'location_id', as: 'attendanceSessions' });
+User.hasMany(EmployeeBreakSegment, { foreignKey: 'ended_by', as: 'endedBreakSegments' });
+PosDrawerHandoffEvent.belongsTo(PosTerminalShift, { foreignKey: 'pos_terminal_shift_id', as: 'shift', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosDrawerHandoffEvent.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosDrawerHandoffEvent.belongsTo(User, { foreignKey: 'outgoing_operator_user_id', as: 'outgoingOperator', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+PosDrawerHandoffEvent.belongsTo(User, { foreignKey: 'incoming_operator_user_id', as: 'incomingOperator', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+PosDrawerHandoffEvent.belongsTo(User, { foreignKey: 'outgoing_acknowledged_by', as: 'outgoingAcknowledgedBy', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+PosDrawerHandoffEvent.belongsTo(User, { foreignKey: 'incoming_acknowledged_by', as: 'incomingAcknowledgedBy', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+PosDrawerHandoffEvent.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
+PosTerminalShift.hasMany(PosDrawerHandoffEvent, { foreignKey: 'pos_terminal_shift_id', as: 'drawerHandoffEvents' });
+TenantLocation.hasMany(PosDrawerHandoffEvent, { foreignKey: 'location_id', as: 'drawerHandoffEvents' });
+User.hasMany(PosDrawerHandoffEvent, { foreignKey: 'outgoing_operator_user_id', as: 'outgoingDrawerHandoffs' });
+User.hasMany(PosDrawerHandoffEvent, { foreignKey: 'incoming_operator_user_id', as: 'incomingDrawerHandoffs' });
+User.hasMany(PosDrawerHandoffEvent, { foreignKey: 'outgoing_acknowledged_by', as: 'outgoingAcknowledgedDrawerHandoffs' });
+User.hasMany(PosDrawerHandoffEvent, { foreignKey: 'incoming_acknowledged_by', as: 'incomingAcknowledgedDrawerHandoffs' });
+User.hasMany(PosDrawerHandoffEvent, { foreignKey: 'recorded_by', as: 'recordedDrawerHandoffs' });
 User.hasOne(EmployeeCreditAccount, { foreignKey: 'user_id', as: 'employeeCreditAccount' });
 EmployeeCreditAccount.belongsTo(User, { foreignKey: 'user_id', as: 'employee' });
 Employee.hasOne(EmployeeCreditAccount, { foreignKey: 'employee_id', as: 'employeeCreditAccount' });
@@ -699,17 +842,67 @@ EmployeeCreditLedgerEntry.belongsTo(User, { foreignKey: 'actor_user_id', as: 'ac
 EmployeeCreditLedgerEntry.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
 EmployeeCreditLedgerEntry.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTransaction.hasMany(EmployeeCreditLedgerEntry, { foreignKey: 'pos_transaction_id', as: 'employeeCreditLedgerEntries' });
+
+// Vouchers (#455, ADR 0066). Campaign -> scopes, campaign -> redemption ledger -> per-item lines.
+// `scope_ref_id` is polymorphic across items/item_folders, so it gets no association here.
+Voucher.hasMany(VoucherScope, { foreignKey: 'voucher_id', as: 'scopes' });
+VoucherScope.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
+// #788 (Phase 269): the account allowlist for an account-restricted voucher. Same shape as
+// `scopes` above -- a real tenant-side FK with ON DELETE CASCADE, unlike the landlord-side
+// `dgfy_account_id` inside it, which is unconstrained by construction (see the model's header).
+Voucher.hasMany(VoucherAccountGrant, { foreignKey: 'voucher_id', as: 'accountGrants' });
+VoucherAccountGrant.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
+Voucher.hasMany(VoucherRedemption, { foreignKey: 'voucher_id', as: 'redemptions' });
+VoucherRedemption.belongsTo(Voucher, { foreignKey: 'voucher_id', as: 'voucher' });
+VoucherRedemption.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'posTransaction' });
+VoucherRedemption.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+VoucherRedemption.belongsTo(User, { foreignKey: 'cashier_user_id', as: 'cashier' });
+VoucherRedemption.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
+VoucherRedemption.belongsTo(VoucherRedemption, { foreignKey: 'reversal_of_redemption_id', as: 'reversalOf' });
+VoucherRedemption.hasMany(VoucherRedemptionLine, { foreignKey: 'voucher_redemption_id', as: 'lines' });
+VoucherRedemptionLine.belongsTo(VoucherRedemption, { foreignKey: 'voucher_redemption_id', as: 'redemption' });
+VoucherRedemptionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+PosTransaction.hasMany(VoucherRedemption, { foreignKey: 'pos_transaction_id', as: 'voucherRedemptions' });
+// #1494: accountable creating/modifying officer, value-link only -- constraints: false so
+// sequelize.sync() (new-tenant provisioning) never adds a DB-level FK the migration path can't
+// match (see Voucher.js's own column comment and this phase's migration header for the full reasoning).
+Voucher.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', constraints: false });
+Voucher.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser', constraints: false });
+
+// Pricelists (#696, extends #584/ADR 0066). Pricelist -> per-item price rows; a fixed_price voucher
+// may attach one instead of a single fixed_unit_price_centavos. draft_of_pricelist_id is a
+// self-reference (a draft revision points at the published row it will replace on publish).
+Pricelist.hasMany(PricelistItem, { foreignKey: 'pricelist_id', as: 'items' });
+PricelistItem.belongsTo(Pricelist, { foreignKey: 'pricelist_id', as: 'pricelist' });
+PricelistItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Pricelist.belongsTo(Pricelist, { foreignKey: 'draft_of_pricelist_id', as: 'publishedPricelist' });
+Pricelist.hasOne(Pricelist, { foreignKey: 'draft_of_pricelist_id', as: 'draftRevision' });
+Voucher.belongsTo(Pricelist, { foreignKey: 'pricelist_id', as: 'pricelist' });
+Pricelist.hasMany(Voucher, { foreignKey: 'pricelist_id', as: 'vouchers' });
 PosTransaction.belongsTo(Employee, { foreignKey: 'employee_credit_employee_id', as: 'employeeCreditEmployeeProfile' });
 User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'posShiftLocationTransitions' });
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
 TenantLocation.hasMany(PosTerminalShift, { foreignKey: 'location_id', as: 'posTerminalShifts' });
 TenantLocation.hasMany(ItemLocationStock, { foreignKey: 'location_id', as: 'itemLocationStocks' });
+TenantLocation.hasMany(InventoryReservation, { foreignKey: 'location_id', as: 'inventoryReservations' });
 TenantLocation.hasMany(StorefrontLocationItemOverride, { foreignKey: 'location_id', as: 'storefrontItemOverrides' });
 TenantLocation.hasMany(FIFOBatch, { foreignKey: 'location_id', as: 'fifoBatches' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'location_id', as: 'stockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'source_location_id', as: 'sourceStockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'destination_location_id', as: 'destinationStockMovements' });
 ItemLocationStock.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+InventoryReservation.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+InventoryReservation.belongsTo(PosTransaction, { foreignKey: 'source_id', as: 'sourceOrder', constraints: false });
+InventoryReservation.hasMany(InventoryReservationLine, {
+  foreignKey: 'inventory_reservation_id',
+  as: 'lines',
+  onDelete: 'CASCADE'
+});
+InventoryReservationLine.belongsTo(InventoryReservation, {
+  foreignKey: 'inventory_reservation_id',
+  as: 'reservation'
+});
+InventoryReservationLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 StorefrontLocationItemOverride.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 User.belongsToMany(TenantLocation, {
   through: UserLocationGrant,
@@ -761,6 +954,17 @@ ServiceBooking.hasMany(ServiceBookingLine, { foreignKey: 'booking_id', as: 'line
 ServiceBookingLine.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
 ServiceBookingLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 ServiceBookingLine.belongsTo(PosTransactionLine, { foreignKey: 'pos_transaction_line_id', as: 'posTransactionLine' });
+// Phase 88 of #482 (ADR 0064 decision 2) - the handoff-leg entity keyed to the booking.
+ServiceBooking.hasMany(ServiceBookingHandoffLeg, { foreignKey: 'booking_id', as: 'handoffLegs' });
+ServiceBookingHandoffLeg.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
+ServiceBookingHandoffLeg.belongsTo(StoreCustomerAddress, { foreignKey: 'customer_address_id', as: 'customerAddress' });
+ServiceBookingHandoffLeg.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+ServiceBookingHandoffLeg.hasMany(ServiceBookingStatusEvent, { foreignKey: 'handoff_leg_id', as: 'statusEvents' });
+// Phase 88 of #482 (ADR 0064 decision 4) - the transition-event table.
+ServiceBooking.hasMany(ServiceBookingStatusEvent, { foreignKey: 'booking_id', as: 'statusEvents' });
+ServiceBookingStatusEvent.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
+ServiceBookingStatusEvent.belongsTo(ServiceBookingHandoffLeg, { foreignKey: 'handoff_leg_id', as: 'handoffLeg' });
+ServiceBookingStatusEvent.belongsTo(User, { foreignKey: 'actor_user_id', as: 'actorUser' });
 ServiceWaitlistEntry.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
 ServiceWaitlistEntry.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 ServiceOptionGroup.hasMany(ServiceOption, { foreignKey: 'group_id', as: 'options' });
@@ -957,6 +1161,7 @@ const db = {
   AIConversation,
   ItemEmbedding,
   ItemFolder,
+  ItemFolderMembership,
   ItemBarcode,
   DispatchOrder,
   DispatchOrderLine,
@@ -964,9 +1169,14 @@ const db = {
   PosParkedSale,
   PosPaymentSession,
   PosPaymentAllocation,
+  PosTransactionAdjustment,
+  PosOrderPayment,
+  PosOrderAddressChange,
   PosMerchantTenderReconciliation,
   DeliveryJob,
   DeliveryPersonnel,
+  DeliveryRun,
+  DeliveryRunPersonnel,
   PosTransactionLine,
   PosDiscountRule,
   PosTransactionDiscount,
@@ -983,15 +1193,28 @@ const db = {
   Employee,
   EmployeeCreditAccount,
   EmployeeCreditLedgerEntry,
+  Voucher,
+  VoucherScope,
+  VoucherAccountGrant,
+  VoucherRedemption,
+  VoucherRedemptionLine,
+  Pricelist,
+  PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
+  EmployeeAttendanceSession,
+  EmployeeBreakSegment,
+  PosTerminalOperatorSession,
+  PosDrawerHandoffEvent,
   PosShiftLocationTransition,
   PosShiftLocationBackfillAudit,
   TenantLocation,
   ItemLocationStock,
+  InventoryReservation,
+  InventoryReservationLine,
   UserLocationGrant,
   StoreCustomer,
   StoreCustomerAddress,
@@ -1002,6 +1225,8 @@ const db = {
   ServiceBooking,
   ServiceBookingHold,
   ServiceBookingLine,
+  ServiceBookingHandoffLeg,
+  ServiceBookingStatusEvent,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   WorkflowModeChangeLog,
@@ -1105,7 +1330,10 @@ const db = {
   DgfyAffiliateCashout,
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
+  DgfyAffiliateCategoryRate,
+  DgfyAffiliateEnrollmentStatusEvent,
   TenantAffiliateSettings
+  ,TenantDownpaymentSettings
   ,PlatformAdminUser
   ,PlatformAdminPermission
   ,PlatformAdminSession
@@ -1156,6 +1384,7 @@ export {
   AIConversation,
   ItemEmbedding,
   ItemFolder,
+  ItemFolderMembership,
   ItemBarcode,
   DispatchOrder,
   DispatchOrderLine,
@@ -1163,6 +1392,9 @@ export {
   PosParkedSale,
   PosPaymentSession,
   PosPaymentAllocation,
+  PosTransactionAdjustment,
+  PosOrderPayment,
+  PosOrderAddressChange,
   PosMerchantTenderReconciliation,
   PosTransactionLine,
   PosDiscountRule,
@@ -1180,15 +1412,28 @@ export {
   Employee,
   EmployeeCreditAccount,
   EmployeeCreditLedgerEntry,
+  Voucher,
+  VoucherScope,
+  VoucherAccountGrant,
+  VoucherRedemption,
+  VoucherRedemptionLine,
+  Pricelist,
+  PricelistItem,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
+  EmployeeAttendanceSession,
+  EmployeeBreakSegment,
+  PosTerminalOperatorSession,
+  PosDrawerHandoffEvent,
   PosShiftLocationTransition,
   PosShiftLocationBackfillAudit,
   TenantLocation,
   ItemLocationStock,
+  InventoryReservation,
+  InventoryReservationLine,
   UserLocationGrant,
   StoreCustomer,
   StoreCustomerAddress,
@@ -1199,6 +1444,8 @@ export {
   ServiceBooking,
   ServiceBookingHold,
   ServiceBookingLine,
+  ServiceBookingHandoffLeg,
+  ServiceBookingStatusEvent,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   WorkflowModeChangeLog,
@@ -1302,7 +1549,10 @@ export {
   DgfyAffiliateCashout,
   DgfyAffiliateInvite,
   DgfyAffiliatePriceRule,
+  DgfyAffiliateCategoryRate,
+  DgfyAffiliateEnrollmentStatusEvent,
   TenantAffiliateSettings,
+  TenantDownpaymentSettings,
   PlatformAdminUser,
   PlatformAdminPermission,
   PlatformAdminSession,

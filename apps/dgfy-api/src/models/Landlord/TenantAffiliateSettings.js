@@ -35,6 +35,14 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: false
         },
+        // #1177 (Phase 198, per #447 D1-D6): the code-enforced cap on concurrently-consumed
+        // affiliate slots for this tenant (active enrollments + pending, non-expired invites).
+        // Raised only by internal admin action - no self-serve purchase path (#447 D5).
+        max_affiliate_slots: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 1
+        },
         // Defaults to PERCENTAGE_OF_BASE - every affiliate today implicitly earns a
         // percentage-of-base commission via commission_rate_bps, so this preserves current
         // behavior for every existing tenant.
@@ -57,6 +65,29 @@ export default (sequelize) => {
             type: DataTypes.ENUM('discounted_subtotal', 'base_price_subtotal'),
             allowNull: false,
             defaultValue: 'discounted_subtotal'
+        },
+        // #449 (Phase 208): tenant-wide default lifetime affiliate earnings cap in centavos.
+        // NULL = uncapped (today's behavior for every existing tenant). Enforced at accrual
+        // time only - see affiliateCommissionAccrual.js.
+        max_lifetime_earnings_centavos: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
+        // #449 (Phase 208): the tenant cap applies only while this is NULL or in the future.
+        // Once passed the CAP stops applying (accrual continues, uncapped) - it is not a
+        // program expiry (#1206).
+        earnings_cap_active_until: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        // #448 (Phase 209): gates the per-category commission rate lookup entirely. Defaults
+        // false for every existing tenant - zero added queries, commission resolves exactly as it
+        // did before this column existed. See dgfy_affiliate_category_rates and
+        // affiliateCommissionAccrual.js's loadApplicableCategoryRates.
+        category_rates_enabled: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
         }
     }, {
         sequelize,

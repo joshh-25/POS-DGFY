@@ -6,6 +6,7 @@ const mockIndexDestroy = jest.fn();
 const mockIndexCreate = jest.fn();
 const mockIndexCount = jest.fn();
 const mockGetConnection = jest.fn();
+const mockOpenEphemeralConnection = jest.fn();
 const mockGetTenantModels = jest.fn();
 const mockBumpCacheVersion = jest.fn();
 const mockInvalidateSharedSignature = jest.fn();
@@ -33,7 +34,11 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
 
 jest.unstable_mockModule('../src/utils/TenantConnector.js', () => ({
     default: {
-        getConnection: mockGetConnection
+        getConnection: mockGetConnection,
+        // reconcileStorefrontDiscoveryIndex's bulk sweep uses this instead of
+        // getConnection (#524/#527) -- see storefrontDiscoveryIndexService.js's
+        // buildTenantSnapshot doc comment.
+        openEphemeralConnection: mockOpenEphemeralConnection
     }
 }));
 
@@ -77,8 +82,56 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
             status: 'active'
         });
         mockGetConnection.mockResolvedValue({ name: 'tenant-connection' });
+        mockOpenEphemeralConnection.mockResolvedValue({
+            name: 'ephemeral-tenant-connection',
+            close: jest.fn().mockResolvedValue(undefined)
+        });
         mockIndexDestroy.mockResolvedValue(0);
         mockIndexCount.mockResolvedValue(0);
+    });
+
+    it('keeps no-location map fields null while projecting active-primary fulfillment support', async () => {
+        const SystemSetting = {
+            findAll: jest.fn().mockResolvedValue([
+                { setting_key: 'store_is_visible', setting_value: 'true' },
+                { setting_key: 'store_has_no_location', setting_value: 'true' },
+                { setting_key: 'store_tenant_slug', setting_value: 'no-location-capability' },
+                { setting_key: 'ops_workflow_mode', setting_value: 'simple' }
+            ])
+        };
+        mockGetTenantModels.mockReturnValue({
+            SystemSetting,
+            TenantLocation: { findAll: jest.fn().mockResolvedValue([{
+                location_id: 10,
+                name: 'Hidden map branch',
+                address_line: 'Main Road',
+                latitude: 10.72,
+                longitude: 122.56,
+                is_active: true,
+                is_primary_storefront: true,
+                supports_delivery: true,
+                supports_pickup: false,
+                supports_dine_in: false
+            }]) },
+            Item: { findAll: jest.fn().mockResolvedValue([]) },
+            PosCatalogOverride: null,
+            StorefrontCatalogOverride: { name: 'StorefrontCatalogOverride' },
+            ServiceItemDetail: null,
+            ItemLocationStock: { findAll: jest.fn().mockResolvedValue([]) }
+        });
+
+        const result = await syncStorefrontDiscoveryIndexForTenant({ tenantId: 'tenant-1' });
+
+        expect(result.status).toBe('upserted');
+        expect(mockIndexCreate.mock.calls[0][0]).toEqual(expect.objectContaining({
+            location_id: null,
+            latitude: null,
+            longitude: null,
+            supports_delivery: true,
+            supports_pickup: false,
+            supports_dine_in: false,
+            active_location_snapshot: [expect.objectContaining({ location_id: 10, supports_pickup: false })]
+        }));
     });
 
     it('uses StorefrontCatalogOverride instead of POS override when building item_search_snapshot', async () => {
@@ -434,5 +487,114 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
         const snapshot = mockIndexCreate.mock.calls[0][0];
         expect(snapshot.storefront_open).toBe(false);
         expect(snapshot.storefront_hours).toBe('Closed');
+    });
+
+    // #713: a voucher must be BOTH is_publicly_listed AND storefront-channel-eligible to appear in
+    // storefront_vouchers -- neither condition alone is sufficient. Channel is enforced by
+    // evaluateVoucherEligibility (mirrors the code-in/price-out display path's own convention), not
+    // re-implemented here.
+    it('lists only active, publicly-listed, storefront-eligible vouchers', async () => {
+        const SystemSetting = {
+            findAll: jest.fn().mockResolvedValue([
+                { setting_key: 'store_is_visible', setting_value: 'true' },
+                { setting_key: 'store_has_no_location', setting_value: 'true' },
+                { setting_key: 'store_tenant_slug', setting_value: 'voucher-listing-tenant' },
+                { setting_key: 'ops_workflow_mode', setting_value: 'simple' }
+            ])
+        };
+        const Item = { findAll: jest.fn().mockResolvedValue([]) };
+        const ItemLocationStock = { findAll: jest.fn().mockResolvedValue([]) };
+        const Voucher = {
+            findAll: jest.fn().mockResolvedValue([
+                {
+                    voucher_id: 1,
+                    code: 'GRACEOFFER',
+                    title: 'Grace Offer',
+                    subtitle: '10% off',
+                    badge: 'Popular',
+                    validity_text: 'While supplies last',
+                    benefit_class: 'percent_off',
+                    percent_off_bps: 1000,
+                    status: 'active',
+                    channels_mask: 3,
+                    weekday_mask: 127,
+                    valid_from: null,
+                    valid_until: null,
+                    valid_time_start: null,
+                    valid_time_end: null,
+                    is_publicly_listed: true
+                },
+                // Publicly listed but POS-only -- must NOT appear on the storefront listing.
+                {
+                    voucher_id: 2,
+                    code: 'INSTOREONLY',
+                    title: 'In-store only',
+                    subtitle: '',
+                    badge: '',
+                    validity_text: '',
+                    benefit_class: 'amount_off',
+                    percent_off_bps: null,
+                    status: 'active',
+                    channels_mask: 2,
+                    weekday_mask: 127,
+                    valid_from: null,
+                    valid_until: null,
+                    valid_time_start: null,
+                    valid_time_end: null,
+                    is_publicly_listed: true
+                }
+                // A third, non-listed voucher is deliberately absent from this fixture entirely --
+                // the WHERE clause itself (is_publicly_listed: true) is what excludes it, not this
+                // function's own filtering, so there's nothing to assert about it here.
+            ])
+        };
+        mockGetTenantModels.mockReturnValue({
+            SystemSetting,
+            TenantLocation: { findAll: jest.fn().mockResolvedValue([]) },
+            Item,
+            PosCatalogOverride: null,
+            StorefrontCatalogOverride: { name: 'StorefrontCatalogOverride' },
+            ServiceItemDetail: null,
+            ItemLocationStock,
+            Voucher
+        });
+
+        const result = await syncStorefrontDiscoveryIndexForTenant({ tenantId: 'tenant-1' });
+
+        expect(result.status).toBe('upserted');
+        expect(Voucher.findAll).toHaveBeenCalledWith(expect.objectContaining({
+            where: { status: 'active', is_publicly_listed: true }
+        }));
+        const snapshot = mockIndexCreate.mock.calls[0][0];
+        expect(snapshot.storefront_vouchers).toEqual([
+            expect.objectContaining({ id: 1, code: 'GRACEOFFER', title: 'Grace Offer', percent_off_bps: 1000 })
+        ]);
+    });
+
+    it('omits storefront_vouchers without failing the whole snapshot when the Voucher model is unavailable', async () => {
+        const SystemSetting = {
+            findAll: jest.fn().mockResolvedValue([
+                { setting_key: 'store_is_visible', setting_value: 'true' },
+                { setting_key: 'store_has_no_location', setting_value: 'true' },
+                { setting_key: 'store_tenant_slug', setting_value: 'no-voucher-model-tenant' },
+                { setting_key: 'ops_workflow_mode', setting_value: 'simple' }
+            ])
+        };
+        mockGetTenantModels.mockReturnValue({
+            SystemSetting,
+            TenantLocation: { findAll: jest.fn().mockResolvedValue([]) },
+            Item: { findAll: jest.fn().mockResolvedValue([]) },
+            PosCatalogOverride: null,
+            StorefrontCatalogOverride: { name: 'StorefrontCatalogOverride' },
+            ServiceItemDetail: null,
+            ItemLocationStock: { findAll: jest.fn().mockResolvedValue([]) }
+            // Voucher deliberately omitted -- same shape a tenant DB predating this feature would have.
+        });
+
+        const result = await syncStorefrontDiscoveryIndexForTenant({ tenantId: 'tenant-1' });
+
+        expect(result.status).toBe('upserted');
+        const snapshot = mockIndexCreate.mock.calls[0][0];
+        expect(snapshot.storefront_vouchers).toEqual([]);
     });
 });

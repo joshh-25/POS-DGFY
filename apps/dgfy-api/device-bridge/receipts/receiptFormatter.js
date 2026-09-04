@@ -96,11 +96,10 @@ export const buildReceiptLines = (receipt = {}, { width = 48 } = {}) => {
   output.push(divider);
   output.push(buildKeyValueLine('Subtotal', money(transaction.subtotal_amount), normalizedWidth));
   output.push(buildKeyValueLine('Discount', money(transaction.discount_amount), normalizedWidth));
-  output.push(buildKeyValueLine('Service Fee', money(transaction.service_fee_amount), normalizedWidth));
   if (Number(transaction.restaurant_service_charge_amount || 0) > 0) {
     output.push(buildKeyValueLine('Svc Charge', money(transaction.restaurant_service_charge_amount), normalizedWidth));
   }
-  output.push(buildKeyValueLine('VAT', money(transaction.vat_amount), normalizedWidth));
+  output.push(buildKeyValueLine('VAT Amount (12%)', money(transaction.vat_amount), normalizedWidth));
   output.push(buildKeyValueLine('Total', money(transaction.total_amount), normalizedWidth));
   output.push(divider);
   if (business.footer_message) {
@@ -124,13 +123,6 @@ export const buildShiftSummaryLines = (payload = {}, { width = 48 } = {}) => {
     shift.business_date ? `Business date: ${shift.business_date}` : '',
     shift.terminal_id ? `Terminal: ${shift.terminal_id}` : '',
     shift.pos_terminal_shift_id ? `Shift: ${shift.pos_terminal_shift_id}` : '',
-    divider,
-    buildKeyValueLine('Transactions', String(sales.transaction_count || 0), normalizedWidth),
-    buildKeyValueLine('Subtotal', money(sales.subtotal_amount), normalizedWidth),
-    buildKeyValueLine('Discounts', money(sales.discount_amount), normalizedWidth),
-    buildKeyValueLine('VAT', money(sales.vat_amount), normalizedWidth),
-    buildKeyValueLine('Total sales', money(sales.total_amount), normalizedWidth),
-    buildKeyValueLine('POS voids', money(sales.void_amount), normalizedWidth),
     divider,
     'PAYMENT BREAKDOWN'
   ].filter(Boolean);

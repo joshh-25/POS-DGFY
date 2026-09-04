@@ -1,0 +1,1029 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* POS amount and numeric fields require deliberate manual entry. */
+.dgfy-number-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.dgfy-number-input::-webkit-outer-spin-button,
+.dgfy-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Desktop shell spacing guard: keep main content out from under fixed sidebar. */
+@media (min-width: 1024px) {
+  .app-main {
+    margin-left: 16rem;
+    width: calc(100% - 16rem);
+    padding-left: 0.5rem;
+  }
+}
+
+/* Wizard consistency: keep create/edit flows visually compact and aligned. */
+.wizard-modal-shell {
+  width: min(95vw, 1100px) !important;
+  max-width: min(95vw, 1100px) !important;
+  height: 90vh;
+  max-height: 90vh !important;
+}
+
+@media (max-width: 640px) {
+  .wizard-modal-shell {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    height: 90vh;
+    max-height: 90vh !important;
+  }
+}
+
+.wizard-modal-compact .space-y-6 {
+  row-gap: 1rem;
+}
+
+.wizard-modal-compact .space-y-5 {
+  row-gap: 0.875rem;
+}
+
+.wizard-modal-compact .space-y-4 {
+  row-gap: 0.75rem;
+}
+
+.wizard-modal-compact .p-6 {
+  padding: 1rem;
+}
+
+.wizard-modal-compact .rounded-xl {
+  border-radius: 0.75rem;
+}
+
+.wizard-step-content {
+  scrollbar-gutter: stable;
+}
+
+.wizard-step-navigator {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 0.5rem 0.125rem 0.25rem;
+  scrollbar-width: thin;
+}
+
+.wizard-step-navigator__track {
+  display: flex;
+  min-width: max-content;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.wizard-step-navigator__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.wizard-step-navigator__button {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.wizard-step-navigator__button:hover,
+.wizard-step-navigator__button:focus-visible {
+  border-color: #0f766e;
+  color: #0f766e;
+  box-shadow: 0 0 0 3px rgb(20 184 166 / 0.16);
+  outline: none;
+}
+
+.wizard-step-navigator__button--active {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #fff;
+}
+
+.wizard-step-navigator__button--completed {
+  border-color: #14b8a6;
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.wizard-step-navigator__button--disabled {
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.wizard-step-navigator__connector {
+  display: block;
+  width: 1.25rem;
+  height: 2px;
+  flex: 0 0 auto;
+  border-radius: 9999px;
+  background: #e2e8f0;
+}
+
+.wizard-step-navigator__connector--completed {
+  background: #14b8a6;
+}
+
+.wizard-step-navigator__tooltip {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.5rem);
+  z-index: 50;
+  max-width: 18rem;
+  width: max-content;
+  transform: translateX(-50%);
+  border-radius: 0.375rem;
+  background: #0f172a;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+  opacity: 0;
+  padding: 0.375rem 0.5rem;
+  transition: opacity 120ms ease;
+}
+
+.wizard-step-navigator__button:hover+.wizard-step-navigator__tooltip,
+.wizard-step-navigator__button:focus-visible+.wizard-step-navigator__tooltip {
+  opacity: 1;
+}
+
+.dgfy-pos-sidebar-scroll,
+.dgfy-pos-scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dgfy-pos-sidebar-scroll::-webkit-scrollbar,
+.dgfy-pos-scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+.dgfy-pos-scroll-region {
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.dgfy-pos-scroll-region:hover,
+.dgfy-pos-scroll-region:focus-within,
+.dgfy-pos-scroll-region:active {
+  scrollbar-color: #94a3b8 transparent;
+}
+
+.dgfy-pos-scroll-region::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dgfy-pos-scroll-region::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dgfy-pos-scroll-region::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+  transition: background-color 140ms ease;
+}
+
+.dgfy-pos-scroll-region:hover::-webkit-scrollbar-thumb,
+.dgfy-pos-scroll-region:focus-within::-webkit-scrollbar-thumb,
+.dgfy-pos-scroll-region:active::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  background-clip: padding-box;
+}
+
+.dgfy-pos-scroll-region::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+  background-clip: padding-box;
+}
+
+@media (min-width: 768px) {
+  .dgfy-pos-current-sale-panel-scroll {
+    scrollbar-color: transparent transparent;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scroll-behavior: smooth;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+
+  .dgfy-pos-current-sale-panel-scroll:hover,
+  .dgfy-pos-current-sale-panel-scroll:focus-within,
+  .dgfy-pos-current-sale-panel-scroll:active {
+    scrollbar-color: #94a3b8 transparent;
+  }
+
+  .dgfy-pos-current-sale-panel-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .dgfy-pos-current-sale-panel-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .dgfy-pos-current-sale-panel-scroll::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    background-clip: padding-box;
+    transition: background-color 140ms ease;
+  }
+
+  .dgfy-pos-current-sale-panel-scroll:hover::-webkit-scrollbar-thumb,
+  .dgfy-pos-current-sale-panel-scroll:focus-within::-webkit-scrollbar-thumb,
+  .dgfy-pos-current-sale-panel-scroll:active::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    background-clip: padding-box;
+  }
+
+  .dgfy-pos-current-sale-panel-scroll::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+    background-clip: padding-box;
+  }
+}
+
+/* Portrait tablets need two comfortable action columns so labels such as
+ * "Open Cash Drawer" remain comfortable touch targets. */
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  .dgfy-pos-tablet-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dgfy-pos-tablet-action-grid > button {
+    min-height: 54px;
+    padding: 0.5rem;
+  }
+
+  .dgfy-pos-tablet-action-grid > button > span {
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+}
+
+/* Portrait tablets need two comfortable action columns. The parked-sale
+ * variant otherwise switches to three columns at the `sm` breakpoint, which
+ * leaves labels such as "Open Cash Drawer" compressed into narrow targets. */
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  .dgfy-pos-tablet-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dgfy-pos-tablet-action-grid > button {
+    min-height: 54px;
+    padding: 0.5rem;
+  }
+
+  .dgfy-pos-tablet-action-grid > button > span {
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+}
+
+.dgfy-pos-y-auto {
+  overflow-y: auto;
+}
+
+.dgfy-pos-shell {
+  --pos-shell-bg: linear-gradient(180deg, #f8fbff 0%, #f7fafc 42%, #eef4ff 100%);
+  --pos-shell-panel: rgba(255, 255, 255, 0.9);
+  --pos-shell-panel-strong: #ffffff;
+  --pos-shell-border: rgba(148, 163, 184, 0.22);
+  --pos-shell-text: #1f2937;
+  --pos-shell-muted: #6b7280;
+  --pos-shell-accent: #1A4E8D;
+  --pos-shell-accent-strong: #143F73;
+  --pos-shell-accent-soft: #e8f0fb;
+  --pos-shell-sidebar: #ffffff;
+  --pos-shell-sidebar-border: rgba(226, 232, 240, 1);
+  --pos-shell-sidebar-text: #0f172a;
+  --pos-shell-sidebar-muted: #64748b;
+  --pos-shell-sidebar-card: #f8fafc;
+  --pos-shell-shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
+  height: 100vh;
+  min-height: 0;
+  background: var(--pos-shell-bg);
+  color: var(--pos-shell-text);
+  font-family: 'Segoe UI Variable Display', 'Bahnschrift', 'Poppins', 'Segoe UI', sans-serif;
+}
+
+html.dgfy-pos-document-scroll-lock,
+body.dgfy-pos-document-scroll-lock {
+  overflow: hidden;
+}
+
+@supports (height: 100dvh) {
+  .dgfy-pos-shell {
+    height: 100dvh;
+  }
+}
+
+.dgfy-pos-panel {
+  background: var(--pos-shell-panel);
+  border-color: var(--pos-shell-border);
+  box-shadow: var(--pos-shell-shadow);
+}
+
+.dgfy-pos-panel-strong {
+  background: var(--pos-shell-panel-strong);
+  border-color: var(--pos-shell-border);
+  box-shadow: var(--pos-shell-shadow);
+}
+
+.dgfy-pos-terminal-badge {
+  border: 1px solid rgba(26, 78, 141, 0.14);
+  background: linear-gradient(135deg, #f8fbff 0%, #e8f0fb 100%);
+  color: var(--pos-shell-accent-strong);
+}
+
+.dgfy-pos-dot {
+  display: inline-flex;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
+}
+
+.dgfy-pos-dot--online {
+  background: #16a34a;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.12);
+}
+
+.dgfy-pos-dot--offline {
+  background: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.12);
+}
+
+.dgfy-pos-shell .text-pos-muted {
+  color: var(--pos-shell-muted);
+}
+
+.dgfy-pos-shell .text-pos-accent {
+  color: var(--pos-shell-accent);
+}
+
+.dgfy-pos-shell .bg-pos-accent {
+  background: var(--pos-shell-accent);
+}
+
+.dgfy-pos-shell .border-pos {
+  border-color: var(--pos-shell-border);
+}
+
+/*
+ * POS text-size compatibility layer. The preference changes font metrics only;
+ * it deliberately does not change html/body rem geometry, shell dimensions, or
+ * Tailwind spacing utilities. The body-level scope also reaches POS dialogs and
+ * other controls rendered through document.body portals.
+ */
+body[data-pos-text-size="normal"] {
+  --pos-text-size-scale: 1;
+}
+
+body[data-pos-text-size="large"] {
+  --pos-text-size-scale: 1.15;
+}
+
+body[data-pos-text-size="extra-large"] {
+  --pos-text-size-scale: 1.3;
+}
+
+@media screen {
+  body[data-pos-text-size="large"],
+  body[data-pos-text-size="extra-large"] {
+    font-size: calc(1rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-xs, [class*="text-xs"]),
+  body[data-pos-text-size="extra-large"] :where(.text-xs, [class*="text-xs"]) {
+    font-size: calc(0.75rem * var(--pos-text-size-scale));
+    line-height: calc(1rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-sm, [class*="text-sm"]),
+  body[data-pos-text-size="extra-large"] :where(.text-sm, [class*="text-sm"]) {
+    font-size: calc(0.875rem * var(--pos-text-size-scale));
+    line-height: calc(1.25rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-base, [class*="text-base"]),
+  body[data-pos-text-size="extra-large"] :where(.text-base, [class*="text-base"]) {
+    font-size: calc(1rem * var(--pos-text-size-scale));
+    line-height: calc(1.5rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-lg, [class*="text-lg"]),
+  body[data-pos-text-size="extra-large"] :where(.text-lg, [class*="text-lg"]) {
+    font-size: calc(1.125rem * var(--pos-text-size-scale));
+    line-height: calc(1.75rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-xl, [class*="text-xl"]),
+  body[data-pos-text-size="extra-large"] :where(.text-xl, [class*="text-xl"]) {
+    font-size: calc(1.25rem * var(--pos-text-size-scale));
+    line-height: calc(1.75rem * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where(.text-2xl, [class*="text-2xl"]),
+  body[data-pos-text-size="extra-large"] :where(.text-2xl, [class*="text-2xl"]) {
+    font-size: calc(1.5rem * var(--pos-text-size-scale));
+    line-height: calc(2rem * var(--pos-text-size-scale));
+  }
+
+  /* Existing POS arbitrary text utilities are scaled without rewriting the
+     large component surface or changing the terminal's spacing contract. */
+  body[data-pos-text-size="large"] :where([class*="text-[7px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[7px]"]) {
+    font-size: calc(7px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[8px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[8px]"]) {
+    font-size: calc(8px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[9px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[9px]"]) {
+    font-size: calc(9px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[10px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[10px]"]) {
+    font-size: calc(10px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[10.5px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[10.5px]"]) {
+    font-size: calc(10.5px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[11px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[11px]"]) {
+    font-size: calc(11px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[12px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[12px]"]) {
+    font-size: calc(12px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[13px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[13px]"]) {
+    font-size: calc(13px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[13.5px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[13.5px]"]) {
+    font-size: calc(13.5px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[14px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[14px]"]) {
+    font-size: calc(14px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[15px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[15px]"]) {
+    font-size: calc(15px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[17px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[17px]"]) {
+    font-size: calc(17px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[18px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[18px]"]) {
+    font-size: calc(18px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[20px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[20px]"]) {
+    font-size: calc(20px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[21px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[21px]"]) {
+    font-size: calc(21px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[22px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[22px]"]) {
+    font-size: calc(22px * var(--pos-text-size-scale));
+  }
+
+  body[data-pos-text-size="large"] :where([class*="text-[26px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[26px]"]) {
+    font-size: calc(26px * var(--pos-text-size-scale));
+  }
+}
+
+/* Print receipts must keep their existing fiscal/document typography. */
+@media print {
+  body[data-pos-text-size] {
+    --pos-text-size-scale: 1;
+  }
+}
+
+/* Phase 4 layout hardening: let the text setting consume vertical space in
+   bounded interactive regions instead of clipping labels or action text. */
+@media screen {
+  body[data-pos-text-size] .dgfy-pos-current-sale-actions > button {
+    min-height: max(46px, calc(46px * var(--pos-text-size-scale, 1)));
+  }
+
+  body[data-pos-text-size] .dgfy-pos-current-sale-actions span {
+    overflow-wrap: anywhere;
+  }
+
+  body[data-pos-text-size] [role="dialog"] {
+    min-width: 0;
+    max-height: calc(100vh - 1rem);
+    max-height: calc(100dvh - 1rem);
+  }
+
+  body[data-pos-text-size] [role="dialog"] :where(h1, h2, h3, h4, p, label, button) {
+    overflow-wrap: anywhere;
+  }
+
+  body[data-pos-text-size] [aria-label="POS transaction history table"] {
+    table-layout: auto;
+  }
+
+  body[data-pos-text-size] [aria-label="POS transaction history table"] :where(th, td) {
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-pos-text-size] [aria-label="POS transaction history table"] button {
+    min-height: max(3rem, calc(3rem * var(--pos-text-size-scale, 1)));
+    height: auto;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  body[data-pos-text-size] .dgfy-pos-tablet-action-grid > button {
+    min-height: max(54px, calc(54px * var(--pos-text-size-scale, 1)));
+  }
+}
+
+/* iOS Safari zooms focused controls below 16px. Tailwind text-size utilities
+   must not override this inside the standalone POS terminal. */
+@media (max-width: 639.98px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  .dgfy-pos-shell :is(input, textarea, select) {
+    font-size: 16px !important;
+  }
+}
+
+/* Items and scanner dialogs render through portals outside .dgfy-pos-shell.
+   Keep their focused controls at iOS's non-zooming size without disabling
+   user-controlled pinch zoom for the rest of the application. */
+@supports (-webkit-touch-callout: none) {
+  .pos-mobile-no-focus-zoom :is(input, textarea, select) {
+    font-size: 16px !important;
+  }
+}
+
+/* Catalog navigation (Sell/History/Shift/etc.) slide-in: mobile only, right -> left entrance. */
+@media (max-width: 639.98px) {
+  .catalog-slide-enter {
+    animation: catalog-slide-enter 33.34ms ease-out;
+  }
+}
+
+@keyframes catalog-slide-enter {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* POS add-to-cart toast: enter from the right without relying on an optional
+   Tailwind animation plugin that is not part of this workspace. */
+.pos-add-to-cart-toast {
+  animation: pos-add-to-cart-toast-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes pos-add-to-cart-toast-enter {
+  from {
+    transform: translate3d(28px, 0, 0);
+    opacity: 0;
+  }
+
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-add-to-cart-toast {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+  }
+}
+
+/* "+" button long-press quantity meter (mobile only, portaled to document.body). */
+.qty-meter {
+  position: fixed;
+  z-index: 2147483647;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.35);
+  /* Anchored to the button's left edge / vertical center; sit to its left with a small gap,
+     vertically centered on it - position is fixed and never re-derived from the finger. */
+  transform: translate(calc(-100% - 12px), -50%);
+}
+
+.qty-meter__value {
+  min-width: 24px;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+
+.qty-meter__track {
+  position: relative;
+  width: 10px;
+  height: 96px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+
+.qty-meter__fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+  transition: height 40ms linear;
+}
+
+@media (max-width: 767.98px) {
+  .pos-report-date-input {
+    box-sizing: border-box;
+    display: block;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .pos-report-date-input::-webkit-calendar-picker-indicator {
+    position: static;
+    width: auto;
+    height: auto;
+    opacity: 0;
+  }
+}
+
+body.pos-modal-scroll-lock,
+body.pos-receipt-print-mode {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/*
+ * The production iMin wrapper runs a fixed Chrome 80-84 WebView. Full-screen
+ * backdrop filters force that device to repaint and composite the complete POS
+ * workspace behind every dialog, drawer, and lock overlay. The runtime marker
+ * is installed only by apps/dgfy-pos, so browser POS, IMS, and Storefront keep
+ * their normal blur and motion treatment.
+ */
+html.dgfy-imin-performance [data-dialog-overlay="true"],
+html.dgfy-imin-performance [class~="backdrop-blur-sm"],
+html.dgfy-imin-performance [class~="backdrop-blur-md"],
+html.dgfy-imin-performance [class~="backdrop-blur-lg"],
+html.dgfy-imin-performance [class~="backdrop-blur-xl"],
+html.dgfy-imin-performance [class~="backdrop-blur-2xl"],
+html.dgfy-imin-performance [class~="backdrop-blur-3xl"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dgfy-imin-performance .animate-pos-overlay-fade-in,
+html.dgfy-imin-performance .animate-pos-card-scale-up,
+html.dgfy-imin-performance .animate-pos-illustration-float,
+html.dgfy-imin-performance .animate-float,
+html.dgfy-imin-performance .animate-shimmer,
+html.dgfy-imin-performance .animate-pulse-ring,
+html.dgfy-imin-performance .animate-spin-slow,
+html.dgfy-imin-performance .animate-spin-reverse,
+html.dgfy-imin-performance [class~="animate-ping"],
+html.dgfy-imin-performance .dot-1,
+html.dgfy-imin-performance .dot-2,
+html.dgfy-imin-performance .dot-3 {
+  animation: none !important;
+}
+
+html.dgfy-imin-performance [class~="transition-all"] {
+  transition-property: transform, opacity !important;
+  transition-duration: 100ms !important;
+}
+
+.pos-receipt-print-shell {
+  height: 100vh;
+  height: 100dvh;
+  touch-action: none;
+}
+
+.pos-receipt-print-dialog {
+  max-height: calc(100vh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem);
+}
+
+.pos-receipt-print-content {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.pos-receipt-print-footer {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .pos-receipt-print-dialog {
+    max-height: calc(100vh - 3rem);
+    max-height: calc(100dvh - 3rem);
+  }
+}
+
+/*
+ * Mirrors .pos-receipt-print-dialog/.pos-receipt-print-content above: a
+ * plain `vh` value first, then the `dvh` refinement -- a real CSS fallback,
+ * since a browser that doesn't understand `dvh` simply ignores that second
+ * declaration and keeps the `vh` one instead of dropping max-height
+ * entirely. Belt-and-braces alongside the Dialog primitive's own
+ * unit-independent clamp (Components/ui/dialog.jsx) for the one dialog this
+ * was reported unreachable on: Confirm Checkout on a tablet-sized WebView.
+ */
+.pos-checkout-confirm-dialog {
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+}
+
+.pos-modal-scroll-content {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media print {
+
+  body.pos-modal-scroll-lock,
+  body.pos-receipt-print-mode {
+    overflow: visible;
+  }
+
+  .pos-receipt-print-shell,
+  .pos-receipt-print-dialog {
+    height: auto;
+    max-height: none;
+    touch-action: auto;
+  }
+
+  .pos-receipt-print-content {
+    padding-bottom: 0;
+    scroll-padding-bottom: 0;
+  }
+
+  body.pos-online-order-receipt-print-mode>#root {
+    visibility: hidden;
+  }
+
+  body.pos-online-order-receipt-print-mode .pos-online-order-receipt-dialog,
+  body.pos-online-order-receipt-print-mode .pos-online-order-receipt-dialog * {
+    visibility: visible;
+  }
+
+  body.pos-online-order-receipt-print-mode .pos-online-order-receipt-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    width: 80mm;
+    max-width: 80mm;
+    margin: 0 auto;
+  }
+
+  /* Chrome 80-84 iMin POS WebView has no :has() (Chrome 105+); a body class
+     toggled by ShiftCloseSummaryPrintView.jsx's mount/unmount effect replaces
+     it -- see #666. */
+  body.pos-shift-summary-printing > #root {
+    visibility: hidden;
+  }
+
+  body.pos-shift-summary-printing .pos-shift-summary-print-shell,
+  body.pos-shift-summary-printing .pos-shift-summary-print-shell * {
+    visibility: visible;
+  }
+
+  body.pos-shift-summary-printing .pos-shift-summary-print-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    width: 80mm;
+    margin: 0 auto;
+  }
+}
+
+.wizard-core-typography {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+.wizard-core-typography .wizard-title {
+  font-size: 2rem;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.wizard-core-typography .wizard-step-content :is(h3, h4).wizard-section-title,
+.wizard-core-typography .wizard-step-content :is(h3, h4) {
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.wizard-core-typography .wizard-step-content label {
+  font-size: 1rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.wizard-core-typography .wizard-step-content :is(input, textarea, select, button) {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.wizard-core-typography .wizard-step-content .text-sm {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.wizard-core-typography .wizard-step-content .text-xs {
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.wizard-core-typography .wizard-footer button {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* POS date filters render a single decorative calendar icon; suppress the
+   native browser calendar-picker-indicator so it doesn't render a second,
+   overlapping calendar affordance inside the same input. */
+.pos-report-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
+/* F&B POS Saving Modal Keyframes */
+@keyframes shimmer-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+@keyframes spin-slow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes spin-reverse {
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.92); opacity: 0.8; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { transform: scale(1.05); opacity: 1; box-shadow: 0 0 25px 8px rgba(245, 158, 11, 0.25); }
+  100% { transform: scale(0.92); opacity: 0.8; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+}
+
+@keyframes float-gentle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes dots-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 6s linear infinite;
+}
+
+.animate-spin-reverse {
+  animation: spin-reverse 4s linear infinite;
+}
+
+.animate-shimmer {
+  animation: shimmer-slide 2s infinite ease-in-out;
+}
+
+.animate-float {
+  animation: float-gentle 4s ease-in-out infinite;
+}
+
+.dot-1 { animation: dots-pulse 1.4s infinite 0s; }
+.dot-2 { animation: dots-pulse 1.4s infinite 0.2s; }
+.dot-3 { animation: dots-pulse 1.4s infinite 0.4s; }
+
+/* POS Workspace Restoration Loading Screen Keyframes */
+@keyframes pos-overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pos-card-scale-up {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pos-illustration-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-7px); }
+}
+
+.animate-pos-overlay-fade-in {
+  animation: pos-overlay-fade-in 300ms ease-out forwards;
+}
+
+.animate-pos-card-scale-up {
+  animation: pos-card-scale-up 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pos-illustration-float {
+  animation: pos-illustration-float 3.2s ease-in-out infinite;
+}

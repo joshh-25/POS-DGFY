@@ -46,7 +46,13 @@ jest.unstable_mockModule('../src/middleware/tenantHandler.js', () => ({
             Item
         }, next);
     },
-    invalidateTenantLookupCache: jest.fn()
+    invalidateTenantLookupCache: jest.fn(),
+    // Added by 84109da50 (#916) -- auth.js/requireTenantContext.js import these directly from
+    // this module, so the mock's static export shape must match even though this test's
+    // unconditional tenantHandler stub above never reaches the degraded-context branch that
+    // would actually invoke them.
+    resolveDegradedTenantContextFailure: jest.fn(),
+    sendTenantContextError: jest.fn()
 }));
 
 // 2. Import dependencies
@@ -204,7 +210,7 @@ describe('TOCTOU Integration Test', () => {
             .send({ actionId: actionId });
 
         expect(response.status).toBe(200);
-        expect(response.body.success).toBe(true);
+        expect(response.body).toEqual(expect.objectContaining({ success: true }));
 
         const refreshedAction = await PendingAIAction.findByPk(actionId);
         expect(refreshedAction.status).toBe('confirmed');

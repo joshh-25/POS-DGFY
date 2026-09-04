@@ -17,12 +17,15 @@ plugins {
 //   ./gradlew assembleDevRelease -Pdgfy.dev.posOrigin=https://pos.example.ph
 //   bash scripts/build-android-release.sh dev --pos-origin https://pos.example.ph
 //
-// The four names match the platform's four GitHub Environments
-// (DEV -> dev.dgfy.ph, STAGING -> stage.dgfy.ph, BETA -> beta.dgfy.ph,
-// PROD -> dgfy.ph); see infrastructure/docker/SENTRY.md.
+// The three names match the platform's three remaining GitHub Environments
+// (DEV -> dev.dgfy.ph, STAGING -> stage.dgfy.ph, PROD -> dgfy.ph); see
+// infrastructure/docker/SENTRY.md. BETA/beta.dgfy.ph was retired 2026-08-23
+// (#329/#897) -- nginx now redirects every *.beta.dgfy.ph request straight
+// to its *.dgfy.ph equivalent, and a WebView origin allowlist does not
+// follow a cross-origin redirect, so a `beta` flavor pointed here would ship
+// a silently broken app rather than a working one.
 val posOrigins = mapOf(
     "prod" to "https://pos.dgfy.ph",
-    "beta" to "https://pos.beta.dgfy.ph",
     "staging" to "https://pos.stage.dgfy.ph",
     "dev" to "https://pos.dev.dgfy.ph"
 ).mapValues { (flavor, fallback) ->
@@ -34,7 +37,6 @@ val posOrigins = mapOf(
 
 val skupervisorHosts = mapOf(
     "prod" to "skupervisor.dgfy.ph",
-    "beta" to "skupervisor.beta.dgfy.ph",
     "staging" to "skupervisor.stage.dgfy.ph",
     "dev" to "skupervisor.dev.dgfy.ph"
 ).mapValues { (flavor, fallback) ->
@@ -65,8 +67,8 @@ android {
         applicationId = "com.dgfy.iminwrapper"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -83,14 +85,6 @@ android {
             buildConfigField("String", "LIVE_POS_ORIGIN", "\"${posOrigins["prod"]}\"")
             buildConfigField("String", "LIVE_POS_HOST", "\"${posHosts["prod"]}\"")
             buildConfigField("String", "SKUPERVISOR_HOST", "\"${skupervisorHosts["prod"]}\"")
-        }
-        create("beta") {
-            dimension = "environment"
-            applicationIdSuffix = ".beta"
-            versionNameSuffix = "-beta"
-            buildConfigField("String", "LIVE_POS_ORIGIN", "\"${posOrigins["beta"]}\"")
-            buildConfigField("String", "LIVE_POS_HOST", "\"${posHosts["beta"]}\"")
-            buildConfigField("String", "SKUPERVISOR_HOST", "\"${skupervisorHosts["beta"]}\"")
         }
         // Points at pos.stage.dgfy.ph -- lets a build off any branch
         // (including a feature branch, via workflow_dispatch's ref picker)

@@ -256,14 +256,83 @@ export const buildListEmployeeCreditAccountsUseCase = ({ repository }) => async 
   }
 };
 
+export const buildEnableEmployeeCreditForActiveEmployeesUseCase = ({ repository }) => async ({ actorUserId }) => {
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const transaction = await sequelize.transaction();
+  try {
+    const normalizedActorUserId = requirePositiveInt(actorUserId, 'actorUserId');
+    const employees = await repository.listActiveEmployees({ transaction, lock: true });
+    let enabledCount = 0;
+    let createdAccountCount = 0;
+    let alreadyEligibleCount = 0;
+
+    for (const employee of employees) {
+      const normalizedEmployeeId = requirePositiveInt(employee?.employee_id, 'employeeId');
+      let account = await repository.findAccountByEmployeeId(normalizedEmployeeId, { transaction, lock: true });
+      const wasEligible = Boolean(account?.is_eligible);
+
+      if (!account) {
+        account = await repository.createAccount({
+          employee_id: normalizedEmployeeId,
+          user_id: null,
+          account_code: `EC-E${normalizedEmployeeId}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
+          is_eligible: true,
+          balance: 0,
+          outstanding_balance: 0,
+          version: 0
+        }, { transaction });
+        createdAccountCount += 1;
+        enabledCount += 1;
+      } else if (!wasEligible) {
+        await repository.updateAccount(account, {
+          is_eligible: true,
+          version: Number(account.version || 0) + 1
+        }, { transaction });
+        enabledCount += 1;
+      } else {
+        alreadyEligibleCount += 1;
+      }
+
+      if (!wasEligible) {
+        await repository.createAuditLog({
+          user_id: normalizedActorUserId,
+          entity_type: 'employee_credit',
+          entity_id: account.account_id,
+          action: 'UPDATE',
+          changes: {
+            action: 'bulk_employee_account_eligibility',
+            employee_id: normalizedEmployeeId,
+            employee_code: employee.employee_code,
+            employee_name: employee.full_name,
+            is_eligible: true,
+            active_employees_only: true
+          }
+        }, { transaction });
+      }
+    }
+
+    await transaction.commit();
+    return ok({
+      active_employee_count: employees.length,
+      enabled_count: enabledCount,
+      created_account_count: createdAccountCount,
+      already_eligible_count: alreadyEligibleCount
+    });
+  } catch (error) {
+    if (!transaction.finished) await transaction.rollback();
+    return fail(mapError(error, 'Failed to enable Employee Credit for active employees'));
+  }
+};
+
 export const buildListEmployeeCreditCheckoutOptionsUseCase = ({ repository }) => async ({ query = {} } = {}) => {
   try {
     const search = String(query.search || '').trim();
     const limit = Math.min(100, Math.max(1, Number(query.limit || 50)));
     const locationId = query.location_id ? requirePositiveInt(query.location_id, 'location_id') : null;
+    const employeeId = query.employee_id ? requirePositiveInt(query.employee_id, 'employee_id') : null;
     const [employees, legacyAccounts] = await Promise.all([
-      repository.listCheckoutEmployees({ search, locationId, limit }),
-      repository.listLegacyCheckoutAccounts({ search, limit })
+      repository.listCheckoutEmployees({ search, locationId, employeeId, limit }),
+      employeeId ? Promise.resolve([]) : repository.listLegacyCheckoutAccounts({ search, limit })
     ]);
     const options = [
       ...employees.map(checkoutOptionFromDirectoryEmployee),
@@ -429,11 +498,22 @@ export const buildRecordEmployeeCreditRepaymentUseCase = ({ repository }) => asy
   try {
     const normalizedAccountId = requirePositiveInt(accountId, 'accountId');
     const normalizedActorUserId = requirePositiveInt(actorUserId, 'actorUserId');
-    const amount = round4(payload.amount);
+    const repayAll = payload.repay_all === true;
+    const hasAmount = payload.amount !== undefined && payload.amount !== null;
+    if (repayAll === hasAmount) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Provide either a repayment amount or repay_all', { statusCode: 422 });
+    }
+    const requestedAmount = hasAmount ? round4(payload.amount) : null;
+    const expectedVersion = payload.expected_version === undefined || payload.expected_version === null
+      ? null
+      : Number(payload.expected_version);
     const reason = String(payload.reason || '').trim();
     const idempotencyKey = String(payload.idempotency_key || '').trim();
-    if (amount <= 0) {
+    if (hasAmount && (!Number.isFinite(requestedAmount) || requestedAmount <= 0)) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Repayment amount must be greater than zero', { statusCode: 422 });
+    }
+    if (repayAll && (!Number.isInteger(expectedVersion) || expectedVersion < 0)) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'expected_version is required for Repay All', { statusCode: 422 });
     }
     if (reason.length < 3) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'A reason is required for Employee Credit repayment', { statusCode: 422 });
@@ -451,6 +531,13 @@ export const buildRecordEmployeeCreditRepaymentUseCase = ({ repository }) => asy
       throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Employee Credit account was not found', { statusCode: 404 });
     }
     const outstandingBefore = round4(account.outstanding_balance);
+    if (repayAll && Number(account.version || 0) !== expectedVersion) {
+      throw new DomainError(DomainErrorCode.CONFLICT, 'Employee Credit balance changed. Refresh and confirm the current balance again.', { statusCode: 409 });
+    }
+    const amount = repayAll ? outstandingBefore : requestedAmount;
+    if (repayAll && amount <= 0) {
+      throw new DomainError(DomainErrorCode.CONFLICT, 'Employee Credit account has no outstanding balance', { statusCode: 409 });
+    }
     if (amount > outstandingBefore) {
       throw new DomainError(DomainErrorCode.CONFLICT, 'Repayment cannot exceed the outstanding balance', { statusCode: 409 });
     }
@@ -468,7 +555,10 @@ export const buildRecordEmployeeCreditRepaymentUseCase = ({ repository }) => asy
       actor_user_id: normalizedActorUserId,
       idempotency_key: idempotencyKey,
       reason,
-      metadata: { balance_basis: 'outstanding' }
+      metadata: {
+        balance_basis: 'outstanding',
+        repayment_mode: repayAll ? 'all' : 'partial'
+      }
     }, { transaction });
     await repository.createAuditLog({
       user_id: normalizedActorUserId,
@@ -480,7 +570,8 @@ export const buildRecordEmployeeCreditRepaymentUseCase = ({ repository }) => asy
         amount,
         outstanding_before: outstandingBefore,
         outstanding_after: outstandingAfter,
-        reason
+        reason,
+        repayment_mode: repayAll ? 'all' : 'partial'
       }
     }, { transaction });
     await transaction.commit();

@@ -39,6 +39,24 @@ describe('POS shift authorization policy', () => {
         }));
     });
 
+    it('allows a server-validated active operator without changing shift ownership', () => {
+        expect(authorizePosShiftMutation({
+            shift: openShift,
+            actorUser: {
+                user_id: 8,
+                operator_session_id: 501,
+                register_shift_owner_user_id: 7
+            },
+            operation: 'cash_drawer_event'
+        })).toEqual({
+            authorization_mode: 'active_operator',
+            actor_user_id: 8,
+            shift_cashier_id: 7,
+            operator_session_id: 501,
+            override_reason: null
+        });
+    });
+
     it('requires an explicit reason for a master-admin override', () => {
         expect(() => authorizePosShiftMutation({
             shift: openShift,

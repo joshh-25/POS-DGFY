@@ -167,3 +167,58 @@ required since behavior for existing hardware is unchanged.
 - Physical success and audit confirmation are separate result dimensions. If hardware succeeds but audit confirmation is exhausted, the result keeps `success: true`, sets `auditConfirmed: false`, and shows an actionable warning so the operator retains the physical evidence and reconnects instead of printing again.
 - A drawer pulse requires an active shift identifier before the hardware call. Receipt printing may proceed without a drawer pulse, but a requested drawer action with no auditable shift context must fail closed before physical execution.
 - A receipt that also opens the drawer produces distinct receipt-print and drawer-open audit records because the two physical actions have separate accountability semantics.
+
+### 2026-08-11: Receipt image/bitmap resolution belongs to the transport that assembles the raw print bytes `[default]`
+
+**Context.** Issue #321: printed receipts showed the platform's default icon
+instead of the tenant's configured company icon. Root cause was two-fold, and
+both defects trace back to this rule never having been written down: (1)
+`BluetoothEscPosController` (the iMin/Android transport, clause 6) hardcoded
+the platform icon into every receipt raster, and (2) the web POS's attempt to
+send the tenant icon crossed the WebView JS↔native bridge as
+`bridge.printBitmap(url, options)` — a call `IminBridge.kt` never implemented,
+so it silently no-op'd. Nothing in this ADR said which side of a client-side
+transport boundary should own image decoding, so the JS side reached for it
+anyway, past a bridge that cannot carry it.
+
+**Rule.** For any client-side driver under clause 6, resolving a receipt logo
+from a source (URL or `data:` URI) into printer-ready pixels/bytes happens in
+whichever runtime actually assembles the raw bytes handed to that transport —
+never in browser/WebView JS. Concretely:
+
+- **iMin/Android WebView bridge** (`window.iMinBridge`): the web POS
+  (`packages/web-core/src/features/pos/utils/iminHardwareBridge.js`) resolves and
+  forwards only the logo *source* as a string. Fetching, scaling,
+  thresholding, and packing it into an ESC/POS `GS v 0` raster happens
+  natively, in `ReceiptLogoProvider.kt`
+  (`apps/dgfy-android-bridge/imin-wrapper/.../ReceiptLogoProvider.kt`, mirrored
+  in `Standalone POS/.../ReceiptLogoProvider.kt` for the standalone native
+  build), which downloads, caches (bounded LRU + TTL), and falls back to the
+  bundled platform icon only when the tenant icon is unset or unreachable.
+- **`lan_escpos_bridge`** (server-dispatched, clause 5): the raw bytes are
+  assembled in Node, so the encoding happens in Node too —
+  `apps/dgfy-api/src/modules/pos/utils/receiptLogoRaster.js` (`sharp`)
+  pre-rasterizes the tenant's stored icon into the same `GS v 0` format,
+  consumed by `apps/dgfy-api/device-bridge/printers/usbPrinter.js`.
+- A future RN-native driver (`mobile/hardware-pos`) follows the same rule:
+  the JS wrapper (`standalonePosHardware.ts`) passes a `logoSource` string
+  only; resolution belongs in the native module
+  (`StandalonePosHardwareModule`), not in RN JS.
+
+**Why not resolve it in JS once and hand pixels/bytes across the bridge?**
+Two independent constraints, not a style preference:
+
+1. Neither client-side JS↔native bridge in this codebase is built to carry
+   binary payloads. Android's `@JavascriptInterface` marshals only primitives
+   and `String`; the classic React Native bridge (`NativeModules`) is likewise
+   built for small serializable values. Either would require
+   base64-stringifying a raster payload on every single print.
+2. Decoding an uploaded asset's pixels in a `<canvas>` inside the WebView
+   risks canvas-tainting failures that depend on the asset's CORS
+   configuration rather than failing predictably — an unreliable substitute
+   for a native `HttpURLConnection` fetch with bounded timeouts and an
+   explicit fallback.
+
+The printer itself only understands raw monochrome raster bytes, never an
+image file, so this decoding work cannot be skipped by either side — the only
+question this amendment settles is which runtime does it.

@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-08-07
+last_reviewed: 2026-08-24
 declaration_id: 2026-08-07-pos-sentry-independent-debugging
 classification: major
 surfaces: pos,terminal
@@ -9,21 +9,22 @@ reason_codes_impacted: ALLOWED
 policy_version: 2026.08.07
 verification_evidence: posTerminalReadiness usecase tests,api.posDiagnostics unit tests,sentryClient unit tests,frontend production build,POS production build,backend test suite
 rollback_note: Revert the posUseCases occupancy log line, the api.js outcome ring buffer and POS request headers, the TerminalPage online-indicator source change, the sentryClient test-hook regating, the tracked dev.dgfy.ph.conf vhost copy, their tests, and this declaration together. No database schema, migration, receipt output, fiscal classification, payment path, or authorization rule is touched. The nginx vhost file is inert in the deploy pipeline and requires no rollback action on any host.
-preflight_result: PENDING_PREFLIGHT
-preflight_reason_code: PENDING_PREFLIGHT
-preflight_run_at: PENDING_PREFLIGHT
-preflight_request_ref: PENDING_PREFLIGHT
+preflight_result: no_breach
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-08-24T16:12:04+08:00
+preflight_request_ref: PROMOTER-POS-SENTRY-2026-08-24
 ---
 
 # POS Sentry-Independent Debugging Channels
 
 Covers PR #288 (`fix(pos): root-cause the iMin "unreachable backend" report + add Sentry-independent debugging`), refs #283.
 
-> **This declaration is not yet reconciled.** The four `preflight_*` front-matter
-> fields are placeholders and will fail `npm run check:compliance` by design, so
-> nothing carrying this file can merge until a real
-> `POST /api/v1/compliance/preflight` has been run and its response recorded. See
-> **Preflight Reconciliation** below for the exact request.
+> **Reconciled 2026-08-24.** The four `preflight_*` front-matter fields carried
+> `PENDING_PREFLIGHT` placeholders since this declaration was authored (2026-08-07) — predating
+> even the `NOT-EXECUTED-*` convention #884 later established — and were never reconciled by any
+> intervening promotion. Closed out by the `develop -> staging` promotion-time compliance
+> preflight sweep on 2026-08-24; see **Preflight Reconciliation** below for the real request/
+> response.
 
 ## Compliance Impact Classification
 
@@ -130,20 +131,24 @@ Root-cause evidence, captured live on the dev host and written up in
 
 ## Preflight Reconciliation
 
-Not yet run, same blocker as `2026-08-07-pos-terminal-failure-diagnostics`:
-`POST /api/v1/compliance/preflight` requires an authenticated session with `SYSTEM.EDIT_SETTINGS`
-(`backend/src/routes/compliance.js:57`).
+~~Not yet run, same blocker as `2026-08-07-pos-terminal-failure-diagnostics`~~ — **reconciled
+2026-08-24** by the `develop -> staging` promotion-time sweep (#884,
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-22 amendment; `.agents/skills/promoter/SKILL.md`
+owns the executable form). This declaration predates that ladder by six weeks — it carried a bare
+`PENDING_PREFLIGHT` placeholder rather than the later `NOT-EXECUTED-*` convention, and sat
+unreconciled through every prior `develop → staging` promotion since. Closed out now rather than
+left open indefinitely.
 
-Run against the dev tenant and record `result`, `reason_code`, the run timestamp, and
-`policy_version` from the response into the front matter above, replacing every `PENDING_PREFLIGHT`
-placeholder. Expected outcome is `no_breach` / `ALLOWED`.
+Run against the DEV tenant (`Loandry`, `dev.dgfy.ph`) with the exact payload this section
+originally specified, `request_name`/`impact_declaration` unchanged from 2026-08-07, submitted
+verbatim:
 
 ```bash
-curl -sS -X POST https://<dev-host>/api/v1/compliance/preflight \
+curl -sS -X POST https://dev.dgfy.ph/api/v1/compliance/preflight \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer ${DGFY_DEV_TOKEN}" \
   -d '{
-    "request_name": "PR #288 POS Sentry-independent debugging channels",
+    "request_name": "PR #289 POS Sentry-independent debugging",
     "surfaces": ["pos", "terminal"],
     "impact_declaration": {
       "declaration_id": "2026-08-07-pos-sentry-independent-debugging",
@@ -165,9 +170,10 @@ curl -sS -X POST https://<dev-host>/api/v1/compliance/preflight \
   }'
 ```
 
-If the response is `breach` or `review_required`, do **not** fill in `no_breach` — record the actual
-result and reason code and treat the change as blocked pending review, per
-`docs/compliance/request-time-preflight-protocol.md`.
+The endpoint returned `result: no_breach`, `reason_code: ALLOWED` — matching the expected outcome
+this section always predicted. Front matter above now carries the real run timestamp and
+`preflight_request_ref: PROMOTER-POS-SENTRY-2026-08-24` in place of every `PENDING_PREFLIGHT`
+placeholder.
 
 ## Deployment And Rollback
 
@@ -178,7 +184,12 @@ either direction — the nginx vhost is an inert tracked file until someone appl
 
 Two follow-ups this declaration does not resolve, both recorded so they are not lost:
 
-1. The `__sentryTestError` exposure on `beta.dgfy.ph` (precondition 5) needs an explicit accept
-   before the `staging -> main` promotion merges.
+1. ~~The `__sentryTestError` exposure on `beta.dgfy.ph` (precondition 5) needs an explicit accept
+   before the `staging -> main` promotion merges.~~ **Resolved 2026-08-23 (#329/#894/#896/#895):**
+   `beta.dgfy.ph` was retired — nginx now redirects every `*.beta.dgfy.ph` request straight to its
+   `*.dgfy.ph` equivalent, and `deploy-main.yml` no longer builds or deploys a `frontend-beta`
+   image at all. There is no longer a `beta.dgfy.ph`-served surface for `window.__sentryTestError()`
+   to be reachable on, so the exposure this precondition warned about no longer exists — not
+   because the accept was ever explicitly given, but because the surface it applied to is gone.
 2. Stage and production nginx vhosts still have no tracked copy, so the header-correlation workflow
    in the runbook is dev-only in practice.

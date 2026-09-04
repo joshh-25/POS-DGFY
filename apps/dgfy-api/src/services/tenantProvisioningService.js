@@ -21,7 +21,8 @@ import {
 import {
     DEFAULT_CUSTOMER_ACCESS_MODE,
     DEFAULT_INVENTORY_DISPLAY_MODE,
-    DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD
+    DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD,
+    resolveDefaultGuestCheckoutEnabledForWorkflowMode
 } from '../modules/shared/utils/customerAccessPolicy.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 
@@ -38,6 +39,8 @@ const STORE_IS_VISIBLE_SETTING_KEY = 'store_is_visible';
 const CUSTOMER_ACCESS_MODE_SETTING_KEY = 'customer_access_mode';
 const INVENTORY_DISPLAY_MODE_SETTING_KEY = 'inventory_display_mode';
 const INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_SETTING_KEY = 'inventory_low_stock_display_threshold';
+const GUEST_CHECKOUT_ENABLED_SETTING_KEY = 'storefront_guest_checkout_enabled';
+const CASH_PAYMENT_ENABLED_SETTING_KEY = 'storefront_cash_payment_enabled';
 
 const parsePositiveId = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -302,7 +305,7 @@ const seedDefaultOnboardingSettings = async (tenantSequelize) => {
     }
 };
 
-const seedDefaultCustomerAccessSettings = async (tenantSequelize) => {
+const seedDefaultCustomerAccessSettings = async (tenantSequelize, workflowMode = null) => {
     const defaults = [
         {
             key: STORE_IS_VISIBLE_SETTING_KEY,
@@ -328,6 +331,30 @@ const seedDefaultCustomerAccessSettings = async (tenantSequelize) => {
             value: String(DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD),
             dataType: 'number',
             description: 'Public low-stock display threshold for storefront inventory labels'
+        },
+        {
+            // #622 (Pat, 2026-08-18): vertical-dependent default (enabled on FnB, disabled on
+            // Retail) -- only seeded here, at provisioning time. resolveAccessPolicyFromSettings's
+            // own runtime default (customerAccessPolicy.js) stays unconditionally `true` so an
+            // existing tenant with no row here (every tenant provisioned before this shipped) keeps
+            // guest checkout on. NOT overwriteExisting -- a re-run of provisioning must never stomp
+            // a merchant's own toggle choice.
+            key: GUEST_CHECKOUT_ENABLED_SETTING_KEY,
+            value: resolveDefaultGuestCheckoutEnabledForWorkflowMode(workflowMode),
+            dataType: 'boolean',
+            description: 'Allows customers to check out or book without a DGFY account'
+        },
+        {
+            // #626 (Phase 203): unlike guest checkout above, no vertical-specific default -- the
+            // card-only motivation is Surebiz-specific and gated on #477, so seeding Retail
+            // cash-off here would break every other Retail tenant. Every vertical seeds `true`;
+            // a Surebiz tenant flips its own toggle once card is actually live. NOT
+            // overwriteExisting, same rationale as guest checkout -- a re-run of provisioning must
+            // never stomp a merchant's own toggle choice.
+            key: CASH_PAYMENT_ENABLED_SETTING_KEY,
+            value: true,
+            dataType: 'boolean',
+            description: 'Allows customers to pay cash on delivery/pickup at checkout'
         }
     ];
 
@@ -496,8 +523,11 @@ export const provisionTenant = async (options) => {
             // This database was just created. Create the declared model graph
             // without running Sequelize's destructive schema-diff algorithm.
             await tenantSequelize.sync();
-            const { repairItemFolderCategoryLifecycleSchema } = await import('../../scripts/sync-tenant-schemas.js');
-            await repairItemFolderCategoryLifecycleSchema(tenantSequelize, dbName);
+            // #1071/#1124: routed through one seam (schema repairs + the Phase 157 tenant-bootstrap
+            // migrations) instead of importing the repair function and two migration files
+            // separately by literal path here -- see tenantSchemaBootstrap.js's own comment for why.
+            const { applyPostSyncTenantSchema } = await import('./tenantSchemaBootstrap.js');
+            await applyPostSyncTenantSchema(tenantSequelize, Sequelize, { dbName });
             logger.info(`[Provisioning] Schema synced successfully`);
 
             // 4. Seed Admin User
@@ -527,7 +557,7 @@ export const provisionTenant = async (options) => {
             logger.info('[Provisioning] Onboarding baseline settings seeded', {
                 tenantId: uuid
             });
-            await seedDefaultCustomerAccessSettings(tenantSequelize);
+            await seedDefaultCustomerAccessSettings(tenantSequelize, seededWorkflowMode);
             logger.info('[Provisioning] Customer access settings seeded', {
                 tenantId: uuid
             });

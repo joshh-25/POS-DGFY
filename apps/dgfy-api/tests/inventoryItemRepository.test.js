@@ -228,7 +228,14 @@ describe('inventory itemRepository', () => {
 
     expect(StorefrontCatalogOverride.findOne).toHaveBeenCalledWith(expect.objectContaining({
       where: { item_id: 901 },
-      attributes: expect.arrayContaining(['storefront_catalog_override_id', 'item_id'])
+      attributes: expect.arrayContaining([
+        'storefront_catalog_override_id',
+        'item_id',
+        'image_fingerprint',
+        'optimization_version',
+        'processing_status',
+        'variant_metadata'
+      ])
     }));
   });
 
@@ -394,6 +401,145 @@ describe('inventory itemRepository', () => {
       ]
     });
     expect(result.items[0].productCompositions).toBeUndefined();
+  });
+
+  it('does not query ItemLocationStock when location_id is omitted (#682 backward-compat guard)', async () => {
+    const ProductComposition = {};
+    const ItemFolder = {};
+    const ItemLocationStock = { findAll: jest.fn() };
+    const Item = {
+      findAndCountAll: jest.fn().mockResolvedValue({
+        count: 1,
+        rows: [{ toJSON: () => ({ item_id: 5, sku_code: 'PROD-005', name: 'Cake', category: 'product', current_stock: 42 }) }]
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ProductComposition') return ProductComposition;
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'ItemLocationStock') return ItemLocationStock;
+      return {};
+    });
+
+    const result = await itemRepository.getItems({ page: '1', limit: '20' });
+
+    expect(ItemLocationStock.findAll).not.toHaveBeenCalled();
+    expect(result.items[0].current_stock).toBe(42);
+    expect(result.location_scope).toEqual({ location_id: null, resolved: true });
+  });
+
+  it('overlays branch-scoped current_stock from item_location_stocks when location_id is given (#682)', async () => {
+    const ProductComposition = {};
+    const ItemFolder = {};
+    const ItemLocationStock = {
+      findAll: jest.fn().mockResolvedValue([
+        { toJSON: () => ({ item_id: 5, quantity_on_hand: '3.000000000000' }) }
+      ])
+    };
+    const Item = {
+      findAndCountAll: jest.fn().mockResolvedValue({
+        count: 1,
+        rows: [{ toJSON: () => ({ item_id: 5, sku_code: 'PROD-005', name: 'Cake', category: 'product', current_stock: 999 }) }]
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ProductComposition') return ProductComposition;
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'ItemLocationStock') return ItemLocationStock;
+      return {};
+    });
+
+    const result = await itemRepository.getItems({ page: '1', limit: '20', location_id: '2' });
+
+    expect(ItemLocationStock.findAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ location_id: 2 })
+    }));
+    expect(result.items[0].current_stock).toBe(3);
+    expect(result.location_scope).toEqual({ location_id: 2, resolved: true });
+  });
+
+  it('falls back to the tenant-wide aggregate and reports resolved:false when item_location_stocks schema is missing (#682)', async () => {
+    const ProductComposition = {};
+    const ItemFolder = {};
+    const ItemLocationStock = {
+      findAll: jest.fn().mockRejectedValue({
+        original: { code: 'ER_NO_SUCH_TABLE', sqlMessage: "Table 'tenant_db.item_location_stocks' doesn't exist" }
+      })
+    };
+    const Item = {
+      findAndCountAll: jest.fn().mockResolvedValue({
+        count: 1,
+        rows: [{ toJSON: () => ({ item_id: 5, sku_code: 'PROD-005', name: 'Cake', category: 'product', current_stock: 42 }) }]
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ProductComposition') return ProductComposition;
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'ItemLocationStock') return ItemLocationStock;
+      return {};
+    });
+
+    const result = await itemRepository.getItems({ page: '1', limit: '20', location_id: '2' });
+
+    // Honest fallback, not a hard error: the tenant-wide aggregate is kept, but the caller is
+    // told the branch-scoped overlay did NOT happen, so the frontend can render the distinct
+    // fallback-warning copy instead of a legitimate branch-scoped zero.
+    expect(result.items[0].current_stock).toBe(42);
+    expect(result.location_scope).toEqual({ location_id: 2, resolved: false });
+  });
+
+  it('returns a soft-deleted, inactive item under include_inactive=true (#1495 Part A, RF-1)', async () => {
+    // Regression test for PR #1502's pr-reviewer RF-1 finding: the include_inactive branch used
+    // to call buildVisibleWhere without includeDeleted, which always forced deleted_at: null onto
+    // the query -- since deleteItem sets deleted_at, a real DB could never return the deleted rows
+    // this "show inactive" list is meant to surface, even though a mocked findAndCountAll would
+    // happily hand one back regardless of the where clause. Assert on the where clause itself, not
+    // just the mocked result, so this actually catches the defect the way an unfiltered mock can't.
+    const ProductComposition = {};
+    const ItemFolder = {};
+    const Item = {
+      findAndCountAll: jest.fn().mockResolvedValue({
+        count: 1,
+        rows: [
+          {
+            toJSON: () => ({
+              item_id: 9,
+              sku_code: 'DEL-009',
+              name: 'Discontinued Syrup',
+              category: 'raw_material',
+              status: 'inactive',
+              deleted_at: new Date('2026-08-20T00:00:00Z'),
+              current_stock: 0
+            })
+          }
+        ]
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ProductComposition') return ProductComposition;
+      if (name === 'ItemFolder') return ItemFolder;
+      return {};
+    });
+
+    const result = await itemRepository.getItems({ page: '1', limit: '20', include_inactive: true });
+
+    const args = Item.findAndCountAll.mock.calls[0][0];
+    expect(args.where).not.toHaveProperty('deleted_at');
+    expect(args.where.status).toBeUndefined();
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      item_id: 9,
+      status: 'inactive',
+      deleted_at: new Date('2026-08-20T00:00:00Z')
+    });
   });
 
   it('maps item detail payload to wizard contract in getItemById', async () => {
@@ -872,7 +1018,12 @@ describe('inventory itemRepository', () => {
     const ProductComposition = { findAll: jest.fn().mockResolvedValue([]) };
     const POLineItem = { findAll: jest.fn().mockResolvedValue([]) };
     const JOIngredient = { findAll: jest.fn().mockResolvedValue([]) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = {
+      transaction: jest.fn(async (callback) => callback(transaction))
+    };
 
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-delete-item' });
     jest.spyOn(dbStore, 'get').mockImplementation((name) => {
       if (name === 'Item') return Item;
       if (name === 'ProductComposition') return ProductComposition;
@@ -892,6 +1043,122 @@ describe('inventory itemRepository', () => {
       deleted_by: 42
     });
     expect(updatePayload.deleted_at).toBeInstanceOf(Date);
+    expect(itemRecord.update.mock.calls[0][1]).toEqual({ transaction });
+    expect(sequelize.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores a deleted item to active and clears deleted_at/deleted_by (#1495 Part A)', async () => {
+    const itemRecord = {
+      item_id: 55,
+      name: 'Flour',
+      sku_code: 'FLOUR-001',
+      status: 'inactive',
+      deleted_at: new Date('2026-08-01T00:00:00Z'),
+      update: jest.fn().mockResolvedValue(true)
+    };
+    const Item = { findOne: jest.fn().mockResolvedValue(itemRecord) };
+    const AuditLog = { create: jest.fn().mockResolvedValue({}) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = { transaction: jest.fn(async (callback) => callback(transaction)) };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 55, name: 'Flour', status: 'active' });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-restore-item' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'AuditLog') return AuditLog;
+      return {};
+    });
+
+    const result = await itemRepository.restoreItem(55, 42);
+
+    expect(Item.findOne).toHaveBeenCalledWith({
+      where: { item_id: 55 },
+      transaction,
+      lock: 'UPDATE'
+    });
+    expect(itemRecord.update).toHaveBeenCalledWith({
+      status: 'active',
+      deleted_by: null,
+      deleted_at: null
+    }, { transaction });
+    expect(AuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'RESTORE',
+        event_type: 'item_restored',
+        changes: expect.objectContaining({
+          item_id: 55,
+          item_name: 'Flour',
+          sku_code: 'FLOUR-001',
+          previous_status: 'inactive',
+          status: 'active'
+        })
+      }),
+      { transaction }
+    );
+    expect(result).toEqual({ item_id: 55, name: 'Flour', status: 'active' });
+  });
+
+  it('rejects restore with 400 when the item is not currently deleted (#1495 Part A)', async () => {
+    // deleted_at is null even though status is 'inactive' -- e.g. deactivated via a plain PUT
+    // rather than through deleteItem. Gating on status alone would incorrectly accept this.
+    const itemRecord = { item_id: 56, name: 'Sugar', status: 'inactive', deleted_at: null, update: jest.fn() };
+    const Item = { findOne: jest.fn().mockResolvedValue(itemRecord) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = { transaction: jest.fn(async (callback) => callback(transaction)) };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-restore-not-deleted' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      return {};
+    });
+
+    await expect(itemRepository.restoreItem(56, 42)).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Item is not deleted'
+    });
+    expect(itemRecord.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects restore with 404 when the item does not exist (#1495 Part A)', async () => {
+    const Item = { findOne: jest.fn().mockResolvedValue(null) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = { transaction: jest.fn(async (callback) => callback(transaction)) };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-restore-missing' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      return {};
+    });
+
+    await expect(itemRepository.restoreItem(999, 42)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('normalizes an active_sku_code collision into a friendly 409 on restore (#1495 Part A)', async () => {
+    const itemRecord = {
+      item_id: 57,
+      name: 'Conflicting Item',
+      sku_code: 'DUP-001',
+      status: 'inactive',
+      deleted_at: new Date('2026-08-01T00:00:00Z'),
+      update: jest.fn().mockRejectedValue({
+        name: 'SequelizeUniqueConstraintError',
+        parent: { constraint: 'uq_items_active_sku_code' }
+      })
+    };
+    const Item = { findOne: jest.fn().mockResolvedValue(itemRecord) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = { transaction: jest.fn(async (callback) => callback(transaction)) };
+
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-restore-sku-conflict' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      return {};
+    });
+
+    await expect(itemRepository.restoreItem(57, 42)).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Item with this SKU code already exists'
+    });
   });
 
   it('creates item with fifo initial stock via stock movement', async () => {
@@ -963,6 +1230,58 @@ describe('inventory itemRepository', () => {
     expect(transaction.commit).toHaveBeenCalled();
     expect(transaction.rollback).not.toHaveBeenCalled();
     expect(result).toEqual({ item_id: 1001, name: 'Milk' });
+  });
+
+  it('persists an explicitly POS-scoped manufacturer GTIN in the item transaction', async () => {
+    const itemRecord = { item_id: 1004, name: 'POS GTIN Item', sku_code: 'POS-GTIN-001', status: 'active', category: 'product' };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const barcodeRecord = { item_barcode_id: 44, item_id: 1004 };
+    const ItemBarcode = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(barcodeRecord)
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 1004, name: 'POS GTIN Item' });
+    inventoryRepositoryDependencies.createStockMovement = jest.fn().mockResolvedValue({ movement_id: 1 });
+    inventoryRepositoryDependencies.syncItemEmbedding = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-pos-gtin' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ItemBarcode') return ItemBarcode;
+      if (name === 'AuditLog') return null;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await itemRepository.createItem({
+      status: 'active',
+      category: 'product',
+      product_type: 'finished_goods',
+      sku_code: 'POS-GTIN-001',
+      name: 'POS GTIN Item',
+      manufacturer_barcode: { code: '4006381333931', scope: 'pos' }
+    }, 5);
+
+    expect(ItemBarcode.create).toHaveBeenCalledWith(expect.objectContaining({
+      item_id: 1004,
+      code: '4006381333931',
+      source: 'manufacturer',
+      scope: 'pos',
+      is_primary: true,
+      is_active: true
+    }), { transaction });
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
   });
 
   it('creates an admin-requested category in the same transaction as a new item', async () => {
@@ -2015,7 +2334,8 @@ describe('inventory itemRepository', () => {
           show_in_pos_filter: true,
           is_active: true,
           parent_id: null,
-          item_count: 2
+          item_count: 2,
+          secondary_item_count: 0
         },
         {
           folder_id: 2,
@@ -2024,9 +2344,57 @@ describe('inventory itemRepository', () => {
           show_in_pos_filter: true,
           is_active: false,
           parent_id: null,
-          item_count: 0
+          item_count: 0,
+          secondary_item_count: 0
         }
     ]);
+  });
+
+  it('lists folders with a secondary_item_count for items that only list a folder as a secondary category', async () => {
+    const ItemFolder = {
+      findAll: jest.fn().mockResolvedValue([
+        {
+          folder_id: 1,
+          name: 'Raw Materials',
+          description: 'Core inputs',
+          parent_id: null,
+          is_active: true,
+          // item 10 is primarily assigned here.
+          items: [{ item_id: 10 }]
+        },
+        {
+          folder_id: 2,
+          name: 'Packaging',
+          description: '',
+          parent_id: null,
+          is_active: true,
+          items: []
+        }
+      ])
+    };
+    const membershipFindAll = jest.fn().mockResolvedValue([
+      // item 20 lists folder 1 only as a secondary category.
+      { item_id: 20, folder_id: 1 },
+      // item 10's primary is already folder 1 -- must not be double-counted here.
+      { item_id: 10, folder_id: 1 }
+    ]);
+    const itemFindAll = jest.fn().mockResolvedValue([{ item_id: 20 }, { item_id: 10 }]);
+    const Item = { findAll: itemFindAll };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
+      return {};
+    });
+
+    const result = await itemRepository.listFolders();
+
+    expect(membershipFindAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: { folder_id: { [Op.in]: [1, 2] } }
+    }));
+    expect(result.find((folder) => folder.folder_id === 1)).toMatchObject({ item_count: 1, secondary_item_count: 1 });
+    expect(result.find((folder) => folder.folder_id === 2)).toMatchObject({ item_count: 0, secondary_item_count: 0 });
   });
 
   it('creates folder and normalizes unique constraint errors', async () => {
@@ -2123,6 +2491,96 @@ describe('inventory itemRepository', () => {
       success: true,
       replacement_folder_id: null,
       items_moved: 0,
+      secondary_items_affected: 0,
+      message: 'Category "Legacy Folder" deleted successfully.'
+    });
+  });
+
+  it('counts an item that only lists the deleted folder as a secondary category, without double-counting a primary item that also has a stray membership row', async () => {
+    const folder = { folder_id: 7, name: 'Mains', update: jest.fn().mockResolvedValue(true) };
+    const replacementFolder = { folder_id: 8, name: 'Rice Meals', is_active: true };
+    const ItemFolder = {
+      findByPk: jest.fn().mockImplementation((folderId) => Promise.resolve(Number(folderId) === 7 ? folder : replacementFolder))
+    };
+    // item 12 is the folder's one primary assignment; item 12 also has a
+    // (legal per ADR 0080 clause 2) overlapping secondary membership row for
+    // the same folder, and item 20 has ONLY a secondary membership here.
+    const Item = {
+      findAll: jest.fn()
+        .mockResolvedValueOnce([{ item_id: 12 }]) // primary assignedItems query
+        .mockResolvedValueOnce([{ item_id: 20 }]), // visibility check for secondary candidates (item 12 excluded as overlap)
+      update: jest.fn().mockResolvedValue([1])
+    };
+    const membershipFindAll = jest.fn().mockResolvedValue([
+      { item_id: 20, folder_id: 7 },
+      { item_id: 12, folder_id: 7 }
+    ]);
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    const result = await itemRepository.deleteFolder(7, 8);
+
+    expect(membershipFindAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: { folder_id: { [Op.in]: [7] } },
+      transaction
+    }));
+    // Only item 20 should have reached the visibility check -- item 12 was
+    // already excluded as an overlap with the primary set.
+    expect(Item.findAll).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ item_id: { [Op.in]: [20] } }),
+      transaction
+    }));
+    expect(result).toEqual({
+      success: true,
+      replacement_folder_id: 8,
+      items_moved: 1,
+      secondary_items_affected: 1,
+      message: 'Category "Mains" deleted and 1 item(s) moved to "Rice Meals". 1 item(s) also list this as a secondary category and will lose that link.'
+    });
+  });
+
+  it('does not count an item as secondary when it has no membership row for the deleted folder', async () => {
+    const folder = {
+      folder_id: 7,
+      name: 'Legacy Folder',
+      update: jest.fn().mockResolvedValue(true)
+    };
+    const ItemFolder = {
+      findByPk: jest.fn().mockResolvedValue(folder)
+    };
+    const Item = {
+      findAll: jest.fn().mockResolvedValue([]),
+      update: jest.fn()
+    };
+    // No membership rows at all for folder 7 -- an item that merely exists
+    // elsewhere must never contribute to this folder's secondary count.
+    const membershipFindAll = jest.fn().mockResolvedValue([]);
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    const result = await itemRepository.deleteFolder(7);
+
+    expect(result).toEqual({
+      success: true,
+      replacement_folder_id: null,
+      items_moved: 0,
+      secondary_items_affected: 0,
       message: 'Category "Legacy Folder" deleted successfully.'
     });
   });
@@ -2151,6 +2609,7 @@ describe('inventory itemRepository', () => {
       success: true,
       replacement_folder_id: 8,
       items_moved: 2,
+      secondary_items_affected: 0,
       message: 'Category "Mains" deleted and 2 item(s) moved to "Rice Meals".'
     });
     expect(Item.update).toHaveBeenCalledWith(
@@ -2177,6 +2636,41 @@ describe('inventory itemRepository', () => {
     await expect(itemRepository.deleteFolder(7)).rejects.toMatchObject({
       statusCode: 409,
       code: 'CATEGORY_REASSIGNMENT_REQUIRED'
+    });
+    expect(transaction.rollback).toHaveBeenCalled();
+    expect(folder.update).not.toHaveBeenCalled();
+  });
+
+  it('includes the secondary-membership count in the reassignment-required error when the folder also has secondary-only items', async () => {
+    const folder = { folder_id: 7, name: 'Mains', update: jest.fn() };
+    const ItemFolder = { findByPk: jest.fn().mockResolvedValue(folder) };
+    const Item = {
+      findAll: jest.fn()
+        .mockResolvedValueOnce([{ item_id: 12 }]) // primary assignedItems
+        .mockResolvedValueOnce([{ item_id: 20 }]) // visibility check for secondary candidate
+    };
+    const membershipFindAll = jest.fn().mockResolvedValue([{ item_id: 20, folder_id: 7 }]);
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await expect(itemRepository.deleteFolder(7)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CATEGORY_REASSIGNMENT_REQUIRED',
+      secondary_items_affected: 1,
+      // itemHandlers.js's mapInventoryControllerError only forwards `error.details`
+      // into the response body (a bare top-level property is dropped) -- see #1578
+      // review RF-1. Asserted here too so a future edit can't silently drop the
+      // `.details` mirror while leaving the top-level property intact.
+      details: { secondary_items_affected: 1 },
+      message: 'Category "Mains" is assigned to 1 item(s). Choose an active replacement category before deleting it. 1 item(s) also list this as a secondary category and will lose that link.'
     });
     expect(transaction.rollback).toHaveBeenCalled();
     expect(folder.update).not.toHaveBeenCalled();

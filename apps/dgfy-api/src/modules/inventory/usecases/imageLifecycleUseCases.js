@@ -27,6 +27,36 @@ const calculateFileHash = async (filePath) => {
     }
 };
 
+const readResponsiveAssetManifest = async ({ inputPath, uploadsRoot }) => {
+    if (!inputPath || !uploadsRoot) return null;
+
+    try {
+        const manifestPath = path.join(path.dirname(inputPath), 'asset.json');
+        const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+        const largePath = String(manifest?.variants?.large?.path || '').trim();
+        if (Number(manifest?.version) !== OPTIMIZATION_VERSION_V2 || !largePath) return null;
+
+        const resolvedLargePath = path.resolve(
+            uploadsRoot,
+            ...largePath.replace(/\\/g, '/').replace(/^\/+/, '').split('/')
+        );
+        if (resolvedLargePath !== path.resolve(inputPath)) return null;
+
+        return manifest;
+    } catch {
+        return null;
+    }
+};
+
+const buildVariantMetadataFromManifest = (manifest = {}) => ({
+    thumbnail: manifest?.variants?.thumbnail || null,
+    catalog_card: manifest?.variants?.medium || null,
+    checkout: manifest?.variants?.thumbnail || null,
+    preview: manifest?.variants?.large || null,
+    formats: manifest?.formats || null,
+    placeholder: manifest?.placeholder || null
+});
+
 const resolveLocalUploadPath = (storedPath, storedUrl, uploadsRoot) => {
     const rawPath = String(storedPath || '').trim();
     if (rawPath) {
@@ -104,7 +134,11 @@ export const ensureOptimizedItemImage = async ({
 
     const fingerprint = inputPath ? await calculateFileHash(inputPath) : null;
 
-    // Check if unchanged optimized asset
+    // Check if unchanged optimized asset. Must run before the responsive-manifest
+    // short-circuit below: on a re-save of an already-optimized item, storedPath
+    // points at the previously-generated large-variant file, so the fingerprint
+    // computed above hashes that variant rather than the original source — only
+    // existingOverride still carries the source's stored fingerprint to reuse.
     if (!file && existingOverride) {
         const isAlreadyV2 = Number(existingOverride.optimization_version) === OPTIMIZATION_VERSION_V2;
         const isStatusOptimized = existingOverride.processing_status === 'optimized';
@@ -129,6 +163,24 @@ export const ensureOptimizedItemImage = async ({
                 })
             };
         }
+    }
+
+    // Catalog image storage already writes responsive-v2 assets. Treat its
+    // manifest as authoritative so a repository save does not recompress the
+    // same upload into a second folder and append it as another gallery image.
+    const responsiveManifest = !file && inputPath
+        ? await readResponsiveAssetManifest({ inputPath, uploadsRoot })
+        : null;
+    if (responsiveManifest) {
+        return {
+            path: storedPath,
+            url: storedUrl,
+            image_fingerprint: fingerprint,
+            optimization_version: OPTIMIZATION_VERSION_V2,
+            processing_status: 'optimized',
+            variant_metadata: buildVariantMetadataFromManifest(responsiveManifest),
+            image_variants: deriveImageAssetVariantUrls({ storedPath, storedUrl })
+        };
     }
 
     // Process legacy or replaced file asset

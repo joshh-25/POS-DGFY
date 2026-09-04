@@ -3,9 +3,11 @@ import { jest } from '@jest/globals';
 import app from '../src/server.js';
 import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
+import * as authService from '../src/services/authService.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
-jest.setTimeout(120000);
+// Tenant schema creation can approach two minutes on Windows/MySQL developer machines.
+jest.setTimeout(180000);
 
 describe('Refresh Token Rotation (RTR) Verification', () => {
     let testTenantContext;
@@ -170,6 +172,7 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
 
         expect(secondRefresh.body.data?.token).toBeDefined();
         expect(secondRefresh.body.data?.refreshToken).toBeUndefined();
+        expect(secondRefresh.body.data?.expiresIn).toBe(86400);
         const session3 = extractSession(secondRefresh);
         expect(session3.refreshCookie).not.toBe('');
         expect(session3.refreshCookie).not.toBe(session2.refreshCookie);
@@ -214,6 +217,58 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
         expect(bodyOnlyRefresh.status).toBe(400);
         expect(bodyOnlyRefresh.body.success).toBe(false);
         expect(bodyOnlyRefresh.body.message).toBe('Refresh token is required');
+
+        await cleanupUser(email);
+    });
+
+    // Ported from the deleted tests/token_refresh_race.test.js (case 1.1, #1452 Phase 255 PR-D).
+    // Under this file's actual (stateful) Redis mock, a concurrent refresh burst may legitimately
+    // blacklist some of the racing tokens -- the assertions below only constrain the shape of
+    // whichever responses do succeed, so they hold regardless of how many of the 6 win the race.
+    it('should return a valid token structure for every successful response in a concurrent refresh burst', async () => {
+        const { email, session } = await registerAndLogin();
+
+        const CONCURRENCY = 6;
+        const calls = Array.from({ length: CONCURRENCY }, () =>
+            request(app)
+                .post('/api/v1/auth/refresh-token')
+                .set('Cookie', session.cookies)
+                .set('x-csrf-token', session.csrfToken)
+                .send({})
+        );
+
+        const settled = await Promise.allSettled(calls);
+        const responses = settled.map((r) => (r.status === 'fulfilled' ? r.value : r.reason?.response));
+
+        expect(responses.every((r) => r !== undefined)).toBe(true);
+
+        const successes = responses.filter((r) => r?.status === 200);
+
+        successes.forEach((r) => {
+            expect(r.body.success).toBe(true);
+            expect(r.body.data.token).toBeDefined();
+            expect(typeof r.body.data.token).toBe('string');
+            expect(r.body.data.token.split('.').length).toBe(3);
+            expect(r.body.data.refreshToken).toBeUndefined();
+            expect(extractSession(r).refreshToken).not.toBe('');
+            expect(r.body.data.expiresIn).toBeDefined();
+        });
+
+        // At least 1 must succeed regardless of how many of the concurrent requests race the lock.
+        expect(successes.length).toBeGreaterThanOrEqual(1);
+
+        await cleanupUser(email);
+    });
+
+    // Ported from the deleted tests/token_refresh_race.test.js (case 1.4, #1452 Phase 255 PR-D).
+    // tests/setup.js's Redis mock is a real stateful in-memory store (NX/EX honored, gets persist),
+    // not the fail-open stub the old file's header comment described -- so this asserts something
+    // true and meaningful: a fresh, un-rotated refresh token is not blacklisted.
+    it('should report a fresh, un-rotated refresh token as not blacklisted', async () => {
+        const { email, session } = await registerAndLogin();
+
+        const isBlacklisted = await authService.isTokenBlacklisted(session.refreshCookie);
+        expect(isBlacklisted).toBe(false);
 
         await cleanupUser(email);
     });

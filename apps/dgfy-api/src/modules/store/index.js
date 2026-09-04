@@ -1,6 +1,12 @@
 import { storeRepository } from './repositories/storeRepository.js';
 import { commercePaymentRepository } from '../commercePayments/repositories/commercePaymentRepository.js';
 import { tenantRevenueRepository } from '../tenantRevenue/repositories/tenantRevenueRepository.js';
+import { downpaymentSettingsRepository } from '../downpayment/repositories/downpaymentSettingsRepository.js';
+import { inventoryReservationService } from '../inventory/index.js';
+// #1390: cancelStoreOrderUseCase's own half of the voucher-reversal wiring -- see
+// buildCancelStoreOrderUseCase's own comment on why this is injected here rather than statically
+// imported inside storeUseCases.js the way the checkout-side voucherRepository import is.
+import { voucherRepository, reverseVoucherRedemptionUseCase } from '../vouchers/index.js';
 import { paymongoService } from '../../services/paymongoService.js';
 import { getStorefrontDiscoveryIndexSnapshotForTenant } from '../../services/storefrontDiscoveryIndexService.js';
 import { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
@@ -8,8 +14,16 @@ import {
     commercePaymentsEnabled,
     commerceQrphEnabled,
     commercePaymongoSplitEnabled,
+    storefrontDirectGcashEnabled,
+    storefrontDirectGcashRequested,
+    storefrontDirectMayaEnabled,
+    storefrontDirectMayaRequested,
+    storefrontDirectCardEnabled,
+    storefrontDirectCardRequested,
+    storefrontDirectPaymentRequired,
     getPayMongoMode,
-    requireCommerceQrphConfig
+    requireCommerceQrphConfig,
+    requireCommercePaymentConfig
 } from '../../config/commercePaymentsFeature.js';
 import {
     buildListStoreCatalogUseCase,
@@ -45,8 +59,17 @@ export const listStoreCatalogUseCase = buildListStoreCatalogUseCase({
     tenantRevenueRepository,
     commercePaymentsEnabled,
     commerceQrphEnabled,
+    paymongoService,
     requireCommerceQrphConfig,
-    paymongoMode: getPayMongoMode()
+    requireCommercePaymentConfig,
+    paymongoMode: getPayMongoMode(),
+    downpaymentSettingsRepository,
+    // #926: same four flags storeCheckoutPaymentSessionUseCase already receives below, so the
+    // catalog's advertised payment_capabilities agree with what checkout will actually accept.
+    directPaymentRequired: storefrontDirectPaymentRequired,
+    directGcashEnabled: storefrontDirectGcashEnabled,
+    directMayaEnabled: storefrontDirectMayaEnabled,
+    directCardEnabled: storefrontDirectCardEnabled
 });
 export const resolveStoreQrUseCase = buildResolveStoreQrUseCase({ storeRepository });
 export const listStoreLocationsUseCase = buildListStoreLocationsUseCase({ storeRepository });
@@ -58,7 +81,7 @@ export const createStoreCustomerAddressUseCase = buildCreateStoreCustomerAddress
 export const updateStoreCustomerAddressUseCase = buildUpdateStoreCustomerAddressUseCase({ storeRepository });
 export const setDefaultStoreCustomerAddressUseCase = buildSetDefaultStoreCustomerAddressUseCase({ storeRepository });
 export const deleteStoreCustomerAddressUseCase = buildDeleteStoreCustomerAddressUseCase({ storeRepository });
-export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({ storeRepository });
+export const storeCartQuoteUseCase = buildStoreCartQuoteUseCase({ storeRepository, downpaymentSettingsRepository });
 const emailOtpService = { EMAIL_OTP_PURPOSES, requestEmailOtp, verifyEmailOtp };
 export const requestStoreGuestCheckoutOtpUseCase = buildRequestStoreGuestCheckoutOtpUseCase({ emailOtpService });
 export const verifyStoreGuestCheckoutOtpUseCase = buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService });
@@ -70,7 +93,16 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
     commercePaymentsEnabled,
     commerceQrphEnabled,
     commercePaymongoSplitEnabled,
-    requireCommerceQrphConfig
+    directGcashEnabled: storefrontDirectGcashEnabled,
+    directGcashRequested: storefrontDirectGcashRequested,
+    directMayaEnabled: storefrontDirectMayaEnabled,
+    directMayaRequested: storefrontDirectMayaRequested,
+    directCardEnabled: storefrontDirectCardEnabled,
+    directCardRequested: storefrontDirectCardRequested,
+    directPaymentRequired: storefrontDirectPaymentRequired,
+    requireCommerceQrphConfig,
+    requireCommercePaymentConfig,
+    downpaymentSettingsRepository
 });
 export const getStoreCheckoutPaymentSessionUseCase = buildGetStoreCheckoutPaymentSessionUseCase({
     commercePaymentRepository
@@ -79,10 +111,33 @@ export const confirmStoreCheckoutSandboxPaymentUseCase = buildConfirmStoreChecko
     commercePaymentRepository,
     paymongoService
 });
-export const storeCheckoutUseCase = buildStoreCheckoutUseCase({ storeRepository });
+export const storeCheckoutUseCase = buildStoreCheckoutUseCase({
+    storeRepository,
+    downpaymentSettingsRepository,
+    inventoryReservationService
+});
 export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeRepository });
 export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });
-export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({ storeRepository });
+// Phase 144 (#824): resolved lazily, on call, rather than statically imported. There is a real
+// module cycle here -- `commercePayments/usecases/finalizePaidCommerceSession.js` statically
+// imports `store/index.js` for `storeCheckoutUseCase`, so a top-level
+// `import { handleCommerceOrderLifecycleUseCase } from '../commercePayments/index.js'` would make
+// one side of the cycle observe `undefined` at module-evaluation time. `pos/index.js` can import
+// it statically because POS is not part of that cycle; store is. Deferring to call time is the
+// same pattern already used for cross-module cycles elsewhere in this codebase (see
+// `settings/usecases/updateSettingByKeyUseCase.js`, `compliance/index.js`).
+const commerceOrderLifecycleUseCaseLazy = async (input) => {
+    const { handleCommerceOrderLifecycleUseCase } = await import('../commercePayments/index.js');
+    return handleCommerceOrderLifecycleUseCase(input);
+};
+
+export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({
+    storeRepository,
+    inventoryReservationService,
+    commerceOrderLifecycleUseCase: commerceOrderLifecycleUseCaseLazy,
+    voucherRepository,
+    reverseVoucherRedemptionUseCase
+});
 export const listStoreCustomerOrdersUseCase = buildListStoreCustomerOrdersUseCase({ storeRepository });
 export const getStorefrontFollowStatusUseCase = buildGetStorefrontFollowStatusUseCase({
     storeRepository,

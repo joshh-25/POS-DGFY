@@ -1,6 +1,9 @@
 const VALID_PROFILES = new Set(['shared', 'vps']);
-const SECRET_KEYS = ['JWT_SECRET', 'REFRESH_TOKEN_SECRET'];
+const SECRET_KEYS = ['JWT_SECRET', 'REFRESH_TOKEN_SECRET', 'POS_OPERATOR_AUTHORITY_SECRET'];
 const PLACEHOLDER_PATTERN = /(change[_-]?this|change[_-]?me|replace[_-]?with|placeholder|your[_-]?|example\.com|xxxx|dummy|sample)/i;
+const DEFAULT_ADMIN_USERNAME = 'skupervisor';
+const DEFAULT_ADMIN_PASSWORD_HASH = '$2a$12$8cIJyb0nC8.ZyZbmXRb5FO3R8T.n5V4s2EbMiA.mCCi.l/47tmKzK';
+const BCRYPT_HASH_PATTERN = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 
 const BASE_REQUIRED_KEYS = [
   'NODE_ENV',
@@ -88,6 +91,55 @@ const validateSessionCookies = (env, errors) => {
 const validateDatabaseSafety = (env, errors) => {
   if (isTruthy(env.DB_AUTO_SYNC)) {
     errors.push('DB_AUTO_SYNC must not be true in hosted production profiles');
+  }
+};
+
+const validateProductionAdminCredentials = (env, errors) => {
+  const configuredRoster = String(env.ADMIN_ACCOUNTS_JSON || '').trim();
+  if (configuredRoster) {
+    let accounts;
+    try {
+      accounts = JSON.parse(configuredRoster);
+    } catch {
+      errors.push('ADMIN_ACCOUNTS_JSON must be valid JSON in production');
+      return;
+    }
+    if (!Array.isArray(accounts) || accounts.length === 0) {
+      errors.push('ADMIN_ACCOUNTS_JSON must contain at least one admin account in production');
+      return;
+    }
+    accounts.forEach((account, index) => {
+      const username = String(account?.username || '').trim();
+      const passwordHash = String(account?.password_hash || account?.passwordHash || '').trim();
+      if (!username || !BCRYPT_HASH_PATTERN.test(passwordHash)) {
+        errors.push(`ADMIN_ACCOUNTS_JSON account ${index} requires a username and valid bcrypt password hash`);
+        return;
+      }
+      if (passwordHash === DEFAULT_ADMIN_PASSWORD_HASH) {
+        errors.push(`ADMIN_ACCOUNTS_JSON account ${index} must not use the documented default password hash`);
+      }
+    });
+    return;
+  }
+
+  const username = String(env.ADMIN_USERNAME || '').trim();
+  const passwordHash = String(env.ADMIN_PASSWORD_HASH || '').trim();
+  if (!username) addMissing(errors, 'ADMIN_USERNAME');
+  if (!passwordHash) addMissing(errors, 'ADMIN_PASSWORD_HASH');
+  if (passwordHash && !BCRYPT_HASH_PATTERN.test(passwordHash)) {
+    errors.push('ADMIN_PASSWORD_HASH must be a valid bcrypt hash');
+  }
+  if (passwordHash === DEFAULT_ADMIN_PASSWORD_HASH) {
+    errors.push('ADMIN_PASSWORD_HASH must not use the documented default password hash in production');
+  }
+  if (username === DEFAULT_ADMIN_USERNAME && passwordHash === DEFAULT_ADMIN_PASSWORD_HASH) {
+    errors.push('Production must not use the documented default admin account');
+  }
+};
+
+const validateModeRbacFallback = (env, errors) => {
+  if (isTruthy(env.MODE_RBAC_GENERIC_FALLBACK_ENABLED)) {
+    errors.push('MODE_RBAC_GENERIC_FALLBACK_ENABLED must be false in production');
   }
 };
 
@@ -183,6 +235,20 @@ const validatePayPalConfig = (env, errors) => {
   }
 };
 
+const validateDglaundryProviderConfig = (env, errors) => {
+  if (!isTruthy(env.DGLAUNDRY_INTEGRATION_ENABLED)) return;
+  for (const key of ['DGLAUNDRY_PARTNER_TOKEN_FILE', 'DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_KEY_ID']) {
+    if (!hasValue(env, key)) addMissing(errors, key);
+  }
+  const redirect = String(env.DGFY_DGLAUNDRY_REDIRECT_URI || '').trim();
+  if (redirect !== 'https://laundry.dgfy.ph/api/v1/session/dgfy/callback') {
+    errors.push('DGFY_DGLAUNDRY_REDIRECT_URI must be the registered HTTPS DGLaundry callback');
+  }
+  if (String(env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc').trim() !== 'https://api.dgfy.ph/oidc') {
+    errors.push('DGFY_OIDC_ISSUER must be https://api.dgfy.ph/oidc for production');
+  }
+};
+
 const detectPaymentProvider = (env) => {
   const configured = String(env.PAYMENT_PROVIDER || env.DEPLOY_PAYMENT_PROVIDER || '').trim().toLowerCase();
   if (['paymongo', 'paypal', 'dual'].includes(configured)) return configured;
@@ -217,8 +283,21 @@ const validatePaymentConfig = (env, errors, warnings) => {
     || isTruthy(env.COMMERCE_PAYMONGO_SPLIT_ENABLED);
   const tenantRevenueSharingEnabled = isTruthy(env.TENANT_REVENUE_SHARING_ENABLED);
   const paymongoLiveMode = String(env.PAYMONGO_MODE || '').trim().toLowerCase() === 'live';
+  const directGcashEnabled = isTruthy(env.STOREFRONT_DIRECT_GCASH_ENABLED);
+  const directMayaEnabled = isTruthy(env.STOREFRONT_DIRECT_MAYA_ENABLED);
+  const directCardEnabled = isTruthy(env.STOREFRONT_DIRECT_CARD_ENABLED);
 
   if (!paymentsEnabled && !commercePaymentsEnabled && !tenantRevenueSharingEnabled && !paymongoLiveMode) return;
+
+  if (directGcashEnabled && paymongoLiveMode && !isTruthy(env.STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED)) {
+    errors.push('STOREFRONT_DIRECT_GCASH_LIVE_CONFIRMED=true is required when direct GCash is enabled in live mode');
+  }
+  if (directMayaEnabled && paymongoLiveMode && !isTruthy(env.STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED)) {
+    errors.push('STOREFRONT_DIRECT_MAYA_LIVE_CONFIRMED=true is required when direct Maya is enabled in live mode');
+  }
+  if (directCardEnabled && paymongoLiveMode && !isTruthy(env.STOREFRONT_DIRECT_CARD_LIVE_CONFIRMED)) {
+    errors.push('STOREFRONT_DIRECT_CARD_LIVE_CONFIRMED=true is required when direct card is enabled in live mode');
+  }
 
   const provider = detectPaymentProvider(env);
   if (!provider) {
@@ -336,6 +415,8 @@ const validateProductionEnv = ({ env = process.env, profile = null, strictProduc
   }
 
   validateRequiredKeys(env, errors);
+  validateProductionAdminCredentials(env, errors);
+  validateModeRbacFallback(env, errors);
   validateSecrets(env, errors);
   validateCors(env, errors);
   validateSessionCookies(env, errors);
@@ -343,6 +424,7 @@ const validateProductionEnv = ({ env = process.env, profile = null, strictProduc
   validateRateLimits(env, errors);
   validateProfilePolicy({ profile: normalizedProfile, env, errors });
   validatePaymentConfig(env, errors, warnings);
+  validateDglaundryProviderConfig(env, errors);
 
   if (normalizedNodeEnv && normalizedNodeEnv !== 'production') {
     errors.push('NODE_ENV must be production for hosting preflight');

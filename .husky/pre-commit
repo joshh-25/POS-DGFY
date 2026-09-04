@@ -6,6 +6,24 @@ set -e
 
 STAGED_FILES="$(git diff --cached --name-only)"
 
+# Hard block on staging anything under a retired top-level tree (issue #914).
+# apps/dgfy-web/ is this branch's own split (issue #322); frontend/ and
+# backend/ predate it (the earlier backend/frontend/android -> apps/*
+# refactor). Git's directory-rename detection has no signal for a brand-new
+# subdirectory with no base counterpart, so a merge/rebase can silently
+# resurrect a file at one of these dead paths with no conflict and no
+# advisory -- this is the earliest point to catch that, before it's even
+# committed. See docs/architecture/apps-layout-migration.md and
+# scripts/frontend-split-path-map.json for where the file actually belongs.
+RETIRED_PATH_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(apps/dgfy-web/|frontend/|backend/)" || true)"
+if [ -n "$RETIRED_PATH_FILES" ]; then
+  echo "[pre-commit] BLOCKED - staged file(s) under a retired path:"
+  echo "$RETIRED_PATH_FILES"
+  echo "[pre-commit] These trees no longer exist. See docs/architecture/apps-layout-migration.md"
+  echo "[pre-commit] for the path map, or run: node scripts/report-frontend-split-sync.js --post-merge --fix"
+  exit 1
+fi
+
 # apps/dgfy-api is the source of truth for the app (backend/ removed).
 # validate:ai needs a fully installed + configured app (sharp, JWT_SECRET,
 # ...), so it runs only when the staged AI tooling files under apps/dgfy-api
@@ -42,6 +60,14 @@ if [ -n "$COMPAT_SEAM_SURFACE_FILES" ] || [ -n "$COMPAT_SEAM_MARKER_DIFF" ]; the
   echo "[pre-commit] Compatibility-seam manifest gate passed."
 fi
 
+AGENT_SURFACE_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(\.agents/skills/|\.claude/skills/|\.claude/agents/|AGENTS\.md$)" || true)"
+if [ -n "$AGENT_SURFACE_FILES" ]; then
+  echo "[pre-commit] Agent-surface files changed. Running agent-surfaces anti-drift gate..."
+  echo "$AGENT_SURFACE_FILES"
+  npm run check:agent-surfaces -- --staged
+  echo "[pre-commit] Agent-surfaces gate passed."
+fi
+
 echo "[pre-commit] Running compliance impact guardrail (single shared gate logic)..."
 npm run check:compliance -- --staged
 echo "[pre-commit] Compliance impact guardrail passed."
@@ -52,4 +78,15 @@ if [ -n "$DOC_FILES" ]; then
   echo "$DOC_FILES"
   npm run lint:docs
   echo "[pre-commit] Documentation lint passed."
+fi
+
+# #1528: a sparse-checkout: on a self-hosted-reachable job permanently poisons the shared runner
+# workspace for every other job on that box -- promotion-quality-gate.yml only runs this check
+# advisorily and only on promotion PRs, so this is the actual hard gate for an ordinary PR.
+WORKFLOW_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(\.github/workflows/|scripts/check-workspace-hygiene\.js|scripts/check-runner-routing\.js)" || true)"
+if [ -n "$WORKFLOW_FILES" ]; then
+  echo "[pre-commit] Workflow files changed. Running workspace-hygiene contract check..."
+  echo "$WORKFLOW_FILES"
+  npm run check:workspace-hygiene
+  echo "[pre-commit] Workspace hygiene contract passed."
 fi

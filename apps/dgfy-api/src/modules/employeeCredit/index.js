@@ -2,6 +2,7 @@ import { employeeCreditRepository } from './repositories/employeeCreditRepositor
 import {
   buildAdjustEmployeeCreditOutstandingUseCase,
   buildEmployeeCreditService,
+  buildEnableEmployeeCreditForActiveEmployeesUseCase,
   buildGetEmployeeCreditReportUseCase,
   buildListEmployeeCreditCheckoutOptionsUseCase,
   buildListEmployeeCreditAccountsUseCase,
@@ -13,6 +14,7 @@ import {
 
 export const employeeCreditService = buildEmployeeCreditService({ repository: employeeCreditRepository });
 export const listEmployeeCreditAccountsUseCase = buildListEmployeeCreditAccountsUseCase({ repository: employeeCreditRepository });
+export const enableEmployeeCreditForActiveEmployeesUseCase = buildEnableEmployeeCreditForActiveEmployeesUseCase({ repository: employeeCreditRepository });
 export const listEmployeeCreditCheckoutOptionsUseCase = buildListEmployeeCreditCheckoutOptionsUseCase({ repository: employeeCreditRepository });
 export const updateEmployeeCreditAccountUseCase = buildUpdateEmployeeCreditAccountUseCase({ repository: employeeCreditRepository });
 export const updateEmployeeCreditEmployeeAccountUseCase = buildUpdateEmployeeCreditEmployeeAccountUseCase({ repository: employeeCreditRepository });

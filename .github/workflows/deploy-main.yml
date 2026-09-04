@@ -1,0 +1,386 @@
+name: Deploy Main (PROD)
+
+# Renamed from "Build Images (main)"/build-main.yml 2026-08-14 as part of
+# removing every auto-build/auto-deploy trigger repo-wide (see deploy.yml's
+# header comment for the full rationale). No push trigger anymore -- dispatch
+# this by hand from the Actions tab, with the branch selector left on `main`
+# (this workflow file must exist on `main` to be dispatchable against it; it
+# reaches there the normal way, by being promoted from develop -> staging ->
+# main like any other change). #1050 (2026-08-25): that assumption was never
+# actually enforced -- `gh workflow run` with no `--ref` dispatches against
+# the repo's *default* branch (`develop`, not `main`), and nothing in this
+# file checked `github.ref` before running. The `guard-branch` job below is
+# the enforcement; see its comment.
+on:
+  workflow_dispatch:
+    inputs:
+      build_api:
+        description: Build/push dgfy-api and dgfy-migration-runner (always paired -- see the dgfy-api job comment for why they're never split). Uncheck to skip.
+        type: boolean
+        default: true
+      build_frontend_ims:
+        description: Build/push the dgfy-ims image. Uncheck to skip.
+        type: boolean
+        default: true
+      build_frontend_pos:
+        description: Build/push the dgfy-pos image. Uncheck to skip.
+        type: boolean
+        default: true
+      build_frontend_storefront:
+        description: Build/push the dgfy-storefront image. Uncheck to skip.
+        type: boolean
+        default: true
+      deploy:
+        description: SSH-deploy to the server after images are pushed
+        type: boolean
+        default: true
+      runner_labels_json:
+        description: >-
+          JSON array passed to runs-on for every build/publish job below. Phase 234 Wave 3
+          (#1365) live cutover: hosted is the active default. Emergency fallback (F-5) --
+          if hosted is unavailable, re-dispatch with this input set to
+          '["sieitz-runner"]' instead of comment/uncommenting the 6 pair sites and pushing a
+          commit to main. See docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's Phase 234 entry.
+        required: false
+        type: string
+        # default: '["sieitz-runner"]'
+        default: '["ubuntu-latest"]'
+
+concurrency:
+  group: deploy-main-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+# PROD-ONLY (2026-08-23, #329/#895): beta.dgfy.ph retired -- nginx now
+# redirects every *.beta.dgfy.ph host straight to its *.dgfy.ph equivalent
+# (#894/#896), so the `dgfy-{ims,pos,storefront}-beta` images/containers this
+# workflow used to build and deploy no longer have anything to serve.
+# Dispatching this with every build_* box left checked (the default) now
+# builds and deploys three frontend images, prod-only:
+#
+#   * dgfy-ims:latest / dgfy-pos:latest / dgfy-storefront:latest
+#                         -- built against the PROD GitHub Environment's
+#                         VITE_* (dgfy.ph auth/handoff URLs). Served by the
+#                         `dgfy-{ims,pos,storefront}` containers -> the
+#                         *.dgfy.ph production domains AND, via the nginx
+#                         redirect, every *.beta.dgfy.ph request too.
+#   * api / migration-runner -- built ONCE (from apps/dgfy-api, plus a paired
+#                         migration-runner image). Both jobs now build against
+#                         the PROD GitHub Environment -- this was already a
+#                         functional no-op even under the old dual-deploy
+#                         setup (deploy-api.yml reads no `vars.*`, only
+#                         `secrets.GITHUB_TOKEN`) since flipping it just
+#                         retires the now-meaningless BETA distinction for
+#                         these two jobs. The image TAG itself was renamed
+#                         off `beta` to `latest` below (#913) -- this comment
+#                         is about the `environment:` input, a separate thing
+#                         from the tag.
+#
+# `image_tags: "latest"` (#913, 2026-08-25): the shared backend was tagged
+# `beta` from the retired beta/prod split, a name that outlived its own
+# meaning once #329/#895/#896 retired beta.dgfy.ph. Renamed here alongside
+# the frontend-split cutover's own coordinated server restart (docs/
+# deployment/2026-08-23-frontend-split-cutover-runbook.md), rather than as a
+# separate downtime window -- the server's `.env` `IMAGE_TAG=beta` -> `latest`
+# edit lands in that same `docker compose up -d`, not on its own (that server
+# edit + restart is #913's remaining, human-only scope as of this comment).
+#
+# After all four images are pushed, a SINGLE publish job SSH-deploys once
+# (docker compose pull && up -d against the server's own compose), which
+# refreshes all three frontend containers and backend:latest in one go. The
+# deploy is resolved from the PROD Environment's SSH secrets (validated in
+# the 2026-07-20 cutover).
+#
+# NOTE (shared api, no gate): a build_api dispatch restarts the shared
+# dgfy-api (+ dgfy-migration-runner), with no approval gate beyond whoever
+# has dispatch access. This is unchanged from the dual-deploy window.
+
+jobs:
+  # #1050: hard branch guard, ahead of every build/publish job below. This
+  # workflow is PROD-only and has no legitimate reason to ever act on
+  # anything but `main` -- deploy.yml already covers DEV/STAGING. Failing
+  # here, not "remembering to pass --ref main", is the actual fix: on
+  # 2026-08-25 a dispatch with no --ref silently ran against the repo's
+  # *default* branch (`develop`), and PROD ran unreviewed, unpromoted code
+  # for ~30 minutes before anyone noticed via head_sha inspection.
+  # Phase 233 (#1365) anchor exception, deliberate, not an omission: this job
+  # stays self-hosted permanently, with no commented hosted alternate. It is a
+  # ~1-minute control-plane job (routing it hosted buys nothing and costs
+  # minutes), and it is the always-available anchor the Phase 233 Wave 2
+  # in-workflow runner preflight hooks into -- a preflight that itself ran on
+  # the class it is checking would be a chicken-and-egg (if hosted is
+  # unavailable, a hosted preflight job never starts). See
+  # docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's Phase 233 entry.
+  guard-branch:
+    runs-on: ['sieitz-runner']  # #923: generic, either box
+    # Raised from 1 to 5 (Phase 233, #1365, Wave 2 R-2): the runner-preflight step below makes its
+    # own network calls (gh api / curl) on top of the branch-ref check, which would trip a
+    # 1-minute timeout on a slow API response.
+    timeout-minutes: 5
+    steps:
+      - name: Refuse to run against anything but main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::deploy-main.yml was dispatched against '${{ github.ref }}', not refs/heads/main. This workflow is PROD-only -- use deploy.yml for develop/staging. Re-dispatch with the branch selector (or --ref) set to main."
+            exit 1
+          fi
+          echo "OK: dispatched against refs/heads/main."
+
+      # Phase 233 (#1365), Wave 2 H2 / Phase 234 Wave 3 (live cutover): runs the same pre-dispatch
+      # preflight scripts/ci-runner-preflight.js exposes to `promoter` (H1). Probes --class both
+      # (F-4), not a single class: the active class is now hosted (post-flip), but single-class
+      # probing can never produce the informative mixed-state exit code once both classes are
+      # legitimately in play (activeRouting is derived from the file itself, not passed here).
+      # guard-branch is the deliberate anchor for this (Wave 1 Sec 1.4): it always runs, and every
+      # downstream job carries `needs: guard-branch`, so a failure here stops the whole dispatch
+      # before any build starts -- "hosted-runner unavailability fails clearly and permits only the
+      # documented, logged fallback strategy" (#1365's own acceptance criterion). This step does
+      # NOT flip any routing value itself, on any exit code -- it only reports.
+      #
+      # Plain full checkout, not sparse (#1528, 2026-09-03): a sparse checkout here was the sole
+      # sparse-checkout site in this repo's entire workflow set, and self-hosted runners persist
+      # their `_work` directory across every job that lands there -- not just this workflow's own.
+      # A later, unrelated job (any PR's build-check, on either shared self-hosted box) landing on
+      # the same runner after this step ran repeatedly inherited a half-checked-out tree, breaking
+      # unrelated PRs' CI (confirmed twice same-day against PR #1536). The perf saving sparse
+      # bought here (a ~1-5 minute control-plane job avoiding a full clone) isn't worth poisoning
+      # the shared runner pool for every other job on the repo. This job also keeps its own
+      # workspace-hygiene guard below (belt and braces, since it's the historical source of the
+      # poisoning): even a well-intentioned future sparse-checkout re-add here would still be
+      # caught pre-checkout rather than corrupting the shared workspace again.
+      #
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - name: Checkout for runner preflight
+        uses: actions/checkout@v4
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Runner availability preflight
+        id: runner_preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci-runner-preflight.js --target-sha "${{ github.sha }}" --class both >> "$GITHUB_STEP_SUMMARY" || {
+            status=$?
+            if [ "$status" -eq 3 ]; then
+              echo "::error::Runner preflight says a documented flip is required -- see the step summary above and comment/uncomment the alternate lines in deploy-main.yml (docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md). This job intentionally fails rather than silently degrading."
+            else
+              echo "::error::Runner preflight could not confirm the active class is available -- see the step summary above."
+            fi
+            exit 1
+          }
+
+  # Shared dgfy-api image (environment-agnostic; built once, tagged latest
+  # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
+  # input below -- see #913 for why this was renamed off beta). The
+  # server's own .env IMAGE_TAG rename is separate, human-only scope
+  # (also #913). backend = api + migration-runner
+  # together, never separately -- see deploy.yml's comment on the same
+  # coupling (compose's depends_on: service_completed_successfully means a
+  # mismatched pair is a schema/code mismatch waiting to happen).
+  dgfy-api:
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success' && inputs.build_api
+    uses: ./.github/workflows/deploy-api.yml
+    with:
+      environment: PROD
+      image_tags: "latest"
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  # Paired one-shot migration image dgfy-api depends on at compose-up.
+  dgfy-migration-runner:
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success' && inputs.build_api
+    uses: ./.github/workflows/deploy-migration-runner.yml
+    with:
+      environment: PROD
+      image_tags: "latest"
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  # Three frontend image builds (one per app, prod-only), run independently
+  # in parallel -- no `needs` between them. issue #322 Phase 6 replaced the
+  # single combined `frontend` image with one image per app; this workflow
+  # originally chained all 6 jobs (3 apps x beta/prod, added 2026-08-14,
+  # #427, after a real GHCR secondary-rate-limit 403 when two large pushes
+  # ran in parallel -- see run 31728787346). The very next day, #433 found
+  # and fixed the *actual* root cause: all three build workflows were also
+  # pushing a second, full `mode=max` registry cache image to GHCR on every
+  # build, roughly doubling push volume -- that duplication (not raw
+  # parallel-push count) is what tripped the rate limit, and #433 removed it
+  # from `deploy-frontend.yml`/`deploy-api.yml`/`deploy-migration-runner.yml`.
+  # #433's PR also layered this `needs` serialization on top of that fix, as
+  # a second, never-independently-re-justified safeguard. Beta retired
+  # 2026-08-23 (#329/#895) halved the chain to 3 jobs but kept it serialized
+  # at the time (see ADR 0071's Amendments), without re-checking either the
+  # real root cause or current image sizes.
+  #
+  # Removed 2026-08-25 (#1041): DEV/STAGING's `deployment-orchestrator.yml`
+  # has run these same three builds fully in parallel, no `needs` chain at
+  # all, on every dispatch since the #322 frontend split, with no rate-limit
+  # recurrence -- same registry, same runner pool, same-sized images PROD
+  # pushes (~27-33 MB compressed each, confirmed against GHCR directly; a
+  # modest size, not the "large" pre-split combined-image pushes #427's
+  # incident described). Matches DEV/STAGING parity now. One bound worth
+  # knowing: only 2 self-hosted runners exist (`vm-openproject`,
+  # `vm-sieitzstaging`), so GitHub can still only run 2 of these 3 jobs at
+  # once regardless -- the win here is a couple of minutes off the old
+  # fully-serial chain, not a 3x speedup. If a GHCR rate limit does recur,
+  # reverting this is a one-line `needs:` re-add per job below.
+  frontend-ims-prod:
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success' && inputs.build_frontend_ims
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-ims
+      environment: PROD
+      image_tags: "latest"
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  frontend-pos-prod:
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success' && inputs.build_frontend_pos
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-pos
+      environment: PROD
+      image_tags: "latest"
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  frontend-storefront-prod:
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success' && inputs.build_frontend_storefront
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-storefront
+      environment: PROD
+      image_tags: "latest"
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  # Single SSH deploy that refreshes all four images on the server in one
+  # `docker compose pull && up -d`. Runs unless any image build actually
+  # failed or was cancelled - a `skipped` result (e.g. a build_* dispatch
+  # that only left one box checked, or guard-branch failing and skipping
+  # every job transitively) must still allow publish to proceed with
+  # whichever images did build, matching deployment-orchestrator.yml's
+  # publish gate.
+  publish:
+    needs: [ dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]
+    if: >-
+      inputs.deploy && !cancelled() &&
+      needs.dgfy-api.result != 'failure' &&
+      needs.dgfy-migration-runner.result != 'failure' &&
+      needs.frontend-ims-prod.result != 'failure' &&
+      needs.frontend-pos-prod.result != 'failure' &&
+      needs.frontend-storefront-prod.result != 'failure' &&
+      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' ||
+       needs.frontend-ims-prod.result == 'success' || needs.frontend-pos-prod.result == 'success' ||
+       needs.frontend-storefront-prod.result == 'success')
+    uses: ./.github/workflows/publish-platform.yml
+    with:
+      environment: PROD
+      # No vpn_required change needed here: this job SSHes to secrets.SSH_TARGET
+      # (PROD, public-internet Linode), not the DEV/STAGING LAN, so
+      # publish-platform.yml's vpn_required default (false, L52) already applies to
+      # both classes. A future hosted job added to this workflow that targets
+      # DEV/STAGING would need vpn_required: true -- don't inherit this silence.
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: read

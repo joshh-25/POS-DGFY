@@ -6,8 +6,10 @@ import { describe, expect, it } from '@jest/globals';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Trimmed (#1441): kept only the "migrations must not import app code" negative -- the one
+// assertion here that isn't a literal-text pin duplicating the migration's own source.
 describe('POS shift location remediation migration safety', () => {
-    it('creates audit table and enforces terminal-home precedence branch', () => {
+    it('does not import application code from the migration file', () => {
         const migrationPath = path.join(
             __dirname,
             '..',
@@ -20,11 +22,6 @@ describe('POS shift location remediation migration safety', () => {
         expect(fs.existsSync(migrationPath)).toBe(true);
         const content = fs.readFileSync(migrationPath, 'utf8');
 
-        expect(content).toContain('pos_shift_location_backfill_audit');
-        expect(content).toContain('terminalHomeLocationId');
-        expect(content).toContain('migration_tag');
-        expect(content).toContain('resolveShiftLocationCandidate');
-        expect(content).toContain('LOW_CONFIDENCE_RESOLUTION_SOURCES');
         expect(content).not.toContain("import('../src/modules/pos/utils/shiftLocationResolution.js')");
     });
 });

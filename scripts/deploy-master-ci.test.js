@@ -26,10 +26,11 @@ test('legacy local remote deployment is disabled', () => {
   assert.match(remote, /exit 1/);
 });
 
-test('GitHub production workflow contains no production secrets or live deploy command', () => {
-  const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy-production.yml'), 'utf8');
-  assert.match(workflow, /ENABLE_AUTO_PRODUCTION_DEPLOY: '0'/);
-  assert.doesNotMatch(workflow, /secrets\./);
-  assert.doesNotMatch(workflow, /deploy:prod:ci/);
-  assert.match(workflow, /production_deploy_enabled.*false/);
-});
+// The 4th test here used to assert deploy-production.yml ("Production
+// Candidate Bundle") contained no production secrets or live deploy
+// command. That workflow was deleted 2026-08-14 (#417) as dead weight: it
+// checked out `ref: master`, a branch that doesn't exist in this
+// repository, so dispatching it would have failed immediately at the
+// SHA-resolution step regardless (see #339's finding). The safety property
+// it asserted is still real for deploy-main.yml and deploy.yml -- both are
+// covered by their own test coverage instead, not by this file.

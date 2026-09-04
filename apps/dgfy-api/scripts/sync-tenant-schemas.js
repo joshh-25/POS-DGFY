@@ -40,6 +40,12 @@ export function assertTenantSchemaMutationModeAllowed(mode, environment = proces
 }
 
 export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
+    tenant_locations: Object.freeze({
+        scheduling_enabled: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `scheduling_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Per-location: customer may pick a scheduled fulfillment date/time'" }),
+        immediate_fulfillment_enabled: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `immediate_fulfillment_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Per-location: customer may choose immediate (NOW) fulfillment'" }),
+        fulfillment_lead_time_min_days: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `fulfillment_lead_time_min_days` INT NULL COMMENT 'Merchant-set minimum fulfillment lead time in days'" }),
+        fulfillment_lead_time_max_days: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `fulfillment_lead_time_max_days` INT NULL COMMENT 'Merchant-set maximum fulfillment lead time in days'" })
+    }),
     storefront_catalog_overrides: Object.freeze({
         image_fingerprint: Object.freeze({
             sql: "ALTER TABLE `storefront_catalog_overrides` ADD COLUMN `image_fingerprint` VARCHAR(64) NULL COMMENT 'SHA-256 fingerprint of the source catalog image asset'"
@@ -68,6 +74,41 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         pos_day_close_pin_hash: Object.freeze({
             sql: "ALTER TABLE `users` ADD COLUMN `pos_day_close_pin_hash` VARCHAR(255) NULL"
+        }),
+        pos_cashier_pin_hash: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `pos_cashier_pin_hash` VARCHAR(255) NULL COMMENT 'Dedicated POS cashier takeover PIN bcrypt hash'"
+        }),
+        pos_cashier_pin_failed_attempts: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `pos_cashier_pin_failed_attempts` INT NOT NULL DEFAULT 0 COMMENT 'Failed dedicated cashier PIN attempts since last successful verification'"
+        }),
+        pos_cashier_pin_locked_until: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `pos_cashier_pin_locked_until` DATETIME NULL COMMENT 'Dedicated cashier PIN lockout expiry'"
+        }),
+        pos_cashier_pin_changed_at: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `pos_cashier_pin_changed_at` DATETIME NULL COMMENT 'Dedicated cashier PIN last enrollment/reset timestamp'"
+        })
+    }),
+    audit_logs: Object.freeze({
+        event_type: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `event_type` VARCHAR(100) NULL"
+        }),
+        actor_username: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `actor_username` VARCHAR(120) NULL"
+        }),
+        terminal_id: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `terminal_id` VARCHAR(100) NULL"
+        }),
+        shift_id: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `shift_id` BIGINT NULL"
+        }),
+        location_id: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `location_id` INTEGER NULL"
+        }),
+        reason: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `reason` VARCHAR(500) NULL"
+        }),
+        request_id: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD COLUMN `request_id` VARCHAR(100) NULL"
         })
     }),
     pos_z_reading_snapshots: Object.freeze({
@@ -96,6 +137,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         sku_snapshot: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `sku_snapshot` VARCHAR(100) NULL COMMENT 'Sale-time SKU snapshot; immune to later item edits (issue #178 phase 5)'"
+        }),
+        item_discount_snapshot: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `item_discount_snapshot` JSON NULL COMMENT 'Server-calculated item-specific discount snapshot; global sale discounts remain separate'"
         })
     }),
     items: Object.freeze({
@@ -138,6 +182,16 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         payment_timing: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_timing` ENUM('upfront','on_pickup','on_delivery') NOT NULL DEFAULT 'upfront' AFTER `payment_type`"
         }),
+        // Phase 137 (#819) -- ADR 0069 clause 4a. Flat DEFAULT, no CASE backfill, matching the
+        // payment_timing repair entry above -- a repaired tenant's historical rows land on the
+        // default rather than a computed backfill; this is existing registry convention, not a
+        // gap introduced here.
+        amount_paid: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `amount_paid` DECIMAL(14,4) NOT NULL DEFAULT 0 AFTER `total_amount`"
+        }),
+        balance_due: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `balance_due` DECIMAL(14,4) NOT NULL DEFAULT 0 AFTER `amount_paid`"
+        }),
         payment_collected_at: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_at` DATETIME NULL AFTER `payment_status`"
         }),
@@ -179,11 +233,125 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         payment_breakdown: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_breakdown` JSON NULL COMMENT 'Immutable successful tender allocation snapshot for receipts and reports'"
+        }),
+        operator_session_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `operator_session_id` INTEGER NULL AFTER `shift_id`, ADD CONSTRAINT `pos_transactions_fk_operator_session` FOREIGN KEY (`operator_session_id`) REFERENCES `pos_terminal_operator_sessions` (`pos_terminal_operator_session_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        }),
+        // Phase 210 (#1179): three nullable, additive columns so a store-initiated reject's stated
+        // reason survives durably. Kept in lockstep with migration 20260901000002. Separate from
+        // accepted_by/accepted_at -- a confirmed -> rejected reject can happen after an accept.
+        rejection_reason: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `rejection_reason` VARCHAR(255) NULL AFTER `accepted_at`"
+        }),
+        rejected_by: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `rejected_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_rejected_by` FOREIGN KEY (`rejected_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
+        }),
+        rejected_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `rejected_at` DATETIME NULL"
+        }),
+        // Phase 211 (#1180): two nullable, additive columns attributing the Retail "packed" step.
+        // Kept in lockstep with migration 20260901000003. NOTE (investigated, not guessed): this
+        // REQUIRED_TENANT_SCHEMA_COLUMNS mechanism is column-presence based only -- it has no
+        // repair path for an ENUM *value* widening (as opposed to a missing column). A tenant
+        // restored from a pre-Phase-211 snapshot self-repairs these two columns via this table,
+        // but NOT the widened `fulfillment_status` ENUM itself (the migration's own MODIFY COLUMN,
+        // 20260901000003) -- recorded as a Residual Risk in
+        // docs/compliance/impact-declarations/2026-09-01-retail-order-packed-step.md rather than
+        // silently assumed covered.
+        packed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_at` DATETIME NULL AFTER `rejected_at`"
+        }),
+        packed_by: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_packed_by` FOREIGN KEY (`packed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
+        }),
+        // Phase 236 (#1328, epic #1321): two additive columns capturing observation-only
+        // server-side road distance at checkout. Kept in lockstep with migration
+        // 20260902000001. Neither column feeds delivery-fee math anywhere in this codebase --
+        // see docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md.
+        delivery_distance_meters: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_meters` INT NULL AFTER `outside_radius_flag`"
+        }),
+        delivery_distance_source: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_source` ENUM('road','fallback','none') NOT NULL DEFAULT 'none'"
+        }),
+        // Phase 237 (#1329, epic #1321): five additive money-provenance columns for the resolved
+        // delivery-fee breakdown. Kept in lockstep with migration 20260903000001 -- DDL strings must
+        // stay string-identical (a drift test asserts this, addDeliveryFeeBreakdown.migration.test.js).
+        // See docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md.
+        delivery_fee_mode: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_mode` ENUM('fixed','calculated','free') NOT NULL DEFAULT 'fixed' AFTER `delivery_distance_source`"
+        }),
+        delivery_fee_base: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_base` DECIMAL(14,4) NOT NULL DEFAULT 0"
+        }),
+        delivery_fee_waiver: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_waiver` DECIMAL(14,4) NOT NULL DEFAULT 0"
+        }),
+        delivery_fee_override: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_override` DECIMAL(14,4) NULL DEFAULT NULL"
+        }),
+        delivery_fee_calc_version: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_calc_version` SMALLINT UNSIGNED NOT NULL DEFAULT 1"
+        }),
+        // #1331 (Phase 240, epic #1321): two additive provenance columns, siblings to the five
+        // Phase 237 delivery-fee columns above. Kept in lockstep with migration
+        // 20260904000001-add-delivery-voucher-benefit.cjs -- DDL strings must stay string-identical
+        // (a drift test asserts this, addDeliveryVoucherBenefit.migration.test.js).
+        delivery_fee_waiver_voucher_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_waiver_voucher_id` INT NULL, ADD CONSTRAINT `fk_pos_transactions_delivery_fee_waiver_voucher` FOREIGN KEY (`delivery_fee_waiver_voucher_id`) REFERENCES `vouchers` (`voucher_id`) ON DELETE SET NULL"
+        }),
+        delivery_fee_waiver_label_snapshot: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_waiver_label_snapshot` VARCHAR(255) NULL"
+        })
+    }),
+    employee_attendance_sessions: Object.freeze({
+        active_user_id: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD COLUMN `active_user_id` INT GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN `user_id` ELSE NULL END) STORED"
+        }),
+        start_idempotency_key: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD COLUMN `start_idempotency_key` VARCHAR(120) NULL"
+        }),
+        end_idempotency_key: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD COLUMN `end_idempotency_key` VARCHAR(120) NULL"
+        })
+    }),
+    employee_break_segments: Object.freeze({
+        active_attendance_session_id: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD COLUMN `active_attendance_session_id` INT GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN `employee_attendance_session_id` ELSE NULL END) STORED"
+        }),
+        start_idempotency_key: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD COLUMN `start_idempotency_key` VARCHAR(120) NULL"
+        }),
+        end_idempotency_key: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD COLUMN `end_idempotency_key` VARCHAR(120) NULL"
+        })
+    }),
+    pos_terminal_operator_sessions: Object.freeze({
+        active_terminal_id: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD COLUMN `active_terminal_id` VARCHAR(100) GENERATED ALWAYS AS (CASE WHEN `status` = 'active' THEN UPPER(TRIM(`terminal_id`)) ELSE NULL END) STORED"
+        }),
+        active_operator_user_id: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD COLUMN `active_operator_user_id` INT GENERATED ALWAYS AS (CASE WHEN `status` = 'active' THEN `user_id` ELSE NULL END) STORED"
+        }),
+        protected_operation_key: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD COLUMN `protected_operation_key` VARCHAR(120) NULL COMMENT 'Request identity for a currently executing protected POS mutation'"
+        }),
+        protected_operation_type: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD COLUMN `protected_operation_type` VARCHAR(120) NULL"
+        }),
+        protected_operation_started_at: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD COLUMN `protected_operation_started_at` DATETIME NULL"
         })
     }),
     pos_parked_sales: Object.freeze({
         revision: Object.freeze({
             sql: "ALTER TABLE `pos_parked_sales` ADD COLUMN `revision` INT UNSIGNED NOT NULL DEFAULT 1 AFTER `status`"
+        }),
+        origin_cashier_id: Object.freeze({
+            sql: "ALTER TABLE `pos_parked_sales` ADD COLUMN `origin_cashier_id` INTEGER NULL AFTER `cashier_id`"
+        }),
+        origin_shift_id: Object.freeze({
+            sql: "ALTER TABLE `pos_parked_sales` ADD COLUMN `origin_shift_id` INTEGER NULL AFTER `shift_id`"
         })
     }),
     pos_payment_allocations: Object.freeze({
@@ -201,6 +369,17 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         provider_refunded_at: Object.freeze({
             sql: "ALTER TABLE `pos_payment_allocations` ADD COLUMN `provider_refunded_at` DATETIME NULL"
+        }),
+        reversed_amount: Object.freeze({
+            sql: "ALTER TABLE `pos_payment_allocations` ADD COLUMN `reversed_amount` DECIMAL(14,4) NOT NULL DEFAULT 0 COMMENT 'Successful allocation amount reversed through append-only adjustment evidence'"
+        }),
+        reversal_status: Object.freeze({
+            sql: "ALTER TABLE `pos_payment_allocations` ADD COLUMN `reversal_status` ENUM('none','pending','partial','completed','manual_review_required') NOT NULL DEFAULT 'none'"
+        })
+    }),
+    pos_transaction_adjustments: Object.freeze({
+        pos_payment_allocation_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_adjustments` ADD COLUMN `pos_payment_allocation_id` INTEGER NULL COMMENT 'Allocation-level reversal attribution for split-tender refunds'"
         })
     }),
     pos_terminal_shifts: Object.freeze({
@@ -266,6 +445,11 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         assigned_shift_id: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `assigned_shift_id` INT NULL"
+        }),
+        // #1273/#1081 Phase 224: nullable grouping link into delivery_runs. Bare column, no FK,
+        // matching every other delivery_jobs repair entry in this block.
+        delivery_run_id: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `delivery_run_id` INT NULL"
         })
     }),
     // Added by migration 20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs
@@ -278,6 +462,102 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         to_disabled_capabilities: Object.freeze({
             sql: "ALTER TABLE `workflow_mode_change_log` ADD COLUMN `to_disabled_capabilities` JSON NULL"
         })
+    }),
+    // #696: added to the pre-existing `vouchers` table rather than folded into that table's own
+    // CREATE TABLE entry above, matching how every other post-creation column addition in this repo
+    // is repaired. Safe to add the FK inline here (unlike `voucher_scopes.scope_ref_id`) because the
+    // table-repair pass that creates `pricelists` (below) always runs before this column-repair pass
+    // -- confirmed against this script's own driver, which applies missing tables first, then
+    // missing columns, in that fixed order.
+    // #713: same repair-only mechanism #696's `pricelist_id` entry above already established --
+    // REQUIRED_TENANT_SCHEMA_TABLES' `vouchers` CREATE TABLE string is a verbatim landlord-DB
+    // snapshot from before this column existed, and is deliberately not edited to add it. Every
+    // tenant (new or pre-existing) gets it from this repair pass instead, since table-creation
+    // always runs before column-repair, unconditionally.
+    vouchers: Object.freeze({
+        pricelist_id: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `pricelist_id` INT NULL, ADD CONSTRAINT `fk_vouchers_pricelist` FOREIGN KEY (`pricelist_id`) REFERENCES `pricelists` (`pricelist_id`)"
+        }),
+        is_publicly_listed: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `is_publicly_listed` TINYINT(1) NOT NULL DEFAULT 0"
+        }),
+        // #788 (Phase 269): the derived gate for account-restricted issuance. Kept in lockstep with
+        // migration 20260908000001-add-voucher-account-restriction.cjs -- DDL string must stay
+        // string-identical (addVoucherAccountRestriction.migration.test.js).
+        //
+        // That migration's THIRD change -- retyping `voucher_redemptions.dgfy_account_id` from INT
+        // to CHAR(36) -- has deliberately NO entry here: this registry's repair pass is
+        // column-PRESENCE based only and has no notion of a type mismatch on a column that already
+        // exists, the same documented limitation as the ENUM widenings noted below. A tenant that
+        // misses the migration keeps the INT column, which is its pre-#788 state; the storefront's
+        // new write would fail loudly there rather than silently mis-recording an account id.
+        is_account_restricted: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `is_account_restricted` TINYINT(1) NOT NULL DEFAULT 0"
+        }),
+        // #1331 (Phase 240, epic #1321 decision 9): two additive columns for the benefit-target axis
+        // and the free_delivery benefit class's own amount. Kept in lockstep with migration
+        // 20260904000001-add-delivery-voucher-benefit.cjs -- DDL strings must stay string-identical
+        // (addDeliveryVoucherBenefit.migration.test.js). This registry mechanism is column-presence
+        // based only -- it has NO repair path for the same migration's two ENUM value widenings
+        // (`voucher_kind`, `benefit_class`), the same limitation already documented above for
+        // `pos_transactions.fulfillment_status` (Phase 211). A pre-Phase-240 tenant restored from a
+        // snapshot self-repairs these two columns via this table, but not the widened enums --
+        // recorded in this phase's compliance declaration, not silently assumed covered.
+        benefit_target: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `benefit_target` ENUM('items','delivery') NOT NULL DEFAULT 'items'"
+        }),
+        delivery_amount_off_centavos: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `delivery_amount_off_centavos` BIGINT NULL DEFAULT NULL"
+        }),
+        // #1332 (Phase 244, epic #1321 decision 9): the auto-apply flag. NOT NULL DEFAULT 0 so
+        // "eligible everywhere" cannot be produced by omission (ADR 0066 Decision 10, the #459
+        // failure mode) -- every existing voucher stays `0` (code-entered only), byte-identical.
+        // Kept in lockstep with migration 20260905000002-add-voucher-auto-apply.cjs -- this DDL
+        // string must stay string-identical to that migration's own (addVoucherAutoApply.migration
+        // .test.js).
+        auto_apply: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `auto_apply` TINYINT(1) NOT NULL DEFAULT 0"
+        }),
+        // #1490 (Phase 262): eligibility cap mirroring min_spend_centavos's own shape. Kept in
+        // lockstep with migration 20260906000002-add-voucher-order-value-and-audit-columns.cjs --
+        // this DDL string must stay string-identical to that migration's own.
+        max_order_value_centavos: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `max_order_value_centavos` BIGINT NULL DEFAULT NULL"
+        }),
+        // #1494 (Phase 262): accountable creating/modifying officer, no DB-level FK -- see the
+        // migration's own header comment for why. Kept in lockstep the same way.
+        created_by: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `created_by` INT NULL DEFAULT NULL"
+        }),
+        updated_by: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD COLUMN `updated_by` INT NULL DEFAULT NULL"
+        })
+    }),
+    // Phase 204 (#965): six nullable, additive columns for an optional proof-of-payment image on
+    // a merchant-owned 'balance' settlement. Kept in lockstep with migration 20260831000001 and
+    // with REQUIRED_TENANT_SCHEMA_TABLES.pos_order_payments below -- see that migration's own
+    // header comment for why this table needs the fan-out/repair pair at all (it is a tenant
+    // table, not a landlord one). Never NOT NULL / never a DEFAULT -- every column here is
+    // optional by design (attach-once, ADR 0063 Amendments 2026-08-31).
+    pos_order_payments: Object.freeze({
+        proof_file_path: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_file_path` VARCHAR(255) NULL"
+        }),
+        proof_mime_type: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_mime_type` VARCHAR(60) NULL"
+        }),
+        proof_file_size_bytes: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_file_size_bytes` INT NULL"
+        }),
+        proof_sha256: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_sha256` CHAR(64) NULL"
+        }),
+        proof_attached_at: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_attached_at` DATETIME NULL"
+        }),
+        proof_attached_by: Object.freeze({
+            sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_attached_by` INT NULL, ADD CONSTRAINT `fk_pos_order_payments_proof_attached_by` FOREIGN KEY (`proof_attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
+        })
     })
 });
 
@@ -287,6 +567,77 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
 // (column types, defaults, keys, FK constraints) — declaration order matters, since later tables
 // have foreign keys pointing at earlier ones.
 export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
+    // #539: the three base F&B modifier tables. A tenant provisioned before
+    // 20260505000002-create-fnb-restaurant-mode-tables.cjs and never otherwise migrated forward can
+    // be missing all three entirely - REQUIRED_TENANT_SCHEMA_COLUMNS/_INDEXES already carry entries
+    // for later additions to these tables (visible_in_pos, group_kind, is_sold_out, is_excluded,
+    // idx_fnb_modifier_groups_parent_option, ...) but had no CREATE TABLE fallback for the base
+    // tables themselves. Same failure shape as storefront_catalog_overrides below: the first
+    // column-level ALTER TABLE against a wholly-missing table fails with "table doesn't exist" (or,
+    // observed live, a downstream child table's FK reporting "Failed to open the referenced table"),
+    // which fails the tenant schema preflight and crash-loops the whole backend for every tenant,
+    // not just the one missing these tables. Declared first in this registry, in dependency order,
+    // since fnb_modifier_group_location_availability/fnb_modifier_option_location_availability/
+    // fnb_folder_modifier_groups below all FK-reference fnb_modifier_groups/fnb_modifier_options.
+    //
+    // fnb_modifier_groups deliberately omits parent_modifier_option_id and its FK to
+    // fnb_modifier_options here - fnb_modifier_options doesn't exist yet at this point in the
+    // repair sequence, and the column was genuinely added later in real history (matching how the
+    // original migration created this table before that FK existed). The existing
+    // REQUIRED_TENANT_SCHEMA_COLUMNS.fnb_modifier_groups.parent_modifier_option_id entry and the
+    // existing REQUIRED_TENANT_SCHEMA_INDEXES.fnb_modifier_groups.idx_fnb_modifier_groups_parent_option
+    // entry add the column, its FK, and its index afterward, once both tables exist.
+    fnb_modifier_groups: Object.freeze({
+        sql: "CREATE TABLE `fnb_modifier_groups` ("
+            + " `modifier_group_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `name` VARCHAR(120) NOT NULL, `display_name` VARCHAR(120) DEFAULT NULL,"
+            + " `min_select` INT NOT NULL DEFAULT 0, `max_select` INT NOT NULL DEFAULT 1,"
+            + " `required` TINYINT(1) NOT NULL DEFAULT 0, `is_active` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `sort_order` INT NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL, `updated_at` DATETIME NOT NULL,"
+            + " `visible_in_pos` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `visible_in_storefront` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `group_kind` VARCHAR(24) NOT NULL DEFAULT 'modifier',"
+            + " PRIMARY KEY (`modifier_group_id`),"
+            + " KEY `fnb_modifier_groups_is_active` (`is_active`),"
+            + " KEY `fnb_modifier_groups_sort_order` (`sort_order`)"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    fnb_modifier_options: Object.freeze({
+        sql: "CREATE TABLE `fnb_modifier_options` ("
+            + " `modifier_option_id` INT NOT NULL AUTO_INCREMENT, `modifier_group_id` INT NOT NULL,"
+            + " `name` VARCHAR(120) NOT NULL, `price_delta` DECIMAL(14,4) NOT NULL DEFAULT 0,"
+            + " `sku_item_id` INT DEFAULT NULL, `is_default` TINYINT(1) NOT NULL DEFAULT 0,"
+            + " `is_active` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `allergen_notes` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,"
+            + " `sort_order` INT NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL, `updated_at` DATETIME NOT NULL,"
+            + " `visible_in_pos` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `visible_in_storefront` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `is_sold_out` TINYINT(1) NOT NULL DEFAULT 0,"
+            + " PRIMARY KEY (`modifier_option_id`),"
+            + " KEY `fnb_modifier_options_modifier_group_id` (`modifier_group_id`),"
+            + " KEY `fnb_modifier_options_sku_item_id` (`sku_item_id`),"
+            + " KEY `fnb_modifier_options_is_active` (`is_active`),"
+            + " CONSTRAINT `fk_fnb_modifier_options_group` FOREIGN KEY (`modifier_group_id`) REFERENCES `fnb_modifier_groups` (`modifier_group_id`) ON DELETE CASCADE ON UPDATE CASCADE,"
+            + " CONSTRAINT `fk_fnb_modifier_options_sku_item` FOREIGN KEY (`sku_item_id`) REFERENCES `items` (`item_id`) ON DELETE SET NULL ON UPDATE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    fnb_item_modifier_groups: Object.freeze({
+        sql: "CREATE TABLE `fnb_item_modifier_groups` ("
+            + " `item_modifier_group_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `item_id` INT NOT NULL, `modifier_group_id` INT NOT NULL,"
+            + " `is_required_override` TINYINT(1) DEFAULT NULL, `sort_order` INT NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL, `updated_at` DATETIME NOT NULL,"
+            + " `is_excluded` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Explicit item-level opt-out from folder-inherited modifier groups',"
+            + " PRIMARY KEY (`item_modifier_group_id`),"
+            + " UNIQUE KEY `uq_fnb_item_modifier_groups_item_group` (`item_id`,`modifier_group_id`),"
+            + " KEY `fnb_item_modifier_groups_item_id` (`item_id`),"
+            + " KEY `fnb_item_modifier_groups_modifier_group_id` (`modifier_group_id`),"
+            + " CONSTRAINT `fk_fnb_item_modifier_groups_item` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE CASCADE ON UPDATE CASCADE,"
+            + " CONSTRAINT `fk_fnb_item_modifier_groups_group` FOREIGN KEY (`modifier_group_id`) REFERENCES `fnb_modifier_groups` (`modifier_group_id`) ON DELETE CASCADE ON UPDATE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     fnb_modifier_group_location_availability: Object.freeze({
         sql: "CREATE TABLE `fnb_modifier_group_location_availability` ("
             + " `modifier_group_location_availability_id` INT NOT NULL AUTO_INCREMENT,"
@@ -378,6 +729,38 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `workflow_mode_change_log_created_at` (`created_at`)\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
+    // Created by the original landlord migration 20240101000016-create-audit-logs.js.
+    // Audit rows are tenant-local because the POS audit workspace reads activity from the
+    // active tenant database. Register the complete shape here so older tenant databases
+    // receive the table and the later POS event-context columns through one idempotent path.
+    audit_logs: Object.freeze({
+        sql: "CREATE TABLE `audit_logs` (\n"
+            + "  `log_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `user_id` int DEFAULT NULL,\n"
+            + "  `entity_type` varchar(50) COLLATE utf8mb4_general_ci NOT NULL,\n"
+            + "  `entity_id` int DEFAULT NULL,\n"
+            + "  `action` enum('CREATE','UPDATE','DELETE','VIEW') COLLATE utf8mb4_general_ci NOT NULL,\n"
+            + "  `event_type` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `actor_username` varchar(120) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `terminal_id` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `shift_id` bigint DEFAULT NULL,\n"
+            + "  `location_id` int DEFAULT NULL,\n"
+            + "  `reason` varchar(500) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `request_id` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `changes` json DEFAULT NULL,\n"
+            + "  `ip_address` varchar(45) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `user_agent` text COLLATE utf8mb4_general_ci,\n"
+            + "  `timestamp` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`log_id`),\n"
+            + "  KEY `idx_user_id` (`user_id`),\n"
+            + "  KEY `idx_entity_type` (`entity_type`),\n"
+            + "  KEY `idx_timestamp` (`timestamp`),\n"
+            + "  KEY `idx_audit_event_timestamp` (`event_type`,`timestamp`),\n"
+            + "  KEY `idx_audit_terminal_timestamp` (`terminal_id`,`timestamp`),\n"
+            + "  KEY `idx_audit_shift_timestamp` (`shift_id`,`timestamp`),\n"
+            + "  CONSTRAINT `audit_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     // Created by migration 20260812000001-create-pos-parked-sales.cjs.
     // Parked carts are tenant-local work items and must be backfilled onto
     // tenants provisioned before the migration ran.
@@ -391,6 +774,8 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `revision` int unsigned NOT NULL DEFAULT 1,\n"
             + "  `cashier_id` int NOT NULL,\n"
             + "  `shift_id` int NOT NULL,\n"
+            + "  `origin_cashier_id` int DEFAULT NULL,\n"
+            + "  `origin_shift_id` int DEFAULT NULL,\n"
             + "  `terminal_id` varchar(100) NOT NULL,\n"
             + "  `location_id` int NOT NULL,\n"
             + "  `snapshot` json NOT NULL,\n"
@@ -416,13 +801,17 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `idx_pos_parked_sales_cashier_status` (`cashier_id`,`status`),\n"
             + "  KEY `idx_pos_parked_sales_location_status` (`location_id`,`status`),\n"
             + "  KEY `idx_pos_parked_sales_claimed_by_status` (`claimed_by`,`status`),\n"
+            + "  KEY `idx_pos_parked_sales_origin_cashier_status` (`origin_cashier_id`,`status`),\n"
+            + "  KEY `idx_pos_parked_sales_origin_shift_status` (`origin_shift_id`,`status`),\n"
             + "  KEY `idx_pos_parked_sales_created_at` (`created_at`),\n"
             + "  CONSTRAINT `pos_parked_sales_ibfk_1` FOREIGN KEY (`cashier_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `pos_parked_sales_ibfk_2` FOREIGN KEY (`shift_id`) REFERENCES `pos_terminal_shifts` (`pos_terminal_shift_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `pos_parked_sales_ibfk_3` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
-            + "  CONSTRAINT `pos_parked_sales_ibfk_4` FOREIGN KEY (`claimed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
-            + "  CONSTRAINT `pos_parked_sales_ibfk_5` FOREIGN KEY (`completed_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
-            + "  CONSTRAINT `pos_parked_sales_ibfk_6` FOREIGN KEY (`cancelled_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + "  CONSTRAINT `pos_parked_sales_ibfk_4` FOREIGN KEY (`origin_cashier_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_parked_sales_ibfk_5` FOREIGN KEY (`origin_shift_id`) REFERENCES `pos_terminal_shifts` (`pos_terminal_shift_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_parked_sales_ibfk_6` FOREIGN KEY (`claimed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_parked_sales_ibfk_7` FOREIGN KEY (`completed_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_parked_sales_ibfk_8` FOREIGN KEY (`cancelled_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     // Created by migration 20260812000006-create-pos-split-payment-sessions.cjs.
@@ -480,7 +869,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `idempotency_key` varchar(120) NOT NULL,\n"
             + "  `request_hash` varchar(64) NOT NULL,\n"
             + "  `status` enum('pending','successful','failed','cancelled','reversed') NOT NULL DEFAULT 'pending',\n"
-            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer') NOT NULL,\n"
+            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','cheque') NOT NULL,\n"
             + "  `payment_handoff_mode` enum('external','internal') DEFAULT NULL,\n"
             + "  `applied_amount` decimal(14,4) NOT NULL,\n"
             + "  `cash_tendered` decimal(14,4) DEFAULT NULL,\n"
@@ -492,6 +881,8 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `provider_refund_event_id` varchar(255) DEFAULT NULL,\n"
             + "  `provider_refund_status` varchar(40) DEFAULT NULL,\n"
             + "  `provider_refunded_at` datetime DEFAULT NULL,\n"
+            + "  `reversed_amount` decimal(14,4) NOT NULL DEFAULT '0.0000',\n"
+            + "  `reversal_status` enum('none','pending','partial','completed','manual_review_required') NOT NULL DEFAULT 'none',\n"
             + "  `failure_code` varchar(80) DEFAULT NULL,\n"
             + "  `failure_reason` varchar(255) DEFAULT NULL,\n"
             + "  `cashier_id` int NOT NULL,\n"
@@ -517,6 +908,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `idx_pos_payment_allocations_shift_status` (`shift_id`,`status`),\n"
             + "  KEY `idx_pos_payment_allocations_location_status` (`location_id`,`status`),\n"
             + "  KEY `idx_pos_payment_allocations_method_status` (`payment_method`,`status`),\n"
+            + "  KEY `idx_pos_payment_allocations_session_reversal_status` (`session_id`,`reversal_status`),\n"
             + "  KEY `idx_pos_payment_allocations_created_at` (`created_at`),\n"
             + "  CONSTRAINT `pos_payment_allocations_ibfk_1` FOREIGN KEY (`session_id`) REFERENCES `pos_payment_sessions` (`pos_payment_session_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `pos_payment_allocations_ibfk_2` FOREIGN KEY (`cashier_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
@@ -743,6 +1135,66 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `delivery_jobs_ibfk_2` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
+    // #1273/#1081 Phase 224: groups many delivery_jobs rows under one manual operational run.
+    // delivery_jobs.pos_transaction_id (above) stays UNIQUE, untouched by this table.
+    delivery_runs: Object.freeze({
+        sql: "CREATE TABLE `delivery_runs` (\n"
+            + "  `delivery_run_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `label` varchar(120) NOT NULL,\n"
+            + "  `scheduled_date` date DEFAULT NULL,\n"
+            + "  `status` enum('draft','scheduled','dispatched','completed','cancelled') NOT NULL DEFAULT 'draft',\n"
+            + "  `location_id` int DEFAULT NULL,\n"
+            + "  `notes` text,\n"
+            + "  `created_by` int DEFAULT NULL,\n"
+            + "  `updated_by` int DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_run_id`),\n"
+            + "  KEY `idx_delivery_runs_status_scheduled` (`status`,`scheduled_date`),\n"
+            + "  KEY `idx_delivery_runs_location_status` (`location_id`,`status`),\n"
+            + "  CONSTRAINT `delivery_runs_ibfk_1` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_runs_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_runs_ibfk_3` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // `accountable_run_id` is a STORED generated column enforcing "at most one accountable
+    // personnel row per run" via its unique index below -- see PosTerminalShift's
+    // active_terminal_id for the established precedent of this pattern. `delivery_run_id`'s FK is
+    // RESTRICT/RESTRICT rather than CASCADE because it is that generated column's own base column.
+    // #1166 first surfaced this class of failure; #1172 (the fix that actually landed for #1166)
+    // established the precise, narrower restriction: MySQL/InnoDB rejects only a CASCADE/SET NULL
+    // FK action on a generated column's base column, not RESTRICT. The migration
+    // (20260901000005-create-delivery-runs.cjs) defers `delivery_run_id`'s FK to a separate
+    // `ALTER TABLE ... ADD CONSTRAINT fk_delivery_run_personnel_delivery_run` issued *after*
+    // `accountable_run_id` exists, matching #1172's proven drop/generated-column/re-add DDL order
+    // for this failure mode -- so its constraint is named and ordered last below (added last,
+    // physically), and `delivery_personnel_id`/`created_by`/`updated_by` (still declared inline at
+    // CREATE TABLE, unaffected by this) shift up to `ibfk_1..3` accordingly. Not verified against a
+    // real MySQL instance (no local MySQL available in this worktree) -- this string is expected to
+    // match a real `SHOW CREATE TABLE` once the migration has actually run once, not confirmed yet.
+    delivery_run_personnel: Object.freeze({
+        sql: "CREATE TABLE `delivery_run_personnel` (\n"
+            + "  `delivery_run_personnel_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_run_id` int NOT NULL,\n"
+            + "  `delivery_personnel_id` int DEFAULT NULL,\n"
+            + "  `delivery_personnel_name` varchar(255) DEFAULT NULL,\n"
+            + "  `is_accountable` tinyint(1) NOT NULL DEFAULT '0',\n"
+            + "  `created_by` int DEFAULT NULL,\n"
+            + "  `updated_by` int DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  `accountable_run_id` int GENERATED ALWAYS AS (CASE WHEN `is_accountable` = 1 THEN `delivery_run_id` ELSE NULL END) STORED,\n"
+            + "  PRIMARY KEY (`delivery_run_personnel_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_run_personnel_accountable` (`accountable_run_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_run_personnel_member` (`delivery_run_id`,`delivery_personnel_id`),\n"
+            + "  KEY `idx_delivery_run_personnel_run` (`delivery_run_id`),\n"
+            + "  KEY `idx_delivery_run_personnel_personnel` (`delivery_personnel_id`),\n"
+            + "  CONSTRAINT `delivery_run_personnel_ibfk_1` FOREIGN KEY (`delivery_personnel_id`) REFERENCES `delivery_personnel` (`delivery_personnel_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_run_personnel_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_run_personnel_ibfk_3` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_personnel_delivery_run` FOREIGN KEY (`delivery_run_id`) REFERENCES `delivery_runs` (`delivery_run_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
     pos_transaction_discount_lines: Object.freeze({
         sql: "CREATE TABLE `pos_transaction_discount_lines` (\n"
             + "  `id` int NOT NULL AUTO_INCREMENT,\n"
@@ -761,8 +1213,8 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  PRIMARY KEY (`id`),\n"
             + "  KEY `transaction_line_id` (`transaction_line_id`),\n"
             + "  KEY `idx_pos_discount_lines_discount` (`transaction_discount_id`),\n"
-            + "  CONSTRAINT `pos_transaction_discount_lines_ibfk_1` FOREIGN KEY (`transaction_discount_id`) REFERENCES `pos_transaction_discounts` (`id`) ON DELETE CASCADE,\n"
             + "  KEY `idx_pos_discount_lines_beneficiary` (`beneficiary_id`),\n"
+            + "  CONSTRAINT `pos_transaction_discount_lines_ibfk_1` FOREIGN KEY (`transaction_discount_id`) REFERENCES `pos_transaction_discounts` (`id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `pos_transaction_discount_lines_ibfk_2` FOREIGN KEY (`transaction_line_id`) REFERENCES `pos_transaction_lines` (`line_id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `fk_pos_discount_lines_beneficiary` FOREIGN KEY (`beneficiary_id`) REFERENCES `pos_transaction_discount_beneficiaries` (`id`) ON DELETE CASCADE\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
@@ -792,7 +1244,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `visible_in_pos` tinyint(1) NOT NULL DEFAULT '1',\n"
             + "  `addons_enabled` tinyint(1) NOT NULL DEFAULT '0',\n"
             + "  `payment_policy` enum('customer_choice','prepaid_required','postpaid_only','deposit_allowed') NOT NULL DEFAULT 'customer_choice',\n"
-            + "  `service_area_type` enum('in_store','customer_location','online','hybrid') NOT NULL DEFAULT 'in_store',\n"
+            + "  `service_area_type` enum('in_store','customer_location','online','hybrid','item_handoff') NOT NULL DEFAULT 'in_store',\n"
             + "  `intake_form_schema` json DEFAULT NULL,\n"
             + "  `client_notes_template` text,\n"
             + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
@@ -862,7 +1314,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `location_id` int DEFAULT NULL,\n"
             + "  `start_at` datetime NOT NULL,\n"
             + "  `end_at` datetime NOT NULL,\n"
-            + "  `status` enum('requested','confirmed','checked_in','in_service','completed','cancelled','no_show') NOT NULL DEFAULT 'requested',\n"
+            + "  `status` enum('requested','confirmed','checked_in','in_service','completed','cancelled','no_show','for_pickup','pickup_completed','out_for_return','ready_for_collection') NOT NULL DEFAULT 'requested',\n"
             + "  `payment_timing` enum('prepaid','postpaid','deposit') NOT NULL DEFAULT 'postpaid',\n"
             + "  `payment_status` enum('unpaid','payment_pending','paid','deposit_paid','failed','refunded') NOT NULL DEFAULT 'unpaid',\n"
             + "  `payment_reference` varchar(120) DEFAULT NULL,\n"
@@ -948,6 +1400,616 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `service_booking_lines_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE RESTRICT,\n"
             + "  CONSTRAINT `service_booking_lines_ibfk_3` FOREIGN KEY (`pos_transaction_line_id`) REFERENCES `pos_transaction_lines` (`line_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // Phase 88 of #482 (ADR 0064 decision 2) - the handoff-leg entity, keyed to service_bookings.
+    service_booking_handoff_legs: Object.freeze({
+        sql: "CREATE TABLE `service_booking_handoff_legs` (\n"
+            + "  `handoff_leg_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `booking_id` int NOT NULL,\n"
+            + "  `direction` enum('inbound','outbound') NOT NULL,\n"
+            + "  `method` enum('business_pickup','business_delivery','customer_dropoff','customer_collection') NOT NULL,\n"
+            + "  `address_line` text,\n"
+            + "  `latitude` decimal(10,8) DEFAULT NULL,\n"
+            + "  `longitude` decimal(11,8) DEFAULT NULL,\n"
+            + "  `customer_address_id` int DEFAULT NULL,\n"
+            + "  `location_id` int DEFAULT NULL,\n"
+            + "  `scheduled_from` datetime DEFAULT NULL,\n"
+            + "  `scheduled_to` datetime DEFAULT NULL,\n"
+            + "  `contact_name` varchar(255) DEFAULT NULL,\n"
+            + "  `contact_phone` varchar(50) DEFAULT NULL,\n"
+            + "  `instructions` varchar(500) DEFAULT NULL,\n"
+            + "  `status` enum('pending','scheduled','in_transit','completed','cancelled') NOT NULL DEFAULT 'pending',\n"
+            + "  `completed_at` datetime DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`handoff_leg_id`),\n"
+            + "  UNIQUE KEY `uq_service_booking_handoff_legs_booking_direction` (`booking_id`,`direction`),\n"
+            + "  KEY `idx_service_booking_handoff_legs_customer_address` (`customer_address_id`),\n"
+            + "  KEY `idx_service_booking_handoff_legs_location` (`location_id`),\n"
+            + "  KEY `idx_service_booking_handoff_legs_status` (`status`),\n"
+            + "  KEY `idx_service_booking_handoff_legs_scheduled_from` (`scheduled_from`),\n"
+            + "  CONSTRAINT `service_booking_handoff_legs_ibfk_1` FOREIGN KEY (`booking_id`) REFERENCES `service_bookings` (`booking_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `service_booking_handoff_legs_ibfk_2` FOREIGN KEY (`customer_address_id`) REFERENCES `customer_addresses` (`address_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `service_booking_handoff_legs_ibfk_3` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // Phase 88 of #482 (ADR 0064 decision 4) - the status transition-event table.
+    service_booking_status_events: Object.freeze({
+        sql: "CREATE TABLE `service_booking_status_events` (\n"
+            + "  `status_event_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `booking_id` int NOT NULL,\n"
+            + "  `from_status` enum('requested','confirmed','checked_in','in_service','completed','cancelled','no_show','for_pickup','pickup_completed','out_for_return','ready_for_collection') DEFAULT NULL,\n"
+            + "  `to_status` enum('requested','confirmed','checked_in','in_service','completed','cancelled','no_show','for_pickup','pickup_completed','out_for_return','ready_for_collection') NOT NULL,\n"
+            + "  `handoff_leg_id` int DEFAULT NULL,\n"
+            + "  `actor_type` enum('customer','staff','system') NOT NULL DEFAULT 'system',\n"
+            + "  `actor_user_id` int DEFAULT NULL,\n"
+            + "  `source` enum('storefront','pos','admin','system') NOT NULL DEFAULT 'system',\n"
+            + "  `reason` varchar(500) DEFAULT NULL,\n"
+            + "  `occurred_at` datetime NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`status_event_id`),\n"
+            + "  KEY `idx_service_booking_status_events_booking_occurred` (`booking_id`,`occurred_at`),\n"
+            + "  KEY `idx_service_booking_status_events_handoff_leg` (`handoff_leg_id`),\n"
+            + "  KEY `idx_service_booking_status_events_actor_user` (`actor_user_id`),\n"
+            + "  CONSTRAINT `service_booking_status_events_ibfk_1` FOREIGN KEY (`booking_id`) REFERENCES `service_bookings` (`booking_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `service_booking_status_events_ibfk_2` FOREIGN KEY (`handoff_leg_id`) REFERENCES `service_booking_handoff_legs` (`handoff_leg_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `service_booking_status_events_ibfk_3` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // Phase 102 of #455 (ADR 0066) - the voucher campaign, its scopes, and its redemption ledger.
+    // Declared in FK-dependency order: vouchers -> voucher_scopes -> voucher_redemptions ->
+    // voucher_redemption_lines. Money is integer centavos (ADR 0066 decision 2); cumulative columns
+    // are bigint because a campaign budget in centavos overflows int at only ~21.5M pesos.
+    // Eligibility is a tinyint bitmask, not MySQL SET: `DataTypes.SET` does not exist in Sequelize
+    // 6.x, so a SET column cannot be expressed in the model layer that `sequelize.sync()` uses to
+    // provision new tenants. NOT NULL with an explicit default is the property that matters -
+    // "eligible everywhere" must not be producible by omission (#459).
+    //
+    // #1331 (Phase 240, epic #1321 decision 9): UNLIKE `pricelist_id`/`is_publicly_listed` below
+    // (deliberately left out of this CREATE TABLE, repaired via REQUIRED_TENANT_SCHEMA_COLUMNS
+    // instead), `voucher_kind`/`benefit_class`'s two ENUM value widenings ARE edited directly here.
+    // The column-repair mechanism is column-PRESENCE based only -- it has no repair path for an
+    // ENUM value widening on an already-present column (see the identical limitation already
+    // documented for `pos_transactions.fulfillment_status`, Phase 211). A tenant whose `vouchers`
+    // table gets created fresh from this string would otherwise silently keep the narrow enums
+    // forever -- column-repair would add `benefit_target`/`delivery_amount_off_centavos` fine, but
+    // never widen the two enums, so a free_delivery voucher would fail at write time with no
+    // schema-sync check ever catching it (Phase 240 plan §13.8).
+    vouchers: Object.freeze({
+        sql: "CREATE TABLE `vouchers` (\n"
+            + "  `voucher_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `code` varchar(64) NOT NULL,\n"
+            + "  `voucher_kind` enum('promo_code','delivery_campaign') NOT NULL DEFAULT 'promo_code',\n"
+            + "  `title` varchar(255) NOT NULL,\n"
+            + "  `subtitle` varchar(255) DEFAULT NULL,\n"
+            + "  `badge` varchar(80) DEFAULT NULL,\n"
+            + "  `validity_text` varchar(255) DEFAULT NULL,\n"
+            + "  `benefit_class` enum('percent_off','amount_off','fixed_price','free_delivery') NOT NULL,\n"
+            + "  `benefit_target` enum('items','delivery') NOT NULL DEFAULT 'items',\n"
+            + "  `auto_apply` tinyint(1) NOT NULL DEFAULT '0',\n"
+            + "  `percent_off_bps` int DEFAULT NULL,\n"
+            + "  `amount_off_centavos` bigint DEFAULT NULL,\n"
+            + "  `fixed_unit_price_centavos` bigint DEFAULT NULL,\n"
+            + "  `delivery_amount_off_centavos` bigint DEFAULT NULL,\n"
+            + "  `max_discount_centavos` bigint DEFAULT NULL,\n"
+            + "  `min_spend_centavos` bigint DEFAULT NULL,\n"
+            + "  `min_quantity` int DEFAULT NULL,\n"
+            + "  `allow_below_cost` tinyint(1) NOT NULL DEFAULT '0',\n"
+            + "  `stackable_with_statutory` tinyint(1) NOT NULL DEFAULT '0',\n"
+            + "  `valid_from` date DEFAULT NULL,\n"
+            + "  `valid_until` date DEFAULT NULL,\n"
+            + "  `valid_time_start` varchar(5) DEFAULT NULL,\n"
+            + "  `valid_time_end` varchar(5) DEFAULT NULL,\n"
+            + "  `weekday_mask` tinyint unsigned NOT NULL DEFAULT '127',\n"
+            + "  `channels_mask` tinyint unsigned NOT NULL DEFAULT '1',\n"
+            + "  `fulfillment_methods_mask` tinyint unsigned NOT NULL DEFAULT '3',\n"
+            + "  `order_timings_mask` tinyint unsigned NOT NULL DEFAULT '3',\n"
+            + "  `max_redemptions` int DEFAULT NULL,\n"
+            + "  `max_total_discount_centavos` bigint DEFAULT NULL,\n"
+            + "  `max_benefit_quantity` int DEFAULT NULL,\n"
+            + "  `redeemed_count` int NOT NULL DEFAULT '0',\n"
+            + "  `redeemed_value_centavos` bigint NOT NULL DEFAULT '0',\n"
+            + "  `redeemed_quantity` int NOT NULL DEFAULT '0',\n"
+            + "  `conditions` json DEFAULT NULL,\n"
+            + "  `status` enum('draft','active','paused','expired','archived') NOT NULL DEFAULT 'draft',\n"
+            + "  `version` int NOT NULL DEFAULT '0',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`voucher_id`),\n"
+            + "  UNIQUE KEY `uq_vouchers_code` (`code`),\n"
+            + "  KEY `idx_vouchers_status_validity` (`status`,`valid_from`,`valid_until`),\n"
+            + "  KEY `idx_vouchers_kind` (`voucher_kind`),\n"
+            + "  KEY `idx_vouchers_auto_apply` (`auto_apply`,`status`,`benefit_target`)\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // `scope_ref_id` is polymorphic across items(item_id) and item_folders(folder_id) depending on
+    // `scope_type`, so it deliberately carries no FK - validated in voucherRepository instead.
+    voucher_scopes: Object.freeze({
+        sql: "CREATE TABLE `voucher_scopes` (\n"
+            + "  `voucher_scope_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `voucher_id` int NOT NULL,\n"
+            + "  `scope_type` enum('item','item_folder') NOT NULL,\n"
+            + "  `scope_ref_id` int NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`voucher_scope_id`),\n"
+            + "  UNIQUE KEY `uq_voucher_scopes_voucher_type_ref` (`voucher_id`,`scope_type`,`scope_ref_id`),\n"
+            + "  KEY `idx_voucher_scopes_type_ref` (`scope_type`,`scope_ref_id`),\n"
+            + "  CONSTRAINT `voucher_scopes_ibfk_1` FOREIGN KEY (`voucher_id`) REFERENCES `vouchers` (`voucher_id`) ON DELETE CASCADE\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // #788 (Phase 269): the DGFY-account allowlist for an account-restricted voucher. Declared
+    // after `voucher_scopes` and before `voucher_redemptions`, keeping this block in FK-dependency
+    // order -- its only FK is to `vouchers`, declared above.
+    //
+    // `dgfy_account_id` is CHAR(36) with NO foreign key: `dgfy_accounts` lives in the LANDLORD
+    // database while this table is tenant-scoped, so the reference is not expressible as an FK
+    // (ADR 0052) -- the same posture `voucher_redemptions.dgfy_account_id` below already takes.
+    // Kept string-identical to migration 20260908000001-add-voucher-account-restriction.cjs's own
+    // CREATE TABLE body (addVoucherAccountRestriction.migration.test.js asserts the identity).
+    voucher_account_grants: Object.freeze({
+        sql: "CREATE TABLE `voucher_account_grants` (\n"
+            + "  `voucher_account_grant_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `voucher_id` int NOT NULL,\n"
+            + "  `dgfy_account_id` char(36) NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`voucher_account_grant_id`),\n"
+            + "  UNIQUE KEY `uq_voucher_account_grants_voucher_account` (`voucher_id`,`dgfy_account_id`),\n"
+            + "  KEY `idx_voucher_account_grants_account` (`dgfy_account_id`),\n"
+            + "  CONSTRAINT `voucher_account_grants_ibfk_1` FOREIGN KEY (`voucher_id`) REFERENCES `vouchers` (`voucher_id`) ON DELETE CASCADE\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // The redemption ledger - authoritative, append-only (no `updated_at`). `idempotency_key` is
+    // NOT NULL UNIQUE and its row is inserted before the counter UPDATE, so a replay is rejected
+    // here rather than double-counting. `dgfy_account_id` is a landlord-side pointer with no FK.
+    //
+    // #788 (Phase 269): `dgfy_account_id` reads `char(36)` below, not `int`. That is the CORRECTED
+    // type -- `DgfyAccount.id` is a UUID and always has been, so the original `int` snapshot could
+    // never have held one. Nothing ever wrote the column before Phase 269, so no data was affected;
+    // existing tenants are retyped by that phase's migration, and this string is what a NEW tenant
+    // gets. See that migration's header for the full verification.
+    voucher_redemptions: Object.freeze({
+        sql: "CREATE TABLE `voucher_redemptions` (\n"
+            + "  `voucher_redemption_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `voucher_id` int NOT NULL,\n"
+            + "  `entry_type` enum('redemption','reversal','adjustment') NOT NULL DEFAULT 'redemption',\n"
+            + "  `pos_transaction_id` int DEFAULT NULL,\n"
+            + "  `channel` enum('storefront','pos') NOT NULL,\n"
+            + "  `location_id` int DEFAULT NULL,\n"
+            + "  `cashier_user_id` int DEFAULT NULL,\n"
+            + "  `terminal_id` varchar(100) DEFAULT NULL,\n"
+            + "  `store_customer_id` int DEFAULT NULL,\n"
+            + "  `dgfy_account_id` char(36) DEFAULT NULL,\n"
+            + "  `code_snapshot` varchar(64) NOT NULL,\n"
+            + "  `benefit_config_snapshot` json NOT NULL,\n"
+            + "  `subtotal_centavos` bigint NOT NULL DEFAULT '0',\n"
+            + "  `discount_centavos` bigint NOT NULL DEFAULT '0',\n"
+            + "  `benefit_quantity` int NOT NULL DEFAULT '0',\n"
+            + "  `redeemed_count_before` int NOT NULL,\n"
+            + "  `redeemed_count_after` int NOT NULL,\n"
+            + "  `redeemed_value_before_centavos` bigint NOT NULL,\n"
+            + "  `redeemed_value_after_centavos` bigint NOT NULL,\n"
+            + "  `redeemed_quantity_before` int NOT NULL,\n"
+            + "  `redeemed_quantity_after` int NOT NULL,\n"
+            + "  `idempotency_key` varchar(160) NOT NULL,\n"
+            + "  `reversal_of_redemption_id` int DEFAULT NULL,\n"
+            + "  `reason` varchar(500) DEFAULT NULL,\n"
+            + "  `metadata` json DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`voucher_redemption_id`),\n"
+            + "  UNIQUE KEY `uq_voucher_redemptions_idempotency` (`idempotency_key`),\n"
+            + "  KEY `idx_voucher_redemptions_voucher_created` (`voucher_id`,`created_at`),\n"
+            + "  KEY `idx_voucher_redemptions_transaction` (`pos_transaction_id`),\n"
+            + "  KEY `idx_voucher_redemptions_store_customer` (`store_customer_id`),\n"
+            + "  KEY `idx_voucher_redemptions_channel` (`channel`),\n"
+            + "  KEY `idx_voucher_redemptions_reversal_of` (`reversal_of_redemption_id`),\n"
+            + "  KEY `idx_voucher_redemptions_location` (`location_id`),\n"
+            + "  KEY `idx_voucher_redemptions_cashier` (`cashier_user_id`),\n"
+            // #788 (Phase 269): the per-account read this feature makes meaningful for the first
+            // time -- and the index #606 (per-customer voucher limits) will need unchanged.
+            + "  KEY `idx_voucher_redemptions_account` (`dgfy_account_id`,`voucher_id`),\n"
+            + "  CONSTRAINT `voucher_redemptions_ibfk_1` FOREIGN KEY (`voucher_id`) REFERENCES `vouchers` (`voucher_id`),\n"
+            + "  CONSTRAINT `voucher_redemptions_ibfk_2` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `voucher_redemptions_ibfk_3` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `voucher_redemptions_ibfk_4` FOREIGN KEY (`cashier_user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `voucher_redemptions_ibfk_5` FOREIGN KEY (`store_customer_id`) REFERENCES `store_customers` (`customer_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `voucher_redemptions_ibfk_6` FOREIGN KEY (`reversal_of_redemption_id`) REFERENCES `voucher_redemptions` (`voucher_redemption_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Per-item allocation. Both base and voucher unit prices are stored because
+    // Item.default_sale_price moves with Dispatch Order dispatches - without the base snapshot,
+    // "what did this campaign cost us" is unanswerable after the first dispatch.
+    voucher_redemption_lines: Object.freeze({
+        sql: "CREATE TABLE `voucher_redemption_lines` (\n"
+            + "  `voucher_redemption_line_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `voucher_redemption_id` int NOT NULL,\n"
+            + "  `item_id` int NOT NULL,\n"
+            + "  `quantity` decimal(24,12) NOT NULL DEFAULT '0.000000000000',\n"
+            + "  `base_unit_price_centavos` bigint NOT NULL DEFAULT '0',\n"
+            + "  `voucher_unit_price_centavos` bigint NOT NULL DEFAULT '0',\n"
+            + "  `discount_centavos` bigint NOT NULL DEFAULT '0',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`voucher_redemption_line_id`),\n"
+            + "  KEY `idx_voucher_redemption_lines_redemption` (`voucher_redemption_id`),\n"
+            + "  KEY `idx_voucher_redemption_lines_item` (`item_id`),\n"
+            + "  CONSTRAINT `voucher_redemption_lines_ibfk_1` FOREIGN KEY (`voucher_redemption_id`) REFERENCES `voucher_redemptions` (`voucher_redemption_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `voucher_redemption_lines_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`)\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 111 of #696 (extends #584/ADR 0066) - a per-item pricelist a fixed_price voucher may
+    // attach instead of a single fixed_unit_price_centavos. Declared after the voucher tables so
+    // vouchers.pricelist_id's own column-repair FK (below) has something to reference; declared
+    // before pricelist_items so that table's own FK to pricelists resolves.
+    // `draft_of_pricelist_id` is a self-FK: a non-null value marks this row as the open draft
+    // revision of the published pricelist it references (#698's draft -> publish cycle).
+    pricelists: Object.freeze({
+        sql: "CREATE TABLE `pricelists` (\n"
+            + "  `pricelist_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `name` varchar(120) NOT NULL,\n"
+            + "  `description` varchar(255) DEFAULT NULL,\n"
+            + "  `status` enum('draft','active','archived') NOT NULL DEFAULT 'draft',\n"
+            + "  `draft_of_pricelist_id` int DEFAULT NULL,\n"
+            + "  `version` int NOT NULL DEFAULT '0',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pricelist_id`),\n"
+            + "  UNIQUE KEY `uq_pricelists_draft_of` (`draft_of_pricelist_id`),\n"
+            + "  KEY `idx_pricelists_status` (`status`),\n"
+            + "  CONSTRAINT `pricelists_ibfk_1` FOREIGN KEY (`draft_of_pricelist_id`) REFERENCES `pricelists` (`pricelist_id`) ON DELETE CASCADE\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Intent, not a delta (same reasoning as vouchers.fixed_unit_price_centavos, ADR 0066 decision
+    // 5) - Item.default_sale_price moves with Dispatch Order dispatches. `is_manual_override`
+    // distinguishes a deliberately-typed price from #698's SRP prefill; without it there is no way
+    // to tell an untouched row (which drifts as default_sale_price moves) from one the merchant
+    // actually priced.
+    pricelist_items: Object.freeze({
+        sql: "CREATE TABLE `pricelist_items` (\n"
+            + "  `pricelist_item_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pricelist_id` int NOT NULL,\n"
+            + "  `item_id` int NOT NULL,\n"
+            + "  `unit_price_centavos` bigint NOT NULL,\n"
+            + "  `is_manual_override` tinyint(1) NOT NULL DEFAULT '0',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pricelist_item_id`),\n"
+            + "  UNIQUE KEY `uq_pricelist_items_pricelist_item` (`pricelist_id`,`item_id`),\n"
+            + "  KEY `idx_pricelist_items_item` (`item_id`),\n"
+            + "  CONSTRAINT `pricelist_items_ibfk_1` FOREIGN KEY (`pricelist_id`) REFERENCES `pricelists` (`pricelist_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `pricelist_items_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`)\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 118: additive transaction-linked adjustment evidence. The table is
+    // intentionally registered as a complete repair unit so older tenant
+    // schemas can receive the same foreign keys and indexes as new tenants.
+    pos_transaction_adjustments: Object.freeze({
+        sql: "CREATE TABLE `pos_transaction_adjustments` (\n"
+            + "  `pos_transaction_adjustment_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `adjustment_reference` varchar(40) NOT NULL,\n"
+            + "  `pos_transaction_id` int NOT NULL,\n"
+            + "  `pos_payment_allocation_id` int DEFAULT NULL,\n"
+            + "  `original_cashier_id` int DEFAULT NULL,\n"
+            + "  `original_shift_id` int DEFAULT NULL,\n"
+            + "  `original_terminal_id` varchar(100) DEFAULT NULL,\n"
+            + "  `original_location_id` int DEFAULT NULL,\n"
+            + "  `actor_user_id` int NOT NULL,\n"
+            + "  `actor_shift_id` int DEFAULT NULL,\n"
+            + "  `actor_terminal_id` varchar(100) DEFAULT NULL,\n"
+            + "  `actor_location_id` int DEFAULT NULL,\n"
+            + "  `adjustment_type` enum('void','cash_refund','external_refund','provider_refund','employee_credit_reversal') NOT NULL,\n"
+            + "  `tender_type` varchar(40) NOT NULL,\n"
+            + "  `amount` decimal(14,4) NOT NULL,\n"
+            + "  `currency` varchar(3) NOT NULL DEFAULT 'PHP',\n"
+            + "  `status` enum('pending','succeeded','failed','cancelled','manual_review_required') NOT NULL DEFAULT 'pending',\n"
+            + "  `reason` varchar(255) NOT NULL,\n"
+            + "  `idempotency_key` varchar(120) NOT NULL,\n"
+            + "  `request_hash` varchar(64) NOT NULL,\n"
+            + "  `approved_by` int DEFAULT NULL,\n"
+            + "  `approved_at` datetime DEFAULT NULL,\n"
+            + "  `external_reference` varchar(255) DEFAULT NULL,\n"
+            + "  `provider` varchar(40) DEFAULT NULL,\n"
+            + "  `provider_reference` varchar(120) DEFAULT NULL,\n"
+            + "  `provider_event_id` varchar(255) DEFAULT NULL,\n"
+            + "  `cash_drawer_event_id` int DEFAULT NULL,\n"
+            + "  `failure_code` varchar(80) DEFAULT NULL,\n"
+            + "  `failure_reason` varchar(500) DEFAULT NULL,\n"
+            + "  `retry_count` int NOT NULL DEFAULT '0',\n"
+            + "  `last_retry_at` datetime DEFAULT NULL,\n"
+            + "  `completed_at` datetime DEFAULT NULL,\n"
+            + "  `failed_at` datetime DEFAULT NULL,\n"
+            + "  `cancelled_at` datetime DEFAULT NULL,\n"
+            + "  `metadata` json DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pos_transaction_adjustment_id`),\n"
+            + "  UNIQUE KEY `adjustment_reference` (`adjustment_reference`),\n"
+            + "  UNIQUE KEY `uq_pos_transaction_adjustments_transaction_idempotency` (`pos_transaction_id`,`idempotency_key`),\n"
+            + "  UNIQUE KEY `uq_pos_transaction_adjustments_provider_event_id` (`provider_event_id`),\n"
+            + "  KEY `idx_pos_transaction_adjustments_transaction_created` (`pos_transaction_id`,`created_at`),\n"
+            + "  KEY `idx_pos_transaction_adjustments_allocation_created` (`pos_payment_allocation_id`,`created_at`),\n"
+            + "  KEY `idx_pos_transaction_adjustments_original_shift_created` (`original_shift_id`,`created_at`),\n"
+            + "  KEY `idx_pos_transaction_adjustments_actor_created` (`actor_user_id`,`created_at`),\n"
+            + "  KEY `idx_pos_transaction_adjustments_status_created` (`status`,`created_at`),\n"
+            + "  KEY `idx_pos_transaction_adjustments_cash_drawer_event` (`cash_drawer_event_id`),\n"
+            + "  CONSTRAINT `pos_transaction_adjustments_ibfk_1` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE RESTRICT,\n"
+            + "  CONSTRAINT `pos_transaction_adjustments_ibfk_2` FOREIGN KEY (`pos_payment_allocation_id`) REFERENCES `pos_payment_allocations` (`pos_payment_allocation_id`) ON DELETE RESTRICT,\n"
+            + "  CONSTRAINT `pos_transaction_adjustments_ibfk_3` FOREIGN KEY (`original_cashier_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_transaction_adjustments_ibfk_4` FOREIGN KEY (`original_shift_id`) REFERENCES `pos_terminal_shifts` (`pos_terminal_shift_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_transaction_adjustments_ibfk_5` FOREIGN KEY (`original_location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_transaction_adjustments_ibfk_6` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT,\n"
+            + "  CONSTRAINT `pos_transaction_adjustments_ibfk_7` FOREIGN KEY (`actor_shift_id`) REFERENCES `pos_terminal_shifts` (`pos_terminal_shift_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_transaction_adjustments_ibfk_8` FOREIGN KEY (`actor_location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_transaction_adjustments_ibfk_9` FOREIGN KEY (`approved_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_transaction_adjustments_ibfk_10` FOREIGN KEY (`cash_drawer_event_id`) REFERENCES `pos_cash_drawer_events` (`pos_cash_drawer_event_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 137 (#819) -- ADR 0069 clause 4b (carried over verbatim from ADR 0068 clause 4b).
+    // This DDL was originally hand-authored from the 20260821000004 migration's column defs (no
+    // local MySQL was available in the drafting session). pr-reviewer independently verified it
+    // byte-for-byte against a real `SHOW CREATE TABLE` output from a scratch MySQL 8.0 run of all
+    // 263 migrations (PR #829 review, 2026-08-21) -- confirmed structurally correct; only
+    // cosmetic differences (key ordering, MySQL's implicit `ON UPDATE RESTRICT`). Verified, not
+    // provisional.
+    pos_order_payments: Object.freeze({
+        sql: "CREATE TABLE `pos_order_payments` (\n"
+            + "  `pos_order_payment_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pos_transaction_id` int NOT NULL,\n"
+            + "  `kind` enum('downpayment','balance','refund','forfeiture') NOT NULL,\n"
+            + "  `status` enum('pending','successful','failed','cancelled','reversed') NOT NULL DEFAULT 'pending',\n"
+            + "  `amount` decimal(14,4) NOT NULL,\n"
+            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay','cheque') NOT NULL,\n"
+            + "  `idempotency_key` varchar(120) NOT NULL,\n"
+            + "  `payment_reference` varchar(120) DEFAULT NULL,\n"
+            + "  `payment_provider` varchar(40) DEFAULT NULL,\n"
+            + "  `provider_event_id` varchar(120) DEFAULT NULL,\n"
+            + "  `related_pos_order_payment_id` int DEFAULT NULL,\n"
+            + "  `recorded_by` int DEFAULT NULL,\n"
+            + "  `confirmed_at` datetime DEFAULT NULL,\n"
+            // Phase 204 (#965): optional proof-of-payment image columns. Kept in lockstep with
+            // migration 20260831000001-add-pos-order-payment-proof-columns.cjs.
+            + "  `proof_file_path` varchar(255) DEFAULT NULL,\n"
+            + "  `proof_mime_type` varchar(60) DEFAULT NULL,\n"
+            + "  `proof_file_size_bytes` int DEFAULT NULL,\n"
+            + "  `proof_sha256` char(64) DEFAULT NULL,\n"
+            + "  `proof_attached_at` datetime DEFAULT NULL,\n"
+            + "  `proof_attached_by` int DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pos_order_payment_id`),\n"
+            + "  UNIQUE KEY `uq_pos_order_payments_transaction_idempotency` (`pos_transaction_id`,`idempotency_key`),\n"
+            + "  UNIQUE KEY `uq_pos_order_payments_provider_event_id` (`provider_event_id`),\n"
+            + "  KEY `idx_pos_order_payments_transaction_status` (`pos_transaction_id`,`status`),\n"
+            + "  KEY `idx_pos_order_payments_transaction_kind` (`pos_transaction_id`,`kind`),\n"
+            + "  KEY `idx_pos_order_payments_created_at` (`created_at`),\n"
+            + "  KEY `related_pos_order_payment_id` (`related_pos_order_payment_id`),\n"
+            + "  KEY `recorded_by` (`recorded_by`),\n"
+            + "  KEY `proof_attached_by` (`proof_attached_by`),\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_1` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE RESTRICT,\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_2` FOREIGN KEY (`related_pos_order_payment_id`) REFERENCES `pos_order_payments` (`pos_order_payment_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_3` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `pos_order_payments_ibfk_4` FOREIGN KEY (`proof_attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 210 (#1179): append-only audit trail for a staff delivery-address/pin edit on an
+    // online order, after placement. Kept in lockstep with migration 20260901000002-add-order-
+    // rejection-reason-and-address-change-audit.cjs. Structurally modelled on pos_order_payments
+    // above -- one row per event, FK back to the transaction.
+    pos_order_address_changes: Object.freeze({
+        sql: "CREATE TABLE `pos_order_address_changes` (\n"
+            + "  `address_change_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pos_transaction_id` int NOT NULL,\n"
+            + "  `previous_address` text,\n"
+            + "  `previous_latitude` decimal(10,8) DEFAULT NULL,\n"
+            + "  `previous_longitude` decimal(11,8) DEFAULT NULL,\n"
+            + "  `new_address` text NOT NULL,\n"
+            + "  `new_latitude` decimal(10,8) DEFAULT NULL,\n"
+            + "  `new_longitude` decimal(11,8) DEFAULT NULL,\n"
+            + "  `change_reason` varchar(255) NOT NULL,\n"
+            + "  `changed_by` int DEFAULT NULL,\n"
+            + "  `changed_by_shift_id` int DEFAULT NULL,\n"
+            + "  `changed_at` datetime NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`address_change_id`),\n"
+            + "  KEY `idx_pos_order_address_changes_transaction_changed_at` (`pos_transaction_id`,`changed_at`),\n"
+            + "  KEY `changed_by` (`changed_by`),\n"
+            + "  CONSTRAINT `fk_pos_order_address_changes_pos_transaction_id` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `fk_pos_order_address_changes_changed_by` FOREIGN KEY (`changed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Online inventory reservations are tenant-local and must be repaired for tenants that
+    // predate the reservation migration. Keep this DDL aligned with
+    // 20260822000001-create-inventory-reservations.cjs; the runner uses the same additive shape.
+    inventory_reservations: Object.freeze({
+        sql: "CREATE TABLE `inventory_reservations` (\n"
+            + "  `inventory_reservation_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `source_type` enum('online_order') NOT NULL,\n"
+            + "  `source_id` int NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `status` enum('active','released','expired','converted') NOT NULL DEFAULT 'active',\n"
+            + "  `expires_at` datetime NOT NULL,\n"
+            + "  `released_at` datetime DEFAULT NULL,\n"
+            + "  `release_reason` varchar(80) DEFAULT NULL,\n"
+            + "  `converted_at` datetime DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`inventory_reservation_id`),\n"
+            + "  UNIQUE KEY `uq_inventory_reservations_source` (`source_type`,`source_id`),\n"
+            + "  KEY `idx_inventory_reservations_location_status_expiry` (`location_id`,`status`,`expires_at`),\n"
+            + "  KEY `idx_inventory_reservations_status_expiry` (`status`,`expires_at`),\n"
+            + "  CONSTRAINT `inventory_reservations_ibfk_1` FOREIGN KEY (`source_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE RESTRICT,\n"
+            + "  CONSTRAINT `inventory_reservations_ibfk_2` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    inventory_reservation_lines: Object.freeze({
+        sql: "CREATE TABLE `inventory_reservation_lines` (\n"
+            + "  `inventory_reservation_line_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `inventory_reservation_id` int NOT NULL,\n"
+            + "  `item_id` int NOT NULL,\n"
+            + "  `quantity` decimal(24,12) NOT NULL,\n"
+            + "  `effect_type` enum('line_item','recipe_ingredient','modifier') NOT NULL,\n"
+            + "  `source_line_reference` varchar(120) NOT NULL,\n"
+            + "  `metadata` json DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`inventory_reservation_line_id`),\n"
+            + "  KEY `idx_inventory_reservation_lines_reservation` (`inventory_reservation_id`),\n"
+            + "  KEY `idx_inventory_reservation_lines_item` (`item_id`),\n"
+            + "  KEY `idx_inventory_reservation_lines_item_created` (`item_id`,`created_at`),\n"
+            + "  CONSTRAINT `inventory_reservation_lines_ibfk_1` FOREIGN KEY (`inventory_reservation_id`) REFERENCES `inventory_reservations` (`inventory_reservation_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `inventory_reservation_lines_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    employee_attendance_sessions: Object.freeze({
+        sql: "CREATE TABLE `employee_attendance_sessions` (\n"
+            + "  `employee_attendance_session_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `employee_id` int DEFAULT NULL,\n"
+            + "  `user_id` int NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `duty_type` enum('regular','relief') NOT NULL,\n"
+            + "  `status` enum('open','closed') NOT NULL DEFAULT 'open',\n"
+            + "  `active_user_id` int GENERATED ALWAYS AS (CASE WHEN `status` = _utf8mb4'open' THEN `user_id` ELSE NULL END) STORED,\n"
+            + "  `started_at` datetime NOT NULL,\n"
+            + "  `ended_at` datetime DEFAULT NULL,\n"
+            + "  `closed_by` int DEFAULT NULL,\n"
+            + "  `start_idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `end_idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`employee_attendance_session_id`),\n"
+            + "  UNIQUE KEY `uq_employee_attendance_sessions_active_user` (`active_user_id`),\n"
+            + "  UNIQUE KEY `uq_employee_attendance_sessions_user_start_idempotency` (`user_id`,`start_idempotency_key`),\n"
+            + "  UNIQUE KEY `uq_employee_attendance_sessions_user_end_idempotency` (`user_id`,`end_idempotency_key`),\n"
+            + "  KEY `idx_employee_attendance_sessions_employee_started` (`employee_id`,`started_at`),\n"
+            + "  KEY `idx_employee_attendance_sessions_user_started` (`user_id`,`started_at`),\n"
+            + "  KEY `idx_employee_attendance_sessions_location_status_started` (`location_id`,`status`,`started_at`),\n"
+            + "  KEY `idx_employee_attendance_sessions_duty_started` (`duty_type`,`started_at`),\n"
+            + "  CONSTRAINT `employee_attendance_sessions_fk_employee` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `employee_attendance_sessions_fk_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `employee_attendance_sessions_fk_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `employee_attendance_sessions_fk_closed_by` FOREIGN KEY (`closed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    employee_break_segments: Object.freeze({
+        sql: "CREATE TABLE `employee_break_segments` (\n"
+            + "  `employee_break_segment_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `employee_attendance_session_id` int NOT NULL,\n"
+            + "  `status` enum('open','closed') NOT NULL DEFAULT 'open',\n"
+            + "  `active_attendance_session_id` int GENERATED ALWAYS AS (CASE WHEN `status` = _utf8mb4'open' THEN `employee_attendance_session_id` ELSE NULL END) STORED,\n"
+            + "  `started_at` datetime NOT NULL,\n"
+            + "  `ended_at` datetime DEFAULT NULL,\n"
+            + "  `ended_by` int DEFAULT NULL,\n"
+            + "  `start_idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `end_idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`employee_break_segment_id`),\n"
+            + "  UNIQUE KEY `uq_employee_break_segments_active_session` (`active_attendance_session_id`),\n"
+            + "  UNIQUE KEY `uq_employee_break_segments_session_start_idempotency` (`employee_attendance_session_id`,`start_idempotency_key`),\n"
+            + "  UNIQUE KEY `uq_employee_break_segments_session_end_idempotency` (`employee_attendance_session_id`,`end_idempotency_key`),\n"
+            + "  KEY `idx_employee_break_segments_attendance_started` (`employee_attendance_session_id`,`started_at`),\n"
+            + "  KEY `idx_employee_break_segments_status_started` (`status`,`started_at`),\n"
+            + "  CONSTRAINT `employee_break_segments_fk_attendance` FOREIGN KEY (`employee_attendance_session_id`) REFERENCES `employee_attendance_sessions` (`employee_attendance_session_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `employee_break_segments_fk_ended_by` FOREIGN KEY (`ended_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    pos_terminal_operator_sessions: Object.freeze({
+        sql: "CREATE TABLE `pos_terminal_operator_sessions` (\n"
+            + "  `pos_terminal_operator_session_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pos_terminal_shift_id` int NOT NULL,\n"
+            + "  `terminal_id` varchar(100) NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `user_id` int NOT NULL,\n"
+            + "  `employee_attendance_session_id` int DEFAULT NULL,\n"
+            + "  `status` enum('active','ended') NOT NULL DEFAULT 'active',\n"
+            + "  `active_terminal_id` varchar(100) GENERATED ALWAYS AS (CASE WHEN `status` = _utf8mb4'active' THEN upper(trim(`terminal_id`)) ELSE NULL END) STORED,\n"
+            + "  `active_operator_user_id` int GENERATED ALWAYS AS (CASE WHEN `status` = _utf8mb4'active' THEN `user_id` ELSE NULL END) STORED,\n"
+            + "  `started_at` datetime NOT NULL,\n"
+            + "  `ended_at` datetime DEFAULT NULL,\n"
+            + "  `ended_reason` varchar(80) DEFAULT NULL,\n"
+            + "  `authority_token_hash` varchar(64) DEFAULT NULL,\n"
+            + "  `authority_expires_at` datetime DEFAULT NULL,\n"
+            + "  `revoked_at` datetime DEFAULT NULL,\n"
+            + "  `revoked_reason` varchar(80) DEFAULT NULL,\n"
+            + "  `idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `protected_operation_key` varchar(120) DEFAULT NULL,\n"
+            + "  `protected_operation_type` varchar(120) DEFAULT NULL,\n"
+            + "  `protected_operation_started_at` datetime DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pos_terminal_operator_session_id`),\n"
+            + "  UNIQUE KEY `uq_pos_terminal_operator_sessions_active_terminal` (`active_terminal_id`),\n"
+            + "  UNIQUE KEY `uq_pos_terminal_operator_sessions_active_user` (`active_operator_user_id`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_shift_started` (`pos_terminal_shift_id`,`started_at`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_terminal_started` (`terminal_id`,`started_at`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_location_started` (`location_id`,`started_at`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_user_started` (`user_id`,`started_at`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_status_started` (`status`,`started_at`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_authority_token_hash` (`authority_token_hash`),\n"
+            + "  KEY `idx_pos_terminal_operator_sessions_protected_operation` (`pos_terminal_shift_id`,`protected_operation_started_at`),\n"
+            + "  UNIQUE KEY `uq_pos_terminal_operator_sessions_shift_idempotency` (`pos_terminal_shift_id`,`idempotency_key`),\n"
+            + "  CONSTRAINT `pos_terminal_operator_sessions_fk_shift` FOREIGN KEY (`pos_terminal_shift_id`) REFERENCES `pos_terminal_shifts` (`pos_terminal_shift_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_terminal_operator_sessions_fk_terminal_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_terminal_operator_sessions_fk_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_terminal_operator_sessions_fk_attendance` FOREIGN KEY (`employee_attendance_session_id`) REFERENCES `employee_attendance_sessions` (`employee_attendance_session_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    pos_drawer_handoff_events: Object.freeze({
+        sql: "CREATE TABLE `pos_drawer_handoff_events` (\n"
+            + "  `pos_drawer_handoff_event_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `pos_terminal_shift_id` int NOT NULL,\n"
+            + "  `terminal_id` varchar(100) NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `event_type` enum('shared_relief_start','shared_relief_end','counted_custody_transfer') NOT NULL,\n"
+            + "  `custody_mode` enum('shared_access','counted_transfer') NOT NULL,\n"
+            + "  `outgoing_operator_user_id` int DEFAULT NULL,\n"
+            + "  `incoming_operator_user_id` int DEFAULT NULL,\n"
+            + "  `expected_cash_amount` decimal(14,4) DEFAULT NULL,\n"
+            + "  `counted_cash_amount` decimal(14,4) DEFAULT NULL,\n"
+            + "  `variance_amount` decimal(14,4) DEFAULT NULL,\n"
+            + "  `outgoing_acknowledged_by` int DEFAULT NULL,\n"
+            + "  `outgoing_acknowledged_at` datetime DEFAULT NULL,\n"
+            + "  `incoming_acknowledged_by` int DEFAULT NULL,\n"
+            + "  `incoming_acknowledged_at` datetime DEFAULT NULL,\n"
+            + "  `recorded_by` int NOT NULL,\n"
+            + "  `event_at` datetime NOT NULL,\n"
+            + "  `idempotency_key` varchar(120) DEFAULT NULL,\n"
+            + "  `note` varchar(500) DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pos_drawer_handoff_event_id`),\n"
+            + "  UNIQUE KEY `uq_pos_drawer_handoff_events_shift_idempotency` (`pos_terminal_shift_id`,`idempotency_key`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_shift_event` (`pos_terminal_shift_id`,`event_at`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_terminal_event` (`terminal_id`,`event_at`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_location_event` (`location_id`,`event_at`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_type_event` (`event_type`,`event_at`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_incoming_event` (`incoming_operator_user_id`,`event_at`),\n"
+            + "  KEY `idx_pos_drawer_handoff_events_outgoing_event` (`outgoing_operator_user_id`,`event_at`),\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_shift` FOREIGN KEY (`pos_terminal_shift_id`) REFERENCES `pos_terminal_shifts` (`pos_terminal_shift_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_outgoing` FOREIGN KEY (`outgoing_operator_user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_incoming` FOREIGN KEY (`incoming_operator_user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_outgoing_ack` FOREIGN KEY (`outgoing_acknowledged_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_incoming_ack` FOREIGN KEY (`incoming_acknowledged_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `pos_drawer_handoff_events_fk_recorded_by` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 257 (#1318) — secondary item/category memberships. FKs reference
+    // `items`/`item_folders`, both base tables never in this registry and
+    // always present, so no ordering constraint on this entry. See ADR 0080.
+    item_folder_memberships: Object.freeze({
+        sql: "CREATE TABLE `item_folder_memberships` ("
+            + " `item_folder_membership_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `item_id` INT NOT NULL, `folder_id` INT NOT NULL,"
+            + " `sort_order` INT NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`item_folder_membership_id`),"
+            + " UNIQUE KEY `uq_item_folder_memberships_folder_item` (`folder_id`,`item_id`),"
+            + " KEY `idx_item_folder_memberships_item` (`item_id`),"
+            + " CONSTRAINT `fk_item_folder_memberships_folder` FOREIGN KEY (`folder_id`) REFERENCES `item_folders` (`folder_id`) ON DELETE CASCADE,"
+            + " CONSTRAINT `fk_item_folder_memberships_item` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     })
 });
 
@@ -968,6 +2030,64 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD UNIQUE INDEX `uq_pos_terminal_shifts_active_operator` (`active_operator_user_id`)"
         })
     }),
+    pos_transactions: Object.freeze({
+        idx_pos_transactions_operator_session_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD INDEX `idx_pos_transactions_operator_session_id` (`operator_session_id`)"
+        })
+    }),
+    // Phase 210 (#1179). Repair path for a tenant whose pos_order_address_changes table exists
+    // (created via the CREATE TABLE repair above, which already includes this KEY) but somehow
+    // predates the index -- e.g. a partial migration run. Kept in lockstep with migration
+    // 20260901000002.
+    pos_order_address_changes: Object.freeze({
+        idx_pos_order_address_changes_transaction_changed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_order_address_changes` ADD INDEX `idx_pos_order_address_changes_transaction_changed_at` (`pos_transaction_id`,`changed_at`)"
+        })
+    }),
+    employee_attendance_sessions: Object.freeze({
+        uq_employee_attendance_sessions_active_user: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD UNIQUE INDEX `uq_employee_attendance_sessions_active_user` (`active_user_id`)"
+        }),
+        uq_employee_attendance_sessions_user_start_idempotency: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD UNIQUE INDEX `uq_employee_attendance_sessions_user_start_idempotency` (`user_id`,`start_idempotency_key`)"
+        }),
+        uq_employee_attendance_sessions_user_end_idempotency: Object.freeze({
+            sql: "ALTER TABLE `employee_attendance_sessions` ADD UNIQUE INDEX `uq_employee_attendance_sessions_user_end_idempotency` (`user_id`,`end_idempotency_key`)"
+        })
+    }),
+    employee_break_segments: Object.freeze({
+        uq_employee_break_segments_active_session: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD UNIQUE INDEX `uq_employee_break_segments_active_session` (`active_attendance_session_id`)"
+        }),
+        uq_employee_break_segments_session_start_idempotency: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD UNIQUE INDEX `uq_employee_break_segments_session_start_idempotency` (`employee_attendance_session_id`,`start_idempotency_key`)"
+        }),
+        uq_employee_break_segments_session_end_idempotency: Object.freeze({
+            sql: "ALTER TABLE `employee_break_segments` ADD UNIQUE INDEX `uq_employee_break_segments_session_end_idempotency` (`employee_attendance_session_id`,`end_idempotency_key`)"
+        })
+    }),
+    pos_terminal_operator_sessions: Object.freeze({
+        uq_pos_terminal_operator_sessions_active_terminal: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD UNIQUE INDEX `uq_pos_terminal_operator_sessions_active_terminal` (`active_terminal_id`)"
+        }),
+        uq_pos_terminal_operator_sessions_active_user: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD UNIQUE INDEX `uq_pos_terminal_operator_sessions_active_user` (`active_operator_user_id`)"
+        }),
+        idx_pos_terminal_operator_sessions_authority_token_hash: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD INDEX `idx_pos_terminal_operator_sessions_authority_token_hash` (`authority_token_hash`)"
+        }),
+        idx_pos_terminal_operator_sessions_protected_operation: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD INDEX `idx_pos_terminal_operator_sessions_protected_operation` (`pos_terminal_shift_id`,`protected_operation_started_at`)"
+        }),
+        uq_pos_terminal_operator_sessions_shift_idempotency: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_operator_sessions` ADD UNIQUE INDEX `uq_pos_terminal_operator_sessions_shift_idempotency` (`pos_terminal_shift_id`,`idempotency_key`)"
+        })
+    }),
+    pos_drawer_handoff_events: Object.freeze({
+        uq_pos_drawer_handoff_events_shift_idempotency: Object.freeze({
+            sql: "ALTER TABLE `pos_drawer_handoff_events` ADD UNIQUE INDEX `uq_pos_drawer_handoff_events_shift_idempotency` (`pos_terminal_shift_id`,`idempotency_key`)"
+        })
+    }),
     pos_z_reading_snapshots: Object.freeze({
         uq_pos_z_reading_snapshots_business_date_location: Object.freeze({
             sql: "ALTER TABLE `pos_z_reading_snapshots` ADD UNIQUE INDEX `uq_pos_z_reading_snapshots_business_date_location` (`business_date`,`location_id`)"
@@ -982,11 +2102,19 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         })
     }),
     pos_payment_allocations: Object.freeze({
+        idx_pos_payment_allocations_session_reversal_status: Object.freeze({
+            sql: "ALTER TABLE `pos_payment_allocations` ADD INDEX `idx_pos_payment_allocations_session_reversal_status` (`session_id`,`reversal_status`)"
+        }),
         uq_pos_payment_allocations_provider_event_id: Object.freeze({
             sql: "ALTER TABLE `pos_payment_allocations` ADD UNIQUE INDEX `uq_pos_payment_allocations_provider_event_id` (`provider_event_id`)"
         }),
         uq_pos_payment_allocations_provider_refund_event_id: Object.freeze({
             sql: "ALTER TABLE `pos_payment_allocations` ADD UNIQUE INDEX `uq_pos_payment_allocations_provider_refund_event_id` (`provider_refund_event_id`)"
+        })
+    }),
+    pos_transaction_adjustments: Object.freeze({
+        idx_pos_transaction_adjustments_allocation_created: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_adjustments` ADD INDEX `idx_pos_transaction_adjustments_allocation_created` (`pos_payment_allocation_id`,`created_at`)"
         })
     }),
     delivery_personnel: Object.freeze({
@@ -1003,11 +2131,130 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         idx_delivery_jobs_assignment_shift: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_assignment_shift` (`assigned_shift_id`)"
+        }),
+        idx_delivery_jobs_run_status: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_run_status` (`delivery_run_id`,`status`)"
         })
     }),
     fnb_modifier_groups: Object.freeze({
         idx_fnb_modifier_groups_parent_option: Object.freeze({
             sql: "ALTER TABLE `fnb_modifier_groups` ADD INDEX `idx_fnb_modifier_groups_parent_option` (`parent_modifier_option_id`)"
+        })
+    }),
+    audit_logs: Object.freeze({
+        idx_audit_event_timestamp: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD INDEX `idx_audit_event_timestamp` (`event_type`,`timestamp`)"
+        }),
+        idx_audit_terminal_timestamp: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD INDEX `idx_audit_terminal_timestamp` (`terminal_id`,`timestamp`)"
+        }),
+        idx_audit_shift_timestamp: Object.freeze({
+            sql: "ALTER TABLE `audit_logs` ADD INDEX `idx_audit_shift_timestamp` (`shift_id`,`timestamp`)"
+        })
+    }),
+    pos_parked_sales: Object.freeze({
+        idx_pos_parked_sales_origin_cashier_status: Object.freeze({
+            sql: "ALTER TABLE `pos_parked_sales` ADD INDEX `idx_pos_parked_sales_origin_cashier_status` (`origin_cashier_id`,`status`)"
+        }),
+        idx_pos_parked_sales_origin_shift_status: Object.freeze({
+            sql: "ALTER TABLE `pos_parked_sales` ADD INDEX `idx_pos_parked_sales_origin_shift_status` (`origin_shift_id`,`status`)"
+        })
+    }),
+    // Voucher indexes (#455). A tenant that gets these tables from REQUIRED_TENANT_SCHEMA_TABLES
+    // above already has every index inline in the CREATE TABLE, so these entries only fire for a
+    // tenant whose tables came from sequelize.sync() -- which, before the model `indexes` blocks were
+    // added alongside this, created none of them.
+    //
+    // uq_voucher_scopes_voucher_type_ref is the one that can legitimately fail here: adding a unique
+    // index to a table that already holds duplicate (voucher_id, scope_type, scope_ref_id) rows
+    // errors rather than silently dropping rows. That is the correct outcome -- it needs a human to
+    // decide which duplicate survives -- and it is reported per-tenant like any other repair failure.
+    vouchers: Object.freeze({
+        uq_vouchers_code: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD UNIQUE INDEX `uq_vouchers_code` (`code`)"
+        }),
+        idx_vouchers_status_validity: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD INDEX `idx_vouchers_status_validity` (`status`,`valid_from`,`valid_until`)"
+        }),
+        idx_vouchers_kind: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD INDEX `idx_vouchers_kind` (`voucher_kind`)"
+        }),
+        idx_vouchers_pricelist: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD INDEX `idx_vouchers_pricelist` (`pricelist_id`)"
+        }),
+        // #1332 (Phase 244): covers voucherRepository.js's `listAutoApplyDeliveryCampaigns` query
+        // exactly. Kept in lockstep with migration 20260905000002-add-voucher-auto-apply.cjs -- this
+        // DDL string must stay string-identical to that migration's own ADD INDEX statement.
+        idx_vouchers_auto_apply: Object.freeze({
+            sql: "ALTER TABLE `vouchers` ADD INDEX `idx_vouchers_auto_apply` (`auto_apply`,`status`,`benefit_target`)"
+        })
+    }),
+    voucher_scopes: Object.freeze({
+        uq_voucher_scopes_voucher_type_ref: Object.freeze({
+            sql: "ALTER TABLE `voucher_scopes` ADD UNIQUE INDEX `uq_voucher_scopes_voucher_type_ref` (`voucher_id`,`scope_type`,`scope_ref_id`)"
+        }),
+        idx_voucher_scopes_type_ref: Object.freeze({
+            sql: "ALTER TABLE `voucher_scopes` ADD INDEX `idx_voucher_scopes_type_ref` (`scope_type`,`scope_ref_id`)"
+        })
+    }),
+    voucher_redemptions: Object.freeze({
+        uq_voucher_redemptions_idempotency: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD UNIQUE INDEX `uq_voucher_redemptions_idempotency` (`idempotency_key`)"
+        }),
+        idx_voucher_redemptions_voucher_created: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_voucher_created` (`voucher_id`,`created_at`)"
+        }),
+        idx_voucher_redemptions_transaction: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_transaction` (`pos_transaction_id`)"
+        }),
+        idx_voucher_redemptions_store_customer: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_store_customer` (`store_customer_id`)"
+        }),
+        idx_voucher_redemptions_channel: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_channel` (`channel`)"
+        }),
+        idx_voucher_redemptions_reversal_of: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_reversal_of` (`reversal_of_redemption_id`)"
+        }),
+        idx_voucher_redemptions_location: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_location` (`location_id`)"
+        }),
+        idx_voucher_redemptions_cashier: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_cashier` (`cashier_user_id`)"
+        }),
+        // #788 (Phase 269): added alongside the column retype in migration
+        // 20260908000001-add-voucher-account-restriction.cjs. Unlike that migration's retype (which
+        // this registry structurally cannot repair -- see the note on
+        // REQUIRED_TENANT_SCHEMA_COLUMNS.vouchers.is_account_restricted), an index IS
+        // presence-repairable, so a tenant restored from a pre-#788 snapshot self-heals this one.
+        idx_voucher_redemptions_account: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemptions` ADD INDEX `idx_voucher_redemptions_account` (`dgfy_account_id`,`voucher_id`)"
+        })
+    }),
+    voucher_redemption_lines: Object.freeze({
+        idx_voucher_redemption_lines_redemption: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemption_lines` ADD INDEX `idx_voucher_redemption_lines_redemption` (`voucher_redemption_id`)"
+        }),
+        idx_voucher_redemption_lines_item: Object.freeze({
+            sql: "ALTER TABLE `voucher_redemption_lines` ADD INDEX `idx_voucher_redemption_lines_item` (`item_id`)"
+        })
+    }),
+    // Pricelist indexes (#696). Same rationale as the voucher block above -- only fires for a
+    // tenant whose tables came from sequelize.sync() rather than REQUIRED_TENANT_SCHEMA_TABLES.
+    pricelists: Object.freeze({
+        idx_pricelists_status: Object.freeze({
+            sql: "ALTER TABLE `pricelists` ADD INDEX `idx_pricelists_status` (`status`)"
+        }),
+        uq_pricelists_draft_of: Object.freeze({
+            sql: "ALTER TABLE `pricelists` ADD UNIQUE INDEX `uq_pricelists_draft_of` (`draft_of_pricelist_id`)"
+        })
+    }),
+    pricelist_items: Object.freeze({
+        uq_pricelist_items_pricelist_item: Object.freeze({
+            sql: "ALTER TABLE `pricelist_items` ADD UNIQUE INDEX `uq_pricelist_items_pricelist_item` (`pricelist_id`,`item_id`)"
+        }),
+        idx_pricelist_items_item: Object.freeze({
+            sql: "ALTER TABLE `pricelist_items` ADD INDEX `idx_pricelist_items_item` (`item_id`)"
         })
     })
 });
@@ -1068,6 +2315,19 @@ export async function repairItemFolderCategoryLifecycleSchema(connection, tenant
     if (!indexes.some((row) => row.INDEX_NAME === 'uq_item_folders_active_name')) {
         await connection.query(`ALTER TABLE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('item_folders')} ADD UNIQUE INDEX ${quoteIdentifier('uq_item_folders_active_name')} (${quoteIdentifier('active_name_key')})`);
     }
+}
+
+// Existing parked sales predate the shared-queue handoff columns. Preserve their
+// creator/shift identity before a future cashier claims the sale and the current
+// ownership fields move to the new cashier/shift.
+export async function repairPosParkedSaleOriginOwnership(connection, tenantDb) {
+    await connection.query(
+        `UPDATE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('pos_parked_sales')}
+            SET ${quoteIdentifier('origin_cashier_id')} = COALESCE(${quoteIdentifier('origin_cashier_id')}, ${quoteIdentifier('cashier_id')}),
+                ${quoteIdentifier('origin_shift_id')} = COALESCE(${quoteIdentifier('origin_shift_id')}, ${quoteIdentifier('shift_id')})
+          WHERE ${quoteIdentifier('origin_cashier_id')} IS NULL
+             OR ${quoteIdentifier('origin_shift_id')} IS NULL`
+    );
 }
 
 // MySQL refuses to add a STORED generated column whose base column carries an ON UPDATE
@@ -1135,9 +2395,17 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     // pos_transactions.order_method = 'appointment'. Presence checks miss this the same way
     // they missed items.category above.
     pos_transactions: Object.freeze({
+        // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
+        // (#1085), migration 20260830000003.
         payment_type: Object.freeze({
-            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit']),
-            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit') NOT NULL DEFAULT 'cash'"
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay','cheque') NOT NULL DEFAULT 'cash'"
+        }),
+        // Phase 137 (#819) -- ADR 0069 clause 4 (carried over verbatim from ADR 0068 clause 4).
+        // Backstop for tenants outside the migration's own fan-out (20260821000003).
+        payment_status: Object.freeze({
+            enumValues: Object.freeze(['unpaid', 'payment_pending', 'paid', 'partially_paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_status` ENUM('unpaid','payment_pending','paid','partially_paid','failed','refund_pending','partial_refunded','refunded') NOT NULL DEFAULT 'paid'"
         }),
         order_method: Object.freeze({
             enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in']),
@@ -1148,19 +2416,53 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `service_fee_method_snapshot` ENUM('dine_in','takeout','pickup','delivery','online','appointment','walk_in') NULL"
         })
     }),
+    // Phase 202 (#1085), ADR 0077: every active tenant already has these two tables (created by
+    // earlier migrations), so a tenant that predates the cheque widening needs the same
+    // ALTER...MODIFY drift-repair path as pos_transactions.payment_type above, not just the
+    // CREATE TABLE definition in REQUIRED_TENANT_SCHEMA_TABLES (which only helps a tenant missing
+    // the table entirely).
+    pos_order_payments: Object.freeze({
+        payment_method: Object.freeze({
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit', 'grab_pay', 'shopeepay', 'cheque']),
+            sql: "ALTER TABLE `pos_order_payments` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit','grab_pay','shopeepay','cheque') NOT NULL"
+        })
+    }),
+    pos_payment_allocations: Object.freeze({
+        payment_method: Object.freeze({
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque']),
+            sql: "ALTER TABLE `pos_payment_allocations` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','cheque') NOT NULL"
+        })
+    }),
     employee_credit_ledger_entries: Object.freeze({
         entry_type: Object.freeze({
             enumValues: Object.freeze(['grant', 'debit', 'charge', 'repayment', 'reversal', 'adjustment', 'expiration']),
             sql: "ALTER TABLE `employee_credit_ledger_entries` MODIFY COLUMN `entry_type` ENUM('grant','debit','charge','repayment','reversal','adjustment','expiration') NOT NULL"
         })
+    }),
+    // Phase 88 of #482 (ADR 0064): both widened by migration 20260815000001. Older tenant
+    // schemas already have these columns from earlier migrations, just with the narrower enum -
+    // same drift class as items.category above.
+    service_item_details: Object.freeze({
+        service_area_type: Object.freeze({
+            enumValues: Object.freeze(['in_store', 'customer_location', 'online', 'hybrid', 'item_handoff']),
+            sql: "ALTER TABLE `service_item_details` MODIFY COLUMN `service_area_type` ENUM('in_store','customer_location','online','hybrid','item_handoff') NOT NULL DEFAULT 'in_store'"
+        })
+    }),
+    service_bookings: Object.freeze({
+        status: Object.freeze({
+            enumValues: Object.freeze(['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show', 'for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection']),
+            sql: "ALTER TABLE `service_bookings` MODIFY COLUMN `status` ENUM('requested','confirmed','checked_in','in_service','completed','cancelled','no_show','for_pickup','pickup_completed','out_for_return','ready_for_collection') NOT NULL DEFAULT 'requested'"
+        })
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-04.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-07.1';
+export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {
         version: TENANT_SCHEMA_CAPABILITY_VERSION,
+        repair_collation_policy: TENANT_SCHEMA_REPAIR_COLLATION_POLICY,
         tables: REQUIRED_TENANT_SCHEMA_TABLES,
         columns: REQUIRED_TENANT_SCHEMA_COLUMNS,
         indexes: REQUIRED_TENANT_SCHEMA_INDEXES,
@@ -1304,6 +2606,51 @@ export function buildTenantSchemaTableRepairSql(missingTables = []) {
     return (Array.isArray(missingTables) ? missingTables : [])
         .map((table) => ({ table, sql: REQUIRED_TENANT_SCHEMA_TABLES?.[table]?.sql || '' }))
         .filter((entry) => entry.sql);
+}
+
+// The canonical table registry is copied from a MySQL 8 landlord schema, where
+// utf8mb4_0900_ai_ci is available. Local and some MySQL-compatible servers
+// (notably MariaDB) do not expose that collation. Keep the canonical DDL
+// unchanged for parity checks, but normalize only executable repair SQL to a
+// supported utf8mb4 collation for the target tenant schema.
+export function normalizeTenantSchemaTableRepairSql(sql, collation) {
+    const normalizedSql = String(sql || '');
+    const normalizedCollation = String(collation || '').trim();
+    if (!normalizedSql || !normalizedCollation) return normalizedSql;
+    if (!/^utf8mb4_[A-Za-z0-9_]+$/.test(normalizedCollation)) {
+        throw new Error(`Invalid tenant schema repair collation: ${normalizedCollation}`);
+    }
+    return normalizedSql.replace(/COLLATE=utf8mb4_0900_ai_ci/g, `COLLATE=${normalizedCollation}`);
+}
+
+export async function resolveTenantSchemaRepairCollation(connection, tenantDb) {
+    if (!connection?.query) throw new Error('connection is required');
+
+    const [mysqlEightCollations] = await connection.query(
+        "SHOW COLLATION WHERE Collation = 'utf8mb4_0900_ai_ci'"
+    );
+    if (Array.isArray(mysqlEightCollations) && mysqlEightCollations.length > 0) {
+        return 'utf8mb4_0900_ai_ci';
+    }
+
+    const [schemaRows] = await connection.query(
+        `SELECT DEFAULT_COLLATION_NAME
+           FROM INFORMATION_SCHEMA.SCHEMATA
+          WHERE SCHEMA_NAME = ?`,
+        [tenantDb]
+    );
+    const schemaCollation = String(schemaRows?.[0]?.DEFAULT_COLLATION_NAME || '').trim();
+    if (/^utf8mb4_[A-Za-z0-9_]+$/.test(schemaCollation)) {
+        const [supportedSchemaCollations] = await connection.query(
+            'SHOW COLLATION WHERE Collation = ?',
+            [schemaCollation]
+        );
+        if (Array.isArray(supportedSchemaCollations) && supportedSchemaCollations.length > 0) {
+            return schemaCollation;
+        }
+    }
+
+    return 'utf8mb4_general_ci';
 }
 
 export async function inspectRequiredTenantSchemaIndexes(connection, tenantDb) {
@@ -1483,7 +2830,15 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                     // pos_transaction_discounts FKs into pos_discount_rules), columns before the
                     // index that depends on a column existing, tables before their seed rows.
                     const missingTables = await inspectRequiredTenantSchemaTables(connection, tenant.db_name);
-                    const tableRepairSql = buildTenantSchemaTableRepairSql(missingTables);
+                    const tableRepairCollation = await resolveTenantSchemaRepairCollation(
+                        connection,
+                        tenant.db_name
+                    );
+                    const tableRepairSql = buildTenantSchemaTableRepairSql(missingTables)
+                        .map((repair) => ({
+                            ...repair,
+                            sql: normalizeTenantSchemaTableRepairSql(repair.sql, tableRepairCollation)
+                        }));
                     if (normalizedMode === 'repair-apply') {
                         for (const repair of tableRepairSql) {
                             await useTenantDb();
@@ -1503,6 +2858,12 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                             await connection.query(repair.sql);
                         }
                         await repairItemFolderCategoryLifecycleSchema(connection, tenant.db_name);
+                        if (missingColumns.some((entry) => (
+                            entry.table === 'pos_parked_sales'
+                            && ['origin_cashier_id', 'origin_shift_id'].includes(entry.column)
+                        ))) {
+                            await repairPosParkedSaleOriginOwnership(connection, tenant.db_name);
+                        }
                     }
 
                     const missingIndexes = await inspectRequiredTenantSchemaIndexes(connection, tenant.db_name);

@@ -31,7 +31,8 @@ import {
   validateCreateFolder,
   validateUpdateFolder,
   validateDeleteFolder,
-  validateReplaceItemSuppliers
+  validateReplaceItemSuppliers,
+  validateReplaceItemFolderMemberships
 } from '../validators/itemValidator.js';
 import { authenticate, checkPermission, requireTenantAdmin } from '../middleware/auth.js';
 import { requireLocalInventoryLedgerOwnership, bodyDeclaresCurrentStock } from '../middleware/inventoryAuthorityGate.js';
@@ -173,6 +174,9 @@ router.patch('/:item_id/storefront-override', checkPermission(PERMISSIONS.INVENT
 router.post('/:item_id/storefront-image/external', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateExternalProductImageImport, itemController.importExternalStorefrontCatalogImage);
 router.post('/:item_id/storefront-image/generate', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.generateItemImage);
 router.get('/:item_id/storefront-image/generation-status', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.getItemImageGenerationStatus);
+router.post('/:item_id/storefront-image/async', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, preserveTenantContext(storefrontCatalogImageUpload.single('image')), itemController.queueStorefrontCatalogImage);
+router.get('/:item_id/storefront-image/async-status', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.getStorefrontCatalogImageUploadStatus);
+router.post('/:item_id/storefront-images/async', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, preserveTenantContext(storefrontCatalogGalleryImageUpload.array('images', 5)), itemController.queueStorefrontCatalogGalleryImages);
 router.post('/:item_id/storefront-image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, preserveTenantContext(storefrontCatalogImageUpload.single('image')), itemController.uploadStorefrontCatalogImage);
 router.post('/:item_id/storefront-images', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, preserveTenantContext(storefrontCatalogGalleryImageUpload.array('images', 5)), itemController.uploadStorefrontCatalogGalleryImages);
 router.patch('/:item_id/storefront-images/gallery', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.updateStorefrontCatalogGallery);
@@ -204,6 +208,14 @@ router.get('/:item_id/stock-history', itemController.getItemStockHistory);
 router.get('/:item_id/batches', itemController.getItemBatches);
 router.get('/:item_id/movements', itemController.getItemMovements);
 router.put('/:item_id/suppliers', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateReplaceItemSuppliers, itemController.replaceItemSuppliers);
+
+// Secondary category memberships (Phase 257, #1318) - foundation only, not
+// wired into any existing catalog read yet. Never touches the primary
+// items.folder_id pointer. requireTenantAdmin (the categories:manage
+// permission check - see its own doc comment), matching the folder CRUD
+// routes above and ADR 0049's permission rule.
+router.get('/:item_id/folders', requireTenantAdmin, validateItemIdParam, itemController.listItemFolders);
+router.put('/:item_id/folders', requireTenantAdmin, validateItemIdParam, validateReplaceItemFolderMemberships, itemController.replaceItemFolders);
 
 // Composition validation - for nested products feature
 router.post('/validate-composition', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), itemController.validateComposition);
@@ -243,5 +255,9 @@ router.patch('/:item_id/finalize', checkPermission(PERMISSIONS.INVENTORY.actions
 
 // Delete operations - admins only
 router.delete('/:item_id', checkPermission(PERMISSIONS.INVENTORY.actions.DELETE_ITEMS), itemController.deleteItem);
+
+// Restore operations - admins only. Reverses the one-way deactivate above; reuses the delete
+// permission rather than a separate grant, matching the PO/JO restore precedent.
+router.post('/:item_id/restore', checkPermission(PERMISSIONS.INVENTORY.actions.DELETE_ITEMS), validateItemIdParam, itemController.restoreItem);
 
 export default router;

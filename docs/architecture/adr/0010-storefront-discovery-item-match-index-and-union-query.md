@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-20
-last_reviewed: 2026-04-20
+last_reviewed: 2026-08-20
 review_by: 2026-10-20
 applies_to: architecture_decision
 topic: storefront_discovery_item_match_index_and_union_query
@@ -12,7 +12,7 @@ topic: storefront_discovery_item_match_index_and_union_query
 # ADR 0010: Storefront Discovery Item-Match Index and Union Query Contract
 
 ## Status
-Accepted (2026-04-20)
+Accepted (2026-04-20); amended 2026-08-20 (see Amendments)
 
 ## Context
 Public storefront discovery previously returned tenant rows with basic store-field search and did not expose item-match reasoning or branch-level match metadata needed for map/list/grid UX improvements.
@@ -154,3 +154,22 @@ The renderer-owned marker contract is amended for production map usability:
 5. Discovery search result maps must not auto-open marker preview cards. Search highlighting may use the existing pin halo/glow, but preview cards are pointer-owned on hover or user-owned on click/tap so cards do not remain open after the pointer leaves a pin.
 6. Clicking a shared count pin scopes the existing Discover Nearby/View Results panel to the grouped storefronts instead of rendering a scrollable on-map list widget. This keeps the map clean and preserves the results panel as the owner of storefront lists.
 7. When a search has visible results and the results panel is collapsed, the View Results control may pulse with CSS-only shadow/filter animation. The pulse must not scale or move the button, pins, or MapLibre-owned marker anchors.
+
+## Amendments
+
+### 2026-08-20 — Non-empty search default pin scope
+
+- Clause amended: the Addendum (2026-06-06) item 4 / Addendum (2026-06-07) item 2 statement that
+  "default discovery uses `pin_scope=tenant_primary`" (untagged, so `default` tier per ADR 0039 —
+  those clauses predate this ADR's own tiering and are not `binding` by omission).
+- Change: a **non-empty** discovery search (search box text or a category selection) now defaults
+  to `pin_scope=all_matching_branches`, so a company-name or category search surfaces every
+  matching active branch rather than only the tenant's primary Storefront pin. An **empty-search**
+  default discovery load still defaults to `pin_scope=tenant_primary`, unchanged. Near Me /
+  geolocation search still defaults to `pin_scope=nearest_matching_branch`, unchanged.
+- Reason: #395 — a multi-branch tenant's non-primary branches were invisible to a customer
+  searching that tenant's name, because the prior default collapsed every result onto the single
+  primary-branch pin.
+- PR: #765
+
+`status` set to `amended`; `last_reviewed` refreshed to 2026-08-20.

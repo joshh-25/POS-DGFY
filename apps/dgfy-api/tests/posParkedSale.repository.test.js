@@ -71,7 +71,32 @@ describe('parked sale repository contract', () => {
         }));
     });
 
-    it('updates and counts only active parked-sale lifecycle rows', async () => {
+    it('lists active parked sales for the shared location queue without cashier or shift filters', async () => {
+        const model = buildModel();
+        model.findAll.mockResolvedValue([]);
+        jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+            if (name === 'PosParkedSale') return model;
+            throw new Error(`Unexpected model ${name}`);
+        });
+
+        await posRepository.listParkedSales({
+            locationId: 3,
+            sharedLocation: true,
+            statuses: ['parked', 'claimed'],
+            limit: 100
+        });
+
+        expect(model.findAll).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                location_id: 3,
+                status: expect.objectContaining({})
+            })
+        }));
+        expect(model.findAll.mock.calls[0][0].where).not.toHaveProperty('cashier_id');
+        expect(model.findAll.mock.calls[0][0].where).not.toHaveProperty('shift_id');
+    });
+
+    it('updates and counts only claimed parked-sale rows for shift close', async () => {
         const model = buildModel();
         const row = {
             update: jest.fn(async () => undefined),
@@ -92,7 +117,7 @@ describe('parked sale repository contract', () => {
         expect(row.update).toHaveBeenCalledWith({ status: 'cancelled' }, { transaction });
         expect(count).toBe(2);
         expect(model.count).toHaveBeenCalledWith(expect.objectContaining({
-            where: expect.objectContaining({ shift_id: 41, status: expect.objectContaining({}) }),
+            where: expect.objectContaining({ shift_id: 41, status: 'claimed' }),
             transaction
         }));
     });

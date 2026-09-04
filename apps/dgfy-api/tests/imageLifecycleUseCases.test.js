@@ -95,4 +95,44 @@ describe('imageLifecycleUseCases (ensureOptimizedItemImage)', () => {
         expect(result.optimization_version).toBe(2);
         expect(result.url).toBe('/uploads/optimized-item.png');
     });
+
+    test('recognizes a freshly stored responsive-v2 asset from its manifest', async () => {
+        const assetDirectory = path.join(uploadsDir, 'storefront-catalog', 'tenant', 'item-42-v2-test');
+        const storedPath = 'storefront-catalog/tenant/item-42-v2-test/large.png';
+        const storedUrl = `/uploads/${storedPath}`;
+        const largePath = path.join(assetDirectory, 'large.png');
+        await fs.mkdir(assetDirectory, { recursive: true });
+        await fs.writeFile(largePath, Buffer.from('already-optimized-image'));
+        await fs.writeFile(path.join(assetDirectory, 'asset.json'), JSON.stringify({
+            version: 2,
+            variants: {
+                thumbnail: { path: 'storefront-catalog/tenant/item-42-v2-test/thumb.png', url: '/uploads/storefront-catalog/tenant/item-42-v2-test/thumb.png' },
+                medium: { path: 'storefront-catalog/tenant/item-42-v2-test/medium.png', url: '/uploads/storefront-catalog/tenant/item-42-v2-test/medium.png' },
+                large: { path: storedPath, url: storedUrl }
+            },
+            formats: {},
+            placeholder: null
+        }));
+
+        const result = await ensureOptimizedItemImage({
+            itemId: 42,
+            storedPath,
+            storedUrl,
+            uploadsRoot: uploadsDir
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            path: storedPath,
+            url: storedUrl,
+            optimization_version: 2,
+            processing_status: 'optimized'
+        }));
+        expect(result.variant_metadata.thumbnail).toEqual(expect.objectContaining({
+            url: '/uploads/storefront-catalog/tenant/item-42-v2-test/thumb.png'
+        }));
+        expect(result.image_fingerprint).toMatch(/^[a-f0-9]{64}$/);
+        const generatedDirectories = (await fs.readdir(path.join(uploadsDir, 'storefront-catalog', 'tenant')))
+            .filter((entry) => entry !== 'item-42-v2-test');
+        expect(generatedDirectories).toEqual([]);
+    });
 });

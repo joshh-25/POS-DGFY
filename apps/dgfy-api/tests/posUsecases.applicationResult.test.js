@@ -45,6 +45,7 @@ const pathExists = async (filePath) => {
 const createBulkPosRepository = ({ items = [], existing = null, readiness = null, updateError = null } = {}) => ({
     findItemsBySkuCodes: jest.fn().mockResolvedValue(items),
     findCatalogOverrideByItemId: jest.fn().mockResolvedValue(existing),
+    createAuditLog: jest.fn().mockResolvedValue(null),
     getCatalogReadinessByItemId: jest.fn().mockResolvedValue(readiness || {
         pos_readiness: {
             ready: true,
@@ -681,7 +682,11 @@ describe('pos use-cases application result contract', () => {
         const getItemById = jest.fn().mockResolvedValue({ item_id: 101 });
         const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 101, pos_visible: true });
         const useCase = buildUpdatePosCatalogOverrideUseCase({
-            posRepository: { getItemById, upsertCatalogOverride }
+            posRepository: {
+                getItemById,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const deniedResult = await useCase({
@@ -742,7 +747,12 @@ describe('pos use-cases application result contract', () => {
         const getCatalogReadinessByItemId = jest.fn();
         const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 203, pos_visible: false });
         const useCase = buildUpdatePosCatalogOverrideUseCase({
-            posRepository: { getItemById, getCatalogReadinessByItemId, upsertCatalogOverride }
+            posRepository: {
+                getItemById,
+                getCatalogReadinessByItemId,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const result = await useCase({
@@ -808,7 +818,11 @@ describe('pos use-cases application result contract', () => {
             })
             .mockResolvedValueOnce(null);
         const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
-            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+            posRepository: {
+                getCatalogReadinessByItemId,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const result = await useCase({
@@ -852,7 +866,11 @@ describe('pos use-cases application result contract', () => {
             pos_readiness: { ready: true, missing_requirements: [] }
         });
         const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
-            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+            posRepository: {
+                getCatalogReadinessByItemId,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const result = await useCase({
@@ -875,7 +893,11 @@ describe('pos use-cases application result contract', () => {
             pos_readiness: { ready: true, missing_requirements: [] }
         });
         const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
-            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+            posRepository: {
+                getCatalogReadinessByItemId,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const result = await useCase({
@@ -896,7 +918,11 @@ describe('pos use-cases application result contract', () => {
             pos_readiness: { ready: true, missing_requirements: [] }
         });
         const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
-            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+            posRepository: {
+                getCatalogReadinessByItemId,
+                upsertCatalogOverride,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
         });
 
         const result = await useCase({
@@ -932,7 +958,8 @@ describe('pos use-cases application result contract', () => {
                     pos_visible: false,
                     pos_image_path: null
                 }),
-                updateCatalogImage
+                updateCatalogImage,
+                createAuditLog: jest.fn().mockResolvedValue(null)
             },
             imageStorage: {
                 store: jest.fn().mockResolvedValue({ path: 'uploads/pos.png', url: '/uploads/pos.png' }),
@@ -1251,7 +1278,9 @@ describe('pos use-cases application result contract', () => {
             location_id: 2,
             receipt_print_status: 'pending',
             receipt_printed_at: null,
-            receipt_print_failure_reason: null
+            receipt_print_failure_reason: null,
+            balance_payment_id: null,
+            has_payment_proof: false
         }]);
     });
 
@@ -1286,6 +1315,44 @@ describe('pos use-cases application result contract', () => {
         });
         expect(resolveLocationScope).not.toHaveBeenCalled();
         expect(posRepository.listIncomingOnlineOrders).not.toHaveBeenCalled();
+    });
+
+    it('listIncomingOnlineOrders accepts the active operator while preserving the shift owner', async () => {
+        const activeShift = {
+            pos_terminal_shift_id: 12,
+            cashier_id: 7,
+            terminal_id: 'REG-1',
+            location_id: 2,
+            status: 'open'
+        };
+        const posRepository = {
+            getTerminalShiftById: jest.fn().mockResolvedValue(activeShift),
+            listIncomingOnlineOrders: jest.fn().mockResolvedValue([])
+        };
+        const resolveLocationScope = jest.fn().mockResolvedValue({
+            location_id: 2,
+            location: { location_id: 2 }
+        });
+        const useCase = buildListIncomingOnlineOrdersUseCase({
+            posRepository,
+            resolveLocationScope
+        });
+
+        const result = await useCase({
+            query: { shift_id: 12, location_id: 2, limit: 25 },
+            user: {
+                user_id: 6,
+                operator_session_id: 44,
+                register_shift_owner_user_id: 7
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(posRepository.getTerminalShiftById).toHaveBeenCalledWith(12, {});
+        expect(posRepository.listIncomingOnlineOrders).toHaveBeenCalledWith({
+            locationId: 2,
+            limit: 25
+        });
     });
 
     it('updateOnlineOrderStatus rejects an order outside the operator active-shift location', async () => {
@@ -1389,7 +1456,7 @@ describe('pos use-cases application result contract', () => {
 
         const posRepository = {
             findOpenTerminalShift: jest.fn().mockResolvedValue({
-                shift_id: 10,
+                pos_terminal_shift_id: 10,
                 cashier_id: 7,
                 location_id: 3,
                 status: 'open'
@@ -1448,7 +1515,7 @@ describe('pos use-cases application result contract', () => {
         });
         expect(posRepository.updateOrderById).toHaveBeenCalledWith(
             55,
-            { fulfillment_status: 'completed', cashier_id: 7 },
+            { fulfillment_status: 'completed', shift_id: 10, cashier_id: 7 },
             expect.objectContaining({ transaction, lock: true })
         );
     });
@@ -1492,7 +1559,7 @@ describe('pos use-cases application result contract', () => {
 
         const posRepository = {
             findOpenTerminalShift: jest.fn().mockResolvedValue({
-                shift_id: 11,
+                pos_terminal_shift_id: 11,
                 cashier_id: 7,
                 location_id: 4,
                 status: 'open'
@@ -1578,12 +1645,12 @@ describe('pos use-cases application result contract', () => {
             location_id: 5,
             lines: [],
             deliveryJob: {
-                status: 'delivered',
                 provider: 'manual',
+                status: 'delivered',
                 delivery_personnel_id: 21,
-                assigned_by: 9,
-                assigned_shift_id: 13,
-                assigned_at: new Date('2026-08-11T08:00:00.000Z')
+                assigned_by: 12,
+                assigned_shift_id: 9,
+                assigned_at: '2026-08-07T03:00:00.000Z'
             }
         };
         const updatedOrder = {
@@ -1592,7 +1659,7 @@ describe('pos use-cases application result contract', () => {
         };
         const posRepository = {
             findOpenTerminalShift: jest.fn().mockResolvedValue({
-                shift_id: 13,
+                pos_terminal_shift_id: 13,
                 cashier_id: 9,
                 location_id: 5,
                 status: 'open'
@@ -1615,7 +1682,7 @@ describe('pos use-cases application result contract', () => {
         expect(result.data.order.fulfillment_status).toBe(targetStatus);
         expect(posRepository.updateOrderById).toHaveBeenCalledWith(
             57,
-            { fulfillment_status: targetStatus, cashier_id: 9 },
+            { fulfillment_status: targetStatus, shift_id: 13, cashier_id: 9 },
             expect.objectContaining({ transaction, lock: true })
         );
         expect(transaction.commit).toHaveBeenCalledTimes(1);
@@ -1643,7 +1710,7 @@ describe('pos use-cases application result contract', () => {
 
         const posRepository = {
             findOpenTerminalShift: jest.fn().mockResolvedValue({
-                shift_id: 12,
+                pos_terminal_shift_id: 12,
                 cashier_id: 8,
                 status: 'open'
             }),
@@ -1670,5 +1737,55 @@ describe('pos use-cases application result contract', () => {
 
         expect(result.success).toBe(true);
         expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('updateOnlineOrderStatus preserves an existing shift attribution', async () => {
+        const transaction = {
+            finished: false,
+            LOCK: { UPDATE: 'UPDATE' },
+            commit: jest.fn(async () => { transaction.finished = true; }),
+            rollback: jest.fn(async () => { transaction.finished = true; })
+        };
+        const fakeSequelize = {
+            transaction: jest.fn().mockResolvedValue(transaction)
+        };
+        const existingOrder = {
+            pos_transaction_id: 58,
+            order_source: 'online_store',
+            order_method: 'pickup',
+            fulfillment_status: 'placed',
+            location_id: 6,
+            shift_id: 4,
+            cashier_id: 7,
+            lines: []
+        };
+        const updatedOrder = { ...existingOrder, fulfillment_status: 'confirmed' };
+        const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue({
+                pos_terminal_shift_id: 15,
+                cashier_id: 7,
+                location_id: 6,
+                status: 'open'
+            }),
+            getOrderByIdForLifecycle: jest
+                .fn()
+                .mockResolvedValueOnce(existingOrder)
+                .mockResolvedValueOnce(updatedOrder),
+            updateOrderById: jest.fn().mockResolvedValue(updatedOrder)
+        };
+        const useCase = buildUpdateOnlineOrderStatusUseCase({ posRepository });
+
+        const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
+            posTransactionId: 58,
+            payload: { fulfillment_status: 'confirmed' },
+            user: { user_id: 7 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(posRepository.updateOrderById).toHaveBeenCalledWith(
+            58,
+            { fulfillment_status: 'confirmed', accepted_by: 7, accepted_at: expect.any(Date) },
+            expect.objectContaining({ transaction, lock: true })
+        );
     });
 });

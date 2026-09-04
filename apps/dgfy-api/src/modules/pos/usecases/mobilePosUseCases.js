@@ -5,6 +5,7 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import { getAllSettingsUseCase } from '../../settings/index.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
+import dbStore from '../../../utils/dbStore.js';
 
 // Exported so middleware/rateLimiter.js can enforce the same number it
 // advertises to clients in sync_policy/sync_limit_policy - see
@@ -13,6 +14,8 @@ export const MOBILE_SYNC_LIMIT_PER_DAY = 2;
 const MOBILE_SYNC_RESET_HOUR = 0;
 const MOBILE_SYNC_RESET_MINUTE = 0;
 const MOBILE_CHECKPOINT_VERSION = 'mobile-pos.v1';
+const MOBILE_TRANSACTION_CHECKPOINT_VERSION = 'mobile-pos.transactions.v1';
+const MOBILE_STATUTORY_POLICY_TTL_MS = 24 * 60 * 60 * 1000;
 
 const MOBILE_SETTINGS_KEYS = [
     'ops_workflow_mode',
@@ -38,6 +41,7 @@ const MOBILE_SETTINGS_KEYS = [
     'pos_terminal_registry_mode',
     'pos_terminal_registry',
     'pos_terminal_location_binding_enforced',
+    'pos_settings_access_pin_enabled',
     'pos_hardware_profile'
 ];
 
@@ -59,6 +63,77 @@ const buildCheckpointToken = (seed) => crypto
     .createHash('sha256')
     .update(JSON.stringify(seed))
     .digest('hex');
+
+const mobilePolicySigningSecret = () => String(
+    process.env.MOBILE_POS_POLICY_SIGNING_SECRET || process.env.JWT_SECRET || ''
+).trim();
+
+const signStatutoryPolicy = ({ version, expiresAt }) => {
+    const secret = mobilePolicySigningSecret();
+    if (!secret) return null;
+    return crypto.createHmac('sha256', secret).update(`${version}:${expiresAt}`).digest('hex');
+};
+
+const buildStatutoryPolicySnapshot = async (posRepository, now = new Date()) => {
+    const rows = await Promise.all(['senior', 'pwd'].map((type) => posRepository.findActiveDiscountRuleByType(type)));
+    const rules = rows.filter(Boolean).map((row) => ({
+        id: toPositiveInt(row.id),
+        type: String(row.type || '').trim().toLowerCase(),
+        method: String(row.method || '').trim().toLowerCase(),
+        rate: row.rate == null ? null : Number(row.rate),
+        fixed_amount: row.fixed_amount == null ? null : Number(row.fixed_amount),
+        is_vat_exempt: row.is_vat_exempt === true,
+        requires_customer_id: row.requires_customer_id === true,
+        max_discount_amount: row.max_discount_amount == null ? null : Number(row.max_discount_amount),
+        updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at || '') || null
+    }));
+    if (rules.length === 0) return null;
+    const generatedAt = now.toISOString();
+    const expiresAt = new Date(now.getTime() + MOBILE_STATUTORY_POLICY_TTL_MS).toISOString();
+    const version = buildCheckpointToken({ contract: 'mobile-pos.statutory-policy.v1', rules });
+    const signature = signStatutoryPolicy({ version, expiresAt });
+    if (!signature) return null;
+    return { version, generated_at: generatedAt, expires_at: expiresAt, signature, rules };
+};
+
+const verifyStatutoryPolicyEvidence = async ({ evidence, posRepository, now = new Date() }) => {
+    const version = safeTrimmedText(evidence?.version, '');
+    const expiresAt = safeTrimmedText(evidence?.expires_at, '');
+    const signature = safeTrimmedText(evidence?.signature, '');
+    const expiresMs = Date.parse(expiresAt);
+    const expectedSignature = signStatutoryPolicy({ version, expiresAt });
+    const signatureValid = Boolean(expectedSignature && signature)
+        && expectedSignature.length === signature.length
+        && crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(signature));
+    const current = await buildStatutoryPolicySnapshot(posRepository, now);
+    if (!version || !Number.isFinite(expiresMs) || expiresMs <= now.getTime() || !signatureValid || current?.version !== version) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'The offline statutory discount policy is missing, expired, or no longer current',
+            { statusCode: 409, details: { reason_code: 'MOBILE_STATUTORY_POLICY_STALE' } }
+        );
+    }
+    return { version, expiresAt, verifiedAt: now.toISOString() };
+};
+
+const encodeTransactionCursor = (row) => Buffer.from(JSON.stringify({
+    updated_at: row?.updated_at instanceof Date ? row.updated_at.toISOString() : String(row?.updated_at || ''),
+    id: toPositiveInt(row?.pos_transaction_id)
+})).toString('base64url');
+
+const decodeTransactionCursor = (cursor) => {
+    const normalized = safeTrimmedText(cursor, '');
+    if (!normalized) return null;
+    try {
+        const parsed = JSON.parse(Buffer.from(normalized, 'base64url').toString('utf8'));
+        const updatedAt = String(parsed?.updated_at || '').trim();
+        const id = toPositiveInt(parsed?.id);
+        if (!updatedAt || Number.isNaN(Date.parse(updatedAt)) || !id) throw new Error('invalid');
+        return { updatedAt, id };
+    } catch {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'cursor is invalid', { statusCode: 422 });
+    }
+};
 
 const toFailurePayload = (error) => ({
     message: error?.message || 'Validation failed',
@@ -107,6 +182,57 @@ const normalizeSettingsBootstrapPayload = (settings = {}) => ({
     }
 });
 
+const POS_TERMINAL_REGISTRY_KEY = 'pos_terminal_registry';
+
+const parsePositiveLocationId = (value) => {
+    const normalized = Number.parseInt(value, 10);
+    return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
+};
+
+const shouldScopeTerminalRegistryToUser = (user = null) => (
+    Boolean(user)
+    && user?.is_master_admin !== true
+    && !hasEffectivePermission(user, PERMISSIONS.POS.actions.SWITCH_LOCATION_POS)
+);
+
+export const filterPosTerminalRegistryByLocationIds = (settings = {}, allowedLocationIds = []) => {
+    const registrySetting = settings?.[POS_TERMINAL_REGISTRY_KEY];
+    if (!registrySetting || !Array.isArray(registrySetting.value)) {
+        return settings;
+    }
+
+    const allowedLocations = new Set(
+        (Array.isArray(allowedLocationIds) ? allowedLocationIds : [])
+            .map(parsePositiveLocationId)
+            .filter(Boolean)
+    );
+
+    return {
+        ...settings,
+        [POS_TERMINAL_REGISTRY_KEY]: {
+            ...registrySetting,
+            value: registrySetting.value.filter((entry) => {
+                const locationId = parsePositiveLocationId(entry?.location_id);
+                return locationId !== null && allowedLocations.has(locationId);
+            })
+        }
+    };
+};
+
+const getGrantedLocationIdsForUser = async (user = null) => {
+    const userId = parsePositiveLocationId(user?.user_id || user?.id);
+    const UserLocationGrant = dbStore.get('UserLocationGrant');
+    if (!userId || !UserLocationGrant) return [];
+
+    const grants = await UserLocationGrant.findAll({
+        where: { user_id: userId },
+        attributes: ['location_id']
+    });
+    return grants
+        .map((grant) => parsePositiveLocationId(grant?.location_id))
+        .filter(Boolean);
+};
+
 export const buildGetMobilePosCatalogBootstrapUseCase = ({ listPosCatalogUseCase }) => {
     return async ({ query = {}, user }) => {
         try {
@@ -135,9 +261,13 @@ export const buildGetMobilePosCatalogBootstrapUseCase = ({ listPosCatalogUseCase
 };
 
 export const buildGetMobilePosSettingsBootstrapUseCase = () => {
-    return async () => {
+    return async ({ user = null } = {}) => {
         try {
-            const settings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
+            let settings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
+            if (shouldScopeTerminalRegistryToUser(user)) {
+                const grantedLocationIds = await getGrantedLocationIdsForUser(user);
+                settings = filterPosTerminalRegistryByLocationIds(settings, grantedLocationIds);
+            }
             return ok({
                 generated_at: new Date().toISOString(),
                 bootstrap_version: MOBILE_CHECKPOINT_VERSION,
@@ -160,6 +290,7 @@ export const buildGetMobilePosDevicePolicyUseCase = ({ posRepository }) => {
         try {
             const settings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
             const terminalPolicy = await posRepository.getTerminalIdentityPolicySettings();
+            const statutoryDiscountPolicy = await buildStatutoryPolicySnapshot(posRepository);
             return ok({
                 generated_at: new Date().toISOString(),
                 bootstrap_version: MOBILE_CHECKPOINT_VERSION,
@@ -169,7 +300,8 @@ export const buildGetMobilePosDevicePolicyUseCase = ({ posRepository }) => {
                     business_day_reset_hour: MOBILE_SYNC_RESET_HOUR,
                     business_day_reset_minute: MOBILE_SYNC_RESET_MINUTE
                 },
-                receipt_profile: pickSettings(settings)
+                receipt_profile: pickSettings(settings),
+                statutory_discount_policy: statutoryDiscountPolicy
             });
         } catch (error) {
             return fail(error instanceof DomainError
@@ -183,7 +315,7 @@ export const buildGetMobilePosDevicePolicyUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildSyncMobilePosCheckoutsUseCase = ({ checkoutPosUseCase }) => {
+export const buildSyncMobilePosCheckoutsUseCase = ({ checkoutPosUseCase, posRepository }) => {
     return async ({ payload = {}, user }) => {
         const entries = Array.isArray(payload.entries) ? payload.entries : [];
         if (entries.length === 0) {
@@ -225,10 +357,23 @@ export const buildSyncMobilePosCheckoutsUseCase = ({ checkoutPosUseCase }) => {
                 });
                 continue;
             }
+            const discountType = String(syncPayload?.governed_discount?.type || '').trim().toLowerCase();
+            let trustedOfflineStatutoryPolicy = null;
+            if (discountType === 'senior' || discountType === 'pwd') {
+                try {
+                    const verified = await verifyStatutoryPolicyEvidence({ evidence: syncPayload.offline_statutory_policy, posRepository });
+                    trustedOfflineStatutoryPolicy = { ...verified, discountType };
+                } catch (error) {
+                    rejectedEntries += 1;
+                    results.push({ local_transaction_id: localTransactionId, status: 'rejected', error: toFailurePayload(error) });
+                    continue;
+                }
+            }
             const checkoutResult = await checkoutPosUseCase({
                 payload: syncPayload,
                 userId: user?.user_id,
-                user
+                user,
+                trustedOfflineStatutoryPolicy
             });
 
             if (checkoutResult.success) {
@@ -243,6 +388,9 @@ export const buildSyncMobilePosCheckoutsUseCase = ({ checkoutPosUseCase }) => {
                     local_transaction_id: localTransactionId,
                     status: replayed ? 'replayed' : 'accepted',
                     server_transaction_id: resultData?.transaction?.pos_transaction_id || null,
+                    server_version: resultData?.transaction?.updated_at || null,
+                    invoice_number: resultData?.transaction?.invoice_number || null,
+                    payment_status: resultData?.transaction?.payment_status || null,
                     receipt_contract: {
                         document_type: resultData?.transaction?.document_type || null,
                         document_context: resultData?.transaction?.document_context || null
@@ -283,6 +431,276 @@ export const buildSyncMobilePosCheckoutsUseCase = ({ checkoutPosUseCase }) => {
                 replayedEntries,
                 rejectedEntries,
                 checkpointToken
+            })
+        });
+    };
+};
+
+export const buildGetMobilePosTransactionCheckpointUseCase = ({ listPosTransactionsUseCase }) => {
+    return async ({ query = {}, user }) => {
+        try {
+            const cursor = decodeTransactionCursor(query.cursor);
+            const limit = Math.min(toPositiveInt(query.limit) || 100, 200);
+            const result = await listPosTransactionsUseCase({
+                query: {
+                    page: 1,
+                    limit: limit + 1,
+                    location_id: toPositiveInt(query.location_id),
+                    mobile_checkpoint: true,
+                    updated_after: cursor?.updatedAt || null,
+                    updated_after_id: cursor?.id || null
+                },
+                user
+            });
+            const data = unwrapApplicationResultOrThrow(result);
+            const allRows = Array.isArray(data?.transactions) ? data.transactions : [];
+            const transactions = allRows.slice(0, limit);
+            const hasMore = allRows.length > limit;
+            const last = transactions.at(-1);
+            return ok({
+                generated_at: new Date().toISOString(),
+                checkpoint_version: MOBILE_TRANSACTION_CHECKPOINT_VERSION,
+                transactions,
+                next_cursor: last ? encodeTransactionCursor(last) : (String(query.cursor || '').trim() || null),
+                has_more: hasMore
+            });
+        } catch (error) {
+            return fail(error instanceof DomainError ? error : new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                error?.message || 'Failed to load mobile POS transaction checkpoint',
+                { statusCode: error?.statusCode || 422, details: error?.details || null }
+            ));
+        }
+    };
+};
+
+export const buildSyncMobilePosVoidsUseCase = ({ voidPosTransactionUseCase }) => {
+    return async ({ payload = {}, user }) => {
+        const entries = Array.isArray(payload.entries) ? payload.entries : [];
+        const results = [];
+        let acceptedEntries = 0;
+        let replayedEntries = 0;
+        let rejectedEntries = 0;
+        for (const entry of entries) {
+            const localTransactionId = safeTrimmedText(entry?.local_transaction_id, null);
+            const request = safeObject(entry?.payload);
+            const transactionId = toPositiveInt(request.transaction_id);
+            if (!transactionId) {
+                rejectedEntries += 1;
+                results.push({ local_transaction_id: localTransactionId, status: 'rejected', error: toFailurePayload({ message: 'transaction_id is required', statusCode: 422 }) });
+                continue;
+            }
+            const result = await voidPosTransactionUseCase({
+                posTransactionId: transactionId,
+                payload: request,
+                user,
+                trustedMobileReplay: true
+            });
+            if (result.success) {
+                const replayed = result.data?.idempotent_replay === true;
+                if (replayed) replayedEntries += 1; else acceptedEntries += 1;
+                results.push({
+                    local_transaction_id: localTransactionId,
+                    status: replayed ? 'replayed' : 'accepted',
+                    server_transaction_id: transactionId,
+                    server_version: result.data?.transaction?.updated_at || null,
+                    transaction: result.data?.transaction || null
+                });
+            } else {
+                rejectedEntries += 1;
+                results.push({ local_transaction_id: localTransactionId, status: 'rejected', error: toFailurePayload(result.error) });
+            }
+        }
+        return ok({
+            generated_at: new Date().toISOString(),
+            device_id: safeTrimmedText(payload.device_id, null),
+            client_sync_run_id: safeTrimmedText(payload.client_sync_run_id, null),
+            results,
+            summary: buildSyncSummary({
+                totalEntries: entries.length,
+                acceptedEntries,
+                replayedEntries,
+                rejectedEntries,
+                checkpointToken: acceptedEntries + replayedEntries > 0 ? buildCheckpointToken({ scope: 'voids', device_id: payload.device_id, run: payload.client_sync_run_id, acceptedEntries, replayedEntries }) : null
+            })
+        });
+    };
+};
+
+export const buildSyncMobilePosRefundsUseCase = ({
+    cashRefundPosTransactionUseCase,
+    externalRefundPosTransactionUseCase,
+    providerRefundPosTransactionUseCase,
+    splitAllocationReversalUseCase
+}) => {
+    const canReplayWorkflow = (user, workflow) => {
+        if (workflow === 'cash') {
+            return hasEffectivePermission(user, PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER);
+        }
+        if (workflow === 'split') {
+            return hasEffectivePermission(user, PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER)
+                || hasEffectivePermission(user, PERMISSIONS.POS.actions.VOID_POS_TRANSACTION);
+        }
+        return hasEffectivePermission(user, PERMISSIONS.POS.actions.VOID_POS_TRANSACTION);
+    };
+
+    return async ({ payload = {}, user }) => {
+        const entries = Array.isArray(payload.entries) ? payload.entries : [];
+        const results = [];
+        let acceptedEntries = 0;
+        let replayedEntries = 0;
+        let rejectedEntries = 0;
+
+        for (const entry of entries) {
+            const localOperationId = safeTrimmedText(entry?.local_operation_id, null);
+            const request = safeObject(entry?.payload);
+            const workflow = safeTrimmedText(request.workflow, null);
+            const transactionId = toPositiveInt(request.transaction_id);
+            const allocationId = toPositiveInt(request.allocation_id);
+
+            if (!transactionId || !['cash', 'external', 'provider', 'split'].includes(workflow)) {
+                rejectedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    workflow,
+                    status: 'rejected',
+                    error: toFailurePayload({ message: 'A supported workflow and transaction_id are required', statusCode: 422 })
+                });
+                continue;
+            }
+            if (!canReplayWorkflow(user, workflow)) {
+                rejectedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    workflow,
+                    status: 'rejected',
+                    error: toFailurePayload({ message: 'Access denied: insufficient refund permission', code: 'AUTHORIZATION_FAILED', statusCode: 403 })
+                });
+                continue;
+            }
+
+            let result;
+            if (workflow === 'cash') {
+                result = await cashRefundPosTransactionUseCase({ posTransactionId: transactionId, payload: request, user });
+            } else if (workflow === 'external') {
+                result = await externalRefundPosTransactionUseCase({ posTransactionId: transactionId, payload: request, user });
+            } else if (workflow === 'provider') {
+                result = await providerRefundPosTransactionUseCase({ posTransactionId: transactionId, payload: request, user });
+            } else if (!allocationId) {
+                result = fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'allocation_id is required for split refunds', { statusCode: 422 }));
+            } else {
+                result = await splitAllocationReversalUseCase({
+                    posTransactionId: transactionId,
+                    allocationId,
+                    payload: request,
+                    user
+                });
+            }
+
+            if (result.success) {
+                const replayed = result.data?.idempotent_replay === true;
+                if (replayed) replayedEntries += 1; else acceptedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    workflow,
+                    status: replayed ? 'replayed' : 'accepted',
+                    server_transaction_id: transactionId,
+                    server_version: result.data?.transaction?.updated_at || null,
+                    payment_status: result.data?.transaction?.payment_status || null,
+                    data: result.data
+                });
+            } else {
+                rejectedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    workflow,
+                    status: 'rejected',
+                    error: toFailurePayload(result.error)
+                });
+            }
+        }
+
+        return ok({
+            generated_at: new Date().toISOString(),
+            device_id: safeTrimmedText(payload.device_id, null),
+            client_sync_run_id: safeTrimmedText(payload.client_sync_run_id, null),
+            results,
+            summary: buildSyncSummary({
+                totalEntries: entries.length,
+                acceptedEntries,
+                replayedEntries,
+                rejectedEntries,
+                checkpointToken: acceptedEntries + replayedEntries > 0
+                    ? buildCheckpointToken({ scope: 'refunds', device_id: payload.device_id, run: payload.client_sync_run_id, acceptedEntries, replayedEntries })
+                    : null
+            })
+        });
+    };
+};
+
+export const buildSyncMobilePosOrderActionsUseCase = ({
+    updateOnlineOrderStatusUseCase,
+    collectCashPickupOrderUseCase
+}) => {
+    return async ({ payload = {}, user }) => {
+        const entries = Array.isArray(payload.entries) ? payload.entries : [];
+        const results = [];
+        let acceptedEntries = 0;
+        let replayedEntries = 0;
+        let rejectedEntries = 0;
+
+        for (const entry of entries) {
+            const localOperationId = safeTrimmedText(entry?.local_operation_id, null);
+            const request = safeObject(entry?.payload);
+            const operationType = safeTrimmedText(request.operation_type, null);
+            const orderId = toPositiveInt(request.order_id);
+            let result;
+            if (!orderId) {
+                result = fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'order_id is required', { statusCode: 422 }));
+            } else if (operationType === 'status_transition') {
+                result = await updateOnlineOrderStatusUseCase({ posTransactionId: orderId, payload: request, user });
+            } else if (operationType === 'cash_collection') {
+                result = await collectCashPickupOrderUseCase({ posTransactionId: orderId, payload: request, user });
+            } else {
+                result = fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Unsupported order operation', { statusCode: 422 }));
+            }
+
+            if (result.success) {
+                const replayed = result.data?.idempotent_replay === true;
+                if (replayed) replayedEntries += 1; else acceptedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    operation_type: operationType,
+                    status: replayed ? 'replayed' : 'accepted',
+                    server_transaction_id: orderId,
+                    server_version: result.data?.order?.updated_at || null,
+                    payment_status: result.data?.order?.payment_status || null,
+                    data: result.data
+                });
+            } else {
+                rejectedEntries += 1;
+                results.push({
+                    local_operation_id: localOperationId,
+                    operation_type: operationType,
+                    status: 'rejected',
+                    error: toFailurePayload(result.error)
+                });
+            }
+        }
+
+        return ok({
+            generated_at: new Date().toISOString(),
+            device_id: safeTrimmedText(payload.device_id, null),
+            client_sync_run_id: safeTrimmedText(payload.client_sync_run_id, null),
+            results,
+            summary: buildSyncSummary({
+                totalEntries: entries.length,
+                acceptedEntries,
+                replayedEntries,
+                rejectedEntries,
+                checkpointToken: acceptedEntries + replayedEntries > 0
+                    ? buildCheckpointToken({ scope: 'order-actions', device_id: payload.device_id, run: payload.client_sync_run_id, acceptedEntries, replayedEntries })
+                    : null
             })
         });
     };
@@ -382,14 +800,24 @@ export const buildSyncMobilePosItemsUseCase = ({ createItemUseCase, updateItemUs
                             const [existing] = await itemRepository.findItemsBySkuCodes([itemData.sku_code]);
                             if (existing) {
                                 replayedEntries += 1;
-                                results.push({ local_transaction_id: localTransactionId, status: 'replayed', server_item_id: existing.item_id });
+                                results.push({
+                                    local_transaction_id: localTransactionId,
+                                    status: 'replayed',
+                                    server_item_id: existing.item_id,
+                                    ...(existing.updated_at ? { server_version: existing.updated_at } : {})
+                                });
                                 continue;
                             }
                         }
                         throw error;
                     }
                     acceptedEntries += 1;
-                    results.push({ local_transaction_id: localTransactionId, status: 'accepted', server_item_id: item.item_id });
+                    results.push({
+                        local_transaction_id: localTransactionId,
+                        status: 'accepted',
+                        server_item_id: item.item_id,
+                        ...(item.updated_at ? { server_version: item.updated_at } : {})
+                    });
                 } else if (op === 'update') {
                     const serverItemId = toPositiveInt(itemData.server_item_id);
                     if (!serverItemId) {
@@ -402,14 +830,25 @@ export const buildSyncMobilePosItemsUseCase = ({ createItemUseCase, updateItemUs
                         canManageCategories: resolveCanManageCategories(user)
                     });
                     acceptedEntries += 1;
-                    results.push({ local_transaction_id: localTransactionId, status: 'accepted', server_item_id: item.item_id });
+                    results.push({
+                        local_transaction_id: localTransactionId,
+                        status: 'accepted',
+                        server_item_id: item.item_id,
+                        ...(item.updated_at ? { server_version: item.updated_at } : {})
+                    });
                 } else {
                     const serverItemId = toPositiveInt(itemData.server_item_id);
                     if (!serverItemId) {
                         throw Object.assign(new Error('server_item_id is required for delete'), { statusCode: 422 });
                     }
                     try {
-                        await deleteItemUseCase({ itemId: serverItemId, userId: user?.user_id });
+                        await deleteItemUseCase({
+                            itemId: serverItemId,
+                            userId: user?.user_id,
+                            ...(itemData.expected_server_version
+                                ? { expectedServerVersion: itemData.expected_server_version }
+                                : {})
+                        });
                         acceptedEntries += 1;
                         results.push({ local_transaction_id: localTransactionId, status: 'accepted', server_item_id: serverItemId });
                     } catch (error) {

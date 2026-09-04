@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -9,7 +10,27 @@ import {
     resolveSemanticImageUrl
 } from '../src/modules/inventory/contracts/imageLifecycleContract.js';
 import { ensureOptimizedItemImage } from '../src/modules/inventory/usecases/imageLifecycleUseCases.js';
-import { isAssetPathReferencedByOtherItems, safeDeleteReplacedImageAsset } from '../src/modules/shared/utils/imageCleanupService.js';
+
+// #1022: same root cause as tests/imageCleanupService.test.js -- safeDeleteReplacedImageAsset's
+// isAssetPathReferencedByOtherItems() falls through dbStore.js's documented fallback to the real,
+// unmocked Sequelize model when this file never mocked dbStore, so findAll() hit the real DB. With
+// DB_HOST/DB_PORT deliberately pinned unreachable (the fast tier's default, #1015), that throws and
+// the function's own fail-safe catch treats the asset as still referenced, so step 5's cleanup
+// assertion sees `false` instead of `true`. isAssetPathReferencedByOtherItems/
+// safeDeleteReplacedImageAsset must be imported dynamically, after the mock registration below --
+// native ESM hoists a static `import` before any top-level statement runs, which would resolve the
+// real dbStore.js before jest.unstable_mockModule takes effect (mirrors
+// tests/toctou_integration.test.js's own pattern).
+const findAll = jest.fn().mockResolvedValue([]);
+const storefrontCatalogOverrideModel = { findAll };
+
+jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
+    default: {
+        get: jest.fn((modelName) => (modelName === 'StorefrontCatalogOverride' ? storefrontCatalogOverrideModel : null))
+    }
+}));
+
+const { isAssetPathReferencedByOtherItems, safeDeleteReplacedImageAsset } = await import('../src/modules/shared/utils/imageCleanupService.js');
 
 describe('Phase 7: Full Image Lifecycle Validation Gate', () => {
     let tempDir;

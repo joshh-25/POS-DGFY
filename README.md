@@ -2,9 +2,9 @@
 
 SKU Inventory Manager is a monorepo for a multi-surface product:
 
-- `skupervisor`: inventory, purchasing, production, reports, and admin workflows
-- `pos`: cashier and terminal operations
-- `store`: public storefront, guest checkout, tracking, and location-aware ordering
+- `dgfy-ims` (SKUpervisor): inventory, purchasing, production, reports, and admin workflows
+- `dgfy-pos`: cashier and terminal operations
+- `dgfy-storefront`: public storefront, guest checkout, tracking, and location-aware ordering
 
 The current architecture direction is a modular monolith on the backend with guarded boundaries:
 
@@ -19,24 +19,33 @@ SKU-Inventory-Manager/
 |- apps/
 |  |- dgfy-api/              # Express + Sequelize API
 |  |- dgfy-migration-runner/ # Sequelize migrations, seeders, DB bootstrap
-|  |- dgfy-web/               # Vite apps: skupervisor, pos, store
+|  |- dgfy-ims/              # Vite app: SKUpervisor / IMS
+|  |- dgfy-pos/              # Vite app: POS (plus the Electron shell)
+|  |- dgfy-storefront/       # Vite app: public storefront
 |  \- dgfy-android-bridge/    # imin-wrapper Android app
 |- docs/                # Architecture, API, database, testing, reference
 |- scripts/             # Repo-level helpers and docs tooling
-|- packages/            # Shared/internal packages
+|- packages/            # Shared/internal packages, incl. @sieitzz/web-core
 \- package.json         # Root scripts
 ```
 
 > There is no `backend/`, `frontend/`, or `android/` at the repo root — they were
 > relocated under `apps/`. See
 > [docs/architecture/apps-layout-migration.md](docs/architecture/apps-layout-migration.md)
-> for the full path map and before/after local-run commands.
+> for the full path map and before/after local-run commands. The single
+> `apps/dgfy-web` Vite package was later split into the three frontend apps above
+> plus the shared `packages/web-core` package — see
+> [ADR 0071](docs/architecture/adr/0071-frontend-split-into-three-apps.md).
 
 ## Current App Surfaces
 
-- `apps/dgfy-web/apps/skupervisor`: primary tenant/admin app
-- `apps/dgfy-web/apps/pos`: POS terminal app
-- `apps/dgfy-web/apps/store`: public storefront app
+- `apps/dgfy-ims`: primary tenant/admin app (SKUpervisor), dev port `5173`
+- `apps/dgfy-pos`: POS terminal app, dev port `5174`
+- `apps/dgfy-storefront`: public storefront app, dev port `5175`
+
+All three consume shared UI, services, and DGFY-auth pages from
+`packages/web-core` (`@sieitzz/web-core`), a source-only package with no build
+step of its own — each app depends on it via `file:../../packages/web-core`.
 
 ## Quick Start
 
@@ -122,7 +131,7 @@ High-value docs:
 
 ## Notes
 
-- Frontend build outputs are generated into `dist-apps/` and should not be treated as source.
+- Each frontend app builds into its own `apps/<app>/dist/` (`apps/dgfy-ims/dist`, `apps/dgfy-pos/dist`, `apps/dgfy-storefront/dist`). Build outputs should not be treated as source.
 - `System_Audit/` contains the current strict audit package; prior audit material is archived under `docs/archive/`.
 - Historical implementation planning artifacts are archived under `docs/archive/reference/`.
 - Governed/active documentation lives under `docs/`.

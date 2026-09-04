@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-04-07
+last_reviewed: 2026-09-02
 applies_to: compliance_sensitive_feature_work
 topic: request_time_preflight_protocol
 related_adr: 0007-dual-mode-pos-compliance-program.md
@@ -106,7 +106,244 @@ is written without a live preflight, say so explicitly in its body rather than
 leaving the front matter to imply otherwise — see
 `docs/compliance/impact-declarations/2026-07-29-pos-batch-menu-import.md` for
 the established shape of that caveat. Reconciling `preflight_run_at` /
-`preflight_request_ref` against a real run remains a human step.
+`preflight_request_ref` against a real run is automated as of #1163/#1248
+(2026-08-31) — see the next section — but note this section's own point still
+holds regardless: `check:compliance` itself still cannot tell a reconciled ref
+from a hand-typed one that merely matches the accepted pattern. Automating the
+sweep closes the "nothing ever converts the placeholder" gap; it does not by
+itself make `check:compliance` able to verify a ref's authenticity — that
+remains open, tracked as a follow-up rather than solved here.
+
+### Where live preflight actually runs (#884, 2026-08-22; token minting automated #1121, 2026-08-28;
+### run against an ephemeral CI instance, no secrets, #1163/#1248, 2026-08-31)
+
+The endpoint requires an authenticated session against a running backend
+(`SYSTEM.EDIT_SETTINGS`), which no `develop`-merge PR ever has — so a per-PR
+live call was never realistic, and #884 named the consequence: every
+`major`/`regulatory` PR in the downpayment epic shipped with a
+`NOT-EXECUTED-*` placeholder and no stage ever converted it to a real run.
+
+**The resolution: a `NOT-EXECUTED-*` placeholder is the accepted, expected
+state at PR-open time.** It is not a defect and `pr-reviewer` should not raise
+it as a should-fix (see `.agents/skills/pr-reviewer/SKILL.md`, "Compliance").
+What changed since #1121, though, is *when* it gets cleared: the sweep is no
+longer a promotion-time-only step a batch can still get blocked on — it now
+also runs **continuously**, triggered automatically whenever a declaration
+lands on `develop` (`.github/workflows/compliance-preflight-sweep.yml`'s
+`push` trigger, path-filtered to
+`docs/compliance/impact-declarations/**`). In the ordinary case a
+`NOT-EXECUTED-*` ref is cleared within minutes of merge, well before any
+promotion is cut — the promotion-time run described below is what a promoter
+still explicitly verifies (per `.agents/skills/promoter/SKILL.md`), not the
+only place the sweep executes.
+
+**Discovery is a full scan, not a `develop..main` diff (#1374, 2026-09-02, ADR
+0074 Decision 5 amendment).** The sweep used to auto-discover its work by
+diffing `origin/main..origin/develop` under
+`docs/compliance/impact-declarations/`, which had a permanent blind spot: a
+declaration that reached `main` via #1007's expedited-override path sits on
+*both* branches at once and never appears in a diff between them. #1374's own
+research found this live — a full scan of `develop` turned up 26 outstanding
+declarations where the diff-based discovery found only 4, and the promoter's
+own verification snippet (using the same diff) had truthfully reported "0
+outstanding" on a promotion PR while 22 sat unreconciled on `main`. The sweep
+now auto-discovers by listing every declaration file on the checked-out ref
+(`git ls-files`) and filtering to whichever ones `scripts/is-preflight-
+outstanding.js` still considers outstanding — i.e. **every outstanding
+declaration on the checked-out ref**, not a diff against any other branch.
+
+**No deployed host, no GitHub Environment, no secrets (#1163/#1248, 2026-08-31,
+ADR 0074 Decision 5 amendment).** The original design (#1121) called for the
+sweep to hit a manually provisioned bot account on `stage.dgfy.ph`, with its
+credentials stored as four `PREFLIGHT_*` GitHub Environment secrets. Those
+secrets were never actually provisioned — confirmed empty on both `STAGING`
+and `DEV` as of 2026-08-29 (#1163) — and blocked the 2026-08-29
+`develop → main` promotion outright, requiring #1007's expedited override to
+ship. Investigating why led to the finding that made this section's rewrite
+necessary: **a deployed host bought no compliance property to begin with.**
+The endpoint evaluates the change *proposal* carried in the declaration's
+`impact_declaration` payload against the target tenant's own compliance
+posture — it writes nothing (no audit row is persisted), never executes the
+change's code, and its response carries no server-generated request id
+(`preflight_request_ref` was always entirely operator-authored). See
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s governing principle: "A merge gate
+... must be satisfiable without a deployed environment, or every leg that
+needs one becomes circular."
+
+So the sweep now provisions its own throwaway target instead: it boots an
+ephemeral `mysql` + `redis` + `dgfy-api` on the CI runner (the same
+container-per-step pattern `promotion-quality-gate.yml` already uses), seeds a
+fixture tenant + `settings:edit` bot
+(`apps/dgfy-api/scripts/seed-preflight-fixture.js`, built on the existing
+`provisionTenant()` service — not a new provisioning path), calls the real
+endpoint over `127.0.0.1`, and tears both down at the end of the run
+(`apps/dgfy-api/scripts/teardown-preflight-fixture.js`). Confirmed live
+end to end (#1163/#1248 spike, 2026-08-31): a real declaration from the
+2026-08-31 batch returned `result: no_breach`, `can_proceed: true` from the
+real endpoint. The fixture's pinned posture
+(`complianceMode: 'non_compliant'`, `plan: 'premium'`,
+`subscription_status: 'active'`) is strictly more reproducible than the
+deployed host it replaces — a tenant on `stage.dgfy.ph` was unpinned and drifts
+with whoever last edited its settings; this one is recreated identically
+every run.
+
+`apps/dgfy-migration-runner` remains landlord-DB-only and still has no path to
+create a tenant-scoped user directly — that fact hasn't changed. What changed
+is that `provisionTenant()` (`apps/dgfy-api/src/services/
+tenantProvisioningService.js`), already used by the real tenant-onboarding
+flow, does have that path, and the seeder script above uses it. Provisioning a
+bot account by hand on a real tenant is no longer part of this protocol at
+all — see the note at the end of this section on what stays deleted below.
+
+**Run it.** The primary path is now automatic (the `push` trigger above); to
+run it manually (backfill, or exercising the mechanism without waiting for a
+push):
+
+```bash
+gh workflow run compliance-preflight-sweep.yml
+```
+
+Mints a fresh token per declaration (`scripts/mint-preflight-token.js`,
+unchanged since #1121 — it still just reads `PREFLIGHT_HOST`/
+`PREFLIGHT_COMPANY_TOKEN`/`PREFLIGHT_BOT_EMAIL`/`PREFLIGHT_BOT_PASSWORD` from
+env, now supplied by the fixture seeder rather than a GitHub Environment),
+calls the preflight endpoint for every outstanding `NOT-EXECUTED-*`
+declaration on the checked-out ref (see "Discovery is a full scan" above),
+and — unlike the #1121 design — **does** write back: it reconciles
+`preflight_result`/`preflight_reason_code`/`preflight_run_at`/
+`preflight_request_ref` into each declaration
+(`scripts/reconcile-preflight-declarations.js`), but only when every
+declaration in the run actually passed (`result: no_breach`,
+`can_proceed: true`) — a real `breach`/`review_required` result is never
+written over, and that declaration's `NOT-EXECUTED-*` ref stays intact for a
+human to look at. The cut-branch-and-PR discipline itself is unchanged: still
+never a direct commit to `develop`, this is regulator-facing evidence and
+gets the same review path as everything else.
+
+**PR open + merge is a supervised handoff, not an auto-merge (#1295/#1374,
+2026-09-02, ADR 0074 Decision 5 amendment).** An org-level policy blocks
+`github-actions[bot]` from creating or approving pull requests outright — the
+sweep used to attempt `gh pr create` and treat any non-zero exit as an
+undifferentiated failure, which meant a run whose preflight had genuinely
+*passed* rendered identically to a real compliance breach, red only at the PR
+step. The sweep still pushes the reconciliation branch and still *attempts*
+`gh pr create` every run (so the loop self-heals for free the moment that org
+policy ever changes), but now classifies the result
+(`scripts/report-preflight-sweep-outcome.js`'s `classifyPrCreate`):
+
+- **Policy-blocked** (the expected case today): the run finishes **green**,
+  with a `::warning::` — the branch is pushed and ready, but nothing failed.
+  A `compliance-preflight-sweep-handoff` artifact and a filed/updated
+  `compliance:preflight-handoff` GitHub issue (one open issue, updated in
+  place across runs, never one per run) carry the branch name, head/base SHA,
+  the swept declarations, and the exact operator commands needed to finish
+  the handoff — see "Operator handoff procedure" below.
+- **A real preflight failure** (`overall_fail=1`, unchanged from before) is
+  still **red**, and now also files/updates a `compliance:preflight-failed`
+  issue naming the failing declaration(s) and reason code(s) — the same
+  labelled-issue mechanism, so a compliance failure doesn't wait for someone
+  to notice a red run in the Actions tab either.
+- **Any other `gh pr create` failure**, or a failure later in the merge
+  sequence (checks never reaching a terminal state, `mergeStateStatus` not
+  `CLEAN`), is a genuine, red **handoff error** — left open for investigation,
+  same as before.
+- If org policy ever stops blocking the bot (or a credentialed AI session's
+  own token is used), `gh pr create` succeeds and the existing Merge Safety
+  poll + merge path runs exactly as it always has — auto-merge is not gone,
+  it's just no longer assumed to always be reachable.
+
+### Not applicable to live preflight (#1396, 2026-09-02)
+
+A declaration can be classification `minor` and still declare nothing the live preflight endpoint
+can evaluate — e.g. `surfaces: storefront` alone. `complianceUseCases.js`'s own
+`surfaceToOperations` map has exactly five keys (`pos`, `terminal`, `settings`, `payments`,
+`compliance`); a surface outside that set contributes zero operations, and zero operations falls
+back to the generic `REQUEST_PREFLIGHT` decision — indistinguishable from submitting no surfaces at
+all. **Widening the endpoint's accepted-surface set (or `ENDPOINT_ACCEPTED_SURFACES` in
+`scripts/build-preflight-request.js`) to include `storefront` was considered and rejected** — there
+is no storefront rule anywhere in `compliancePolicyEngine.js`, and the regulatory framework this
+endpoint evaluates (BIR/BSP/NPC) is POS-fiscal/payments scoped; adding the surface would be a no-op
+that reads as a real check, i.e. false confidence.
+
+The honest fix: `scripts/build-preflight-request.js`'s `classifyEndpointApplicability()` detects
+this case before any HTTP call and the sweep records it as `not_applicable` through the same
+reconciliation machinery every other result uses — `preflight_result: not_applicable`,
+`preflight_reason_code: NO_ENDPOINT_ACCEPTED_SURFACE`, and a
+`preflight_request_ref: NOT-APPLICABLE-<run_id>-<slug>` (a distinct prefix from `PREFLIGHT-*`, so a
+reader can tell "verified against the real endpoint" from "not evaluable by it" without opening the
+run — still matches `isValidPreflightRequestRef`'s 3+-segment pattern).
+
+**`minor`-only, by construction.** `check-compliance-impact.js`'s
+`PREFLIGHT_REQUIRED_CLASSIFICATIONS` still hard-requires `preflight_result=no_breach` for
+`major`/`regulatory` — a `major`/`regulatory` declaration with no endpoint-accepted surface fails
+closed instead (`build-preflight-request.js` exits 1 with an explicit message: declare an evaluable
+surface, or reclassify). The `NOT-EXECUTED-*` → `NOT-APPLICABLE-*` lifecycle never applies to those
+two classifications.
+
+### Operator handoff procedure
+
+When a sweep run finishes green-with-warning (`handoff_required`), the
+reconciliation branch is pushed but nobody has opened or merged its PR yet.
+To finish it:
+
+1. **Find the evidence.** Either the run's own `compliance-preflight-sweep-
+   handoff` artifact, or the single open `compliance:preflight-handoff`
+   GitHub issue (`gh issue list --label compliance:preflight-handoff --state
+   open`) — both carry the same branch name, head/base SHA, swept
+   declarations, and the exact commands below.
+2. **Open the PR**, exactly as the artifact/issue names it:
+   ```bash
+   gh pr create --base develop --head compliance-sweep/<run_id> \
+     --title "docs(compliance): reconcile preflight sweep results (<date>)" \
+     --body-file <pr_body>
+   ```
+3. **Watch its checks and merge per this repo's Merge Safety rule**
+   (`AGENTS.md`) — no check `in_progress`/`queued`, `mergeStateStatus: CLEAN`:
+   ```bash
+   gh pr checks <N> --watch
+   gh pr merge <N> --merge --delete-branch
+   ```
+4. **The merge re-triggers exactly one more sweep run** (the PR also touches
+   `docs/compliance/impact-declarations/**`) — that run's own discovery step
+   finds zero outstanding declarations and exits immediately, so the loop
+   terminates on its own; no further action is needed.
+5. **Close the loop on the issue.** If the human-opened PR's body includes
+   `Closes #<handoff issue number>`, the issue closes automatically on merge
+   — the recommended shape, and what the artifact's suggested PR body already
+   does. If it doesn't, the next green sweep run's own "Publish handoff
+   issue" step closes-with-comment any open `compliance:preflight-handoff`
+   issue whose recorded branch is already gone from origin, as a fallback —
+   but don't rely on that path when `Closes` is available; it's simpler and
+   immediate.
+
+For local debugging (exercising the mechanism without dispatching the
+workflow — e.g. against a local `dgfy-api` you've stood up yourself), the
+underlying scripts are directly runnable:
+
+```bash
+node apps/dgfy-api/scripts/seed-preflight-fixture.js   # prints PREFLIGHT_* + FIXTURE_TENANT_ID
+DGFY_DEV_TOKEN=$(node scripts/mint-preflight-token.js)
+```
+
+**No `NOT-EXECUTED-*` declaration may reach `main`** — unchanged. In the
+ordinary case the continuous trigger above already clears every declaration
+well before a promotion is cut, so this is now rarely something a promoter
+has to actively wait on; `promoter`'s own procedure still verifies zero
+outstanding declarations before cutting `release/<label>`, and #1007's
+phrase-gated expedited override remains the one case a `NOT-EXECUTED-*`
+declaration may legitimately still reach `main`, logged and authorized, not
+silent (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment).
+
+**What's deleted from this protocol, not just changed:** the manual
+bot-account-provisioning procedure (register on the tenant's own
+`POST /api/v1/auth/register` flow, trim `permissions` by hand, paste
+credentials into a GitHub Environment); the "GitHub Environment secrets vs.
+SOPS+age" storage-mechanism decision (there's no secret to store); and the
+"not yet designed: rotation/revocation" open gap (there's no durable
+credential to rotate — every fixture credential is generated fresh per run
+and destroyed with the tenant that held it). None of these apply to the
+current design; they're preserved only in this doc's own git history and in
+#1121/#1163's issue history, not restated here as if still live.
 
 ## Dirty Worktree Handling
 1. Use path-scoped diffs while preparing declaration evidence:

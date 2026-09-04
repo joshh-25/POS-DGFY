@@ -47,7 +47,7 @@ services:
   # out of backend/ into apps/dgfy-migration-runner. dgfy-api below depends
   # on this completing successfully instead of migrating itself on boot.
   dgfy-migration-runner:
-    image: ghcr.io/sieitzz/dgfy-platform/migration-runner:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-migration-runner:${IMAGE_TAG:-latest}
     restart: "no"
     env_file: .env
     environment:
@@ -63,7 +63,7 @@ services:
   # the image, service name, internal port (5000 -> 5100), and data-volume
   # paths (data/backend/* -> data/dgfy-api/*) change.
   dgfy-api:
-    image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
+    image: ghcr.io/sieitzz/dgfy-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -106,3 +106,74 @@ services:
 #   # empty dir works fine; verify it really is empty first if unsure.
 #   docker compose config >/dev/null   # validates the hand-edited file
 #   docker compose up -d --remove-orphans
+
+# =============================================================================
+# Cutover fragment 2 -- frontend split (ADR 0071 / PR #513 / issue #915)
+# =============================================================================
+# A SEPARATE, LATER cutover from the one above -- this one retires `frontend:`
+# (the single three-surface image) in favor of three independent images:
+# `dgfy-ims`, `dgfy-pos`, `dgfy-storefront`. Full narrative and sequencing:
+# docs/deployment/2026-08-23-frontend-split-cutover-runbook.md -- this section
+# is just the literal paste-in diff that runbook's step 3 uses.
+#
+# Captured from the live server 2026-08-23.
+#
+# DELETE the existing `frontend:` service block below `redis:`/`dgfy-api:`
+# and PASTE the three services below in its place. `mysql:`, `redis:`,
+# `dgfy-api`/`dgfy-migration-runner` (from cutover fragment 1 above), and the
+# top-level `networks:` block stay untouched.
+#
+# Host-port publish: the retired `frontend:` service published
+# "127.0.0.1:8081:8081" / "8082:8082" / "8083:8083" (one container, three
+# ports). Each new service below publishes exactly ONE of those same three
+# ports -- the numbers don't change, so infrastructure/nginx-host/
+# dev.dgfy.ph.conf (host nginx, not part of this compose file) needs NO edit;
+# it already dials localhost:8081/8082/8083, not a container name.
+#
+# Image tag: ${IMAGE_TAG:-latest} is correct here (no override needed, unlike
+# prod) -- this server's IMAGE_TAG=develop, matching what deploy.yml actually
+# pushes for dgfy-ims/dgfy-pos/dgfy-storefront on DEV.
+
+services:
+  dgfy-ims:
+    image: ghcr.io/sieitzz/dgfy-ims:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_dev]
+    ports:
+      - "127.0.0.1:8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-pos:
+    image: ghcr.io/sieitzz/dgfy-pos:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_dev]
+    ports:
+      - "127.0.0.1:8082:8082"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-storefront:
+    image: ghcr.io/sieitzz/dgfy-storefront:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_dev]
+    ports:
+      - "127.0.0.1:8083:8083"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+# --- Apply ---
+#
+#   cd /opt/dgfy-dev
+#   docker compose config >/dev/null   # validates the hand-edited file
+#   docker compose up -d --remove-orphans   # also retires the orphaned
+#                                            # `frontend` container

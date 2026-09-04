@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-29
-last_reviewed: 2026-08-11
-review_by: 2026-12-28
+last_reviewed: 2026-08-25
+review_by: 2027-02-24
 applies_to: architecture_decision
 topic: pos_terminal_pairing_and_shift_safe_navigation
 ---
@@ -180,3 +180,41 @@ profiles inside the selected tenant, not a separate credential authority.
 - POS void amounts are disclosure metrics and must not be subtracted a second time from the already void-exclusive recognized sales total.
 - Payment-provider refunds are not POS voids. Their settlement and reconciliation remain in the commerce/provider ledger governed by ADR 0042 and ADR 0052; close reports must explicitly state that provider refunds are reconciled separately.
 - Existing immutable Z-reading snapshots remain readable. Missing newly introduced disclosure fields normalize to zero/false and do not rewrite historical snapshots.
+
+### 2026-08-20: Administrator Void Without Shift Reassignment
+
+- An administrator with `pos:void` may void a completed POS transaction without opening an administrator shift. The authenticated POS session, paired-terminal policy, reason validation, and duplicate-void guard still apply.
+- The original transaction cashier and shift are immutable. The administrator is recorded as the void actor, with a null actor shift when the no-shift exception is used.
+- A cashier with `pos:void` must still own an open shift. Physical cash refunds additionally require `pos:cash_drawer_adjust` and the actual refunding cashier's open shift.
+- A void or refund after shift close is append-only. It never rewrites the saved close summary or Z-reading; cashier history and daily reporting disclose the later adjustment with original and acting attribution.
+- Provider-owned, merchant-owned, cash, Employee Credit, and split-tender reversals remain server-classified workflows. A client cannot turn an internal void into evidence that customer money was refunded.
+
+### 2026-08-24: Attendance and Operator-Session Boundary (Phase 156)
+
+- Clauses amended: the 2026-07-24 Durable Shift Ownership addendum, clauses 1,
+  2, 4, and 9 (untagged/default behavior).
+- With ADR 0073 accepted, `pos_terminal_shifts.cashier_id` remains the
+  opening-cashier and register-shift owner compatibility field. It must not be
+  repurposed as the current terminal operator when a relief cashier takes over.
+- Current terminal operation will be represented by
+  a separately authenticated operator session. The operator session may change
+  from A to B without opening a second register shift, changing the opening
+  float, or silently reassigning register-level cash custody.
+- Register-level close, X/Z, cash custody, and variance rules remain governed by
+  the register shift and counted handoff contract. Operator takeover is not a
+  shift resume and does not authorize mutation of an unrelated shift.
+- This amendment records the approved direction for the next implementation
+  phases; it does not authorize a migration or runtime change by itself.
+- See `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`.
+
+### 2026-08-25: Automatic Attendance Hooks (Phase 164)
+
+- Opening and closing a register shift may invoke the enabled location's
+  attendance and operator lifecycle in the same transaction. The continuous
+  shift and opening-cash owner remain unchanged.
+- A cashier's Break & Lock is a client lock only after the server records the
+  break and revokes operator authority. Same-cashier authentication resumes
+  the existing shift; it never creates a second shift.
+- The existing offline queue must not claim a completed close when attendance
+  is enabled; the server remains the official source for Time Out and shift
+  closure.

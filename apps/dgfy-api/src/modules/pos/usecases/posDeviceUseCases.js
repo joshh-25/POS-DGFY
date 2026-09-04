@@ -4,14 +4,106 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapPosUseCaseError } from './posUseCaseError.js';
-import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import { resolveReceiptLogoRaster } from '../utils/receiptLogoRaster.js';
+import { isPosDrawerAdmin, verifyPosDrawerOperator } from '../domain/posDrawerAuthorizationPolicy.js';
 
 const POS_DEVICE_OPERATION_KEYS = Object.freeze({
     RECEIPT_PRINT: 'terminal.device_receipt_print',
+    ONLINE_ORDER_RECEIPT_AUTO_PRINT: 'terminal.online_order_receipt_auto_print',
     DRAWER_OPEN: 'terminal.device_drawer_open',
     SHIFT_SUMMARY_PRINT: 'terminal.device_shift_summary_print',
     Z_READING_PRINT: 'terminal.device_z_reading_print'
 });
+
+export const buildClaimOnlineOrderReceiptAutoPrintUseCase = ({ posRepository }) => {
+    return async ({ payload, user }) => {
+        const userId = parsePositiveInt(user?.user_id);
+        const registerShiftOwnerUserId = parsePositiveInt(user?.register_shift_owner_user_id) || userId;
+        const transactionId = parsePositiveInt(payload?.transaction_id);
+        const terminalId = String(payload?.terminal_id || '').trim() || null;
+
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+        if (!transactionId || !terminalId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'transaction_id and terminal_id are required',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const activeShift = toSerializable(await posRepository.findOpenTerminalShift({
+                cashierId: registerShiftOwnerUserId
+            }));
+            if (!activeShift) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Automatic receipt printing requires an open shift',
+                    { statusCode: 422 }
+                );
+            }
+
+            const transaction = toSerializable(await posRepository.getTransactionById(transactionId));
+            if (!transaction) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    `POS transaction not found: ${transactionId}`,
+                    { statusCode: 404 }
+                );
+            }
+
+            const eligible = String(transaction.order_source || '').toLowerCase() === 'online_store'
+                && String(transaction.fulfillment_status || '').toLowerCase() === 'confirmed'
+                && String(transaction.payment_status || '').toLowerCase() === 'paid'
+                && String(transaction.payment_provider || '').toLowerCase() === 'paymongo'
+                && Number(transaction.balance_due || 0) <= 0
+                && Number(activeShift.location_id || 0) === Number(transaction.location_id || 0);
+
+            if (!eligible) {
+                return ok({
+                    claimed: false,
+                    eligible: false,
+                    reason_code: 'ONLINE_RECEIPT_AUTO_PRINT_NOT_ELIGIBLE'
+                });
+            }
+
+            const claimToken = crypto.randomUUID();
+            const idempotencyKey = `online-order-receipt:${transactionId}`;
+            const requestHash = hashPayload({ transaction_id: transactionId });
+            const replay = toSerializable(await posRepository.createOperationReplay({
+                operation_key: POS_DEVICE_OPERATION_KEYS.ONLINE_ORDER_RECEIPT_AUTO_PRINT,
+                idempotency_key: idempotencyKey,
+                request_hash: requestHash,
+                replay_status: 'processed',
+                response_payload: {
+                    claim_token: claimToken,
+                    transaction_id: transactionId,
+                    terminal_id: terminalId,
+                    claimed_by: userId,
+                    claimed_at: new Date().toISOString()
+                },
+                created_by: userId
+            }));
+            const storedPayload = parseJsonObject(replay?.response_payload);
+            const claimed = storedPayload.claim_token === claimToken;
+
+            return ok({
+                claimed,
+                eligible: true,
+                reason_code: claimed ? 'ONLINE_RECEIPT_AUTO_PRINT_CLAIMED' : 'ONLINE_RECEIPT_AUTO_PRINT_ALREADY_CLAIMED'
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to claim online order receipt printing'));
+        }
+    };
+};
 
 const toSerializable = (value) => (
     value && typeof value.toJSON === 'function'
@@ -26,6 +118,8 @@ const parsePositiveInt = (value) => {
 };
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+
+const cashSalesFromSalesSummary = (salesSummary) => getPosCashPaymentAmount(salesSummary?.payment_breakdown);
 
 const resolveShiftSalesWindow = (shift = {}) => {
     const startAt = new Date(shift?.opened_at || '');
@@ -179,7 +273,7 @@ const buildBusinessSettings = (settings = {}) => ({
     profile_image_url: settings?.storefront_profile_image_url?.value || ''
 });
 
-const buildReceiptPayload = ({ transaction, settings }) => {
+const buildReceiptPayload = async ({ transaction, settings }) => {
     const transactionMetadata = parseJsonObject(transaction?.special_instructions);
     const receiptContract = transactionMetadata?.receipt_contract && typeof transactionMetadata.receipt_contract === 'object'
         ? transactionMetadata.receipt_contract
@@ -189,13 +283,19 @@ const buildReceiptPayload = ({ transaction, settings }) => {
             document_context: transaction?.document_context || 'non_fiscal'
         };
 
+    // Only the receipt gets a logo -- shift summaries and Z-readings (the other
+    // buildBusinessSettings callers) stay text-only rather than paying the sharp
+    // encoding cost on every print of something that isn't a customer-facing
+    // receipt. See issue #321.
+    const logoRaster = await resolveReceiptLogoRaster({ settings });
+
     return {
         receipt_contract: {
             version: String(receiptContract?.version || '2026.04.08').trim(),
             document_type: String(receiptContract?.document_type || transaction?.document_type || 'non_fiscal_slip').trim(),
             document_context: String(receiptContract?.document_context || transaction?.document_context || 'non_fiscal').trim()
         },
-        business: buildBusinessSettings(settings),
+        business: { ...buildBusinessSettings(settings), logo_raster: logoRaster },
         transaction: {
             pos_transaction_id: transaction?.pos_transaction_id || null,
             invoice_number: transaction?.invoice_number || null,
@@ -225,6 +325,7 @@ const buildReceiptPayload = ({ transaction, settings }) => {
                     sale_price: round4(line?.sale_price),
                     line_subtotal: round4(line?.line_subtotal),
                     unit_of_measure: line?.unit_of_measure || '',
+                    item_discount: line?.item_discount_snapshot || null,
                     course: line?.fnb_course_snapshot || null,
                     modifiers: line?.fnb_modifiers_snapshot || null,
                     notes: line?.fnb_special_instructions || null
@@ -262,19 +363,46 @@ const buildShiftSummaryPayload = async ({ posRepository, shift, settings, transa
     const cashEvents = Array.isArray(shift?.cashEvents) ? shift.cashEvents : [];
     const eventSummary = summarizeShiftCashEvents(cashEvents);
     const openingFloatAmount = round4(shift?.opening_float_amount);
-    const cashSalesAmount = typeof posRepository?.getShiftCashSalesTotal === 'function'
-        ? round4(await posRepository.getShiftCashSalesTotal(shift.pos_terminal_shift_id, { transaction }))
-        : 0;
-    const expectedCashAmount = shift?.expected_cash_amount == null
-        ? round4(openingFloatAmount + eventSummary.net_events_total + cashSalesAmount)
-        : round4(shift.expected_cash_amount);
     const salesSummary = typeof posRepository?.getZReadingSummary === 'function'
         ? await posRepository.getZReadingSummary({
             shiftId: shift.pos_terminal_shift_id,
             ...resolveShiftSalesWindow(shift)
         }, { transaction })
         : null;
-
+    const postCloseVoids = salesSummary
+        && typeof posRepository?.getPostCloseVoidSummaryForShift === 'function'
+        && shift?.closed_at
+        && String(shift?.status || '').trim().toLowerCase() === 'closed'
+        ? await posRepository.getPostCloseVoidSummaryForShift({
+            shiftId: shift.pos_terminal_shift_id,
+            closedAt: shift.closed_at,
+            terminalId: shift.terminal_id || null,
+            locationId: shift.location_id || null
+        }, { transaction })
+        : null;
+    const postCloseVoidTransactionCount = Number.parseInt(
+        postCloseVoids?.post_close_void_transaction_count || 0,
+        10
+    );
+    const postCloseVoidAmount = round4(postCloseVoids?.post_close_void_amount);
+    const postCloseVoidedItemCount = round4(postCloseVoids?.post_close_voided_item_count);
+    const normalizedSalesSummary = salesSummary
+        ? {
+            ...salesSummary,
+            void_transaction_count: Number.parseInt(salesSummary.void_transaction_count || 0, 10)
+                + postCloseVoidTransactionCount,
+            void_amount: round4(Number(salesSummary.void_amount || 0) + postCloseVoidAmount),
+            voided_item_count: round4(Number(salesSummary.voided_item_count || 0) + postCloseVoidedItemCount),
+            post_close_void_transaction_count: postCloseVoidTransactionCount,
+            post_close_void_amount: postCloseVoidAmount,
+            post_close_voided_item_count: postCloseVoidedItemCount,
+            payment_breakdown: normalizePosPaymentBreakdown(salesSummary.payment_breakdown)
+        }
+        : null;
+    const cashSalesAmount = cashSalesFromSalesSummary(salesSummary);
+    const expectedCashAmount = shift?.expected_cash_amount == null
+        ? round4(openingFloatAmount + eventSummary.net_events_total + cashSalesAmount)
+        : round4(shift.expected_cash_amount);
     return {
         business: buildBusinessSettings(settings),
         shift: {
@@ -295,17 +423,12 @@ const buildShiftSummaryPayload = async ({ posRepository, shift, settings, transa
             cash_sales_amount: cashSalesAmount,
             ...eventSummary
         },
-        sales_summary: salesSummary
-            ? {
-                ...salesSummary,
-                payment_breakdown: normalizePosPaymentBreakdown(salesSummary.payment_breakdown)
-            }
-            : null
+        sales_summary: normalizedSalesSummary
     };
 };
 
-export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceDriver }) => {
-    return async ({ user, auditContext = {} }) => {
+export const buildGetPosDeviceStatusUseCase = ({ deviceDriver }) => {
+    return async ({ user }) => {
         const userId = parsePositiveInt(user?.user_id);
         if (!userId) {
             return fail(new DomainError(
@@ -317,19 +440,9 @@ export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceDriver }) 
 
         try {
             const bridge = await deviceDriver.getStatus();
-            await posRepository.createAuditLog({
-                user_id: userId,
-                entity_type: 'pos_device_bridge',
-                entity_id: null,
-                action: 'VIEW',
-                changes: {
-                    operation: 'status',
-                    driver_id: deviceDriver.id,
-                    printers_detected: bridge?.printersDetected ?? null,
-                    auth_required: bridge?.authRequired ?? null
-                },
-                ...buildAuditMetadata(auditContext)
-            });
+            // Status is read-only health telemetry, not a cashier action. Do
+            // not create an audit row on every frontend status check; actual
+            // hardware actions (printing and drawer pulses) remain audited.
 
             // Absence of hardware is a successful, informational answer, not a
             // service failure — see ADR 0053. A 503 only ever comes from the
@@ -351,6 +464,7 @@ export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceDriver }) 
 export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => {
     return async ({ payload, user, auditContext = {} }) => {
         const userId = parsePositiveInt(user?.user_id);
+        const registerShiftOwnerUserId = parsePositiveInt(user?.register_shift_owner_user_id) || userId;
         const transactionId = parsePositiveInt(payload?.transaction_id);
         const copies = Math.max(1, Math.min(Number.parseInt(payload?.copies, 10) || 1, 5));
         const paperWidth = payload?.paper_width === '57mm' ? '57mm' : '80mm';
@@ -401,7 +515,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
             }
 
             const activeShift = toSerializable(await posRepository.findOpenTerminalShift({
-                cashierId: userId
+                cashierId: registerShiftOwnerUserId
             }));
             if (!activeShift) {
                 throw new DomainError(
@@ -421,7 +535,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
             }
 
             const allSettings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
-            const receipt = { ...buildReceiptPayload({ transaction, settings: allSettings }), paper_width: paperWidth };
+            const receipt = { ...await buildReceiptPayload({ transaction, settings: allSettings }), paper_width: paperWidth };
             const bridgeResponse = clientDriverId
                 ? {
                     ok: clientResult?.success !== false,
@@ -442,6 +556,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
                 action: 'UPDATE',
                 changes: {
                     operation: 'print_receipt',
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     reason,
                     copies,
                     paper_width: paperWidth,
@@ -487,6 +602,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
                     action: 'UPDATE',
                     changes: {
                         operation: 'print_receipt',
+                        operator_session_id: parsePositiveInt(user?.operator_session_id),
                         reason,
                         copies,
                         paper_width: paperWidth,
@@ -856,14 +972,126 @@ export const buildPrintPosZReadingUseCase = ({ posRepository, deviceDriver }) =>
     };
 };
 
-export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver }) => {
+export const buildAuthorizePosDrawerUseCase = ({ posRepository, authorizationService }) => {
+    return async ({ payload, user }) => {
+        const userId = parsePositiveInt(user?.user_id);
+        const registerShiftOwnerUserId = parsePositiveInt(user?.register_shift_owner_user_id) || userId;
+        const shiftId = parsePositiveInt(payload?.shift_id);
+        const transactionId = payload?.transaction_id == null ? null : parsePositiveInt(payload.transaction_id);
+        const terminalId = String(payload?.terminal_id || '').trim() || null;
+        const reason = String(payload?.reason || '').trim();
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+
+        try {
+            if (!userId) {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated POS user is required', { statusCode: 401 });
+            }
+            if (!shiftId) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'shift_id must be a positive integer', { statusCode: 422 });
+            }
+            if (reason.length < 3) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'reason is required and must be at least 3 characters', { statusCode: 422 });
+            }
+            if (payload?.transaction_id != null && !transactionId) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'transaction_id must be a positive integer when provided', { statusCode: 422 });
+            }
+            if (!idempotencyKey) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'idempotency_key is required', { statusCode: 422 });
+            }
+
+            const shift = toSerializable(await posRepository.getTerminalShiftById(shiftId));
+            if (!shift || shift.status !== 'open') {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Cash drawer opening requires an open shift', { statusCode: 422 });
+            }
+            if (terminalId && shift.terminal_id && terminalId !== shift.terminal_id) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    `Shift ${shiftId} belongs to terminal ${shift.terminal_id}, not ${terminalId}`,
+                    { statusCode: 409 }
+                );
+            }
+
+            const operator = toSerializable(
+                await (typeof posRepository.findActivePosDrawerOperatorById === 'function'
+                    ? posRepository.findActivePosDrawerOperatorById(userId)
+                    : posRepository.findActiveDiscountApproverById(userId))
+            );
+            const adminBypass = isPosDrawerAdmin(user) || isPosDrawerAdmin(operator);
+            if (!adminBypass && Number(shift.cashier_id) !== registerShiftOwnerUserId) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Only the cashier assigned to this open shift can open its drawer.',
+                    { statusCode: 403, details: { reason_code: 'DRAWER_SHIFT_CASHIER_MISMATCH' } }
+                );
+            }
+
+            const verified = await verifyPosDrawerOperator({
+                operator,
+                pin: payload?.authorization_pin
+            });
+            const authorizationMode = verified.authorization_mode || (adminBypass ? 'admin_bypass' : 'pin');
+            const authorizationToken = authorizationService.issue({
+                userId,
+                shiftId,
+                transactionId,
+                terminalId: shift.terminal_id || terminalId,
+                reason,
+                idempotencyKey,
+                authorizationMode
+            });
+
+            return ok({
+                authorization_token: authorizationToken,
+                authorization_mode: authorizationMode,
+                authorized_by: {
+                    user_id: verified.user_id,
+                    username: verified.username,
+                    role: verified.role
+                },
+                expires_in_seconds: 90
+            });
+        } catch (error) {
+            try {
+                await posRepository.createAuditLog({
+                    user_id: userId || null,
+                    entity_type: 'pos_device_drawer',
+                    entity_id: shiftId || null,
+                    action: 'CREATE',
+                    event_type: 'pos_drawer_authorization_failed',
+                    shift_id: shiftId || null,
+                    terminal_id: terminalId,
+                    reason,
+                    changes: {
+                        event: 'pos_drawer_authorization_failed',
+                        operation: 'authorize_drawer',
+                        operator_session_id: parsePositiveInt(user?.operator_session_id),
+                        shift_id: shiftId || null,
+                        transaction_id: transactionId,
+                        terminal_id: terminalId,
+                        reason,
+                        reason_code: error?.details?.reason_code || error?.code || 'DRAWER_AUTHORIZATION_FAILED',
+                        authorization_mode: isPosDrawerAdmin(user) ? 'admin_bypass_attempt' : 'pin_attempt'
+                    }
+                });
+            } catch {
+                // A failed authorization must never be hidden by a secondary
+                // audit-write failure; the original denial remains authoritative.
+            }
+            return fail(mapPosUseCaseError(error, 'POS cash drawer authorization failed'));
+        }
+    };
+};
+
+export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver, authorizationService }) => {
     return async ({ payload, user, auditContext = {} }) => {
         const userId = parsePositiveInt(user?.user_id);
+        const registerShiftOwnerUserId = parsePositiveInt(user?.register_shift_owner_user_id) || userId;
         const shiftId = parsePositiveInt(payload?.shift_id);
         const transactionId = payload?.transaction_id == null ? null : parsePositiveInt(payload?.transaction_id);
         const terminalId = String(payload?.terminal_id || '').trim() || null;
         const reason = String(payload?.reason || '').trim();
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const drawerAuthorizationToken = String(payload?.drawer_authorization_token || '').trim() || null;
         // See buildPrintPosReceiptUseCase above — same client-delegation contract.
         const clientDriverId = String(payload?.client_driver_id || '').trim() || null;
         const clientResult = (clientDriverId && payload?.client_result && typeof payload.client_result === 'object')
@@ -897,6 +1125,47 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver }) => {
                 'reason is required and must be at least 3 characters',
                 { statusCode: 422 }
             ));
+        }
+
+        const isTransactionAutoOpen = /^checkout_auto_/.test(reason) && Boolean(transactionId);
+        let authorizationMode = 'transaction_auto';
+        if (!drawerAuthorizationToken && !isTransactionAutoOpen) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'Cashier PIN authorization is required before opening the drawer.',
+                { statusCode: 403, details: { reason_code: 'DRAWER_AUTHORIZATION_REQUIRED' } }
+            ));
+        }
+
+        if (drawerAuthorizationToken) {
+            let claims;
+            try {
+                claims = authorizationService.verify(drawerAuthorizationToken);
+            } catch {
+                return fail(new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Drawer authorization expired. Verify the PIN again.',
+                    { statusCode: 403, details: { reason_code: 'DRAWER_AUTHORIZATION_INVALID' } }
+                ));
+            }
+            const claimsTerminalId = String(claims?.terminal_id || '').trim() || null;
+            const claimsReason = String(claims?.reason || '').trim();
+            const claimsIdempotencyKey = normalizeOptionalIdempotencyKey(claims?.idempotency_key);
+            if (
+                Number(claims?.user_id) !== userId
+                || Number(claims?.shift_id) !== shiftId
+                || Number(claims?.transaction_id || 0) !== Number(transactionId || 0)
+                || claimsReason !== reason
+                || claimsIdempotencyKey !== idempotencyKey
+                || (claimsTerminalId && terminalId && claimsTerminalId !== terminalId)
+            ) {
+                return fail(new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Drawer authorization does not match this operation.',
+                    { statusCode: 403, details: { reason_code: 'DRAWER_AUTHORIZATION_MISMATCH' } }
+                ));
+            }
+            authorizationMode = String(claims?.authorization_mode || 'pin');
         }
 
         const replayRequestHash = hashPayload({
@@ -933,13 +1202,41 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver }) => {
                     { statusCode: 409 }
                 );
             }
+            if (isTransactionAutoOpen) {
+                // The `checkout_auto_*` reason is a client-supplied literal, not a
+                // server-issued grant — without this check, any user holding
+                // ADJUST_CASH_DRAWER could open a different cashier's open-shift
+                // drawer with zero PIN. Mirrors buildAuthorizePosDrawerUseCase's
+                // ownership check above.
+                const operator = toSerializable(
+                    await (typeof posRepository.findActivePosDrawerOperatorById === 'function'
+                        ? posRepository.findActivePosDrawerOperatorById(userId)
+                        : posRepository.findActiveDiscountApproverById(userId))
+                );
+                const adminBypass = isPosDrawerAdmin(user) || isPosDrawerAdmin(operator);
+                if (!adminBypass && Number(shift.cashier_id) !== registerShiftOwnerUserId) {
+                    throw new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'Only the cashier assigned to this open shift can auto-open its drawer.',
+                        { statusCode: 403, details: { reason_code: 'DRAWER_SHIFT_CASHIER_MISMATCH' } }
+                    );
+                }
+            }
+            let transaction = null;
             if (transactionId) {
-                const transaction = await posRepository.getTransactionById(transactionId);
+                transaction = toSerializable(await posRepository.getTransactionById(transactionId));
                 if (!transaction) {
                     throw new DomainError(
                         DomainErrorCode.RESOURCE_NOT_FOUND,
                         `POS transaction not found: ${transactionId}`,
                         { statusCode: 404 }
+                    );
+                }
+                if (isTransactionAutoOpen && Number(transaction.shift_id) !== shiftId) {
+                    throw new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'Automatic drawer opening is only allowed for the completed sale shift.',
+                        { statusCode: 403, details: { reason_code: 'DRAWER_TRANSACTION_SHIFT_MISMATCH' } }
                     );
                 }
             }
@@ -965,7 +1262,12 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver }) => {
                 action: 'UPDATE',
                 changes: {
                     operation: 'open_drawer',
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
                     reason,
+                    shift_id: shiftId,
+                    location_id: shift.location_id || null,
+                    authorization_mode: authorizationMode,
+                    authorized_by_user_id: userId,
                     terminal_id: shift.terminal_id || terminalId,
                     transaction_id: transactionId,
                     driver_id: clientDriverId || deviceDriver.id,
@@ -981,7 +1283,8 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver }) => {
                     location_id: shift.location_id,
                     status: shift.status
                 },
-                bridge: bridgeResponse
+                bridge: bridgeResponse,
+                authorization_mode: authorizationMode
             };
 
             await persistOperationReplay({

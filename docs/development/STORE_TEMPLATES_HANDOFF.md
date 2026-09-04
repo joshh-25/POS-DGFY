@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-08-09
+last_reviewed: 2026-08-15
 applies_to: settings,catalog,pos,storefront
 topic: store_templates_handoff
 ---
@@ -96,8 +96,8 @@ work the same after this ships." Each claim below states the mechanism,
 not just the conclusion, so it can be checked rather than trusted.
 
 **Registration is visually and functionally unchanged.** Both
-registration UIs (`apps/dgfy-web/Pages/RegisterCompany.jsx` and
-`apps/dgfy-web/apps/store/src/business/pages/StorefrontBusinessGrowPage.jsx`)
+registration UIs (`packages/web-core/Pages/RegisterCompany.jsx` and
+`apps/dgfy-storefront/src/business/pages/StorefrontBusinessGrowPage.jsx`)
 still show the same 10 "Operating Mode" choices, built from
 `WORKFLOW_MODE_SELECT_VALUES`. There is no template picker on the organic
 signup path. Nothing about what a merchant sees or fills in changes.
@@ -223,7 +223,7 @@ the test will fail loudly if you try.
 ## 5. Admin how-to
 
 **Curating templates** — `/admin/store-templates`
-(`apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx`), Platform Master Admin
+(`apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx`), Platform Master Admin
 only (`masterOnly` in `middleware/auth.js`, not a delegable permission —
 a published template shapes every future tenant, platform-wide):
 
@@ -256,7 +256,7 @@ a published template shapes every future tenant, platform-wide):
   platform-preset or canonical provenance.
 
 **Applying a template to an existing tenant** — the per-tenant picker on
-`apps/dgfy-web/Pages/admin/TenantManager.jsx` (published templates only,
+`apps/dgfy-ims/Pages/admin/TenantManager.jsx` (published templates only,
 active tenants only), or `POST /admin/tenants/:id/apply-template`
 directly. Requires `templateKey` and a reason (≥3 characters). One
 transaction: seeds the three overlay settings from the materialized
@@ -296,7 +296,7 @@ baseline and the read/write paths' fail-open fallback, not the runtime
 catalog** — see ADR 0058.
 
 The endpoint (joined against live template publish-status) serves
-`apps/dgfy-web/src/features/registration/`'s two components: `IndustrySelect.jsx`
+`packages/web-core/src/features/registration/`'s two components: `IndustrySelect.jsx`
 (the merchant dropdown on `/business/grow` and `/register-company`, since
 Phase 38) and `IndustryPicker.jsx` (admin-only, TenantManager's
 assisted-provisioning panel).
@@ -306,7 +306,7 @@ assisted-provisioning panel).
 1. If the industry needs a template that doesn't exist yet, create and
    publish one first (§5 above, "Curating templates").
 2. Open the "Registration industries" panel on the Store Template Manager
-   page (`apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx`) and use the "New
+   page (`apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx`) and use the "New
    industry" form: key, label, summary, niches, workflow mode, and (for
    any non-`external`-engine mode) the published template to pair it with
    — the panel only offers templates whose `base_mode` matches the chosen
@@ -348,7 +348,7 @@ entry for the new mode.
 
 An admin curates the entire catalog — hide/show, create, and edit — through
 the "Registration industries" panel on the Store Template Manager page
-(`apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx`), backed by
+(`apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx`), backed by
 `GET/POST/PATCH /api/v1/admin/registration-industries*`.
 
 Mechanics:
@@ -444,11 +444,11 @@ example — every layer a new module or a new mode variant touches:
    `storeProfile.js`'s `buildStoreProfile` derives it from the *effective*
    module set, not just the base mode — and bump `STORE_PROFILE_VERSION`
    if the Profile's shape changes at all.
-7. **Frontend affordance consumers** — `apps/dgfy-web/src/features/settings/workflowMode.js`
+7. **Frontend affordance consumers** — `packages/web-core/src/features/settings/workflowMode.js`
    (`WORKFLOW_PAGE_CAPABILITIES`/`WORKFLOW_ROUTE_CAPABILITIES`),
    `WorkflowModeContext.jsx`'s `hasCapability`, and any POS/storefront
    component that renders conditionally on the capability.
-8. **Storefront presentation** (`apps/dgfy-web/apps/store/src/app/runtime/`) —
+8. **Storefront presentation** (`apps/dgfy-storefront/src/app/runtime/`) —
    `storefrontTemplateRegistry.js` / `modePresentationRegistry.js`, if the
    module changes what the public storefront shows.
 
@@ -492,7 +492,7 @@ definitely not a Folio. Before writing any code, work through:
   `apps/dgfy-api/src/modules/compliance/` before designing the settlement
   shape, not after.
 - **The layer checklist from §6.2 still applies**, plus: a new backend
-  module under `apps/dgfy-api/src/modules/`, a new `apps/dgfy-web/apps/store/src/modes/<x>/`
+  module under `apps/dgfy-api/src/modules/`, a new `apps/dgfy-storefront/src/modes/<x>/`
   storefront tree, an ADR, and the lifecycle table in
   `STORE_TEMPLATES_AND_PROFILES.md` growing from three rows to four.
 - **No catalog slot is reserved for this today, deliberately.** The four
@@ -568,7 +568,7 @@ real versioning, that's new work, not a bug fix.
 reopen without a product decision. A third has since shipped:**
 
 1. **The public storefront doesn't see subtraction.** `storeUseCases.js`'s
-   catalog listing and `apps/dgfy-web/apps/store`'s capability model both read
+   catalog listing and `apps/dgfy-storefront`'s capability model both read
    only the enabled overlay, never the disabled one. Backend and admin
    POS correctly deny subtracted capabilities; the public storefront can
    still present them. A separate app, a separate phase's worth of work.
@@ -607,11 +607,11 @@ If you're an AI assistant picking up work in this area:
   `STORE_TEMPLATE_PRESETS` content anywhere else (the seed migration reads
   it via a dynamic import for exactly this reason).
 - **Compliance tripwires** — changes under `apps/dgfy-api/src/modules/settings/**`
-  or `apps/dgfy-web/src/features/pos/**` require a compliance impact
+  or `packages/web-core/src/features/pos/**` require a compliance impact
   declaration (`docs/compliance/impact-declarations/`,
   `npm run check:compliance`). `apps/dgfy-api/src/routes/adminTenants.js`,
-  `apps/dgfy-web/src/services/adminService.js`, and
-  `apps/dgfy-web/Pages/admin/TenantManager.jsx` carry a `regulatory` floor
+  `packages/web-core/src/services/adminService.js`, and
+  `apps/dgfy-ims/Pages/admin/TenantManager.jsx` carry a `regulatory` floor
   specifically — see `scripts/check-compliance-impact.js`'s sensitivity
   matrix before assuming a `major` classification is enough. A clean
   local git tree makes `npm run check:compliance` report "no

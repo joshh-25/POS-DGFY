@@ -67,7 +67,10 @@ const ServiceItemDetail = sequelize.define('ServiceItemDetail', {
     defaultValue: 'customer_choice'
   },
   service_area_type: {
-    type: DataTypes.ENUM('in_store', 'customer_location', 'online', 'hybrid'),
+    // 'item_handoff' added by Phase 88 of #482 (ADR 0064 decision 7): the business collects and
+    // returns the item, rather than working in_store/at customer_location/online/hybrid. Keeps
+    // ADR 0057 clause 4's grain intact - still a per-item field, not a per-store setting.
+    type: DataTypes.ENUM('in_store', 'customer_location', 'online', 'hybrid', 'item_handoff'),
     allowNull: false,
     defaultValue: 'in_store'
   },

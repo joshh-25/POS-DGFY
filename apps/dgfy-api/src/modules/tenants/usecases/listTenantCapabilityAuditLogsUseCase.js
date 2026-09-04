@@ -42,7 +42,12 @@ const buildListTenantAdminAuditLogsUseCase = ({ tenantAdminRepository, logger, a
                 payload: {
                     success: true,
                     data: {
-                        tenant_id: Number(id),
+                        // RF-2 (PR #1228 round-1 review): tenant IDs are UUIDs, so Number(id) here
+                        // used to serialize as null for every UUID tenant. tenant.id is the
+                        // validated id from findTenantById above -- each row's own tenant_id
+                        // (serializeAuditLog, unaffected by this fix) already carried the correct
+                        // UUID from the DB row regardless.
+                        tenant_id: tenant.id,
                         logs: logs.map(serializeAuditLog)
                     }
                 }
@@ -68,4 +73,10 @@ export const buildListTenantPosMetadataAuditLogsUseCase = (deps) => buildListTen
     ...deps,
     action: 'pos_metadata_update',
     logName: 'POS metadata'
+});
+
+export const buildListTenantAffiliateSlotsAuditLogsUseCase = (deps) => buildListTenantAdminAuditLogsUseCase({
+    ...deps,
+    action: 'affiliate_slots_update',
+    logName: 'affiliate slots'
 });

@@ -4,6 +4,7 @@ import { raiseOperationalAlert } from '../../services/operationalAlertService.js
 import { commercePaymentRepository } from './repositories/commercePaymentRepository.js';
 import { buildHandlePayMongoCommerceWebhookUseCase } from './usecases/handlePayMongoCommerceWebhookUseCase.js';
 import {
+  buildConfirmCommercePaymentSessionSandboxUseCase,
   buildCreateCommercePaymentRefundUseCase,
   buildCreateTenantPayMongoChildAccountUseCase,
   buildGetCommercePaymentSessionUseCase,
@@ -18,12 +19,15 @@ import {
 import { buildGetPayMongoSandboxCertificationUseCase } from './usecases/paymongoSandboxCertificationUseCase.js';
 import { buildHandleCommerceOrderLifecycleUseCase } from './usecases/commerceOrderLifecycleUseCase.js';
 import { recordTenantRevenueOrderFulfillmentUseCase } from '../tenantRevenue/index.js';
+import { buildCreateDglaundryBookingPaymentSessionUseCase } from './usecases/createDglaundryBookingPaymentSessionUseCase.js';
+import { dglaundryPartnerClient } from '../dgfyLaundryOrders/services/dglaundryPartnerClient.js';
 
 export const handlePayMongoCommerceWebhookUseCase = buildHandlePayMongoCommerceWebhookUseCase({
   commercePaymentRepository,
   paymongoService,
   logger,
-  raiseOperationalAlert
+  raiseOperationalAlert,
+  partnerClient: dglaundryPartnerClient
 });
 
 export const listCommercePaymentSessionsUseCase = buildListCommercePaymentSessionsUseCase({
@@ -39,10 +43,17 @@ export const getCommerceSettlementReportUseCase = buildGetCommerceSettlementRepo
 });
 
 export const retryCommercePaymentFinalizationUseCase = buildRetryCommercePaymentFinalizationUseCase({
-  commercePaymentRepository
+  commercePaymentRepository,
+  partnerClient: dglaundryPartnerClient
 });
 
 export const reconcileCommercePaymentSessionUseCase = buildReconcileCommercePaymentSessionUseCase({
+  commercePaymentRepository,
+  paymongoService,
+  partnerClient: dglaundryPartnerClient
+});
+
+export const confirmCommercePaymentSessionSandboxUseCase = buildConfirmCommercePaymentSessionSandboxUseCase({
   commercePaymentRepository,
   paymongoService
 });
@@ -79,6 +90,12 @@ export const listTenantPaymentAccountsUseCase = buildListTenantPaymentAccountsUs
 export const getPayMongoSandboxCertificationUseCase = buildGetPayMongoSandboxCertificationUseCase({
   paymongoService,
   commercePaymentRepository
+});
+
+export const createDglaundryBookingPaymentSessionUseCase = buildCreateDglaundryBookingPaymentSessionUseCase({
+  commercePaymentRepository,
+  paymongoService,
+  partnerClient: dglaundryPartnerClient
 });
 
 export { commercePaymentRepository };

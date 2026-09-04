@@ -30,6 +30,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import org.json.JSONObject
 
 class WebPosActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -40,6 +41,7 @@ class WebPosActivity : AppCompatActivity() {
     private lateinit var statusMessage: TextView
     private lateinit var statusRetryButton: Button
     private lateinit var drawerController: DrawerController
+    private lateinit var iminBridge: IminBridge
     private var runtimeCleanupCompleted = true
     private var webPosReadyReceived = false
     private var logoAnimating = false
@@ -96,19 +98,23 @@ class WebPosActivity : AppCompatActivity() {
             displayZoomControls = false
         }
 
+        iminBridge = IminBridge(
+            drawerController = drawerController,
+            onWebPosReady = {
+                runOnUiThread { handleWebPosReady() }
+            },
+            onShowMessage = { title, message ->
+                runOnUiThread { showNativeMessage(title, message) }
+            },
+            onPlayOrderAlert = {
+                runOnUiThread { playOrderAlert() }
+            },
+            onAsyncResult = { requestId, resultJson ->
+                runOnUiThread { dispatchIminAsyncResult(requestId, resultJson) }
+            }
+        )
         webView.addJavascriptInterface(
-            IminBridge(
-                drawerController = drawerController,
-                onWebPosReady = {
-                    runOnUiThread { handleWebPosReady() }
-                },
-                onShowMessage = { title, message ->
-                    runOnUiThread { showNativeMessage(title, message) }
-                },
-                onPlayOrderAlert = {
-                    runOnUiThread { playOrderAlert() }
-                }
-            ),
+            iminBridge,
             "iMinBridge"
         )
         webView.webChromeClient = object : WebChromeClient() {
@@ -196,6 +202,7 @@ class WebPosActivity : AppCompatActivity() {
         orderAlertRingtone = null
         orderAlertToneGenerator?.release()
         orderAlertToneGenerator = null
+        iminBridge.release()
         drawerController.release()
         super.onDestroy()
     }
@@ -305,6 +312,17 @@ class WebPosActivity : AppCompatActivity() {
         }
     }
 
+    private fun dispatchIminAsyncResult(requestId: String, resultJson: String) {
+        if (isFinishing || isDestroyed) return
+        val safeRequestId = JSONObject.quote(requestId)
+        val safeResultJson = JSONObject.quote(resultJson)
+        webView.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('dgfy:imin-command-result'," +
+                "{detail:{requestId:$safeRequestId,result:$safeResultJson}}));",
+            null
+        )
+    }
+
     private fun startLogoAnimation() {
         if (logoAnimating) return
         logoAnimating = true
@@ -382,8 +400,8 @@ class WebPosActivity : AppCompatActivity() {
     // Vite dev server by default (AppConfig.useLivePosOrigin), which made it
     // impossible to point a tablet AVD (no physical Android tablet available)
     // at the real dev/staging origin without a rebuild. Never enabled on a
-    // prod/beta build regardless of build type, so a production terminal
-    // can't be repointed by a long-press.
+    // prod build regardless of build type, so a production terminal can't
+    // be repointed by a long-press.
     private fun originSwitcherEnabled(): Boolean {
         return BuildConfig.DEBUG || BuildConfig.FLAVOR == "dev" || BuildConfig.FLAVOR == "staging"
     }
