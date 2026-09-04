@@ -142,7 +142,7 @@ against a column with existing NULLs, which ADR 0029's Rollout Policy 3 forbids.
 
 ## Amendments
 
-### 2026-09-04: POS/IMS catalog-filter matching widens to the membership union (Phase 285, #1318)
+### 2026-09-04: POS/IMS catalog-filter matching widens to the membership union (Phase 286, #1318)
 
 Decision 4 requires an explicit, shipped phase before any surface reads the membership union.
 This amendment is that phase for exactly one surface class: the folder/category **filter chips**

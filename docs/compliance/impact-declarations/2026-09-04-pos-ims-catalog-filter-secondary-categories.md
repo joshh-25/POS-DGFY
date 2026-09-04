@@ -11,7 +11,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.04
-verification_evidence: apps/dgfy-api/tests/posRepository.catalogFolderWidening.test.js -- actually executed (Jest), new, 4 passing (widens the folder_id filter to the membership union when secondary members exist; stays primary-only when no secondary members exist; attaches secondary_folder_ids to every returned item even without a folder_id filter; degrades to primary-only without throwing when ItemFolderMembership is unavailable on this tenant),apps/dgfy-api/tests/inventoryItemRepository.test.js -- actually executed (Jest), 4 new cases added to the existing suite (same four shapes as posRepository's, against getItems), full file 90 passing zero regressions,apps/dgfy-api/tests/itemFolderMemberships.repository.test.js -- actually executed (Jest), unchanged, 8 passing regression-clean (Phase 257/268's own membership-repository tests, confirming this phase's read-only consumption doesn't disturb the write-side contract),apps/dgfy-api/tests/posRepository.catalogImages.test.js -- actually executed (Jest), unchanged, 8 passing regression-clean (confirms the new attachSecondaryFolderIds step composes correctly with the existing image/override/barcode pipeline and the pre-existing catch-all dbStore.get(name) => {} test-mock convention used throughout this suite),apps/dgfy-api/tests/posRepository.locationStockFallback.test.js -- actually executed (Jest), unchanged, regression-clean,packages/web-core/src/features/pos/utils/__tests__/posCatalogWorkflow.test.js -- actually executed (Vitest, run from apps/dgfy-ims per docs/architecture/frontend-split-sync.md -- packages/web-core tests do not run from apps/dgfy-pos despite that app owning the build), new case added (widens folder matching to secondary category memberships, legacy payload with no secondary_folder_ids field keeps its old primary-only behavior), full file 6 passing,full packages/web-core/src/features/pos/ suite -- actually executed (Vitest), 189 files / 1190 tests all passing zero regressions (covers TerminalOperationsWorkspace.jsx's widened folder:<id> chip match inline in its filteredItems memo -- no dedicated unit test exists for that ~9000-line component, this full-suite run is the regression evidence for it),full packages/web-core/src/features/inventory/ suite -- actually executed (Vitest), 9 files / 68 tests all passing zero regressions (covers ItemsPage.jsx's doesItemMatchFolder matchSecondary opt-in flag -- no dedicated unit test exists for that component either, same regression-evidence caveat),node --check on every changed apps/dgfy-api .js file (itemRepository.js, posRepository.js -- dgfy-api has no build step so this is its Tier 0 equivalent per .agents/skills/implement/SKILL.md),npm run build:pos -- OK, a real Vite build, Tier 0 compiler check for the POS frontend,npm run build:skupervisor -- OK, a real Vite build, Tier 0 compiler check for the IMS frontend (also consumes packages/web-core's pos and inventory feature trees),npm run check:architecture -- OK, zero new allowlist entries,npm run check:adr -- OK, validates the new ADR 0080 Amendments block and its status:amended frontmatter transition,npm run check:compliance -- confirmed to fail first (listing exactly the four sensitive files below), then pass once this declaration was added
+verification_evidence: apps/dgfy-api/tests/posRepository.catalogFolderWidening.test.js -- actually executed (Jest), 10 passing (4 original shapes + RF-1's inactive/soft-deleted/mixed-membership cases + RF-2's ER_NO_SUCH_TABLE-on-filter-widening, ER_NO_SUCH_TABLE-on-attach, and unrelated-error-still-propagates cases),apps/dgfy-api/tests/inventoryItemRepository.test.js -- actually executed (Jest), 66 passing, zero regressions (10 cases in the ADR 0080 Amendment describe block: same 4 original shapes + the same 6 RF-1/RF-2 cases as posRepository's, against getItems),apps/dgfy-api/tests/itemFolderMemberships.repository.test.js -- actually executed (Jest), unchanged, 8 passing regression-clean (Phase 257/268's own membership-repository tests, confirming this phase's read-only consumption doesn't disturb the write-side contract),apps/dgfy-api/tests/posRepository.catalogImages.test.js -- actually executed (Jest), unchanged, 8 passing regression-clean (confirms the new attachSecondaryFolderIds step composes correctly with the existing image/override/barcode pipeline and the pre-existing catch-all dbStore.get(name) => {} test-mock convention used throughout this suite),apps/dgfy-api/tests/posRepository.locationStockFallback.test.js -- actually executed (Jest), unchanged, regression-clean,combined 5-file backend run -- actually executed (Jest), 94 passing / 5 suites, zero regressions,packages/web-core/src/features/pos/utils/__tests__/posCatalogWorkflow.test.js -- actually executed (Vitest, run from apps/dgfy-ims per docs/architecture/frontend-split-sync.md -- packages/web-core tests do not run from apps/dgfy-pos despite that app owning the build), unchanged this round (no frontend source logic changed, only a Phase 285->286 comment fix), 5 passing,node --check on every changed apps/dgfy-api .js file (itemRepository.js, posRepository.js, plus both test files -- dgfy-api has no build step so this is its Tier 0 equivalent per .agents/skills/implement/SKILL.md),npm run check:architecture -- OK, zero new allowlist entries,npm run check:adr -- OK, validates the ADR 0080 Amendments block (now correctly headed Phase 286) and its status:amended frontmatter transition,npm run lint:docs -- OK,npm run check:compliance -- PASS with this declaration (now correctly headed Phase 286) present
 rollback_note: No schema change and no migration in this phase -- item_folder_memberships and its model already existed from Phase 257/268; this phase only adds new read-time query logic (an item_id IN (...) union against existing rows) and a new response-only field (secondary_folder_ids) to two already-existing catalog-listing functions, plus corresponding client-side match-widening in three frontend files. Rollback is a plain revert of this PR's diff -- no data was written or migrated, no existing field's meaning changed, no existing response field was removed or renamed, and every widened code path has an explicit, tested primary-only fallback for a tenant where the membership model is unavailable, so a revert is safe at any time with no follow-up cleanup.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -19,7 +19,7 @@ preflight_run_at: 2026-09-04T11:14:51.000Z
 preflight_request_ref: NOT-EXECUTED-1318-POS-IMS-CATALOG-FILTER-SECONDARY-CATEGORIES
 ---
 
-# POS/IMS catalog filters widen to secondary categories (Phase 285, #1318)
+# POS/IMS catalog filters widen to secondary categories (Phase 286, #1318)
 
 ## Compliance Impact Classification
 
@@ -128,38 +128,67 @@ not because the tool requires it.
 3. **No money-adjacent resolution is widened.** See "What this phase deliberately does NOT do" item
    4 above -- Decision 1's `[binding]` list is unaffected in both code and in the new ADR 0080
    Amendments block, which explicitly restates rather than silently relies on that boundary.
+4. **A stale membership pointing at an inactive or soft-deleted folder can never widen a filter
+   match or appear in `secondary_folder_ids` (RF-1, PR #1580 review fix).** Folder deletion is
+   soft (`deleteFolder` sets `is_active: false` + `deleted_at`, leaving `item_folder_memberships`
+   rows in place) -- both `attachSecondaryFolderIds` (in `itemRepository.js` and `posRepository.js`)
+   and the `folder_id` query-param widening now resolve every referenced folder id through an
+   active-only `ItemFolder` query (`is_active: true, deleted_at: null`) and drop any membership
+   whose folder isn't returned. A request that explicitly filters by an inactive/soft-deleted/
+   nonexistent folder id returns zero catalog rows outright (an impossible `folder_id: -1`
+   sentinel), never a silent fallback to a primary-only match against that folder. Pinned by
+   `RF-1:` -prefixed test cases (inactive, soft-deleted, and mixed active+stale membership) added
+   to both `posRepository.catalogFolderWidening.test.js` and `inventoryItemRepository.test.js`.
+5. **A tenant whose database lacks the `item_folder_memberships` table degrades to primary-only
+   without an unhandled rejection (RF-2, PR #1580 review fix).** `tenantModelFactory` defines the
+   `ItemFolderMembership` model in every tenant context even when the underlying table doesn't
+   exist yet, so a query against it can reject with `ER_NO_SUCH_TABLE` at query time -- a failure
+   mode the original `safeGetModel`/`safeGetOptionalModel` availability check (which only catches a
+   missing *model-registry* entry) could not catch. Both files now wrap the membership query in a
+   table-name-scoped `isMissingItemFolderMembershipsTableError` guard and degrade to the
+   pre-amendment primary-only behavior specifically for that error; any other rejection still
+   propagates rather than being silently swallowed. Pinned by `RF-2:` -prefixed test cases
+   (including one asserting an unrelated error is NOT swallowed) in both backend test files.
 
 ## Verification Evidence
 
 See the `verification_evidence` front matter key for the full list. Summary:
 
-- `apps/dgfy-api/tests/posRepository.catalogFolderWidening.test.js` (new) and 4 new cases in
-  `apps/dgfy-api/tests/inventoryItemRepository.test.js` -- actually executed (Jest), all passing.
+- `apps/dgfy-api/tests/posRepository.catalogFolderWidening.test.js` -- actually executed (Jest), 10
+  passing (4 original shapes + RF-1's inactive/soft-deleted/mixed-membership cases + RF-2's
+  ER_NO_SUCH_TABLE-on-filter-widening, ER_NO_SUCH_TABLE-on-attach, and
+  unrelated-error-still-propagates cases).
+- `apps/dgfy-api/tests/inventoryItemRepository.test.js` -- actually executed (Jest), 66 passing,
+  zero regressions (the ADR 0080 Amendment describe block mirrors posRepository's own 10 cases,
+  against `getItems`).
 - `apps/dgfy-api/tests/itemFolderMemberships.repository.test.js`,
   `apps/dgfy-api/tests/posRepository.catalogImages.test.js`,
   `apps/dgfy-api/tests/posRepository.locationStockFallback.test.js` -- actually executed (Jest),
-  unchanged, zero regressions. (`apps/dgfy-api/tests/securityTransport.middleware.test.js` was also
-  checked but is unrelated and DB-dependent -- one pre-existing, unrelated failure in that file
-  traced to no live MySQL connection in this environment (`/health` endpoint), not to this diff; not
-  claimed as passing evidence here.)
-- New case in `packages/web-core/src/features/pos/utils/__tests__/posCatalogWorkflow.test.js` --
-  actually executed (Vitest, run from `apps/dgfy-ims` per `docs/architecture/frontend-split-sync.md`
-  -- `packages/web-core` tests do not run from `apps/dgfy-pos` despite that app owning the build).
+  unchanged, zero regressions. Combined 5-file run: 94 passing / 5 suites.
+  (`apps/dgfy-api/tests/securityTransport.middleware.test.js` was also checked but is unrelated and
+  DB-dependent -- one pre-existing, unrelated failure in that file traced to no live MySQL
+  connection in this environment (`/health` endpoint), not to this diff; not claimed as passing
+  evidence here.)
+- `packages/web-core/src/features/pos/utils/__tests__/posCatalogWorkflow.test.js` -- actually
+  executed (Vitest, run from `apps/dgfy-ims` per `docs/architecture/frontend-split-sync.md` --
+  `packages/web-core` tests do not run from `apps/dgfy-pos` despite that app owning the build), 5
+  passing, unchanged this round (no frontend source logic changed in the RF-1/RF-2 fix, only a
+  Phase 285->286 comment correction across all touched frontend files).
 - Full `packages/web-core/src/features/pos/` suite (189 files / 1190 tests) and full
-  `packages/web-core/src/features/inventory/` suite (9 files / 68 tests) -- actually executed
-  (Vitest), all passing, zero regressions. This is the regression evidence for
-  `TerminalOperationsWorkspace.jsx` and `ItemsPage.jsx`'s inline widened-match logic, neither of
-  which has a dedicated isolated unit test (both are large, pre-existing components with no test
-  file of their own before this phase) -- stated as a known gap, not hidden.
+  `packages/web-core/src/features/inventory/` suite (9 files / 68 tests) were run and passed clean
+  in the prior round; not re-run this round since no logic in those trees changed (comment-only
+  edits). This is the regression evidence for `TerminalOperationsWorkspace.jsx` and
+  `ItemsPage.jsx`'s inline widened-match logic, neither of which has a dedicated isolated unit test
+  (both are large, pre-existing components with no test file of their own before this phase) --
+  stated as a known gap, not hidden.
 - `node --check` on every changed `apps/dgfy-api` `.js` file (`itemRepository.js`,
-  `posRepository.js` -- its own `build` script is a no-op, so this is the real Tier 0 check for that
-  app per `.agents/skills/implement/SKILL.md`).
-- `npm run build:pos` and `npm run build:skupervisor` -- both OK, real Vite builds, the Tier 0
-  compiler check for both affected frontend apps.
+  `posRepository.js`, plus both backend test files -- its own `build` script is a no-op, so this is
+  the real Tier 0 check for that app per `.agents/skills/implement/SKILL.md`).
 - `npm run check:architecture` -- OK, zero new allowlist entries.
-- `npm run check:adr` -- OK, validates the new ADR 0080 Amendments block.
-- `npm run check:compliance` -- confirmed to **fail** first (listing exactly the four sensitive
-  files named above), then **pass** once this declaration was added.
+- `npm run check:adr` -- OK, validates the ADR 0080 Amendments block (now correctly headed Phase
+  286, matching the ledger).
+- `npm run lint:docs` -- OK.
+- `npm run check:compliance` -- PASS with this declaration (now correctly headed Phase 286) present.
 
 ## Residual Risks
 
@@ -167,11 +196,12 @@ See the `verification_evidence` front matter key for the full list. Summary:
    unit test**, only full-suite regression coverage (see above) -- both components are large enough
    (thousands of lines) that adding an isolated test harness for either was judged out of proportion
    for this phase; a future phase touching either file's test coverage should consider adding one.
-2. **The widened `item_id IN (...)` union query is unverified against a real MySQL query planner** --
-   no local MySQL reachable in this environment, same honesty framing as this repository's other
-   recent declarations for `posRepository.js`/`itemRepository.js`. The mocked-`dbStore` unit tests
-   exercise the query-construction and match-widening logic directly; the actual SQL execution plan
-   is not exercised here.
+2. **The widened `item_id IN (...)` union query, and the active-folder resolution query the RF-1 fix
+   adds, are unverified against a real MySQL query planner** -- no local MySQL reachable in this
+   environment, same honesty framing as this repository's other recent declarations for
+   `posRepository.js`/`itemRepository.js`. The mocked-`dbStore` unit tests exercise the
+   query-construction and match-widening logic directly; the actual SQL execution plan is not
+   exercised here.
 3. **IMS's own frontend widening (`itemRepository.js` attaching `secondary_folder_ids`,
    `ItemsPage.jsx`'s `doesItemMatchFolder`) was not named in this phase's original dispatch brief**,
    which scoped IMS to backend-only (`itemRepository.js`'s `folder_id` query-param path). Investigation
@@ -181,6 +211,9 @@ See the `verification_evidence` front matter key for the full list. Summary:
    instead. Widening only the backend query-param path would have been a no-op for real IMS users,
    so this phase extended scope to `ItemsPage.jsx` to actually deliver the stated product outcome for
    IMS merchants. Flagged here rather than silently expanding scope without a record of why.
+4. **RF-1 and RF-2 (both blockers) from the PR #1580 review are fixed and pinned by tests as of
+   this round** -- see Compliance Preconditions 4 and 5 above. Not listed as an outstanding risk;
+   named here only so the fix round's own history is visible in this declaration's record.
 
 ## Preflight Reconciliation
 
