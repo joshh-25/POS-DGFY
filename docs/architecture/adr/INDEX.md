@@ -88,21 +88,22 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0063 | [POS Split Tender and Manual Walk-in Payment Recording](0063-pos-split-tender-and-manual-walk-in-payment-recording.md) | `amended` | pos_split_tender_collection | 2027-02-13 | 18 |
 | 0064 | [Services Handoff Legs and Round-Trip Persistence](0064-services-handoff-legs-and-round-trip-persistence.md) | `accepted` | services_handoff_legs | 2027-02-15 | 6 |
 | 0065 | [POS Shared Parked Sales and Cashier Handoff](0065-pos-shared-parked-sales-and-cashier-handoff.md) | `amended` | pos_shared_parked_sales_and_cashier_handoff | 2027-02-15 | 7 |
-| 0066 | [Voucher Sale-Time Price Resolution](0066-voucher-sale-time-price-resolution.md) | `amended` | voucher_sale_time_price_resolution | 2027-02-17 | 6 |
+| 0066 | [Voucher Sale-Time Price Resolution](0066-voucher-sale-time-price-resolution.md) | `amended` | voucher_sale_time_price_resolution | 2027-02-17 | 7 |
 | 0067 | [Frontend Browser-Support Baseline and ES-Compat Guardrail](0067-frontend-browser-support-baseline-and-es-compat-guardrail.md) | `amended` | frontend_browser_support_baseline_and_es_compat_guardrail | 2027-02-18 | 3 |
 | 0068 | [Retail Downpayment / Payment-Capture Authorization](0068-retail-downpayment-payment-capture-authorization.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 6 |
 | 0069 | [Retail Downpayment — Multi-Method Capture, Refund Policy, and Fee Basis](0069-retail-downpayment-multi-method-capture-and-refund-policy.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 8 |
 | 0070 | [Downpayment Authorization Across Workflow Modes](0070-downpayment-authorization-across-workflow-modes.md) | `amended` | downpayment_authorization_across_workflow_modes | 2027-02-21 | 6 |
 | 0071 | [Frontend Split into Three Apps](0071-frontend-split-into-three-apps.md) | `amended` | frontend_split_into_three_apps | 2027-02-15 | 6 |
-| 0072 | [GHCR Container Image Naming Convention](0072-ghcr-container-image-naming.md) | `accepted` | ghcr_container_image_naming | 2027-02-24 | 0 |
+| 0072 | [GHCR Container Image Naming Convention](0072-ghcr-container-image-naming.md) | `amended` | ghcr_container_image_naming | 2027-02-24 | 0 |
 | 0073 | [POS Cashier Attendance, Breaks, and Register Operator Sessions](0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md) | `amended` | pos_cashier_attendance_breaks_and_register_operator_sessions | 2027-02-24 | 8 |
-| 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 13 |
+| 0074 | [Retire the `staging` Branch From the Default Promotion Path](0074-retire-staging-branch-from-default-promotion-path.md) | `amended` | retire_staging_branch_from_default_promotion_path | 2027-02-25 | 14 |
 | 0075 | [Standalone Mobile Offline Financial Reconciliation](0075-standalone-mobile-offline-financial-reconciliation.md) | `amended` | standalone_mobile_offline_financial_reconciliation | 2027-02-27 | 13 |
 | 0076 | [Standalone Mobile Offline Order Actions](0076-standalone-mobile-offline-order-actions.md) | `accepted` | standalone_mobile_offline_order_actions | 2027-02-28 | 5 |
 | 0077 | [POS Cheque Tender Method (Scoped Supersession of ADR 0063 Clause 4)](0077-pos-cheque-tender-method-scoped-supersession.md) | `accepted` | pos_cheque_tender_method | 2027-02-28 | 9 |
 | 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `accepted` | customer_delivery_fee_modes | 2027-03-01 | 4 |
 | 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `proposed` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
 | 0080 | [Item Multi-Category Membership](0080-item-multi-category-membership.md) | `accepted` | item_multi_category_membership | 2027-03-03 | 4 |
+| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `accepted` | per_app_container_semantic_versioning | 2027-03-04 | 1 |
 
 ## Renumbered (collision stubs)
 
