@@ -16,19 +16,30 @@
 // step's `continue-on-error:` CAN take a `${{ }}` runtime expression, so there's no equivalent
 // constraint here -- one module, read directly, nothing to drift.
 //
-// Flip BLOCKING to true only after a human has run
+// Flipped to true only after a human ran
 // `node scripts/check-version-bump-flip-readiness.js` (or `npm run check:version-bump-flip-readiness`)
-// and confirmed the ADR 0081 Decision 9 evidence threshold is met (10 qualifying develop-base PRs
-// since #1560's merge commit -- PR #1562 -- or one full develop -> staging -> main promotion cycle
-// green throughout). See docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md's "check:app-versions
-// flip-readiness" entry and the dated 2026-09-04 Amendments entry on
-// docs/ops/RELEASE_CANDIDATE_POLICY.md.
+// and confirmed the ADR 0081 Decision 9 evidence threshold was met. See
+// docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md's "check:app-versions flip-readiness" entry and the
+// dated 2026-09-05 Amendments entry on docs/ops/RELEASE_CANDIDATE_POLICY.md for the re-confirmed,
+// live-at-implementation-time evidence.
 //
-// Shipped `false` by #1569 -- do not flip this in the same PR that adds the readiness script, even
-// if that script happens to report ready by the time this merges (as of #1569 being filed, #1560
-// had only just merged with zero PRs having landed since -- it cannot possibly be ready yet). The
-// flip is a separate, later, human-confirmed action, per #1569's own explicit "Explicitly out of
-// scope" section.
-const BLOCKING = false;
+// Shipped `false` by #1569 (do not flip in the same PR that adds the readiness script -- that
+// issue's own "Explicitly out of scope" section; #1569 itself could not possibly have been ready,
+// having zero develop-base PRs landed since the anchor at filing time). Flipped `true` by #1592
+// (epic #1548, Phase 283) once the PR-count evidence path reported 10 of 10 qualifying
+// develop-base PRs, re-confirmed live at PR-open time rather than reusing #1592's own filing-time
+// snapshot.
+//
+// #1592 also found and fixed a latent bug this header's "nothing else to edit" claim above did not
+// anticipate: scripts/pr-checks.js's own addCheck() call for this check hardcoded its `result` to
+// `'pass'`/`'warn'` regardless of the `blocking` argument, so flipping BLOCKING alone never actually
+// produced a `'fail'` result there -- computeOverallResult() only escalates to FAIL on
+// `blocking && result === 'fail'`, and a `'warn'` can only ever degrade PASS to PARTIAL, never FAIL.
+// scripts/pr-checks.js now derives the result severity from the same BLOCKING toggle too (see
+// resolveAppVersionsCheckResult() there) -- confirmed live before this flip shipped, not assumed.
+// The `.github/workflows/shared-changed-paths.yml` surface had no equivalent bug: its
+// `continue-on-error:` expression already read the toggle output directly as a boolean, with no
+// intermediate severity string to get out of sync.
+const BLOCKING = true;
 
 module.exports = { BLOCKING };

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-04
+last_reviewed: 2026-09-05
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1087,3 +1087,82 @@ Decisions 6 and 8 (both `[default]`) — no `[binding]` clause of this policy or
 by this entry.
 
 PR: (this PR). Refs #1588, #1548, #1559, #1560, #1575. Closes #1588.
+
+### 2026-09-05: `check:app-versions` flipped advisory → blocking (#1592, epic #1548, Phase 283,
+ADR 0081 Decision 9) — the flip the 2026-09-04 "flip-readiness gate built, mechanism shipped not
+armed" entry above deferred
+
+Decision record this implements: [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md)
+Decision 9. This entry is the flip itself — the 2026-09-04 entry above shipped the mechanism only,
+explicitly out of scope for its own PR (#1569).
+
+**Re-confirmed live at implementation time, not reused from #1592's own 2026-09-05 filing-time
+snapshot** (that issue's Context section already carried a live-at-filing count; this PR re-ran the
+same measurement again at PR-open time per the issue's own explicit "Do not... without re-confirming
+the evidence threshold live at implementation time" instruction, since more PRs land between filing
+and implementation):
+
+```
+[check-version-bump-flip-readiness] ADR 0081 Decision 9 evidence threshold, since 5eb17c3 (PR #1562, Refs #1560):
+
+PR-count evidence: 10 of 10 qualifying develop-base PRs.
+Promotion-cycle evidence: none yet
+
+[check-version-bump-flip-readiness] READY -- the ADR 0081 Decision 9 evidence threshold is met.
+```
+
+Of the 10 counted PRs at this re-confirmation: 7 `pass` (#1591, #1583, #1582, #1581, #1580, #1579,
+#1578) and 3 `warn` (#1586, #1567, #1566) — a different composition than #1592's own filing-time
+snapshot (which cited 6 pass / 4 warn) since the qualifying window is a rolling one keyed off
+ancestry from the PR #1562 anchor, not a fixed set; both outcomes count as valid evidence per
+#1569's own design (a `warn` proves the check correctly caught a real violation without crashing,
+which is exactly what needs demonstrating before trusting it to block).
+
+**What changed:** `scripts/lib/version-bump-gate-toggle.js`'s `BLOCKING` constant, `false → true` —
+the single edit both consuming surfaces derive from.
+
+**A real bug was found and fixed alongside the flip, not assumed away.** The 2026-09-04 entry's own
+claim that "both consumers move together; nothing else needs editing" held for
+`.github/workflows/shared-changed-paths.yml` (its `continue-on-error:` expression already read the
+toggle's boolean output directly) but not for `scripts/pr-checks.js`: that surface's `app version
+bump` check hardcoded its `result` field to `'pass'`/`'warn'` regardless of the `blocking` argument
+passed to `addCheck()`, so `computeOverallResult()` — which only escalates `overallResult` to `FAIL`
+on `blocking && result === 'fail'` — could never actually reach `FAIL` for this check; a `'warn'`
+can only degrade `PASS` to `PARTIAL`. Confirmed live before shipping the flip:
+`computeOverallResult([{ result: 'warn', blocking: true }])` returned `'PARTIAL'`, not `'FAIL'`.
+Fixed by deriving the result severity from the same `BLOCKING` toggle
+(`resolveAppVersionsCheckResult()`, exported and unit-tested in `scripts/pr-checks.test.js`) rather
+than a hardcoded string — this is a fix to the consuming surface's own severity mapping, not a
+touch to `scripts/check-app-version-bump.js`'s check logic itself (out of #1592's scope per its own
+"Do not" section).
+
+**Both consuming surfaces confirmed to actually block, not just documented as blocking:**
+
+- `scripts/pr-checks.js` — `scripts/pr-checks.test.js` now asserts, against the real
+  `version-bump-gate-toggle.js` module (not a mock), that a missing/insufficient bump produces
+  `result: 'fail'` and `computeOverallResult(...) === 'FAIL'` — the same test would have failed
+  against the pre-fix code.
+- `.github/workflows/shared-changed-paths.yml` — a throwaway branch/PR combining this flip with a
+  deliberately unbumped `apps/dgfy-api` source change was opened against `develop` to observe the
+  "Enforce per-app version bump on source changes" step actually fail the job (red, not a swallowed
+  warning) under live CI, then closed without merging once confirmed. See #1592's own PR body for
+  the run link.
+
+**Currently open PRs affected by this flip:** stated in #1592's PR body / final report at
+implementation time — a heads-up rather than a silent flip landing mid-flight, per that issue's own
+"Risks / notes" section.
+
+**Consequential update:** `.agents/skills/pr-reviewer/SKILL.md`'s "Version level" audit item
+(#1568/PR #1570) had its severity language updated from "`nit` while advisory,
+`should-fix` once flipped" to reflect blocking is now live — a mismatched version level (the
+narrower case CI's `any-increase` mode does not itself catch — a nonzero-but-too-small bump) is now
+a `blocker`, matching the standing severity CI itself applies to a missing/insufficient bump. See
+that file directly rather than a restated copy here.
+
+This is a `[default]`-tier procedure amendment under ADR 0039, matching ADR 0081 Decision 9's own
+`[default]` tag — no `[binding]` clause of this policy or of ADR 0081 is changed by this entry. See
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "`check:app-versions` flip-readiness" entry for the
+same status, kept in sync with this one.
+
+PR: (this PR). Closes #1592. Refs #1548. Does not close epic #1548 — Wave 2 may have further phases
+beyond this one.
