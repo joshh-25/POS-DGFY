@@ -4,9 +4,12 @@ const assert = require('node:assert/strict');
 const {
   checkVersionTagComputation,
   checkJobOutputsVersionTag,
+  checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
   checkImmutabilityGuardStep,
   checkDockerfileAcceptsAppVersion,
+  checkOrchestratorVersionTagMapping,
+  ORCHESTRATOR_VERSION_TAG_OUTPUTS,
   runAllChecks,
 } = require('./check-deploy-version-stamping-workflow');
 
@@ -93,6 +96,71 @@ test('checkJobOutputsVersionTag: present reports no problems, absent is caught',
   const problems = checkJobOutputsVersionTag(withoutOutput, { label: 'fixture.yml' });
   assert.equal(problems.length, 1);
   assert.match(problems[0], /missing "version_tag/);
+});
+
+// PR #1577 review, RF-1 (blocker): the job-level `outputs:` block above (checkJobOutputsVersionTag)
+// is not the same contract as the reusable workflow's caller-visible `on.workflow_call.outputs`
+// block (checkWorkflowCallOutputsVersionTag) -- the real bug was having the first without the
+// second. These fixtures deliberately use the exact two-line `value:`-wrapped shape a caller reads.
+
+const VALID_WORKFLOW_CALL_OUTPUTS = `
+on:
+  workflow_call:
+    outputs:
+      sha_tag:
+        value: \${{ jobs.build-and-push.outputs.sha_tag }}
+      version_tag:
+        value: \${{ jobs.build-and-push.outputs.version_tag }}
+`;
+
+test('checkWorkflowCallOutputsVersionTag: the caller-visible output present reports no problems', () => {
+  assert.deepEqual(checkWorkflowCallOutputsVersionTag(VALID_WORKFLOW_CALL_OUTPUTS, { label: 'fixture.yml' }), []);
+});
+
+test('checkWorkflowCallOutputsVersionTag: RF-1 regression -- version_tag declared only on the job, never on workflow_call.outputs, is caught', () => {
+  const rf1Shape = `
+on:
+  workflow_call:
+    outputs:
+      sha_tag:
+        value: \${{ jobs.build-and-push.outputs.sha_tag }}
+
+jobs:
+  build-and-push:
+    outputs:
+      sha_tag: \${{ steps.meta.outputs.sha_tag }}
+      version_tag: \${{ steps.meta.outputs.version_tag }}
+`;
+  const problems = checkWorkflowCallOutputsVersionTag(rf1Shape, { label: 'fixture.yml' });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /caller-visible output was never declared \(RF-1/);
+});
+
+test('checkWorkflowCallOutputsVersionTag: a version_tag entry pointing at the wrong job is caught', () => {
+  const wrongJob = VALID_WORKFLOW_CALL_OUTPUTS.replace('jobs.build-and-push.outputs.version_tag', 'jobs.some-other-job.outputs.version_tag');
+  const problems = checkWorkflowCallOutputsVersionTag(wrongJob, { label: 'fixture.yml' });
+  assert.equal(problems.length, 1);
+});
+
+const VALID_ORCHESTRATOR_OUTPUTS = `
+    outputs:
+${ORCHESTRATOR_VERSION_TAG_OUTPUTS.map(([outputName, jobName]) => `      ${outputName}:\n        value: \${{ jobs.${jobName}.outputs.version_tag }}`).join('\n')}
+`;
+
+test('checkOrchestratorVersionTagMapping: all five mappings present reports no problems', () => {
+  assert.deepEqual(checkOrchestratorVersionTagMapping(VALID_ORCHESTRATOR_OUTPUTS), []);
+});
+
+test('checkOrchestratorVersionTagMapping: one missing mapping (e.g. dgfy_api_version_tag) is caught, others unaffected', () => {
+  const text = VALID_ORCHESTRATOR_OUTPUTS.replace(/\s*dgfy_api_version_tag:\n\s*value: \$\{\{ jobs\.dgfy-api\.outputs\.version_tag \}\}/, '');
+  const problems = checkOrchestratorVersionTagMapping(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /dgfy_api_version_tag/);
+});
+
+test('checkOrchestratorVersionTagMapping: every mapping missing is caught, one problem per output', () => {
+  const problems = checkOrchestratorVersionTagMapping('    outputs:\n      dgfy_api_sha_tag:\n        value: ${{ jobs.dgfy-api.outputs.sha_tag }}\n');
+  assert.equal(problems.length, ORCHESTRATOR_VERSION_TAG_OUTPUTS.length);
 });
 
 const VALID_BUILD_STEP = `
@@ -184,6 +252,6 @@ test('checkDockerfileAcceptsAppVersion: unbraced ENV form ($APP_VERSION, no brac
   assert.deepEqual(checkDockerfileAcceptsAppVersion(text, { label: 'fixture/Dockerfile' }), []);
 });
 
-test('runAllChecks: the real repo files (deploy-api.yml/deploy-migration-runner.yml/deploy-frontend.yml + 5 Dockerfiles) report no problems', () => {
+test('runAllChecks: the real repo files (3 builder workflows + 5 Dockerfiles + deployment-orchestrator.yml) report no problems', () => {
   assert.deepEqual(runAllChecks(), []);
 });

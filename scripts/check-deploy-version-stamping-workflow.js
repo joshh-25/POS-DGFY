@@ -33,6 +33,22 @@ const DOCKERFILES = Object.freeze([
   'infrastructure/docker/dgfy-storefront/Dockerfile',
 ]);
 
+const ORCHESTRATOR_FILE = '.github/workflows/deployment-orchestrator.yml';
+
+// PR #1577 review, RF-1: the orchestrator's own `*_version_tag` outputs (added alongside the
+// pre-existing `*_sha_tag` ones) each read `jobs.<job>.outputs.version_tag` -- which only resolves
+// to something once the called reusable workflow actually re-exports it under its own
+// `on.workflow_call.outputs`, not just its inner job's `outputs:` block. This table is the
+// caller-side half of that contract; checkWorkflowCallOutputsVersionTag below is the callee-side
+// half.
+const ORCHESTRATOR_VERSION_TAG_OUTPUTS = Object.freeze([
+  ['frontend_ims_version_tag', 'frontend-ims'],
+  ['frontend_pos_version_tag', 'frontend-pos'],
+  ['frontend_storefront_version_tag', 'frontend-storefront'],
+  ['dgfy_api_version_tag', 'dgfy-api'],
+  ['migration_runner_version_tag', 'dgfy-migration-runner'],
+]);
+
 /**
  * The "Compute image tags" (`id: meta`) step must: derive a channel suffix from the three known
  * environment values (ADR 0081 Decision 1), read the app's package.json version (Decision 6 -- this
@@ -78,6 +94,42 @@ function checkJobOutputsVersionTag(workflowText, { label }) {
   const problems = [];
   if (!/version_tag:\s*\$\{\{\s*steps\.meta\.outputs\.version_tag\s*\}\}/.test(workflowText)) {
     problems.push(`${label}: job-level "outputs:" is missing "version_tag: \${{ steps.meta.outputs.version_tag }}".`);
+  }
+  return problems;
+}
+
+/**
+ * PR #1577 review, RF-1 (blocker): the job-level `outputs:` block (checkJobOutputsVersionTag above)
+ * makes `version_tag` visible *inside* the reusable workflow, but a caller (deployment-
+ * orchestrator.yml) can only read `jobs.<job>.outputs.version_tag` once the reusable workflow's own
+ * `on.workflow_call.outputs` block re-exports it too -- a distinct declaration, easy to add the
+ * first (inner) one and forget the second (caller-facing) one, which is exactly what happened here:
+ * `sha_tag` had both, `version_tag` only got the inner one. This check is the caller-facing half;
+ * pattern deliberately requires the multi-line `version_tag:\n  value: ...` shape (not the inline
+ * `version_tag: ${{ ... }}` job-output shape) so it can't be satisfied by the same line
+ * checkJobOutputsVersionTag already found.
+ */
+function checkWorkflowCallOutputsVersionTag(workflowText, { label }) {
+  const problems = [];
+  const pattern = /version_tag:\s*\n\s*value:\s*\$\{\{\s*jobs\.build-and-push\.outputs\.version_tag\s*\}\}/;
+  if (!pattern.test(workflowText)) {
+    problems.push(`${label}: "on.workflow_call.outputs" is missing "version_tag: value: \${{ jobs.build-and-push.outputs.version_tag }}" -- the caller-visible output was never declared (RF-1, PR #1577 review), so a caller's "jobs.<this>.outputs.version_tag" resolves empty even though the inner job itself emits it.`);
+  }
+  return problems;
+}
+
+/**
+ * PR #1577 review, RF-1: the other end of the same contract, checked from deployment-
+ * orchestrator.yml's side -- each of its five `*_version_tag` outputs must read
+ * `jobs.<job>.outputs.version_tag`, mirroring the pre-existing `*_sha_tag` outputs' shape.
+ */
+function checkOrchestratorVersionTagMapping(orchestratorText) {
+  const problems = [];
+  for (const [outputName, jobName] of ORCHESTRATOR_VERSION_TAG_OUTPUTS) {
+    const pattern = new RegExp(`${outputName}:\\s*\\n\\s*value:\\s*\\$\\{\\{\\s*jobs\\.${jobName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.outputs\\.version_tag\\s*\\}\\}`);
+    if (!pattern.test(orchestratorText)) {
+      problems.push(`deployment-orchestrator.yml: missing "${outputName}: value: \${{ jobs.${jobName}.outputs.version_tag }}".`);
+    }
   }
   return problems;
 }
@@ -143,6 +195,7 @@ function runAllChecks({ readFile = read } = {}) {
     const text = readFile(file);
     problems.push(...checkVersionTagComputation(text, { label, appPathExpr }));
     problems.push(...checkJobOutputsVersionTag(text, { label }));
+    problems.push(...checkWorkflowCallOutputsVersionTag(text, { label }));
     problems.push(...checkBuildStepStamping(text, { label }));
     problems.push(...checkImmutabilityGuardStep(text, { label }));
   }
@@ -151,6 +204,8 @@ function runAllChecks({ readFile = read } = {}) {
     const text = readFile(file);
     problems.push(...checkDockerfileAcceptsAppVersion(text, { label: file }));
   }
+
+  problems.push(...checkOrchestratorVersionTagMapping(readFile(ORCHESTRATOR_FILE)));
 
   return problems;
 }
@@ -172,10 +227,14 @@ if (require.main === module) {
 module.exports = {
   BUILDER_WORKFLOWS,
   DOCKERFILES,
+  ORCHESTRATOR_FILE,
+  ORCHESTRATOR_VERSION_TAG_OUTPUTS,
   checkVersionTagComputation,
   checkJobOutputsVersionTag,
+  checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
   checkImmutabilityGuardStep,
   checkDockerfileAcceptsAppVersion,
+  checkOrchestratorVersionTagMapping,
   runAllChecks,
 };

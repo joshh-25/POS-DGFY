@@ -18,6 +18,8 @@ on:
     outputs:
       sha_tag:
         value: ${{ jobs.build-and-push.outputs.sha_tag }}
+      version_tag:
+        value: ${{ jobs.build-and-push.outputs.version_tag }}
 
 permissions:
   contents: read
