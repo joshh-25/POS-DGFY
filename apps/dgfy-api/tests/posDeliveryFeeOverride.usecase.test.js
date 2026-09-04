@@ -480,6 +480,228 @@ describe('POS staff delivery-fee override use case (Phase 238, #1330)', () => {
             }));
         });
 
+        // -----------------------------------------------------------------------------------
+        // RF-1 (PR #1567 review). The repair path above is only useful if it can actually reach
+        // the rows that need it. A pre-#1564 override was applied while the order was unpaid and
+        // the order was then collected -- so the historical rows carrying the broken invariant are
+        // overwhelmingly `paid` or `partially_paid` today. The payment-status gate used to run
+        // before the repair branch, which made every one of them permanently unrepairable while
+        // ADR 0012's amendment and the declaration's Precondition 6 both claimed otherwise.
+        // -----------------------------------------------------------------------------------
+        const buildPreFixRow = (extra = {}) => buildFixture({
+            transactionOverrides: {
+                // The pre-#1564 signature: fee was overridden to 150, base/waiver still say 80/0
+                // (so `base - waiver !== delivery_fee`), and the column that would explain it
+                // reads NULL.
+                delivery_fee: 150,
+                delivery_fee_base: 80,
+                delivery_fee_waiver: 0,
+                delivery_fee_override: null,
+                total_amount: 650,
+                ...extra
+            }
+        });
+
+        const recordUpdatePayloads = (fixture) => {
+            const payloads = [];
+            const inner = fixture.posRepository.updateTransactionLifecycle.bind(fixture.posRepository);
+            fixture.posRepository.updateTransactionLifecycle = async (transactionId, payload, options) => {
+                payloads.push(clone(payload));
+                return inner(transactionId, payload, options);
+            };
+            return payloads;
+        };
+
+        it('repairs a PAID pre-#1564 row: zero money movement, exactly one provenance_only audit row', async () => {
+            const fixture = buildPreFixRow({ payment_status: 'paid', amount_paid: 650, balance_due: 0 });
+            const payloads = recordUpdatePayloads(fixture);
+            const useCase = buildOverrideDeliveryFeeUseCase({ posRepository: fixture.posRepository });
+
+            const result = await runInTenantContext(fixture.sequelize, () => useCase({
+                posTransactionId: 501,
+                payload: { delivery_fee: 150, reason: 'Stamping provenance on a settled historical row' },
+                user: { user_id: 44 }
+            }));
+
+            expect(result.success).toBe(true);
+            expect(result.data.delivery_fee_override).toEqual(expect.objectContaining({
+                no_op: false,
+                provenance_only: true,
+                previous_delivery_fee: 150,
+                new_delivery_fee: 150,
+                previous_delivery_fee_override: null,
+                new_delivery_fee_override: 150,
+                previous_total_amount: 650,
+                new_total_amount: 650,
+                previous_balance_due: 0,
+                new_balance_due: 0
+            }));
+
+            // Zero money movement, proved structurally: the repair's update payload names exactly
+            // one column, so no money column is even written back at its own value.
+            expect(payloads).toHaveLength(1);
+            expect(Object.keys(payloads[0])).toEqual(['delivery_fee_override']);
+            expect(fixture.state.transaction).toEqual(expect.objectContaining({
+                delivery_fee: 150,
+                total_amount: 650,
+                balance_due: 0,
+                amount_paid: 650,
+                payment_status: 'paid',
+                delivery_fee_base: 80,
+                delivery_fee_waiver: 0,
+                delivery_fee_override: 150
+            }));
+            expectDeliveryFeeInvariant(fixture.state.transaction);
+
+            // Exactly one audit row, and it is distinguishable as a repair rather than a fee change.
+            expect(fixture.state.auditLogs).toHaveLength(1);
+            expect(fixture.state.auditLogs[0].changes).toEqual(expect.objectContaining({
+                provenance_only: true,
+                previous_delivery_fee: 150,
+                new_delivery_fee: 150,
+                previous_delivery_fee_override: null,
+                new_delivery_fee_override: 150,
+                previous_total_amount: 650,
+                new_total_amount: 650,
+                previous_balance_due: 0,
+                new_balance_due: 0,
+                // The settled status is on the record, so a repair on a paid order is auditable as
+                // exactly that rather than looking like an ordinary unpaid override.
+                payment_status_at_override: 'paid'
+            }));
+            expect(fixture.state.auditLogs[0].reason).toBe('Stamping provenance on a settled historical row');
+        });
+
+        it('repairs a PARTIALLY_PAID pre-#1564 row and preserves balance_due byte-for-byte', async () => {
+            // balance_due (400) deliberately does NOT equal total_amount - amount_paid (450) -- a
+            // partial refund or write-off leaves a settled row in exactly this shape. The old
+            // recompute path would have silently "corrected" it to 450; the repair must not.
+            const fixture = buildPreFixRow({
+                payment_status: 'partially_paid',
+                amount_paid: 200,
+                balance_due: 400
+            });
+            const payloads = recordUpdatePayloads(fixture);
+            const useCase = buildOverrideDeliveryFeeUseCase({ posRepository: fixture.posRepository });
+
+            const result = await runInTenantContext(fixture.sequelize, () => useCase({
+                posTransactionId: 501,
+                payload: { delivery_fee: 150, reason: 'Provenance repair on a downpayment order' },
+                user: { user_id: 44 }
+            }));
+
+            expect(result.success).toBe(true);
+            expect(result.data.delivery_fee_override).toEqual(expect.objectContaining({
+                no_op: false,
+                provenance_only: true,
+                previous_balance_due: 400,
+                new_balance_due: 400,
+                previous_total_amount: 650,
+                new_total_amount: 650
+            }));
+
+            expect(payloads).toHaveLength(1);
+            expect(Object.keys(payloads[0])).toEqual(['delivery_fee_override']);
+            expect(fixture.state.transaction).toEqual(expect.objectContaining({
+                delivery_fee: 150,
+                total_amount: 650,
+                balance_due: 400,
+                amount_paid: 200,
+                delivery_fee_override: 150
+            }));
+            expectDeliveryFeeInvariant(fixture.state.transaction);
+
+            expect(fixture.state.auditLogs).toHaveLength(1);
+            expect(fixture.state.auditLogs[0].changes).toEqual(expect.objectContaining({
+                provenance_only: true,
+                previous_balance_due: 400,
+                new_balance_due: 400,
+                payment_status_at_override: 'partially_paid'
+            }));
+        });
+
+        it('is a clean no-op, not a 409, when a settled repair is retried', async () => {
+            const fixture = buildPreFixRow({ payment_status: 'paid', amount_paid: 650, balance_due: 0 });
+            const useCase = buildOverrideDeliveryFeeUseCase({ posRepository: fixture.posRepository });
+            const submit = () => runInTenantContext(fixture.sequelize, () => useCase({
+                posTransactionId: 501,
+                payload: { delivery_fee: 150, reason: 'Retried repair, same absolute amount' },
+                user: { user_id: 44 }
+            }));
+
+            const first = await submit();
+            const second = await submit();
+
+            expect(first.data.delivery_fee_override.provenance_only).toBe(true);
+            expect(second.success).toBe(true);
+            expect(second.data.delivery_fee_override.no_op).toBe(true);
+            expect(fixture.state.auditLogs).toHaveLength(1);
+            expect(fixture.state.transaction.total_amount).toBe(650);
+            expect(fixture.state.transaction.balance_due).toBe(0);
+        });
+
+        it('still refuses a fee CHANGE on a settled pre-#1564 row (the carve-out never moves money)', async () => {
+            const fixture = buildPreFixRow({ payment_status: 'paid', amount_paid: 650, balance_due: 0 });
+            const useCase = buildOverrideDeliveryFeeUseCase({ posRepository: fixture.posRepository });
+
+            const result = await runInTenantContext(fixture.sequelize, () => useCase({
+                posTransactionId: 501,
+                // 200 !== the persisted 150, so this is a money change, not a repair.
+                payload: { delivery_fee: 200, reason: 'Trying to change the fee on a paid order' },
+                user: { user_id: 44 }
+            }));
+
+            expect(result.success).toBe(false);
+            expect(result.error.code).toBe('CONFLICT');
+            expect(result.error.details?.reason_code).toBe('DELIVERY_FEE_OVERRIDE_PAYMENT_SETTLED');
+            expect(fixture.state.auditLogs).toHaveLength(0);
+            expect(fixture.state.transaction.delivery_fee).toBe(150);
+            expect(fixture.state.transaction.total_amount).toBe(650);
+            expect(fixture.state.transaction.delivery_fee_override).toBeNull();
+        });
+
+        it('still refuses a settled row whose invariant is intact (nothing to repair)', async () => {
+            // base - waiver === delivery_fee, so this row was never overridden -- stamping an
+            // override on it would be a semantic change, not a repair, and the settled gate holds.
+            const fixture = buildFixture({
+                transactionOverrides: { payment_status: 'paid', amount_paid: 580, balance_due: 0 }
+            });
+            const useCase = buildOverrideDeliveryFeeUseCase({ posRepository: fixture.posRepository });
+
+            const result = await runInTenantContext(fixture.sequelize, () => useCase({
+                posTransactionId: 501,
+                payload: { delivery_fee: 80, reason: 'Confirming the formula number on a paid order' },
+                user: { user_id: 44 }
+            }));
+
+            expect(result.success).toBe(false);
+            expect(result.error.code).toBe('CONFLICT');
+            expect(result.error.details?.reason_code).toBe('DELIVERY_FEE_OVERRIDE_PAYMENT_SETTLED');
+            expect(fixture.state.auditLogs).toHaveLength(0);
+            expect(fixture.state.transaction.delivery_fee_override).toBeNull();
+        });
+
+        it('still refuses a settled repair on a voided transaction (the void gate runs first)', async () => {
+            const fixture = buildPreFixRow({
+                payment_status: 'paid',
+                amount_paid: 650,
+                balance_due: 0,
+                status: 'voided'
+            });
+            const useCase = buildOverrideDeliveryFeeUseCase({ posRepository: fixture.posRepository });
+
+            const result = await runInTenantContext(fixture.sequelize, () => useCase({
+                posTransactionId: 501,
+                payload: { delivery_fee: 150, reason: 'Repair attempt on a voided order' },
+                user: { user_id: 44 }
+            }));
+
+            expect(result.success).toBe(false);
+            expect(result.error.details?.reason_code).toBe('POS_TRANSACTION_VOIDED');
+            expect(fixture.state.auditLogs).toHaveLength(0);
+            expect(fixture.state.transaction.delivery_fee_override).toBeNull();
+        });
+
         it('is a true no-op on the resubmit that follows a repair (retry idempotency preserved)', async () => {
             const fixture = buildFixture({
                 transactionOverrides: {

@@ -13,7 +13,7 @@ classification: major
 surfaces: pos,terminal,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.04
-verification_evidence: apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.js -- actually executed (Jest) 19/19 passing (12 pre-existing + 7 new #1564 cases: the invariant regression itself; base/waiver/mode/calc_version left untouched as pre-override provenance; a waive-to-free override persisted as 0 and never NULL; an override on a POS-created delivery order with no storefront breakdown; the pre-#1564 provenance-only repair with zero money movement; retry idempotency after a repair; and a fail-loud INTERNAL_ERROR when persistence silently drops the delivery_fee_override write),full delivery-fee suite -- actually executed (Jest) 11 suites / 169 tests all passing via `npm test -- --testPathPatterns='[dD]elivery[fF]ee'` (includes storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js and storeCheckoutDeliveryFeePin.unit.test.js UNMODIFIED -- the two suites that assert the override-IS-NULL half of the invariant and the pin's own null-vs-zero overrideAmount validation),storefront/POS money regression -- actually executed (Jest) via `npm test -- --testPathPatterns='(storeCheckout|storeCart|storePayment|posDelivery|posCashRefund|storeUsecases)'` all passing (storeUseCases.js is comment-only in this diff; this run is the evidence, not an assertion),node --check on every changed apps/dgfy-api .js file (5 files 0 errors -- dgfy-api has no build step so this is its Tier 0 equivalent per .agents/skills/implement/SKILL.md),npm run check:compliance -- confirmed to fail first (naming exactly posHandlers.js/deliveryFeeOverrideUseCases.js/storeUseCases.js as the 3 sensitive files with no declaration) then pass once this declaration was added,npm run check:architecture -- passed,npm run lint:docs -- passed (includes the new ADR 0012 amendment)
+verification_evidence: apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.js -- actually executed (Jest) 25/25 passing (12 pre-existing + 7 new #1564 cases + 6 new RF-1 cases: the invariant regression itself; base/waiver/mode/calc_version left untouched as pre-override provenance; a waive-to-free override persisted as 0 and never NULL; an override on a POS-created delivery order with no storefront breakdown; the pre-#1564 provenance-only repair with zero money movement; retry idempotency after a repair; a fail-loud INTERNAL_ERROR when persistence silently drops the delivery_fee_override write; and for RF-1 the paid and partially_paid pre-#1564 repairs asserting a single-column update payload / byte-for-byte balance_due / exactly one provenance_only audit row, a retried settled repair answering no-op rather than 409, a still-refused fee CHANGE on a settled row, a still-refused settled row whose invariant is intact, and a still-refused voided settled row),full delivery-fee suite -- actually executed (Jest) 11 suites / 175 tests all passing via `npm test -- --testPathPatterns='[dD]elivery[fF]ee'` (includes storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js and storeCheckoutDeliveryFeePin.unit.test.js UNMODIFIED -- the two suites that assert the override-IS-NULL half of the invariant and the pin's own null-vs-zero overrideAmount validation),storefront/POS money regression -- actually executed (Jest) via `npm test -- --testPathPatterns='(storeCheckout|storeCart|storePayment|posDelivery|posCashRefund|storeUsecases)'` 21 suites / 252 tests all passing (storeUseCases.js is comment-only in this diff; this run is the evidence, not an assertion),node --check on every changed apps/dgfy-api .js file (5 files 0 errors -- dgfy-api has no build step so this is its Tier 0 equivalent per .agents/skills/implement/SKILL.md),npm run check:compliance -- confirmed to fail first (naming exactly posHandlers.js/deliveryFeeOverrideUseCases.js/storeUseCases.js as the 3 sensitive files with no declaration) then pass once this declaration was added,npm run check:architecture -- passed,npm run lint:docs -- passed (includes the new ADR 0012 amendment)
 rollback_note: Revert this PR's diff. No migration and no schema change -- pos_transactions.delivery_fee_override already exists (Phase 237, migration 20260903000001-add-delivery-fee-breakdown.cjs); this PR only starts writing a column that was already there and already nullable-with-NULL-default. Reverting stops that write; rows written while it was live keep a delivery_fee_override value that is simply ignored again by every reader, and no money column (delivery_fee, total_amount, balance_due) changes value on rollback because the override amount always equals the delivery_fee it explains. The one behavior that disappears on revert is the in-place repair path for pre-#1564 rows, which is a capability loss, not a data loss.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -140,25 +140,51 @@ is per-**location** fee *configuration* (ADR 0078 Decision 6 `[binding]`, diverg
    (`Number(null) || 0`), which would conflate "no override" with "staff set it free". Every read
    of the column goes through a `round4OrNull()` helper instead. Pinned by a dedicated
    waive-to-free test asserting the persisted value is `0` and explicitly not `null`.
-4. **Every existing refusal gate is unchanged**, and so is the settled-payment boundary: this path
-   is still reachable only while `payment_status === 'unpaid'`, still refuses non-delivery orders
-   and voided transactions, still requires the `pos:delivery_fee_override` permission on the route
-   and a ≥3-character reason. No refund/top-up machinery is introduced, matching #1330's scope
-   boundary.
+4. **Every existing refusal gate is unchanged, and the settled-payment boundary is scoped to
+   fee-*changing* requests.** No money value can be moved on a `paid` or `partially_paid` order
+   through this endpoint — that gate is intact and pinned by its original tests plus a new one
+   asserting a fee *change* on a settled pre-#1564 row is still refused with
+   `DELIVERY_FEE_OVERRIDE_PAYMENT_SETTLED`. What the gate no longer blocks is the provenance-only
+   repair of Precondition 6, which writes exactly one non-money column. The endpoint still refuses
+   non-delivery orders and voided transactions (both gates run *before* the payment check, so a
+   voided settled row is refused as voided — pinned by a test), and still requires the
+   `pos:delivery_fee_override` permission on the route and a ≥3-character reason. No refund/top-up
+   machinery is introduced, matching #1330's scope boundary.
+   *Corrected 2026-09-04 by PR #1567 review finding RF-1.* The first implementation ran the
+   payment-status gate before the repair branch, which made Precondition 6 unreachable on any
+   historical row that had since been collected — i.e. on most of them, since a pre-#1564 override
+   was applied while unpaid and the order was then paid. The precondition claimed a repair path the
+   code could not deliver; the code, not the claim, was wrong.
 5. **The no-op branch is narrowed, and retry idempotency is preserved exactly.** A resubmit is a
    no-op only when the money *and* the provenance column are already at the target. A genuine retry
    of a successful override always satisfies both (the first call wrote the override), so the
    idempotency property #1330 declared is unchanged — pinned by a test that submits twice and
-   asserts exactly one audit row. The one newly-writing case is a row whose `delivery_fee` already
+   asserts exactly one audit row, and by a second test doing the same on a *settled* row (a retried
+   repair answers "unchanged", never a `PAYMENT_SETTLED` conflict; the no-op check therefore runs
+   ahead of the payment gate, since a request that writes nothing cannot violate it). The one newly-writing case is a row whose `delivery_fee` already
    matches but whose `delivery_fee_override` is `NULL`; that write moves no money at all
    (`feeDelta === 0`, `total_amount`/`balance_due` written back at their existing values) and only
    stamps provenance.
-6. **Pre-#1564 rows are repairable in place, without a backfill.** ADR 0012 is forward-only (no
-   historical recompute), so rows overridden before this fix keep a silently violated invariant
-   forever unless something repairs them. Precondition 5's provenance-only path is that repair: it
-   runs through the same permissioned, reasoned, audited endpoint, is distinguishable in the audit
-   log via `provenance_only: true`, and cannot change a single money value. No migration, no data
-   patch, no ad-hoc SQL.
+6. **Pre-#1564 rows are repairable in place, without a backfill, at any payment status.** ADR 0012
+   is forward-only (no historical recompute), so rows overridden before this fix keep a silently
+   violated invariant forever unless something repairs them. Precondition 5's provenance-only path
+   is that repair: it runs through the same permissioned, reasoned, audited endpoint, is
+   distinguishable in the audit log via `provenance_only: true` (with the settled `payment_status`
+   also on the record), and cannot change a single money value. No migration, no data patch, no
+   ad-hoc SQL.
+   On a `paid` or `partially_paid` row the repair is admitted only under **three simultaneous
+   conditions**, each excluding a case that must not be reachable on a settled order:
+   `delivery_fee_override IS NULL` (an already-stamped row has nothing to repair), the requested
+   fee equals the persisted `delivery_fee` (anything else is a money change and stays refused), and
+   the row is a genuine historical mismatch — `delivery_fee_base - delivery_fee_waiver !==
+   delivery_fee` (a row whose formula honestly produced this fee is undamaged, so stamping an
+   override on it would be a semantic change, not a repair; pinned by a test that this case is
+   still refused). **Zero money movement is structural, not derived:** the repair's update payload
+   names exactly one column, `delivery_fee_override`, so `delivery_fee`/`total_amount`/`balance_due`
+   are not written back even at their own values. This matters on settled rows specifically, where
+   `balance_due` may legitimately differ from `total_amount - amount_paid` (a partial refund, a
+   write-off) and the previous no-change-write shape would have silently "corrected" it — pinned by
+   a `partially_paid` test whose fixture carries exactly that divergence.
 7. **The write is asserted, not assumed.** The post-write check now fails
    `INTERNAL_ERROR` if `delivery_fee_override` did not land, alongside the existing `delivery_fee`
    check. Pinned by a test that simulates a repository silently discarding the column.
@@ -180,7 +206,8 @@ it carries meaning only on storefront-originated ones.
 
 See the `verification_evidence` front-matter field for the itemized list. Summary:
 
-- `posDeliveryFeeOverride.usecase.test.js` — **19/19 passing**, up from 12. The 7 new cases are
+- `posDeliveryFeeOverride.usecase.test.js` — **25/25 passing**, up from 12. The 7 original #1564
+  cases are
   the invariant regression itself (fee moves, base/waiver do not, override is recorded, both halves
   of the invariant checked); base/waiver/mode/calc_version left untouched as pre-override
   provenance; the waive-to-free `0`-not-`NULL` case; an override on a POS-created delivery order
@@ -188,15 +215,23 @@ See the `verification_evidence` front-matter field for the itemized list. Summar
   and a `provenance_only: true` audit row; retry idempotency across a repair plus its resubmit
   (exactly one audit row); and the fail-loud `INTERNAL_ERROR` when persistence drops the override
   write. The 12 pre-existing cases are retained and extended with provenance assertions, not
-  replaced.
-- Full delivery-fee suite — 11 suites / 169 tests, all passing. Includes
+  replaced. The 6 further cases added for PR #1567's RF-1 cover the settled-row repair boundary in
+  both directions: a **paid** pre-#1564 repair and a **partially_paid** one, each asserting the
+  update payload contains exactly the one key `delivery_fee_override`, that `delivery_fee`/
+  `total_amount`/`balance_due`/`amount_paid` are unchanged (the `partially_paid` fixture carries a
+  `balance_due` deliberately unequal to `total_amount - amount_paid`, so a recompute would be
+  visible), and that exactly one `provenance_only: true` audit row is written carrying the settled
+  `payment_status_at_override`; a retried settled repair returning `no_op: true` rather than a
+  conflict; and three still-refused cases — a fee *change* on a settled pre-#1564 row, a settled row
+  whose invariant is intact, and a voided settled row.
+- Full delivery-fee suite — 11 suites / 175 tests, all passing. Includes
   `storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js` and
   `storeCheckoutDeliveryFeePin.unit.test.js` **unmodified** — the two suites that assert the
   `override IS NULL` half of the invariant and the pin's own null-vs-zero `overrideAmount`
   validation. Their passing unchanged is the evidence that this PR redefined the invariant's second
   half without weakening its first.
 - Storefront/POS money regression across `storeCheckout*`/`storeCart*`/`storePayment*`/
-  `posDelivery*`/`posCashRefund*`/`storeUsecases*`, all passing — the evidence that the
+  `posDelivery*`/`posCashRefund*`/`storeUsecases*` — 21 suites / 252 tests, all passing — the evidence that the
   `storeUseCases.js` edit is genuinely comment-only.
 - `node --check` on every changed `apps/dgfy-api` `.js` file; `npm run check:compliance` (fail
   first, pass with this declaration); `npm run check:architecture`; `npm run lint:docs`.

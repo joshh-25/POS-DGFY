@@ -127,20 +127,16 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
             }
 
             const paymentStatus = String(existing.payment_status || '').trim().toLowerCase();
-            if (paymentStatus !== UNSETTLED_PAYMENT_STATUS) {
-                throw new DomainError(
-                    DomainErrorCode.CONFLICT,
-                    'The delivery fee can be overridden only while payment is unsettled (unpaid, including COD before collection)',
-                    {
-                        statusCode: 409,
-                        details: {
-                            reason_code: 'DELIVERY_FEE_OVERRIDE_PAYMENT_SETTLED',
-                            payment_status: paymentStatus || null
-                        }
-                    }
-                );
-            }
 
+            // #1564 RF-1 (PR #1567 review): these reads moved ABOVE the payment-status gate. The
+            // gate used to run first, which made the pre-#1564 repair path this ticket documents
+            // (ADR 0012's 2026-09-04 amendment, the declaration's Precondition 6) unreachable on
+            // any historical row that had since been paid or partially paid -- exactly the rows
+            // most likely to exist, since a pre-#1564 override was applied while unpaid and the
+            // order was then collected. Those rows would have kept a silently violated invariant
+            // forever, with no backfill (ADR 0012 is forward-only) and no endpoint able to repair
+            // them. Deciding whether a request is a repair or a money change requires the current
+            // fee/override, so the read has to precede the decision.
             const previousDeliveryFee = round4(existing.delivery_fee);
             const previousTotalAmount = round4(existing.total_amount);
             const previousBalanceDue = round4(existing.balance_due);
@@ -153,6 +149,53 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
             // delta (see the no-op comment below), so provenance and money are the same number by
             // construction rather than by a second, driftable computation.
             const newDeliveryFeeOverride = newDeliveryFee;
+
+            // The invariant's first half as PosTransaction.js states it, clamped at 0 the same way
+            // expectDeliveryFeeInvariant() and the resolver do, so a fully-waived row (waiver >
+            // base, fee 0) is not misread as a mismatch. A row that fails this WHILE its override
+            // column reads NULL is the pre-#1564 signature and nothing else: no other writer in
+            // this codebase can break base - waiver === delivery_fee without also stamping the
+            // override column, because this use case is the only writer of delivery_fee after
+            // checkout.
+            const previousDeliveryFeeBase = round4(existing.delivery_fee_base);
+            const previousDeliveryFeeWaiver = round4(existing.delivery_fee_waiver);
+            const hasHistoricalInvariantMismatch = Math.max(
+                0,
+                round4(previousDeliveryFeeBase - previousDeliveryFeeWaiver)
+            ) !== previousDeliveryFee;
+
+            // The narrow repair carve-out. All three conditions are required, and each excludes a
+            // case that must NOT be reachable on a settled order:
+            //   1. override IS NULL      -- an already-stamped row has nothing to repair.
+            //   2. fee already matches   -- anything else is a money change (see the gate below).
+            //   3. invariant is broken   -- a row whose formula genuinely produced this fee is not
+            //      damaged, so stamping an override on it would be a semantic change, not a repair.
+            const isProvenanceOnlyRepair = previousDeliveryFeeOverride === null
+                && previousDeliveryFee === newDeliveryFee
+                && hasHistoricalInvariantMismatch;
+            // A request that would write nothing at all. Checked here rather than only at the
+            // no-op branch below so that a retried repair on a settled row answers "unchanged"
+            // instead of "settled" -- retry idempotency is a property this endpoint declares
+            // (declaration Precondition 5), and it has to survive the repair path too.
+            const isNoOpRequest = previousDeliveryFee === newDeliveryFee
+                && previousDeliveryFeeOverride === newDeliveryFeeOverride;
+
+            // Unchanged for every fee-CHANGING request: money moves only while payment is
+            // unsettled. The two additions are strictly non-money -- a repair writes only
+            // delivery_fee_override, a no-op writes nothing.
+            if (paymentStatus !== UNSETTLED_PAYMENT_STATUS && !isProvenanceOnlyRepair && !isNoOpRequest) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'The delivery fee can be overridden only while payment is unsettled (unpaid, including COD before collection)',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'DELIVERY_FEE_OVERRIDE_PAYMENT_SETTLED',
+                            payment_status: paymentStatus || null
+                        }
+                    }
+                );
+            }
 
             // Re-saving the same value is a no-op -- mirrors applyWorkflowModeAuditLog's own
             // "a no-op write logs nothing" convention (settings audit trail, #234/#1327). No DB
@@ -170,7 +213,7 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
             // override column equals the fee, so the next identical submit takes this branch.
             // There is no backfill for pre-#1564 rows (ADR 0012's forward-only rule), so this
             // reasoned, audited, staff-initiated path is the only repair route those rows have.
-            if (previousDeliveryFee === newDeliveryFee && previousDeliveryFeeOverride === newDeliveryFeeOverride) {
+            if (isNoOpRequest) {
                 await transaction.commit();
                 return ok({
                     transaction: toSerializable(existing),
@@ -189,8 +232,12 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
                 });
             }
 
+            // #1564: `feeDelta === 0` is reachable now that the no-op branch above also requires
+            // the provenance column to match -- that is the pre-#1564-row repair case, where the
+            // only column that changes at all is delivery_fee_override.
             const feeDelta = round4(newDeliveryFee - previousDeliveryFee);
-            const newTotalAmount = round4(previousTotalAmount + feeDelta);
+            const provenanceOnly = feeDelta === 0;
+            const newTotalAmount = provenanceOnly ? previousTotalAmount : round4(previousTotalAmount + feeDelta);
             if (newTotalAmount < 0) {
                 // Only reachable with already-corrupt data (total_amount < delivery_fee) -- clamping
                 // that to zero would silently launder corruption into a wrong-but-plausible total.
@@ -204,7 +251,9 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
                     }
                 );
             }
-            // The guard above restricts this whole path to payment_status === 'unpaid', and
+            // Every fee-CHANGING request is still restricted to payment_status === 'unpaid' by the
+            // gate above (the two exceptions it now admits both land on the provenanceOnly branch
+            // below, which never reaches this recompute), and
             // getTransactionById/posUseCases.js's own writers only ever leave balance_due at 0 for an
             // unpaid order (see the RF-1 finding on PR #1336) -- so re-deriving balance_due from
             // previousAmountPaid on an unpaid order was flipping it from 0 to the full new total. The
@@ -214,27 +263,38 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
             // risks collecting the balance a second time from a customer who already paid COD in cash.
             // Only recompute from previousAmountPaid when a balance was already outstanding; otherwise
             // preserve the 0 an unpaid order must have.
-            const newBalanceDue = previousBalanceDue > 0
+            // RF-1: on the repair path this is `previousBalanceDue` verbatim, never a re-derivation
+            // from previousAmountPaid. A settled row's balance_due may legitimately differ from
+            // `total_amount - amount_paid` (a partial refund, a write-off), so recomputing it here
+            // would move money on a path that is defined as moving none.
+            const newBalanceDue = (!provenanceOnly && previousBalanceDue > 0)
                 ? Math.max(0, round4(newTotalAmount - previousAmountPaid))
                 : previousBalanceDue;
 
-            // #1564: `feeDelta === 0` is reachable now that the no-op branch above also requires the
-            // provenance column to match -- that is the pre-#1564-row repair case, where the only
-            // column that actually changes is delivery_fee_override. total_amount/balance_due are
-            // written back at their existing values, which is a no-change write, not a recompute.
-            const provenanceOnly = previousDeliveryFee === newDeliveryFee;
+            // RF-1: the repair writes ONE column. Previously it wrote delivery_fee/total_amount/
+            // balance_due back at their existing values -- a no-change write in the ordinary case,
+            // but on a settled row it is the difference between "provably touches no money column"
+            // and "re-writes three money columns and trusts the arithmetic to be a fixed point".
+            // Omitting them makes the zero-money-movement property structural rather than derived.
+            const updatePayload = provenanceOnly
+                ? { delivery_fee_override: newDeliveryFeeOverride }
+                : {
+                    delivery_fee: newDeliveryFee,
+                    // #1564: the missing write this ticket exists for. Without it, `delivery_fee`
+                    // no longer equals `delivery_fee_base - delivery_fee_waiver` while
+                    // `delivery_fee_override` still reads NULL -- i.e. the row claims the formula
+                    // produced a number the formula cannot produce, with nothing in the columns to
+                    // say an override is the reason. See PosTransaction.js's two-part invariant.
+                    delivery_fee_override: newDeliveryFeeOverride,
+                    total_amount: newTotalAmount,
+                    balance_due: newBalanceDue
+                };
 
-            const updated = await posRepository.updateTransactionLifecycle(normalizedTransactionId, {
-                delivery_fee: newDeliveryFee,
-                // #1564: the missing write this ticket exists for. Without it, `delivery_fee` no
-                // longer equals `delivery_fee_base - delivery_fee_waiver` while
-                // `delivery_fee_override` still reads NULL -- i.e. the row claims the formula
-                // produced a number the formula cannot produce, with nothing in the columns to say
-                // an override is the reason. See PosTransaction.js's two-part invariant.
-                delivery_fee_override: newDeliveryFeeOverride,
-                total_amount: newTotalAmount,
-                balance_due: newBalanceDue
-            }, { transaction, lock: true });
+            const updated = await posRepository.updateTransactionLifecycle(
+                normalizedTransactionId,
+                updatePayload,
+                { transaction, lock: true }
+            );
             if (
                 !updated
                 || round4(updated.delivery_fee) !== newDeliveryFee

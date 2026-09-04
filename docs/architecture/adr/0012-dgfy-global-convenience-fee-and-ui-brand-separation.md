@@ -117,5 +117,19 @@ Adopt one mandatory cross-surface fee policy and branding split:
   was overridden but whose provenance column stayed `NULL` is instead repairable in place through
   the same permissioned, reasoned, audited endpoint: resubmitting the fee the row already carries
   now stamps `delivery_fee_override` and moves no money.
+- **That repair is reachable regardless of payment state; a fee *change* is not.** Stated
+  explicitly because the first implementation of this amendment did not honour it: the endpoint's
+  `payment_status === 'unpaid'` gate ran before the repair branch, so a historical row that had
+  since been collected could never be repaired — and those are most of them, since a pre-#1564
+  override was applied while the order was unpaid and the order was then paid. The gate is
+  therefore scoped to fee-**changing** requests only. A provenance-only repair is admitted on a
+  `paid` or `partially_paid` row under three simultaneous conditions, all required:
+  `delivery_fee_override IS NULL`, the requested fee equals the persisted `delivery_fee`, and the
+  row is a genuine historical mismatch (`delivery_fee_base - delivery_fee_waiver !== delivery_fee`).
+  Such a request writes exactly one column — `delivery_fee_override` — leaving `delivery_fee`,
+  `total_amount`, and `balance_due` untouched, and is audited with `provenance_only: true` and the
+  settled `payment_status` on the record. Every other refusal (non-delivery order, voided
+  transaction, permission, reason) is unchanged and still runs first. No refund or top-up
+  machinery is introduced; money on a settled order remains unmovable through this endpoint.
 - The totals formula's shape, the `service_fee_amount` policy, POS cashier checkout, and every
   branding/fiscal clause in this ADR are untouched by this amendment.
