@@ -182,6 +182,11 @@ cat > .tmp/release-candidates/$CANDIDATE_ID.json <<JSON
 JSON
 node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
 
+# current_staging_sha above is exactly what the "Deploy dispatch" section's STAGING
+# `gh workflow run deploy.yml` command reads back out via `-f candidate_source_sha=...`, once the
+# PR below merges and that step actually runs (#1598) -- nothing to do with it here, just don't
+# lose track of where it comes from.
+
 gh pr create \
   --base staging \
   --head to-staging/$CANDIDATE_ID \
@@ -302,10 +307,12 @@ git rev-list --count origin/staging..origin/main
 # four build_* booleans below all default true, so omitting them builds/pushes
 # everything, same as the old components=all)
 #
-# candidate_source_sha (ADR 0081 Decision 8, #1588): read current_staging_sha straight from the
-# candidate manifest rather than retyping the SHA. Sets the SAME variable name the #1007-gated
-# exception section captures for its own flow (from origin/develop directly, no manifest) -- the
-# PROD dispatch below reuses whichever one the promoter's actual flow set, without re-deriving it.
+# candidate_source_sha (ADR 0081 Decision 8, #1588; cross-referenced #1598): read
+# current_staging_sha straight from the candidate manifest written above in this file's "Default:
+# develop -> staging -> main" section, immediately after the branch cut -- rather than retyping the
+# SHA. Sets the SAME variable name the #1007-gated exception section captures for its own flow
+# (from origin/develop directly, no manifest) -- the PROD dispatch below reuses whichever one the
+# promoter's actual flow set, without re-deriving it.
 CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID.json').current_staging_sha")
 gh workflow run deploy.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" --ref staging
 ```
