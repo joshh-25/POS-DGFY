@@ -224,6 +224,31 @@ const resolveItemDescription = (item = {}, productKind) => {
   return description || buildFallbackDescription(item, productKind);
 };
 
+// ADR 0080 Decision 5 opt-in (Phase 289, #1318): resolves the distinct secondary sections an
+// item also belongs to, beyond its primary `sectionKey`/`sectionLabel` already computed above.
+// `item.secondary_categories` is `[{ folder_id, folder_name }]`, ordered by sort_order (Decision
+// 6) -- reads it, writes nothing. Deduped against the primary and against itself by normalized
+// `sectionKey` (the same identity the primary section already keys on throughout this file), so
+// an accidental primary/secondary overlap (Decision 2) or two secondary folders sharing a display
+// name never renders the same item twice under one section.
+const resolveSecondarySectionOccurrences = (item = {}, primarySectionKey) => {
+  const secondaryCategories = Array.isArray(item?.secondary_categories) ? item.secondary_categories : [];
+  if (secondaryCategories.length === 0) return [];
+
+  const seenSectionKeys = new Set([primarySectionKey]);
+  const occurrences = [];
+  secondaryCategories.forEach((secondaryCategory) => {
+    const secondaryLabel = titleCase(normalizeText(secondaryCategory?.folder_name));
+    if (!secondaryLabel) return;
+    const secondarySectionKey = normalizeKey(secondaryLabel).replace(/\s+/g, '_');
+    if (!secondarySectionKey || seenSectionKeys.has(secondarySectionKey)) return;
+    seenSectionKeys.add(secondarySectionKey);
+    occurrences.push({ sectionKey: secondarySectionKey, sectionLabel: secondaryLabel });
+  });
+
+  return occurrences;
+};
+
 export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
   const menuItems = (Array.isArray(catalog) ? catalog : [])
     .filter((item) => normalizeKey(item?.category) !== 'service')
@@ -245,8 +270,28 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
       };
     });
 
+  // ADR 0080 Decision 5: the F&B menu's section grouping renders an item once per section it
+  // belongs to (primary + each distinct secondary category), keyed by a composite
+  // `{sectionKey}:{itemId}` so list-renderer keys stay unique. `menuItems` above stays exactly
+  // one entry per item -- it backs `totalItems`/the count stats below, the unsectioned "All" tab,
+  // and `buildFnbRelatedItems`' cross-sell rail, none of which opt into the union (Decision 5's
+  // own carve-out for cross-sell/single-label surfaces).
+  const sectionEntries = [];
+  menuItems.forEach((item) => {
+    sectionEntries.push({ ...item, menuItemKey: `${item.sectionKey}:${item.item_id}` });
+    resolveSecondarySectionOccurrences(item, item.sectionKey).forEach((occurrence) => {
+      sectionEntries.push({
+        ...item,
+        sectionKey: occurrence.sectionKey,
+        sectionLabel: occurrence.sectionLabel,
+        sectionVisualMeta: resolveSectionVisualMeta(occurrence.sectionLabel),
+        menuItemKey: `${occurrence.sectionKey}:${item.item_id}`
+      });
+    });
+  });
+
   const sectionMap = new Map();
-  menuItems.forEach((item, index) => {
+  sectionEntries.forEach((item, index) => {
     const existing = sectionMap.get(item.sectionKey) || {
       sectionKey: item.sectionKey,
       sectionLabel: item.sectionLabel,

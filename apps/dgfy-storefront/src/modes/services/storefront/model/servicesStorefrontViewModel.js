@@ -304,6 +304,31 @@ export const getServiceCategoryMeta = (categoryKey, items = []) => {
   };
 };
 
+// ADR 0080 Decision 5 opt-in (Phase 289, #1318): the distinct secondary categories a service also
+// belongs to, beyond its primary `categoryKey` already resolved via `resolveServiceGroupingLabel`.
+// `item.secondary_categories` is `[{ folder_id, folder_name }]`, ordered by sort_order (Decision
+// 6) -- reads it, writes nothing. Deduped against the primary and against itself by normalized
+// `categoryKey`, same identity the primary already groups on, so an accidental primary/secondary
+// overlap (Decision 2) or two secondary folders sharing a display name never renders the same
+// service twice under one category.
+const resolveSecondaryCategoryOccurrences = (item = {}, primaryCategoryKey) => {
+  const secondaryCategories = Array.isArray(item?.secondary_categories) ? item.secondary_categories : [];
+  if (secondaryCategories.length === 0) return [];
+
+  const seenCategoryKeys = new Set([primaryCategoryKey]);
+  const occurrences = [];
+  secondaryCategories.forEach((secondaryCategory) => {
+    const rawLabel = String(secondaryCategory?.folder_name || '').trim();
+    if (!rawLabel) return;
+    const secondaryCategoryKey = normalizeCategoryKey(rawLabel);
+    if (seenCategoryKeys.has(secondaryCategoryKey)) return;
+    seenCategoryKeys.add(secondaryCategoryKey);
+    occurrences.push(secondaryCategoryKey);
+  });
+
+  return occurrences;
+};
+
 export const getServicesStorefrontViewModel = (catalog = []) => {
   const services = (Array.isArray(catalog) ? catalog : [])
     .filter((item) => String(item?.category || '').trim().toLowerCase() === 'service')
@@ -326,8 +351,27 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
       };
     });
 
-  const grouped = new Map();
+  // ADR 0080 Decision 5: the services storefront's category grouping renders a service once per
+  // category it belongs to (primary + each distinct secondary category), keyed by a composite
+  // `{categoryKey}:{itemId}` so list-renderer keys stay unique. `services`/`allServices` below
+  // stay derived from the un-fanned `services` array above -- one entry per service -- so the
+  // flat "all services" card grid and every stat count (`totalServices`, `inStoreCount`, etc.)
+  // stay primary-only, matching Decision 5's carve-out for single-label surfaces; only
+  // `serviceGroups[].items` opts into the union.
+  const categoryEntries = [];
   services.forEach((item) => {
+    categoryEntries.push({ ...item, serviceItemKey: `${item.categoryKey}:${item.item_id}` });
+    resolveSecondaryCategoryOccurrences(item, item.categoryKey).forEach((secondaryCategoryKey) => {
+      categoryEntries.push({
+        ...item,
+        categoryKey: secondaryCategoryKey,
+        serviceItemKey: `${secondaryCategoryKey}:${item.item_id}`
+      });
+    });
+  });
+
+  const grouped = new Map();
+  categoryEntries.forEach((item) => {
     const existing = grouped.get(item.categoryKey) || {
       categoryKey: item.categoryKey,
       items: [],
@@ -356,7 +400,13 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
       };
     });
 
-  const normalizedServices = serviceGroups.flatMap((group) => group.items);
+  // The flat, primary-only list: each service's occurrence in its own PRIMARY category group
+  // (carrying that group's `categoryMeta`/`variantName`, same as pre-fan-out behavior), never its
+  // secondary-category occurrences -- see the comment above `categoryEntries` for why.
+  const primaryCategoryKeyByItemId = new Map(services.map((item) => [item.item_id, item.categoryKey]));
+  const normalizedServices = serviceGroups
+    .flatMap((group) => group.items)
+    .filter((item) => item.categoryKey === primaryCategoryKeyByItemId.get(item.item_id));
   const inStoreCount = normalizedServices.filter((item) => normalizeAreaType(item?.service_detail?.service_area_type) === 'in_store').length;
   const onSiteCount = normalizedServices.filter((item) => normalizeAreaType(item?.service_detail?.service_area_type) === 'customer_location').length;
   const servicesWithRequiredIntakeCount = normalizedServices.filter((item) => item.requiredIntakeCount > 0).length;
