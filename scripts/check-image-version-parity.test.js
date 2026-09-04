@@ -319,6 +319,52 @@ test('runParityCheck: an invalid manifest throws PromotionCandidateError, same v
   );
 });
 
+// #1610 regression: a repair that touches only some apps must not make an untouched app's PROD
+// build compare against the candidate's LATEST current_staging_sha -- it must compare against the
+// SHA of the last revision that actually touched that specific app (resolveCandidateSourceShaByApp).
+// Uses this repo's real HEAD~1/HEAD as two resolvable SHAs (like the other runParityCheck tests) so
+// readVersionAt succeeds without a live checkout of a synthetic history.
+test('runParityCheck: an app untouched by a repair is compared against ITS OWN prior identity, not the manifest-wide current_staging_sha', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const initialSha = execSync('git rev-parse HEAD~1', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = {
+    schema: 'sku-release-candidate/v1',
+    candidate_id: '2026-09-05-01',
+    status: 'qualified',
+    source_develop_sha: initialSha,
+    current_staging_sha: headSha,
+    revisions: [
+      { kind: 'initial', sha: initialSha, parent_sha: null, branch: 'to-staging/2026-09-05-01' },
+      // Only dgfy-ims was touched by this repair -- dgfy-api was not.
+      { kind: 'staging_repair', revision: 1, sha: headSha, parent_sha: initialSha, branch: 'fix/staging/2026-09-05-01-r1', pr: 9002, issue: 9003, apps_touched: ['dgfy-ims'] },
+    ],
+    release_revision: { revision: 2, source_staging_sha: headSha, branch: 'release/2026-09-05-01-r2', pr: 9004 },
+  };
+
+  // checkApp() records candidate_source_sha unconditionally regardless of the inspect outcome, so
+  // this fixture only needs to not crash -- the assertions below are on WHICH sha was resolved per
+  // app, not on the pass/fail verdict itself.
+  const result = runParityCheck({
+    manifest,
+    repoRoot: __dirname + '/..',
+    apps: ['dgfy-api', 'dgfy-ims'],
+    inspectFn: inspectFixture({ stdout: agreeingLabelJson(initialSha) }),
+  });
+
+  const apiEntry = result.results.find((entry) => entry.app === 'dgfy-api');
+  const imsEntry = result.results.find((entry) => entry.app === 'dgfy-ims');
+
+  // The bug this regresses: dgfy-api was untouched by the repair, so its resolved candidate source
+  // identity must stay the INITIAL sha, not advance to the repair's (== current_staging_sha) value.
+  assert.equal(apiEntry.candidate_source_sha, initialSha);
+  assert.equal(imsEntry.candidate_source_sha, headSha);
+  // Top-level candidate_source_sha stays the manifest's overall latest identity -- context only, not
+  // what every app was actually compared against (see each entry's own field instead).
+  assert.equal(result.candidate_source_sha, headSha);
+});
+
 // runDirectParityCheck (--source-sha mode, RF-2) -- the #1007/hotfix entrypoint that never needs a
 // candidate manifest at all. Same real-HEAD-as-fixture pattern as runParityCheck above.
 

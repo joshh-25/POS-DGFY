@@ -9,21 +9,32 @@
  * `release/<candidate_id>-rN` -> `main` merge commit even when both carry byte-identical candidate
  * content. The candidate source identity is instead the frozen promotion candidate's own tracked SHA
  * (`scripts/check-promotion-candidate.js`'s manifest: `source_develop_sha` for a candidate with no
- * staging repairs, or the latest `staging_repair` revision's `sha` -- equivalently
- * `current_staging_sha` once repairs have landed; `validatePromotionCandidate()` already resolves
- * this to a single `current_staging_sha` field regardless of repair count, so this script never has
- * to pick between the two itself). `.github/workflows/{deploy-api,deploy-migration-runner,
- * deploy-frontend}.yml` stamp this identity into the `CANDIDATE_SOURCE_LABEL` OCI label below at
- * build time, sourced from a `candidate_source_sha` input the promoter threads through
- * `deploy.yml`/`deploy-main.yml` (see `.agents/skills/promoter/references/promotion-runbook.md`).
+ * staging repairs, or the latest `staging_repair` revision's `sha` once repairs have landed).
+ * `.github/workflows/{deploy-api,deploy-migration-runner,deploy-frontend}.yml` stamp this identity
+ * into the `CANDIDATE_SOURCE_LABEL` OCI label below at build time, sourced from a
+ * `candidate_source_sha` input the promoter threads through `deploy.yml`/`deploy-main.yml` (see
+ * `.agents/skills/promoter/references/promotion-runbook.md`).
+ *
+ * **Resolved PER APP, not as one manifest-wide value (#1610, ADR 0081 Decision 8 amendment).** A
+ * staging repair can touch only some apps (`build_api=false` etc. on that repair's STAGING
+ * redeploy) -- an app never named in any repair's `apps_touched` never advances past the initial
+ * revision's SHA, even after `current_staging_sha` itself moves on for other apps. PROD always
+ * rebuilds every app (there is no bare `X.Y.Z` tag to skip rebuilding), so blindly stamping every
+ * app with the manifest's single `current_staging_sha` mislabels any app a later repair didn't
+ * touch -- its STAGING image still carries the OLDER identity, so PROD must match that, not the
+ * candidate's latest one. `check-promotion-candidate.js`'s `resolveCandidateSourceShaByApp()` does
+ * this per-app walk; this script calls it once per `runParityCheck()` and compares each app against
+ * its own resolved value instead of a single shared one.
  *
  * Two CLI modes, and a shared per-image inspection state machine underneath both:
  *
  *   --manifest <candidate.json>  Normal promotion mode (default `develop -> staging -> main` flow).
  *     Reads and validates the candidate manifest (same shape check-promotion-candidate.js
- *     validates), resolves its `current_staging_sha` as the candidate source identity, then for
- *     every app (all five by default) reads that app's package.json version at that SHA and
- *     compares `ghcr.io/sieitzz/<app>:<version>-staging` against `ghcr.io/sieitzz/<app>:<version>`.
+ *     validates), resolves each app's OWN candidate source identity via
+ *     resolveCandidateSourceShaByApp() (#1610 -- not one shared current_staging_sha, see the header
+ *     comment above), then for every app (all five by default) reads that app's package.json
+ *     version at its own resolved SHA and compares `ghcr.io/sieitzz/<app>:<version>-staging` against
+ *     `ghcr.io/sieitzz/<app>:<version>`.
  *
  *   --source-sha <sha>  Direct/no-staging mode (#1007's expedited `develop -> main` override, or a
  *     main hotfix cut with a known source SHA) -- RF-2, PR #1590 review. This path never cuts
@@ -107,7 +118,7 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { validatePromotionCandidate, PromotionCandidateError } = require('./check-promotion-candidate');
+const { validatePromotionCandidate, resolveCandidateSourceShaByApp, PromotionCandidateError } = require('./check-promotion-candidate');
 const { isNotFoundError, collectRevisionLabelInfo } = require('./check-tag-immutability');
 const { APPS, readVersionAt } = require('./check-app-version-bump');
 
@@ -313,7 +324,10 @@ function checkApp({ repoRoot, app, candidateSha, inspectFn }) {
   const staging = inspectImageLabel({ image, tag: `${versionRaw}-staging`, labelKey: CANDIDATE_SOURCE_LABEL, inspectFn });
   const result = decideParity({ prod, staging });
 
-  return { app, version: versionRaw, ...result };
+  // candidate_source_sha here is THIS app's own resolved identity (#1610) -- may differ from the
+  // top-level runParityCheck() result's candidate_source_sha, which is only overall candidate
+  // context (the manifest's latest current_staging_sha), not what every app was compared against.
+  return { app, version: versionRaw, candidate_source_sha: candidateSha, ...result };
 }
 
 /**
@@ -325,14 +339,17 @@ function checkApp({ repoRoot, app, candidateSha, inspectFn }) {
  */
 function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn = runInspect } = {}) {
   const candidate = validatePromotionCandidate(manifest);
-  const candidateSha = candidate.current_staging_sha;
+  // #1610: per-app resolution, not one shared current_staging_sha -- see the file header comment.
+  const candidateShaByApp = resolveCandidateSourceShaByApp(manifest, apps);
 
-  const results = apps.map((app) => checkApp({ repoRoot, app, candidateSha, inspectFn }));
+  const results = apps.map((app) => checkApp({ repoRoot, app, candidateSha: candidateShaByApp[app], inspectFn }));
 
   return {
     mode: 'manifest',
     candidate_id: candidate.candidate_id,
-    candidate_source_sha: candidateSha,
+    // Overall candidate context only -- NOT necessarily what any individual app was compared
+    // against; see each result entry's own candidate_source_sha for that (#1610).
+    candidate_source_sha: candidate.current_staging_sha,
     results,
     ok: results.every((entry) => entry.verdict === 'pass' || entry.verdict === 'skip'),
   };
@@ -424,7 +441,10 @@ function printResult(result) {
   for (const entry of result.results) {
     const label = entry.verdict === 'pass' ? 'PASS' : entry.verdict === 'skip' ? 'SKIP' : entry.verdict === 'error' ? 'ERROR' : 'FAIL';
     const version = entry.version ? ` version=${entry.version}` : '';
-    console.log(`[check-image-version-parity] [${label}] ${entry.app}${version} (${entry.code}): ${entry.detail}`);
+    // entry.candidate_source_sha (manifest mode only, #1610) is THIS app's own resolved identity --
+    // print it so a mismatch is immediately legible without cross-referencing the manifest by hand.
+    const candidateSha = result.mode === 'manifest' && entry.candidate_source_sha ? ` candidate_source_sha=${entry.candidate_source_sha}` : '';
+    console.log(`[check-image-version-parity] [${label}] ${entry.app}${version}${candidateSha} (${entry.code}): ${entry.detail}`);
   }
   const context = result.mode === 'direct'
     ? `mode=direct source_sha=${result.candidate_source_sha}`

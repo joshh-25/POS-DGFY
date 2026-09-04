@@ -11,8 +11,11 @@ const {
   checkDockerfileAcceptsAppVersion,
   checkOrchestratorVersionTagMapping,
   checkOrchestratorCandidateSourceShaWiring,
+  checkDeployMainCandidateSourceShaWiring,
   ORCHESTRATOR_VERSION_TAG_OUTPUTS,
   ORCHESTRATOR_BUILDER_JOBS,
+  DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS,
+  DEPLOY_MAIN_JOB_INPUT_NAMES,
   runAllChecks,
 } = require('./check-deploy-version-stamping-workflow');
 
@@ -195,6 +198,58 @@ test('checkOrchestratorCandidateSourceShaWiring: one builder job missing the pas
   const problems = checkOrchestratorCandidateSourceShaWiring(text);
   assert.equal(problems.length, 1);
   assert.match(problems[0], /job "dgfy-api" does not forward/);
+});
+
+// checkDeployMainCandidateSourceShaWiring -- #1610 (ADR 0081 Decision 8 amendment): unlike the
+// orchestrator above, deploy-main.yml groups candidate_source_sha per app (dgfy-api and
+// dgfy-migration-runner share candidate_source_sha_api; each frontend gets its own), since PROD
+// rebuilds every app unconditionally and a single shared value would mislabel an app a staging
+// repair never touched.
+
+function deployMainFixture({ missingInputs = [], jobInputOverrides = {} } = {}) {
+  const inputLines = DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS
+    .filter((name) => !missingInputs.includes(name))
+    .map((name) => `      ${name}:\n        required: false\n        type: string\n        default: ''`)
+    .join('\n');
+  const inputBlock = `on:\n  workflow_dispatch:\n    inputs:\n${inputLines}\n\n`;
+  const jobBlocks = DEPLOY_MAIN_JOB_INPUT_NAMES
+    .map(([jobName, defaultInputName]) => {
+      const inputName = jobInputOverrides[jobName] ?? defaultInputName;
+      return `  ${jobName}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      candidate_source_sha: \${{ inputs.${inputName} }}\n    secrets: inherit\n`;
+    })
+    .join('\n');
+  return `${inputBlock}jobs:\n${jobBlocks}  publish:\n    uses: ./.github/workflows/publish-platform.yml\n    with:\n      environment: PROD\n    secrets: inherit\n`;
+}
+
+test('checkDeployMainCandidateSourceShaWiring: every job forwards its own correctly-grouped input -> no problems', () => {
+  assert.deepEqual(checkDeployMainCandidateSourceShaWiring(deployMainFixture()), []);
+});
+
+test('checkDeployMainCandidateSourceShaWiring: a missing workflow_dispatch input is caught by name', () => {
+  const problems = checkDeployMainCandidateSourceShaWiring(deployMainFixture({ missingInputs: ['candidate_source_sha_frontend_pos'] }));
+  assert.equal(problems.filter((p) => /missing a "candidate_source_sha_frontend_pos" string input/.test(p)).length, 1);
+});
+
+test('checkDeployMainCandidateSourceShaWiring: dgfy-migration-runner forwarding the wrong (frontend) input is caught, not silently accepted', () => {
+  const text = deployMainFixture({ jobInputOverrides: { 'dgfy-migration-runner': 'candidate_source_sha_frontend_ims' } });
+  const problems = checkDeployMainCandidateSourceShaWiring(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /job "dgfy-migration-runner" does not forward "candidate_source_sha: \$\{\{ inputs\.candidate_source_sha_api \}\}"/);
+});
+
+test('checkDeployMainCandidateSourceShaWiring: dgfy-api and dgfy-migration-runner sharing candidate_source_sha_api is the expected (not flagged) shape', () => {
+  // The default fixture already has both pointing at candidate_source_sha_api -- this test exists
+  // to name that as deliberate (the paired-build reality), not an oversight a future reviewer
+  // "fixes" into two separate inputs.
+  const problems = checkDeployMainCandidateSourceShaWiring(deployMainFixture());
+  assert.equal(problems.length, 0);
+});
+
+test('checkDeployMainCandidateSourceShaWiring: real deploy-main.yml passes', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/deploy-main.yml'), 'utf8');
+  assert.deepEqual(checkDeployMainCandidateSourceShaWiring(text), []);
 });
 
 // #1588 (epic #1548 Wave 4, Phase 279): labels moved from a literal `|` block inline in the
