@@ -312,6 +312,9 @@ function runChecks(options, changedFiles, components) {
   const receiptResult = runCommand('node', ['scripts/check-pos-receipt-version-bump.js'], { env });
   addCheck(checks, 'pos-receipt version bump', 'node scripts/check-pos-receipt-version-bump.js', receiptResult.ok ? 'pass' : 'warn', false);
 
+  const appVersionsResult = runCommand('node', ['scripts/check-app-version-bump.js'], { env });
+  addCheck(checks, 'app version bump', 'node scripts/check-app-version-bump.js', appVersionsResult.ok ? 'pass' : 'warn', false);
+
   const complianceResult = runCommand('npm', ['run', 'check:compliance'], { env });
   addCheck(checks, 'compliance impact declarations (stricter than CI — CI runs this advisory today)', 'npm run check:compliance', complianceResult.ok ? 'pass' : 'fail');
 
