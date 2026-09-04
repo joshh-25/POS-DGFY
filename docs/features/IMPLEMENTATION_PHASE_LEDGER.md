@@ -21016,3 +21016,62 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
   `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issue #1552.
 - Next eligible phase: 292.
+
+## Phase 292 - Reconcile the redundant haversine outside_radius_flag against the road-distance pipeline (#1565, #478 residue)
+
+- Initiative/release: Customer delivery pricing (epic #1321), closing out the #478 residue named in
+  Pat's 2026-09-01 closing comment on that issue.
+- Objective and scope: decide and execute one of #1565's two named options for
+  `pos_transactions.outside_radius_flag` and its legacy haversine helper -- retire, or give it a
+  real consumer. **Decision: retired.** Confirmed write-only with zero consumers anywhere in the
+  backend or any of the three frontend apps (`packages/web-core`, `apps/dgfy-pos`, `apps/dgfy-ims`,
+  `apps/dgfy-storefront` all grepped, zero hits other than an unrelated, differently-scoped
+  `haversineDistanceKm` in `apps/dgfy-storefront`'s own discovery-map math, untouched by this
+  phase) before this phase started. Option 2 (wire it into a real decision path, e.g. a cheap
+  pre-filter ahead of the road-distance call) was rejected: #1565 explicitly puts
+  `resolveStoreDeliveryFee`, the road-distance capture/await pipeline, and ADR 0078 Decision 2's
+  enforcement logic out of scope, and any genuine "real consumer" wiring would have to touch one of
+  those to matter -- so Option 2 was not actually available under this ticket's own boundary, not
+  merely declined. Removed `haversineDistanceKm`/`resolveDeliveryRadiusFlag`
+  (`storeUseCases.js`), the `outside_radius_flag` column (new migration
+  `20260909000001-drop-outside-radius-flag.cjs`, fanning out over the landlord + every active
+  tenant DB, mirroring the `20260902000001` pattern) and `PosTransaction` model field, and every
+  read/write site (the quote-response field, the `PosTransaction` create payload, the
+  order-serialization echo). Fixed the resulting live ordering-dependency gap in
+  `sync-tenant-schemas.js`'s `delivery_distance_meters` self-repair entry (re-anchored off
+  `store_customer_id` instead of the now-retired column). The ticket's second named gap (`false` vs
+  `null`/unknown for the missing-coordinate case) is **moot as a result of the retirement decision**
+  -- stated explicitly per the ticket's own instruction, rather than silently dropped: there is no
+  `resolveDeliveryRadiusFlag` left to return either value.
+- Status: completed.
+- Dependencies: #478 (closed, this phase's own origin).
+- Acceptance and validation evidence: new `storeOutsideRadiusFlagRetirement.unit.test.js` (7
+  tests) -- structural guards that the retired identifiers are gone from
+  `storeUseCases.js`/`posUseCases.js` and from the `PosTransaction` model, and that a checkout with
+  a delivery pin ~85km outside the location's `delivery_radius_km` (exactly the case the old
+  haversine logic would have flagged `true` for) persists no `outside_radius_flag` key anywhere,
+  while the real `delivery_out_of_range` signal (ADR 0078 Decision 2) stays present and unaffected.
+  Full existing store-checkout regression suite (12 files, 157 tests) and
+  `posOrderRejectionAndAddressEdit.usecase.test.js` (8 tests) pass unedited. `node --check` on
+  every changed/new `apps/dgfy-api`/`apps/dgfy-migration-runner` file; `npm run
+  check:architecture` (54 modules, 94 controller files, OK); `npm run lint:docs` (29 docs, 88
+  ADRs, confirms ADR 0078's `status: accepted -> amended` amendment validates); `node
+  scripts/check-tenant-schema-registry-coverage.js --staged` (PASS, 1 migration file); `npm run
+  check:compliance` (confirmed to fail first listing the two sensitive files, then pass once
+  `docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md` was
+  added); `node scripts/check-app-version-bump.js --staged` (PASS, `dgfy-api` 1.2.1->1.2.2,
+  `dgfy-migration-runner` 1.0.1->1.0.2, patch-by-default per ADR 0081's `develop`-PR mode). Not
+  exercised: a real migration `up`/`down` run against a live multi-tenant MySQL instance -- no
+  reachable database was available from this dispatch context; the migration's
+  `information_schema`-guarded fan-out logic is structurally identical to the already-shipped
+  `20260902000001` migration it mirrors.
+- Completion date: 2026-09-04; PR (this phase's own).
+- Contracts/files: `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/models/PosTransaction.js`, `apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+  `apps/dgfy-migration-runner/migrations/20260909000001-drop-outside-radius-flag.cjs`,
+  `apps/dgfy-api/tests/storeOutsideRadiusFlagRetirement.unit.test.js`,
+  `docs/architecture/adr/0078-customer-delivery-fee-modes.md` (Amendment),
+  `docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md`,
+  issues #1565, #478.
+- Next eligible phase: 293.
