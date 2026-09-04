@@ -9,6 +9,7 @@ import TerminalPage from '../../../packages/web-core/src/features/pos/pages/Term
 import { publishPosUpdateNoticeState } from '../../../packages/web-core/src/features/pos/utils/posUpdateNotice.js';
 import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx';
+import VersionBadge from '../../../packages/web-core/src/components/common/VersionBadge.jsx';
 import { PermissionProvider } from '../../../packages/web-core/src/store/PermissionContext.jsx';
 import { WorkflowModeProvider } from '../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import { Toaster } from '@/components/ui/sonner';
@@ -329,6 +330,7 @@ const mountApp = () => {
         >
           <AnalyticsRouteTracker />
           <ObservabilityIdentitySync />
+          <VersionBadge label="POS" />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />
