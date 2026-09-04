@@ -10,9 +10,9 @@ policy_version: 2026.09.04
 verification_evidence: focused POS receipt and discount Vitest suites passed,POS and SKUpervisor production builds passed,POS and API lint passed,npm run check:architecture passed
 rollback_note: Revert the three POS fix commits together; no schema migration or historical transaction rewrite is involved.
 preflight_result: no_breach
-preflight_reason_code: ALLOWED_LOCAL_FIX
-preflight_run_at: 2026-09-04T21:38:00+08:00
-preflight_request_ref: NOT-EXECUTED-POSDEV
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-04T16:07:17.508Z
+preflight_request_ref: PREFLIGHT-33893050690-2026-09-04-POS-RECEIPT-SEARCH-DISCOUNT-HARDENING
 ---
 
 # POS Receipt, Search, and Discount Hardening

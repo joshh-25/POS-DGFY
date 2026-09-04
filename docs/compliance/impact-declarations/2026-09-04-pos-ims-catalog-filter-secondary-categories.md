@@ -15,8 +15,8 @@ verification_evidence: apps/dgfy-api/tests/posRepository.catalogFolderWidening.t
 rollback_note: No schema change and no migration in this phase -- item_folder_memberships and its model already existed from Phase 257/268; this phase only adds new read-time query logic (an item_id IN (...) union against existing rows) and a new response-only field (secondary_folder_ids) to two already-existing catalog-listing functions, plus corresponding client-side match-widening in three frontend files. Rollback is a plain revert of this PR's diff -- no data was written or migrated, no existing field's meaning changed, no existing response field was removed or renamed, and every widened code path has an explicit, tested primary-only fallback for a tenant where the membership model is unavailable, so a revert is safe at any time with no follow-up cleanup.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-04T11:14:51.000Z
-preflight_request_ref: NOT-EXECUTED-1318-POS-IMS-CATALOG-FILTER-SECONDARY-CATEGORIES
+preflight_run_at: 2026-09-04T16:07:17.508Z
+preflight_request_ref: PREFLIGHT-33893050690-2026-09-04-POS-IMS-CATALOG-FILTER-SECONDARY-CATEGORIES
 ---
 
 # POS/IMS catalog filters widen to secondary categories (Phase 286, #1318)

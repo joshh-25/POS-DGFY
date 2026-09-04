@@ -14,8 +14,8 @@ verification_evidence: apps/dgfy-api/tests/storeOutsideRadiusFlagRetirement.unit
 rollback_note: Reverting this PR's diff restores haversineDistanceKm/resolveDeliveryRadiusFlag, the outside_radius_flag column (via the new migration's down(), which re-adds it BOOLEAN NOT NULL DEFAULT false AFTER store_customer_id), the PosTransaction model field, and every read/write site. No fee-math, enforcement, or read path anywhere in the codebase depends on any of the removed code -- resolveStoreDeliveryFee and the road-distance pipeline (ADR 0078 Decision 2) are untouched by this diff, confirmed by the unchanged regression suite above. The only data loss on a forward migration + later rollback is the flag's own already-unread historical boolean values.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-04T23:47:00+08:00
-preflight_request_ref: NOT-EXECUTED-1565-HAVERSINE-OUTSIDE-RADIUS-FLAG-RETIREMENT
+preflight_run_at: 2026-09-04T16:07:17.508Z
+preflight_request_ref: PREFLIGHT-33893050690-2026-09-04-HAVERSINE-OUTSIDE-RADIUS-FLAG-RETIREMENT
 ---
 
 # Haversine `outside_radius_flag` retirement (#1565, #478 residue)
