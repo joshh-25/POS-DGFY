@@ -3920,3 +3920,61 @@ parked-sale replay and shift-close resolution.
 
 - Phase 85 is complete. Phase 86 is the next eligible repository phase and
   requires separate approval.
+
+## Phase 86 - Multiple Senior/PWD Beneficiaries Per POS Order
+
+### Initiative and Release
+
+- Initiative: POS statutory-discount evidence and allocation integrity.
+- Release: current POS cashier and fiscal-compliance sequence.
+
+### Objective and Scope
+
+- Allow one POS transaction to record multiple Senior/PWD beneficiaries.
+- Assign explicit eligible item quantities to each beneficiary.
+- Reject duplicate IDs and combined allocations above purchased quantities.
+- Persist normalized identity and per-beneficiary allocation evidence.
+- Preserve singular clients, historical orders, receipts, and reports.
+
+### Status
+
+- `completed`
+- User approval received on 2026-09-04.
+- Completed on 2026-09-04.
+
+### Dependencies and Governance Note
+
+- ADR 0033 Commercial Promo and Statutory POS Discount Boundaries, amended in this phase.
+- ADR 0042 BIR RMO 24-2023 Fiscal Document and Accreditation Closure.
+- `docs/architecture/ARCHITECTURE_BOUNDARIES.md` and
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
+- Classification: `within-existing-boundary` with a default-contract amendment;
+  no new ADR or architecture allowlist exception is introduced.
+
+### Acceptance and Validation Evidence
+
+- [x] Singular statutory-discount requests remain compatible.
+- [x] Multiple beneficiaries calculate independently and reconcile to header totals.
+- [x] Duplicate IDs, ineligible items, and over-allocated quantities fail closed.
+- [x] Normalized beneficiary and allocation evidence persists transactionally.
+- [x] Browser and hardware receipts identify every beneficiary.
+- [x] Compliance exports contain one row per beneficiary.
+- [x] Focused backend/frontend tests, migration checks, POS build, documentation lint,
+  architecture gates, runtime doctor, and all 15 tenant-schema audits pass.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountPolicy.js`
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountCalculator.js`
+- `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`
+- `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `apps/dgfy-migration-runner/migrations/20260904000001-create-pos-discount-beneficiaries.cjs`
+
+### Completion Record (2026-09-04)
+
+- Phase 86 is complete. Multiple Senior/PWD identities and their item quantities
+  are validated, calculated, persisted, printed, and reported independently.
+- The additive migration was applied to the landlord development schema and all
+  15 active local tenant schemas after a verified SQL backup.
+- Existing transaction rows were not rewritten or deleted.
+- Phase 87 is the next eligible repository phase and requires separate approval.

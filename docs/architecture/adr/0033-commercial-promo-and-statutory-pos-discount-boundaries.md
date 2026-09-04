@@ -127,6 +127,17 @@ both Storefront and POS without affecting completed transactions.
 
 ## Amendments
 
+### 2026-09-04 — Multiple statutory beneficiaries per POS transaction
+
+POS checkout may record multiple Senior/PWD beneficiaries in one transaction. Each
+beneficiary carries an immutable category, name, ID number, and explicit item/quantity
+allocations. The server rejects duplicate IDs and any combined beneficiary quantity
+that exceeds the purchased line quantity, calculates each beneficiary independently,
+and reconciles the aggregate VAT removal and discount totals. Singular payloads and
+historical singular snapshots remain supported. Normalized beneficiary evidence and
+per-beneficiary allocation rows are additive; client-calculated totals remain
+non-authoritative. The calculation version for these records is `pos-discount.v3`.
+
 ### 2026-08-07 — Explicit payment timing for delivery cash orders
 
 The existing `payment_type: cash` value is retained as the tender type. A
