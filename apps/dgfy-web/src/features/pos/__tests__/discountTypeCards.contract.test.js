@@ -58,4 +58,14 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain('Select configured manager or admin');
     expect(discountModalContent).toContain('Ask the Master Admin to configure one.');
   });
+
+  it('supports multiple statutory beneficiaries with per-person quantities', () => {
+    expect(discountModalContent).toContain('Add another Senior/PWD');
+    expect(discountModalContent).toContain('Additional beneficiary');
+    expect(discountModalContent).toContain('beneficiary.eligible_items');
+    expect(checkoutContent).toContain('const statutoryBeneficiaries');
+    expect(checkoutContent).toContain('Each beneficiary ID number must be unique in this order.');
+    expect(checkoutContent).toContain('Senior/PWD quantities cannot exceed the quantities in the cart.');
+    expect(checkoutContent).toContain('beneficiaries: statutory ? statutoryBeneficiaries : []');
+  });
 });

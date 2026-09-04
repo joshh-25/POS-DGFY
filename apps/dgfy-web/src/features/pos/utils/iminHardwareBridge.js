@@ -431,10 +431,18 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         );
     }
     if (showSeniorPwdReceiptFields) {
-        receiptRows.push(
-            `SC/PWD/NAAC/MOV/Solo Parent ID No.: ${safeText(governedDiscount?.senior_pwd_id_number, '____________')}`,
-            'Signature: __________________________'
-        );
+        const beneficiaries = Array.isArray(governedDiscount?.beneficiaries) ? governedDiscount.beneficiaries : [];
+        if (beneficiaries.length > 0) {
+            beneficiaries.forEach((beneficiary, index) => receiptRows.push(
+                `${safeText(beneficiary.category, 'SC/PWD').toUpperCase()} ${index + 1} ID No.: ${safeText(beneficiary.id_number)}`,
+                `Name/Signature: ${safeText(beneficiary.customer_name)} __________________`
+            ));
+        } else {
+            receiptRows.push(
+                `SC/PWD/NAAC/MOV/Solo Parent ID No.: ${safeText(governedDiscount?.senior_pwd_id_number, '____________')}`,
+                'Signature: __________________________'
+            );
+        }
     }
     receiptRows.push(
         line(),

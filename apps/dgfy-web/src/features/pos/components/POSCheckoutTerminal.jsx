@@ -184,7 +184,7 @@ const resolveCompanyIconFallbackUrl = (settings = {}) => (
 );
 const EMPTY_DISCOUNT_DRAFT = {
     type: 'senior', method: 'percentage', rate: '20', amount: '', customer_name: '',
-    id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], promo_code: ''
+    id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], beneficiaries: [], promo_code: ''
 };
 const DISCOUNT_TYPE_OPTIONS = [
     { value: 'senior', label: 'Senior Citizen', icon: UserRound },
@@ -207,6 +207,18 @@ const calculateGovernedDiscount = (cart, application) => {
     const subtotal = round4(cartRows.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.sale_price || 0), 0));
     if (!application) return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: 0, total: subtotal };
     const statutory = application.type === 'senior' || application.type === 'pwd';
+    if (statutory && toArray(application.beneficiaries).length > 0) {
+        const calculations = toArray(application.beneficiaries).map((beneficiary) => calculateGovernedDiscount(cart, {
+            ...application,
+            beneficiaries: [],
+            eligible_item_ids: toArray(beneficiary.eligible_items).map((entry) => Number(entry.item_id)),
+            eligible_items: toArray(beneficiary.eligible_items)
+        }));
+        const vatRemoved = round4(calculations.reduce((sum, calculation) => sum + calculation.vatRemoved, 0));
+        const vatExemptAmount = round4(calculations.reduce((sum, calculation) => sum + calculation.vatExemptAmount, 0));
+        const discountAmount = round4(calculations.reduce((sum, calculation) => sum + calculation.discountAmount, 0));
+        return { vatRemoved, vatExemptAmount, discountAmount, total: round4(subtotal - vatRemoved - discountAmount) };
+    }
     if (!statutory) {
         const selectedItemIds = new Set(eligibleItemIds.map(Number));
         const discountBase = application.type === 'promo' && selectedItemIds.size > 0
@@ -3044,6 +3056,19 @@ export default function POSCheckoutTerminal({
     const handleApplyGovernedDiscount = async () => {
         const type = discountDraft.type;
         const statutory = type === 'senior' || type === 'pwd';
+        const statutoryBeneficiaries = statutory
+            ? [{
+                category: type,
+                name: String(discountDraft.customer_name || '').trim(),
+                id_number: String(discountDraft.id_number || '').trim(),
+                eligible_items: safeEligibleDiscountItems.map((entry) => ({ item_id: Number(entry.item_id), eligible_quantity: Number(entry.eligible_quantity) }))
+            }, ...toArray(discountDraft.beneficiaries).map((beneficiary) => ({
+                category: beneficiary.category || type,
+                name: String(beneficiary.name || '').trim(),
+                id_number: String(beneficiary.id_number || '').trim(),
+                eligible_items: toArray(beneficiary.eligible_items).map((entry) => ({ item_id: Number(entry.item_id), eligible_quantity: Number(entry.eligible_quantity) }))
+            }))]
+            : [];
         const employeeDiscountRequiresApproval = type === 'employee' && !signedInUserIsAdminLike;
         const manualDiscountRequiresApproval = type === 'manual';
         const discountRequiresApproval = employeeDiscountRequiresApproval || manualDiscountRequiresApproval;
@@ -3063,13 +3088,29 @@ export default function POSCheckoutTerminal({
             toast.error('Enter a reason of at least 3 characters for this manual discount.');
             return;
         }
-        if (statutory && (!discountDraft.customer_name.trim() || !discountDraft.id_number.trim())) {
-            toast.error('Customer name and Senior/PWD ID number are required.');
+        if (statutory && (statutoryBeneficiaries.length === 0 || statutoryBeneficiaries.some((beneficiary) => !beneficiary.name || !beneficiary.id_number))) {
+            toast.error('Each Senior/PWD beneficiary requires a customer name and ID number.');
             return;
         }
-        if (statutory && safeEligibleDiscountItemIds.length === 0) {
-            toast.error('Select at least one eligible item.');
+        if (statutory && statutoryBeneficiaries.some((beneficiary) => beneficiary.eligible_items.length === 0)) {
+            toast.error('Select at least one eligible item for each beneficiary.');
             return;
+        }
+        if (statutory) {
+            const normalizedIds = statutoryBeneficiaries.map((beneficiary) => beneficiary.id_number.toLowerCase());
+            if (new Set(normalizedIds).size !== normalizedIds.length) {
+                toast.error('Each beneficiary ID number must be unique in this order.');
+                return;
+            }
+            const allocatedByItem = statutoryBeneficiaries.flatMap((beneficiary) => beneficiary.eligible_items).reduce((totals, entry) => {
+                totals.set(entry.item_id, (totals.get(entry.item_id) || 0) + entry.eligible_quantity);
+                return totals;
+            }, new Map());
+            const overAllocated = [...allocatedByItem.entries()].some(([itemId, quantity]) => quantity > Number(safeCart.find((line) => Number(line.item_id) === itemId)?.quantity || 0));
+            if (overAllocated) {
+                toast.error('Senior/PWD quantities cannot exceed the quantities in the cart.');
+                return;
+            }
         }
         if (type === 'promo' && (!discountDraft.promo_code || !discountDraft.promo_code.trim())) {
             toast.error('Promo code is required.');
@@ -3139,7 +3180,8 @@ export default function POSCheckoutTerminal({
                 approver_user_id: governedDiscountApproverUserId,
                 approver_name: verifiedApprover?.username || null,
                 eligible_item_ids: type === 'promo' ? promoEligibleItemIds : safeEligibleDiscountItemIds,
-                eligible_items: statutory ? safeEligibleDiscountItems : []
+                eligible_items: statutory ? statutoryBeneficiaries.flatMap((beneficiary) => beneficiary.eligible_items) : [],
+                beneficiaries: statutory ? statutoryBeneficiaries : []
             });
             setSelectedDiscountProfile('');
             setManualDiscountMode('none');
@@ -3379,7 +3421,8 @@ export default function POSCheckoutTerminal({
                     approver_name: appliedDiscount.approver_name || null,
                     promo_code: appliedDiscount.promo_code || null,
                     eligible_item_ids: toArray(appliedDiscount.eligible_item_ids),
-                    eligible_items: toArray(appliedDiscount.eligible_items)
+                    eligible_items: toArray(appliedDiscount.eligible_items),
+                    beneficiaries: toArray(appliedDiscount.beneficiaries)
                 } : null
             },
             lines: safeCart.map((line) => ({
@@ -5120,9 +5163,12 @@ export default function POSCheckoutTerminal({
                                                 : 'border-slate-200 bg-white text-slate-700 hover:border-teal-200 hover:bg-slate-50/50'
                                         }`}
                                         onClick={() => setDiscountDraft((previous) => ({
-                                            ...previous,
-                                            type: option.value,
-                                            rate: ['senior', 'pwd'].includes(option.value) ? '20' : previous.rate
+                                             ...previous,
+                                             type: option.value,
+                                             rate: ['senior', 'pwd'].includes(option.value) ? '20' : previous.rate,
+                                             beneficiaries: ['senior', 'pwd'].includes(option.value)
+                                                 ? toArray(previous.beneficiaries).map((beneficiary) => ({ ...beneficiary, category: option.value }))
+                                                 : previous.beneficiaries
                                         }))}
                                     >
                                         <TypeIcon className={`h-4 w-4 shrink-0 transition-colors ${active ? 'text-teal-600' : 'text-slate-500'}`} aria-hidden="true" />
@@ -5178,8 +5224,8 @@ export default function POSCheckoutTerminal({
                                 )}
                             </div>
 
-                            {['senior', 'pwd'].includes(discountDraft.type) && (
-                                <div className="space-y-2.5">
+                             {['senior', 'pwd'].includes(discountDraft.type) && (
+                                 <div className="space-y-2.5">
                                     <div>
                                         <p className="mb-1 text-xs font-semibold text-[#0F172A]">Eligible Items</p>
                                         <p className="mb-2 text-[11px] text-slate-500">Select only items and quantities for this Senior/PWD customer.</p>
@@ -5229,8 +5275,52 @@ export default function POSCheckoutTerminal({
                                                                 ) : (
                                                                     <div className="text-[9px] font-bold text-slate-400 uppercase">
                                                                         {line.item_name ? line.item_name.substring(0, 2) : 'IT'}
-                                                                    </div>
-                                                                )}
+                                 </div>
+                             )}
+
+                            {['senior', 'pwd'].includes(discountDraft.type) && (
+                                <div className="space-y-2.5 border-t border-slate-100 pt-3">
+                                    {toArray(discountDraft.beneficiaries).map((beneficiary, beneficiaryIndex) => (
+                                        <div key={`statutory-beneficiary-${beneficiaryIndex}`} className="space-y-2 rounded-xl border border-teal-100 bg-teal-50/10 p-2.5">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs font-bold text-slate-800">Additional beneficiary {beneficiaryIndex + 2}</p>
+                                                <button type="button" aria-label={`Remove beneficiary ${beneficiaryIndex + 2}`} className="rounded-md p-1 text-rose-600 hover:bg-rose-50" onClick={() => setDiscountDraft((previous) => ({ ...previous, beneficiaries: toArray(previous.beneficiaries).filter((_, index) => index !== beneficiaryIndex) }))}>
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <Input aria-label={`Beneficiary ${beneficiaryIndex + 2} name`} className="h-8 text-xs" placeholder="Customer name" value={beneficiary.name || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, beneficiaries: toArray(previous.beneficiaries).map((entry, index) => index === beneficiaryIndex ? { ...entry, name: event.target.value } : entry) }))} />
+                                                <Input aria-label={`Beneficiary ${beneficiaryIndex + 2} ID number`} className="h-8 text-xs" placeholder="Senior/PWD ID" value={beneficiary.id_number || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, beneficiaries: toArray(previous.beneficiaries).map((entry, index) => index === beneficiaryIndex ? { ...entry, id_number: event.target.value } : entry) }))} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                {safeCart.filter(isCartLineSeniorPwdEligible).map((line) => {
+                                                    const entry = toArray(beneficiary.eligible_items).find((item) => Number(item.item_id) === Number(line.item_id));
+                                                    return (
+                                                        <label key={`beneficiary-${beneficiaryIndex}-item-${line.item_id}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-700">
+                                                            <span className="truncate">{line.item_name}</span>
+                                                            <Input aria-label={`Eligible quantity for beneficiary ${beneficiaryIndex + 2}, ${line.item_name}`} className="h-7 w-20 text-center text-[11px]" type="number" min="0" max={line.quantity} step="0.001" value={entry?.eligible_quantity || ''} placeholder="Qty" onChange={(event) => {
+                                                                const quantity = Math.max(0, Math.min(Number(event.target.value) || 0, Number(line.quantity || 0)));
+                                                                setDiscountDraft((previous) => ({
+                                                                    ...previous,
+                                                                    beneficiaries: toArray(previous.beneficiaries).map((current, index) => index === beneficiaryIndex ? {
+                                                                        ...current,
+                                                                        eligible_items: quantity > 0
+                                                                            ? [...toArray(current.eligible_items).filter((item) => Number(item.item_id) !== Number(line.item_id)), { item_id: Number(line.item_id), eligible_quantity: quantity }]
+                                                                            : toArray(current.eligible_items).filter((item) => Number(item.item_id) !== Number(line.item_id))
+                                                                    } : current)
+                                                                }));
+                                                            }} />
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <Button type="button" variant="outline" className="h-8 w-full text-xs" onClick={() => setDiscountDraft((previous) => ({ ...previous, beneficiaries: [...toArray(previous.beneficiaries), { category: previous.type, name: '', id_number: '', eligible_items: [] }] }))}>
+                                        <Plus className="mr-1.5 h-3.5 w-3.5" /> Add another Senior/PWD
+                                    </Button>
+                                </div>
+                            )}
                                                             </div>
 
                                                             <span className="truncate font-semibold text-slate-700">{line.item_name}</span>
