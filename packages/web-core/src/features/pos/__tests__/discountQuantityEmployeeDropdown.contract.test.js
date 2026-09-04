@@ -14,7 +14,7 @@ describe('discount quantity and employee dropdown UI contracts', () => {
         expect(discountWorkspace).toContain('inputMode="numeric"');
         expect(discountWorkspace).toContain('min="1"');
         expect(discountWorkspace).toContain('step="1"');
-        expect(discountWorkspace).toContain('Math.min(Math.max(1, Math.floor(requestedSelectedQuantity)), cartQuantity)');
+        expect(discountWorkspace).toContain('Math.min(Math.max(1, Math.floor(requestedSelectedQuantity)), primaryAvailableQuantity)');
         expect(discountWorkspace).toContain('const [discountQuantityInput, setDiscountQuantityInput] = React.useState(null);');
         expect(discountWorkspace).toContain("setDiscountQuantityInput({ lineRef, value: '' });");
         expect(discountWorkspace).toContain('Number.isInteger(requestedQuantity) && requestedQuantity > 0');
