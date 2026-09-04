@@ -20094,3 +20094,162 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `apps/dgfy-api/package-lock.json`, `apps/dgfy-pos/package-lock.json`,
   `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issues #1124, #1550, #1551, #1552, #1553, #1157, #1469.
 - Next eligible phase: 273.
+
+## Phase 273 - ADR 0081: per-app container SemVer scheme + policy amendment (#1559, epic #1548 Wave 1)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: define the per-app SemVer scheme for the five deployable containers
+  (`dgfy-api`, `dgfy-migration-runner`, `dgfy-ims`, `dgfy-pos`, `dgfy-storefront`) — tag shape and
+  channel suffixes, `org.opencontainers.image.version`, runtime `APP_VERSION`, the Sentry release
+  format, PR-authored bump ownership with path-dependent bump levels (develop/staging-promotion/
+  staging-repair/main-hotfix), the tag-immutability invariant, and the promotion parity gate — in a
+  new ADR; layer the resulting versioning obligations onto `RELEASE_CANDIDATE_POLICY.md`; cross-
+  reference ADR 0072 so tag content and image naming don't get conflated.
+- Status: completed.
+- Dependencies: ADR 0072; ADR 0039; ADR 0074; `docs/architecture/ARCHITECTURE_GOVERNANCE.md`;
+  epic #1548.
+- Acceptance and validation evidence: `npm run check:adr` (includes the `-- --write-index`
+  staleness check); `npm run lint:docs`; manual read-through confirming Decisions 1-10 from #1559's
+  issue body appear in the ADR verbatim with matching strictness tags.
+- Completion date: 2026-09-04.
+- Contracts/files: `docs/architecture/adr/0081-per-app-container-semantic-versioning.md`,
+  `docs/architecture/adr/0072-ghcr-container-image-naming.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, `docs/architecture/adr/INDEX.md`, issue #1559.
+- Next eligible phase: 274 — PR-time per-app version-bump check (#1560).
+
+## Phase 274 - PR-time per-app version-bump check, advisory (#1560, epic #1548 Wave 1)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: `scripts/check-app-version-bump.js`, generalizing the existing
+  `scripts/check-pos-receipt-version-bump.js` precedent from one package to the five apps; applies
+  ADR 0081 Decision 6's base-aware bump-level rule per `(base, head)` pair; wired into
+  `shared-changed-paths.yml` + `scripts/pr-checks.js`; ships advisory (non-blocking) per ADR 0081
+  Decision 9.
+- Status: planned.
+- Dependencies: Phase 273 / ADR 0081 (Decisions 6 and 9 specifically); #1560 (filed, not started).
+- Acceptance and validation evidence: not yet started. Expected at implementation: a script test
+  suite covering each `(base, head)` bump-level mode from ADR 0081 Decision 6, plus a live advisory
+  (non-blocking) run on a real PR touching at least one app.
+- Completion date: not started (planned).
+- Contracts/files (expected): `scripts/check-app-version-bump.js`, `.github/workflows/pr-checks.yml`
+  or `shared-changed-paths.yml`, `scripts/pr-checks.js`, issue #1560.
+- Next eligible phase: 275 — `pr-reviewer` version-level proposal + Worker skill obligation.
+
+## Phase 275 - `pr-reviewer` version-level proposal + Worker version-bump obligation (epic #1548 Wave 2, not yet filed)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: `pr-reviewer` proposes a version-bump level from the diff as part of its
+  verdict (`.agents/skills/pr-reviewer/SKILL.md`); `implement` gains its own version-bump obligation
+  in `.agents/skills/implement/SKILL.md`, matching ADR 0081 Decision 6's "whoever's PR changes an
+  app bumps that app's version" rule.
+- Status: planned.
+- Dependencies: Phase 273 / ADR 0081 Decision 6; Phase 274 (#1560, the check this proposal builds
+  on). Not yet filed as a GitHub issue — per epic #1548's own candidate slate, graduates
+  wave-at-a-time (`docs/process/ISSUE-TAXONOMY.md`'s deferred-decomposition rule).
+- Acceptance and validation evidence: not yet started.
+- Completion date: not started (planned).
+- Contracts/files (expected): `.agents/skills/pr-reviewer/SKILL.md`,
+  `.agents/skills/implement/SKILL.md`.
+- Next eligible phase: 276 — flip the version-bump check from advisory to blocking.
+
+## Phase 276 - Version-bump check: advisory to blocking (epic #1548 Wave 2, not yet filed)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: flip Phase 274's PR-time version-bump check from advisory to blocking, once
+  enough clean-run evidence exists (epic #1548's own bar: ≥10 PRs or one full promotion clean) —
+  matching this repo's established advisory-to-blocking rollout pattern (Phase 272, #1550/#1551).
+- Status: planned.
+- Dependencies: Phase 274 (#1560) merged and running advisory for the evidence window; Phase 273 /
+  ADR 0081 Decision 9. Not yet filed.
+- Acceptance and validation evidence: not yet started. Expected at implementation: the same clean-
+  run evidence bar this repo already used for the 2026-09-04 `promotion-quality-gate.yml` blocking
+  flip (RELEASE_CANDIDATE_POLICY.md's matching entry).
+- Completion date: not started (planned).
+- Contracts/files (expected): `scripts/check-app-version-bump.js`,
+  `scripts/check-pr-quality-workflow.js` or equivalent blocking-step registration.
+- Next eligible phase: 277 — builders stamp version tags and labels.
+
+## Phase 277 - Builders stamp `:X.Y.Z[-channel]` tags, OCI version label, `APP_VERSION` build-arg, and the tag-immutability guard (epic #1548 Wave 3, not yet filed)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: `deploy-api.yml`, `deploy-migration-runner.yml`, and `deploy-frontend.yml`
+  each emit the `X.Y.Z[-channel]` tag and `org.opencontainers.image.version` label per ADR 0081
+  Decisions 1-3, and bake `APP_VERSION=<tag>` as a build-arg per Decision 4; a builder-side guard
+  refuses to push a version tag over an existing different revision, implementing ADR 0081's one
+  `[binding]` clause (Decision 7).
+- Status: planned.
+- Dependencies: Phase 273 / ADR 0081 Decisions 1, 2, 3, 4, 7. Not yet filed.
+- Acceptance and validation evidence: not yet started. Expected at implementation: a live push per
+  app confirming the emitted tag, label, and build-arg match ADR 0081's format, plus a deliberate
+  same-tag-different-revision push attempt confirming the immutability guard actually refuses it.
+- Completion date: not started (planned).
+- Contracts/files (expected): `.github/workflows/deploy-api.yml`,
+  `.github/workflows/deploy-migration-runner.yml`, `.github/workflows/deploy-frontend.yml`.
+- Next eligible phase: 278 — runtime version observability.
+
+## Phase 278 - Runtime version observability: `/health` and the frontend build stamp (epic #1548 Wave 3, not yet filed)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: backend `/health` reports the published `version` (ADR 0081 Decision 4);
+  frontends gain a `VITE_APP_VERSION` build-time value plus a `version.json` (or equivalent meta-tag)
+  the PWA update-toast flow can read — feeding #633 (Sentry release) and #276 (PWA "new version
+  available" toast) per ADR 0081 Decision 5's handoff.
+- Status: planned.
+- Dependencies: Phase 277 (the build-arg this phase surfaces at runtime); Phase 273 / ADR 0081
+  Decisions 4 and 5. Not yet filed.
+- Acceptance and validation evidence: not yet started. Expected at implementation: `/health`
+  response inspection per environment confirming `version` matches the published tag; a frontend
+  build confirming `VITE_APP_VERSION`/`version.json` matches the same tag.
+- Completion date: not started (planned).
+- Contracts/files (expected): `apps/dgfy-api`'s `/health` route, each frontend app's build config
+  and a shared build-stamp helper (`packages/web-core` candidate).
+- Next eligible phase: 279 — promoter floor check and promotion parity gate.
+
+## Phase 279 - Promoter pre-cut floor check, promotion parity gate, and final policy text (epic #1548 Wave 4, not yet filed)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: the promoter's pre-cut floor step (`origin/develop` vs `origin/staging` per
+  app; opens a `chore(release): bump <apps> to X.(Y+1).0 for candidate <id>` PR into `develop` for
+  anything below floor) wired into `.agents/skills/promoter/SKILL.md` and
+  `references/promotion-runbook.md`, implementing this PR's `RELEASE_CANDIDATE_POLICY.md` amendment;
+  the staging/prod parity gate (ADR 0081 Decision 8, revised: `X.Y.Z-staging` and the later `X.Y.Z`
+  share the same *candidate source identity* — the frozen candidate manifest's `source_develop_sha`/
+  `current_staging_sha`, stamped by Phase 277's builder into its own label — not the raw
+  `org.opencontainers.image.revision`/`github.sha` of each environment's own merge commit, which
+  differ by construction across the `to-staging → staging` and `release/* → main` merges even for
+  identical candidate content); final policy text lands in
+  `docs/testing/release-go-no-go-checklist.md` and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+- Status: planned.
+- Dependencies: Phase 273 / ADR 0081 Decisions 6 and 8; Phase 277 (the builder-side label this
+  phase's parity check reads); this PR's `RELEASE_CANDIDATE_POLICY.md` amendment (the obligations
+  this phase makes executable). Not yet filed.
+- Acceptance and validation evidence: not yet started. Expected at implementation: a real
+  `to-staging/<candidate_id>` promotion exercising the floor check against at least one app below
+  floor; a real `release/<candidate_id>-rN` → `main` promotion on the *normal* three-stage path
+  confirming the parity gate passes on an unchanged app by comparing the candidate-source-identity
+  label (not `org.opencontainers.image.revision`) — the case RF-1 on PR #1561 found the original
+  revision-label wording would have failed even on the normal path; and a second case confirming the
+  gate correctly flags a #1007-expedited or hotfix promotion (no matching staging predecessor under
+  that same identity) as expected evidence, not a defect, per Decision 8.
+- Completion date: not started (planned).
+- Contracts/files (expected): `.agents/skills/promoter/SKILL.md`,
+  `.agents/skills/promoter/references/promotion-runbook.md`,
+  `docs/testing/release-go-no-go-checklist.md`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+- Next eligible phase: 280 — release notes epic (#1278) consumes candidate_id + the five prod versions.
+
+## Phase 280 - #1278 release notes start consuming `candidate_id` and the five prod versions (epic #1548 Wave 4, tracked in #1278)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: #1278 (versioned production releases + release notes, already filed, no new
+  issue needed) starts consuming the promotion `candidate_id` and the five per-app prod versions
+  this epic produces, closing the loop epic #1548's Context named (#633, #276, and now #1278, all
+  previously unable to answer "what is running in prod" from a real version string).
+- Status: planned.
+- Dependencies: Phase 279 (the parity gate and finalized policy text this phase reports against);
+  Phase 273 / ADR 0081 (the version identities #1278 consumes); #1278 (filed).
+- Acceptance and validation evidence: not yet started — owned by #1278's own acceptance criteria,
+  not re-derived here.
+- Completion date: not started (planned).
+- Contracts/files (expected): whatever #1278 itself names; not re-derived here.
+- Next eligible phase: none recorded within epic #1548 — Phase 280 is epic #1548's own final planned
+  wave; further platform-versioning work beyond it is new scope, not part of this sequence.

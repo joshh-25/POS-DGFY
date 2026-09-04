@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-24
-last_reviewed: 2026-08-24
+last_reviewed: 2026-09-04
 review_by: 2027-02-24
 applies_to: infrastructure
 topic: ghcr_container_image_naming
@@ -107,3 +107,26 @@ this ADR in the implementing PR, not a new superseding ADR.
 - Post-PR-merge, GHCR org inventory shows exactly `dgfy-api`, `dgfy-migration-runner`, `dgfy-ims`,
   `dgfy-pos`, `dgfy-storefront`, plus `dgfy-platform/frontend` until the frontend-split cutover
   retires it, with the five superseded packages named above deleted.
+
+## Amendments
+
+### 2026-09-04 — cross-reference: tag *content* is governed by ADR 0081, not this ADR (#1559)
+
+- Clause amended: none of this ADR's own Decision clauses change. This entry only adds a pointer so
+  a reader landing here for tag content isn't left without one.
+- Why: this ADR fixes image **names** (`ghcr.io/sieitzz/<name>`, Decision 1-2) but says nothing
+  about what a version **tag** on top of that name looks like — no ADR governed tag content before
+  now (see [ADR 0081](0081-per-app-container-semantic-versioning.md)'s own Context, which named this
+  exact gap as the reason it exists). This ADR's `sha-<7>` tag and `develop`/`staging`/`latest`
+  channel tags (Consequences, "every compose file that pins an image tag") are unaffected and stay
+  exactly as decided here — ADR 0081 adds a third, additive kind of tag (`X.Y.Z[-channel]`) rather
+  than replacing any of these.
+- Change: **ADR 0081 governs the semantic-version tag content** (`X.Y.Z[-channel]`,
+  `org.opencontainers.image.version`, and the per-app bump-level rules) layered on top of the image
+  names this ADR defines. Read ADR 0081 for anything about what a version tag says; keep reading
+  this ADR for what an image is called.
+- Scope check, confirmed unaffected: this ADR carries no binding-tier clause (per its own Decision
+  section, "image naming is exactly the kind of decision ADR 0039's tier table assigns to
+  `default`"); ADR 0081's one binding-tier clause (Decision 7, tag-overwrite immutability) concerns
+  a *version* tag's revision, not an image *name*, and does not touch anything decided here.
+- PR: (this PR). Refs #1559, #1548.
