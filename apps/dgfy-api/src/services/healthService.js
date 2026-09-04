@@ -101,10 +101,14 @@ export const resolveAppVersionInfo = ({
     packageJsonPath = defaultPackageJsonPath,
     env = process.env
 } = {}) => {
-    const candidate = explicitVersion ?? env.APP_VERSION;
-    const trimmed = typeof candidate === 'string' ? candidate.trim() : '';
-    if (trimmed) {
-        return { version: trimmed, source: 'env:APP_VERSION' };
+    const trimmedExplicit = typeof explicitVersion === 'string' ? explicitVersion.trim() : '';
+    if (trimmedExplicit) {
+        return { version: trimmedExplicit, source: 'argument' };
+    }
+
+    const trimmedEnv = typeof env.APP_VERSION === 'string' ? env.APP_VERSION.trim() : '';
+    if (trimmedEnv) {
+        return { version: trimmedEnv, source: 'env:APP_VERSION' };
     }
 
     const packageJsonVersion = readPackageJsonVersion(packageJsonPath);

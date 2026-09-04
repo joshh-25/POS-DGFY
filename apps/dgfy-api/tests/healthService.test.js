@@ -552,8 +552,24 @@ describe('healthService', () => {
     });
 
     describe('resolveAppVersionInfo (ADR 0081 Decision 4, #1548 Wave 3 Phase 278)', () => {
+        it('prefers an explicit argument over APP_VERSION, reporting source: argument (RF-2, PR #1582)', () => {
+            expect(resolveAppVersionInfo({
+                explicitVersion: '1.5.2-staging',
+                env: { APP_VERSION: '9.9.9-should-not-win' },
+                packageJsonPath: path.join(os.tmpdir(), 'sku-health-version-unused.json')
+            })).toEqual({ version: '1.5.2-staging', source: 'argument' });
+        });
+
         it('prefers APP_VERSION over the package.json fallback', () => {
             expect(resolveAppVersionInfo({
+                env: { APP_VERSION: '1.5.2-staging' },
+                packageJsonPath: path.join(os.tmpdir(), 'sku-health-version-unused.json')
+            })).toEqual({ version: '1.5.2-staging', source: 'env:APP_VERSION' });
+        });
+
+        it('treats a blank explicit argument the same as absent, falling through to APP_VERSION', () => {
+            expect(resolveAppVersionInfo({
+                explicitVersion: '   ',
                 env: { APP_VERSION: '1.5.2-staging' },
                 packageJsonPath: path.join(os.tmpdir(), 'sku-health-version-unused.json')
             })).toEqual({ version: '1.5.2-staging', source: 'env:APP_VERSION' });
@@ -615,6 +631,37 @@ describe('healthService', () => {
             expect(health.services.observability).toEqual(expect.objectContaining({
                 version: '1.5.2-staging',
                 version_source: 'env:APP_VERSION'
+            }));
+        });
+
+        it('reports version_source: argument when buildHealthResponse is given an explicit appVersion (RF-2, PR #1582)', async () => {
+            process.env = {
+                ...originalEnv,
+                HOSTING_PROFILE: 'shared',
+                REDIS_URL: '',
+                AUTH_BLACKLIST_FAILURE_MODE: 'fail_open',
+                TEMP_FILE_STORAGE: 'local',
+                APP_VERSION: '9.9.9-should-not-win'
+            };
+
+            const { health, statusCode } = await buildHealthResponse({
+                testConnectionFn: async () => true,
+                isRedisConnectedFn: () => false,
+                getTenantPoolStatsFn: () => ({
+                    total: 1,
+                    pending: 0,
+                    capacity: 20,
+                    utilizationPercent: 5
+                }),
+                getRateLimiterStoreModeFn: () => 'memory',
+                appVersion: '1.5.2-staging',
+                environment: 'test'
+            });
+
+            expect(statusCode).toBe(200);
+            expect(health.services.observability).toEqual(expect.objectContaining({
+                version: '1.5.2-staging',
+                version_source: 'argument'
             }));
         });
     });
