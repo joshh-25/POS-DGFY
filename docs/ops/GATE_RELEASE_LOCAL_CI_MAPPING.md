@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: infra
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-04
 applies_to: promotion_quality_gates
 topic: gate_release_local_ci_mapping
 ---
@@ -211,6 +211,47 @@ Net effect, unchanged from #1097 and restated here rather than left to infer fro
 checks — no `gate:release:local`, and no `promotion-quality-gate.yml` run of any kind, advisory or
 otherwise.
 
+## `check:app-versions` flip-readiness (#1569, epic #1548 Wave 2) — separate mechanism, not one of
+the 19 gates above
+
+`check:app-versions` (`scripts/check-app-version-bump.js`, shipped advisory by #1560/PR #1562) is
+not part of the 19-gate `gate:release:local` mapping this document otherwise tracks — it's a
+`shared-changed-paths.yml`/`pr-checks.js` PR-time check, not a `gate-release-local.js` gate. It gets
+its own short section here because it follows the same advisory-to-blocking shape this document's
+gates do, and #1569 asked this status be recorded in both this doc and
+`docs/ops/RELEASE_CANDIDATE_POLICY.md` (see that doc's matching 2026-09-04 dated Amendments entry —
+kept in sync with this section, not a duplicate to maintain independently).
+
+**Current status: advisory, mechanism built, not armed.** Per
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md) Decision 9, the check
+flips to blocking only once real evidence exists — either 10 merged `develop`-base PRs since PR
+#1562's merge commit with `check:app-versions` recorded pass/warn (not a crash), or one full
+`develop → staging → main` promotion cycle green throughout. `scripts/check-version-bump-flip-
+readiness.js` measures that threshold live from GitHub's own check-run/job-log history via `gh api`
+(no local counter file) — run it by hand (`npm run check:version-bump-flip-readiness`) before ever
+touching the toggle below.
+
+**The toggle mechanism** — deliberately not this document's own gate-table pattern (edit the
+workflow YAML's `continue-on-error:` literal directly, PR #1550/#1551's Phase 272 precedent), and
+not `scripts/lib/runner-routing-state.js`'s declared-constant-plus-checker pattern either (that one
+exists because a `runs-on:` site can't be computed from a JS module at workflow-parse time, so two
+hand-edited surfaces are kept in sync by a validator script instead). This toggle has a single
+source that both consumers read directly at runtime, since a step's `continue-on-error:` CAN take a
+`${{ }}` expression against a prior step's output:
+
+- `scripts/lib/version-bump-gate-toggle.js` exports one constant, `BLOCKING` (currently `false`).
+- `.github/workflows/shared-changed-paths.yml`'s "Load check:app-versions gate toggle" step reads it
+  via `node -e` and exposes it as a step output; the "Enforce per-app version bump on source
+  changes" step's own `continue-on-error:` reads that output.
+- `scripts/pr-checks.js` requires the same module directly for the same check's `blocking` argument
+  to `addCheck()`.
+
+**To arm it** (a later, separate, human-confirmed PR — not part of #1569's own scope): confirm
+`node scripts/check-version-bump-flip-readiness.js` reports the threshold met, then flip exactly one
+line — `version-bump-gate-toggle.js`'s `BLOCKING` constant, `false → true`. Both consumers move
+together; nothing else needs editing, and there is no separate "keep two files in sync" checker to
+also update, unlike the runner-routing convention this section explicitly avoided.
+
 ## Related
 
 #1147 (this doc's parent, now fully resolved by it), #1431 (Phase 1: PR-A flipped 7 CI steps to
@@ -225,4 +266,6 @@ second section confirms stays fixed), #1063/#1066/#1253 (the advisory-only histo
 `promotion-quality-gate.yml`), #927 (the original "where does this run" question #1018 resolves for
 the fast subset), #1019 / ADR 0074 Decision 10 (the superseded standard gate 19 depended on), #514
 (`verify-deployment.yml`, gate 18's residual-gap home), #1443 (the filed follow-up for gate 18's
-residual gap).
+residual gap), #1569 / #1548 / #1560 / ADR 0081 Decision 9 (the `check:app-versions` flip-readiness
+mechanism, a separate advisory-to-blocking check this document also tracks — see the section above,
+not part of the 19-gate mapping itself).
