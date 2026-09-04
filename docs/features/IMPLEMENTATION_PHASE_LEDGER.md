@@ -20649,3 +20649,75 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Contracts/files: `apps/dgfy-api/src/modules/pos/domain/posDiscountPolicy.js`; `apps/dgfy-api/src/modules/pos/domain/posDiscountCalculator.js`; `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`; `packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx`; `apps/dgfy-migration-runner/migrations/20260904000001-create-pos-discount-beneficiaries.cjs`.
 - Governance note: `within-existing-boundary` with a default-contract amendment; no architecture allowlist exception is introduced.
 - Next eligible phase: 289.
+
+## Phase 290 - Wave C/C5: POS's own "Additional Categories" item-edit section (#1318)
+
+- **Numbering note:** originally claimed Phase 288 (the ledger tip at this PR's open time was
+  Phase 287, and `gh pr list --repo Sieitzz/dgfy-platform --base develop --state open` returned no
+  open PRs at investigation/open time). By the time this branch merged fresh `origin/develop`, PR
+  #1586 ("fix/pos-receipt-search-discount-hardening") had already landed and its own ledger entry
+  had independently claimed 288 too, for unrelated work ("Multiple Senior/PWD Beneficiaries Per POS
+  Order", above) — a genuine collision, not detectable at this PR's own open time since #1586 was
+  not yet open then. Per AGENTS.md's Continuous Phase Numbering rule 5 (preserve already-landed
+  numbers, never renumber a landed entry), #1586's 288 stays as landed and this entry renumbers
+  instead. It does **not** take 289 either, even though 288's own "Next eligible phase" line above
+  says 289: another open, unmerged PR (#1583, Wave C/C2 — storefront grouping surfaces fan out to
+  secondary categories, same #1318 program) already carries its own diff claiming Phase 289 for
+  different work, confirmed live via `gh pr diff 1583` at the time of this resolution — the exact
+  same check Phase 287's own numbering note (above) used to avoid an identical collision one round
+  earlier. Taking 289 anyway would just reproduce that collision one number later, so this entry
+  takes 290 instead, the next number neither develop's tip nor any open PR's diff claims as of this
+  resolution.
+- Initiative/release: Item multi-category membership epic (#1318), Wave C/C5 — POS authoring-UI
+  reach gap. Independent of C2 (also Wave C), run in a separate parallel worktree per the dispatch
+  brief; touches no file C2 is scoped to.
+- Objective and scope: Phase 268 (PR #1515) built the "Additional Categories" secondary-category
+  membership editor for IMS inside `ItemFormModal.jsx`, using the `listItemFolders`/
+  `replaceItemFolders` client functions Phase 257 (PR #1503) shipped. POS has no route sharing that
+  component — its item editor is a completely separate, hand-built modal inline in
+  `TerminalOperationsWorkspace.jsx`. This phase adds the same capability there: a new section in the
+  edit modal's existing Category & QR column, adapted to this file's `activeEditItem`-based state
+  (no `itemIdForFolders`-equivalent create/edit ambiguity exists here, since this modal only ever
+  opens for an already-persisted item — item creation is a fully separate `createForm` flow in the
+  same file), reusing the existing `canManageCategories` prop (`categories:manage` permission,
+  confirmed identical to `ItemFormModal.jsx`'s `canManageFolders`) rather than inventing a new
+  permission check. No backend change — the write API already existed and is unchanged.
+
+  Fix round 1 (PR #1581 review, Codex — RF-1/RF-2/RF-3): RF-1 (blocker) closed a client-side gap
+  where a staged-but-unsaved primary category change in the same edit modal could produce a
+  primary/secondary disjointness violation (ADR 0080 Decision 2) once "Save Additional Categories"
+  and "Save Item" landed in a particular order — fixed with a `pendingPrimaryFolderId`/
+  `excludedPrimaryFolderIds` pair excluding both the persisted and staged-pending primary, a cleanup
+  effect for a selection that becomes excluded mid-edit, and a save-time payload re-filter. RF-2
+  (should-fix) added real max-10-boundary and pre-existing-membership runtime test coverage the
+  original test file lacked. RF-3 (should-fix) added a `secondaryFoldersUnavailable` state
+  distinguishing an HTTP 403 (permission failure) from a genuinely empty membership list, rendering
+  an honest "unavailable" status instead of a false `0/10 selected` — frontend-only, no backend
+  permission model change.
+- Status: completed.
+- Dependencies: Phase 257 (`item_folder_memberships` schema, `listItemFolders`/`replaceItemFolders`
+  client functions) and Phase 268 (the IMS UX/behavior pattern this phase mirrors), both already
+  shipped.
+- Acceptance and validation evidence: `packages/web-core/src/features/pos/__tests__/additionalCategoriesEdit.behavior.test.jsx`
+  (11/11 passing — 2 original runtime cases (renders/excludes-primary/saves for an authorized
+  manager; visible-but-read-only when `canManageCategories` is `false`) + 2 RF-1 cases (staged
+  primary excluded, including the exact reproduction sequence) + 2 RF-2 cases (max-10 boundary;
+  pre-existing memberships load/preserve/remove/add correctly) + 3 RF-3 cases (authorized read;
+  unauthorized 403 read even with a stale client-side `canManageCategories=true`; non-403 failure
+  still degrades to the prior empty-list behavior) + 2 source-contract cases); full
+  `packages/web-core/src/features/pos/__tests__/` suite (147 files / 917 tests passing, zero
+  regressions); `npm run build:pos` (succeeded); `npm run check:architecture`;
+  `npm run check:compliance` (declaration:
+  `docs/compliance/impact-declarations/2026-09-04-pos-additional-categories-edit.md`, which also
+  states why no ADR 0080 amendment is needed — a write-side UI addition reusing an unchanged,
+  already-declared write API, not a change to any Decision 1 `[binding]` money-adjacent reader, and
+  documents the fix-round-1 findings and their resolutions in full).
+- Completion date: 2026-09-04.
+- Contracts/files: `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+  (new Additional Categories section, state, fetch/save effect pair, and `listItemFolders`/
+  `replaceItemFolders` imports from `itemService.js`; fix round 1's `pendingPrimaryFolderId`/
+  `excludedPrimaryFolderIds`/`secondaryFoldersUnavailable`),
+  `packages/web-core/src/features/pos/__tests__/additionalCategoriesEdit.behavior.test.jsx` (new),
+  `docs/compliance/impact-declarations/2026-09-04-pos-additional-categories-edit.md` (new), issue
+  #1318.
+- Next eligible phase: 291.
