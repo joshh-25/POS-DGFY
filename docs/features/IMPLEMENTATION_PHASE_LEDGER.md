@@ -20198,22 +20198,39 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   Phase 282 per this ledger's continuous-numbering rule rather than inserted here or renumbered into
   this phase's own slot.
 
-## Phase 277 - Builders stamp `:X.Y.Z[-channel]` tags, OCI version label, `APP_VERSION` build-arg, and the tag-immutability guard (epic #1548 Wave 3, not yet filed)
+## Phase 277 - Builders stamp `:X.Y.Z[-channel]` tags, OCI version label, `APP_VERSION` build-arg, and the tag-immutability guard (#1575, epic #1548 Wave 3)
 
 - Initiative/release: Container semantic versioning epic (#1548) / current release process.
 - Objective and scope: `deploy-api.yml`, `deploy-migration-runner.yml`, and `deploy-frontend.yml`
   each emit the `X.Y.Z[-channel]` tag and `org.opencontainers.image.version` label per ADR 0081
   Decisions 1-3, and bake `APP_VERSION=<tag>` as a build-arg per Decision 4; a builder-side guard
   refuses to push a version tag over an existing different revision, implementing ADR 0081's one
-  `[binding]` clause (Decision 7).
-- Status: planned.
-- Dependencies: Phase 273 / ADR 0081 Decisions 1, 2, 3, 4, 7. Not yet filed.
-- Acceptance and validation evidence: not yet started. Expected at implementation: a live push per
-  app confirming the emitted tag, label, and build-arg match ADR 0081's format, plus a deliberate
-  same-tag-different-revision push attempt confirming the immutability guard actually refuses it.
-- Completion date: not started (planned).
-- Contracts/files (expected): `.github/workflows/deploy-api.yml`,
-  `.github/workflows/deploy-migration-runner.yml`, `.github/workflows/deploy-frontend.yml`.
+  `[binding]` clause (Decision 7). `scripts/deploy-local.sh --push` decided and documented (ties to
+  #714): bakes the same `APP_VERSION` build-arg locally for parity, but never pushes an
+  `X.Y.Z[-channel]` tag itself -- only the pre-existing moving-channel tag and `sha-<7>` tag,
+  unchanged.
+- Status: completed.
+- Dependencies: Phase 273 / ADR 0081 Decisions 1, 2, 3, 4, 7; #714 (informed the deploy-local.sh
+  decision, itself still open).
+- Acceptance and validation evidence: `node --test scripts/check-tag-immutability.test.js` (19/19 --
+  the guard's push/refuse/error verdicts, including same-revision idempotent re-dispatch, a
+  deliberate same-tag-different-revision refusal, an unreadable-label refusal, and an unclassified
+  inspect-failure refusal, all against mocked `docker buildx imagetools inspect` output, no live
+  GHCR call); `node --test scripts/check-deploy-version-stamping-workflow.test.js` (22/22 -- the
+  workflow-shape assertions, each with both a passing real-file case and a synthetic drift case
+  proving the check actually catches the regression); `node scripts/check-deploy-version-stamping-workflow.js`
+  (PASS against the real deploy-api.yml/deploy-migration-runner.yml/deploy-frontend.yml and all five
+  Dockerfiles); YAML-parsed all four edited workflow files; `bash -n scripts/deploy-local.sh`. No
+  live GHCR push was exercised (ADR 0081/the issue's own "Risks / notes" flags this as expensive to
+  test in CI) -- shape/logic verification only, stated explicitly per `implement/SKILL.md`'s Tier 0
+  bar for a file class with no compiler.
+- Completion date: 2026-09-04.
+- Contracts/files: `.github/workflows/deploy-api.yml`, `.github/workflows/deploy-migration-runner.yml`,
+  `.github/workflows/deploy-frontend.yml`, `.github/workflows/deployment-orchestrator.yml` (new
+  `*_version_tag` outputs, mirroring the existing `*_sha_tag` ones), `infrastructure/docker/{dgfy-api,
+  dgfy-migration-runner,dgfy-ims,dgfy-pos,dgfy-storefront}/Dockerfile`, `scripts/deploy-local.sh`,
+  `scripts/check-tag-immutability.js` (new), `scripts/check-deploy-version-stamping-workflow.js`
+  (new), issue #1575.
 - Next eligible phase: 278 — runtime version observability.
 
 ## Phase 278 - Runtime version observability: `/health` and the frontend build stamp (epic #1548 Wave 3, not yet filed)
