@@ -224,6 +224,59 @@ const resolveItemDescription = (item = {}, productKind) => {
   return description || buildFallbackDescription(item, productKind);
 };
 
+const resolveNumericFolderId = (folderId) => {
+  if (folderId === null || folderId === undefined || folderId === '') return null;
+  const numeric = Number(folderId);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+// RF-1 (PR #1583 review): grouping/dedup identity for one section occurrence, primary or
+// secondary. Prefers the folder's own stable numeric `folder_id` -- always present on a
+// `secondary_categories` row, and present on the primary occurrence whenever `items.folder_id` is
+// non-null (ADR 0080 Decision 1's "the primary category and the single tiebreak") -- over the
+// normalized display label. Two genuinely distinct folders whose *names* happen to normalize
+// identically (e.g. "A B" and "A_B" both -> `a_b`) must never collapse into one group, and a real
+// secondary membership must never be silently dropped just because its name matches the primary's.
+// Only a genuinely ID-less occurrence (no primary folder at all -- the section resolved from one
+// of `resolveSectionLabel`'s heuristic fallback fields instead) falls back to the name-based
+// identity, unchanged from pre-Phase-289 behavior for that case.
+// NOT the same field as `sectionKey`/`sectionLabel`: those stay name-derived on purpose (icon/
+// preset matching via `resolveSectionVisualMeta`, and any existing consumer keyed on them) and are
+// not guaranteed unique across two distinct folders that happen to share a display name -- this
+// identity is what grouping, dedup, and the composite render key actually key on.
+const resolveSectionIdentity = (folderId, sectionKey) => {
+  const numericFolderId = resolveNumericFolderId(folderId);
+  return numericFolderId !== null ? `folder:${numericFolderId}` : `name:${sectionKey}`;
+};
+
+// ADR 0080 Decision 5 opt-in (Phase 289, #1318): resolves the distinct secondary sections an
+// item also belongs to, beyond its primary `sectionKey`/`sectionLabel` already computed above.
+// `item.secondary_categories` is `[{ folder_id, folder_name }]`, ordered by sort_order (Decision
+// 6) -- reads it, writes nothing. Deduped against the primary and against itself by
+// `resolveSectionIdentity` (folder_id-based, not the normalized label), so an accidental
+// primary/secondary overlap (Decision 2) or a duplicate membership row never renders the same item
+// twice under one section -- while two genuinely distinct folders that merely share a display name
+// each still get their own occurrence.
+const resolveSecondarySectionOccurrences = (item = {}, primarySectionIdentity) => {
+  const secondaryCategories = Array.isArray(item?.secondary_categories) ? item.secondary_categories : [];
+  if (secondaryCategories.length === 0) return [];
+
+  const seenIdentities = new Set([primarySectionIdentity]);
+  const occurrences = [];
+  secondaryCategories.forEach((secondaryCategory) => {
+    const secondaryLabel = titleCase(normalizeText(secondaryCategory?.folder_name));
+    if (!secondaryLabel) return;
+    const secondarySectionKey = normalizeKey(secondaryLabel).replace(/\s+/g, '_');
+    if (!secondarySectionKey) return;
+    const secondaryIdentity = resolveSectionIdentity(secondaryCategory?.folder_id, secondarySectionKey);
+    if (seenIdentities.has(secondaryIdentity)) return;
+    seenIdentities.add(secondaryIdentity);
+    occurrences.push({ sectionKey: secondarySectionKey, sectionLabel: secondaryLabel, sectionIdentity: secondaryIdentity });
+  });
+
+  return occurrences;
+};
+
 export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
   const menuItems = (Array.isArray(catalog) ? catalog : [])
     .filter((item) => normalizeKey(item?.category) !== 'service')
@@ -245,16 +298,46 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
       };
     });
 
+  // ADR 0080 Decision 5: the F&B menu's section grouping renders an item once per section it
+  // belongs to (primary + each distinct secondary category), keyed by a composite
+  // `{sectionIdentity}:{itemId}` (RF-1: folder_id-based, not the normalized label -- see
+  // `resolveSectionIdentity`) so list-renderer keys stay unique AND two distinct folders never
+  // collapse into one group. `menuItems` above stays exactly one entry per item -- it backs
+  // `totalItems`/the count stats below, the unsectioned "All" tab, and `buildFnbRelatedItems`'
+  // cross-sell rail, none of which opt into the union (Decision 5's own carve-out for cross-sell/
+  // single-label surfaces).
+  const sectionEntries = [];
+  menuItems.forEach((item) => {
+    const primaryIdentity = resolveSectionIdentity(item.folder_id, item.sectionKey);
+    sectionEntries.push({ ...item, sectionIdentity: primaryIdentity, menuItemKey: `${primaryIdentity}:${item.item_id}` });
+    resolveSecondarySectionOccurrences(item, primaryIdentity).forEach((occurrence) => {
+      sectionEntries.push({
+        ...item,
+        sectionKey: occurrence.sectionKey,
+        sectionLabel: occurrence.sectionLabel,
+        sectionIdentity: occurrence.sectionIdentity,
+        sectionVisualMeta: resolveSectionVisualMeta(occurrence.sectionLabel),
+        menuItemKey: `${occurrence.sectionIdentity}:${item.item_id}`
+      });
+    });
+  });
+
+  // Grouped by the stable `sectionIdentity`, not `sectionKey` -- two occurrences with the same
+  // identity are always the same folder and belong in the same section, even on the rare occasion
+  // two distinct folders happen to share a `sectionKey` display text (see `resolveSectionIdentity`
+  // above); `sectionKey`/`sectionLabel` on the group are carried through unchanged (whichever
+  // occurrence created the group first) for icon/preset matching and existing consumers.
   const sectionMap = new Map();
-  menuItems.forEach((item, index) => {
-    const existing = sectionMap.get(item.sectionKey) || {
+  sectionEntries.forEach((item, index) => {
+    const existing = sectionMap.get(item.sectionIdentity) || {
       sectionKey: item.sectionKey,
       sectionLabel: item.sectionLabel,
+      sectionIdentity: item.sectionIdentity,
       items: [],
       firstSeenIndex: index
     };
     existing.items.push(item);
-    sectionMap.set(item.sectionKey, existing);
+    sectionMap.set(item.sectionIdentity, existing);
   });
 
   const menuSections = [...sectionMap.values()]

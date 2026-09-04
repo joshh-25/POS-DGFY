@@ -96,11 +96,17 @@ against a column with existing NULLs, which ADR 0029's Rollout Policy 3 forbids.
 
 ## Consequences
 
-1. **Zero read-site migration risk in this PR.** Because Decision 4 makes opt-in explicit and this
-   PR opts in no surface, every one of the ~34 existing item→folder read sites across
-   `apps/dgfy-api`, `packages/web-core`, and `apps/dgfy-storefront` is unaffected — verified
-   path-by-path against the read-site inventory this ADR's implementation plan produced, not
-   assumed from the additive-schema argument alone.
+1. **Zero read-site migration risk in the schema-introducing PR (Phase 257).** Because Decision 4
+   makes opt-in explicit and that PR opted in no surface, every one of the ~34 existing item→folder
+   read sites across `apps/dgfy-api`, `packages/web-core`, and `apps/dgfy-storefront` was
+   unaffected at that point — verified path-by-path against the read-site inventory this ADR's
+   implementation plan produced, not assumed from the additive-schema argument alone. **This is a
+   snapshot of that PR, not a standing claim** (RF-5, PR #1583 review) — Decision 4's own default
+   (primary-only until an explicit, shipped phase opts a surface in) still governs every read site
+   that hasn't opted in, but by now several have: the two Decision 5 grouping surfaces this ADR's
+   "Opt-in ledger" above records (F&B `menuSections`, services `serviceGroups`, both Phase 289), and
+   the POS/IMS filter-matching surface the dated Amendment below records (Phase 286). Every other
+   read site not named in either place remains primary-only.
 2. **Six existing write paths need no change, ever, for this feature to work.** Because
    memberships are secondary-only (Decision 2) rather than a mirror of the primary,
    `itemRepository.createItem`/`updateItem`/`deleteFolder`, `itemGroupingService`'s AI
@@ -139,6 +145,36 @@ against a column with existing NULLs, which ADR 0029's Rollout Policy 3 forbids.
    a request exceeding the Decision 6 cap.
 4. A legacy single-folder item with zero membership rows behaves identically before and after this
    PR on every one of the ~34 existing read sites.
+
+## Opt-in ledger (Decision 5 grouping surfaces)
+
+Not itself a decision. Decision 5 already governs exactly what a *grouping* surface's opt-in looks
+like once it opts into Decision 4's union; this table is the running, factual record of which
+grouping surfaces specifically have actually shipped that Decision-5-shaped opt-in, kept separate
+from `## Amendments` because recording a fact Decision 4/5 already pre-authorized is not a new
+architectural decision and needs no `status: amended` bump of its own.
+
+**Scoped to Decision 5 grouping opt-ins only, deliberately** -- Decision 4's opt-in gate is broader
+than grouping surfaces (RF-2, PR #1583 review: an earlier version of this table also listed the
+Phase 286 POS/IMS catalog-filter opt-in here, which contradicted this PR's own "exactly two
+[grouping] surfaces" framing, since filter *matching* is a Decision-4 opt-in that Decision 5 does
+not govern at all -- filter matching returns each item once regardless of how many categories it
+matches, never a per-category render). Phase 286's opt-in is fully recorded in its own dated
+Amendment below, not duplicated here; a future non-grouping Decision 4 opt-in belongs in a new
+Amendment of its own, not in this table.
+
+| Surface | Shape | Phase | Ref |
+|---|---|---|---|
+| F&B storefront menu section grouping (`fnbStorefrontViewModel.js`'s `getFoodBeverageStorefrontViewModel`) | Decision 5 fan-out: an item renders once per section (primary + each distinct secondary category), composite `{sectionIdentity}:{itemId}` key | Phase 289 | #1318 |
+| Services storefront category grouping (`servicesStorefrontViewModel.js`'s `getServicesStorefrontViewModel`) | Decision 5 fan-out: a service renders once per category (primary + each distinct secondary category), composite `{categoryIdentity}:{itemId}` key | Phase 289 | #1318 |
+
+Both rows deliberately exclude the surfaces Decision 5 itself carves out as staying primary-only:
+`buildFnbRelatedItems`' cross-sell rail (F&B "related items") and the flat `services`/`allServices`
+card list (a single-label surface, not a grouping one) are unaffected -- their own list stays
+exactly one entry per item, so their stat counts (`totalItems`, `totalServices`, etc.) are not
+inflated by either surface's fan-out. The composite key's identity half is `folder_id`-based, not
+the normalized display label (RF-1, PR #1583 review) -- two distinct folders whose names happen to
+normalize identically must render as two separate sections/categories, not collapse into one.
 
 ## Amendments
 
