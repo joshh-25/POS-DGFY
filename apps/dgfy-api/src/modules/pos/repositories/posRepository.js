@@ -680,6 +680,46 @@ const applyCatalogOverrides = async (items, options = {}) => {
         .filter((item) => item.pos_visible !== false);
 };
 
+// ADR 0080 Amendment (Phase 285, #1318): attaches each item's SECONDARY category ids
+// (item_folder_memberships) so POS's own client-side folder-chip filters
+// (posCatalogWorkflow.js, TerminalOperationsWorkspace.jsx) can widen their match to the
+// membership union without a second round trip. Scoped to listCatalog() only -- other
+// applyCatalogOverrides() callers (e.g. findSellableItemsByIds) are out of this
+// phase's scope and stay unchanged.
+const attachSecondaryFolderIds = async (items) => {
+    const safeItems = Array.isArray(items) ? items : [];
+    const ItemFolderMembership = safeGetModel('ItemFolderMembership');
+    const itemIds = [...new Set(
+        safeItems
+            .map((item) => Number(item?.item_id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    // typeof .findAll === 'function', not just a truthiness check on the model itself --
+    // a test double that stubs a model getter with a catch-all `{}` for every model it
+    // doesn't care about is not "the membership model is unavailable" in the
+    // tenant-migration sense this guard exists for; it must still degrade safely rather
+    // than throw on `.findAll(...)`.
+    if (typeof ItemFolderMembership?.findAll !== 'function' || itemIds.length === 0) {
+        return safeItems.map((item) => ({ ...item, secondary_folder_ids: [] }));
+    }
+
+    const membershipRows = await ItemFolderMembership.findAll({
+        where: { item_id: { [Op.in]: itemIds } },
+        attributes: ['item_id', 'folder_id']
+    });
+    const membershipsByItemId = new Map();
+    membershipRows.forEach((row) => {
+        const list = membershipsByItemId.get(row.item_id) || [];
+        list.push(row.folder_id);
+        membershipsByItemId.set(row.item_id, list);
+    });
+
+    return safeItems.map((item) => ({
+        ...item,
+        secondary_folder_ids: membershipsByItemId.get(Number(item?.item_id)) || []
+    }));
+};
+
 const computeTransactionTotalCost = (lines = []) => round4(
     (Array.isArray(lines) ? lines : []).reduce((sum, line) => (
         sum + (Number(line?.quantity || 0) * Number(line?.cost_snapshot || 0))
@@ -4467,8 +4507,30 @@ export const posRepository = {
             ];
         }
         const folderId = Number.parseInt(folder_id, 10);
+        // ADR 0080 Amendment (Phase 285, #1318): POS's catalog-listing folder filter
+        // widens to the membership union -- selecting a category also surfaces items
+        // whose SECONDARY category (item_folder_memberships) matches, not just their
+        // primary. Uses `where[Op.and]` (not `where[Op.or]`, already claimed by the
+        // search block above) so both conditions combine correctly regardless of order.
         if (Number.isInteger(folderId) && folderId > 0) {
             where.folder_id = folderId;
+            const ItemFolderMembership = safeGetModel('ItemFolderMembership');
+            if (typeof ItemFolderMembership?.findAll === 'function') {
+                const membershipRows = await ItemFolderMembership.findAll({
+                    where: { folder_id: folderId },
+                    attributes: ['item_id']
+                });
+                const memberItemIds = [...new Set(membershipRows.map((row) => row.item_id))];
+                if (memberItemIds.length > 0) {
+                    delete where.folder_id;
+                    where[Op.and] = (Array.isArray(where[Op.and]) ? where[Op.and] : []).concat([{
+                        [Op.or]: [
+                            { folder_id: folderId },
+                            { item_id: { [Op.in]: memberItemIds } }
+                        ]
+                    }]);
+                }
+            }
         }
 
         const queryOptions = {
@@ -4484,7 +4546,9 @@ export const posRepository = {
         };
 
         try {
-            const catalogItems = await applyCatalogOverrides(await Item.findAll(queryOptions), { includePrimaryBarcode: true });
+            const catalogItems = await attachSecondaryFolderIds(
+                await applyCatalogOverrides(await Item.findAll(queryOptions), { includePrimaryBarcode: true })
+            );
             const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 location_id
@@ -4498,10 +4562,12 @@ export const posRepository = {
                 throw error;
             }
 
-            const catalogItems = await applyCatalogOverrides(withLegacyVatFallback(await Item.findAll({
-                ...queryOptions,
-                attributes: BASE_POS_ITEM_ATTRIBUTES
-            })), { includePrimaryBarcode: true });
+            const catalogItems = await attachSecondaryFolderIds(
+                await applyCatalogOverrides(withLegacyVatFallback(await Item.findAll({
+                    ...queryOptions,
+                    attributes: BASE_POS_ITEM_ATTRIBUTES
+                })), { includePrimaryBarcode: true })
+            );
             const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 location_id

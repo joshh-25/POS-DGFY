@@ -103,6 +103,47 @@ const safeGetOptionalModel = (name) => {
     }
 };
 
+// ADR 0080 Amendment (Phase 285, #1318): attaches each item's SECONDARY category ids
+// (item_folder_memberships) to getItems()'s list payload. `ItemsPage.jsx` fetches its
+// full item set unfiltered by folder and does its own folder-chip matching client-side
+// (`doesItemMatchFolder`) -- widening that match to the membership union needs this
+// field on the wire, the query-param widening below this function isn't reachable from
+// that flow. Degrades to `[]` (primary-only) when the model isn't available yet
+// (unmigrated tenant) or the item set is empty.
+const attachSecondaryFolderIds = async (items) => {
+    const safeItems = Array.isArray(items) ? items : [];
+    const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+    const itemIds = [...new Set(
+        safeItems
+            .map((item) => Number(item?.item_id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    // typeof .findAll === 'function', not just a truthiness check on the model itself --
+    // a test double that stubs dbStore.get with a catch-all `{}` for every model it
+    // doesn't care about (a pattern already in wide use across this test suite) is not
+    // "the membership model is unavailable" in the tenant-migration sense this guard
+    // exists for; it must still degrade safely rather than throw on `.findAll(...)`.
+    if (typeof ItemFolderMembership?.findAll !== 'function' || itemIds.length === 0) {
+        return safeItems.map((item) => ({ ...item, secondary_folder_ids: [] }));
+    }
+
+    const membershipRows = await ItemFolderMembership.findAll({
+        where: { item_id: { [Op.in]: itemIds } },
+        attributes: ['item_id', 'folder_id']
+    });
+    const membershipsByItemId = new Map();
+    membershipRows.forEach((row) => {
+        const list = membershipsByItemId.get(row.item_id) || [];
+        list.push(row.folder_id);
+        membershipsByItemId.set(row.item_id, list);
+    });
+
+    return safeItems.map((item) => ({
+        ...item,
+        secondary_folder_ids: membershipsByItemId.get(Number(item?.item_id)) || []
+    }));
+};
+
 const normalizeServerVersion = (value) => {
     if (value == null || value === '') return null;
     const parsed = value instanceof Date ? value : new Date(value);
@@ -958,11 +999,39 @@ export const itemRepository = {
             where.status = status;
         }
 
+        // ADR 0080 Amendment (Phase 285, #1318): IMS's catalog filter widens to the
+        // membership union -- selecting a category also surfaces items whose SECONDARY
+        // category (item_folder_memberships) matches, not just their primary. The
+        // 'null'/'none' sentinel stays primary-only; memberships never apply to
+        // "uncategorized". `folderWideningAnd` is merged into `where[Op.and]` only after
+        // the search block below, because that block unconditionally overwrites
+        // `where[Op.and]` -- merging here first would be silently discarded.
+        const folderWideningAnd = [];
         if (queryParams.folder_id) {
             if (queryParams.folder_id === 'null' || queryParams.folder_id === 'none') {
                 where.folder_id = null;
             } else {
                 where.folder_id = queryParams.folder_id;
+                const parsedFolderId = Number.parseInt(queryParams.folder_id, 10);
+                if (Number.isInteger(parsedFolderId) && parsedFolderId > 0) {
+                    const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+                    if (typeof ItemFolderMembership?.findAll === 'function') {
+                        const membershipRows = await ItemFolderMembership.findAll({
+                            where: { folder_id: parsedFolderId },
+                            attributes: ['item_id']
+                        });
+                        const memberItemIds = [...new Set(membershipRows.map((row) => row.item_id))];
+                        if (memberItemIds.length > 0) {
+                            delete where.folder_id;
+                            folderWideningAnd.push({
+                                [Op.or]: [
+                                    { folder_id: queryParams.folder_id },
+                                    { item_id: { [Op.in]: memberItemIds } }
+                                ]
+                            });
+                        }
+                    }
+                }
             }
         }
 
@@ -995,6 +1064,14 @@ export const itemRepository = {
                     where.item_id = { [Op.in]: semanticIds };
                 }
             }
+        }
+
+        if (folderWideningAnd.length > 0) {
+            where[Op.and] = Array.isArray(where[Op.and])
+                ? where[Op.and].concat(folderWideningAnd)
+                : where[Op.and]
+                    ? [where[Op.and], ...folderWideningAnd]
+                    : folderWideningAnd;
         }
 
         const order = [[sortBy, sortOrder.toUpperCase()]];
@@ -1078,6 +1155,8 @@ export const itemRepository = {
                 ? applyItemLocationStockMap(itemsWithCostMetrics, stockMap)
                 : itemsWithCostMetrics;
         }
+
+        itemsWithCostMetrics = await attachSecondaryFolderIds(itemsWithCostMetrics);
 
         return {
             items: itemsWithCostMetrics,
