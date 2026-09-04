@@ -22,20 +22,33 @@ export const filterAvailableCatalog = (catalog) => (
     (Array.isArray(catalog) ? catalog : []).filter(isSellAvailableCatalogItem)
 );
 
+// ADR 0080 Amendment (Phase 286, #1318): an item matches a folder if either its
+// PRIMARY category (`folder_id`) or any of its SECONDARY memberships
+// (`secondary_folder_ids`, attached by posRepository.listCatalog's
+// attachSecondaryFolderIds) matches -- the membership union, not primary-only.
+// `secondary_folder_ids` defaults to [] on legacy/unmigrated payloads, so this
+// degrades to the old primary-only behavior automatically when the field is absent.
+const itemMatchesFolder = (item, folderId) => {
+    if (Number(item?.folder_id) === folderId) return true;
+    const secondaryIds = Array.isArray(item?.secondary_folder_ids) ? item.secondary_folder_ids : [];
+    return secondaryIds.some((id) => Number(id) === folderId);
+};
+
 export const filterAvailableCatalogFolders = (folders, availableCatalog) => {
     const safeFolders = Array.isArray(folders) ? folders : [];
     const safeCatalog = Array.isArray(availableCatalog) ? availableCatalog : [];
     return safeFolders.filter((folder) => {
         const folderId = Number(folder?.folder_id);
         if (!Number.isInteger(folderId) || folderId <= 0) return false;
-        return safeCatalog.some((item) => Number(item?.folder_id) === folderId);
+        return safeCatalog.some((item) => itemMatchesFolder(item, folderId));
     });
 };
 
 export const filterCatalogByFolder = (catalog, selectedFolderId) => {
     const safeCatalog = Array.isArray(catalog) ? catalog : [];
     if (!selectedFolderId) return safeCatalog;
-    return safeCatalog.filter((item) => Number(item?.folder_id) === Number(selectedFolderId));
+    const folderId = Number(selectedFolderId);
+    return safeCatalog.filter((item) => itemMatchesFolder(item, folderId));
 };
 
 export const getCatalogPageSize = (gridPageSize) => Math.max(1, Number(gridPageSize || 0) * 2);
