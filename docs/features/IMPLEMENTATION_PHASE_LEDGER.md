@@ -20407,3 +20407,36 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   other file needs to change, per that module's and `shared-changed-paths.yml`/`pr-checks.js`'s own
   single-source-of-truth design (Phase 276).
 - Next eligible phase: 284.
+
+## Phase 284 - Folder-delete warning: count secondary category memberships (#1318)
+
+- Initiative/release: Item multi-category membership epic (#1318) / Wave C follow-up to Phase 257.
+- Objective and scope: fix the under-count named explicitly in
+  [ADR 0080](../architecture/adr/0080-item-multi-category-membership.md) Consequences item 4 —
+  Phase 257 shipped `item_folder_memberships` (secondary category join table) but the folder-delete
+  warning and folder list only ever counted items whose PRIMARY `folder_id` matched, so an item
+  that carries a folder only as a secondary category was invisible to the operator-facing warning.
+  Scoped to the warning/count only, not any storefront/POS catalog projection or filter logic (ADR
+  0080 Decision 4's per-surface opt-in is untouched by this phase).
+- Status: completed.
+- Dependencies: Phase 257 (`item_folder_memberships` schema/model, already shipped).
+- Acceptance and validation evidence: `node --check` on the changed backend file;
+  `tests/inventoryItemRepository.test.js` (60/60 passed, including new/updated cases for
+  `listFolders`'s `secondary_item_count` and `deleteFolder`'s `secondary_items_affected` —
+  secondary-only membership counted, primary+secondary overlap not double-counted, zero-membership
+  folder yields zero, and the `CATEGORY_REASSIGNMENT_REQUIRED` error carries the same count);
+  `tests/itemFolderMemberships.repository.test.js` + `tests/replaceItemFoldersUseCase.test.js`
+  (10/10, unmodified, confirms the shared `ItemFolderMembership` model-access pattern didn't
+  regress); `tests/itemHandlers.transport.test.js` +
+  `tests/storageAndGroupingToolRegistry.test.js` + `tests/routeAuthorizationDeclarations.contract.test.js`
+  (23/23, unmodified); `npm run build:pos` (succeeded — the only app that imports
+  `packages/web-core/src/features/pos/**`'s `TerminalOperationsWorkspace.jsx`, confirmed via grep);
+  `npm run check:architecture`; `npm run check:compliance` (declaration:
+  `docs/compliance/impact-declarations/2026-09-04-folder-delete-secondary-membership-warning.md`).
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js` (new
+  `countSecondaryFolderMemberships` helper, shared by `listFolders`/`deleteFolder`),
+  `apps/dgfy-api/tests/inventoryItemRepository.test.js`,
+  `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx` (Category
+  Management delete-confirmation dialog's new second warning line), issue #1318.
+- Next eligible phase: 285.
