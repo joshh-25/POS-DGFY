@@ -958,3 +958,58 @@ This is a `[default]`-tier procedure amendment under ADR 0039, matching ADR 0081
 
 PR: (this PR). Refs #1569, #1548, #1560. Does not close #1569's parent epic (#1548) — Wave 2 has
 more phases beyond this one.
+
+### 2026-09-04: Promoter pre-cut floor step and promotion parity gate, executable (#1588, epic
+#1548 Wave 4, Phase 279) — closes the loop the 2026-09-04 "Per-app container SemVer" entry above
+left as "not built by this entry"
+
+Decision record this implements: [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md)
+Decisions 6 and 8. Not rewritten in place, same convention as every amendment above.
+
+**The pre-cut floor step is now a real, run-it-every-time procedure**, not a stated obligation:
+`node scripts/check-app-version-bump.js --floor --base origin/staging --head origin/develop` before
+cutting `to-staging/<candidate_id>` (reuses `--floor` mode, already shipped by #1560/PR #1562 — no
+new script for this half), and one ordinary `develop`-base `chore(release): bump <apps> to
+X.(Y+1).0 for candidate <id>` PR per app below floor, merged before the cut. Full sequence:
+`.agents/skills/promoter/references/promotion-runbook.md`'s "Default: `develop` → `staging` →
+`main`" section; obligation restated in `.agents/skills/promoter/SKILL.md`'s "Frozen candidate and
+repair loop" section.
+
+**The promotion parity gate is now `scripts/check-image-version-parity.js` (new)**, comparing each
+app's `X.Y.Z-staging` and bare `X.Y.Z` published images' candidate-source-identity label. **A
+correction the 2026-09-04 "Per-app container SemVer" entry above did not anticipate:** that entry
+assumed Phase 277 would stamp this label as part of its own scope ("the builder changes that
+actually stamp these ... are deferred to epic #1548's later waves (planned Phases 274, 277-279)").
+Phase 277 (#1575/PR #1577, completed 2026-09-04) in fact stamped only
+`org.opencontainers.image.version`, not a candidate-source-identity label — this PR (#1588) adds
+that missing label-stamping step itself, in the same three builder workflows, naming the label
+`org.dgfy-platform.candidate-source-sha` per Decision 8's own "naming and mechanics are that phase's
+job" delegation. See ADR 0081's own 2026-09-04 Amendment for the full correction record, and
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s matching "Promotion-time per-app version gates"
+section for the executable-mechanism summary.
+
+**Candidate manifest, no longer a hand-waved reference.** `scripts/check-promotion-candidate.js`'s
+manifest was already validated by this policy's prior entries but never had a documented on-disk
+location or creation step; this PR fixes that gap too — written locally at
+`.tmp/release-candidates/<candidate_id>.json` (never committed, matching
+`.tmp/release-gates/<sha>/local_readiness.json`'s existing local-artifact convention) right after
+the candidate branch is cut, updated on every staging repair and release cut. Full shape:
+`.agents/skills/promoter/references/promotion-runbook.md`.
+
+**The `IMAGE_TAG` contract #495 must honor**, restated here per #1588's own acceptance criteria (this
+policy records the contract, it does not implement #495's compose split): a version tag of the shape
+`X.Y.Z[-channel]` must exist and be pullable for whatever `IMAGE_TAG`-shaped variable(s) #495
+introduces — the same tags this ADR's builders already publish, unaffected by this PR.
+
+**What was and wasn't exercised.** No real `to-staging`/`release` promotion has run against this
+mechanism yet — everything here is unit-tested (`scripts/check-image-version-parity.test.js`: label
+match, missing-predecessor, mismatch) and shape-verified against this repo's real workflow files
+(`node scripts/check-deploy-version-stamping-workflow.js`, extended by this PR to also assert the
+new label/input wiring), not exercised end to end against a live GHCR push. Say so plainly rather
+than implying otherwise on the next real promotion this mechanism runs against.
+
+This is a `[default]`-tier procedure amendment under ADR 0039, layered on top of ADR 0081's own
+Decisions 6 and 8 (both `[default]`) — no `[binding]` clause of this policy or of ADR 0081 is changed
+by this entry.
+
+PR: (this PR). Refs #1588, #1548, #1559, #1560, #1575. Closes #1588.

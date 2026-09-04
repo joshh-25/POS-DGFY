@@ -20264,36 +20264,69 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `docs/deployment/PWA_SURFACE_CONTRACT.md`, issue #1576.
 - Next eligible phase: 279 — promoter floor check and promotion parity gate.
 
-## Phase 279 - Promoter pre-cut floor check, promotion parity gate, and final policy text (epic #1548 Wave 4, not yet filed)
+## Phase 279 - Promoter pre-cut floor check, promotion parity gate, and final policy text (#1588, epic #1548 Wave 4)
 
 - Initiative/release: Container semantic versioning epic (#1548) / current release process.
 - Objective and scope: the promoter's pre-cut floor step (`origin/develop` vs `origin/staging` per
   app; opens a `chore(release): bump <apps> to X.(Y+1).0 for candidate <id>` PR into `develop` for
   anything below floor) wired into `.agents/skills/promoter/SKILL.md` and
-  `references/promotion-runbook.md`, implementing this PR's `RELEASE_CANDIDATE_POLICY.md` amendment;
-  the staging/prod parity gate (ADR 0081 Decision 8, revised: `X.Y.Z-staging` and the later `X.Y.Z`
-  share the same *candidate source identity* — the frozen candidate manifest's `source_develop_sha`/
-  `current_staging_sha`, stamped by Phase 277's builder into its own label — not the raw
-  `org.opencontainers.image.revision`/`github.sha` of each environment's own merge commit, which
-  differ by construction across the `to-staging → staging` and `release/* → main` merges even for
-  identical candidate content); final policy text lands in
-  `docs/testing/release-go-no-go-checklist.md` and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
-- Status: planned.
-- Dependencies: Phase 273 / ADR 0081 Decisions 6 and 8; Phase 277 (the builder-side label this
-  phase's parity check reads); this PR's `RELEASE_CANDIDATE_POLICY.md` amendment (the obligations
-  this phase makes executable). Not yet filed.
-- Acceptance and validation evidence: not yet started. Expected at implementation: a real
-  `to-staging/<candidate_id>` promotion exercising the floor check against at least one app below
-  floor; a real `release/<candidate_id>-rN` → `main` promotion on the *normal* three-stage path
-  confirming the parity gate passes on an unchanged app by comparing the candidate-source-identity
-  label (not `org.opencontainers.image.revision`) — the case RF-1 on PR #1561 found the original
-  revision-label wording would have failed even on the normal path; and a second case confirming the
-  gate correctly flags a #1007-expedited or hotfix promotion (no matching staging predecessor under
-  that same identity) as expected evidence, not a defect, per Decision 8.
-- Completion date: not started (planned).
-- Contracts/files (expected): `.agents/skills/promoter/SKILL.md`,
+  `references/promotion-runbook.md`, implementing `RELEASE_CANDIDATE_POLICY.md`'s 2026-09-04
+  "Per-app container SemVer" amendment; the staging/prod parity gate (ADR 0081 Decision 8: `X.Y.Z-staging`
+  and the later `X.Y.Z` share the same *candidate source identity* — the frozen candidate manifest's
+  `source_develop_sha`/`current_staging_sha` — not the raw `org.opencontainers.image.revision`/
+  `github.sha` of each environment's own merge commit, which differ by construction across the
+  `to-staging → staging` and `release/* → main` merges even for identical candidate content); final
+  policy text lands in `docs/testing/release-go-no-go-checklist.md` and
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+- **Correction found during this phase, not assumed away:** Phase 277's own entry below (and ADR
+  0081 Decision 8's original text) assumed Phase 277 would stamp the candidate-source-identity label
+  as part of its own scope. Confirmed against the real merged `deploy-api.yml`/
+  `deploy-migration-runner.yml`/`deploy-frontend.yml` before this phase started: Phase 277 stamped
+  only `org.opencontainers.image.revision`/`.source`/`.version` — no candidate-source-identity label
+  existed anywhere. This phase adds that missing label-stamping step itself (a new
+  `candidate_source_sha` input threaded `deploy.yml`/`deploy-main.yml` →
+  `deployment-orchestrator.yml` → the three builders, stamped as the new
+  `org.dgfy-platform.candidate-source-sha` label when non-empty) — not previously in this phase's own
+  scope statement, but required for the parity check to have anything to compare. Recorded in full on
+  ADR 0081's own 2026-09-04 Amendment; Phase 277's entry below is left as-is per this doc's
+  don't-rewrite-history convention.
+- Status: completed.
+- Dependencies: Phase 273 / ADR 0081 Decisions 6 and 8; Phase 277 (builder version-tag stamping this
+  phase's meta step reuses, though not the label itself — see the correction above);
+  `RELEASE_CANDIDATE_POLICY.md`'s 2026-09-04 "Per-app container SemVer" amendment (the obligations
+  this phase makes executable), closed out by this phase's own matching 2026-09-04 amendment entry.
+  #1588.
+- Acceptance and validation evidence: `node --test scripts/check-image-version-parity.test.js`
+  (17/17 — `inspectImageLabel`'s not-found/error/ok/unreadable/disagree classification against
+  mocked `docker buildx imagetools inspect` output; `decideParity`'s three spec'd outcomes — matching
+  identity pass, missing-staging-predecessor pass with the "expected evidence, not a defect" note,
+  mismatched-identity fail — plus the prod-not-found skip and inspect-error edges;
+  `runParityCheck`/`checkApp` against this repo's real git history for `readVersionAt`, no live
+  registry call); `node --test scripts/check-deploy-version-stamping-workflow.test.js` (37/37 —
+  extended by this phase with `checkMetaStepStampsCandidateLabel` and
+  `checkOrchestratorCandidateSourceShaWiring`, each with a passing real-file case and a synthetic
+  drift case); `node scripts/check-deploy-version-stamping-workflow.js` (PASS against the real
+  `deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml`/`deployment-orchestrator.yml`);
+  YAML-parsed all six edited workflow files (`deploy.yml`, `deploy-main.yml`,
+  `deployment-orchestrator.yml`, and the three builders); `npm run lint:docs` (29 governed docs, OK),
+  `npm run check:adr` (88 ADRs, OK — ADR 0081's `status: amended` + new `## Amendments` block
+  validate), `npm run check:architecture` (OK). No real `to-staging/<candidate_id>` or
+  `release/<candidate_id>-rN` promotion has run against this mechanism yet — everything above is
+  unit-tested and shape-verified against this repo's real files, not exercised end to end against a
+  live GHCR push/build, stated explicitly per `implement/SKILL.md`'s Tier 0 bar for a file class with
+  no compiler.
+- Completion date: 2026-09-04.
+- Contracts/files: `scripts/check-image-version-parity.js` (new) + its test file,
+  `scripts/check-deploy-version-stamping-workflow.js` (extended) + its test file,
+  `.github/workflows/deploy-api.yml`, `.github/workflows/deploy-migration-runner.yml`,
+  `.github/workflows/deploy-frontend.yml`, `.github/workflows/deployment-orchestrator.yml`,
+  `.github/workflows/deploy.yml`, `.github/workflows/deploy-main.yml` (all six: new
+  `candidate_source_sha` input, threaded end to end), `.agents/skills/promoter/SKILL.md`,
   `.agents/skills/promoter/references/promotion-runbook.md`,
-  `docs/testing/release-go-no-go-checklist.md`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+  `docs/testing/release-go-no-go-checklist.md`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-09-04 closing amendment),
+  `docs/architecture/adr/0081-per-app-container-semantic-versioning.md` (2026-09-04 Amendment,
+  `status: amended`), issue #1588.
 - Next eligible phase: 280 — release notes epic (#1278) consumes candidate_id + the five prod versions.
 
 ## Phase 280 - #1278 release notes start consuming `candidate_id` and the five prod versions (epic #1548 Wave 4, tracked in #1278)

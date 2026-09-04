@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-04
 applies_to: pre_promotion_quality_gate
 topic: pre_promotion_local_gate
 ---
@@ -285,6 +285,45 @@ formally marked `status: superseded`) and its associated PowerShell gate wrapper
 Date-specific snapshots are archived under:
 1. `docs/archive/testing/2026-04/` — dated 2026-04-21 checklist snapshot.
 2. `docs/archive/testing/2026-08/` — the pre-2026-08-12 evidence log removed from this document.
+
+## Per-app version gates (ADR 0081, epic #1548 Wave 4, #1588)
+
+Two mechanisms register here that are neither part of the 16-gate `gate:release:local` mapping
+above nor `check:app-versions`'s own PR-time flip-readiness track (`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
+own "`check:app-versions` flip-readiness" section covers that one) — both are promotion-time-only,
+run by `promoter` directly, not by any CI workflow:
+
+1. **Promoter pre-cut floor step** (ADR 0081 Decision 6). Before cutting
+   `to-staging/<candidate_id>`, `node scripts/check-app-version-bump.js --floor --base
+   origin/staging --head origin/develop` confirms every app whose files changed since `staging` has
+   at least a minor bump over `staging`'s current version for that app. Anything below floor gets
+   one `chore(release): bump <apps> to X.(Y+1).0 for candidate <id>` PR merged into `develop` first
+   — an ordinary `develop`-base PR, not a new gate class. Full procedure:
+   `.agents/skills/promoter/references/promotion-runbook.md`'s "Default: `develop` → `staging` →
+   `main`" section; obligation text: `.agents/skills/promoter/SKILL.md`'s "Frozen candidate and
+   repair loop" section.
+2. **Promotion parity gate** (ADR 0081 Decision 8). After `deploy-main.yml` publishes the PROD
+   image, `node scripts/check-image-version-parity.js --manifest <candidate.json>` confirms each
+   app's `X.Y.Z-staging` and bare `X.Y.Z` images share the same candidate source identity — the
+   frozen candidate's own tracked SHA (`scripts/check-promotion-candidate.js`'s manifest
+   `source_develop_sha`/`current_staging_sha`), stamped by `deploy-api.yml`/
+   `deploy-migration-runner.yml`/`deploy-frontend.yml` into the `org.dgfy-platform.candidate-source-sha`
+   OCI label — not `org.opencontainers.image.revision`, which differs across the `to-staging →
+   staging` and `release/* → main` merge commits even for byte-identical candidate content. A PROD
+   image with no matching STAGING predecessor under this identity (a #1007 expedited promotion or a
+   main hotfix) is expected evidence, not a defect. Read-only, runs after `deploy-main.yml`, not
+   before — it cannot run pre-merge, since the PROD image it inspects does not exist until then. Full
+   procedure and timing: `.agents/skills/promoter/references/promotion-runbook.md`'s "Deploy
+   dispatch" section; `.agents/skills/promoter/SKILL.md`'s "Pre-`main` gates" section.
+
+**The `IMAGE_TAG` contract #495 must honor** (ADR 0081's own Non-goals, restated here per #1588's
+own acceptance criteria — this document records the contract, it does not implement #495's per-service
+`IMAGE_TAG` compose split): whatever `IMAGE_TAG`-shaped variable(s) #495 introduces per service must
+resolve to a real, pullable version tag of the shape `X.Y.Z[-channel]` (`1.5.2`, `1.5.2-staging`,
+`1.5.2-dev`) — the tags this ADR's builders already publish alongside the pre-existing moving
+channel tags (`develop`/`staging`/`latest`) and `sha-<7>`, unaffected by this ADR. #495 is free to
+choose which of those tag families a given service pins to; it may not invent a tag shape these
+builders don't actually publish.
 
 ## Known gaps (tracked elsewhere, not fixed by this document)
 
