@@ -20637,3 +20637,47 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx` (Category
   Management delete-confirmation dialog's new second warning line), issue #1318.
 - Next eligible phase: 288.
+
+## Phase 288 - Wave C/C5: POS's own "Additional Categories" item-edit section (#1318)
+
+- **Numbering note:** 288 re-verified free immediately before opening this PR, per AGENTS.md's
+  Continuous Phase Numbering rule and the pattern Phase 287's own note above establishes: ledger's
+  highest merged entry was 287 (this file, at dispatch time), `gh pr list --repo Sieitzz/dgfy-platform
+  --base develop --state open` returned no open PRs at investigation time, and re-confirmed again
+  immediately before this PR was opened.
+- Initiative/release: Item multi-category membership epic (#1318), Wave C/C5 — POS authoring-UI
+  reach gap. Independent of C2 (also Wave C), run in a separate parallel worktree per the dispatch
+  brief; touches no file C2 is scoped to.
+- Objective and scope: Phase 268 (PR #1515) built the "Additional Categories" secondary-category
+  membership editor for IMS inside `ItemFormModal.jsx`, using the `listItemFolders`/
+  `replaceItemFolders` client functions Phase 257 (PR #1503) shipped. POS has no route sharing that
+  component — its item editor is a completely separate, hand-built modal inline in
+  `TerminalOperationsWorkspace.jsx`. This phase adds the same capability there: a new section in the
+  edit modal's existing Category & QR column, adapted to this file's `activeEditItem`-based state
+  (no `itemIdForFolders`-equivalent create/edit ambiguity exists here, since this modal only ever
+  opens for an already-persisted item — item creation is a fully separate `createForm` flow in the
+  same file), reusing the existing `canManageCategories` prop (`categories:manage` permission,
+  confirmed identical to `ItemFormModal.jsx`'s `canManageFolders`) rather than inventing a new
+  permission check. No backend change — the write API already existed and is unchanged.
+- Status: completed.
+- Dependencies: Phase 257 (`item_folder_memberships` schema, `listItemFolders`/`replaceItemFolders`
+  client functions) and Phase 268 (the IMS UX/behavior pattern this phase mirrors), both already
+  shipped.
+- Acceptance and validation evidence: `packages/web-core/src/features/pos/__tests__/additionalCategoriesEdit.behavior.test.jsx`
+  (new, 3/3 passing — renders/excludes-primary-category/saves for an authorized manager; stays
+  visible-but-read-only, not hidden, when `canManageCategories` is `false`, matching the primary
+  category field's own convention in this file; a source-contract pin on the persisted-item-id
+  gate); full `packages/web-core/src/features/pos/__tests__/` suite (147 files / 909 tests passing,
+  zero regressions); `npm run build:pos` (succeeded); `npm run check:architecture`;
+  `npm run check:compliance` (declaration:
+  `docs/compliance/impact-declarations/2026-09-04-pos-additional-categories-edit.md`, which also
+  states why no ADR 0080 amendment is needed — a write-side UI addition reusing an unchanged,
+  already-declared write API, not a change to any Decision 1 `[binding]` money-adjacent reader).
+- Completion date: 2026-09-04.
+- Contracts/files: `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+  (new Additional Categories section, state, fetch/save effect pair, and `listItemFolders`/
+  `replaceItemFolders` imports from `itemService.js`),
+  `packages/web-core/src/features/pos/__tests__/additionalCategoriesEdit.behavior.test.jsx` (new),
+  `docs/compliance/impact-declarations/2026-09-04-pos-additional-categories-edit.md` (new), issue
+  #1318.
+- Next eligible phase: 289.
