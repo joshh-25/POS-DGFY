@@ -261,6 +261,27 @@ const isMissingStorefrontCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' || message.includes('storefront_catalog_overrides');
 };
 
+// RF-2 (PR #1580 review): tenantModelFactory defines ItemFolderMembership in every tenant
+// context even when that tenant's database lacks the table -- unlike safeGetModel's try/catch
+// (which only catches a missing *model-registry* entry), an actual query against a missing
+// table rejects at query time with ER_NO_SUCH_TABLE. Table-name-scoped (`&&`, not `||`) so this
+// never accidentally swallows an unrelated ER_NO_SUCH_TABLE from a different missing table.
+const isMissingItemFolderMembershipsTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('item_folder_memberships');
+};
+
+// RF-1 (PR #1580 review): folder deletion is soft (itemRepository.js's deleteFolder sets
+// is_active:false + deleted_at, leaving membership rows in place). Mirrors
+// itemRepository.js's own activeFolderWhere.
+const activeFolderWhere = (where = {}) => ({
+    ...where,
+    is_active: true,
+    deleted_at: null
+});
+
 const withLegacyVatFallback = (rows) => rows.map((row) => {
     if (!row) return row;
     if (typeof row.get === 'function' && typeof row.setDataValue === 'function') {
@@ -680,7 +701,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
         .filter((item) => item.pos_visible !== false);
 };
 
-// ADR 0080 Amendment (Phase 285, #1318): attaches each item's SECONDARY category ids
+// ADR 0080 Amendment (Phase 286, #1318): attaches each item's SECONDARY category ids
 // (item_folder_memberships) so POS's own client-side folder-chip filters
 // (posCatalogWorkflow.js, TerminalOperationsWorkspace.jsx) can widen their match to the
 // membership union without a second round trip. Scoped to listCatalog() only -- other
@@ -703,21 +724,50 @@ const attachSecondaryFolderIds = async (items) => {
         return safeItems.map((item) => ({ ...item, secondary_folder_ids: [] }));
     }
 
-    const membershipRows = await ItemFolderMembership.findAll({
-        where: { item_id: { [Op.in]: itemIds } },
-        attributes: ['item_id', 'folder_id']
-    });
-    const membershipsByItemId = new Map();
-    membershipRows.forEach((row) => {
-        const list = membershipsByItemId.get(row.item_id) || [];
-        list.push(row.folder_id);
-        membershipsByItemId.set(row.item_id, list);
-    });
+    try {
+        const membershipRows = await ItemFolderMembership.findAll({
+            where: { item_id: { [Op.in]: itemIds } },
+            attributes: ['item_id', 'folder_id']
+        });
+        if (membershipRows.length === 0) {
+            return safeItems.map((item) => ({ ...item, secondary_folder_ids: [] }));
+        }
 
-    return safeItems.map((item) => ({
-        ...item,
-        secondary_folder_ids: membershipsByItemId.get(Number(item?.item_id)) || []
-    }));
+        // RF-1 (PR #1580 review): folder deletion is soft (itemRepository.js's deleteFolder
+        // sets is_active:false + deleted_at, membership rows are left in place) -- resolve
+        // every referenced folder_id through an active-only ItemFolder query and drop any
+        // membership whose folder isn't returned, so a stale membership for an inactive or
+        // soft-deleted folder can never widen a filter match.
+        const referencedFolderIds = [...new Set(membershipRows.map((row) => row.folder_id))];
+        const ItemFolder = safeGetModel('ItemFolder');
+        const activeFolderIds = typeof ItemFolder?.findAll === 'function'
+            ? new Set((await ItemFolder.findAll({
+                where: activeFolderWhere({ folder_id: { [Op.in]: referencedFolderIds } }),
+                attributes: ['folder_id']
+            })).map((folder) => folder.folder_id))
+            : new Set();
+
+        const membershipsByItemId = new Map();
+        membershipRows.forEach((row) => {
+            if (!activeFolderIds.has(row.folder_id)) return;
+            const list = membershipsByItemId.get(row.item_id) || [];
+            list.push(row.folder_id);
+            membershipsByItemId.set(row.item_id, list);
+        });
+
+        return safeItems.map((item) => ({
+            ...item,
+            secondary_folder_ids: membershipsByItemId.get(Number(item?.item_id)) || []
+        }));
+    } catch (error) {
+        // RF-2 (PR #1580 review): tenantModelFactory defines ItemFolderMembership even when
+        // the tenant's DB lacks the table -- .findAll() then rejects with ER_NO_SUCH_TABLE
+        // instead of the model getter itself throwing, so the model-availability check above
+        // can't catch it. Degrade to primary-only (empty secondary_folder_ids) only for that
+        // expected schema-drift error; anything else is a real failure and still throws.
+        if (!isMissingItemFolderMembershipsTableError(error)) throw error;
+        return safeItems.map((item) => ({ ...item, secondary_folder_ids: [] }));
+    }
 };
 
 const computeTransactionTotalCost = (lines = []) => round4(
@@ -4507,28 +4557,58 @@ export const posRepository = {
             ];
         }
         const folderId = Number.parseInt(folder_id, 10);
-        // ADR 0080 Amendment (Phase 285, #1318): POS's catalog-listing folder filter
+        // ADR 0080 Amendment (Phase 286, #1318): POS's catalog-listing folder filter
         // widens to the membership union -- selecting a category also surfaces items
         // whose SECONDARY category (item_folder_memberships) matches, not just their
         // primary. Uses `where[Op.and]` (not `where[Op.or]`, already claimed by the
         // search block above) so both conditions combine correctly regardless of order.
         if (Number.isInteger(folderId) && folderId > 0) {
-            where.folder_id = folderId;
-            const ItemFolderMembership = safeGetModel('ItemFolderMembership');
-            if (typeof ItemFolderMembership?.findAll === 'function') {
-                const membershipRows = await ItemFolderMembership.findAll({
-                    where: { folder_id: folderId },
-                    attributes: ['item_id']
-                });
-                const memberItemIds = [...new Set(membershipRows.map((row) => row.item_id))];
-                if (memberItemIds.length > 0) {
-                    delete where.folder_id;
-                    where[Op.and] = (Array.isArray(where[Op.and]) ? where[Op.and] : []).concat([{
-                        [Op.or]: [
-                            { folder_id: folderId },
-                            { item_id: { [Op.in]: memberItemIds } }
-                        ]
-                    }]);
+            // RF-1 (PR #1580 review): resolve the REQUESTED folder itself against an
+            // active-only ItemFolder query first. `canVerifyFolder` is false only when
+            // ItemFolder itself is unavailable (never expected in practice -- it's a
+            // foundational model, not the newer join table) -- don't invent a false negative
+            // in that case and fall through to the pre-amendment primary-only match instead.
+            const ItemFolder = safeGetModel('ItemFolder');
+            const canVerifyFolder = typeof ItemFolder?.findOne === 'function';
+            const requestedFolder = canVerifyFolder
+                ? await ItemFolder.findOne({
+                    where: activeFolderWhere({ folder_id: folderId }),
+                    attributes: ['folder_id']
+                })
+                : null;
+
+            if (canVerifyFolder && !requestedFolder) {
+                // The requested folder is inactive, soft-deleted, or doesn't exist at all --
+                // never fall back to a primary-only match against it. -1 is an impossible
+                // folder_id (autoincrement, always positive), ANDed with every other top-level
+                // `where` key regardless of how the search block above combines its own
+                // Op.or/Op.and, so this always yields zero rows.
+                where.folder_id = -1;
+            } else {
+                where.folder_id = folderId;
+                try {
+                    const ItemFolderMembership = safeGetModel('ItemFolderMembership');
+                    if (typeof ItemFolderMembership?.findAll === 'function') {
+                        const membershipRows = await ItemFolderMembership.findAll({
+                            where: { folder_id: folderId },
+                            attributes: ['item_id']
+                        });
+                        const memberItemIds = [...new Set(membershipRows.map((row) => row.item_id))];
+                        if (memberItemIds.length > 0) {
+                            delete where.folder_id;
+                            where[Op.and] = (Array.isArray(where[Op.and]) ? where[Op.and] : []).concat([{
+                                [Op.or]: [
+                                    { folder_id: folderId },
+                                    { item_id: { [Op.in]: memberItemIds } }
+                                ]
+                            }]);
+                        }
+                    }
+                } catch (error) {
+                    // RF-2 (PR #1580 review): tenantModelFactory defines ItemFolderMembership
+                    // even when the tenant's DB lacks the table -- .findAll() then rejects with
+                    // ER_NO_SUCH_TABLE. Degrade to the primary-only match already set above.
+                    if (!isMissingItemFolderMembershipsTableError(error)) throw error;
                 }
             }
         }

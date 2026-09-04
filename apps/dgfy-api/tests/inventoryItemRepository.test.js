@@ -2650,7 +2650,7 @@ describe('inventory itemRepository', () => {
     });
   });
 
-  describe('ADR 0080 Amendment (Phase 285, #1318) — catalog filter widens to secondary categories', () => {
+  describe('ADR 0080 Amendment (Phase 286, #1318) — catalog filter widens to secondary categories', () => {
     const buildItemRows = (items) => items.map((item) => ({ toJSON: () => item }));
 
     it('widens the folder_id filter to the membership union when secondary members exist', async () => {
@@ -2665,17 +2665,24 @@ describe('inventory itemRepository', () => {
         if (where?.item_id) return Promise.resolve([{ item_id: 5, folder_id: 30 }]);
         return Promise.resolve([]);
       });
+      const ItemFolder = {
+        findOne: jest.fn().mockResolvedValue({ folder_id: 20 }),
+        findAll: jest.fn().mockResolvedValue([{ folder_id: 30 }])
+      };
 
       jest.spyOn(dbStore, 'get').mockImplementation((name) => {
         if (name === 'Item') return Item;
         if (name === 'ProductComposition') return {};
-        if (name === 'ItemFolder') return {};
+        if (name === 'ItemFolder') return ItemFolder;
         if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
         return {};
       });
 
       const result = await itemRepository.getItems({ folder_id: '20', page: '1', limit: '20' });
 
+      expect(ItemFolder.findOne).toHaveBeenCalledWith(expect.objectContaining({
+        where: { folder_id: 20, is_active: true, deleted_at: null }
+      }));
       const args = Item.findAndCountAll.mock.calls[0][0];
       expect(args.where.folder_id).toBeUndefined();
       expect(args.where[Op.and]).toEqual([
@@ -2692,11 +2699,12 @@ describe('inventory itemRepository', () => {
         findAndCountAll: jest.fn().mockResolvedValue({ count: 0, rows: [] })
       };
       const membershipFindAll = jest.fn().mockResolvedValue([]);
+      const ItemFolder = { findOne: jest.fn().mockResolvedValue({ folder_id: 20 }), findAll: jest.fn().mockResolvedValue([]) };
 
       jest.spyOn(dbStore, 'get').mockImplementation((name) => {
         if (name === 'Item') return Item;
         if (name === 'ProductComposition') return {};
-        if (name === 'ItemFolder') return {};
+        if (name === 'ItemFolder') return ItemFolder;
         if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
         return {};
       });
@@ -2713,11 +2721,12 @@ describe('inventory itemRepository', () => {
         findAndCountAll: jest.fn().mockResolvedValue({ count: 0, rows: [] })
       };
       const membershipFindAll = jest.fn().mockResolvedValue([]);
+      const ItemFolder = { findOne: jest.fn() };
 
       jest.spyOn(dbStore, 'get').mockImplementation((name) => {
         if (name === 'Item') return Item;
         if (name === 'ProductComposition') return {};
-        if (name === 'ItemFolder') return {};
+        if (name === 'ItemFolder') return ItemFolder;
         if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
         return {};
       });
@@ -2726,10 +2735,11 @@ describe('inventory itemRepository', () => {
 
       const args = Item.findAndCountAll.mock.calls[0][0];
       expect(args.where.folder_id).toBeNull();
-      // The folder_id -> item_id membership lookup is only ever attempted for a real
-      // numeric folder id, never for the null/none sentinel. attachSecondaryFolderIds
-      // still runs afterward, but with zero result rows its own itemIds list is empty,
-      // so it also never calls findAll.
+      // The folder_id -> item_id membership lookup (and the folder liveness check that gates
+      // it) is only ever attempted for a real numeric folder id, never for the null/none
+      // sentinel. attachSecondaryFolderIds still runs afterward, but with zero result rows its
+      // own itemIds list is empty, so it also never calls findAll.
+      expect(ItemFolder.findOne).not.toHaveBeenCalled();
       expect(membershipFindAll).not.toHaveBeenCalled();
     });
 
@@ -2740,11 +2750,12 @@ describe('inventory itemRepository', () => {
           rows: buildItemRows([{ item_id: 5, name: 'Latte', folder_id: 10 }])
         })
       };
+      const ItemFolder = { findOne: jest.fn().mockResolvedValue({ folder_id: 20 }) };
 
       jest.spyOn(dbStore, 'get').mockImplementation((name) => {
         if (name === 'Item') return Item;
         if (name === 'ProductComposition') return {};
-        if (name === 'ItemFolder') return {};
+        if (name === 'ItemFolder') return ItemFolder;
         // Catch-all stub, the same convention already used throughout this test suite for
         // models a given test doesn't care about -- must not be mistaken for "the
         // membership model is available" (it has no .findAll).
@@ -2757,6 +2768,162 @@ describe('inventory itemRepository', () => {
       expect(args.where.folder_id).toBe('20');
       expect(args.where[Op.and]).toBeUndefined();
       expect(result.items[0].secondary_folder_ids).toEqual([]);
+    });
+
+    // --- RF-1: inactive / soft-deleted / mixed folder liveness ---------------------------
+
+    it('RF-1: returns zero rows for an inactive requested folder, never a primary-only fallback', async () => {
+      const Item = { findAndCountAll: jest.fn().mockResolvedValue({ count: 0, rows: [] }) };
+      const membershipFindAll = jest.fn();
+      // Active-only query for folder_id 20 finds nothing -- folder 20 exists but is inactive.
+      const ItemFolder = { findOne: jest.fn().mockResolvedValue(null) };
+
+      jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+        if (name === 'Item') return Item;
+        if (name === 'ProductComposition') return {};
+        if (name === 'ItemFolder') return ItemFolder;
+        if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
+        return {};
+      });
+
+      await itemRepository.getItems({ folder_id: '20', page: '1', limit: '20' });
+
+      const args = Item.findAndCountAll.mock.calls[0][0];
+      expect(args.where.folder_id).toBe(-1);
+      // Never even attempts the membership union query once the folder itself fails the
+      // active-only check.
+      expect(membershipFindAll).not.toHaveBeenCalled();
+    });
+
+    it('RF-1: returns zero rows for a soft-deleted requested folder (same as inactive)', async () => {
+      const Item = { findAndCountAll: jest.fn().mockResolvedValue({ count: 0, rows: [] }) };
+      // Same active-only query shape covers both is_active:false and a non-null deleted_at --
+      // this test exists as its own case (not folded into the inactive one) per the review's
+      // explicit ask for a distinct soft-deleted case.
+      const ItemFolder = { findOne: jest.fn().mockResolvedValue(null) };
+
+      jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+        if (name === 'Item') return Item;
+        if (name === 'ProductComposition') return {};
+        if (name === 'ItemFolder') return ItemFolder;
+        if (name === 'ItemFolderMembership') return { findAll: jest.fn() };
+        return {};
+      });
+
+      await itemRepository.getItems({ folder_id: '20', page: '1', limit: '20' });
+
+      expect(ItemFolder.findOne).toHaveBeenCalledWith(expect.objectContaining({
+        where: { folder_id: 20, is_active: true, deleted_at: null }
+      }));
+      const args = Item.findAndCountAll.mock.calls[0][0];
+      expect(args.where.folder_id).toBe(-1);
+    });
+
+    it('RF-1: drops a secondary membership pointing at an inactive/soft-deleted folder, keeps an active one (mixed case)', async () => {
+      const Item = {
+        findAndCountAll: jest.fn().mockResolvedValue({
+          count: 1,
+          rows: buildItemRows([{ item_id: 5, name: 'Latte', folder_id: 10 }])
+        })
+      };
+      // Item 5 has two secondary memberships: folder 30 (active) and folder 40 (stale).
+      const membershipFindAll = jest.fn().mockResolvedValue([
+        { item_id: 5, folder_id: 30 },
+        { item_id: 5, folder_id: 40 }
+      ]);
+      // The active-only ItemFolder query for [30, 40] only returns 30 -- 40 is inactive/deleted.
+      const ItemFolder = {
+        findAll: jest.fn().mockImplementation(({ where }) => {
+          const requested = where?.folder_id?.[Op.in] || [];
+          return Promise.resolve(requested.filter((id) => id === 30).map((id) => ({ folder_id: id })));
+        })
+      };
+
+      jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+        if (name === 'Item') return Item;
+        if (name === 'ProductComposition') return {};
+        if (name === 'ItemFolder') return ItemFolder;
+        if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
+        return {};
+      });
+
+      const result = await itemRepository.getItems({ page: '1', limit: '20' });
+
+      expect(result.items[0].secondary_folder_ids).toEqual([30]);
+    });
+
+    // --- RF-2: a missing item_folder_memberships table (schema drift, not a missing model) --
+
+    it('RF-2: filter widening degrades to primary-only when ItemFolderMembership.findAll rejects with ER_NO_SUCH_TABLE', async () => {
+      const Item = {
+        findAndCountAll: jest.fn().mockResolvedValue({
+          count: 1,
+          rows: buildItemRows([{ item_id: 5, name: 'Latte', folder_id: 10 }])
+        })
+      };
+      const tableMissingError = Object.assign(new Error("Table 'tenant_x.item_folder_memberships' doesn't exist"), {
+        original: { code: 'ER_NO_SUCH_TABLE', sqlMessage: "Table 'tenant_x.item_folder_memberships' doesn't exist" }
+      });
+      const ItemFolder = { findOne: jest.fn().mockResolvedValue({ folder_id: 20 }) };
+
+      jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+        if (name === 'Item') return Item;
+        if (name === 'ProductComposition') return {};
+        if (name === 'ItemFolder') return ItemFolder;
+        if (name === 'ItemFolderMembership') return { findAll: jest.fn().mockRejectedValue(tableMissingError) };
+        return {};
+      });
+
+      const result = await itemRepository.getItems({ folder_id: '20', page: '1', limit: '20' });
+
+      const args = Item.findAndCountAll.mock.calls[0][0];
+      expect(args.where.folder_id).toBe('20');
+      expect(args.where[Op.and]).toBeUndefined();
+      expect(result.items[0].secondary_folder_ids).toEqual([]);
+    });
+
+    it('RF-2: attachSecondaryFolderIds degrades to primary-only when ItemFolderMembership.findAll rejects with ER_NO_SUCH_TABLE', async () => {
+      const Item = {
+        findAndCountAll: jest.fn().mockResolvedValue({
+          count: 1,
+          rows: buildItemRows([{ item_id: 5, name: 'Latte', folder_id: 10 }])
+        })
+      };
+      const tableMissingError = Object.assign(new Error("Table 'tenant_x.item_folder_memberships' doesn't exist"), {
+        original: { code: 'ER_NO_SUCH_TABLE', sqlMessage: "Table 'tenant_x.item_folder_memberships' doesn't exist" }
+      });
+
+      jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+        if (name === 'Item') return Item;
+        if (name === 'ProductComposition') return {};
+        if (name === 'ItemFolder') return {};
+        if (name === 'ItemFolderMembership') return { findAll: jest.fn().mockRejectedValue(tableMissingError) };
+        return {};
+      });
+
+      const result = await itemRepository.getItems({ page: '1', limit: '20' });
+
+      expect(result.items[0].secondary_folder_ids).toEqual([]);
+    });
+
+    it('RF-2: a rejection unrelated to the missing table still propagates (not silently swallowed)', async () => {
+      const Item = {
+        findAndCountAll: jest.fn().mockResolvedValue({
+          count: 1,
+          rows: buildItemRows([{ item_id: 5, name: 'Latte', folder_id: 10 }])
+        })
+      };
+      const unrelatedError = new Error('connection reset');
+
+      jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+        if (name === 'Item') return Item;
+        if (name === 'ProductComposition') return {};
+        if (name === 'ItemFolder') return {};
+        if (name === 'ItemFolderMembership') return { findAll: jest.fn().mockRejectedValue(unrelatedError) };
+        return {};
+      });
+
+      await expect(itemRepository.getItems({ page: '1', limit: '20' })).rejects.toThrow('connection reset');
     });
   });
 });
