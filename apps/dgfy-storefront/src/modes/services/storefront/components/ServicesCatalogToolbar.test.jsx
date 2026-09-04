@@ -13,6 +13,7 @@ const servicesViewModel = {
   serviceGroups: [
     {
       categoryKey: 'laundry',
+      categoryIdentity: 'folder:11',
       categoryMeta: {
         label: 'Laundry',
         iconToken: 'laundry',
@@ -105,7 +106,56 @@ describe('ServicesCatalogToolbar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Category.*All services.*2/ }));
     fireEvent.click(screen.getByRole('button', { name: /Laundry.*1 service/ }));
-    expect(setActiveServiceTab).toHaveBeenCalledWith('laundry');
+    // RF-4 (PR #1583 review): the shared toolbar must select by the stable `categoryIdentity`
+    // (folder_id-based), not the normalized `categoryKey` display text.
+    expect(setActiveServiceTab).toHaveBeenCalledWith('folder:11');
+  });
+
+  // RF-4 (PR #1583 review): two distinct-`folder_id` categories that happen to share a
+  // normalized `categoryKey`/display label must render as two separately selectable options,
+  // never collapse into one. Consumer-level counterpart to the view-model-level regression test
+  // in servicesStorefrontViewModel.test.js.
+  it('renders and independently selects two colliding-name, distinct-identity categories', () => {
+    const collidingViewModel = {
+      allServices: [
+        { item_id: 1, name: 'Wash and Fold' },
+        { item_id: 2, name: 'Machine Wash' }
+      ],
+      serviceGroups: [
+        {
+          categoryKey: 'wash',
+          categoryIdentity: 'folder:10',
+          categoryMeta: { label: 'Wash', iconToken: 'laundry', accent: '#1A4E8D', accentBg: '#EEF6FD' },
+          items: [{ item_id: 1, name: 'Wash and Fold' }]
+        },
+        {
+          categoryKey: 'wash',
+          categoryIdentity: 'folder:11',
+          categoryMeta: { label: 'Wash', iconToken: 'laundry', accent: '#1A4E8D', accentBg: '#EEF6FD' },
+          items: [{ item_id: 2, name: 'Machine Wash' }]
+        }
+      ]
+    };
+    const setActiveServiceTab = vi.fn();
+    render(
+      <ServicesCatalogToolbar
+        {...baseProps}
+        servicesViewModel={collidingViewModel}
+        setActiveServiceTab={setActiveServiceTab}
+        visibleServiceCount={2}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Category.*All services.*2/ }));
+    const washOptions = screen.getAllByRole('button', { name: /Wash.*1 service/ });
+    expect(washOptions).toHaveLength(2); // both distinct-folder groups render, not merged into one
+
+    fireEvent.click(washOptions[0]);
+    expect(setActiveServiceTab).toHaveBeenNthCalledWith(1, 'folder:10');
+
+    fireEvent.click(screen.getByRole('button', { name: /Category.*All services.*2/ }));
+    fireEvent.click(screen.getAllByRole('button', { name: /Wash.*1 service/ })[1]);
+    expect(setActiveServiceTab).toHaveBeenNthCalledWith(2, 'folder:11');
   });
 
   it('keeps the mobile category strip with the search interaction', () => {
