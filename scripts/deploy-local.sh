@@ -35,6 +35,24 @@
 # label, build only what changed since then). Dropped 2026-08-14 (#420) for
 # the same reason deploy.yml's auto mode was dropped: this script exists so
 # you explicitly pick what to build, not so something decides for you.
+#
+# ADR 0081 (#1575, epic #1548 Wave 3, Phase 277) -- version tags (X.Y.Z[-channel]) and the
+# APP_VERSION build-arg. Decision made here, deliberately: this script computes the same
+# APP_VERSION value CI would (same package.json read, same DEV/STAGING channel-suffix rule) and
+# bakes it into every local build for build-arg parity with CI -- but --push NEVER publishes an
+# X.Y.Z[-channel] *tag*, only the existing moving-channel tag and sha-<7> tag, unchanged. Two
+# reasons, not one:
+#   1. #714 is still open: this script's --push has no platform/arch guard yet, and already writes
+#      the shared DEV/STAGING tags the servers pull. Layering a second binding invariant (ADR 0081
+#      Decision 7's tag-immutability guard) onto a push path already flagged unsafe, before that
+#      gap is fixed, compounds risk instead of reducing it.
+#   2. The immutability guard itself (scripts/check-tag-immutability.js) only has real test
+#      coverage as invoked from CI (deploy-api.yml/deploy-migration-runner.yml/
+#      deploy-frontend.yml's own "Publish version tag" step). Reusing it here would mean a
+#      binding invariant enforced by an un-rehearsed local code path -- if it's ever wrong, GHCR
+#      finds out from a human's laptop instead of CI.
+# PROD (bare X.Y.Z, no suffix) is moot for this script either way -- PROD deploys go through
+# deploy-main.yml, not this script (see the case statement below).
 set -Eeuo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -77,22 +95,41 @@ esac
 REGISTRY="ghcr.io/sieitzz"
 REVISION="$(git rev-parse HEAD)"
 
+# ADR 0081 Decision 1: DEV -> "-dev", STAGING -> "-staging" (PROD/bare is out of reach here -- see
+# the header comment). Read per-app below, at each build call, since each app's package.json
+# version can differ (ADR 0081 Decision 6 is per-app, not platform-wide).
+case "$ENVIRONMENT" in
+  DEV) CHANNEL_SUFFIX="-dev" ;;
+  STAGING) CHANNEL_SUFFIX="-staging" ;;
+esac
+app_version() {
+  node -p "require('./apps/$1/package.json').version"
+}
+
 echo "== deploy-local: environment=$ENVIRONMENT tag=$TAG components=$COMPONENTS revision=$REVISION =="
 
 build_backend() {
-  echo "-- building api (tag: $TAG, sha-$( echo "$REVISION" | cut -c1-7)) --"
+  local api_version migration_runner_version
+  api_version="$(app_version dgfy-api)${CHANNEL_SUFFIX}"
+  migration_runner_version="$(app_version dgfy-migration-runner)${CHANNEL_SUFFIX}"
+
+  echo "-- building api (tag: $TAG, sha-$( echo "$REVISION" | cut -c1-7), version: $api_version -- not pushed as its own tag, see --push below) --"
   docker build -f infrastructure/docker/dgfy-api/Dockerfile \
     -t "$REGISTRY/dgfy-api:$TAG" -t "$REGISTRY/dgfy-api:sha-${REVISION:0:7}" \
-    --label "org.opencontainers.image.revision=$REVISION" .
+    --label "org.opencontainers.image.revision=$REVISION" \
+    --label "org.opencontainers.image.version=$api_version" \
+    --build-arg "APP_VERSION=$api_version" .
 
-  echo "-- building migration-runner (tag: $TAG, sha-$( echo "$REVISION" | cut -c1-7)) --"
+  echo "-- building migration-runner (tag: $TAG, sha-$( echo "$REVISION" | cut -c1-7), version: $migration_runner_version -- not pushed as its own tag, see --push below) --"
   # Single-platform locally (no QEMU setup implied) -- deliberately not
   # dual-arch like CI's deploy-migration-runner.yml. If you need arm64,
   # add --platform linux/amd64,linux/arm64 yourself once buildx has a
   # multi-platform builder configured (docker buildx create --use).
   docker build -f infrastructure/docker/dgfy-migration-runner/Dockerfile \
     -t "$REGISTRY/dgfy-migration-runner:$TAG" -t "$REGISTRY/dgfy-migration-runner:sha-${REVISION:0:7}" \
-    --label "org.opencontainers.image.revision=$REVISION" .
+    --label "org.opencontainers.image.revision=$REVISION" \
+    --label "org.opencontainers.image.version=$migration_runner_version" \
+    --build-arg "APP_VERSION=$migration_runner_version" .
 }
 
 # One image per frontend app now (issue #322 Phase 6 -- previously one
@@ -104,7 +141,9 @@ build_backend() {
 # local dev/test build, not the shipped artifact.
 build_frontend_app() {
   local app="$1"
-  echo "-- building ${app} (tag: $TAG, sha-${REVISION:0:7}) --"
+  local app_ver
+  app_ver="$(app_version "$app")${CHANNEL_SUFFIX}"
+  echo "-- building ${app} (tag: $TAG, sha-${REVISION:0:7}, version: ${app_ver} -- not pushed as its own tag, see --push below) --"
   if ! command -v gh >/dev/null; then
     echo "::error:: gh CLI required to fetch this environment's VITE_* build vars." >&2
     exit 1
@@ -115,6 +154,7 @@ build_frontend_app() {
   done < <(gh variable list --env "$ENVIRONMENT" --json name,value --jq '.[] | [.name, .value] | @tsv' 2>/dev/null || true)
   BUILD_ARGS+=(--build-arg "VITE_BUILD_STAMP=${REVISION}")
   BUILD_ARGS+=(--build-arg "VITE_SENTRY_RELEASE=${REVISION}")
+  BUILD_ARGS+=(--build-arg "APP_VERSION=${app_ver}")
   if [ -n "${SENTRY_AUTH_TOKEN:-}" ]; then
     echo "SENTRY_AUTH_TOKEN found in your local env -- source maps will upload."
   else
@@ -123,6 +163,7 @@ build_frontend_app() {
   docker build -f "infrastructure/docker/${app}/Dockerfile" \
     -t "$REGISTRY/${app}:$TAG" -t "$REGISTRY/${app}:sha-${REVISION:0:7}" \
     --label "org.opencontainers.image.revision=$REVISION" \
+    --label "org.opencontainers.image.version=${app_ver}" \
     "${BUILD_ARGS[@]}" .
 }
 
@@ -141,6 +182,8 @@ case "$COMPONENTS" in
 esac
 
 if $DO_PUSH; then
+  # Only the moving-channel tag ($TAG) and sha-<7> tag are pushed here -- never an X.Y.Z[-channel]
+  # version tag. See the ADR 0081 header comment near the top of this file for why.
   echo "== pushing (requires docker login ghcr.io already done locally) =="
   if [ "$COMPONENTS" = "all" ] || [ "$COMPONENTS" = "backend" ]; then
     docker push "$REGISTRY/dgfy-api:$TAG"
