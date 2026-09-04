@@ -198,8 +198,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         handleQtyButtonPointerMove,
         handleQtyButtonPointerUp,
         handleReverseSplitPaymentAndStartNew,
-        handleSearchBackspaceEnd,
-        handleSearchBackspaceStart,
         handleSplitPaymentOpenChange,
         handleSplitPaymentSessionStateChange,
         handleVoidHistoryTransaction,
@@ -487,13 +485,8 @@ return (
                             />
                             <button
                                 type="button"
-                                aria-label="Backspace search"
-                                onMouseDown={handleSearchBackspaceStart}
-                                onMouseUp={handleSearchBackspaceEnd}
-                                onMouseLeave={handleSearchBackspaceEnd}
-                                onTouchStart={handleSearchBackspaceStart}
-                                onTouchEnd={handleSearchBackspaceEnd}
-                                onTouchCancel={handleSearchBackspaceEnd}
+                                aria-label="Clear search"
+                                onClick={() => setSearch('')}
                                 className={`shrink-0 rounded-md p-1 transition ${search ? 'hover:bg-slate-100' : ''}`}
                                 disabled={!search}
                             >

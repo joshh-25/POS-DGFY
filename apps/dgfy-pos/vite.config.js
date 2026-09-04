@@ -7,6 +7,7 @@ import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../package
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import { posOfflinePrecachePlugin } from './vitePosOfflinePrecachePlugin.js';
 import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
+import { resolveAppVersion, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +18,11 @@ const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const allowedHosts = true;
 const appSurface = 'pos';
 const appNodeModules = path.resolve(__dirname, 'node_modules');
+// ADR 0081 Decision 4 (#1548 Wave 3, Phase 278): APP_VERSION build-arg with a package.json
+// fallback, stamped into VITE_APP_VERSION below and, via buildStampPlugin, into the built
+// index.html's <meta name="dgfy-version"> and a generated version.json. See
+// docs/deployment/PWA_SURFACE_CONTRACT.md.
+const appVersion = resolveAppVersion(__dirname);
 // This app's own src/main.jsx only imports `@/components/ui/sonner` directly, but it also
 // pulls in TerminalPage.jsx and WorkflowModeContext.jsx from packages/web-core, and THEIR
 // own internal code still uses the pre-extraction `@/...` self-referential alias convention
@@ -75,9 +81,10 @@ const proxyTargets = {
 
 export default defineConfig({
   base: './',
-  plugins: [react(), esCompatGuardPlugin(), posOfflinePrecachePlugin(), ...buildSentryVitePlugins(appSurface)],
+  plugins: [react(), esCompatGuardPlugin(), posOfflinePrecachePlugin(), buildStampPlugin(appVersion), ...buildSentryVitePlugins(appSurface)],
   define: {
-    'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos')
+    'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos'),
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],

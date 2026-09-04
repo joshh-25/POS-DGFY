@@ -155,6 +155,7 @@ export const salesRepository = {
     const User = dbStore.get('User');
     const PosTransactionDiscount = dbStore.get('PosTransactionDiscount');
     const PosTransactionDiscountLine = dbStore.get('PosTransactionDiscountLine');
+    const PosTransactionDiscountBeneficiary = dbStore.get('PosTransactionDiscountBeneficiary');
 
     const page = Number.parseInt(filters.page, 10) || 1;
     const limit = Math.min(Number.parseInt(filters.limit, 10) || 20, 200);
@@ -209,7 +210,10 @@ export const salesRepository = {
             model: PosTransactionDiscount,
             as: 'discount',
             required: false,
-            include: [{ model: PosTransactionDiscountLine, as: 'lines', required: false }]
+            include: [
+              { model: PosTransactionDiscountLine, as: 'lines', required: false },
+              { model: PosTransactionDiscountBeneficiary, as: 'beneficiaries', required: false, include: [{ model: PosTransactionDiscountLine, as: 'lines', required: false }] }
+            ]
           }
         ],
         order: [['created_at', 'DESC']]

@@ -4,7 +4,8 @@ export const loadShiftCloseResolution = async ({
   isOnline,
   locationId,
   listQueueEntries,
-  fetchParkedSales
+  fetchParkedSales,
+  includeServerParkedSales = true
 }) => {
   const normalizedShiftId = Number.parseInt(shiftId, 10);
   if (!Number.isInteger(normalizedShiftId) || normalizedShiftId <= 0) {
@@ -17,7 +18,9 @@ export const loadShiftCloseResolution = async ({
     && Number.parseInt(entry?.shift_id || entry?.payload?.shift_id, 10) === normalizedShiftId
   )).length;
 
-  if (!isOnline) return { claimedParkedSaleCount: 0, pendingParkedSaleCount };
+  if (!isOnline || !includeServerParkedSales) {
+    return { claimedParkedSaleCount: 0, pendingParkedSaleCount };
+  }
 
   const result = await fetchParkedSales({
     shift_id: normalizedShiftId,

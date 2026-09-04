@@ -106,6 +106,14 @@ RUN --mount=type=secret,id=sentry_auth_token,required=false \
     && npm run build
 
 FROM nginx:alpine AS runtime
+# ADR 0081 Decision 4 (#1575, epic #1548 Wave 3, Phase 277): runtime version equals the published
+# image tag (e.g. "1.5.2-staging"), baked in at build time so the running container can report
+# exactly what was published. nginx doesn't consume this itself yet -- Phase 278 wires the frontend
+# build-stamp equivalent (VITE_APP_VERSION/version.json) that actually reads it; this stage-level
+# ARG/ENV is what makes the value reachable there. Empty default keeps a local `docker build` with
+# no --build-arg working unchanged (see scripts/deploy-local.sh).
+ARG APP_VERSION=""
+ENV APP_VERSION=${APP_VERSION}
 RUN apk add --no-cache curl
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY infrastructure/docker/dgfy-storefront/nginx.conf /etc/nginx/conf.d/default.conf

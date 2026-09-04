@@ -4,6 +4,7 @@ import sequelize from '../config/database.js';
 export default sequelize.define('PosTransactionDiscountLine', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   transaction_discount_id: { type: DataTypes.INTEGER, allowNull: false },
+  beneficiary_id: { type: DataTypes.INTEGER, allowNull: true },
   transaction_line_id: { type: DataTypes.INTEGER, allowNull: false },
   item_id: { type: DataTypes.INTEGER, allowNull: false },
   eligible_quantity: { type: DataTypes.DECIMAL(24, 12), allowNull: false, defaultValue: 0 },

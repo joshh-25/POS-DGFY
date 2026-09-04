@@ -81,7 +81,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260824000001-create-pos-cashier-attendance-operator-sessions.cjs',
     '20260824000002-add-pos-attendance-idempotency.cjs',
     '20260824000003-add-pos-cashier-pin-and-operator-authority.cjs',
-    '20260825000001-add-pos-operator-protected-operation-lease.cjs'
+    '20260825000001-add-pos-operator-protected-operation-lease.cjs',
+    '20260904000001-create-pos-discount-beneficiaries.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({

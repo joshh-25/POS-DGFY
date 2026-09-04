@@ -6,6 +6,7 @@ import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../packages/web-core/vite/sentryViteConfig.js';
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
+import { resolveAppVersion, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
 // Opt-in only (VITE_ANALYZE_BUNDLE=true) -- writes a stats.html treemap next
 // to the build output. Never runs in a normal `build` so it can't perturb
 // production build size/timing. See issue #282's Phase A baseline:
@@ -24,6 +25,11 @@ const allowedHosts = true;
 // 'store', not 'storefront' -- kept as-is pending Phase 6's consumer fanout.
 const appSurface = 'store';
 const appNodeModules = path.resolve(__dirname, 'node_modules');
+// ADR 0081 Decision 4 (#1548 Wave 3, Phase 278): APP_VERSION build-arg with a package.json
+// fallback, stamped into VITE_APP_VERSION below and, via buildStampPlugin, into the built
+// index.html's <meta name="dgfy-version"> and a generated version.json. See
+// docs/deployment/PWA_SURFACE_CONTRACT.md.
+const appVersion = resolveAppVersion(__dirname);
 const securityHeaders = {
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
   'X-Content-Type-Options': 'nosniff',
@@ -95,6 +101,7 @@ export default defineConfig(async () => {
   plugins: [
     react(),
     esCompatGuardPlugin(),
+    buildStampPlugin(appVersion),
     ...buildSentryVitePlugins(appSurface),
     ...(shouldAnalyzeBundle
       ? [visualizer({
@@ -107,7 +114,8 @@ export default defineConfig(async () => {
   ],
   define: {
     'import.meta.env.VITE_BUILD_STAMP': JSON.stringify(process.env.VITE_BUILD_STAMP || new Date().toISOString()),
-    'import.meta.env.VITE_APP_SURFACE': JSON.stringify('store')
+    'import.meta.env.VITE_APP_SURFACE': JSON.stringify('store'),
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],

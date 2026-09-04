@@ -278,20 +278,6 @@ const toStatusLabel = (status) => {
     }
 };
 
-const haversineDistanceKm = ({ lat1, lon1, lat2, lon2 }) => {
-    const toRad = (value) => value * (Math.PI / 180);
-    const earthRadiusKm = 6371;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const lat1Rad = toRad(lat1);
-    const lat2Rad = toRad(lat2);
-
-    const a = Math.sin(dLat / 2) ** 2
-        + (Math.sin(dLon / 2) ** 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return earthRadiusKm * c;
-};
-
 const parseSettingValue = (rawValue, fallback = null) => {
     if (rawValue == null) return fallback;
     if (typeof rawValue !== 'string') return rawValue;
@@ -443,7 +429,6 @@ const serializeOrderBase = (order) => ({
     delivery_fee_waiver_label_snapshot: order?.delivery_fee_waiver_label_snapshot ?? null,
     total_amount: order?.total_amount,
     discount: order?.discount || null,
-    outside_radius_flag: order?.outside_radius_flag,
     scheduled_for: order?.scheduled_for,
     special_instructions: order?.special_instructions,
     created_at: order?.created_at,
@@ -569,23 +554,6 @@ export const resolveStorefrontPaymentSnapshot = ({ paymentType, payload = {}, ca
     };
 };
 
-const resolveDeliveryRadiusFlag = ({ orderMethod, location, deliveryLatitude, deliveryLongitude }) => {
-    if (orderMethod !== 'delivery') return false;
-    if (!location) return false;
-    if (!Number.isFinite(Number(location.latitude)) || !Number.isFinite(Number(location.longitude))) return false;
-    if (!Number.isFinite(Number(deliveryLatitude)) || !Number.isFinite(Number(deliveryLongitude))) return false;
-
-    const distanceKm = haversineDistanceKm({
-        lat1: Number(location.latitude),
-        lon1: Number(location.longitude),
-        lat2: Number(deliveryLatitude),
-        lon2: Number(deliveryLongitude)
-    });
-    const radiusKm = Number(location.delivery_radius_km || 0);
-    if (!Number.isFinite(radiusKm) || radiusKm <= 0) return false;
-    return distanceKm > radiusKm;
-};
-
 // Phase 236 (#1328): the parsed flat store_delivery_fee value, extracted to its own helper so
 // resolveStoreDeliveryFee can reuse it as the fixed-mode price AND as the fallback-mode price for
 // calculated tenants (ADR 0078 Decision 2 [binding]) without duplicating the parse/guard logic.
@@ -707,7 +675,16 @@ const resolveStoreDeliveryFee = async ({
     // dragging a repository call into a function whose byte-identity regression tests depend on it
     // staying await-free.
     const waiverAmount = 0;
-    const overrideAmount = null; // Hardcoded this phase -- #238 overrides the PERSISTED column post-hoc, not resolve-time.
+    // Hardcoded, and #1564 settled that this is the correct model rather than a stub: the staff
+    // override (#238, modules/pos/usecases/deliveryFeeOverrideUseCases.js) corrects an
+    // already-persisted pos_transactions row after checkout. There is no live quote for it to feed
+    // back into, and accepting one here would force this resolver to read persisted state --
+    // breaking the I/O-free, await-free contract its own header and the byte-identity regression
+    // tests depend on, and putting a second writer on ADR 0078 Decision 4's single storefront choke
+    // point. At resolve time no override exists yet, by definition, so `null` is the truthful value.
+    // (Not to be confused with `locationOverride` above -- that is per-LOCATION fee configuration,
+    // ADR 0078 Decision 6 / #1346, an unrelated axis.)
+    const overrideAmount = null;
     const finalFee = overrideAmount !== null ? overrideAmount : Math.max(0, round4(baseFee - waiverAmount));
 
     return Object.freeze({
@@ -1431,6 +1408,11 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellin
         category: item.category,
         product_type: item.product_type || null,
         folder_name: item.folder_name || item.product_folder || item?.folder?.name || null,
+        // Phase 285 (#1318, C1): the item's secondary category memberships, additive to
+        // folder_name/folder_id above (ADR 0080 Decision 1/4). [{ folder_id, folder_name }],
+        // ordered by sort_order. A grouping surface (C2, not this phase) keys a render per
+        // section off this array per ADR 0080 Decision 5; this phase only projects the data.
+        secondary_categories: Array.isArray(item.secondary_categories) ? item.secondary_categories : [],
         unit_of_measure: item.unit_of_measure || null,
         default_sale_price: displaySalePrice,
         affiliate_price_applied: affiliatePriceApplied,
@@ -1940,10 +1922,9 @@ const resolveCheckoutContext = async ({
     // Phase 236 (#1328, epic #1321): observation-only server-side road-distance capture. Fired
     // (not awaited) as soon as location + delivery coordinates are both resolved, so it runs
     // concurrently with the rest of this function's own I/O (voucher/promo resolution, etc.)
-    // rather than adding to this function's serial latency in the common case -- same guard shape
-    // resolveDeliveryRadiusFlag below already uses. Never feeds deliveryFee/totalAmount -- see
-    // resolveStoreDeliveryFee (unchanged) and the mapping applied at this promise's await point
-    // near the end of this function.
+    // rather than adding to this function's serial latency in the common case. Never feeds
+    // deliveryFee/totalAmount -- see resolveStoreDeliveryFee (unchanged) and the mapping applied
+    // at this promise's await point near the end of this function.
     const deliveryOriginLat = Number(location?.latitude);
     const deliveryOriginLng = Number(location?.longitude);
     // Phase 237 (#1329): FIXED a pre-existing correctness gap here -- normalized.delivery_latitude/
@@ -2726,13 +2707,6 @@ const resolveCheckoutContext = async ({
         paymentElection: normalized.payment_election
     });
 
-    const outsideRadiusFlag = resolveDeliveryRadiusFlag({
-        orderMethod,
-        location,
-        deliveryLatitude: normalized.delivery_latitude,
-        deliveryLongitude: normalized.delivery_longitude
-    });
-
     return {
         normalized,
         settings,
@@ -2763,7 +2737,6 @@ const resolveCheckoutContext = async ({
         // configured full_payment", since resolveDownpaymentForTotal fails closed to the same
         // full_payment shape for both. See the payment-session use case's DOWNPAYMENT_POLICY_UNRESOLVED guard.
         downpaymentSettings: downpaymentSettings || null,
-        outsideRadiusFlag,
         deliveryDistanceMeters,
         deliveryDistanceSource,
         scheduledFor,
@@ -3770,7 +3743,6 @@ export const buildStoreCartQuoteUseCase = ({
                 vat_amount: resolved.prepared.vatAmount,
                 vat_exempt_sales: resolved.prepared.vatExemptSales,
                 zero_rated_sales: resolved.prepared.zeroRatedSales,
-                outside_radius_flag: resolved.outsideRadiusFlag,
                 storefront_open: resolved.storefront_open,
                 estimated_wait_minutes: resolved.estimated_wait_minutes,
                 location: resolved.location ? {
@@ -4147,7 +4119,6 @@ export const buildStoreCheckoutUseCase = ({
                     special_instructions: normalized.special_instructions || null,
                     delivery_fee: resolved.deliveryFee,
                     store_customer_id: normalizedStoreCustomer?.customer_id || null,
-                    outside_radius_flag: resolved.outsideRadiusFlag,
                     // Phase 236 (#1328, epic #1321): observation-only capture, never fed into
                     // delivery_fee/total_amount above.
                     delivery_distance_meters: resolved.deliveryDistanceMeters,

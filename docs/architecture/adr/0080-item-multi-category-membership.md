@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-09-03
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-04
 review_by: 2027-03-03
 applies_to: inventory, pos, storefront, vouchers, fnb, dgfy
 topic: item_multi_category_membership
@@ -96,11 +96,17 @@ against a column with existing NULLs, which ADR 0029's Rollout Policy 3 forbids.
 
 ## Consequences
 
-1. **Zero read-site migration risk in this PR.** Because Decision 4 makes opt-in explicit and this
-   PR opts in no surface, every one of the ~34 existing item→folder read sites across
-   `apps/dgfy-api`, `packages/web-core`, and `apps/dgfy-storefront` is unaffected — verified
-   path-by-path against the read-site inventory this ADR's implementation plan produced, not
-   assumed from the additive-schema argument alone.
+1. **Zero read-site migration risk in the schema-introducing PR (Phase 257).** Because Decision 4
+   makes opt-in explicit and that PR opted in no surface, every one of the ~34 existing item→folder
+   read sites across `apps/dgfy-api`, `packages/web-core`, and `apps/dgfy-storefront` was
+   unaffected at that point — verified path-by-path against the read-site inventory this ADR's
+   implementation plan produced, not assumed from the additive-schema argument alone. **This is a
+   snapshot of that PR, not a standing claim** (RF-5, PR #1583 review) — Decision 4's own default
+   (primary-only until an explicit, shipped phase opts a surface in) still governs every read site
+   that hasn't opted in, but by now several have: the two Decision 5 grouping surfaces this ADR's
+   "Opt-in ledger" above records (F&B `menuSections`, services `serviceGroups`, both Phase 289), and
+   the POS/IMS filter-matching surface the dated Amendment below records (Phase 286). Every other
+   read site not named in either place remains primary-only.
 2. **Six existing write paths need no change, ever, for this feature to work.** Because
    memberships are secondary-only (Decision 2) rather than a mirror of the primary,
    `itemRepository.createItem`/`updateItem`/`deleteFolder`, `itemGroupingService`'s AI
@@ -139,6 +145,85 @@ against a column with existing NULLs, which ADR 0029's Rollout Policy 3 forbids.
    a request exceeding the Decision 6 cap.
 4. A legacy single-folder item with zero membership rows behaves identically before and after this
    PR on every one of the ~34 existing read sites.
+
+## Opt-in ledger (Decision 5 grouping surfaces)
+
+Not itself a decision. Decision 5 already governs exactly what a *grouping* surface's opt-in looks
+like once it opts into Decision 4's union; this table is the running, factual record of which
+grouping surfaces specifically have actually shipped that Decision-5-shaped opt-in, kept separate
+from `## Amendments` because recording a fact Decision 4/5 already pre-authorized is not a new
+architectural decision and needs no `status: amended` bump of its own.
+
+**Scoped to Decision 5 grouping opt-ins only, deliberately** -- Decision 4's opt-in gate is broader
+than grouping surfaces (RF-2, PR #1583 review: an earlier version of this table also listed the
+Phase 286 POS/IMS catalog-filter opt-in here, which contradicted this PR's own "exactly two
+[grouping] surfaces" framing, since filter *matching* is a Decision-4 opt-in that Decision 5 does
+not govern at all -- filter matching returns each item once regardless of how many categories it
+matches, never a per-category render). Phase 286's opt-in is fully recorded in its own dated
+Amendment below, not duplicated here; a future non-grouping Decision 4 opt-in belongs in a new
+Amendment of its own, not in this table.
+
+| Surface | Shape | Phase | Ref |
+|---|---|---|---|
+| F&B storefront menu section grouping (`fnbStorefrontViewModel.js`'s `getFoodBeverageStorefrontViewModel`) | Decision 5 fan-out: an item renders once per section (primary + each distinct secondary category), composite `{sectionIdentity}:{itemId}` key | Phase 289 | #1318 |
+| Services storefront category grouping (`servicesStorefrontViewModel.js`'s `getServicesStorefrontViewModel`) | Decision 5 fan-out: a service renders once per category (primary + each distinct secondary category), composite `{categoryIdentity}:{itemId}` key | Phase 289 | #1318 |
+
+Both rows deliberately exclude the surfaces Decision 5 itself carves out as staying primary-only:
+`buildFnbRelatedItems`' cross-sell rail (F&B "related items") and the flat `services`/`allServices`
+card list (a single-label surface, not a grouping one) are unaffected -- their own list stays
+exactly one entry per item, so their stat counts (`totalItems`, `totalServices`, etc.) are not
+inflated by either surface's fan-out. The composite key's identity half is `folder_id`-based, not
+the normalized display label (RF-1, PR #1583 review) -- two distinct folders whose names happen to
+normalize identically must render as two separate sections/categories, not collapse into one.
+
+## Amendments
+
+### 2026-09-04: POS/IMS catalog-filter matching widens to the membership union (Phase 286, #1318)
+
+Decision 4 requires an explicit, shipped phase before any surface reads the membership union.
+This amendment is that phase for exactly one surface class: the folder/category **filter chips**
+merchants use to browse the catalog in POS and IMS — not the storefront grouping surfaces Decision
+5 already covers, and not any of Decision 1's `[binding]` money-adjacent resolvers.
+
+- **Selecting a category in a POS or IMS catalog filter surfaces items whose SECONDARY category
+  matches, not just their primary.** An item matches a selected folder when
+  `items.folder_id` equals it, **or** the item has an `item_folder_memberships` row for it —
+  the same union Decision 2 already defines, read (not written) by one more class of surface.
+  `[default]`
+- **This is filter *matching*, not grouping render.** Unlike Decision 5's storefront section
+  grouping, a filter chip is a single-select control: choosing one category still returns each
+  matching item exactly once (deduplicated at the `item_id` level), never once per matched
+  category. Decision 5's `{sectionId}:{itemId}` composite-key rendering is a distinct mechanism for
+  a distinct surface shape and stays scoped to F&B menu sections and services categories only —
+  this amendment does not extend it to POS/IMS filter chips. `[default]`
+- **Decision 1's `[binding]` list is completely untouched.** Affiliate category commission,
+  voucher folder scope, F&B folder-inherited modifier groups, and POS sales reports all keep
+  reading `items.folder_id` and only `items.folder_id` — unchanged, and not widened by this
+  amendment. POS reports in particular (`posRepository.js`'s `buildReportInclude` and
+  `normalizeReportLineRows`) are a different code path from the catalog-*listing* functions this
+  amendment touches (`getItems`, `listCatalog`); Consequences item 3's "primary-only permanently"
+  guarantee for reports is unaffected.
+- **Implementation.** `itemRepository.getItems()`'s and `posRepository.listCatalog()`'s own
+  `folder_id` query-param filters widen to an `item_id IN (...)` union query against
+  `item_folder_memberships` when the requested folder has secondary members. Because POS's and
+  IMS's browse UIs (`TerminalOperationsWorkspace.jsx`, `ItemsPage.jsx`) fetch their working item set
+  once and filter client-side rather than re-querying per folder-chip click, `listCatalog()` and
+  `getItems()` also attach each returned item's `secondary_folder_ids` so
+  `posCatalogWorkflow.js`'s `filterCatalogByFolder`/`filterAvailableCatalogFolders`,
+  `TerminalOperationsWorkspace.jsx`'s category-chip match, and `ItemsPage.jsx`'s
+  `doesItemMatchFolder` (opt-in via a `matchSecondary` flag, default `false`) can widen the same
+  way without a second round trip per click. `SkupervisorPOSCheckoutTerminal.jsx` already re-queries
+  `listCatalog()` per folder-chip selection, so the backend widening alone covers it.
+  `doesItemMatchFolder`'s `matchSecondary` flag is deliberately opt-in rather than the function's
+  new default: two of its other callers (`folderCounts`'s per-folder item-count badge, and
+  `handleDragEnd`'s drag-to-reassign "already in this folder" skip check) must stay primary-only —
+  widening the count would conflate primary and secondary counts in a badge Consequences item 4
+  reserves for a later, separate "N items also list this as a secondary category" line, and
+  widening the drag guard would silently no-op a drag-to-set-primary-folder action for an item that
+  is already only a secondary member of the drop target.
+- **Degrades safely.** On a tenant where `item_folder_memberships` isn't available yet, every one
+  of these call sites falls back to exactly the pre-amendment primary-only behavior — no new
+  failure mode, matching Decision 4's existing per-surface opt-in default.
 
 ## References
 

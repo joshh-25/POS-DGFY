@@ -37,6 +37,9 @@ const mockGetFoldersUseCase = jest.fn();
 const mockCreateFolderUseCase = jest.fn();
 const mockUpdateFolderUseCase = jest.fn();
 const mockDeleteFolderUseCase = jest.fn();
+// #1124/#1469: added alongside #1318's list/replace item category membership API.
+const mockListItemFoldersUseCase = jest.fn();
+const mockReplaceItemFoldersUseCase = jest.fn();
 const mockGenerateItemImageUseCase = jest.fn();
 const mockBulkGenerateItemImageUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
@@ -82,6 +85,8 @@ jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   createFolderUseCase: mockCreateFolderUseCase,
   updateFolderUseCase: mockUpdateFolderUseCase,
   deleteFolderUseCase: mockDeleteFolderUseCase,
+  listItemFoldersUseCase: mockListItemFoldersUseCase,
+  replaceItemFoldersUseCase: mockReplaceItemFoldersUseCase,
   generateItemImageUseCase: mockGenerateItemImageUseCase,
   bulkGenerateItemImageUseCase: mockBulkGenerateItemImageUseCase
 }));
@@ -105,6 +110,7 @@ let deleteItem;
 let restoreItem;
 let validateComposition;
 let updateFolder;
+let deleteFolder;
 let replaceItemSuppliers;
 let resolveItemBarcode;
 let importExternalStorefrontCatalogImage;
@@ -120,6 +126,7 @@ beforeAll(async () => {
   restoreItem = mod.restoreItem;
   validateComposition = mod.validateComposition;
   updateFolder = mod.updateFolder;
+  deleteFolder = mod.deleteFolder;
   replaceItemSuppliers = mod.replaceItemSuppliers;
   resolveItemBarcode = mod.resolveItemBarcode;
   importExternalStorefrontCatalogImage = mod.importExternalStorefrontCatalogImage;
@@ -367,6 +374,89 @@ describe('itemHandlers transport contracts', () => {
         message: 'Folder "FG" updated successfully.'
       },
       message: 'Folder "FG" updated successfully.',
+      timestamp: expect.any(String)
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('deleteFolder passes through secondary_items_affected on a successful delete (#1318)', async () => {
+    mockDeleteFolderUseCase.mockResolvedValue({
+      success: true,
+      replacement_folder_id: null,
+      items_moved: 0,
+      secondary_items_affected: 2,
+      message: 'Category "Legacy Folder" deleted successfully. 2 item(s) also list this as a secondary category and will lose that link.'
+    });
+
+    const req = {
+      params: { folder_id: '7' },
+      validatedParams: { folder_id: 7 },
+      validatedData: {},
+      user: { user_id: 2 },
+      requestId: 'req-folder-delete-success'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await deleteFolder(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: {
+        success: true,
+        replacement_folder_id: null,
+        items_moved: 0,
+        secondary_items_affected: 2,
+        message: 'Category "Legacy Folder" deleted successfully. 2 item(s) also list this as a secondary category and will lose that link.'
+      },
+      message: 'Category "Legacy Folder" deleted successfully. 2 item(s) also list this as a secondary category and will lose that link.',
+      timestamp: expect.any(String)
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  // #1578 review RF-1: itemRepository.deleteFolder set a bare
+  // `error.secondary_items_affected` property on the raw 409 error, but
+  // defaultErrorPayload only ever serializes `failure.details` as the response's
+  // `errors` field (a bare top-level property is dropped, whether or not
+  // mapInventoryControllerError's isDomainError() duck-typing passes the error
+  // through unchanged, as it does here, or reconstructs it) -- so the count never
+  // actually reached this transport layer, only the message string did. This is
+  // the regression test for the fix (itemRepository.js now also sets
+  // `error.details = { secondary_items_affected }`).
+  it('deleteFolder returns secondary_items_affected in the 409 reassignment-required error payload (#1578 review RF-1)', async () => {
+    const error = new Error('Category "Mains" is assigned to 1 item(s). Choose an active replacement category before deleting it. 1 item(s) also list this as a secondary category and will lose that link.');
+    error.statusCode = 409;
+    error.code = 'CATEGORY_REASSIGNMENT_REQUIRED';
+    error.secondary_items_affected = 1;
+    error.details = { secondary_items_affected: 1 };
+    mockDeleteFolderUseCase.mockRejectedValue(error);
+
+    const req = {
+      params: { folder_id: '7' },
+      validatedParams: { folder_id: 7 },
+      validatedData: {},
+      user: { user_id: 2 },
+      requestId: 'req-folder-delete-conflict'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await deleteFolder(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      data: null,
+      message: error.message,
+      // error.code and error.message are both strings, so isDomainError()'s duck
+      // typing treats the raw repository error as already-domain-shaped and
+      // mapInventoryControllerError returns it unchanged (the original app-specific
+      // code, not a re-mapped generic DomainErrorCode).
+      error_code: 'CATEGORY_REASSIGNMENT_REQUIRED',
+      errors: { secondary_items_affected: 1 },
+      request_id: 'req-folder-delete-conflict',
       timestamp: expect.any(String)
     });
     expect(next).not.toHaveBeenCalled();

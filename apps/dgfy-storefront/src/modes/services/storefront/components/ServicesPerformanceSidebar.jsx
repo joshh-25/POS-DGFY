@@ -38,17 +38,21 @@ export function ServicesPerformanceSidebar({
             <div style={{ fontSize: 11, fontWeight: 700, color: SERVICES_PALETTE.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Service Families</div>
             {servicesViewModel.serviceGroups.map(group => {
               const GroupIcon = SERVICE_CATEGORY_ICON_MAP[group.categoryMeta?.iconToken] || Sparkles;
+              // RF-4 (PR #1583 review): select/key by the stable `categoryIdentity`
+              // (folder_id-based), never the normalized `categoryKey` display text -- same fix as
+              // StorefrontClassicCatalog.jsx's service-family tabs, required here too since
+              // `resolvedTab` (from StorefrontCatalogRouteContainer.jsx) is now an identity value.
               return (
                 <button
-                  key={group.categoryKey}
+                  key={group.categoryIdentity}
                   type="button"
-                  onClick={() => onSelectServiceTab(group.categoryKey)}
+                  onClick={() => onSelectServiceTab(group.categoryIdentity)}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '10px 14px', borderRadius: 12,
-                    border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${SERVICES_PALETTE.border}`,
-                    background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || SERVICES_PALETTE.primarySoft : SERVICES_PALETTE.surface,
-                    color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : SERVICES_PALETTE.textSecondary,
+                    border: resolvedTab === group.categoryIdentity ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${SERVICES_PALETTE.border}`,
+                    background: resolvedTab === group.categoryIdentity ? group.categoryMeta.accentBg || SERVICES_PALETTE.primarySoft : SERVICES_PALETTE.surface,
+                    color: resolvedTab === group.categoryIdentity ? group.categoryMeta.accent : SERVICES_PALETTE.textSecondary,
                     fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
                     transition: 'all 0.16s ease'
                   }}

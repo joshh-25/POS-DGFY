@@ -60,6 +60,34 @@ describe('POS catalog workflow utilities', () => {
         expect(getVisibleCatalogRange(0, 1, 8, 0)).toEqual({ start: 0, end: 0 });
     });
 
+    // ADR 0080 Amendment (Phase 286, #1318): the folder-chip filter widens to the
+    // membership union -- an item matches a selected folder via either its primary
+    // folder_id or a secondary_folder_ids entry (attached by posRepository's
+    // attachSecondaryFolderIds). Legacy payloads with no secondary_folder_ids field at
+    // all must keep behaving exactly as before (primary-only).
+    it('widens folder matching to secondary category memberships (ADR 0080 Amendment)', () => {
+        const catalog = [
+            { item_id: 1, folder_id: 10, secondary_folder_ids: [] },
+            { item_id: 2, folder_id: 20, secondary_folder_ids: [10] },
+            { item_id: 3, folder_id: 30, secondary_folder_ids: [] },
+            { item_id: 4, folder_id: null, secondary_folder_ids: [10, 20] },
+            { item_id: 5, folder_id: 40 } // legacy payload, no secondary_folder_ids field
+        ];
+
+        expect(filterCatalogByFolder(catalog, 10).map((item) => item.item_id)).toEqual([1, 2, 4]);
+        expect(filterCatalogByFolder(catalog, 20).map((item) => item.item_id)).toEqual([2, 4]);
+        expect(filterCatalogByFolder(catalog, 30).map((item) => item.item_id)).toEqual([3]);
+        // Legacy item (no secondary_folder_ids at all) never matches via membership --
+        // degrades to the old primary-only behavior rather than throwing.
+        expect(filterCatalogByFolder(catalog, 40).map((item) => item.item_id)).toEqual([5]);
+
+        expect(filterAvailableCatalogFolders([
+            { folder_id: 10, name: 'Primary Only' },
+            { folder_id: 20, name: 'Secondary Only' },
+            { folder_id: 99, name: 'Unreferenced' }
+        ], catalog).map((folder) => folder.folder_id)).toEqual([10, 20]);
+    });
+
     it('deduplicates next-page image preloads and preserves request parameters', () => {
         const catalog = [
             { item_id: 1, storefront_image_variants: { thumbnail_url: 'https://cdn.test/a.jpg' } },

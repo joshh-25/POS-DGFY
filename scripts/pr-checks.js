@@ -48,6 +48,10 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { REASON_CODES, evaluateSelfHostedPool, evaluateGithubStatusOutage } = require('./lib/runner-availability');
+// #1569: single repo-level toggle shared with .github/workflows/shared-changed-paths.yml's
+// "Load check:app-versions gate toggle" step -- see that module's own header for why this is a
+// genuine single source of truth, not a hand-kept-in-sync pair.
+const { BLOCKING: APP_VERSIONS_CHECK_BLOCKING } = require('./lib/version-bump-gate-toggle');
 
 const repoRoot = path.resolve(__dirname, '..');
 const REPO_SLUG = 'Sieitzz/dgfy-platform';
@@ -148,11 +152,13 @@ function parseArgs(argv) {
     post: false,
     report: null,
     thresholdMinutes: 20,
+    headRefName: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--tier') options.tier = argv[++i];
     else if (arg === '--base') options.base = argv[++i];
+    else if (arg === '--head') options.headRefName = argv[++i];
     else if (arg === '--pr') options.pr = argv[++i];
     else if (arg === '--post') options.post = true;
     else if (arg === '--report') options.report = argv[++i];
@@ -297,9 +303,40 @@ function computeOverallResult(checks) {
   return relevant.some((c) => c.result === 'warn') ? 'PARTIAL' : 'PASS';
 }
 
+// #1560 PR #1562 review RF-1: this used to set only GITHUB_BASE_REF, leaving
+// GITHUB_HEAD_REF whatever happened to already be in process.env (nothing, on a
+// bare local `npm run check:pr`). check-app-version-bump.js's resolveMode() reads
+// both to pick the required bump level -- an unset head silently fell back to the
+// less-strict `patch-only` mode instead of `minor-floor` for a to-staging/* PR,
+// which could let an under-bumped staging promotion pass the local-CI carve-out.
+// Exported and factored out as its own function so pr-checks.test.js can assert
+// the env this file actually threads to the child check, without spawning it.
+function buildCheckEnv(options) {
+  return {
+    ...process.env,
+    GITHUB_BASE_REF: options.base,
+    GITHUB_HEAD_REF: options.headRefName || process.env.GITHUB_HEAD_REF || '',
+  };
+}
+
+// #1592 (Phase 283): a failing app-version-bump check must map to `'fail'`, not `'warn'`, once
+// BLOCKING is true -- `blocking: true` alone does not change severity, and computeOverallResult()
+// only ever escalates to FAIL on `blocking && result === 'fail'` (a `'warn'` can only degrade PASS
+// to PARTIAL, never FAIL — see that function's own comment). Before this fix, this check's result
+// was hardcoded to `appVersionsResult.ok ? 'pass' : 'warn'` regardless of BLOCKING, so flipping the
+// toggle alone silently left this surface non-blocking in practice — confirmed live via
+// computeOverallResult([{ result: 'warn', blocking: true }]) still returning 'PARTIAL', never
+// 'FAIL'. Extracted as its own pure function, mirroring buildCheckEnv() above, so
+// pr-checks.test.js can assert this mapping directly without spawning the real
+// check-app-version-bump.js child process.
+function resolveAppVersionsCheckResult(ok, blocking) {
+  if (ok) return 'pass';
+  return blocking ? 'fail' : 'warn';
+}
+
 function runChecks(options, changedFiles, components) {
   const checks = [];
-  const env = { ...process.env, GITHUB_BASE_REF: options.base };
+  const env = buildCheckEnv(options);
 
   addCheck(checks, 'changes / detect', 'ported path filters from shared-changed-paths.yml', 'pass');
 
@@ -311,6 +348,19 @@ function runChecks(options, changedFiles, components) {
 
   const receiptResult = runCommand('node', ['scripts/check-pos-receipt-version-bump.js'], { env });
   addCheck(checks, 'pos-receipt version bump', 'node scripts/check-pos-receipt-version-bump.js', receiptResult.ok ? 'pass' : 'warn', false);
+
+  // #1569: `blocking` reads scripts/lib/version-bump-gate-toggle.js's BLOCKING constant instead
+  // of a hardcoded literal -- see that module's header for the flip history. #1592 flipped it to
+  // `true` and fixed the result-severity mapping below to actually honor it (see
+  // resolveAppVersionsCheckResult()'s own comment).
+  const appVersionsResult = runCommand('node', ['scripts/check-app-version-bump.js'], { env });
+  addCheck(
+    checks,
+    'app version bump',
+    'node scripts/check-app-version-bump.js',
+    resolveAppVersionsCheckResult(appVersionsResult.ok, APP_VERSIONS_CHECK_BLOCKING),
+    APP_VERSIONS_CHECK_BLOCKING,
+  );
 
   const complianceResult = runCommand('npm', ['run', 'check:compliance'], { env });
   addCheck(checks, 'compliance impact declarations (stricter than CI — CI runs this advisory today)', 'npm run check:compliance', complianceResult.ok ? 'pass' : 'fail');
@@ -495,15 +545,21 @@ function main() {
   if (!options.pr) {
     options.pr = captureStdout('gh', ['pr', 'view', '--json', 'number', '-q', '.number']);
   }
-  const prJson = options.pr ? captureJson('gh', ['pr', 'view', String(options.pr), '--json', 'title,body,headRefOid']) : null;
+  const prJson = options.pr ? captureJson('gh', ['pr', 'view', String(options.pr), '--json', 'title,body,headRefOid,headRefName']) : null;
   options.prTitle = prJson && prJson.title;
   options.prBody = prJson && prJson.body;
+  // #1560 PR #1562 review RF-1: an explicit --head always wins; otherwise fall back to
+  // the resolved PR's own head branch so buildCheckEnv() can thread a real
+  // GITHUB_HEAD_REF into the child checks (see that function's own comment).
+  if (!options.headRefName) {
+    options.headRefName = (prJson && prJson.headRefName) || null;
+  }
   const headSha = (prJson && prJson.headRefOid) || captureStdout('git', ['rev-parse', 'HEAD']);
 
   const changedFiles = resolveChangedFiles(options.base);
   const components = detectComponents(changedFiles);
 
-  console.log(`[pr-checks] tier=${options.tier} base=${options.base} pr=${options.pr || '<unresolved>'} sha=${headSha}`);
+  console.log(`[pr-checks] tier=${options.tier} base=${options.base} head=${options.headRefName || '<unresolved>'} pr=${options.pr || '<unresolved>'} sha=${headSha}`);
   console.log(`[pr-checks] components: frontend_ims=${components.frontend_ims} frontend_pos=${components.frontend_pos} frontend_storefront=${components.frontend_storefront} dgfy_api=${components.dgfy_api} migration_runner=${components.migration_runner}`);
 
   const checks = runChecks(options, changedFiles, components);
@@ -555,6 +611,8 @@ module.exports = {
   PrChecksError,
   PATH_FILTERS,
   BACKEND_TEST_INVENTORY_FILTER,
+  resolveAppVersionsCheckResult,
+  buildCheckEnv,
   parseArgs,
   detectComponents,
   classifyCiUnavailability,

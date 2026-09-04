@@ -6,6 +6,7 @@ import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../packages/web-core/vite/sentryViteConfig.js';
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
+import { resolveAppVersion, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +17,11 @@ const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const allowedHosts = true;
 const appSurface = 'skupervisor';
 const appNodeModules = path.resolve(__dirname, 'node_modules');
+// ADR 0081 Decision 4 (#1548 Wave 3, Phase 278): APP_VERSION build-arg with a package.json
+// fallback, stamped into VITE_APP_VERSION below and, via buildStampPlugin, into the built
+// index.html's <meta name="dgfy-version"> and a generated version.json. See
+// docs/deployment/PWA_SURFACE_CONTRACT.md.
+const appVersion = resolveAppVersion(__dirname);
 
 // Vitest's SSR module runner needs react-router/react-router-dom pinned explicitly here --
 // resolve.dedupe alone isn't enough for them (unlike bare react/react-dom, which Vite's
@@ -87,9 +93,10 @@ const proxyTargets = {
 };
 
 export default defineConfig({
-  plugins: [react(), esCompatGuardPlugin(), ...buildSentryVitePlugins(appSurface)],
+  plugins: [react(), esCompatGuardPlugin(), buildStampPlugin(appVersion), ...buildSentryVitePlugins(appSurface)],
   define: {
-    'import.meta.env.VITE_APP_SURFACE': JSON.stringify('skupervisor')
+    'import.meta.env.VITE_APP_SURFACE': JSON.stringify('skupervisor'),
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],

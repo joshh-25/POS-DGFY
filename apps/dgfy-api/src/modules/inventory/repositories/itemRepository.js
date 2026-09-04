@@ -103,6 +103,136 @@ const safeGetOptionalModel = (name) => {
     }
 };
 
+// ADR 0080 Amendment (Phase 286, #1318): attaches each item's SECONDARY category ids
+// (item_folder_memberships) to getItems()'s list payload. `ItemsPage.jsx` fetches its
+// full item set unfiltered by folder and does its own folder-chip matching client-side
+// (`doesItemMatchFolder`) -- widening that match to the membership union needs this
+// field on the wire, the query-param widening below this function isn't reachable from
+// that flow. Degrades to `[]` (primary-only) when the model isn't available yet
+// (unmigrated tenant) or the item set is empty.
+const attachSecondaryFolderIds = async (items) => {
+    const safeItems = Array.isArray(items) ? items : [];
+    const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+    const itemIds = [...new Set(
+        safeItems
+            .map((item) => Number(item?.item_id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    // typeof .findAll === 'function', not just a truthiness check on the model itself --
+    // a test double that stubs dbStore.get with a catch-all `{}` for every model it
+    // doesn't care about (a pattern already in wide use across this test suite) is not
+    // "the membership model is unavailable" in the tenant-migration sense this guard
+    // exists for; it must still degrade safely rather than throw on `.findAll(...)`.
+    if (typeof ItemFolderMembership?.findAll !== 'function' || itemIds.length === 0) {
+        return safeItems.map((item) => ({ ...item, secondary_folder_ids: [] }));
+    }
+
+    try {
+        const membershipRows = await ItemFolderMembership.findAll({
+            where: { item_id: { [Op.in]: itemIds } },
+            attributes: ['item_id', 'folder_id']
+        });
+        if (membershipRows.length === 0) {
+            return safeItems.map((item) => ({ ...item, secondary_folder_ids: [] }));
+        }
+
+        // RF-1 (PR #1580 review): folder deletion is soft (deleteFolder sets is_active:false +
+        // deleted_at, membership rows are left in place) -- resolve every referenced folder_id
+        // through an active-only ItemFolder query and drop any membership whose folder isn't
+        // returned, so a stale membership for an inactive/soft-deleted folder can never widen a
+        // filter match.
+        const referencedFolderIds = [...new Set(membershipRows.map((row) => row.folder_id))];
+        const ItemFolder = dbStore.get('ItemFolder');
+        const activeFolderIds = typeof ItemFolder?.findAll === 'function'
+            ? new Set((await ItemFolder.findAll({
+                where: activeFolderWhere({ folder_id: { [Op.in]: referencedFolderIds } }),
+                attributes: ['folder_id']
+            })).map((folder) => folder.folder_id))
+            : new Set();
+
+        const membershipsByItemId = new Map();
+        membershipRows.forEach((row) => {
+            if (!activeFolderIds.has(row.folder_id)) return;
+            const list = membershipsByItemId.get(row.item_id) || [];
+            list.push(row.folder_id);
+            membershipsByItemId.set(row.item_id, list);
+        });
+
+        return safeItems.map((item) => ({
+            ...item,
+            secondary_folder_ids: membershipsByItemId.get(Number(item?.item_id)) || []
+        }));
+    } catch (error) {
+        // RF-2 (PR #1580 review): tenantModelFactory defines ItemFolderMembership even when a
+        // tenant's database lacks the table -- .findAll() then rejects with ER_NO_SUCH_TABLE
+        // instead of the model getter itself throwing, so the model-availability check above
+        // can't catch it. Degrade to primary-only (empty secondary_folder_ids) only for that
+        // expected schema-drift error; anything else is a real failure and still throws.
+        if (!isMissingItemFolderMembershipsTableError(error)) throw error;
+        return safeItems.map((item) => ({ ...item, secondary_folder_ids: [] }));
+    }
+};
+
+// #1318 follow-up (ADR 0080 Consequences item 4) — the pre-Phase-257 folder
+// delete warning and folder list only ever counted items whose PRIMARY
+// folder_id matched, so an item that carries this folder only as a
+// SECONDARY category (item_folder_memberships) was invisible to both. This
+// counts, for a batch of folders, how many *visible* items reference each
+// as a secondary category — excluding any item already present in that
+// folder's primary set (ADR 0080 clause 2 allows that overlap to exist; it
+// must not be double-counted as "also secondary" here) — so `listFolders`
+// and `deleteFolder` can share one counting rule instead of drifting apart.
+const countSecondaryFolderMemberships = async (folderIds, primaryItemIdsByFolder = new Map(), options = {}) => {
+    const ids = [...new Set(
+        (folderIds || [])
+            .map((id) => Number.parseInt(id, 10))
+            .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    const counts = new Map();
+    if (ids.length === 0) return counts;
+
+    const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+    if (!ItemFolderMembership || typeof ItemFolderMembership.findAll !== 'function') return counts;
+
+    const membershipRows = await ItemFolderMembership.findAll({
+        where: { folder_id: { [Op.in]: ids } },
+        attributes: ['item_id', 'folder_id'],
+        transaction: options.transaction
+    });
+    if (membershipRows.length === 0) return counts;
+
+    const candidateItemIds = [...new Set(
+        membershipRows
+            .filter((row) => !primaryItemIdsByFolder.get(row.folder_id)?.has(row.item_id))
+            .map((row) => row.item_id)
+    )];
+    if (candidateItemIds.length === 0) return counts;
+
+    const Item = dbStore.get('Item');
+    const visibleItems = typeof Item?.findAll === 'function'
+        ? await Item.findAll({
+            where: visibleItemWhere({ item_id: { [Op.in]: candidateItemIds } }),
+            attributes: ['item_id'],
+            transaction: options.transaction
+        })
+        : [];
+    const visibleItemIds = new Set(visibleItems.map((item) => item.item_id));
+
+    const itemsByFolder = new Map();
+    for (const row of membershipRows) {
+        if (primaryItemIdsByFolder.get(row.folder_id)?.has(row.item_id)) continue;
+        if (!visibleItemIds.has(row.item_id)) continue;
+        const set = itemsByFolder.get(row.folder_id) || new Set();
+        set.add(row.item_id);
+        itemsByFolder.set(row.folder_id, set);
+    }
+
+    for (const [folderId, itemSet] of itemsByFolder.entries()) {
+        counts.set(folderId, itemSet.size);
+    }
+    return counts;
+};
+
 const normalizeServerVersion = (value) => {
     if (value == null || value === '') return null;
     const parsed = value instanceof Date ? value : new Date(value);
@@ -152,6 +282,18 @@ const isMissingStorefrontLocationItemOverrideTableError = (error) => {
     const code = error.original?.code || error.parent?.code || error.code;
     const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
     return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_location_item_overrides');
+};
+
+// RF-2 (PR #1580 review): tenantModelFactory defines ItemFolderMembership in every tenant
+// context even when that tenant's database lacks the table -- unlike safeGetOptionalModel's
+// try/catch (which only catches a missing *model-registry* entry), an actual query against a
+// missing table rejects at query time with ER_NO_SUCH_TABLE. Same shape as this file's other
+// isMissing*TableError helpers above.
+const isMissingItemFolderMembershipsTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('item_folder_memberships');
 };
 
 const toPlain = (value) => (
@@ -958,11 +1100,73 @@ export const itemRepository = {
             where.status = status;
         }
 
+        // ADR 0080 Amendment (Phase 286, #1318): IMS's catalog filter widens to the
+        // membership union -- selecting a category also surfaces items whose SECONDARY
+        // category (item_folder_memberships) matches, not just their primary. The
+        // 'null'/'none' sentinel stays primary-only; memberships never apply to
+        // "uncategorized". `folderWideningAnd` is merged into `where[Op.and]` only after
+        // the search block below, because that block unconditionally overwrites
+        // `where[Op.and]` -- merging here first would be silently discarded.
+        const folderWideningAnd = [];
         if (queryParams.folder_id) {
             if (queryParams.folder_id === 'null' || queryParams.folder_id === 'none') {
                 where.folder_id = null;
             } else {
-                where.folder_id = queryParams.folder_id;
+                const parsedFolderId = Number.parseInt(queryParams.folder_id, 10);
+                if (Number.isInteger(parsedFolderId) && parsedFolderId > 0) {
+                    // RF-1 (PR #1580 review): resolve the REQUESTED folder itself against an
+                    // active-only ItemFolder query first. `canVerifyFolder` is false only when
+                    // ItemFolder itself is unavailable (never expected in practice -- it's a
+                    // foundational model, not the newer join table) -- don't invent a false
+                    // negative in that case and fall through to the pre-amendment primary-only
+                    // match instead.
+                    const ItemFolder = dbStore.get('ItemFolder');
+                    const canVerifyFolder = typeof ItemFolder?.findOne === 'function';
+                    const requestedFolder = canVerifyFolder
+                        ? await ItemFolder.findOne({
+                            where: activeFolderWhere({ folder_id: parsedFolderId }),
+                            attributes: ['folder_id']
+                        })
+                        : null;
+
+                    if (canVerifyFolder && !requestedFolder) {
+                        // The requested folder is inactive, soft-deleted, or doesn't exist at
+                        // all -- never fall back to a primary-only match against it. -1 is an
+                        // impossible folder_id (autoincrement, always positive), ANDed with
+                        // every other top-level `where` key regardless of how the search block
+                        // below combines its own Op.or/Op.and, so this always yields zero rows.
+                        where.folder_id = -1;
+                    } else {
+                        where.folder_id = queryParams.folder_id;
+                        try {
+                            const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+                            if (typeof ItemFolderMembership?.findAll === 'function') {
+                                const membershipRows = await ItemFolderMembership.findAll({
+                                    where: { folder_id: parsedFolderId },
+                                    attributes: ['item_id']
+                                });
+                                const memberItemIds = [...new Set(membershipRows.map((row) => row.item_id))];
+                                if (memberItemIds.length > 0) {
+                                    delete where.folder_id;
+                                    folderWideningAnd.push({
+                                        [Op.or]: [
+                                            { folder_id: queryParams.folder_id },
+                                            { item_id: { [Op.in]: memberItemIds } }
+                                        ]
+                                    });
+                                }
+                            }
+                        } catch (error) {
+                            // RF-2 (PR #1580 review): tenantModelFactory defines
+                            // ItemFolderMembership even when the tenant's DB lacks the table --
+                            // .findAll() then rejects with ER_NO_SUCH_TABLE. Degrade to the
+                            // primary-only match already set above.
+                            if (!isMissingItemFolderMembershipsTableError(error)) throw error;
+                        }
+                    }
+                } else {
+                    where.folder_id = queryParams.folder_id;
+                }
             }
         }
 
@@ -995,6 +1199,14 @@ export const itemRepository = {
                     where.item_id = { [Op.in]: semanticIds };
                 }
             }
+        }
+
+        if (folderWideningAnd.length > 0) {
+            where[Op.and] = Array.isArray(where[Op.and])
+                ? where[Op.and].concat(folderWideningAnd)
+                : where[Op.and]
+                    ? [where[Op.and], ...folderWideningAnd]
+                    : folderWideningAnd;
         }
 
         const order = [[sortBy, sortOrder.toUpperCase()]];
@@ -1078,6 +1290,8 @@ export const itemRepository = {
                 ? applyItemLocationStockMap(itemsWithCostMetrics, stockMap)
                 : itemsWithCostMetrics;
         }
+
+        itemsWithCostMetrics = await attachSecondaryFolderIds(itemsWithCostMetrics);
 
         return {
             items: itemsWithCostMetrics,
@@ -3560,6 +3774,19 @@ export const itemRepository = {
                 ]
             });
 
+            // #1318 follow-up (ADR 0080 Consequences item 4) — `item_count` above
+            // is primary-only by design (Decision 1); this adds the secondary
+            // count the folder-delete warning needs so an operator isn't shown an
+            // under-count for a folder that's only referenced as a secondary
+            // category.
+            const primaryItemIdsByFolder = new Map(
+                folders.map((folder) => [folder.folder_id, new Set((folder.items || []).map((item) => item.item_id))])
+            );
+            const secondaryCountByFolder = await countSecondaryFolderMemberships(
+                folders.map((folder) => folder.folder_id),
+                primaryItemIdsByFolder
+            );
+
             return folders.map((folder) => ({
                 folder_id: folder.folder_id,
                 name: folder.name,
@@ -3567,7 +3794,8 @@ export const itemRepository = {
                 show_in_pos_filter: folder.show_in_pos_filter !== false,
                 is_active: folder.is_active !== false,
                 parent_id: folder.parent_id,
-                item_count: folder.items?.length || 0
+                item_count: folder.items?.length || 0,
+                secondary_item_count: secondaryCountByFolder.get(folder.folder_id) || 0
             }));
         } catch (error) {
             logger.error('Error listing inventory folders:', error);
@@ -3753,12 +3981,40 @@ export const itemRepository = {
             const assignedItemCount = assignedItems.length;
             let replacementFolder = null;
 
+            // #1318 follow-up (ADR 0080 Consequences item 4) — `assignedItemCount`
+            // above is primary-only; this adds the secondary-membership count so
+            // the warning doesn't under-count an item that lists this folder only
+            // as a secondary category. Deliberately excludes any item already in
+            // `assignedItems` (ADR 0080 clause 2's overlap case) so it's never
+            // double-counted across the two figures. `ON DELETE CASCADE` on
+            // `item_folder_memberships.folder_id` still removes those rows
+            // correctly regardless — this is warning accuracy only, not a change
+            // to the reassignment requirement, which stays primary-only.
+            const targetFolderId = folder.folder_id || folderId;
+            const secondaryCountByFolder = await countSecondaryFolderMemberships(
+                [targetFolderId],
+                new Map([[targetFolderId, new Set(assignedItems.map((item) => item.item_id))]]),
+                { transaction }
+            );
+            const secondaryItemCount = secondaryCountByFolder.get(targetFolderId) || 0;
+            const secondaryNote = secondaryItemCount > 0
+                ? ` ${secondaryItemCount} item(s) also list this as a secondary category and will lose that link.`
+                : '';
+
             if (assignedItemCount > 0) {
                 const replacementId = Number(replacementFolderId);
                 if (!Number.isInteger(replacementId) || replacementId <= 0) {
-                    const error = new Error(`Category "${folder.name}" is assigned to ${assignedItemCount} item(s). Choose an active replacement category before deleting it.`);
+                    const error = new Error(`Category "${folder.name}" is assigned to ${assignedItemCount} item(s). Choose an active replacement category before deleting it.${secondaryNote}`);
                     error.statusCode = 409;
                     error.code = 'CATEGORY_REASSIGNMENT_REQUIRED';
+                    error.secondary_items_affected = secondaryItemCount;
+                    // #1318 PR #1578 review (RF-1) -- itemHandlers.js's mapInventoryControllerError
+                    // only forwards `error.details` into the DomainError it builds (a bare
+                    // top-level property like the one above is dropped), and
+                    // defaultErrorPayload serializes only `failure.details` as the response's
+                    // `errors` field. Without this, secondary_items_affected never reached the
+                    // 409 response body -- only the message string did.
+                    error.details = { secondary_items_affected: secondaryItemCount };
                     throw error;
                 }
                 if (replacementId === Number(folder.folder_id || folderId)) {
@@ -3807,9 +4063,10 @@ export const itemRepository = {
                 success: true,
                 replacement_folder_id: replacementFolder?.folder_id || null,
                 items_moved: assignedItemCount,
-                message: assignedItemCount > 0
+                secondary_items_affected: secondaryItemCount,
+                message: (assignedItemCount > 0
                     ? `Category "${folder.name}" deleted and ${assignedItemCount} item(s) moved to "${replacementFolder.name}".`
-                    : `Category "${folder.name}" deleted successfully.`
+                    : `Category "${folder.name}" deleted successfully.`) + secondaryNote
             };
         } catch (error) {
             if (!transaction.finished) await transaction.rollback();

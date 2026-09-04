@@ -246,13 +246,39 @@ test('Report sweep outcome / Upload handoff artifact / Publish handoff issue / T
 // run -- issue #1393 showed a stale branch/PR from an unrelated earlier run. Fixed by clearing
 // every file this job's own steps write, once, at the very start of the job.
 
-test('a "Clear stale per-run temp state" step exists, runs right after Checkout, and clears handoff-state.json', () => {
+// #1551: this used to require clearIdx === checkoutIdx + 1 exactly, which broke the moment
+// #1528's workspace-hygiene rollout inserted "Assert complete working tree (workspace-hygiene v1)"
+// between Checkout and this step (a read-only `git ls-files -v` check -- see
+// scripts/check-workspace-hygiene.js -- that writes no per-run state of its own). The actual
+// invariant #1393 needs is narrower than "immediately after": the clear step must run before
+// anything that reads or writes handoff-state.json, i.e. before Discover, and nothing that sits
+// between Checkout and Clear may itself write per-run temp state (that would defeat the point of
+// clearing it). Expressed as an allowlist rather than a fixed offset, so a legitimate read-only
+// insertion (like the workspace-hygiene assert) doesn't false-fail this test again, while a
+// state-writing step slipped in between still does.
+const STEPS_ALLOWED_BETWEEN_CHECKOUT_AND_CLEAR = ['Assert complete working tree (workspace-hygiene v1)'];
+
+test('a "Clear stale per-run temp state" step exists, runs after Checkout and before Discover, and clears handoff-state.json', () => {
   const names = getStepNames(workflowText);
   const checkoutIdx = names.indexOf('Checkout');
   const clearIdx = names.indexOf('Clear stale per-run temp state');
+  const discoverIdx = names.indexOf('Discover NOT-EXECUTED-* declarations');
   assert.notEqual(checkoutIdx, -1, 'Checkout step not found');
   assert.notEqual(clearIdx, -1, '"Clear stale per-run temp state" step not found');
-  assert.equal(clearIdx, checkoutIdx + 1, 'the clear step must run immediately after Checkout, before Discover');
+  assert.notEqual(discoverIdx, -1, 'Discover step not found');
+  assert.ok(clearIdx > checkoutIdx, 'the clear step must run after Checkout');
+  assert.ok(clearIdx < discoverIdx, 'the clear step must run before Discover');
+
+  const between = names.slice(checkoutIdx + 1, clearIdx);
+  for (const stepName of between) {
+    assert.ok(
+      STEPS_ALLOWED_BETWEEN_CHECKOUT_AND_CLEAR.includes(stepName),
+      `"${stepName}" sits between Checkout and Clear but isn't in the allowlist of steps known ` +
+        'not to write per-run state -- either move Clear earlier, or add it to the allowlist ' +
+        'ONLY after confirming it writes nothing Clear is responsible for removing'
+    );
+  }
+
   const block = getStepBlock(workflowText, 'Clear stale per-run temp state');
   assert.match(block, /rm -f[^\n]*\/tmp\/handoff-state\.json/, 'must clear /tmp/handoff-state.json specifically -- that is the file that leaked stale data');
 });

@@ -406,6 +406,161 @@ describe('storefront discovery integration flow', () => {
     expect(mapOptions.pitch).toBe(0);
   });
 
+  it('renders the per-mode delivery from-price on discovery store cards (#1333)', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const search = parsed.searchParams.get('search');
+        return makeJsonResponse({
+          stores: search === 'delivery'
+            ? [
+                {
+                  tenant_id: 'tenant-fixed',
+                  tenant_name: 'Fixed Fee Foods',
+                  slug: 'fixed-fee-foods',
+                  storefront_open: true,
+                  location_id: null,
+                  location_name: null,
+                  address_line: null,
+                  latitude: null,
+                  longitude: null,
+                  catalog_count: 2,
+                  store_has_no_location: true,
+                  map_publication_disabled: true,
+                  match_reasons: ['item'],
+                  matching_item_count: 1,
+                  store_delivery_fee: 49,
+                  delivery_fee_mode: 'fixed'
+                },
+                {
+                  tenant_id: 'tenant-calculated',
+                  tenant_name: 'Calculated Kitchen',
+                  slug: 'calculated-kitchen',
+                  storefront_open: true,
+                  location_id: null,
+                  location_name: null,
+                  address_line: null,
+                  latitude: null,
+                  longitude: null,
+                  catalog_count: 2,
+                  store_has_no_location: true,
+                  map_publication_disabled: true,
+                  match_reasons: ['item'],
+                  matching_item_count: 1,
+                  store_delivery_fee: 25,
+                  delivery_fee_mode: 'calculated'
+                },
+                {
+                  tenant_id: 'tenant-free',
+                  tenant_name: 'Free Delivery Diner',
+                  slug: 'free-delivery-diner',
+                  storefront_open: true,
+                  location_id: null,
+                  location_name: null,
+                  address_line: null,
+                  latitude: null,
+                  longitude: null,
+                  catalog_count: 2,
+                  store_has_no_location: true,
+                  map_publication_disabled: true,
+                  match_reasons: ['item'],
+                  matching_item_count: 1,
+                  store_delivery_fee: 0,
+                  delivery_fee_mode: 'free'
+                }
+              ]
+            : [],
+          pagination: { page: 1, limit: 100, total: search === 'delivery' ? 3 : 0, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ locations: [], primary_location_id: null, store_has_no_location: true, map_publication_disabled: true });
+      }
+      if (isStoreCatalogRequest(normalized)) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'delivery');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    await waitFor(() => expect(screen.getAllByText('Fixed Fee Foods').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('₱49 delivery').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('From ₱25 delivery').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Free delivery').length).toBeGreaterThan(0);
+  });
+
+  it('omits the delivery-fee label when a fixed-mode store has no resolvable store_delivery_fee (#1566 RF-1)', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const search = parsed.searchParams.get('search');
+        return makeJsonResponse({
+          stores: search === 'delivery'
+            ? [
+                {
+                  tenant_id: 'tenant-unresolved',
+                  tenant_name: 'Unresolved Fee Diner',
+                  slug: 'unresolved-fee-diner',
+                  storefront_open: true,
+                  location_id: null,
+                  location_name: null,
+                  address_line: null,
+                  latitude: null,
+                  longitude: null,
+                  catalog_count: 2,
+                  store_has_no_location: true,
+                  map_publication_disabled: true,
+                  match_reasons: ['item'],
+                  matching_item_count: 1,
+                  store_delivery_fee: null,
+                  delivery_fee_mode: 'fixed'
+                }
+              ]
+            : [],
+          pagination: { page: 1, limit: 100, total: search === 'delivery' ? 1 : 0, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ locations: [], primary_location_id: null, store_has_no_location: true, map_publication_disabled: true });
+      }
+      if (isStoreCatalogRequest(normalized)) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'delivery');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    await waitFor(() => expect(screen.getAllByText('Unresolved Fee Diner').length).toBeGreaterThan(0));
+    expect(screen.queryByText('₱0 delivery')).toBeNull();
+    expect(screen.queryByText(/delivery$/)).toBeNull();
+  });
+
   it('keeps account access visible when MapLibre cannot initialize WebGL', async () => {
     const pushStateSpy = vi.spyOn(window.history, 'pushState');
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});

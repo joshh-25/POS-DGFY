@@ -36,8 +36,9 @@ role rather than bending either existing one past its charter.
 
 **Default, since #1404 (2026-09-02) — reverses ADR 0074/#980's 2026-08-25 two-stage default; see
 ADR 0074's 2026-09-02 Amendment and `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching entry:**
-`feature → develop → to-staging/<label> → staging → release/<label> → main`. `to-staging/<label>`
-cuts fresh from `origin/develop`; `release/<label>` then cuts fresh from `origin/staging`. Every
+`feature → develop → to-staging/<candidate_id> → staging → release/<candidate_id>-rN → main`.
+`to-staging/<candidate_id>` cuts fresh from `origin/develop`; `release/<candidate_id>-rN` then
+cuts fresh from the candidate's current `origin/staging`. Every
 promotion branch is a throwaway — cut fresh, no commits of its own, used once as a PR head, never
 reused. Because this leg runs on every ordinary promotion again, `staging` gets refreshed as a
 routine side effect of shipping — it is no longer relying only on the manual on-demand refresh ADR
@@ -67,6 +68,53 @@ that the prefix and base match. Full command sequence: `references/promotion-run
 Promotion PRs merge with `--merge` (a true merge commit), never `--squash` — confirmed as the
 existing convention on every prior promotion (#127, #426); squashing would diverge the target's
 history from what the next promotion diffs against.
+
+## Frozen candidate and repair loop
+
+The initial `develop` SHA is a release candidate, not a moving branch target. Use a candidate ID in
+`YYYY-MM-DD-NN` form and validate its manifest with `scripts/check-promotion-candidate.js`. Once
+`to-staging/<candidate_id>` is merged, freeze that candidate: do not re-promote a newer `develop`
+wholesale into `staging` while the candidate is being qualified.
+
+**Pre-cut floor step, before the candidate SHA is even chosen (ADR 0081 Decision 6, #1588, epic
+#1548 Wave 4).** Shipping to staging is, by definition, at least a minor bump per app that actually
+changed between `staging` and the candidate: `node scripts/check-app-version-bump.js --floor --base
+origin/staging --head origin/develop` — reuse this script's own floor logic, don't reimplement it.
+Every app it lists as below floor needs one `chore(release): bump <apps> to X.(Y+1).0 for candidate
+<id>` PR opened and merged into `develop` *before* `to-staging/<candidate_id>` is cut, since a
+promotion branch carries no commits of its own — the bump has to already be on `develop` by cut
+time. That PR is an ordinary `develop`-base PR, no new merge authority needed (`pr-reviewer`'s
+existing unattended-merge policy on `develop` already covers it, per this repo's role-handoff
+convention). Full command sequence: `references/promotion-runbook.md`'s "Default: `develop` →
+`staging` → `main`" section.
+
+**Candidate manifest, written locally at cut time (ADR 0081 Decision 8, #1588).** The manifest
+`scripts/check-promotion-candidate.js` validates is also this candidate's own tracked source
+identity — `source_develop_sha` (no repairs yet) or `current_staging_sha` (once repairs land) — the
+frozen SHA the promotion parity gate (below) compares against, distinct from whatever
+`org.opencontainers.image.revision`/`github.sha` each environment's own merge commit happens to
+carry. Written once, right after the candidate branch is cut and pushed, to
+`.tmp/release-candidates/<candidate_id>.json` (never committed — a local artifact, same convention
+as `.tmp/release-gates/<sha>/local_readiness.json`); updated on every staging repair and again when
+`release/<candidate_id>-rN` is cut. See the runbook for the exact JSON shape.
+
+Staging failures are repaired against the candidate's latest staging SHA. The normal repair shape
+is `fix/staging/<candidate_id>-rN` cut from `origin/staging`, with a PR into `staging`; redeploy
+and re-observe the same candidate after each merge. An isolated developer fix may be cherry-picked
+with `git cherry-pick -x` after diff review. If it is mixed with newer work, recreate the narrow fix
+on the staging repair branch. Never merge `develop` wholesale into an active candidate.
+
+Code-level repair work is handed to Conduct with the candidate ID, exact staging SHA, failure
+evidence, and repair issue. Conduct may address code, tests, migrations, API/UI behavior, or CI;
+live database changes, secrets, SSH, and infrastructure operations are hard stops. The report-only
+`staging-candidate-observation.yml` workflow validates combined health, migration, API, and UI
+evidence without performing operational mutations.
+
+Only after staging observation passes may the promoter cut `release/<candidate_id>-rN` from the
+current staging SHA. A pre-main failure returns to the staging repair loop; discard the stale
+release head and recut it after staging changes. A post-main failure uses the incident/hotfix path
+on `main`, then backports the resolved main commit to `develop` once production is stable. Do not
+create a separate staging backport for a main hotfix.
 
 ## Pre-flight — run before touching any branch
 
@@ -209,6 +257,35 @@ silently passable. Read-only (`gh api` GETs + one `curl`; the `--canary` dispatc
 and self-cancelling) — no new checkpoint, no new authority, same classification as
 `tenant-schema-report.yml`/`verify-deployment.yml` above.
 
+**Promotion parity gate (ADR 0081 Decision 8, #1588) — runs after `deploy-main.yml`, not before
+cutting `release/<label>`.** Unlike the other gates in this section, this one has a hard timing
+dependency of its own: it compares the STAGING image (`X.Y.Z-staging`, already published) against
+the PROD image (bare `X.Y.Z`), and the PROD image does not exist until `deploy-main.yml` actually
+builds and pushes it — so it cannot run pre-merge the way the tenant-schema report and compliance
+sweep do. Run it as part of deploy-dispatch verification, immediately alongside
+`verify-deployment.yml -f environment=PROD`:
+
+```bash
+# Default flow (candidate manifest exists) -- compares PROD against its STAGING predecessor:
+node scripts/check-image-version-parity.js --manifest .tmp/release-candidates/<candidate_id>.json
+
+# #1007-gated exception instead (RF-2, PR #1590 review) -- this path never cuts to-staging/<label>
+# and so never produces a candidate manifest for --manifest to point at; --source-sha compares
+# PROD's own label directly against the develop SHA release/<label> was cut from:
+node scripts/check-image-version-parity.js --source-sha <the develop SHA release/<label> was cut from>
+```
+
+`PASS` covers two distinct, both-fine outcomes on either invocation: a real label match, and a
+documented "no predecessor"/"no candidate identity" case — the #1007-expedited or main-hotfix path,
+where no candidate manifest (and so no `candidate_source_sha` build input) ever existed for this SHA
+in the first place. Decision 8's own text calls that expected evidence, not a defect; do not treat
+it as a finding. `FAIL` (`mismatch`, `prod-unreadable`, or — `--manifest` mode only —
+`staging-unreadable`, an existing STAGING image whose label regressed rather than one that's simply
+absent) means the published PROD image does not actually trace back to where it should — report and
+escalate the same way a `verify-deployment.yml` failure is handled (#495: no rollback exists), don't
+wave it through. Read-only (`docker buildx imagetools inspect` only, no push) — no new checkpoint,
+same classification as `verify-deployment.yml`.
+
 ## Expedited `develop → main` override (#1007)
 
 A second, narrow, phrase-gated exception to "never merge `main`" — parallel to, and independent of,
@@ -230,10 +307,12 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 | Trigger | What "stop" means |
 |---|---|
 | Pre-flight, branch cut, PR open, merge into `develop`, or into `staging` (the default soak leg) | Unattended — proceed |
+| Running `node scripts/check-app-version-bump.js --floor` before cutting `to-staging/<candidate_id>` (ADR 0081 Decision 6, #1588), and opening/merging the resulting bump PR into `develop` if any app is below floor | Unattended — read-only check; the bump PR is an ordinary `develop`-base PR, already covered by the row above |
 | Dispatching `deploy.yml` for environment `STAGING` | Unattended — proceed. Pat's 2026-08-16 call: this leg of "review, merge, and deploy" runs end to end without a per-dispatch ask, matching #543's "Promoter cuts/promotes staging (unattended)" framing |
 | Dispatching `deploy.yml` for environment `DEV` | **Dropped from the default flow entirely (#982) — not a routine step, and not an ask-first fallback either.** DEV is optional and intentionally allowed to go stale; dispatch it only when specifically asked for, never implied by a "review, merge, and deploy" composite instruction |
 | Dispatching `verify-deployment.yml` (any environment) | Unattended — every remote command it runs is read-only |
 | Dispatching `tenant-schema-report.yml` (any environment, including PROD) | Unattended — read-only, `--mode report` only, no write path exists |
+| Running `node scripts/check-image-version-parity.js` after `deploy-main.yml` (ADR 0081 Decision 8, #1588) | Unattended — read-only, `docker buildx imagetools inspect` only, no push |
 | Running `npm run preflight:runner` (Phase 233, #1365, H1) before the `deploy-main.yml` dispatch ask | Unattended — read-only (`gh api`/`curl`, self-cancelling `--canary` if used). An exit-`3` "flip required" result still requires logging the flip in the promotion PR before acting on it — that's a documentation step, not a new ask |
 | Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched. No longer auto-merges (#1295/#1374): a passing run pushes its reconciliation branch and attempts the PR, but a policy-blocked `gh pr create` finishes green-with-warning and hands off to a human/credentialed AI session instead — see "Compliance preflight sweep" above. Dispatching itself is still unattended either way, same reasoning as `verify-deployment.yml`'s read-only classification |
 | Opening and merging a stuck compliance-sweep handoff PR (per the "Compliance preflight sweep" fast-signal check above, before cutting `release/<label>`) | Unattended — same reasoning as any other `develop`-base PR merge in this role's table (pre-flight, branch cut, PR open, merge into `develop` row above): no destructive action, no `main`, and every declaration in it already passed a real preflight evaluation before the branch was ever pushed. Still subject to `AGENTS.md`'s Merge Safety hard stop, unchanged |

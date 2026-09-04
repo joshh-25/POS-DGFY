@@ -1,0 +1,28 @@
+name: Staging candidate observation
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_manifest:
+        description: Repository-relative candidate manifest JSON path
+        required: true
+        type: string
+      observation_report:
+        description: Repository-relative read-only staging observation JSON path
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate exact-SHA staging observation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out candidate ref
+        uses: actions/checkout@v4
+      - name: Validate candidate lineage
+        run: node scripts/check-promotion-candidate.js --manifest "${{ inputs.candidate_manifest }}"
+      - name: Validate observation report
+        run: node scripts/check-staging-candidate-observation.js --candidate-manifest "${{ inputs.candidate_manifest }}" --observation "${{ inputs.observation_report }}"

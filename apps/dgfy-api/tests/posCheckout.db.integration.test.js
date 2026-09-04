@@ -470,6 +470,35 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(Number(allocation.gross_eligible_amount)).toBeGreaterThan(0);
     });
 
+    it('persists multiple statutory beneficiaries and their line allocations', async () => {
+        const cashier = await createCashier();
+        const product = await createFinishedGood({ current_stock: 10, senior_pwd_discount_eligible: true });
+        const checkoutResult = await checkoutAsCashier(cashier, {
+            idempotency_key: `idem-multi-beneficiary-${crypto.randomUUID()}`,
+            payment_type: 'cash',
+            order_method: 'dine_in',
+            governed_discount: {
+                type: 'senior',
+                beneficiaries: [
+                    { category: 'senior', name: 'Senior One', id_number: 'SC-INTEGRATION-1', eligible_items: [{ item_id: product.item_id, eligible_quantity: 1 }] },
+                    { category: 'senior', name: 'Senior Two', id_number: 'SC-INTEGRATION-2', eligible_items: [{ item_id: product.item_id, eligible_quantity: 1 }] }
+                ]
+            },
+            lines: [{ item_id: product.item_id, quantity: 2, sale_price: null }]
+        });
+
+        expect(checkoutResult).toEqual(expect.objectContaining({ success: true }));
+        const discount = await models.PosTransactionDiscount.findOne({ where: { transaction_id: checkoutResult.data.transaction.pos_transaction_id } });
+        const beneficiaries = await models.PosTransactionDiscountBeneficiary.findAll({ where: { transaction_discount_id: discount.id } });
+        const allocations = await models.PosTransactionDiscountLine.findAll({ where: { transaction_discount_id: discount.id } });
+        expect(beneficiaries).toHaveLength(2);
+        const beneficiaryAllocations = allocations.filter((allocation) => allocation.beneficiary_id != null);
+        expect(beneficiaryAllocations).toHaveLength(2);
+        expect(beneficiaryAllocations.reduce((sum, allocation) => sum + Number(allocation.eligible_quantity), 0)).toBe(2);
+        expect(beneficiaryAllocations.reduce((sum, allocation) => sum + Number(allocation.discount_amount), 0)).toBeCloseTo(Number(discount.discount_amount), 4);
+        expect(discount.calculation_version).toBe('pos-discount.v3');
+    });
+
     it('persists the verified manager identity for an employee discount', async () => {
         const cashier = await createCashier();
         const employee = await models.Employee.create({

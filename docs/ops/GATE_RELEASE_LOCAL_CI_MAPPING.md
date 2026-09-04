@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: infra
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-05
 applies_to: promotion_quality_gates
 topic: gate_release_local_ci_mapping
 ---
@@ -211,6 +211,100 @@ Net effect, unchanged from #1097 and restated here rather than left to infer fro
 checks — no `gate:release:local`, and no `promotion-quality-gate.yml` run of any kind, advisory or
 otherwise.
 
+## `check:app-versions` flip-readiness (#1569, epic #1548 Wave 2) — separate mechanism, not one of
+the 19 gates above
+
+`check:app-versions` (`scripts/check-app-version-bump.js`, shipped advisory by #1560/PR #1562) is
+not part of the 19-gate `gate:release:local` mapping this document otherwise tracks — it's a
+`shared-changed-paths.yml`/`pr-checks.js` PR-time check, not a `gate-release-local.js` gate. It gets
+its own short section here because it follows the same advisory-to-blocking shape this document's
+gates do, and #1569 asked this status be recorded in both this doc and
+`docs/ops/RELEASE_CANDIDATE_POLICY.md` — that doc's 2026-09-04 dated Amendments entry recorded the
+mechanism being built (still advisory), and its 2026-09-05 dated Amendments entry recorded the flip
+itself (the current status below); both kept in sync with this section, not a duplicate to maintain
+independently.
+
+**Current status: BLOCKING, flipped 2026-09-05 (#1592, epic #1548, Phase 283).** Per
+[ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md) Decision 9, the check
+flips to blocking only once real evidence exists — either 10 merged `develop`-base PRs since PR
+#1562's merge commit with `check:app-versions` recorded pass/warn (not a crash), or one full
+`develop → staging → main` promotion cycle green throughout. `scripts/check-version-bump-flip-
+readiness.js` measures that threshold live from GitHub's own check-run/job-log history via `gh api`
+(no local counter file) — run it by hand (`npm run check:version-bump-flip-readiness`) before ever
+touching the toggle below.
+
+The PR-count path was re-confirmed live at #1592's implementation time (not reused from that
+issue's 2026-09-05 filing-time snapshot, which itself was already a re-confirmation of an earlier
+count): `10 of 10 qualifying develop-base PRs` since PR #1562's merge commit
+(`5eb17c3426251990d364544e3ad5fbb1a839a35e`) — 7 `pass` (#1591, #1583, #1582, #1581, #1580, #1579,
+#1578) + 3 `warn` (#1586, #1567, #1566), promotion-cycle evidence still `none yet`. #1592 also found
+and fixed a bug the flip would otherwise have shipped silently broken: `scripts/pr-checks.js`'s own
+`app version bump` check hardcoded its result to `'pass'`/`'warn'` regardless of the `blocking`
+argument, so `computeOverallResult()` could never actually reach `FAIL` for it (a `'warn'` only ever
+degrades `PASS` to `PARTIAL`) — see `scripts/pr-checks.js`'s `resolveAppVersionsCheckResult()` and
+its own header comment for the fix. The `shared-changed-paths.yml` surface had no equivalent bug —
+its `continue-on-error:` expression already read the toggle's boolean output directly.
+
+**The toggle mechanism** — deliberately not this document's own gate-table pattern (edit the
+workflow YAML's `continue-on-error:` literal directly, PR #1550/#1551's Phase 272 precedent), and
+not `scripts/lib/runner-routing-state.js`'s declared-constant-plus-checker pattern either (that one
+exists because a `runs-on:` site can't be computed from a JS module at workflow-parse time, so two
+hand-edited surfaces are kept in sync by a validator script instead). This toggle has a single
+source that both consumers read directly at runtime, since a step's `continue-on-error:` CAN take a
+`${{ }}` expression against a prior step's output:
+
+- `scripts/lib/version-bump-gate-toggle.js` exports one constant, `BLOCKING` (currently `true`,
+  flipped 2026-09-05 — see the "Armed" paragraph below).
+- `.github/workflows/shared-changed-paths.yml`'s "Load check:app-versions gate toggle" step reads it
+  via `node -e` and exposes it as a step output; the "Enforce per-app version bump on source
+  changes" step's own `continue-on-error:` reads that output.
+- `scripts/pr-checks.js` requires the same module directly for the same check's `blocking` argument
+  to `addCheck()`.
+
+**Armed** (#1592, 2026-09-05, a later, separate, human-confirmed PR — not part of #1569's own
+scope): confirmed `node scripts/check-version-bump-flip-readiness.js` reported the threshold met,
+then flipped exactly one line — `version-bump-gate-toggle.js`'s `BLOCKING` constant, `false → true`.
+Both consumers move together from that one edit alone — `scripts/pr-checks.js` needed a small,
+separate fix alongside it (see above) to actually honor the toggle's value, but that fix lives in
+the consuming surface itself, not as a second hand-kept-in-sync toggle; there is still no separate
+"keep two files in sync" checker to maintain, unlike the runner-routing convention this section
+explicitly avoided.
+
+## Promotion-time per-app version gates (#1588, epic #1548 Wave 4) — separate mechanisms, not one of
+the 19 gates above
+
+Two more ADR 0081 mechanisms that get their own short section here for the same reason
+`check:app-versions` does immediately above: they follow the same "register the status here and in
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`" pattern #1569 established, but neither is a
+`gate-release-local.js` gate or a `pr-checks.js` PR-time check — both run only at promotion time,
+invoked by `promoter` directly against a specific candidate, never by CI.
+
+**Promoter pre-cut floor step** (ADR 0081 Decision 6) — `node scripts/check-app-version-bump.js
+--floor --base origin/staging --head origin/develop`, run before cutting
+`to-staging/<candidate_id>`. Reuses `check-app-version-bump.js`'s existing floor logic (already
+shipped by #1560/PR #1562 for the PR-time check above); this is a second, standalone entry point
+into the same script (`--floor` mode), not a new script. **Status: live from this PR (#1588) on** —
+unlike `check:app-versions` itself, there is no advisory-to-blocking rollout here to track; the
+floor check either exits clean or the promoter opens a bump PR before cutting, every time.
+
+**Promotion parity gate** (ADR 0081 Decision 8) — `scripts/check-image-version-parity.js` (new),
+comparing the `org.dgfy-platform.candidate-source-sha` OCI label (also new, stamped by
+`deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml` at build time from a
+`candidate_source_sha` input the promoter threads through `deploy.yml`/`deploy-main.yml`) between
+each app's `X.Y.Z-staging` and bare `X.Y.Z` published images. **Correction this PR made, worth
+recording here since Phase 277's own ledger entry claimed otherwise:** Phase 277 (#1575/PR #1577)
+did not actually add this label — only `org.opencontainers.image.version` and the `version_tag`
+output. This PR adds the label-stamping step Phase 277's own text (and ADR 0081 Decision 8's
+original wording) assumed already existed. `docs/architecture/adr/0081-per-app-container-semantic-versioning.md`'s
+own `## Amendments` block records the same correction on the ADR side.
+
+Both mechanisms are read-only/unattended, same tier as `verify-deployment.yml`/
+`tenant-schema-report.yml` — see `.agents/skills/promoter/SKILL.md`'s checkpoint table. Full
+procedure: `.agents/skills/promoter/references/promotion-runbook.md`. Neither has yet been exercised
+against a real `to-staging`/`release` promotion — see #1588's own PR for what was and wasn't tested
+(unit tests + shape checks against synthetic fixtures and this repo's real workflow files, no live
+GHCR push/build).
+
 ## Related
 
 #1147 (this doc's parent, now fully resolved by it), #1431 (Phase 1: PR-A flipped 7 CI steps to
@@ -225,4 +319,6 @@ second section confirms stays fixed), #1063/#1066/#1253 (the advisory-only histo
 `promotion-quality-gate.yml`), #927 (the original "where does this run" question #1018 resolves for
 the fast subset), #1019 / ADR 0074 Decision 10 (the superseded standard gate 19 depended on), #514
 (`verify-deployment.yml`, gate 18's residual-gap home), #1443 (the filed follow-up for gate 18's
-residual gap).
+residual gap), #1569 / #1548 / #1560 / ADR 0081 Decision 9 (the `check:app-versions` flip-readiness
+mechanism, a separate advisory-to-blocking check this document also tracks — see the section above,
+not part of the 19-gate mapping itself).
