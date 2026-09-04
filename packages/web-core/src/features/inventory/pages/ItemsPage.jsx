@@ -1131,7 +1131,7 @@ export default function Items() {
       || null;
   }, [folderByLookupKey, folderByName]);
 
-  // ADR 0080 Amendment (Phase 285, #1318): `matchSecondary` is opt-in, default false, so
+  // ADR 0080 Amendment (Phase 286, #1318): `matchSecondary` is opt-in, default false, so
   // every existing caller of this shared matcher keeps its exact prior (primary-only)
   // behavior unless it explicitly asks otherwise. This matters beyond caution: `handleDragEnd`
   // uses this function to skip items "already in" the drop target, and `folderCounts` uses it

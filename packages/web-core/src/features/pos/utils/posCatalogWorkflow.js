@@ -22,7 +22,7 @@ export const filterAvailableCatalog = (catalog) => (
     (Array.isArray(catalog) ? catalog : []).filter(isSellAvailableCatalogItem)
 );
 
-// ADR 0080 Amendment (Phase 285, #1318): an item matches a folder if either its
+// ADR 0080 Amendment (Phase 286, #1318): an item matches a folder if either its
 // PRIMARY category (`folder_id`) or any of its SECONDARY memberships
 // (`secondary_folder_ids`, attached by posRepository.listCatalog's
 // attachSecondaryFolderIds) matches -- the membership union, not primary-only.

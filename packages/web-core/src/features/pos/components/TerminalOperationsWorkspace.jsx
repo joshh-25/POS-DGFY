@@ -2402,7 +2402,7 @@ function ItemsWorkspace({
             return true;
         }
       })();
-      // ADR 0080 Amendment (Phase 285, #1318): the folder:<id> chip filter widens to the
+      // ADR 0080 Amendment (Phase 286, #1318): the folder:<id> chip filter widens to the
       // membership union -- an item also matches when the selected category is one of its
       // SECONDARY categories (item?.secondary_folder_ids), not just its primary folder_id.
       // The name:<slug> fallback (items without a real folder_id) is unaffected -- no

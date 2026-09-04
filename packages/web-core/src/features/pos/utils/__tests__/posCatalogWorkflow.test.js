@@ -60,7 +60,7 @@ describe('POS catalog workflow utilities', () => {
         expect(getVisibleCatalogRange(0, 1, 8, 0)).toEqual({ start: 0, end: 0 });
     });
 
-    // ADR 0080 Amendment (Phase 285, #1318): the folder-chip filter widens to the
+    // ADR 0080 Amendment (Phase 286, #1318): the folder-chip filter widens to the
     // membership union -- an item matches a selected folder via either its primary
     // folder_id or a secondary_folder_ids entry (attached by posRepository's
     // attachSecondaryFolderIds). Legacy payloads with no secondary_folder_ids field at
