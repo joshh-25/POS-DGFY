@@ -20233,22 +20233,35 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   (new), issue #1575.
 - Next eligible phase: 278 — runtime version observability.
 
-## Phase 278 - Runtime version observability: `/health` and the frontend build stamp (epic #1548 Wave 3, not yet filed)
+## Phase 278 - Runtime version observability: `/health` and the frontend build stamp (#1576, epic #1548 Wave 3)
 
 - Initiative/release: Container semantic versioning epic (#1548) / current release process.
 - Objective and scope: backend `/health` reports the published `version` (ADR 0081 Decision 4);
   frontends gain a `VITE_APP_VERSION` build-time value plus a `version.json` (or equivalent meta-tag)
   the PWA update-toast flow can read — feeding #633 (Sentry release) and #276 (PWA "new version
   available" toast) per ADR 0081 Decision 5's handoff.
-- Status: planned.
+- Status: completed.
 - Dependencies: Phase 277 (the build-arg this phase surfaces at runtime); Phase 273 / ADR 0081
-  Decisions 4 and 5. Not yet filed.
-- Acceptance and validation evidence: not yet started. Expected at implementation: `/health`
-  response inspection per environment confirming `version` matches the published tag; a frontend
-  build confirming `VITE_APP_VERSION`/`version.json` matches the same tag.
-- Completion date: not started (planned).
-- Contracts/files (expected): `apps/dgfy-api`'s `/health` route, each frontend app's build config
-  and a shared build-stamp helper (`packages/web-core` candidate).
+  Decisions 4 and 5.
+- Acceptance and validation evidence: `apps/dgfy-api/tests/healthService.test.js`'s new
+  `resolveAppVersionInfo` describe block (APP_VERSION-over-package.json precedence, blank-env
+  treated as unset, both-missing null case, and a `buildHealthResponse` case asserting
+  `services.observability.version`/`version_source` sit alongside `runtime_sha`);
+  `packages/web-core/vite/__tests__/buildStampPlugin.test.js` (same precedence/fallback behavior
+  for `resolveAppVersion`, plus the plugin's `transformIndexHtml`/`generateBundle` hook shapes);
+  `node --check` on `apps/dgfy-api/src/services/healthService.js`; `sh -n` on the migration-runner
+  `entrypoint.sh`; `npm run build:skupervisor` / `build:pos` / `build:store` (Tier 0, per
+  `implement/SKILL.md`) confirming the three builds succeed with `VITE_APP_VERSION` defined and
+  emitting `dist/version.json` + the `dgfy-version` meta tag. Phase 277/PR #1577 had already merged
+  to `develop` (46b8099a6) when this phase started, so `APP_VERSION` is a real build-arg/env in all
+  five images — the package.json fallback was exercised via explicit unset-env test cases rather
+  than as the only available path.
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-api/src/services/healthService.js` (+ its test file),
+  `infrastructure/docker/dgfy-migration-runner/entrypoint.sh`, `apps/dgfy-ims/vite.config.js`,
+  `apps/dgfy-pos/vite.config.js`, `apps/dgfy-storefront/vite.config.js`,
+  `packages/web-core/vite/buildStampPlugin.js` (new, shared by all three frontends) + its test file,
+  `docs/deployment/PWA_SURFACE_CONTRACT.md`, issue #1576.
 - Next eligible phase: 279 — promoter floor check and promotion parity gate.
 
 ## Phase 279 - Promoter pre-cut floor check, promotion parity gate, and final policy text (epic #1548 Wave 4, not yet filed)
