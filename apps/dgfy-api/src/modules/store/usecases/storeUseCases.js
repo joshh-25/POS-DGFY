@@ -707,7 +707,16 @@ const resolveStoreDeliveryFee = async ({
     // dragging a repository call into a function whose byte-identity regression tests depend on it
     // staying await-free.
     const waiverAmount = 0;
-    const overrideAmount = null; // Hardcoded this phase -- #238 overrides the PERSISTED column post-hoc, not resolve-time.
+    // Hardcoded, and #1564 settled that this is the correct model rather than a stub: the staff
+    // override (#238, modules/pos/usecases/deliveryFeeOverrideUseCases.js) corrects an
+    // already-persisted pos_transactions row after checkout. There is no live quote for it to feed
+    // back into, and accepting one here would force this resolver to read persisted state --
+    // breaking the I/O-free, await-free contract its own header and the byte-identity regression
+    // tests depend on, and putting a second writer on ADR 0078 Decision 4's single storefront choke
+    // point. At resolve time no override exists yet, by definition, so `null` is the truthful value.
+    // (Not to be confused with `locationOverride` above -- that is per-LOCATION fee configuration,
+    // ADR 0078 Decision 6 / #1346, an unrelated axis.)
+    const overrideAmount = null;
     const finalFee = overrideAmount !== null ? overrideAmount : Math.max(0, round4(baseFee - waiverAmount));
 
     return Object.freeze({

@@ -20254,9 +20254,71 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Next eligible phase: none recorded within epic #1548 — Phase 280 is epic #1548's own final planned
   wave; further platform-versioning work beyond it is new scope, not part of this sequence.
 
-## Phase 281 - Discovery from-price rendering: storefront delivery-fee UI (#1333)
+## Phase 281 - Delivery-fee override provenance: persist `delivery_fee_override` (#1564)
+
+- Initiative/release: Customer delivery pricing epic (#1321) follow-on correctness fix / current
+  release process. Not a new epic phase — a defect repair on Phase 238's (#1330) output, found by
+  a Verifier/QA pass while closing #1330.
+- **Numbering note (resolved 2026-09-04, merge conflict repair):** at the time this entry was
+  originally written, the ledger tip on `origin/develop` was Phase 272, and open PR #1561
+  (`pat/conduct-1559-adr`, epic #1548) already claimed **273 through 280** in its own diff — this
+  entry took 281 to avoid a duplicate number rather than taking 273 and colliding (AGENTS.md
+  "Continuous Phase Numbering" rule 5: preserve historical numbers). #1561 has since merged
+  (Phases 273-280 above are its landed content, now `completed`/`planned`), confirming 273-280 were
+  genuinely taken and 281 is the correct next number — no renumbering needed by this merge.
+- Objective and scope: `apps/dgfy-api/src/modules/pos/usecases/deliveryFeeOverrideUseCases.js`
+  wrote the persisted `pos_transactions.delivery_fee`/`total_amount` on a staff delivery-fee
+  override but never wrote `pos_transactions.delivery_fee_override`, so every applied override
+  silently broke the Phase 237 invariant `delivery_fee_base - delivery_fee_waiver === delivery_fee`
+  (documented on `PosTransaction.js`) with nothing in the columns to say an override was the
+  reason. This phase persists the override amount, restates the invariant with both halves
+  explicit, and settles — rather than assumes — the design question of whether
+  `resolveStoreDeliveryFee` needs an override as a resolve-time input (it does not; see below).
+  No money value changes and no schema change: the column already exists from Phase 237's
+  migration.
+- Design decision recorded (the question #1564 required answering): the override stays
+  **post-hoc only**. It corrects an already-persisted transaction after checkout, so there is no
+  live quote to feed it back into; accepting one at resolve time would force `resolveStoreDeliveryFee`
+  to read persisted state, breaking the I/O-free/`await`-free contract its byte-identity regression
+  tests depend on, and would add a second writer to ADR 0078 Decision 4's single storefront choke
+  point. Its `overrideAmount: null` is the truthful resolve-time value, not a placeholder.
+- Status: in_progress (PR open against `develop`; flips to `completed` on merge + QA).
+- Dependencies: #1329 (Phase 237, the breakdown columns and the invariant), #1330 (Phase 238, the
+  override use case this repairs), #1321 (the epic both sit under), ADR 0012 (amended in the same
+  PR), ADR 0078 (consumed unchanged).
+- Acceptance and validation evidence: `apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.js`
+  19/19 passing (12 pre-existing + 7 new: the invariant regression; base/waiver retained as
+  pre-override provenance; waive-to-free persisted as `0` not `NULL`; an override on a POS-created
+  delivery order; the pre-#1564 provenance-only repair with zero money movement; retry idempotency
+  across a repair; fail-loud `INTERNAL_ERROR` when persistence drops the override write); full
+  delivery-fee suite 11 suites / 169 tests passing, including
+  `storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js` and
+  `storeCheckoutDeliveryFeePin.unit.test.js` unmodified; storefront/POS money regression 21 suites
+  / 246 tests passing; `node --check` on every changed `apps/dgfy-api` file;
+  `npm run check:compliance` (fail first, pass with the new declaration),
+  `npm run check:architecture`, `npm run lint:docs`.
+- Completion date: pending (see Status).
+- Contracts/files: `apps/dgfy-api/src/modules/pos/usecases/deliveryFeeOverrideUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`,
+  `apps/dgfy-api/src/models/PosTransaction.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (comment only),
+  `apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.js`,
+  `docs/architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md`
+  (2026-09-04 amendment),
+  `docs/compliance/impact-declarations/2026-09-04-delivery-fee-override-provenance.md`,
+  issues #1564, #1330, #1329, #1321.
+- Next eligible phase: 282.
+
+## Phase 282 - Discovery from-price rendering: storefront delivery-fee UI (#1333)
 
 - Initiative/release: Discovery pricing honesty epic (#1321) / current release process.
+- **Numbering note (resolved 2026-09-04, merge conflict repair):** this entry was originally
+  written and reviewed as Phase 281, when the ledger tip on `origin/develop` was Phase 280. PR
+  #1567 (#1564, delivery-fee override provenance — Phase 281 above) merged to `develop` first and
+  landed its own Phase 281 entry, colliding with this one; both PR reviewers had already flagged
+  the collision as a known heads-up before either PR merged. This entry is renumbered to 282 on
+  merge, per AGENTS.md's Continuous Phase Numbering rule 5 (preserve historical/already-landed
+  numbers); develop's own Phase 281 entry above is untouched.
 - Objective and scope: consume the discovery API's already-shipped `store_delivery_fee` (a
   per-mode from-price: the fixed rate in `fixed` mode, `calc.min_fee` in `calculated` mode, `0` in
   `free` mode) and `delivery_fee_mode` fields on the storefront discovery card, the last unshipped
@@ -20278,4 +20340,4 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Completion date: 2026-09-04.
 - Contracts/files: `apps/dgfy-storefront/src/features/discovery/renderers/discoveryResultsRenderer.jsx`,
   `apps/dgfy-storefront/src/__tests__/discoveryFlow.integration.test.jsx`, issue #1333 (epic #1321).
-- Next eligible phase: 282.
+- Next eligible phase: 283.
