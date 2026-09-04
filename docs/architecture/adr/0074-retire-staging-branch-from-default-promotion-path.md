@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-04
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -512,6 +512,25 @@ again on the leg into `main` (#1431 Phase 1, PR-A)
   PR-A amendment's own "what did not change" list — remain fully out of scope here too; flipping the
   former to blocking and delegating it locally are PR-A2/PR-B2, separate PRs per #1431's own scoping.
 - PR: (this PR). Refs #1431, #1063, #1066, #1147, #1435 (PR-A).
+
+### 2026-09-04 — Freeze release candidates and repair the active promotion environment (#1542)
+
+- Clause amended: **Decision 1** and the `[default]` operational framing of **Decision 3**. The
+  default three-stage path remains unchanged, but the initial `develop` snapshot is now a named,
+  immutable promotion candidate while it is being qualified.
+- Change: the promoter records a `sku-release-candidate/v1` manifest, repairs staging failures
+  from `origin/staging` through disposable `fix/staging/<candidate_id>-rN` PRs, and cuts each
+  `release/<candidate_id>-rN` from the latest repaired staging SHA. A newer `develop` branch is not
+  merged wholesale into an active candidate.
+- Code-level repairs may be handed to Conduct with exact-SHA evidence. Live database, secrets, SSH,
+  and infrastructure operations remain outside the automated repair scope. Main-side failures use
+  the existing hotfix path and are backported to `develop` after stabilization.
+- The report-only staging observation workflow validates candidate identity, runtime SHA, health,
+  migration, API, UI, and read-only evidence. It does not replace existing CI, tenant-schema, or
+  Merge Safety gates.
+- This is a `[default]` procedure amendment under ADR 0039. Decisions 2, 5, 6, 7, 8, and all
+  `[binding]` controls remain unchanged.
+- Refs: #1542, #1008.
 
 ## Related
 

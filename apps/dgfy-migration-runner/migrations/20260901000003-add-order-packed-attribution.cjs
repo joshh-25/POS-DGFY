@@ -190,9 +190,11 @@ module.exports = {
       }
 
       const nullableClause = String(columnInfo.isNullable || '').toUpperCase() === 'NO' ? 'NOT NULL' : 'NULL';
-      const defaultClause = columnInfo.columnDefault === null
+      const normalizedColumnDefault = String(columnInfo.columnDefault ?? '').trim();
+      const hasNullDefault = columnInfo.columnDefault === null || normalizedColumnDefault.toUpperCase() === 'NULL';
+      const defaultClause = hasNullDefault
         ? (nullableClause === 'NULL' ? 'DEFAULT NULL' : '')
-        : `DEFAULT '${String(columnInfo.columnDefault).replace(/'/g, "''")}'`;
+        : `DEFAULT '${normalizedColumnDefault.replace(/'/g, "''")}'`;
 
       await queryInterface.sequelize.query(`
         ALTER TABLE ${quoteIdentifier(databaseName)}.${quoteIdentifier(POS_TRANSACTIONS_TABLE)}

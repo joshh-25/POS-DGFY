@@ -230,14 +230,19 @@ export function StorefrontCatalogRouteContainer(props) {
   } = props;
 
   // --- Service Tab logic ---
+  // RF-4 (PR #1583 review): `activeServiceTab`/`resolvedTab` hold `categoryIdentity` values (the
+  // stable, folder_id-based identity `servicesStorefrontViewModel.js` computes), never the
+  // normalized `categoryKey` display text -- two distinct-`folder_id` categories can share a
+  // `categoryKey` but never a `categoryIdentity`; matching by `categoryKey` here would make the
+  // second one permanently unreachable/unselectable.
   const isMultiGroup = isServicesMode && servicesViewModel.serviceGroups.length > 1;
   const resolvedTab = isMultiGroup
-    ? (activeServiceTab && servicesViewModel.serviceGroups.some((g) => g.categoryKey === activeServiceTab)
+    ? (activeServiceTab && servicesViewModel.serviceGroups.some((g) => g.categoryIdentity === activeServiceTab)
       ? activeServiceTab
       : '')
     : '';
   const activeGroup = resolvedTab
-    ? (servicesViewModel.serviceGroups.find((g) => g.categoryKey === resolvedTab) || null)
+    ? (servicesViewModel.serviceGroups.find((g) => g.categoryIdentity === resolvedTab) || null)
     : null;
   // F&B, Retail, and Simple/MSME consume the shared, mode-agnostic sectioned/sorted/
   // paginated view model (useFnbCatalogRuntime.js runs for every mode; the

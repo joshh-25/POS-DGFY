@@ -20,6 +20,39 @@ Full path maps, before/after commands, and in-flight-branch merge guidance:
 declarations, or other dated/historical records — see that doc's "note for AI agents" for the
 full leave-alone list.
 
+## Feature placement policy: back-office-level work goes to POS, not IMS (interim)
+
+Pat's call (#1554): to DGFY's merchant customers, POS is already functioning as the back office
+today — it's where they actually operate, not IMS. **Until #1354's dedicated DGFY Back Office
+ships, new back-office-level feature work targets `apps/dgfy-pos`, not `apps/dgfy-ims`.** Don't
+let a feature default into IMS just because an existing page (e.g. `ItemsPage.jsx`) already lives
+there — that happened twice in the same batch (#1318, #1495 Part B) with confirmed zero POS reach,
+because nobody weighed IMS vs POS vs "hold until Back Office," not because IMS was the right call.
+This is not a blanket "prefer POS" rule — see the boundary below — and it is not retroactive: it
+governs where *new* work lands, not a migration of #1318/#1495's own IMS-only UI or anything else
+already shipped.
+
+**"Back-office-level" means**, at minimum: catalog/inventory authoring (item creation, category
+management, pricing rules), CSV/bulk import-export tooling, and cross-location configuration.
+It does **not** mean POS terminal operational flows — checkout, delivery run assignment, shift
+management — which already correctly live under `TerminalPage.jsx` and are unaffected by this
+rule.
+
+This deliberately overrides, on an interim basis, ADR 0071's Context framing that "IMS ships
+back-office admin work" — see that ADR's 2026-09-03 Amendment, added alongside this section, for
+why that's a dated Amendment rather than a silent contradiction between an authoritative doc and
+this file. Two related, **unsettled** questions this rule does not answer:
+
+- **#1354** is the target end state — once the dedicated Back Office ships, new back-office-level
+  work targets it, not POS. This rule is the bridge until then, not a permanent POS mandate.
+- **#358** — whether `apps/dgfy-ims` is extracted and kept, frozen, or deprecated — stays open.
+  This rule is itself a data point toward that decision (new work no longer defaults to IMS), not
+  a resolution of it; flagged on #358, not decided here.
+
+**Labeling:** issue for back-office-level work landing in POS under this rule gets `area:pos`
+(matching where the code actually lands), not `area:skupervisor` — see
+`docs/process/ISSUE-TAXONOMY.md`'s `area:*` table, whose own meaning is unchanged by this note.
+
 ## MANDATORY: Pull Request Conventions
 
 Before creating, updating, or describing any pull request in this repository, **read and follow `docs/ai/PR.md` in full**. This is not optional. It governs:
@@ -116,7 +149,8 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
 - **Verifier/QA** (#331/#536) — verifies a merged, deployed change against a live environment,
   then flips `For QA` to `Done` or `Failed`. @.agents/skills/verifier/SKILL.md
-- **Promoter/Release** (#331/#512) — runs a `develop → staging → main` promotion end to end
+- **Promoter/Release** (#331/#512) — runs a frozen-candidate `develop → staging → main` promotion
+  end to end, observes the candidate, and coordinates code-level repairs on `staging`
   (default again since #1404, 2026-09-02, reversing ADR 0074/#980's 2026-08-25 two-stage default; a
   direct `develop → main` promotion is available only as #1007's phrase-gated exception, not a
   routine choice), cutting the promotion branch(es) itself. Dispatches the STAGING deploy

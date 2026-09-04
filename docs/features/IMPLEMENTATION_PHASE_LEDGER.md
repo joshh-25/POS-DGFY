@@ -20047,3 +20047,1044 @@ phase extends. No migration, no schema change, so no deploy-order dependency on 
 every open PR's phase claim at plan time, per this ledger's own recurring caution against trusting a
 stale note -- this entry and Phase 266 are both filed retroactively after 263 through 269, plus the
 unrelated Phase 264 (#1511), had already claimed and merged their numbers around this gap.
+## Phase 271 — Frozen promotion-candidate repair loop (#1542)
+
+- Initiative/release: Release safety and promoter automation / current release process.
+- Objective and scope: identify the initial `develop` snapshot, bind release evidence to that
+  candidate, validate exact-SHA staging observations, and document repair routing for staging,
+  pre-main release, and post-main hotfix failures.
+- Status: completed.
+- Dependencies: ADR 0074; `docs/ops/RELEASE_CANDIDATE_POLICY.md`; existing promoter, Conduct, and
+  Merge Safety procedures.
+- Acceptance and validation evidence: `npm run test:promotion-candidate`; `npm run
+  test:staging-observation`; `node --test scripts/build-release-candidate-evidence.test.js`; docs
+  and ADR lint/checks.
+- Completion date: 2026-09-04.
+- Contracts/files: `scripts/check-promotion-candidate.js`,
+  `scripts/check-staging-candidate-observation.js`,
+  `.github/workflows/staging-candidate-observation.yml`, promoter/Conduct references,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, ADR 0074, issue #1542.
+- Next eligible phase: 272 — automated staging smoke collection and Conduct handoff execution.
+
+## Phase 272 - Quality-gate advisory-failure triage and repair (#1124)
+
+- Initiative/release: Quality-gate trust epic (#1124) / current release process.
+- Objective and scope: root-cause and triage the four steps that failed on the most recent real
+  `release/*→main` promotion (run `33789462561`, PR #1547); fix what was cheap and confirmed-stale;
+  make backend fast-tier failures nameable from CI output instead of artifact-only; flip four
+  pure/deterministic contract-validation steps from advisory to blocking, their first recorded
+  disposition.
+- Status: in_progress. #1550 and #1551 both require a green `validate_compliance_sweep` /
+  `run_fnb_browser_contract` (this PR fixes the former; the latter stays advisory by design, so its
+  acceptance is about a future clean run history, not this PR alone) on the *next* real
+  `release/*→main` promotion before their acceptance boxes close — not verifiable at merge time.
+- Dependencies: #1550, #1551, #1553, #1157, #1469, #1124.
+- Acceptance and validation evidence: `node --test scripts/check-compliance-sweep-workflow.test.js`
+  (28/28); `npm run test:preflight-sweep` (100/100); `npm run audit:dependencies` (PASS across 7
+  trees); `npm run check:pr-quality-workflow && npm run test:pr-quality-workflow` (41/41); `npm run
+  check:workspace-hygiene && npm run test:workspace-hygiene` (19/19); `npm run check:runner-routing
+  && npm run test:runner-routing` (36/36); the next real promotion run's `promotion-quality-gate.yml`
+  result for the two open acceptance boxes above.
+- Completion date: pending (see Status).
+- Contracts/files: `scripts/check-compliance-sweep-workflow.test.js`,
+  `scripts/run-backend-test-matrix.js`, `scripts/summarize-backend-test-matrix.js`,
+  `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
+  `.github/workflows/promotion-quality-gate.yml`,
+  `apps/dgfy-storefront/tests/e2e/storefront-fnb-conditional-modifiers.spec.js`,
+  `apps/dgfy-api/package-lock.json`, `apps/dgfy-pos/package-lock.json`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issues #1124, #1550, #1551, #1552, #1553, #1157, #1469.
+- Next eligible phase: 273.
+
+## Phase 273 - ADR 0081: per-app container SemVer scheme + policy amendment (#1559, epic #1548 Wave 1)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: define the per-app SemVer scheme for the five deployable containers
+  (`dgfy-api`, `dgfy-migration-runner`, `dgfy-ims`, `dgfy-pos`, `dgfy-storefront`) — tag shape and
+  channel suffixes, `org.opencontainers.image.version`, runtime `APP_VERSION`, the Sentry release
+  format, PR-authored bump ownership with path-dependent bump levels (develop/staging-promotion/
+  staging-repair/main-hotfix), the tag-immutability invariant, and the promotion parity gate — in a
+  new ADR; layer the resulting versioning obligations onto `RELEASE_CANDIDATE_POLICY.md`; cross-
+  reference ADR 0072 so tag content and image naming don't get conflated.
+- Status: completed.
+- Dependencies: ADR 0072; ADR 0039; ADR 0074; `docs/architecture/ARCHITECTURE_GOVERNANCE.md`;
+  epic #1548.
+- Acceptance and validation evidence: `npm run check:adr` (includes the `-- --write-index`
+  staleness check); `npm run lint:docs`; manual read-through confirming Decisions 1-10 from #1559's
+  issue body appear in the ADR verbatim with matching strictness tags.
+- Completion date: 2026-09-04.
+- Contracts/files: `docs/architecture/adr/0081-per-app-container-semantic-versioning.md`,
+  `docs/architecture/adr/0072-ghcr-container-image-naming.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, `docs/architecture/adr/INDEX.md`, issue #1559.
+- Next eligible phase: 274 — PR-time per-app version-bump check (#1560).
+
+## Phase 274 - PR-time per-app version-bump check, advisory (#1560, epic #1548 Wave 1)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: `scripts/check-app-version-bump.js`, generalizing the existing
+  `scripts/check-pos-receipt-version-bump.js` precedent from one package to the five apps; applies
+  ADR 0081 Decision 6's base-aware bump-level rule per `(base, head)` pair; wired into
+  `shared-changed-paths.yml` + `scripts/pr-checks.js`; ships advisory (non-blocking) per ADR 0081
+  Decision 9.
+- Status: planned.
+- Dependencies: Phase 273 / ADR 0081 (Decisions 6 and 9 specifically); #1560 (filed, not started).
+- Acceptance and validation evidence: not yet started. Expected at implementation: a script test
+  suite covering each `(base, head)` bump-level mode from ADR 0081 Decision 6, plus a live advisory
+  (non-blocking) run on a real PR touching at least one app.
+- Completion date: not started (planned).
+- Contracts/files (expected): `scripts/check-app-version-bump.js`, `.github/workflows/pr-checks.yml`
+  or `shared-changed-paths.yml`, `scripts/pr-checks.js`, issue #1560.
+- Next eligible phase: 275 — `pr-reviewer` version-level proposal + Worker skill obligation.
+
+## Phase 275 - `pr-reviewer` version-level proposal + Worker version-bump obligation (epic #1548 Wave 2, not yet filed)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: `pr-reviewer` proposes a version-bump level from the diff as part of its
+  verdict (`.agents/skills/pr-reviewer/SKILL.md`); `implement` gains its own version-bump obligation
+  in `.agents/skills/implement/SKILL.md`, matching ADR 0081 Decision 6's "whoever's PR changes an
+  app bumps that app's version" rule.
+- Status: planned.
+- Dependencies: Phase 273 / ADR 0081 Decision 6; Phase 274 (#1560, the check this proposal builds
+  on). Not yet filed as a GitHub issue — per epic #1548's own candidate slate, graduates
+  wave-at-a-time (`docs/process/ISSUE-TAXONOMY.md`'s deferred-decomposition rule).
+- Acceptance and validation evidence: not yet started.
+- Completion date: not started (planned).
+- Contracts/files (expected): `.agents/skills/pr-reviewer/SKILL.md`,
+  `.agents/skills/implement/SKILL.md`.
+- Next eligible phase: 276 — flip the version-bump check from advisory to blocking.
+
+## Phase 276 - Version-bump check flip-readiness mechanism, shipped advisory (#1569, epic #1548 Wave 2)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: **scope split from this phase's original framing, recorded here rather than
+  silently reinterpreted** — PR #1572 review (pr-reviewer, RF-3) found this entry still describing
+  the flip itself while what actually shipped is the flip-readiness *mechanism*. Confirmed by Pat on
+  #1569 (2026-09-04): "build the gate now, leave the flip itself disabled until the threshold is
+  actually met." This phase now covers exactly that: `scripts/check-version-bump-flip-readiness.js`
+  measures ADR 0081 Decision 9's clean-run evidence bar (≥10 merged `develop`-base PRs since Phase
+  274's (#1560/PR #1562) merge commit with `check:app-versions` recorded pass/warn, or one full
+  `develop → staging → main` promotion cycle green throughout) directly from GitHub's own check-run
+  + job-log history via `gh api` — no local counter file. `scripts/lib/version-bump-gate-
+  toggle.js` is the single repo-level toggle both `shared-changed-paths.yml` and `pr-checks.js` read
+  at runtime, **shipped set to advisory and not flipped**. The actual advisory-to-blocking flip —
+  this phase's original full scope — is split out as its own phase, **Phase 283** below (renumbered
+  from an original 281 during this PR's `origin/develop` merge-conflict repair — see that phase's own
+  Numbering note), so its numbering doesn't collide with Phase 277-282 (already filed by the time
+  this PR merged).
+- Status: in_progress. Mechanism implemented, unit-tested, and confirmed against real GitHub
+  history; PR open, not yet merged (see Acceptance and validation evidence).
+- Dependencies: Phase 274 (#1560/PR #1562) merged and running advisory for the evidence window;
+  Phase 273 / ADR 0081 Decision 9. Filed as #1569.
+- Acceptance and validation evidence: `node --test scripts/check-version-bump-flip-readiness.test.js`
+  → 46/46 pass, covering `classifyLogOutcome` against real log lines fetched live from two different
+  real check runs (PR #1562 and, after PR #1572 review RF-1/RF-2's fixes, PR #1567/#1570's actual
+  head-SHA check runs), candidate-id extraction, ancestry filtering keyed on the merge SHA, the
+  check-run/log lookup keyed on the head SHA (RF-2's own regression coverage — a fixture with
+  distinct merge-SHA/head-SHA values asserts which one is actually passed), a failed `gh pr list`
+  query surfacing as a thrown error rather than a silent empty result (RF-1's own regression
+  coverage), and all four evidence-path cases (met via PR count, met via one promotion cycle, not
+  met via either, a crashed check run excluded from the count). `node
+  scripts/check-version-bump-flip-readiness.js` (live dry run against this repo's real `develop`
+  history, re-run 2026-09-04 after the RF-1/RF-2 fix) → correctly reports real, non-fabricated
+  evidence (1 of 10 qualifying PRs as of the fix — `develop` gained two more merges during this PR's
+  own review cycle — and no promotion cycle), still NOT READY; confirmed `check:app-versions` stays
+  advisory in both `shared-changed-paths.yml` and `pr-checks.js` after this phase's changes.
+- Completion date: not yet — PR #1572 open against `develop`, unmerged as of this entry.
+- Contracts/files: `scripts/check-version-bump-flip-readiness.js`,
+  `scripts/check-version-bump-flip-readiness.test.js`, `scripts/lib/version-bump-gate-toggle.js`,
+  `.github/workflows/shared-changed-paths.yml`, `scripts/pr-checks.js`, `package.json`,
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+- Next eligible phase: 277 — builders stamp version tags and labels (already filed, unaffected by
+  this split). The version-bump check's actual advisory-to-blocking flip is Phase 283, appended after
+  Phase 282 per this ledger's continuous-numbering rule rather than inserted here or renumbered into
+  this phase's own slot.
+
+## Phase 277 - Builders stamp `:X.Y.Z[-channel]` tags, OCI version label, `APP_VERSION` build-arg, and the tag-immutability guard (#1575, epic #1548 Wave 3)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: `deploy-api.yml`, `deploy-migration-runner.yml`, and `deploy-frontend.yml`
+  each emit the `X.Y.Z[-channel]` tag and `org.opencontainers.image.version` label per ADR 0081
+  Decisions 1-3, and bake `APP_VERSION=<tag>` as a build-arg per Decision 4; a builder-side guard
+  refuses to push a version tag over an existing different revision, implementing ADR 0081's one
+  `[binding]` clause (Decision 7). `scripts/deploy-local.sh --push` decided and documented (ties to
+  #714): bakes the same `APP_VERSION` build-arg locally for parity, but never pushes an
+  `X.Y.Z[-channel]` tag itself -- only the pre-existing moving-channel tag and `sha-<7>` tag,
+  unchanged.
+- Status: completed.
+- Dependencies: Phase 273 / ADR 0081 Decisions 1, 2, 3, 4, 7; #714 (informed the deploy-local.sh
+  decision, itself still open).
+- Acceptance and validation evidence: `node --test scripts/check-tag-immutability.test.js` (19/19 --
+  the guard's push/refuse/error verdicts, including same-revision idempotent re-dispatch, a
+  deliberate same-tag-different-revision refusal, an unreadable-label refusal, and an unclassified
+  inspect-failure refusal, all against mocked `docker buildx imagetools inspect` output, no live
+  GHCR call); `node --test scripts/check-deploy-version-stamping-workflow.test.js` (22/22 -- the
+  workflow-shape assertions, each with both a passing real-file case and a synthetic drift case
+  proving the check actually catches the regression); `node scripts/check-deploy-version-stamping-workflow.js`
+  (PASS against the real deploy-api.yml/deploy-migration-runner.yml/deploy-frontend.yml and all five
+  Dockerfiles); YAML-parsed all four edited workflow files; `bash -n scripts/deploy-local.sh`. No
+  live GHCR push was exercised (ADR 0081/the issue's own "Risks / notes" flags this as expensive to
+  test in CI) -- shape/logic verification only, stated explicitly per `implement/SKILL.md`'s Tier 0
+  bar for a file class with no compiler.
+- Completion date: 2026-09-04.
+- Contracts/files: `.github/workflows/deploy-api.yml`, `.github/workflows/deploy-migration-runner.yml`,
+  `.github/workflows/deploy-frontend.yml`, `.github/workflows/deployment-orchestrator.yml` (new
+  `*_version_tag` outputs, mirroring the existing `*_sha_tag` ones), `infrastructure/docker/{dgfy-api,
+  dgfy-migration-runner,dgfy-ims,dgfy-pos,dgfy-storefront}/Dockerfile`, `scripts/deploy-local.sh`,
+  `scripts/check-tag-immutability.js` (new), `scripts/check-deploy-version-stamping-workflow.js`
+  (new), issue #1575.
+- Next eligible phase: 278 — runtime version observability.
+
+## Phase 278 - Runtime version observability: `/health` and the frontend build stamp (#1576, epic #1548 Wave 3)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: backend `/health` reports the published `version` (ADR 0081 Decision 4);
+  frontends gain a `VITE_APP_VERSION` build-time value plus a `version.json` (or equivalent meta-tag)
+  the PWA update-toast flow can read — feeding #633 (Sentry release) and #276 (PWA "new version
+  available" toast) per ADR 0081 Decision 5's handoff.
+- Status: completed.
+- Dependencies: Phase 277 (the build-arg this phase surfaces at runtime); Phase 273 / ADR 0081
+  Decisions 4 and 5.
+- Acceptance and validation evidence: `apps/dgfy-api/tests/healthService.test.js`'s new
+  `resolveAppVersionInfo` describe block (APP_VERSION-over-package.json precedence, blank-env
+  treated as unset, both-missing null case, and a `buildHealthResponse` case asserting
+  `services.observability.version`/`version_source` sit alongside `runtime_sha`);
+  `packages/web-core/vite/__tests__/buildStampPlugin.test.js` (same precedence/fallback behavior
+  for `resolveAppVersion`, plus the plugin's `transformIndexHtml`/`generateBundle` hook shapes);
+  `node --check` on `apps/dgfy-api/src/services/healthService.js`; `sh -n` on the migration-runner
+  `entrypoint.sh`; `npm run build:skupervisor` / `build:pos` / `build:store` (Tier 0, per
+  `implement/SKILL.md`) confirming the three builds succeed with `VITE_APP_VERSION` defined and
+  emitting `dist/version.json` + the `dgfy-version` meta tag. Phase 277/PR #1577 had already merged
+  to `develop` (46b8099a6) when this phase started, so `APP_VERSION` is a real build-arg/env in all
+  five images — the package.json fallback was exercised via explicit unset-env test cases rather
+  than as the only available path.
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-api/src/services/healthService.js` (+ its test file),
+  `infrastructure/docker/dgfy-migration-runner/entrypoint.sh`, `apps/dgfy-ims/vite.config.js`,
+  `apps/dgfy-pos/vite.config.js`, `apps/dgfy-storefront/vite.config.js`,
+  `packages/web-core/vite/buildStampPlugin.js` (new, shared by all three frontends) + its test file,
+  `docs/deployment/PWA_SURFACE_CONTRACT.md`, issue #1576.
+- Next eligible phase: 279 — promoter floor check and promotion parity gate.
+
+## Phase 279 - Promoter pre-cut floor check, promotion parity gate, and final policy text (#1588, epic #1548 Wave 4)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: the promoter's pre-cut floor step (`origin/develop` vs `origin/staging` per
+  app; opens a `chore(release): bump <apps> to X.(Y+1).0 for candidate <id>` PR into `develop` for
+  anything below floor) wired into `.agents/skills/promoter/SKILL.md` and
+  `references/promotion-runbook.md`, implementing `RELEASE_CANDIDATE_POLICY.md`'s 2026-09-04
+  "Per-app container SemVer" amendment; the staging/prod parity gate (ADR 0081 Decision 8: `X.Y.Z-staging`
+  and the later `X.Y.Z` share the same *candidate source identity* — the frozen candidate manifest's
+  `source_develop_sha`/`current_staging_sha` — not the raw `org.opencontainers.image.revision`/
+  `github.sha` of each environment's own merge commit, which differ by construction across the
+  `to-staging → staging` and `release/* → main` merges even for identical candidate content); final
+  policy text lands in `docs/testing/release-go-no-go-checklist.md` and
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+- **Correction found during this phase, not assumed away:** Phase 277's own entry below (and ADR
+  0081 Decision 8's original text) assumed Phase 277 would stamp the candidate-source-identity label
+  as part of its own scope. Confirmed against the real merged `deploy-api.yml`/
+  `deploy-migration-runner.yml`/`deploy-frontend.yml` before this phase started: Phase 277 stamped
+  only `org.opencontainers.image.revision`/`.source`/`.version` — no candidate-source-identity label
+  existed anywhere. This phase adds that missing label-stamping step itself (a new
+  `candidate_source_sha` input threaded `deploy.yml`/`deploy-main.yml` →
+  `deployment-orchestrator.yml` → the three builders, stamped as the new
+  `org.dgfy-platform.candidate-source-sha` label when non-empty) — not previously in this phase's own
+  scope statement, but required for the parity check to have anything to compare. Recorded in full on
+  ADR 0081's own 2026-09-04 Amendment; Phase 277's entry below is left as-is per this doc's
+  don't-rewrite-history convention.
+- Status: completed.
+- Dependencies: Phase 273 / ADR 0081 Decisions 6 and 8; Phase 277 (builder version-tag stamping this
+  phase's meta step reuses, though not the label itself — see the correction above);
+  `RELEASE_CANDIDATE_POLICY.md`'s 2026-09-04 "Per-app container SemVer" amendment (the obligations
+  this phase makes executable), closed out by this phase's own matching 2026-09-04 amendment entry.
+  #1588.
+- Acceptance and validation evidence: `node --test scripts/check-image-version-parity.test.js`
+  (32/32 — see the pr-reviewer round-1 correction below for what changed from this phase's original
+  17/17); `node --test scripts/check-deploy-version-stamping-workflow.test.js` (37/37 —
+  extended by this phase with `checkMetaStepStampsCandidateLabel` and
+  `checkOrchestratorCandidateSourceShaWiring`, each with a passing real-file case and a synthetic
+  drift case); `node scripts/check-deploy-version-stamping-workflow.js` (PASS against the real
+  `deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml`/`deployment-orchestrator.yml`);
+  YAML-parsed all six edited workflow files (`deploy.yml`, `deploy-main.yml`,
+  `deployment-orchestrator.yml`, and the three builders); `npm run lint:docs` (29 governed docs, OK),
+  `npm run check:adr` (88 ADRs, OK — ADR 0081's `status: amended` + new `## Amendments` block
+  validate), `npm run check:architecture` (OK). No real `to-staging/<candidate_id>` or
+  `release/<candidate_id>-rN` promotion has run against this mechanism yet — everything above is
+  unit-tested and shape-verified against this repo's real files, not exercised end to end against a
+  live GHCR push/build, stated explicitly per `implement/SKILL.md`'s Tier 0 bar for a file class with
+  no compiler.
+- **pr-reviewer round-1 correction (PR #1590, RF-1/RF-2/RF-3/RF-4), same PR, before merge:** `RF-1`
+  — a concurrent `origin/develop` PR (#1589) landed its own dated amendment on
+  `RELEASE_CANDIDATE_POLICY.md`, producing a real merge conflict; resolved by keeping both amendments
+  (#1589's first, matching real merge order, this phase's second). `RF-2` — the `#1007`/hotfix path
+  documented `--manifest`-only usage, but that path never produces a candidate manifest at all;
+  `check-image-version-parity.js` gained a second `--source-sha` CLI mode
+  (`decideDirectParity`/`checkAppDirect`/`runDirectParityCheck`) that needs no manifest, and the
+  runbook/`SKILL.md` now capture a real `CANDIDATE_SOURCE_SHA` (`git rev-parse origin/develop` at cut
+  time) for that path instead of documenting an empty one. `RF-3` — an *existing* STAGING image with
+  a missing/inconsistent label was silently passing as "no predecessor"; `inspectImageLabel`'s
+  classification bug (found querying `resolveRevisionLabels`, which conflates "no Labels object
+  found anywhere" with "a Labels object exists but lacks this one key" — collapsing to the same
+  outcome for every single-platform image, four of this repo's five apps) was fixed by classifying
+  `collectRevisionLabelInfo`'s raw `{ found, unreadableCount }` directly instead, splitting `'no-label'`
+  (legitimately absent) from `'inconsistent'` (a real partial-stamp defect); `decideParity` now fails
+  `staging-unreadable` for both. `RF-4` — the floor-bump recipe's `git switch -c` already had an
+  explicit `origin/develop` start point (the review's primary claim did not reproduce against this
+  PR's actual content), but the requested clean-tree `git status` safeguard was genuinely missing and
+  has been added, matching the equivalent safeguard already documented for the `#1007`-exception
+  branch cuts.
+- Completion date: 2026-09-04.
+- Contracts/files: `scripts/check-image-version-parity.js` (new) + its test file,
+  `scripts/check-deploy-version-stamping-workflow.js` (extended) + its test file,
+  `.github/workflows/deploy-api.yml`, `.github/workflows/deploy-migration-runner.yml`,
+  `.github/workflows/deploy-frontend.yml`, `.github/workflows/deployment-orchestrator.yml`,
+  `.github/workflows/deploy.yml`, `.github/workflows/deploy-main.yml` (all six: new
+  `candidate_source_sha` input, threaded end to end), `.agents/skills/promoter/SKILL.md`,
+  `.agents/skills/promoter/references/promotion-runbook.md`,
+  `docs/testing/release-go-no-go-checklist.md`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-09-04 closing amendment),
+  `docs/architecture/adr/0081-per-app-container-semantic-versioning.md` (2026-09-04 Amendment,
+  `status: amended`), issue #1588.
+- Next eligible phase: 280 — release notes epic (#1278) consumes candidate_id + the five prod versions.
+
+## Phase 280 - #1278 release notes start consuming `candidate_id` and the five prod versions (epic #1548 Wave 4, tracked in #1278)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: #1278 (versioned production releases + release notes, already filed, no new
+  issue needed) starts consuming the promotion `candidate_id` and the five per-app prod versions
+  this epic produces, closing the loop epic #1548's Context named (#633, #276, and now #1278, all
+  previously unable to answer "what is running in prod" from a real version string).
+- Status: planned.
+- Dependencies: Phase 279 (the parity gate and finalized policy text this phase reports against);
+  Phase 273 / ADR 0081 (the version identities #1278 consumes); #1278 (filed).
+- Acceptance and validation evidence: not yet started — owned by #1278's own acceptance criteria,
+  not re-derived here.
+- Completion date: not started (planned).
+- Contracts/files (expected): whatever #1278 itself names; not re-derived here.
+- Next eligible phase: none recorded within epic #1548 — Phase 280 is epic #1548's own final planned
+  wave; further platform-versioning work beyond it is new scope, not part of this sequence.
+
+## Phase 281 - Delivery-fee override provenance: persist `delivery_fee_override` (#1564)
+
+- Initiative/release: Customer delivery pricing epic (#1321) follow-on correctness fix / current
+  release process. Not a new epic phase — a defect repair on Phase 238's (#1330) output, found by
+  a Verifier/QA pass while closing #1330.
+- **Numbering note (resolved 2026-09-04, merge conflict repair):** at the time this entry was
+  originally written, the ledger tip on `origin/develop` was Phase 272, and open PR #1561
+  (`pat/conduct-1559-adr`, epic #1548) already claimed **273 through 280** in its own diff — this
+  entry took 281 to avoid a duplicate number rather than taking 273 and colliding (AGENTS.md
+  "Continuous Phase Numbering" rule 5: preserve historical numbers). #1561 has since merged
+  (Phases 273-280 above are its landed content, now `completed`/`planned`), confirming 273-280 were
+  genuinely taken and 281 is the correct next number — no renumbering needed by this merge.
+- Objective and scope: `apps/dgfy-api/src/modules/pos/usecases/deliveryFeeOverrideUseCases.js`
+  wrote the persisted `pos_transactions.delivery_fee`/`total_amount` on a staff delivery-fee
+  override but never wrote `pos_transactions.delivery_fee_override`, so every applied override
+  silently broke the Phase 237 invariant `delivery_fee_base - delivery_fee_waiver === delivery_fee`
+  (documented on `PosTransaction.js`) with nothing in the columns to say an override was the
+  reason. This phase persists the override amount, restates the invariant with both halves
+  explicit, and settles — rather than assumes — the design question of whether
+  `resolveStoreDeliveryFee` needs an override as a resolve-time input (it does not; see below).
+  No money value changes and no schema change: the column already exists from Phase 237's
+  migration.
+- Design decision recorded (the question #1564 required answering): the override stays
+  **post-hoc only**. It corrects an already-persisted transaction after checkout, so there is no
+  live quote to feed it back into; accepting one at resolve time would force `resolveStoreDeliveryFee`
+  to read persisted state, breaking the I/O-free/`await`-free contract its byte-identity regression
+  tests depend on, and would add a second writer to ADR 0078 Decision 4's single storefront choke
+  point. Its `overrideAmount: null` is the truthful resolve-time value, not a placeholder.
+- Status: in_progress (PR open against `develop`; flips to `completed` on merge + QA).
+- Dependencies: #1329 (Phase 237, the breakdown columns and the invariant), #1330 (Phase 238, the
+  override use case this repairs), #1321 (the epic both sit under), ADR 0012 (amended in the same
+  PR), ADR 0078 (consumed unchanged).
+- Acceptance and validation evidence: `apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.js`
+  19/19 passing (12 pre-existing + 7 new: the invariant regression; base/waiver retained as
+  pre-override provenance; waive-to-free persisted as `0` not `NULL`; an override on a POS-created
+  delivery order; the pre-#1564 provenance-only repair with zero money movement; retry idempotency
+  across a repair; fail-loud `INTERNAL_ERROR` when persistence drops the override write); full
+  delivery-fee suite 11 suites / 169 tests passing, including
+  `storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js` and
+  `storeCheckoutDeliveryFeePin.unit.test.js` unmodified; storefront/POS money regression 21 suites
+  / 246 tests passing; `node --check` on every changed `apps/dgfy-api` file;
+  `npm run check:compliance` (fail first, pass with the new declaration),
+  `npm run check:architecture`, `npm run lint:docs`.
+- Completion date: pending (see Status).
+- Contracts/files: `apps/dgfy-api/src/modules/pos/usecases/deliveryFeeOverrideUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`,
+  `apps/dgfy-api/src/models/PosTransaction.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (comment only),
+  `apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.js`,
+  `docs/architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md`
+  (2026-09-04 amendment),
+  `docs/compliance/impact-declarations/2026-09-04-delivery-fee-override-provenance.md`,
+  issues #1564, #1330, #1329, #1321.
+- Next eligible phase: 282.
+
+## Phase 282 - Discovery from-price rendering: storefront delivery-fee UI (#1333)
+
+- Initiative/release: Discovery pricing honesty epic (#1321) / current release process.
+- **Numbering note (resolved 2026-09-04, merge conflict repair):** this entry was originally
+  written and reviewed as Phase 281, when the ledger tip on `origin/develop` was Phase 280. PR
+  #1567 (#1564, delivery-fee override provenance — Phase 281 above) merged to `develop` first and
+  landed its own Phase 281 entry, colliding with this one; both PR reviewers had already flagged
+  the collision as a known heads-up before either PR merged. This entry is renumbered to 282 on
+  merge, per AGENTS.md's Continuous Phase Numbering rule 5 (preserve historical/already-landed
+  numbers); develop's own Phase 281 entry above is untouched.
+- Objective and scope: consume the discovery API's already-shipped `store_delivery_fee` (a
+  per-mode from-price: the fixed rate in `fixed` mode, `calc.min_fee` in `calculated` mode, `0` in
+  `free` mode) and `delivery_fee_mode` fields on the storefront discovery card, the last unshipped
+  piece of #1333 (Phase 242 shipped the backend projection/read paths). Renders "Free delivery"
+  (`free` mode), "From ₱X delivery" (`calculated` mode), or plain "₱X delivery" (`fixed` mode) next
+  to the existing distance/ETA row on all three discovery card layouts (grid, mobile list, desktop
+  list). No backend change — `store_delivery_fee`/`delivery_fee_mode` already flowed through
+  `/api/v1/storefront/discovery` unused by the frontend.
+- Status: completed.
+- Dependencies: #1333's own backend half (Phase 242, already shipped) — `resolveAdvertisedDeliveryFromPrice()`
+  (`apps/dgfy-api/src/modules/deliveryPricing/domain/deliveryFromPrice.js`),
+  `StorefrontDiscoveryIndex.js`'s `delivery_fee_mode` column, and the
+  `storefrontDiscoveryRepository.js`/`geoSearchRepository.js` read paths.
+- Acceptance and validation evidence: `npm run build:store` (Vite production build, clean); `npx
+  vitest run src/__tests__/discoveryFlow.integration.test.jsx` (38/38, including a case asserting
+  all three delivery-fee-mode labels render on discovery cards, plus a null-fee regression case
+  added in the RF-1 fix round asserting a fixed-mode card with an unresolvable/null
+  `store_delivery_fee` omits the delivery-fee label entirely instead of rendering "₱0 delivery").
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-storefront/src/features/discovery/renderers/discoveryResultsRenderer.jsx`,
+  `apps/dgfy-storefront/src/__tests__/discoveryFlow.integration.test.jsx`, issue #1333 (epic #1321).
+- Next eligible phase: 283.
+
+## Phase 283 - Version-bump check: flip advisory to blocking (#1592, epic #1548 Wave 2)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- **Numbering note (resolved 2026-09-04, merge conflict repair):** this entry was originally written
+  and reviewed as Phase 281, when the ledger tip on the branch it was drafted against was Phase 280.
+  By the time this PR (#1572) was rebased onto current `origin/develop`, PR #1567 (#1564,
+  delivery-fee override provenance) and the discovery from-price PR had both already merged and
+  claimed 281 and 282 respectively (see those two entries' own "Numbering note"s above — this is the
+  same collision pattern, a third time). This entry is renumbered to 283 on merge, per AGENTS.md's
+  Continuous Phase Numbering rule 5 (preserve historical/already-landed numbers); Phase 281 and 282
+  above are untouched. Phase 276's own "Next eligible phase" line (above) is updated to point here
+  under its new number.
+- Objective and scope: the flip half of what Phase 276 originally scoped, split out by PR #1572
+  review (pr-reviewer, RF-3) once Phase 276 itself narrowed to just the readiness *mechanism* (see
+  that phase's entry above for the full split rationale). This phase is the one-line edit —
+  `scripts/lib/version-bump-gate-toggle.js`'s `BLOCKING` constant, `false → true` — once a human has
+  run `node scripts/check-version-bump-flip-readiness.js` (Phase 276) and confirmed the ADR 0081
+  Decision 9 evidence threshold is actually met. Explicitly **not** part of #1569's own scope (that
+  issue's own "Explicitly out of scope" section) and not part of Phase 276 as re-scoped above.
+- Status: **completed** (2026-09-05, #1592).
+- Dependencies: Phase 276 (#1569, the readiness mechanism) merged; the evidence threshold itself
+  actually being met, confirmed by re-running `scripts/check-version-bump-flip-readiness.js` —
+  both satisfied. Filed as #1592 once epic #1548's Wave 2 was scheduled for this piece, per Phase
+  275/276's original deferred-decomposition posture (`docs/process/ISSUE-TAXONOMY.md`).
+- Acceptance and validation evidence: re-confirmed live at implementation time (2026-09-05, not
+  reused from #1592's own filing-time snapshot):
+  ```
+  PR-count evidence: 10 of 10 qualifying develop-base PRs.
+  Promotion-cycle evidence: none yet
+  [check-version-bump-flip-readiness] READY -- the ADR 0081 Decision 9 evidence threshold is met.
+  ```
+  10 counted PRs: 7 `pass` (#1591, #1583, #1582, #1581, #1580, #1579, #1578) + 3 `warn` (#1586,
+  #1567, #1566), since PR #1562's merge commit `5eb17c3426251990d364544e3ad5fbb1a839a35e`. Both
+  consuming surfaces confirmed to actually block, not just documented as blocking: (1)
+  `scripts/pr-checks.js` — found and fixed a genuine bug where the check's result was hardcoded to
+  `'pass'`/`'warn'` regardless of the `blocking` argument, so `computeOverallResult()` could never
+  reach `FAIL` for it even with `BLOCKING = true`; fixed via `resolveAppVersionsCheckResult()`,
+  covered by new tests in `scripts/pr-checks.test.js` asserting `FAIL` against the real toggle
+  module; (2) `.github/workflows/shared-changed-paths.yml` — verified via a throwaway branch/PR
+  carrying the flip plus a deliberately unbumped `apps/dgfy-api` change, confirmed the "Enforce
+  per-app version bump on source changes" step actually failed the job, then closed without
+  merging. See PR body (this PR) for the run link.
+- Completion date: 2026-09-05.
+- Contracts/files: `scripts/lib/version-bump-gate-toggle.js` (the one-line flip);
+  `scripts/pr-checks.js` + `scripts/pr-checks.test.js` (the result-severity fix and its regression
+  coverage, found necessary by this phase's own validation step, not anticipated by Phase 276's
+  "no other file needs to change" claim); `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, `.agents/skills/pr-reviewer/SKILL.md` (documentation
+  consequences).
+- Next eligible phase: this entry's own prior pointer (285) is long superseded — the chain moved on
+  through Phases 285-292 while this phase sat planned; Phase 292's own "Next eligible phase" line
+  (293) is the current authoritative tip, not restated here as a fresh claim from this entry.
+
+## Phase 285 - Wave C/C1: storefront catalog API projection of secondary categories (#1318)
+
+- **Numbering note:** this entry was drafted against a ledger tip of Phase 283 (making 284 the
+  mechanically next number), but at PR-open time another open PR (#1578, `fix(inventory): count
+  secondary category memberships in folder-delete warning`, Wave C4 — a sibling, unrelated slice of
+  the same #1318 program) already carries its own diff claiming Phase 284 for different work. Both
+  PRs are unmerged as of this writing, so this entry takes 285 outright to avoid opening with a
+  guaranteed collision, rather than colliding and relying on a later rebase to sort it out (the
+  pattern already used by Phase 281's and Phase 283's own "Numbering note" sections). If #1578
+  merges first, 284/285 land sequentially with no further action. If this PR merges first, #1578's
+  author renumbers its own 284 claim to 286 on rebase, per AGENTS.md's Continuous Phase Numbering
+  rule 5 (preserve already-landed numbers).
+- Initiative/release: Item multi-category membership program (#1318) / current release process.
+  Wave C, slice C1 — gates a later, separate slice (C2, not part of this phase) that will consume
+  this projection to render storefront catalog items grouped into every category they belong to.
+- Objective and scope: Phase 257 (#1503, merged) built the foundation — the
+  `item_folder_memberships` join table, the `ItemFolderMembership` model, and
+  `itemRepository.js`'s `listItemFolderMemberships`/`replaceItemFolderMemberships`. Phase 268 added
+  the IMS authoring UI. Neither touched any of the ~34 existing item-folder read sites — every
+  catalog surface still projected only the single primary `folder_id`/`folder_name`
+  (ADR 0080 Decision 4's stated primary-only default until an explicit phase opts in). This phase
+  is that explicit opt-in for exactly one surface: `storeRepository.js`'s `listStoreCatalog` /
+  `storeUseCases.js`'s `buildListStoreCatalogUseCase`/`serializeStoreCatalogItem` now also project
+  `secondary_categories: [{folder_id, folder_name}]` (ordered by `sort_order`, reusing
+  `listItemFolderMemberships` rather than re-querying the join table), additive to the unchanged
+  primary `folder_id`/`folder_name` scalar. This phase does not implement the C2 grouping/rendering
+  itself — it only makes the data available.
+- Design decision recorded (field shape): `[{folder_id, folder_name}]` rather than a bare id array,
+  so a later C2 consumer can render a category label per section without a second round trip,
+  mirroring the existing primary projection's own `{folder_id, folder_name}` pair. Every catalog
+  row carries the field (`[]` when an item has no secondary memberships), never `null`/absent.
+- Explicitly out of scope (per the task brief and ADR 0080 Decision 1 `[binding]`, confirmed
+  untouched by a new static regression guard — see below): POS report category grouping/filtering
+  (`posRepository.js`'s `buildReportInclude`/`normalizeReportLineRows`/`resolveReportItemCategory`
+  — a different function from the catalog-listing one, primary-only *permanently* per Consequences
+  item 3); affiliate commission rate resolution (`affiliateCommissionAccrual.js`); voucher folder
+  scope resolution (`voucherFolderScope.js`, `voucherRepository.js`); F&B modifier-group
+  inheritance (`fnbRepository.js`, `effectiveFnbModifierGroups.js`). POS/IMS catalog filter chips
+  (`posCatalogWorkflow.js`, the chip components, `itemRepository.js`'s `getItems()` folder filter)
+  are a separate, parallel phase (C3, a different worktree) — no overlap found.
+- Status: completed.
+- Dependencies: Phase 257 (#1503, the join table/model/repository methods this phase reuses),
+  Phase 268 (the IMS authoring UI, unaffected), ADR 0080 (Decision 4 opt-in exercised here;
+  Decision 1 `[binding]` and Decision 5 `[default]` both consumed unchanged, not amended).
+- Acceptance and validation evidence: 3 new test files, 14/14 passing —
+  `storeRepositorySecondaryCategories.test.js` (5: memberships attached with folder names ordered
+  by sort_order alongside the unchanged primary projection; defaults to `[]`; fails open — never
+  throws — on a membership-lookup error; skips the query entirely for an empty catalog result; a
+  membership pointing at a since-deleted folder resolves to `folder_name: null`),
+  `storeCatalogSecondaryCategories.usecase.test.js` (3: threads the field from repository row to
+  serialized response; defaults to `[]` for a pre-Phase-285 row shape; normalizes a non-array
+  value), `adr0080PrimaryOnlyReadersGuard.test.js` (6: a new static source-grep regression guard
+  asserting none of ADR 0080 Decision 1's six named primary-only files reference
+  `secondary_categories`/`attachSecondaryCategories`/`listItemFolderMemberships`). Plus 7
+  pre-existing, unmodified test files rerun as regression evidence: Phase 257's own
+  `itemFolderMembershipPrimaryOnlyInvariant.test.js` + the three named resolvers' own unit suites
+  (44 tests) and the existing `storeRepository.js`/`storeUseCases.js` coverage (77 tests) — all
+  passing. `node --check` on every changed/new `.js` file; `npm run check:compliance` (fail first,
+  naming the 2 sensitive files, pass with the new declaration); `npm run check:architecture` (54
+  modules / 561 files, 0 violations); `npm run lint:docs`.
+- Completion date: 2026-09-04 (merged).
+- Contracts/files: `apps/dgfy-api/src/modules/store/repositories/storeRepository.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/tests/storeRepositorySecondaryCategories.test.js`,
+  `apps/dgfy-api/tests/storeCatalogSecondaryCategories.usecase.test.js`,
+  `apps/dgfy-api/tests/adr0080PrimaryOnlyReadersGuard.test.js`,
+  `docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md`,
+  `docs/architecture/adr/0080-item-multi-category-membership.md` (consumed unchanged, not
+  amended), issue #1318.
+- Next eligible phase: 286.
+
+## Phase 286 - Wave C/C3: POS/IMS catalog filters widen to secondary categories (#1318)
+
+- **Numbering note:** this entry was dispatched against a pre-assigned Phase 285, drafted when the
+  ledger tip on `origin/develop` was Phase 283 (making 284 the mechanically next number). At
+  PR-open time, two sibling Wave C slices of the same #1318 program were already open against
+  `develop` and each had already claimed a number in the same range: PR #1578 (C4, "folder-delete
+  warning: count secondary category memberships") claims Phase 284, and PR #1579 (C1, "storefront
+  catalog API projection of secondary categories") claims Phase 285 — the latter's own entry
+  explicitly reasons through the same 284 collision this note is now reasoning through a second
+  time. Both PRs are unmerged as of this writing. This entry takes **286** outright, the next number
+  after both open claims, to avoid opening with a guaranteed three-way collision rather than relying
+  on a later rebase to sort it out — the same avoid-not-repair posture PR #1579 used for its own
+  284→285 move, and the same pattern Phase 281/282/283's own "Numbering note"s document for this
+  exact class of parallel-Wave collision. If #1578 and/or #1579 merge first, 284/285/286 land
+  sequentially with no further action needed here. If this PR merges before either, whichever of
+  #1578/#1579 rebases afterward renumbers its own claim past 286, per AGENTS.md's Continuous Phase
+  Numbering rule 5 (preserve already-landed numbers, never renumber a merged entry).
+- Initiative/release: Item multi-category membership program (#1318) / Wave C, slice C3 — parallel
+  to, and independent of, C1 (storefront catalog projection, PR #1579) and C4 (folder-delete
+  warning, PR #1578); no file overlap with C1, and the one file this phase shares with C4
+  (`itemRepository.js`, `TerminalOperationsWorkspace.jsx`) touches disjoint functions in each (see
+  "Contracts/files" below) — confirmed by diffing both open PRs before implementing, not assumed.
+- Objective and scope: Phase 257/268 shipped `item_folder_memberships`, the `ItemFolderMembership`
+  model, and `itemRepository.js`'s `listItemFolderMemberships`/`replaceItemFolderMemberships`, with
+  zero read sites consuming them. This phase is [ADR 0080](../architecture/adr/0080-item-multi-category-membership.md)
+  Decision 4's explicit opt-in for POS's and IMS's own catalog **filter** surfaces — the folder/
+  category chip filters merchants use while browsing the catalog, in both apps — so that selecting
+  a category also surfaces items whose SECONDARY category matches, not just their primary. Not
+  pre-authorized by Decision 5 (which only covers storefront grouping-surface composite rendering);
+  a dated `## Amendments` block on ADR 0080 covers this new decision point, `status: amended`.
+- Scope correction made mid-phase (recorded, not hidden): the dispatch brief scoped IMS to
+  backend-only (`itemRepository.js`'s `folder_id` query-param path). Investigation found that path
+  unreachable from IMS's actual live browse UI — `ItemsPage.jsx`'s `useInventoryItems` call never
+  sends a `folder_id` param; it fetches its full item set once and filters client-side via
+  `doesItemMatchFolder` instead. Backend-only would have shipped a no-op for real IMS merchants, so
+  this phase also widened `itemRepository.js`'s list response (`secondary_folder_ids` per item) and
+  `ItemsPage.jsx`'s `doesItemMatchFolder` (a new opt-in `matchSecondary` flag, default `false`) —
+  full reasoning in the compliance declaration's "Residual Risks" section.
+- Status: completed.
+- Dependencies: Phase 257/268 (`item_folder_memberships` schema/model/authoring API, already
+  shipped).
+- Acceptance and validation evidence: `apps/dgfy-api/tests/posRepository.catalogFolderWidening.test.js`
+  (new, 4/4 passing); 4 new cases in `apps/dgfy-api/tests/inventoryItemRepository.test.js` (full
+  file 90/90 passing); `apps/dgfy-api/tests/itemFolderMemberships.repository.test.js`,
+  `apps/dgfy-api/tests/posRepository.catalogImages.test.js`,
+  `apps/dgfy-api/tests/posRepository.locationStockFallback.test.js` (unchanged, regression-clean);
+  new case in `packages/web-core/src/features/pos/utils/__tests__/posCatalogWorkflow.test.js` (full
+  file 6/6 passing, run from `apps/dgfy-ims` per `docs/architecture/frontend-split-sync.md`); full
+  `packages/web-core/src/features/pos/` suite (189 files / 1190 tests) and full
+  `packages/web-core/src/features/inventory/` suite (9 files / 68 tests), both zero regressions —
+  the regression evidence for `TerminalOperationsWorkspace.jsx`'s and `ItemsPage.jsx`'s inline
+  widened-match logic, neither of which has a dedicated isolated unit test (stated as a known gap in
+  the compliance declaration, not hidden); `node --check` on every changed `apps/dgfy-api` `.js`
+  file; `npm run build:pos` and `npm run build:skupervisor` (both OK); `npm run check:architecture`
+  (OK); `npm run check:adr` (OK, validates the new ADR 0080 Amendments block); `npm run
+  check:compliance` (declaration:
+  `docs/compliance/impact-declarations/2026-09-04-pos-ims-catalog-filter-secondary-categories.md`).
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js` (`getItems`'s
+  `folder_id` filter + new `attachSecondaryFolderIds` — disjoint from PR #1578's own
+  `countSecondaryFolderMemberships`/`listFolders`/`deleteFolder` changes to the same file),
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js` (`listCatalog`'s `folder_id` filter
+  + new `attachSecondaryFolderIds`), `apps/dgfy-api/tests/inventoryItemRepository.test.js`,
+  `apps/dgfy-api/tests/posRepository.catalogFolderWidening.test.js` (new),
+  `packages/web-core/src/features/pos/utils/posCatalogWorkflow.js`
+  (`filterCatalogByFolder`/`filterAvailableCatalogFolders`),
+  `packages/web-core/src/features/pos/utils/__tests__/posCatalogWorkflow.test.js`,
+  `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx` (`filteredItems`
+  memo's `folder:<id>` chip match — disjoint from PR #1578's `CategoryManagementWorkspace` changes
+  to the same file), `packages/web-core/src/features/inventory/pages/ItemsPage.jsx`
+  (`doesItemMatchFolder`'s `matchSecondary` opt-in), `docs/architecture/adr/0080-item-multi-category-membership.md`
+  (2026-09-04 Amendment), issue #1318.
+- **Numbering note (updated 2026-09-04 — develop merge):** on merging current `origin/develop`
+  (which now includes #1579 merged as Phase 285 above) into this branch, PR #1578 (C4) was found to
+  have already rebased its own claim from 284 to **287** — its own "Numbering note" explains it
+  checked this PR's live diff first and specifically avoided 286 (confirmed via `gh pr diff 1578`)
+  to prevent reproducing the exact 284/285 collision one number later. This entry's own number
+  therefore stays **286** (unchanged, exactly what #1578 already accounted for) — renumbering it now
+  would only reopen the collision #1578 already dodged. The "Next eligible phase" line below is
+  updated from 287 to **288**, since 287 is no longer free: it's #1578's own live, unmerged claim as
+  of this resolution, not a landed entry, but treating it as available here would set up the next
+  filer for the same collision this note is now the third documented instance of (after Phase
+  281/282/283 and Phase 284/285). Re-verified against `origin/develop`'s actual tip (285, via #1579)
+  and every other open PR's live phase claim (#1577 fills an existing placeholder, claims nothing
+  new; #1578 claims 287) before finalizing this note — 288 is the next number neither develop's tip
+  nor any open PR's diff claims as of this resolution.
+- **Numbering note (second addendum, 2026-09-04 — later develop merge):** on merging
+  `origin/develop` a second time, PR #1578 (C4) has now actually **merged** as Phase 287, landing
+  immediately below this entry in final numeric order (285, 286, 287) — no longer just the live,
+  unmerged claim the addendum above described. This entry's own "next eligible" pointer above (288)
+  is accordingly superseded by Phase 287's own "Next eligible phase" line below, which is now the
+  actual trailing pointer for the ledger as a whole; not restated here a third time to avoid two
+  bullets on this entry disagreeing if a future phase lands and only one gets updated.
+
+## Phase 287 - Folder-delete warning: count secondary category memberships (#1318)
+
+- **Numbering note:** this entry originally claimed Phase 284 (the ledger tip at PR #1578's
+  open time was Phase 283). By the time this PR was rebased onto current `origin/develop`, PR
+  #1579 (Wave C/C1, Phase 285 above) had already merged, its own "Numbering note" explaining it
+  took 285 outright specifically to avoid a guaranteed collision with this PR's 284 claim — so this
+  entry renumbers to fill the resulting gap, per AGENTS.md's Continuous Phase Numbering rule 5
+  (preserve already-landed numbers, never renumber a landed entry). It does **not** take 286 even
+  though Phase 285's own "Next eligible phase" line above says 286: another open, unmerged sibling
+  PR (#1580, Wave C/C3 — POS/IMS catalog filter widening, same #1318 program) already carries its
+  own diff claiming Phase 286 for different work, confirmed live via `gh pr diff 1580` at the time
+  of this resolution. Taking 286 anyway would just reproduce the exact 284/285 collision this note
+  is already describing, one number later — so this entry takes 287 instead, the next number
+  neither develop's tip nor any open PR's diff claims as of this resolution.
+- Initiative/release: Item multi-category membership epic (#1318) / Wave C follow-up to Phase 257.
+- Objective and scope: fix the under-count named explicitly in
+  [ADR 0080](../architecture/adr/0080-item-multi-category-membership.md) Consequences item 4 —
+  Phase 257 shipped `item_folder_memberships` (secondary category join table) but the folder-delete
+  warning and folder list only ever counted items whose PRIMARY `folder_id` matched, so an item
+  that carries a folder only as a secondary category was invisible to the operator-facing warning.
+  Scoped to the warning/count only, not any storefront/POS catalog projection or filter logic (ADR
+  0080 Decision 4's per-surface opt-in is untouched by this phase).
+- Status: completed.
+- Dependencies: Phase 257 (`item_folder_memberships` schema/model, already shipped).
+- Acceptance and validation evidence: `node --check` on the changed backend file;
+  `tests/inventoryItemRepository.test.js` (60/60 passed, including new/updated cases for
+  `listFolders`'s `secondary_item_count` and `deleteFolder`'s `secondary_items_affected` —
+  secondary-only membership counted, primary+secondary overlap not double-counted, zero-membership
+  folder yields zero, and the `CATEGORY_REASSIGNMENT_REQUIRED` error carries the same count);
+  `tests/itemFolderMemberships.repository.test.js` + `tests/replaceItemFoldersUseCase.test.js`
+  (10/10, unmodified, confirms the shared `ItemFolderMembership` model-access pattern didn't
+  regress); `tests/itemHandlers.transport.test.js` +
+  `tests/storageAndGroupingToolRegistry.test.js` + `tests/routeAuthorizationDeclarations.contract.test.js`
+  (23/23, unmodified); `npm run build:pos` (succeeded — the only app that imports
+  `packages/web-core/src/features/pos/**`'s `TerminalOperationsWorkspace.jsx`, confirmed via grep);
+  `npm run check:architecture`; `npm run check:compliance` (declaration:
+  `docs/compliance/impact-declarations/2026-09-04-folder-delete-secondary-membership-warning.md`).
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js` (new
+  `countSecondaryFolderMemberships` helper, shared by `listFolders`/`deleteFolder`),
+  `apps/dgfy-api/tests/inventoryItemRepository.test.js`,
+  `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx` (Category
+  Management delete-confirmation dialog's new second warning line), issue #1318.
+- Next eligible phase: 288.
+
+## Phase 288 - Multiple Senior/PWD Beneficiaries Per POS Order
+
+- Initiative/release: POS statutory-discount evidence and allocation integrity / current POS cashier and fiscal-compliance sequence.
+- Objective and scope: allow one POS transaction to record multiple Senior/PWD beneficiaries; assign explicit eligible line quantities to each beneficiary; reject duplicate IDs and combined allocations above purchased quantities; persist normalized identity and per-beneficiary allocation evidence; preserve singular clients, historical orders, receipts, and reports.
+- Status: completed.
+- Dependencies: ADR 0033 Commercial Promo and Statutory POS Discount Boundaries (amended in this phase); ADR 0042 BIR RMO 24-2023 Fiscal Document and Accreditation Closure; `docs/architecture/ARCHITECTURE_BOUNDARIES.md`; `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
+- Acceptance and validation evidence: singular statutory-discount requests remain compatible; multiple beneficiaries calculate independently and reconcile to header totals; duplicate IDs, ineligible items, and over-allocated quantities fail closed; normalized beneficiary and allocation evidence persists transactionally; browser and hardware receipts identify every beneficiary; compliance exports contain one row per beneficiary; focused backend/frontend tests, migration checks, POS build, documentation lint, architecture gates, runtime doctor, and tenant-schema audits pass.
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-api/src/modules/pos/domain/posDiscountPolicy.js`; `apps/dgfy-api/src/modules/pos/domain/posDiscountCalculator.js`; `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`; `packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx`; `apps/dgfy-migration-runner/migrations/20260904000001-create-pos-discount-beneficiaries.cjs`.
+- Governance note: `within-existing-boundary` with a default-contract amendment; no architecture allowlist exception is introduced.
+- Next eligible phase: 289.
+
+## Phase 289 - Wave C/C2: storefront grouping fan-out for secondary categories (#1318)
+
+- **Numbering note:** this entry was dispatched against a pre-assigned Phase 288, drafted when the
+  ledger tip on `origin/develop` was Phase 287 (making 288 the mechanically next number, per Phase
+  286's own addendum). Re-verified immediately before opening this PR: `origin/develop`'s tip was
+  still Phase 287 (no new merges) at PR-open time, but an open sibling PR against the same #1318
+  program — #1581 (Wave C/C5, "POS's own 'Additional Categories' item-edit section") — already
+  carried its own live diff claiming Phase 288, so this entry took **289** outright instead.
+  **Updated on merging `origin/develop` into this branch (review-fix round):** by that point
+  `origin/develop`'s tip had actually advanced to a *landed* Phase 288 — "Multiple Senior/PWD
+  Beneficiaries Per POS Order" (immediately above), an unrelated PR (#1586) that merged before
+  #1581 did, independently of the #1318 program's own internal 288/289/290 coordination. No number
+  collision resulted: 288 and 289 are two different numbers, so this entry keeps its own **289**
+  unchanged, now sequenced directly after the real Phase 288 rather than after Phase 287. #1581 has
+  since confirmed this live too (`gh pr diff 1581`): it found the same landed Phase 288, correctly
+  left it as landed per AGENTS.md's Continuous Phase Numbering rule 5, saw this entry's own 289
+  claim, and renumbered itself to **290** to avoid colliding with either — the same avoid-not-repair
+  posture this ledger's history already uses repeatedly (Phase 281/282/283, 284/285, 286/287).
+  **Updated again on this PR's MERGE-1 fix round (second `origin/develop` merge):** #1581 has since
+  actually **merged** as Phase 290 (merge commit `999864cf3b0e59bb533dd119cebf61baa8d2c707`,
+  immediately below) — no longer just a live, unmerged claim. This entry's own number (289) is
+  unaffected either way, since it was already sequenced correctly between the real Phase 288 and
+  #1581's Phase 290 before #1581 merged.
+- Initiative/release: Item multi-category membership program (#1318) / Wave C, slice C2 — the read
+  side Phase 285 (Wave C/C1, PR #1579) gated: that phase projected
+  `secondary_categories: [{folder_id, folder_name}]` onto the storefront catalog API response but
+  implemented no consumer of it. Parallel to, and independent of, C3 (POS/IMS filter widening,
+  Phase 286) and C4 (folder-delete warning, Phase 287) — no file overlap with either.
+- Objective and scope: [ADR 0080](../architecture/adr/0080-item-multi-category-membership.md)
+  Decision 4's explicit, shipped opt-in for exactly two grouping surfaces named in Decision 5 — the
+  F&B storefront menu's section grouping (`fnbStorefrontViewModel.js`'s
+  `getFoodBeverageStorefrontViewModel`) and the services storefront's category grouping
+  (`servicesStorefrontViewModel.js`'s `getServicesStorefrontViewModel`). Both now render an item
+  once per section/category it belongs to (primary + each distinct secondary category), keyed by a
+  composite `{sectionIdentity}:{itemId}` / `{categoryIdentity}:{itemId}` per Decision 5 — that
+  identity is `folder_id`-based, not the normalized display label (see the RF-1 fix-round note
+  below); `secondary_categories` already reached both files unmodified (confirmed by trace before
+  implementing) — no change to the API layer, `useStoreCatalogLoader.js`, `useStorefrontCatalog.js`,
+  or `normalizeStorefrontPageModel.js` was needed or made.
+- Decision 5 carve-out, explicitly preserved: neither file's flat, unsectioned item list opts in.
+  `fnbStorefrontViewModel.js`'s `menuItems` stays exactly one entry per item — it backs `totalItems`
+  and the count stats (`beverageCount`/`dessertCount`/`readyNowCount`), the unsectioned "All" tab,
+  and `fnbProductDetailsModel.js`'s `buildFnbRelatedItems` cross-sell rail (a distinct sub-surface
+  found during implementation, per the dispatch brief's ask to check for one). Only `menuSections`
+  fans out. Symmetrically, `servicesStorefrontViewModel.js`'s `services`/`allServices` (the flat "all
+  services" card grid, a single-label surface) stay one entry per service — the primary-category
+  occurrence specifically, carrying that group's `categoryMeta`/`variantName` unchanged from
+  pre-fan-out behavior — and every stat count derives from that same un-fanned list. Only
+  `serviceGroups[].items` fans out.
+- Documentation, not a new decision: ADR 0080 gets a new "Opt-in ledger (Decision 5 grouping
+  surfaces)" table (not a dated `## Amendments` entry) recording that these two surfaces have
+  shipped their opt-in — Decision 4/5 already pre-authorized this exact shape, so nothing here
+  needed a superseding ADR, a `[binding]` change, or the `status: amended` treatment C3's
+  genuinely-new filter-matching scope required. The table's title/scope was tightened during the
+  RF-2 fix round below — see that note.
+- Explicitly out of scope, untouched: the API layer/hooks/normalization layers named above; ADR 0080
+  Decision 1's `[binding]` primary-only readers (affiliate commission, voucher scope, F&B modifier
+  inheritance, POS reports); POS/IMS catalog filters and `TerminalOperationsWorkspace.jsx` (Phase
+  286/287, already shipped).
+- **PR #1583 review fix round (Codex GPT-5.6 Luna, pr-reviewer, BLOCK verdict), 2026-09-04:**
+  - RF-1 (blocker): both view models derived grouping/dedup identity and the composite render key
+    from the normalized display **name**, not the stable `folder_id` — two genuinely distinct
+    folders whose names happened to normalize identically (e.g. "A B"/"A_B" both -> `a_b`) would
+    collapse into one group, silently dropping a real secondary membership. Fixed via
+    `resolveSectionIdentity`/`resolveCategoryIdentity`: prefer the folder's numeric `folder_id`
+    (always present on a `secondary_categories` row, present on the primary whenever
+    `items.folder_id` is non-null) over the normalized label, falling back to the name-based
+    identity only for a genuinely ID-less occurrence. `sectionKey`/`categoryKey` stay name-derived
+    and unchanged in format (load-bearing for preset/icon matching and the pre-existing
+    `src/__tests__/servicesStorefrontViewModel.test.js`); only the new `sectionIdentity`/
+    `categoryIdentity` field and the keys derived from it changed. Also fixed the same latent
+    name-vs-identity ambiguity in `servicesStorefrontViewModel`'s "which occurrence is the primary"
+    filter for the flat `services`/`allServices` list. Added the reviewer's exact repro (two
+    folders, colliding normalized names, distinct `folder_id`s) as a regression test in both files,
+    plus a fallback-identity test for the genuinely ID-less case; reworked the "duplicate secondary"
+    dedup tests to share a `folder_id` (a true duplicate) rather than a shared name.
+  - RF-2 (should-fix): removed the ADR 0080 ledger's Phase 286 (POS/IMS filter matching) row — a
+    Decision 4 opt-in, not a Decision 5 grouping opt-in, already fully recorded in its own dated
+    Amendment — and retitled the table to "Opt-in ledger (Decision 5 grouping surfaces)" to make
+    that scope explicit going forward.
+  - RF-3 (nit): both test files' header comments corrected from "Phase 288" to "Phase 289".
+  - Re-verification evidence: full `apps/dgfy-storefront` suite 193/193 files, 1046/1046 tests
+    (+5 net new from the RF-1 regression coverage, 18 new tests total across both files, up from
+    13); `npm run build:store` (OK); `npm run check:architecture` (0 violations); `npm run
+    check:compliance` (no compliance-sensitive changes); `npm run check:adr` (88 ADRs valid); `npm
+    run lint` (0 errors, same pre-existing warnings elsewhere).
+- **PR #1583 review fix round 2 (Codex GPT-5.6 Luna, pr-reviewer, BLOCK verdict), 2026-09-04:**
+  - RF-4 (blocker): fix round 1 made grouping/dedup correct at the view-model layer (folder_id-
+    based `sectionIdentity`/`categoryIdentity`), but every downstream consumer still selected,
+    keyed, and matched by the normalized `sectionKey`/`categoryKey` display text — so the review's
+    own colliding-name regression test (two distinct-`folder_id` groups sharing a normalized name)
+    was internally correct at the view-model layer yet the second group was unreachable through
+    the actual UI, and both F&B/services tab lists carried duplicate React keys/active states.
+    Fixed by threading `sectionIdentity`/`categoryIdentity` through every named adapter/consumer —
+    `buildFnbCatalogPresentation.js` (`resolvedSection`/`activeSectionModel` resolution),
+    `StorefrontCatalogToolbar.js` (shared F&B/Retail toolbar — option values, active-state match,
+    `.find()`, click handlers, React keys), `StorefrontCatalogRouteContainer.jsx` (`resolvedTab`/
+    `activeGroup` services resolution), `StorefrontClassicCatalog.jsx` (legacy services/default
+    tab strip), and `ServicesCatalogToolbar.jsx` (fixed the adapter that dropped `categoryIdentity`
+    entirely when mapping `serviceGroups` to the shared toolbar's shape). `sectionKey`/`categoryKey`
+    stay name-derived and unchanged in format everywhere — still load-bearing for icon/preset
+    matching — only identity/selection/keying moved off them. Also fixed, for the same
+    state-consistency reason though not in the reviewer's named list: `ServicesPerformanceSidebar.jsx`
+    (services quick-nav, reads the same now-identity-based `resolvedTab`) and
+    `SimpleCatalogToolbar.jsx` (Simple mode's own toolbar duplicate, consumes the same F&B view
+    model) — both would have silently broken once `resolvedTab`/`resolvedFnbSection` became
+    identity-based without the parallel fix. Added 4 new consumer-level regression test files/
+    additions (not just view-model-level) reproducing the reviewer's exact scenario end-to-end
+    through real component renders: `buildFnbCatalogPresentation.test.js` (+2 tests, including a
+    "does not resolve by sectionKey text alone" negative case), `StorefrontCatalogToolbar.test.jsx`
+    (new, 3 tests), `ServicesCatalogToolbar.test.jsx` (+1 test; also updated its pre-existing
+    fixture/assertion, which had no `categoryIdentity` and would otherwise have broken),
+    `StorefrontClassicCatalog.test.jsx` (new — incidentally also exercises
+    `ServicesPerformanceSidebar.jsx`, rendered inside it), `SimpleCatalogToolbar.test.jsx` (new).
+  - RF-5 (should-fix): ADR 0080 Consequences item 1 ("this PR opts in no surface") was a snapshot
+    of the original Phase 257 schema-introducing PR, left unqualified as this Phase 289 PR's own
+    two opt-ins shipped — contradicting Decision 4/5 and the new ledger. Rewrote it to state that
+    explicitly: the zero-migration-risk claim is scoped to Phase 257 specifically, and non-opted-in
+    read sites remain primary-only by Decision 4's own default, while the Opt-in ledger (Phase 289,
+    this PR) and the dated Amendment (Phase 286) both now record real exceptions to that default.
+  - MERGE-1 (blocker): head predated sibling PR #1581 (merged as Phase 290, merge commit
+    `999864cf3b0e59bb533dd119cebf61baa8d2c707`) — `mergeStateStatus: DIRTY`/`CONFLICTING`. Merged
+    fresh `origin/develop` (3-way conflict: `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` — pure
+    insertion-order, resolved keeping Phase 288/289/290 in correct numeric sequence, no renumbering
+    needed since 289 was never actually colliding with 288 or 290; `apps/dgfy-storefront/package.json`
+    + `package-lock.json` — #1581 had independently bumped 1.1.0→1.1.1, this PR had bumped 1.2.0;
+    kept 1.2.0, already a strict superset increase, re-synced the lockfile via `npm install`).
+    Updated this entry's own numbering note to record #1581's merge (no longer "unmerged"/"live
+    claim"). Re-ran every Tier 0 gate against the fully merged tree: `npm run build:store` (OK);
+    full `apps/dgfy-storefront` suite 196/196 files, 1054/1054 tests (+8 net new from the RF-4
+    consumer-level regression coverage); `npm run check:architecture` (0 violations); `npm run
+    check:compliance` (no compliance-sensitive changes); `npm run check:adr` (88 ADRs valid); `npm
+    run lint` (0 errors, same pre-existing warnings elsewhere, none in the changed/new files).
+- Status: completed.
+- Dependencies: Phase 257 (`item_folder_memberships` schema, already shipped), Phase 285
+  (`secondary_categories` catalog projection, already shipped, consumed unchanged here), ADR 0080
+  (Decision 4 opt-in exercised, Decision 5 fan-out shape implemented, Decision 1 `[binding]`
+  untouched).
+- Acceptance and validation evidence: 2 new test files, 13/13 passing —
+  `fnbStorefrontViewModel.test.js` (7: primary-only item renders once; one secondary category fans
+  to both sections with distinct composite keys; multiple secondary categories fan to all of them;
+  no duplicate composite keys across the fanned grouping; `menuItems`/`totalItems` not inflated for a
+  fanned item; a secondary category matching the primary section dedupes; two secondary categories
+  normalizing to the same section dedupe), `servicesStorefrontViewModel.test.js` (6: the same shape
+  for `serviceGroups`, plus confirms `services`/`allServices`/`totalServices`/`inStoreCount`/
+  `serviceFamilyCount` are not inflated). Full `apps/dgfy-storefront` suite re-run as regression
+  evidence: 193/193 test files, 1041/1041 tests passing (including the pre-existing
+  `servicesStorefrontViewModel.test.js` in `src/__tests__/`, which caught a real regression during
+  implementation — the flat `allServices` losing its `variantName`/`categoryMeta` fields — fixed
+  before this evidence was collected). `npm run build:store` (OK); `npm run check:architecture` (54
+  modules / 561 files, 0 violations); `npm run check:compliance` (no compliance-sensitive changes
+  detected — a purely additive frontend rendering change); `npm run lint` (0 errors, pre-existing
+  warnings only, none in the changed/new files).
+- Completion date: 2026-09-04.
+- Contracts/files:
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/fnbStorefrontViewModel.js`,
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/fnbStorefrontViewModel.test.js` (new),
+  `apps/dgfy-storefront/src/modes/services/storefront/model/servicesStorefrontViewModel.js`,
+  `apps/dgfy-storefront/src/modes/services/storefront/model/servicesStorefrontViewModel.test.js`
+  (new), `docs/architecture/adr/0080-item-multi-category-membership.md` (new "Opt-in ledger
+  (Decision 5 grouping surfaces)" section, not a dated Amendment; RF-5's Consequences item 1
+  rewrite), issue #1318. Fix round 2 (RF-4) additionally touches:
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/buildFnbCatalogPresentation.js`,
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/buildFnbCatalogPresentation.test.js`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontCatalogToolbar.jsx`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontCatalogToolbar.test.jsx` (new),
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontClassicCatalog.jsx`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontClassicCatalog.test.jsx` (new),
+  `apps/dgfy-storefront/src/app/pages/StorefrontCatalogRouteContainer.jsx`,
+  `apps/dgfy-storefront/src/modes/services/storefront/components/ServicesCatalogToolbar.jsx`,
+  `apps/dgfy-storefront/src/modes/services/storefront/components/ServicesCatalogToolbar.test.jsx`,
+  `apps/dgfy-storefront/src/modes/services/storefront/components/ServicesPerformanceSidebar.jsx`,
+  `apps/dgfy-storefront/src/modes/simple/storefront/components/SimpleCatalogToolbar.jsx`,
+  `apps/dgfy-storefront/src/modes/simple/storefront/components/SimpleCatalogToolbar.test.jsx` (new).
+- **Numbering note (merge resolution addendum):** the "Next eligible phase" pointer below was
+  updated from this entry's original 290 to **291** during this PR's first fix round, since #1581
+  (Wave C/C5) had confirmed live it was taking **290** for itself. Confirmed again on this PR's
+  MERGE-1 fix round: #1581 has since actually merged as Phase 290 (immediately below), whose own
+  trailing pointer independently also reads **291** — consistent with this line, no further change
+  needed.
+- Next eligible phase: 291 (290 is #1581's own landed claim, merge commit
+  `999864cf3b0e59bb533dd119cebf61baa8d2c707`).
+
+## Phase 290 - Wave C/C5: POS's own "Additional Categories" item-edit section (#1318)
+
+- **Numbering note:** originally claimed Phase 288 (the ledger tip at this PR's open time was
+  Phase 287, and `gh pr list --repo Sieitzz/dgfy-platform --base develop --state open` returned no
+  open PRs at investigation/open time). By the time this branch merged fresh `origin/develop`, PR
+  #1586 ("fix/pos-receipt-search-discount-hardening") had already landed and its own ledger entry
+  had independently claimed 288 too, for unrelated work ("Multiple Senior/PWD Beneficiaries Per POS
+  Order", above) — a genuine collision, not detectable at this PR's own open time since #1586 was
+  not yet open then. Per AGENTS.md's Continuous Phase Numbering rule 5 (preserve already-landed
+  numbers, never renumber a landed entry), #1586's 288 stays as landed and this entry renumbers
+  instead. It does **not** take 289 either, even though 288's own "Next eligible phase" line above
+  says 289: another open, unmerged PR (#1583, Wave C/C2 — storefront grouping surfaces fan out to
+  secondary categories, same #1318 program) already carries its own diff claiming Phase 289 for
+  different work, confirmed live via `gh pr diff 1583` at the time of this resolution — the exact
+  same check Phase 287's own numbering note (above) used to avoid an identical collision one round
+  earlier. Taking 289 anyway would just reproduce that collision one number later, so this entry
+  takes 290 instead, the next number neither develop's tip nor any open PR's diff claims as of this
+  resolution.
+- Initiative/release: Item multi-category membership epic (#1318), Wave C/C5 — POS authoring-UI
+  reach gap. Independent of C2 (also Wave C), run in a separate parallel worktree per the dispatch
+  brief; touches no file C2 is scoped to.
+- Objective and scope: Phase 268 (PR #1515) built the "Additional Categories" secondary-category
+  membership editor for IMS inside `ItemFormModal.jsx`, using the `listItemFolders`/
+  `replaceItemFolders` client functions Phase 257 (PR #1503) shipped. POS has no route sharing that
+  component — its item editor is a completely separate, hand-built modal inline in
+  `TerminalOperationsWorkspace.jsx`. This phase adds the same capability there: a new section in the
+  edit modal's existing Category & QR column, adapted to this file's `activeEditItem`-based state
+  (no `itemIdForFolders`-equivalent create/edit ambiguity exists here, since this modal only ever
+  opens for an already-persisted item — item creation is a fully separate `createForm` flow in the
+  same file), reusing the existing `canManageCategories` prop (`categories:manage` permission,
+  confirmed identical to `ItemFormModal.jsx`'s `canManageFolders`) rather than inventing a new
+  permission check. No backend change — the write API already existed and is unchanged.
+
+  Fix round 1 (PR #1581 review, Codex — RF-1/RF-2/RF-3): RF-1 (blocker) closed a client-side gap
+  where a staged-but-unsaved primary category change in the same edit modal could produce a
+  primary/secondary disjointness violation (ADR 0080 Decision 2) once "Save Additional Categories"
+  and "Save Item" landed in a particular order — fixed with a `pendingPrimaryFolderId`/
+  `excludedPrimaryFolderIds` pair excluding both the persisted and staged-pending primary, a cleanup
+  effect for a selection that becomes excluded mid-edit, and a save-time payload re-filter. RF-2
+  (should-fix) added real max-10-boundary and pre-existing-membership runtime test coverage the
+  original test file lacked. RF-3 (should-fix) added a `secondaryFoldersUnavailable` state
+  distinguishing an HTTP 403 (permission failure) from a genuinely empty membership list, rendering
+  an honest "unavailable" status instead of a false `0/10 selected` — frontend-only, no backend
+  permission model change.
+- Status: completed.
+- Dependencies: Phase 257 (`item_folder_memberships` schema, `listItemFolders`/`replaceItemFolders`
+  client functions) and Phase 268 (the IMS UX/behavior pattern this phase mirrors), both already
+  shipped.
+- Acceptance and validation evidence: `packages/web-core/src/features/pos/__tests__/additionalCategoriesEdit.behavior.test.jsx`
+  (11/11 passing — 2 original runtime cases (renders/excludes-primary/saves for an authorized
+  manager; visible-but-read-only when `canManageCategories` is `false`) + 2 RF-1 cases (staged
+  primary excluded, including the exact reproduction sequence) + 2 RF-2 cases (max-10 boundary;
+  pre-existing memberships load/preserve/remove/add correctly) + 3 RF-3 cases (authorized read;
+  unauthorized 403 read even with a stale client-side `canManageCategories=true`; non-403 failure
+  still degrades to the prior empty-list behavior) + 2 source-contract cases); full
+  `packages/web-core/src/features/pos/__tests__/` suite (147 files / 917 tests passing, zero
+  regressions); `npm run build:pos` (succeeded); `npm run check:architecture`;
+  `npm run check:compliance` (declaration:
+  `docs/compliance/impact-declarations/2026-09-04-pos-additional-categories-edit.md`, which also
+  states why no ADR 0080 amendment is needed — a write-side UI addition reusing an unchanged,
+  already-declared write API, not a change to any Decision 1 `[binding]` money-adjacent reader, and
+  documents the fix-round-1 findings and their resolutions in full).
+- Completion date: 2026-09-04.
+- Contracts/files: `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+  (new Additional Categories section, state, fetch/save effect pair, and `listItemFolders`/
+  `replaceItemFolders` imports from `itemService.js`; fix round 1's `pendingPrimaryFolderId`/
+  `excludedPrimaryFolderIds`/`secondaryFoldersUnavailable`),
+  `packages/web-core/src/features/pos/__tests__/additionalCategoriesEdit.behavior.test.jsx` (new),
+  `docs/compliance/impact-declarations/2026-09-04-pos-additional-categories-edit.md` (new), issue
+  #1318.
+- Next eligible phase: 291.
+
+## Phase 291 - Root-cause and dispose of `check_whitespace`/`audit_indexes` advisory failures (#1552)
+
+- Initiative/release: Quality-gate trust epic (#1124), continuing Phase 272's own triage of the
+  advisory-failure backlog / current release process.
+- Objective and scope: root-cause the two remaining un-triaged repeat-advisory-failure steps in
+  `promotion-quality-gate.yml` (`Check changed-file whitespace`, `repository-quality`, 6/13
+  recurrence; `Audit required indexes`, `dgfy-api-quality`, 3/13 recurrence) and give each an
+  explicit disposition — deliberately asymmetric, not forced into symmetry. `check_whitespace`:
+  fixed via a new `.husky/pre-commit` whitespace guard (the CI step was catching genuine violations
+  with nothing upstream stopping them landing first) and flipped blocking, its first recorded
+  disposition, joining `check-pr-quality-workflow.js`'s `BLOCKING_STEP_IDS['repository-quality']`
+  and the reporter's `BLOCKING_STEP_NAMES` set. `audit_indexes`: root-caused to an orphaned
+  `test_tenant_schema-bootstrap-idempotent_*` fixture (survives into this step only when the
+  preceding test-matrix step's process dies before its own `afterEach` cleanup, #1432's already-
+  tracked OOM class) being audited as a real tenant; fixed by turning on
+  `SCHEMA_INDEX_AUDIT_MODE`/`SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS` in the step's `env:` block
+  (config-only, activating an already-existing, already-unit-tested exclusion filter this exact
+  scenario already covers), but deliberately kept tracked-advisory-with-reason pending one post-fix
+  evidence cycle, per this repo's own evidence-gating discipline (#1431 Phase C) — the flake surface
+  a live MySQL container's state carries is not the same class as `check_whitespace`'s pure diff
+  check.
+- Status: in_progress. `audit_indexes`'s blocking-flip criterion (a real `release/*→main` promotion
+  run green post-fix, or a `workflow_dispatch` scratch-branch run confirming both a clean pass and,
+  ideally, a fault-probe) is explicitly not verifiable at merge time — see the amendment below.
+- Dependencies: #1124 (advisory-failure evidence pipeline), #1432 (OOM-orphan corroboration), #1469
+  (`run_test_matrix`'s own still-open, related gating), #1557 (hand-synced `BLOCKING_STEP_IDS`/
+  `BLOCKING_STEP_NAMES` drift risk — not fixed by this phase, only not made worse).
+- Acceptance and validation evidence: `npm run check:pr-quality-workflow && npm run
+  test:pr-quality-workflow` (41/41, fixture updated for `check_whitespace`'s new blocking-step
+  shape); `npm run lint:docs`; manual pre-commit hook smoke test (staged a deliberately
+  trailing-whitespace line, confirmed `git commit` blocked pre-fix / clean post-fix). The
+  `audit_indexes` local repro against a live MySQL test DB (orphaned-tenant fixture reproducing
+  `missing=3` without the new env vars, `missing=0`/`excluded_databases` with them) **did not run**
+  in this phase's implementation environment — no local MySQL/Docker was available — stated here
+  truthfully rather than claimed; the available evidence for the exclusion-filter mechanism itself
+  is `schemaIndexAuditService.test.js`'s existing "excludes test_tenant_* databases in local mode
+  when configured" unit test at the service layer (not re-run in this phase either, since that
+  app's `node_modules` isn't installed in the same environment), which this phase's env-var change
+  wires the CI *workflow* into without altering. `node scripts/check-app-version-bump.js` (no bump
+  expected, CI-tooling/docs-only change, confirmed); the next real promotion run's, or a
+  `workflow_dispatch` scratch-branch run's, `promotion-quality-gate.yml` result remains the pending
+  validation criterion for the open acceptance box above — including first confirming the local
+  repro (or an equivalent CI-side fault probe) against a real database, not assumed from the unit
+  test alone.
+- Completion date: pending (see Status).
+- Contracts/files: `.husky/pre-commit`, `.github/workflows/promotion-quality-gate.yml`,
+  `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issue #1552.
+- Next eligible phase: 292.
+
+## Phase 292 - Reconcile the redundant haversine outside_radius_flag against the road-distance pipeline (#1565, #478 residue)
+
+- Initiative/release: Customer delivery pricing (epic #1321), closing out the #478 residue named in
+  Pat's 2026-09-01 closing comment on that issue.
+- Objective and scope: decide and execute one of #1565's two named options for
+  `pos_transactions.outside_radius_flag` and its legacy haversine helper -- retire, or give it a
+  real consumer. **Decision: retired.** Confirmed write-only with zero consumers anywhere in the
+  backend or any of the three frontend apps (`packages/web-core`, `apps/dgfy-pos`, `apps/dgfy-ims`,
+  `apps/dgfy-storefront` all grepped, zero hits other than an unrelated, differently-scoped
+  `haversineDistanceKm` in `apps/dgfy-storefront`'s own discovery-map math, untouched by this
+  phase) before this phase started. Option 2 (wire it into a real decision path, e.g. a cheap
+  pre-filter ahead of the road-distance call) was rejected: #1565 explicitly puts
+  `resolveStoreDeliveryFee`, the road-distance capture/await pipeline, and ADR 0078 Decision 2's
+  enforcement logic out of scope, and any genuine "real consumer" wiring would have to touch one of
+  those to matter -- so Option 2 was not actually available under this ticket's own boundary, not
+  merely declined. Removed `haversineDistanceKm`/`resolveDeliveryRadiusFlag`
+  (`storeUseCases.js`), the `outside_radius_flag` column (new migration
+  `20260909000001-drop-outside-radius-flag.cjs`, fanning out over the landlord + every active
+  tenant DB, mirroring the `20260902000001` pattern) and `PosTransaction` model field, and every
+  read/write site (the quote-response field, the `PosTransaction` create payload, the
+  order-serialization echo). Fixed the resulting live ordering-dependency gap in
+  `sync-tenant-schemas.js`'s `delivery_distance_meters` self-repair entry (re-anchored off
+  `store_customer_id` instead of the now-retired column). The ticket's second named gap (`false` vs
+  `null`/unknown for the missing-coordinate case) is **moot as a result of the retirement decision**
+  -- stated explicitly per the ticket's own instruction, rather than silently dropped: there is no
+  `resolveDeliveryRadiusFlag` left to return either value.
+- Status: completed.
+- Dependencies: #478 (closed, this phase's own origin).
+- Acceptance and validation evidence: new `storeOutsideRadiusFlagRetirement.unit.test.js` (7
+  tests) -- structural guards that the retired identifiers are gone from
+  `storeUseCases.js`/`posUseCases.js` and from the `PosTransaction` model, and that a checkout with
+  a delivery pin ~85km outside the location's `delivery_radius_km` (exactly the case the old
+  haversine logic would have flagged `true` for) persists no `outside_radius_flag` key anywhere,
+  while the real `delivery_out_of_range` signal (ADR 0078 Decision 2) stays present and unaffected.
+  Full existing store-checkout regression suite (12 files, 157 tests) and
+  `posOrderRejectionAndAddressEdit.usecase.test.js` (8 tests) pass unedited. `node --check` on
+  every changed/new `apps/dgfy-api`/`apps/dgfy-migration-runner` file; `npm run
+  check:architecture` (54 modules, 94 controller files, OK); `npm run lint:docs` (29 docs, 88
+  ADRs, confirms ADR 0078's `status: accepted -> amended` amendment validates); `node
+  scripts/check-tenant-schema-registry-coverage.js --staged` (PASS, 1 migration file); `npm run
+  check:compliance` (confirmed to fail first listing the two sensitive files, then pass once
+  `docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md` was
+  added); `node scripts/check-app-version-bump.js --staged` (PASS, `dgfy-api` 1.2.1->1.2.2,
+  `dgfy-migration-runner` 1.0.1->1.0.2, patch-by-default per ADR 0081's `develop`-PR mode). Not
+  exercised: a real migration `up`/`down` run against a live multi-tenant MySQL instance -- no
+  reachable database was available from this dispatch context; the migration's
+  `information_schema`-guarded fan-out logic is structurally identical to the already-shipped
+  `20260902000001` migration it mirrors.
+- Completion date: 2026-09-04; PR (this phase's own).
+- Contracts/files: `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/models/PosTransaction.js`, `apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+  `apps/dgfy-migration-runner/migrations/20260909000001-drop-outside-radius-flag.cjs`,
+  `apps/dgfy-api/tests/storeOutsideRadiusFlagRetirement.unit.test.js`,
+  `docs/architecture/adr/0078-customer-delivery-fee-modes.md` (Amendment),
+  `docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md`,
+  issues #1565, #478.
+- Next eligible phase: 293.

@@ -207,6 +207,11 @@ which initiative the work belongs to.
 These name the **product surface**, not the directory, so they survive the `apps/dgfy-web` split —
 `area:pos` will simply start pointing at a different code path.
 
+**Interim note (#1554):** until #1354's dedicated Back Office ships, new back-office-level feature
+work is routed to POS per `AGENTS.md`'s "Feature placement policy" section — label such issues
+`area:pos` (matching where the code actually lands), not `area:skupervisor`. The `area:skupervisor`
+row's own meaning above is unchanged; this is a routing note, not a relabeling of the taxonomy.
+
 ### Other labels with specific meaning
 
 | Label | Meaning |

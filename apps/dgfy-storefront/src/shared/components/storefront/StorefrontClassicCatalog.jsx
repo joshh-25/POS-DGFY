@@ -130,14 +130,18 @@ export function StorefrontClassicCatalog({
                 scrollbarWidth: 'none'
               }}>
                 {servicesViewModel.serviceGroups.map(group => {
-                  const isActive = resolvedTab === group.categoryKey;
+                  // RF-4 (PR #1583 review): select/key by the stable `categoryIdentity`
+                  // (folder_id-based), never the normalized `categoryKey` display text -- two
+                  // distinct-`folder_id` categories can share a `categoryKey` but never a
+                  // `categoryIdentity`.
+                  const isActive = resolvedTab === group.categoryIdentity;
                   const meta = group.categoryMeta;
                   const GroupIcon = SERVICE_CATEGORY_ICON_MAP[meta?.iconToken] || Sparkles;
                   return (
                     <button
-                      key={group.categoryKey}
+                      key={group.categoryIdentity}
                       type="button"
-                      onClick={() => setActiveServiceTab(group.categoryKey)}
+                      onClick={() => setActiveServiceTab(group.categoryIdentity)}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 8,
                         flexShrink: 0,

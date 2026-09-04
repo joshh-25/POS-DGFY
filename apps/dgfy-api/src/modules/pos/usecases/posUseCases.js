@@ -2660,6 +2660,7 @@ const normalizeDiscountBeneficiary = ({ payload = {}, discountLabelSnapshot = nu
 const buildTransactionSpecialInstructions = ({
     rawSpecialInstructions = null,
     discountBeneficiary = null,
+    discountBeneficiaries = [],
     receiptContract = null
 }) => {
     const note = String(rawSpecialInstructions || '').trim() || null;
@@ -2671,13 +2672,14 @@ const buildTransactionSpecialInstructions = ({
         }
         : null;
 
-    if (!note && !discountBeneficiary && !normalizedReceiptContract) {
+    if (!note && !discountBeneficiary && discountBeneficiaries.length === 0 && !normalizedReceiptContract) {
         return null;
     }
 
     const payload = {
         note,
         discount_beneficiary: discountBeneficiary || null,
+        discount_beneficiaries: discountBeneficiaries,
         receipt_contract: normalizedReceiptContract
     };
 
@@ -3001,7 +3003,17 @@ export const buildCheckoutPosUseCase = ({
                             item_id: parsePositiveInt(entry?.item_id),
                             eligible_quantity: round4(entry?.eligible_quantity)
                         }))
-                        .filter((entry) => entry.item_id && entry.eligible_quantity > 0)
+                        .filter((entry) => entry.item_id && entry.eligible_quantity > 0),
+                    beneficiaries: (payload.governed_discount.beneficiaries || []).map((beneficiary) => ({
+                        category: String(beneficiary?.category || '').trim().toLowerCase(),
+                        name: String(beneficiary?.name || '').trim() || null,
+                        id_number: String(beneficiary?.id_number || '').trim() || null,
+                        eligible_items: (beneficiary?.eligible_items || []).map((entry) => ({
+                            line_ref: String(entry?.line_ref || '').trim() || null,
+                            item_id: parsePositiveInt(entry?.item_id),
+                            eligible_quantity: round4(entry?.eligible_quantity)
+                        })).filter((entry) => entry.item_id && entry.eligible_quantity > 0)
+                    }))
                 }
                 : null,
             lines: lines
@@ -3867,7 +3879,8 @@ export const buildCheckoutPosUseCase = ({
                             rate: governedApplication.rate,
                             amount: governedApplication.amount,
                             max_discount_amount: governedApplication.max_discount_amount,
-                            lines: governedApplication.lines || []
+                            lines: governedApplication.lines || [],
+                            beneficiaries: governedApplication.beneficiaries || []
                         }
                     }))
                 : null;
@@ -3897,13 +3910,25 @@ export const buildCheckoutPosUseCase = ({
                     { statusCode: 403, details: { reason_code: 'DISCOUNT_APPROVAL_REQUIRED' } }
                 );
             }
-            const discountBeneficiary = normalizeDiscountBeneficiary({
-                payload,
-                discountLabelSnapshot: globalDiscountResolution.discountLabelSnapshot
-            });
+            const primaryGovernedBeneficiary = governedApplication?.beneficiaries?.[0];
+            const discountBeneficiary = primaryGovernedBeneficiary
+                ? { category: primaryGovernedBeneficiary.category, name: primaryGovernedBeneficiary.name, id_number: primaryGovernedBeneficiary.id_number }
+                : normalizeDiscountBeneficiary({
+                    payload,
+                    discountLabelSnapshot: globalDiscountResolution.discountLabelSnapshot
+                });
+            const discountBeneficiaries = governedApplication?.beneficiaries?.map((beneficiary, index) => ({
+                category: beneficiary.category,
+                name: beneficiary.name,
+                id_number: beneficiary.id_number,
+                discount_amount: governedCalculation?.beneficiaries?.[index]?.calculation?.discount_amount || 0,
+                vat_removed: governedCalculation?.beneficiaries?.[index]?.calculation?.vat_removed || 0,
+                vat_exempt_amount: governedCalculation?.beneficiaries?.[index]?.calculation?.vat_exempt_amount || 0
+            })) || [];
             const transactionSpecialInstructions = buildTransactionSpecialInstructions({
                 rawSpecialInstructions: payload.special_instructions,
                 discountBeneficiary,
+                discountBeneficiaries,
                 receiptContract: resolvedReceiptContract
             });
             const netItemsTotal = governedCalculation
@@ -4245,7 +4270,8 @@ export const buildCheckoutPosUseCase = ({
                         approved_by_user_id: governedApplication.manager_approval_id || null,
                         approved_by_name: governedApplication.manager_approval_name || null,
                         approved_at: governedApplication.manager_approved_at || null,
-                        self_approved: governedApplication.self_approved === true
+                        self_approved: governedApplication.self_approved === true,
+                        beneficiary_count: governedApplication.beneficiaries?.length || 0
                     }
                 }, { transaction });
             }
@@ -10606,10 +10632,12 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
 
 // Phase 210 (#1179). Staff-only post-placement delivery-address/pin edit. Pat's confirmed decision:
 // pre-dispatch only (DELIVERY_ADDRESS_EDITABLE_STATUSES) -- an order already out_for_delivery, or in
-// any terminal state, is rejected with a 409. No radius recomputation here: outside_radius_flag is
-// left at whatever it was set to at checkout -- re-enforcing the delivery radius on an address
-// change is #478's job, not this phase's; touching it here would silently change acceptance
-// behaviour for every existing order path.
+// any terminal state, is rejected with a 409. No radius re-enforcement here either: the real
+// out-of-range signal (ADR 0078 Decision 2, road-distance-pipeline-driven) is evaluated at checkout
+// only -- re-enforcing it on an address change is out of scope for this phase; touching it here
+// would silently change acceptance behaviour for every existing order path. (The legacy haversine
+// radius flag this comment used to reference was retired by #1565 -- it was write-only with zero
+// consumers, superseded by the road-distance pipeline; see that PR for the full reconciliation.)
 export const buildUpdateOnlineOrderDeliveryAddressUseCase = ({
     posRepository,
     activityRecorder = recordDgfyOrderActivity
@@ -10759,7 +10787,7 @@ export const buildUpdateOnlineOrderDeliveryAddressUseCase = ({
                 delivery_address: newAddress,
                 delivery_latitude: newLatitude,
                 delivery_longitude: newLongitude
-                // outside_radius_flag is deliberately NOT recomputed here -- see #478.
+                // No radius re-enforcement on address edit -- see the header comment above (#1565).
             }, { transaction, lock: true });
 
             await transaction.commit();

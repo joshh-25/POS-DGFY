@@ -12,6 +12,22 @@ const safeText = (value, fallback = '') => {
     return text || fallback;
 };
 
+const parsePaymentBreakdown = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+const formatPaymentLabel = (entry) => safeText(
+    entry?.payment_label || entry?.payment_type,
+    'Payment'
+).replace(/_/g, ' ');
+
 const displayDiscountType = (value) => safeText(value).toLowerCase() === 'manual'
     ? 'OTHER'
     : safeText(value).replace(/_/g, ' ').toUpperCase();
@@ -543,6 +559,14 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
             pair('Change', money(transaction?.change_amount))
         );
     }
+    const paymentBreakdown = parsePaymentBreakdown(transaction?.payment_breakdown)
+        .filter((entry) => Number(entry?.amount || 0) > 0);
+    if (paymentBreakdown.length > 0) {
+        receiptRows.push('Payment Breakdown');
+        paymentBreakdown.forEach((entry) => {
+            receiptRows.push(pair(formatPaymentLabel(entry), money(entry.amount)));
+        });
+    }
     if (transaction?.payment_type === 'employee_credit') {
         receiptRows.push(
             `Employee: ${safeText(transaction?.employee_credit_employee_name_snapshot)}`,
@@ -554,10 +578,18 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         );
     }
     if (showSeniorPwdReceiptFields) {
-        receiptRows.push(
-            `SC/PWD/NAAC/MOV/Solo Parent ID No.: ${safeText(governedDiscount?.senior_pwd_id_number, '____________')}`,
-            'Signature: __________________________'
-        );
+        const beneficiaries = Array.isArray(governedDiscount?.beneficiaries) ? governedDiscount.beneficiaries : [];
+        if (beneficiaries.length > 0) {
+            beneficiaries.forEach((beneficiary, index) => receiptRows.push(
+                `${safeText(beneficiary.category, 'SC/PWD').toUpperCase()} ${index + 1} ID No.: ${safeText(beneficiary.id_number)}`,
+                `Name/Signature: ${safeText(beneficiary.customer_name)} __________________`
+            ));
+        } else {
+            receiptRows.push(
+                `SC/PWD/NAAC/MOV/Solo Parent ID No.: ${safeText(governedDiscount?.senior_pwd_id_number, '____________')}`,
+                'Signature: __________________________'
+            );
+        }
     }
     receiptRows.push(line());
     if (isFiscal) {

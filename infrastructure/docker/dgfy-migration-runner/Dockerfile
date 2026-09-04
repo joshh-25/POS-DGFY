@@ -19,6 +19,12 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
+# ADR 0081 Decision 4 (#1575, epic #1548 Wave 3, Phase 277): runtime version equals the published
+# image tag (e.g. "1.5.2-staging"), baked in at build time so a running container can report
+# exactly what was published, not the bare package.json version. Empty default keeps a local
+# `docker build` with no --build-arg working unchanged (see scripts/deploy-local.sh).
+ARG APP_VERSION=""
+ENV APP_VERSION=${APP_VERSION}
 WORKDIR /app
 
 # Same tini/su-exec/non-root pattern as infrastructure/docker/dgfy-api/Dockerfile,

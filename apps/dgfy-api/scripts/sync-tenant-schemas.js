@@ -268,8 +268,14 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         // server-side road distance at checkout. Kept in lockstep with migration
         // 20260902000001. Neither column feeds delivery-fee math anywhere in this codebase --
         // see docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md.
+        // #1565: anchor changed from `AFTER \`outside_radius_flag\`` to `AFTER \`store_customer_id\``
+        // -- outside_radius_flag was retired (migration 20260909000001); store_customer_id is the
+        // column immediately before it in the original 20260330000006 migration, so any tenant old
+        // enough to have had outside_radius_flag also has store_customer_id, and this self-repair
+        // path keeps working for a straggler tenant that hasn't picked up delivery_distance_meters
+        // yet.
         delivery_distance_meters: Object.freeze({
-            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_meters` INT NULL AFTER `outside_radius_flag`"
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_meters` INT NULL AFTER `store_customer_id`"
         }),
         delivery_distance_source: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_source` ENUM('road','fallback','none') NOT NULL DEFAULT 'none'"
@@ -423,6 +429,11 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     pos_transaction_discounts: Object.freeze({
         promo_code: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_discounts` ADD COLUMN `promo_code` VARCHAR(40) NULL COMMENT 'Commercial promo code validated by the server at checkout'"
+        })
+    }),
+    pos_transaction_discount_lines: Object.freeze({
+        beneficiary_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_discount_lines` ADD COLUMN `beneficiary_id` INT NULL, ADD INDEX `idx_pos_discount_lines_beneficiary` (`beneficiary_id`), ADD CONSTRAINT `fk_pos_discount_lines_beneficiary` FOREIGN KEY (`beneficiary_id`) REFERENCES `pos_transaction_discount_beneficiaries` (`id`) ON DELETE CASCADE"
         })
     }),
     delivery_jobs: Object.freeze({
@@ -1070,6 +1081,20 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_transaction_discounts_ibfk_3` FOREIGN KEY (`manager_approval_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
+    pos_transaction_discount_beneficiaries: Object.freeze({
+        sql: "CREATE TABLE `pos_transaction_discount_beneficiaries` (\n"
+            + "  `id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `transaction_discount_id` int NOT NULL,\n"
+            + "  `category` varchar(40) NOT NULL,\n"
+            + "  `customer_name` varchar(255) NOT NULL,\n"
+            + "  `id_number` varchar(120) NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`id`),\n"
+            + "  UNIQUE KEY `uq_pos_discount_beneficiary_id` (`transaction_discount_id`,`id_number`),\n"
+            + "  KEY `idx_pos_discount_beneficiaries_discount` (`transaction_discount_id`),\n"
+            + "  CONSTRAINT `fk_pos_discount_beneficiaries_discount` FOREIGN KEY (`transaction_discount_id`) REFERENCES `pos_transaction_discounts` (`id`) ON DELETE CASCADE\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     delivery_personnel: Object.freeze({
         sql: "CREATE TABLE `delivery_personnel` (\n"
             + "  `delivery_personnel_id` int NOT NULL AUTO_INCREMENT,\n"
@@ -1180,6 +1205,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
         sql: "CREATE TABLE `pos_transaction_discount_lines` (\n"
             + "  `id` int NOT NULL AUTO_INCREMENT,\n"
             + "  `transaction_discount_id` int NOT NULL,\n"
+            + "  `beneficiary_id` int DEFAULT NULL,\n"
             + "  `transaction_line_id` int NOT NULL,\n"
             + "  `item_id` int NOT NULL,\n"
             + "  `eligible_quantity` decimal(24,12) NOT NULL DEFAULT '0.000000000000',\n"
@@ -1193,8 +1219,10 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  PRIMARY KEY (`id`),\n"
             + "  KEY `transaction_line_id` (`transaction_line_id`),\n"
             + "  KEY `idx_pos_discount_lines_discount` (`transaction_discount_id`),\n"
+            + "  KEY `idx_pos_discount_lines_beneficiary` (`beneficiary_id`),\n"
             + "  CONSTRAINT `pos_transaction_discount_lines_ibfk_1` FOREIGN KEY (`transaction_discount_id`) REFERENCES `pos_transaction_discounts` (`id`) ON DELETE CASCADE,\n"
-            + "  CONSTRAINT `pos_transaction_discount_lines_ibfk_2` FOREIGN KEY (`transaction_line_id`) REFERENCES `pos_transaction_lines` (`line_id`) ON DELETE CASCADE\n"
+            + "  CONSTRAINT `pos_transaction_discount_lines_ibfk_2` FOREIGN KEY (`transaction_line_id`) REFERENCES `pos_transaction_lines` (`line_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `fk_pos_discount_lines_beneficiary` FOREIGN KEY (`beneficiary_id`) REFERENCES `pos_transaction_discount_beneficiaries` (`id`) ON DELETE CASCADE\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     // The five tables below were created by migration

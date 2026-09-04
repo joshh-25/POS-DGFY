@@ -187,6 +187,35 @@ function safeName(value) {
   return String(value).replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '');
 }
 
+// #1157/#1124: a failing chunk/tier previously left its Jest output ONLY inside the evidence-dir
+// log file (uploaded as a CI artifact nobody was pulling and reading) -- the console just printed
+// a one-line FAIL/status summary with no suite names. This extracts the `FAIL <path>` lines and the
+// trailing `Test Suites:`/`Tests:` summary out of Jest's captured stdout+stderr so a failure is at
+// least nameable from the CI job log / $GITHUB_STEP_SUMMARY directly, without downloading anything.
+// Bounded (MAX_FAIL_LINES) so a mass failure can't flood the log the way an unbounded echo would.
+const MAX_FAIL_LINES = 40;
+
+function extractFailureSummary(result) {
+  const text = `${result.stdout || ''}\n${result.stderr || ''}`;
+  const failLines = [...new Set(text.split(/\r?\n/).filter((line) => /^\s*FAIL\s+\S/.test(line)).map((line) => line.trim()))];
+  const summaryMatch = text.match(/Test Suites:.*\n(?:.*\n)*?Tests:.*(?:\n(?:Snapshots|Time):.*)*/);
+  return {
+    failLines: failLines.slice(0, MAX_FAIL_LINES),
+    truncated: failLines.length > MAX_FAIL_LINES,
+    totalFailLines: failLines.length,
+    summary: summaryMatch ? summaryMatch[0].trim() : null,
+  };
+}
+
+function printFailureSummary(label, result) {
+  const { failLines, truncated, totalFailLines, summary } = extractFailureSummary(result);
+  if (failLines.length === 0 && !summary) return;
+  console.log(`[backend-test-matrix] ${label} failing suites:`);
+  for (const line of failLines) console.log(`  ${line}`);
+  if (truncated) console.log(`  ... ${totalFailLines - MAX_FAIL_LINES} more FAIL line(s) truncated -- see the uploaded log for the full list`);
+  if (summary) console.log(summary.split('\n').map((line) => `  ${line}`).join('\n'));
+}
+
 function writeLog(filePath, result) {
   const output = [
     `exit_status=${result.status}`,
@@ -287,6 +316,8 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir) {
   const durationMs = Date.now() - started;
   writeLog(logFile, result);
   const timedOut = result.error && result.error.code === 'ETIMEDOUT';
+  const shouldSummarize = !timedOut && result.status !== 0;
+  if (shouldSummarize) printFailureSummary(`tier=db group=${groupName} chunk=${chunkIndex + 1}`, result);
   return {
     tier: 'db',
     group: groupName,
@@ -300,6 +331,10 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir) {
     exit_status: result.status,
     signal: result.signal || null,
     log_file: path.relative(ROOT, logFile).replace(/\\/g, '/'),
+    // #1157: same extraction printed to the console above, persisted here too so
+    // summarize-backend-test-matrix.js can render the failing suite names on
+    // $GITHUB_STEP_SUMMARY without re-parsing the raw log itself.
+    failing_suites: shouldSummarize ? extractFailureSummary(result).failLines : [],
   };
 }
 
@@ -347,6 +382,8 @@ function runFastTier(tests, evidenceDir) {
   const durationMs = Date.now() - started;
   writeLog(logFile, result);
   const timedOut = result.error && result.error.code === 'ETIMEDOUT';
+  const shouldSummarize = !timedOut && result.status !== 0;
+  if (shouldSummarize) printFailureSummary('tier=fast', result);
   return {
     tier: 'fast',
     group: 'fast_tier',
@@ -360,6 +397,10 @@ function runFastTier(tests, evidenceDir) {
     signal: result.signal || null,
     db_pinned_unreachable: !FAST_ALLOW_DB,
     log_file: path.relative(ROOT, logFile).replace(/\\/g, '/'),
+    // #1157: same extraction printed to the console above, persisted here too so
+    // summarize-backend-test-matrix.js can render the failing suite names on
+    // $GITHUB_STEP_SUMMARY without re-parsing the raw log itself.
+    failing_suites: shouldSummarize ? extractFailureSummary(result).failLines : [],
   };
 }
 

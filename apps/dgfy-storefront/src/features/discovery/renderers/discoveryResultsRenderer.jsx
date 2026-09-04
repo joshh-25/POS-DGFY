@@ -15,6 +15,7 @@ import {
   MapPinned,
   Navigation,
   Star,
+  Truck,
   X
 } from 'lucide-react';
 import { DiscoveryMapCard } from '../../../Components/store/DiscoveryResponsiveLayout.jsx';
@@ -146,6 +147,29 @@ const resultsSubtitle = isClusterResultsActive
   const isSearchableWithoutMapPin = store?.store_has_no_location === true || store?.map_publication_disabled === true;
   const waitBase = Number(store?.estimated_wait_minutes || 10);
   const etaLabel = `${waitBase}-${waitBase + 5} min`;
+  // #1333 (Phase 242 on the backend): store_delivery_fee is already a per-mode FROM-price --
+  // the fixed rate in 'fixed' mode, the configured minimum fee in 'calculated' mode, 0 in 'free'
+  // mode -- see resolveAdvertisedDeliveryFromPrice() / storefrontDiscoveryRepository.js. This just
+  // formats it; no additional per-mode math belongs here.
+  const deliveryFeeMode = store?.delivery_fee_mode || 'fixed';
+  // Check the raw value's nullish/empty state BEFORE numeric coercion -- Number(null) and
+  // Number('') both coerce to 0, which is finite, so a naive Number.isFinite(Number(x)) check
+  // would wrongly treat a missing/unresolved fee as a genuine ₱0 fee (ADR 0078 Decision 8 requires
+  // omitting the from-price entirely when no floor can be resolved, not rendering ₱0 for it).
+  const rawDeliveryFee = store?.store_delivery_fee;
+  const hasRawDeliveryFee = rawDeliveryFee !== null && rawDeliveryFee !== undefined && rawDeliveryFee !== '';
+  const coercedDeliveryFee = hasRawDeliveryFee ? Number(rawDeliveryFee) : NaN;
+  const deliveryFromPrice = Number.isFinite(coercedDeliveryFee) && coercedDeliveryFee >= 0
+    ? coercedDeliveryFee
+    : null;
+  const formatPeso = (value) => (Number.isInteger(value) ? String(value) : value.toFixed(2));
+  const deliveryFeeLabel = deliveryFromPrice === null
+    ? null
+    : deliveryFeeMode === 'free'
+      ? 'Free delivery'
+      : deliveryFeeMode === 'calculated'
+        ? `From ₱${formatPeso(deliveryFromPrice)} delivery`
+        : `₱${formatPeso(deliveryFromPrice)} delivery`;
         const branchCount = Number(store?.active_location_count || 0);
         const branchLabel = branchCount > 0 ? `${branchCount} ${branchCount === 1 ? 'Branch' : 'Branches'}` : null;
         const isStoreOpenNow = store?.storefront_open === true;
@@ -277,6 +301,12 @@ const resultsSubtitle = isClusterResultsActive
                           {etaLabel}
                         </span>
                         </div>
+                        {deliveryFeeLabel && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <Truck size={13} color="#94a3b8" />
+                            <span>{deliveryFeeLabel}</span>
+                          </div>
+                        )}
                         <div style={{ lineHeight: 1.4 }}>
                           {closingTimeLabel || 'Closing time unavailable'}
                         </div>
@@ -359,6 +389,12 @@ const resultsSubtitle = isClusterResultsActive
                   <Clock3 size={12} color="#94a3b8" />
                   {etaLabel}
                 </span>
+                {deliveryFeeLabel && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <Truck size={12} color="#94a3b8" />
+                    {deliveryFeeLabel}
+                  </span>
+                )}
               </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
                       {branchLabel && <span style={{ fontWeight: 600 }}>{branchLabel}</span>}
@@ -517,6 +553,12 @@ const resultsSubtitle = isClusterResultsActive
             <Clock3 size={13} color="#94a3b8" />
             {etaLabel}
           </span>
+          {deliveryFeeLabel && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <Truck size={13} color="#94a3b8" />
+              {deliveryFeeLabel}
+            </span>
+          )}
         </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {branchLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{branchLabel}</span>}

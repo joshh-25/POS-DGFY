@@ -77,6 +77,22 @@ function main() {
         `| ${c.tier || '-'} | ${c.group || '-'} | ${chunkLabel} | ${c.test_count ?? '-'} | \`${c.status || '-'}\` | ${formatMs(c.duration_ms)} | \`${c.log_file || '-'}\` |`
       );
     }
+
+    // #1157/#1124: name the actual failing suites right here, not just "fail, see the log" -- the
+    // whole point of this triage was that nobody could see this without downloading an artifact.
+    const failingChunks = chunks.filter((c) => Array.isArray(c.failing_suites) && c.failing_suites.length > 0);
+    if (failingChunks.length > 0) {
+      lines.push('');
+      lines.push('<details><summary>Failing suites</summary>');
+      lines.push('');
+      for (const c of failingChunks) {
+        const label = c.tier === 'fast' ? 'tier=fast' : `tier=db group=${c.group} chunk=${c.chunk_index}`;
+        lines.push(`- **${label}**`);
+        for (const suite of c.failing_suites) lines.push(`  - \`${suite}\``);
+      }
+      lines.push('');
+      lines.push('</details>');
+    }
   }
 
   console.log(lines.join('\n'));

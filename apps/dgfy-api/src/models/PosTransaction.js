@@ -134,11 +134,6 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.INTEGER,
         allowNull: true
     },
-    outside_radius_flag: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: false
-    },
     // Phase 236 (#1328, epic #1321): observation-only server-side road-distance capture. Neither
     // field feeds delivery_fee/total_amount computation anywhere in this codebase -- see
     // docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md.
@@ -154,8 +149,19 @@ const PosTransaction = sequelize.define('PosTransaction', {
     // Phase 237 (#1329, epic #1321). Money-provenance columns for the resolved delivery-fee
     // breakdown -- see
     // docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md
-    // and the ADR 0012 amendment dated 2026-09-02. `delivery_fee_base - delivery_fee_waiver ===
-    // delivery_fee` whenever delivery_fee_override is null. fallbackApplied/outOfRange are
+    // and the ADR 0012 amendment dated 2026-09-02. The invariant has two halves, and BOTH hold
+    // (corrected 2026-09-04 by #1564, which restated the second half and made the write that
+    // upholds it real):
+    //   - delivery_fee_override IS NULL      -> delivery_fee_base - delivery_fee_waiver === delivery_fee
+    //   - delivery_fee_override IS NOT NULL  -> delivery_fee === delivery_fee_override, and
+    //                                          base/waiver are RETAINED as the pre-override
+    //                                          provenance and deliberately no longer reconcile.
+    // Reading only the first half and finding it violated is not evidence of corruption -- check
+    // delivery_fee_override first. Before #1564 the staff override
+    // (modules/pos/usecases/deliveryFeeOverrideUseCases.js) wrote delivery_fee/total_amount and
+    // left the override column NULL, which broke the first half with no signal at all; that is the
+    // exact failure this two-part statement exists to make unrepresentable.
+    // fallbackApplied/outOfRange are
     // deliberately NOT persisted here -- fully derivable from `delivery_fee_mode = 'calculated' AND
     // delivery_distance_source <> 'road'` (plus the config-malformed case), so a derivable boolean
     // never drifts out of sync with the columns it's derived from.

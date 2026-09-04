@@ -131,8 +131,11 @@ const StorefrontCatalogToolbar = ({
     const mobileCategoryBorderWidth = isRetailMode || isSimpleMode || isServicesMode ? 1.5 : 1;
     const categoryOptions = [
       { key: '', label: categoryAllLabel, count: filteredFnbViewModel.menuItems.length, iconToken: categoryIconToken },
+      // RF-4 (PR #1583 review): `key` is the stable `sectionIdentity` (folder_id-based), never the
+      // normalized `sectionKey` display text -- two distinct folders can share a `sectionKey` but
+      // never a `sectionIdentity`. `label` stays name-derived, display only.
       ...fnbSections.map((section) => ({
-        key: section.sectionKey,
+        key: section.sectionIdentity,
         label: section.sectionLabel,
         count: section.items?.length || 0,
         iconToken: section.visualMeta?.iconToken || 'menu'
@@ -202,7 +205,7 @@ const StorefrontCatalogToolbar = ({
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: mobileToolbarWidth, maxWidth: mobileToolbarWidth, minWidth: 0, gap: 10, boxSizing: 'border-box', margin: '0 auto' }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', flex: '1 1 auto', minWidth: 0, fontFamily: modeAdapter.heroTheme?.bodyFont }}>
-            {formatCatalogCount(resolvedFnbSection ? (filteredFnbViewModel.menuSections.find((s) => s.sectionKey === resolvedFnbSection)?.items?.length || 0) : filteredFnbViewModel.menuItems.length)} {((resolvedFnbSection ? (filteredFnbViewModel.menuSections.find((s) => s.sectionKey === resolvedFnbSection)?.items?.length || 0) : filteredFnbViewModel.menuItems.length) === 1) ? itemNounSingular : itemNounPlural} available
+            {formatCatalogCount(resolvedFnbSection ? (filteredFnbViewModel.menuSections.find((s) => s.sectionIdentity === resolvedFnbSection)?.items?.length || 0) : filteredFnbViewModel.menuItems.length)} {((resolvedFnbSection ? (filteredFnbViewModel.menuSections.find((s) => s.sectionIdentity === resolvedFnbSection)?.items?.length || 0) : filteredFnbViewModel.menuItems.length) === 1) ? itemNounSingular : itemNounPlural} available
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <StorefrontDropdown
@@ -243,8 +246,10 @@ const StorefrontCatalogToolbar = ({
 
   const categoryOptions = [
     { key: '', label: categoryAllLabel, count: filteredFnbViewModel.menuItems.length, iconToken: categoryIconToken, glyph: 'A', accent: toolbarAccent, accentSoft: toolbarAccentSoft },
+    // RF-4 (PR #1583 review): `key` is the stable `sectionIdentity` (folder_id-based), never the
+    // normalized `sectionKey` display text -- see the mobile `categoryOptions` comment above.
     ...fnbSections.map((section) => ({
-      key: section.sectionKey,
+      key: section.sectionIdentity,
       label: section.sectionLabel,
       count: section.items?.length || 0,
       iconToken: section.visualMeta?.iconToken || 'menu',

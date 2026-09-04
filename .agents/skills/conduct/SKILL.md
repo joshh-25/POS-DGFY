@@ -1,6 +1,6 @@
 ---
 name: conduct
-description: Run a task or epic through Orca's orchestration skill, pre-configured with which model — and which CLI/provider — plans, builds, and reviews, per-slot. Manual invocation only; not one of #331's four named roster roles, and carries no Claude Code shim.
+description: Run a task or epic through Orca's orchestration skill, pre-configured with which model — and which CLI/provider — plans, builds, and reviews, per-slot. Supports manual invocation and explicit promoter-originated frozen-candidate repair handoffs; not one of #331's four named roster roles, and carries no Claude Code shim.
 ---
 
 # Conduct
@@ -139,6 +139,17 @@ Do not scan arbitrary worktrees or infer a campaign from unrelated repository fi
 runs one wave, and `phase` runs one prepared phase identifier. The phase plan/ledger remains the
 source of dependency and ordering information; Conduct does not invent phase numbers.
 
+### Promoter-originated promotion-repair handoff
+
+The promoter may explicitly hand a frozen-candidate staging repair to Conduct after filing or
+identifying the repair issue. The handoff must include the candidate ID, exact current staging SHA,
+failure evidence, repair issue, and required branch `fix/staging/<candidate_id>-rN`. Conduct may
+address code-level defects, tests, migrations, API/UI behavior, or CI. It must stop and return the
+task for human coordination when the proposed repair requires live database work, secrets, SSH, or
+infrastructure operations. It must not broaden the repair by merging newer `develop` work into the
+candidate. The normal planner/builder/reviewer sequence, PR rules, and report-only first-live
+calibration still apply.
+
 ### Review-only ownership
 
 For `/conduct pr-reviewer <PR>` with an explicit Reviewer model/provider override, the conducting
@@ -204,6 +215,26 @@ paraphrase or reimplement them from a remembered grammar. The `--agent`/`--model
 passed to each `worker-start` call are exactly sections 1.1–1.6's resolved values for that slot,
 sourced from the pre-dispatch report table (section 1.4) — not re-derived at this step.
 
+### The terminal-reuse decision rule — check this before every `worker-start` in a feedback loop
+
+Added 2026-09-04 (#1571), after a live run dispatched 12 separate terminals for what should have
+been 2 retained roles across a two-PR feedback loop — every round went through
+`--worktree "path:<same worktree>"`, which Orca's own guide states plainly always creates a fresh
+terminal. The rule was already present below (see "Feedback handoff and retention"), but read as
+background detail in a sentence about incompatible flags rather than as a per-round checkpoint —
+this section is that same rule, promoted to load-bearing and placed next to the `worker-start`
+calls it governs, not a restatement with new content:
+
+> **Same role, same worktree, same model/effort as the prior round in this loop** → capture
+> `agent_terminal_handle` from `worker-show` and pass `--terminal <handle>` (no `--model`/
+> `--effort` — Orca rejects combining them). **Anything else** (first dispatch for that role, a
+> different worktree, or an actual model/effort change) → a fresh terminal via `--worktree
+> <selector>` is correct, not a mistake to avoid.
+
+Apply this check at every `worker-start` call in a feedback loop, not just the first one after a
+`BLOCK` — it's what "Retain the active Builder and Reviewer terminals... do not release and
+respawn either role merely to review a new commit" (below) actually requires in practice.
+
 ### Topology and concurrency
 
 - A single issue or PR uses one Conduct-owned child worktree. The first role uses
@@ -215,9 +246,8 @@ sourced from the pre-dispatch report table (section 1.4) — not re-derived at t
 - Independent ready phases may run in parallel, capped at three worktrees. An explicit `sequential`
   or equivalent “run in succession” instruction sets concurrency to one. Never parallelize phases
   whose declared dependencies are unresolved.
-- Use a fresh terminal in the existing phase worktree when role-specific model/effort flags are
-  needed. Reuse an exact terminal only when permitted by Orca and no model/effort override is
-  required, because `--terminal` cannot be combined with `--model` or `--effort`.
+- Whether to reuse a terminal or start a fresh one for a follow-up dispatch in the existing phase
+  worktree — see "The terminal-reuse decision rule" above; don't re-derive it here.
 
 Pass the exact resolved `--agent`/`--model`/`--effort` values from the pre-dispatch report to each
 fresh `worker-start`; do not re-derive them at dispatch time.

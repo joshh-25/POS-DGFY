@@ -96,6 +96,14 @@ describe('hosted POS catalog performance contracts', () => {
     expect(checkoutSource).not.toContain('<Filter size={18} />');
   });
 
+  it('clears the complete desktop catalog search from the delete button', () => {
+    const checkoutSource = readCheckoutRenderSource();
+
+    expect(checkoutSource).toContain('aria-label="Clear search"');
+    expect(checkoutSource).toContain("onClick={() => setSearch('')}");
+    expect(checkoutSource).not.toContain('aria-label="Backspace search"');
+  });
+
   it('preloads lazy workspaces on idle and navigation intent', () => {
     const layoutSource = readSource(layoutPath);
     const sidebarSource = readSource(sidebarPath);

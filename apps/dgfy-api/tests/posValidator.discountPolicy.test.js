@@ -362,6 +362,32 @@ describe('POS checkout discount policy validator', () => {
         expect(req.validatedData.lines[0].item_discount.employee_directory_id).toBe(14);
     });
 
+    it('accepts an empty beneficiaries array from an older client for an employee discount', () => {
+        const req = {
+            body: {
+                idempotency_key: 'idem-directory-employee-empty-beneficiaries',
+                order_method: 'dine_in',
+                payment_type: 'cash',
+                governed_discount: {
+                    type: 'employee',
+                    employee_directory_id: 14,
+                    method: 'percentage',
+                    rate: 15,
+                    beneficiaries: []
+                },
+                lines: [{ item_id: 1, quantity: 1, sale_price: 100 }]
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosCheckout(req, res, next);
+
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedData.governed_discount.beneficiaries).toEqual([]);
+    });
+
     it('rejects an employee discount that is not linked to the Employee Directory', () => {
         const req = {
             body: {

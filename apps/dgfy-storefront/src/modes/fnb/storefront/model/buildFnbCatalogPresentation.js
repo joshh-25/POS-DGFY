@@ -13,6 +13,14 @@ function sortItems(items, sortOption) {
 /**
  * Builds the F&B-only catalog view model used by the shared catalog renderer.
  * Input data must already reflect the current storefront search/filter state.
+ *
+ * RF-4 (PR #1583 review): `activeSection`/`resolvedSection` are `sectionIdentity` values (the
+ * stable, folder_id-based identity `fnbStorefrontViewModel.js` computes -- see
+ * `resolveSectionIdentity`), never the normalized `sectionKey` display text. Two distinct folders
+ * whose names normalize identically produce two `menuSections` entries with the same `sectionKey`
+ * but different `sectionIdentity`; resolving/matching by `sectionKey` here would make the second
+ * one permanently unreachable through the toolbar. `sectionKey`/`sectionLabel` stay available on
+ * `activeSectionModel` for display only.
  */
 export function buildFnbCatalogPresentation({
   activeSection,
@@ -25,11 +33,11 @@ export function buildFnbCatalogPresentation({
     ? fnbViewModel.menuSections
     : [];
   const hasMultipleSections = menuSections.length > 1;
-  const resolvedSection = hasMultipleSections && menuSections.some((section) => section.sectionKey === activeSection)
+  const resolvedSection = hasMultipleSections && menuSections.some((section) => section.sectionIdentity === activeSection)
     ? activeSection
     : '';
   const activeSectionModel = resolvedSection
-    ? (menuSections.find((section) => section.sectionKey === resolvedSection) || null)
+    ? (menuSections.find((section) => section.sectionIdentity === resolvedSection) || null)
     : null;
   const menuItems = Array.isArray(fnbViewModel?.menuItems) ? fnbViewModel.menuItems : [];
   const selectedItems = resolvedSection ? (activeSectionModel?.items || []) : menuItems;

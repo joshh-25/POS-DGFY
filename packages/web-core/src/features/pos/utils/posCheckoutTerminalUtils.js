@@ -158,7 +158,7 @@ export const resolveEmployeeDiscountCreditPreference = (appliedDiscount, cart = 
 
 export const EMPTY_DISCOUNT_DRAFT = {
     type: 'employee', method: 'percentage', rate: '15', amount: '', customer_name: '',
-    id_number: '', employee_name: '', employee_id: '', employee_directory_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], promo_code: '', voucher_code: ''
+    id_number: '', employee_name: '', employee_id: '', employee_directory_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], beneficiaries: [], promo_code: '', voucher_code: ''
 };
 
 export const calculateGovernedDiscount = (cart, application) => {
@@ -189,6 +189,18 @@ export const calculateGovernedDiscount = (cart, application) => {
         };
     }
     const statutory = application.type === 'senior' || application.type === 'pwd';
+    if (statutory && toArray(application.beneficiaries).length > 0) {
+        const calculations = toArray(application.beneficiaries).map((beneficiary) => calculateGovernedDiscount(cart, {
+            ...application,
+            beneficiaries: [],
+            eligible_item_ids: toArray(beneficiary.eligible_items).map((entry) => Number(entry.item_id)),
+            eligible_items: toArray(beneficiary.eligible_items)
+        }));
+        const vatRemoved = round4(calculations.reduce((sum, calculation) => sum + calculation.vatRemoved, 0));
+        const vatExemptAmount = round4(calculations.reduce((sum, calculation) => sum + calculation.vatExemptAmount, 0));
+        const discountAmount = round4(calculations.reduce((sum, calculation) => sum + calculation.discountAmount, 0));
+        return { vatRemoved, vatExemptAmount, discountAmount, total: round4(subtotal - vatRemoved - discountAmount) };
+    }
     const selectedByLineRef = new Map(eligibleItems
         .map((entry) => [String(entry?.line_ref || '').trim(), entry])
         .filter(([lineRef]) => lineRef));

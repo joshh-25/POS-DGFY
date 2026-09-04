@@ -11,12 +11,17 @@ const SORT_OPTIONS = [
   { value: 'price_desc', label: 'Price: High to Low', mobileLabel: 'High to Low' },
 ];
 
+// RF-4 (PR #1583 review): `key` is the stable `sectionIdentity` (folder_id-based), never the
+// normalized `sectionKey` display text -- Simple mode consumes the same F&B view model
+// (`getFoodBeverageStorefrontViewModel`) as StorefrontCatalogToolbar.jsx, so it has the identical
+// exposure: two distinct folders can share a `sectionKey` but never a `sectionIdentity`. `label`
+// stays name-derived, display only.
 function buildCategoryOptions(viewModel) {
   const sections = Array.isArray(viewModel?.menuSections) ? viewModel.menuSections : [];
   return [
     { key: '', label: 'All', count: viewModel?.menuItems?.length || 0, iconToken: 'menu' },
     ...sections.map((section) => ({
-      key: section.sectionKey,
+      key: section.sectionIdentity,
       label: section.sectionLabel,
       count: section.items?.length || 0,
       iconToken: section.visualMeta?.iconToken || 'menu',

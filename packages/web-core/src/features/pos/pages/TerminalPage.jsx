@@ -5077,7 +5077,10 @@ export default function TerminalPage() {
     setCloseShiftConfirmOpen(true);
   };
 
-  const getShiftCloseResolutionState = useCallback(async ({ shiftId = activeShiftId } = {}) => {
+  const getShiftCloseResolutionState = useCallback(async ({
+    shiftId = activeShiftId,
+    includeServerParkedSales = true
+  } = {}) => {
     const [{ loadShiftCloseResolution }, { listTerminalOperationQueueEntries }] = await Promise.all([
       import('../utils/posShiftCloseResolution.js'),
       loadTerminalOperationQueueStore()
@@ -5088,7 +5091,8 @@ export default function TerminalPage() {
       isOnline,
       locationId: Number(shiftState?.shift?.location_id || operatingLocationId || 0),
       listQueueEntries: listTerminalOperationQueueEntries,
-      fetchParkedSales: fetchPosParkedSales
+      fetchParkedSales: fetchPosParkedSales,
+      includeServerParkedSales
     });
   }, [activeShiftId, isOnline, offlinePosScope, operatingLocationId, shiftState?.shift?.location_id]);
 
@@ -5329,7 +5333,13 @@ export default function TerminalPage() {
     }
 
     try {
-      const resolutionState = await getShiftCloseResolutionState({ shiftId: normalizedShiftId });
+      // Master-admin recovery cannot read another cashier's parked-sale list.
+      // Keep the local pending-sync guard here; the audited backend force-close
+      // atomically enforces active server-side parked sales.
+      const resolutionState = await getShiftCloseResolutionState({
+        shiftId: normalizedShiftId,
+        includeServerParkedSales: false
+      });
       if (resolutionState.claimedParkedSaleCount > 0 || resolutionState.pendingParkedSaleCount > 0) {
         toast.error('Resolve claimed parked sales and pending parked-sale syncs before recovering this shift.');
         return false;

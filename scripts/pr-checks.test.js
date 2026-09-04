@@ -12,7 +12,11 @@ const {
   computeOverallResult,
   renderComment,
   findLatestLocalCiComment,
+  buildCheckEnv,
+  resolveAppVersionsCheckResult,
 } = require('./pr-checks');
+
+const { resolveMode } = require('./check-app-version-bump');
 
 // --- anti-drift: PATH_FILTERS must stay verbatim in sync with the workflow -
 
@@ -54,6 +58,74 @@ test('parseArgs rejects an invalid tier', () => {
 
 test('parseArgs rejects an unknown flag', () => {
   assert.throws(() => parseArgs(['--bogus']), /Unknown argument/);
+});
+
+// #1560 PR #1562 review RF-1: --head lets a local/manual invocation supply the PR's
+// head branch explicitly, the same way --base already does for the base branch.
+test('parseArgs defaults headRefName to null and accepts --head', () => {
+  assert.equal(parseArgs([]).headRefName, null);
+  assert.equal(parseArgs(['--head', 'to-staging/2026-09-04-01']).headRefName, 'to-staging/2026-09-04-01');
+});
+
+// --- buildCheckEnv / #1560 PR #1562 review RF-1 -----------------------------
+//
+// The bug: runChecks() used to set only GITHUB_BASE_REF in the env it passes to
+// check-app-version-bump.js, leaving GITHUB_HEAD_REF whatever happened to already be
+// in process.env (nothing, on a bare local `npm run check:pr`). That script's own
+// resolveMode() reads both to pick the required bump level, so an unresolved head
+// silently downgraded a to-staging/* PR from the stricter `minor-floor` mode to
+// `patch-only` -- exactly the class of bug where a local-CI PASS could paper over a
+// real ADR 0081 violation. These tests exercise the actual production seam
+// (buildCheckEnv, now called from both runChecks() and, indirectly, main()) rather
+// than spawning the real child process, and then compose its output with
+// check-app-version-bump.js's own resolveMode() to prove the fix closes the gap
+// end-to-end at the function-composition level -- not just that a string got copied.
+
+test('buildCheckEnv threads options.headRefName into GITHUB_HEAD_REF alongside GITHUB_BASE_REF', () => {
+  const env = buildCheckEnv({ base: 'staging', headRefName: 'to-staging/2026-09-04-01' });
+  assert.equal(env.GITHUB_BASE_REF, 'staging');
+  assert.equal(env.GITHUB_HEAD_REF, 'to-staging/2026-09-04-01');
+});
+
+test('buildCheckEnv falls back to an existing process.env.GITHUB_HEAD_REF when options.headRefName is unset', () => {
+  const original = process.env.GITHUB_HEAD_REF;
+  process.env.GITHUB_HEAD_REF = 'fix/staging/2026-09-04-01-r2';
+  try {
+    const env = buildCheckEnv({ base: 'staging', headRefName: null });
+    assert.equal(env.GITHUB_HEAD_REF, 'fix/staging/2026-09-04-01-r2');
+  } finally {
+    if (original === undefined) delete process.env.GITHUB_HEAD_REF;
+    else process.env.GITHUB_HEAD_REF = original;
+  }
+});
+
+test('buildCheckEnv falls back to an empty string when neither options.headRefName nor process.env.GITHUB_HEAD_REF is set', () => {
+  const original = process.env.GITHUB_HEAD_REF;
+  delete process.env.GITHUB_HEAD_REF;
+  try {
+    const env = buildCheckEnv({ base: 'develop', headRefName: null });
+    assert.equal(env.GITHUB_HEAD_REF, '');
+  } finally {
+    if (original === undefined) delete process.env.GITHUB_HEAD_REF;
+    else process.env.GITHUB_HEAD_REF = original;
+  }
+});
+
+test('a to-staging/* PR is evaluated as minor-floor through pr-checks.js\'s own env plumbing, not just the standalone script', () => {
+  // This is the exact regression: compose buildCheckEnv() (what pr-checks.js's
+  // runChecks() actually threads to the child check-app-version-bump.js process) with
+  // that script's own resolveMode() to prove the wiring -- not just resolveMode() in
+  // isolation, which check-app-version-bump.test.js already covers thoroughly on its
+  // own and was never actually broken; the break was upstream, in what pr-checks.js
+  // handed it.
+  const env = buildCheckEnv({ base: 'staging', headRefName: 'to-staging/2026-09-04-01' });
+  assert.equal(resolveMode(env.GITHUB_BASE_REF, env.GITHUB_HEAD_REF), 'minor-floor');
+
+  // And the pre-fix failure mode, for contrast: an unresolved head silently
+  // downgrades the very same base to the less-strict patch-only mode.
+  const unresolvedHeadEnv = buildCheckEnv({ base: 'staging', headRefName: null });
+  delete unresolvedHeadEnv.GITHUB_HEAD_REF; // simulate no ambient process.env.GITHUB_HEAD_REF either
+  assert.equal(resolveMode(unresolvedHeadEnv.GITHUB_BASE_REF, unresolvedHeadEnv.GITHUB_HEAD_REF), 'patch-only');
 });
 
 // --- detectComponents ----------------------------------------------------
@@ -192,6 +264,55 @@ test('all checks passing, including the excluded one, is PASS', () => {
     },
   ];
   assert.equal(computeOverallResult(checks), 'PASS');
+});
+
+// --- resolveAppVersionsCheckResult / #1592 (Phase 283, check:app-versions blocking flip) --------
+// Regression coverage for the bug #1592 found: `blocking: true` alone does NOT make
+// computeOverallResult() escalate to FAIL unless the check's own `result` is `'fail'` -- a `'warn'`
+// can only ever degrade PASS to PARTIAL (see the RF-1 block above). Before this fix, the app
+// version bump check's result was hardcoded to `'pass'`/`'warn'` regardless of the BLOCKING
+// toggle, so flipping BLOCKING to true silently did nothing to scripts/pr-checks.js's own exit
+// code. These tests pin the fixed mapping directly, and the toggle-integration test below proves
+// the fix is actually wired to the live BLOCKING value, not just correct in isolation.
+
+test('resolveAppVersionsCheckResult: a passing check is "pass" regardless of BLOCKING', () => {
+  assert.equal(resolveAppVersionsCheckResult(true, false), 'pass');
+  assert.equal(resolveAppVersionsCheckResult(true, true), 'pass');
+});
+
+test('resolveAppVersionsCheckResult: a failing check is "warn" while advisory (BLOCKING false)', () => {
+  assert.equal(resolveAppVersionsCheckResult(false, false), 'warn');
+});
+
+test('resolveAppVersionsCheckResult: a failing check is "fail" once BLOCKING is true', () => {
+  assert.equal(resolveAppVersionsCheckResult(false, true), 'fail');
+});
+
+test('a blocking, failing app-version-bump check now fails overallResult, not merely PARTIAL', () => {
+  const checks = [
+    {
+      name: 'app version bump',
+      result: resolveAppVersionsCheckResult(false, true),
+      blocking: true,
+      excludeFromOverallResult: false,
+    },
+  ];
+  assert.equal(computeOverallResult(checks), 'FAIL');
+});
+
+test('the live BLOCKING toggle, threaded through resolveAppVersionsCheckResult, actually blocks a missing bump (#1592)', () => {
+  // Reads the real toggle module, the same one shared-changed-paths.yml and this file's own
+  // runChecks() both derive from -- this is the end-to-end proof that the flip in
+  // scripts/lib/version-bump-gate-toggle.js is not just documented as blocking but demonstrably
+  // produces a real FAIL for a missing/insufficient version bump, per #1592's own validation ask.
+  const { BLOCKING } = require('./lib/version-bump-gate-toggle');
+  assert.equal(BLOCKING, true, 'version-bump-gate-toggle.js BLOCKING must be true once #1592 has shipped');
+
+  const missingBumpResult = resolveAppVersionsCheckResult(/* ok */ false, BLOCKING);
+  assert.equal(missingBumpResult, 'fail');
+
+  const checks = [{ name: 'app version bump', result: missingBumpResult, blocking: BLOCKING, excludeFromOverallResult: false }];
+  assert.equal(computeOverallResult(checks), 'FAIL');
 });
 
 // --- classifyCiUnavailability ---------------------------------------------

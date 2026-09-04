@@ -330,7 +330,7 @@ const REPORTER_JOB_NAME = 'report-advisory-failures';
 // 5 more of the remaining advisory steps genuinely red-on-fault / green-on-clean:
 // `run_dependency_audit_prod`, `run_compliance_contracts`, `run_runtime_doctor`,
 // `run_shared_fnb_contract_tests`, `check_frontend_budgets`. All 5 flip blocking here, bringing the
-// total to 15. `run_dependency_audit_full` (registry-dependent, findings never ship) stays advisory
+// total to 16. `run_dependency_audit_full` (registry-dependent, findings never ship) stays advisory
 // permanently -- not a P2-3 pending case any more, a settled decision (Pat's call). `run_web_core_lint`
 // and `run_test_matrix` are the only two steps still advisory-by-design; `run_test_matrix` is
 // deliberately delegated (gate-release-local.js's ADVISORY_CI_ENFORCED_GATES equivalent) rather than
@@ -340,7 +340,15 @@ const BLOCKING_STEP_IDS = {
   'frontend-ims-quality': ['run_ims_lint', 'run_scroll_contracts', 'run_shared_fnb_contract_tests'],
   'frontend-pos-quality': ['run_pos_lint'],
   'frontend-storefront-quality': ['run_storefront_lint', 'run_storefront_vitest'],
-  'repository-quality': ['run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts'],
+  // 2026-09-04 (#1550/#1551 triage): validate_pr_quality_workflow/validate_runner_routing/
+  // validate_workspace_hygiene/validate_compliance_sweep added -- pure, deterministic contract
+  // checks over checked-in files, no registry/network/DB dependency. First recorded blocking-flip
+  // disposition for these four; see docs/ops/RELEASE_CANDIDATE_POLICY.md's 2026-09-04 amendment.
+  // 2026-09-04 (#1552): check_whitespace added too -- same class of check (pure, deterministic,
+  // git-native), root cause fixed via a new .husky/pre-commit guard in the same PR. Its sibling
+  // gate, audit_indexes (dgfy-api-quality), deliberately does NOT join this map in the same PR --
+  // see that step's own comment in promotion-quality-gate.yml for why the disposition differs.
+  'repository-quality': ['run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts', 'validate_pr_quality_workflow', 'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep', 'check_whitespace'],
   'frontend-budgets-quality': ['check_frontend_budgets']
 };
 
