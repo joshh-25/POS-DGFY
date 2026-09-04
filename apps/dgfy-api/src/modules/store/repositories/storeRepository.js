@@ -18,6 +18,15 @@ import {
     resolveStockBearingDescriptor
 } from '../../shared/utils/stockBearingPolicy.js';
 import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
+// Phase 285 (#1318, C1): secondary category memberships for the storefront
+// catalog projection. Reuses inventory's itemRepository.listItemFolderMemberships
+// (Phase 257) rather than re-querying item_folder_memberships directly -- per
+// ADR 0080 Decision 2, memberships are secondary-only and never mirrored, so
+// there is no risk of this read drifting from the write path. Cross-module
+// repository import via the sibling module's public index.js matches existing
+// precedent (itemRepository.js itself imports getAllSettingsUseCase from
+// ../../settings/index.js).
+import { itemRepository } from '../../inventory/index.js';
 
 const safeGetOptionalModel = (name) => {
     try {
@@ -507,6 +516,86 @@ const warnStorefrontOverrideFallback = (error) => {
         reason: error?.original?.code || error?.parent?.code || error?.code || 'unknown'
     });
 };
+
+// Phase 285 (#1318, C1): batches an item's secondary category memberships
+// onto already-shaped storefront catalog rows. This is the ADR 0080
+// Decision 4 opt-in for exactly this one surface -- `folder_name`/`folder_id`
+// above stay the untouched primary projection every other read site
+// (including this same file's POS-report/affiliate/voucher-adjacent
+// consumers, none of which this function is wired into) continues to use.
+// `secondary_categories` is `[{ folder_id, folder_name }]`, ordered by each
+// membership's sort_order (via listItemFolderMemberships), which is the
+// shape a later grouping phase (C2, not this one) needs to key a
+// `{sectionId}:{itemId}` render per ADR 0080 Decision 5 -- this phase only
+// makes the data available, it does not render multi-section grouping.
+//
+// Fails open, not closed: a membership-lookup error must never break the
+// public storefront catalog listing over an additive projection, so any
+// failure here is logged and every row gets an empty `secondary_categories`
+// array rather than propagating.
+const attachSecondaryCategories = async (catalogRows, options = {}) => {
+    const rows = Array.isArray(catalogRows) ? catalogRows : [];
+    if (rows.length === 0) return rows;
+
+    const withEmptySecondaryCategories = () => rows.map((row) => ({ ...row, secondary_categories: [] }));
+
+    const itemIds = [...new Set(
+        rows
+            .map((row) => Number.parseInt(row?.item_id, 10))
+            .filter((itemId) => Number.isInteger(itemId) && itemId > 0)
+    )];
+    if (itemIds.length === 0) return withEmptySecondaryCategories();
+
+    try {
+        const memberships = await itemRepository.listItemFolderMemberships(itemIds, options);
+        if (!Array.isArray(memberships) || memberships.length === 0) return withEmptySecondaryCategories();
+
+        const folderIds = [...new Set(memberships.map((membership) => membership.folder_id))];
+        const ItemFolder = dbStore.get('ItemFolder');
+        // RF-1 (PR #1579 review): folder deletion is soft (deleteFolder sets is_active: false +
+        // deleted_at, membership rows are left in place) -- an active-only where clause is the only
+        // thing standing between a merchant-deleted/deactivated category and it silently
+        // reappearing, by name, on the public storefront. Any folder_id this query doesn't return
+        // (inactive, soft-deleted, or simply gone) is dropped from the membership map below rather
+        // than mapped to a null-named entry, so a stale membership can never produce a public
+        // category entry at all -- not even an unnamed one.
+        const folders = ItemFolder
+            ? await ItemFolder.findAll({
+                where: {
+                    folder_id: { [Op.in]: folderIds },
+                    is_active: true,
+                    deleted_at: null
+                },
+                attributes: ['folder_id', 'name'],
+                transaction: options.transaction
+            })
+            : [];
+        const folderNameById = new Map(folders.map((folder) => [folder.folder_id, folder.name]));
+
+        const membershipsByItemId = new Map();
+        memberships.forEach((membership) => {
+            if (!folderNameById.has(membership.folder_id)) return;
+            const list = membershipsByItemId.get(membership.item_id) || [];
+            list.push({
+                folder_id: membership.folder_id,
+                folder_name: folderNameById.get(membership.folder_id)
+            });
+            membershipsByItemId.set(membership.item_id, list);
+        });
+
+        return rows.map((row) => ({
+            ...row,
+            secondary_categories: membershipsByItemId.get(Number(row.item_id)) || []
+        }));
+    } catch (error) {
+        logger.warn('[StoreRepository] Failed to resolve secondary category memberships for storefront catalog; defaulting to empty', {
+            event_type: 'storefront_catalog_secondary_categories_fallback',
+            reason: error?.message || String(error)
+        });
+        return withEmptySecondaryCategories();
+    }
+};
+
 export const storeRepository = {
     async beginTransaction() {
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
@@ -784,6 +873,10 @@ export const storeRepository = {
                 mode_item_preset: row.mode_item_preset,
                 tracking_mode: row.tracking_mode,
                 tracking_toggle_available: row.tracking_toggle_available,
+                // Primary category -- unchanged single-scalar projection (ADR 0080 Decision 1).
+                // `secondary_categories` (the item's non-primary memberships) is attached
+                // separately by attachSecondaryCategories() below, once item_ids are known,
+                // since that lookup is async and this mapper is not.
                 folder_name: row.product_folder || row?.folder?.name || null,
                 folder_id: row.folder_id ?? null,
                 unit_of_measure: row.unit_of_measure,
@@ -810,7 +903,7 @@ export const storeRepository = {
                     ...catalogDetailIncludes
                 ]
             });
-            const catalogRows = mapCatalogRows(rows);
+            const catalogRows = await attachSecondaryCategories(mapCatalogRows(rows), options);
             const locationAvailability = await loadStorefrontLocationAvailabilityMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
@@ -891,9 +984,9 @@ export const storeRepository = {
                     ]
                 });
             }
-            const catalogRows = mapCatalogRows(rows, {
+            const catalogRows = await attachSecondaryCategories(mapCatalogRows(rows, {
                 allowLegacyPosFallback: isMissingStorefrontCatalogOverrideTableError(error)
-            });
+            }), options);
             const locationAvailability = await loadStorefrontLocationAvailabilityMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
