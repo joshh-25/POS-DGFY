@@ -430,3 +430,50 @@ test('--floor lists exactly the apps below floor with the right X.(Y+1).0 target
         fs.rmSync(root, { recursive: true, force: true });
     }
 });
+
+// PR #1562 review RF-2: an unparseable/missing version used to report belowFloor: false
+// and be invisible to a caller that only checked belowFloor.length -- the floor for that
+// app was never actually established, but the caller could treat the run as a clean pass.
+test('--floor: an unparseable version is surfaced as invalid, never silently treated as floor-met', () => {
+    const { root, baseGitRef, headGitRef } = setupScenario({
+        baseVersions: { 'dgfy-api': '1.2.0' },
+        headFiles: {
+            'apps/dgfy-api/package.json': pkgJson('not-a-version', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+        },
+    });
+    try {
+        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+
+        const invalidApps = result.invalid.map((entry) => entry.app);
+        assert.deepEqual(invalidApps, ['dgfy-api']);
+
+        // Not folded into "floor met" (absent from belowFloor with an implied pass) --
+        // it's its own distinct bucket, and the caller's exit-code condition (main()'s
+        // `belowFloor.length > 0 || invalid.length > 0`) must see it.
+        assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-api'), false);
+        assert.equal(result.belowFloor.length > 0 || result.invalid.length > 0, true);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('--floor: a missing version (no package.json at one ref) is also surfaced as invalid', () => {
+    const root = makeGitRepo();
+    // dgfy-api doesn't exist yet at this "base" commit at all.
+    const fixtureWithoutApi = baseFixture();
+    delete fixtureWithoutApi['apps/dgfy-api/package.json'];
+    delete fixtureWithoutApi['apps/dgfy-api/src/index.js'];
+    writeFiles(root, fixtureWithoutApi);
+    const baseGitRef = commitAll(root, 'pre-dgfy-api snapshot');
+
+    writeFiles(root, baseFixture());
+    const headGitRef = commitAll(root, 'dgfy-api added');
+
+    try {
+        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        assert.ok(result.invalid.some((entry) => entry.app === 'dgfy-api'));
+        assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-api'), false);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});

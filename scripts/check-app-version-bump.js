@@ -321,7 +321,18 @@ function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef }) {
         };
     });
 
-    return { results, belowFloor: results.filter((entry) => entry.belowFloor) };
+    // #1560 PR #1562 review RF-2: an unparseable/missing version used to report
+    // belowFloor: false and be invisible to the caller's exit-code check (which only
+    // looked at belowFloor.length) -- the floor for that app was never actually
+    // established, but the command still exited 0 as if it had been. `invalid` is a
+    // distinct collection so a caller (main() below, or the promoter script this is
+    // built for) can treat "couldn't establish the floor" as its own failure, not a
+    // silent skip folded into a false "floor met".
+    return {
+        results,
+        belowFloor: results.filter((entry) => entry.belowFloor),
+        invalid: results.filter((entry) => entry.unparseable),
+    };
 }
 
 // --- CLI ---------------------------------------------------------------------
@@ -348,18 +359,26 @@ function printCheckResult(result) {
 }
 
 function printFloorResult(result) {
-    if (result.belowFloor.length === 0) {
+    if (result.belowFloor.length === 0 && result.invalid.length === 0) {
         console.log('[check:app-versions --floor] All apps at or above the minor floor.');
-    } else {
+        return;
+    }
+
+    if (result.belowFloor.length > 0) {
         console.error('[check:app-versions --floor] Apps below the minor floor:');
         for (const entry of result.belowFloor) {
             console.error(`  - ${entry.app}: current ${entry.headVersion} -- minimum acceptable ${entry.floorTarget}`);
         }
     }
 
-    const unparseable = result.results.filter((entry) => entry.unparseable);
-    for (const entry of unparseable) {
-        console.error(`[check:app-versions --floor] ${entry.app}: could not parse base="${entry.baseVersion}" head="${entry.headVersion}" -- skipped.`);
+    // RF-2: printed as a failure, not "skipped" -- a version this command can't parse
+    // means the floor for that app was never established, which is exactly the state
+    // the promoter must not treat as "cleared".
+    if (result.invalid.length > 0) {
+        console.error('[check:app-versions --floor] Apps whose floor could not be established (malformed/missing version -- treat as FAILED, not skipped):');
+        for (const entry of result.invalid) {
+            console.error(`  - ${entry.app}: could not parse base="${entry.baseVersion}" head="${entry.headVersion}"`);
+        }
     }
 }
 
@@ -380,7 +399,7 @@ function main() {
 
         const result = runFloor({ repoRoot: REPO_ROOT, baseGitRef, headGitRef });
         printFloorResult(result);
-        process.exitCode = result.belowFloor.length > 0 ? 1 : 0;
+        process.exitCode = (result.belowFloor.length > 0 || result.invalid.length > 0) ? 1 : 0;
         return;
     }
 
