@@ -30,6 +30,51 @@ describe('POS governed discount policy', () => {
             findActiveRule: async () => rules.pwd
         })).rejects.toMatchObject({ details: { reason_code: 'STATUTORY_QUANTITY_INVALID' } });
     });
+
+    test('accepts multiple statutory beneficiaries with non-overlapping quantities', async () => {
+        const result = await resolvePosGovernedDiscount({
+            draft: {
+                type: 'senior',
+                beneficiaries: [
+                    { category: 'senior', name: 'Juan', id_number: 'SC-1', eligible_items: [{ item_id: 1, eligible_quantity: 1 }] },
+                    { category: 'senior', name: 'Pedro', id_number: 'SC-2', eligible_items: [{ item_id: 1, eligible_quantity: 1 }] }
+                ]
+            },
+            preparedLines: [{ item_id: 1, quantity: 2, sale_price: 112, senior_pwd_discount_eligible: true }],
+            findActiveRule: async () => rules.senior
+        });
+
+        expect(result.application.beneficiaries).toHaveLength(2);
+        expect(result.application.customer_name).toBeNull();
+    });
+
+    test('rejects combined beneficiary quantities above the cart quantity', async () => {
+        await expect(resolvePosGovernedDiscount({
+            draft: {
+                type: 'senior',
+                beneficiaries: [
+                    { category: 'senior', name: 'Juan', id_number: 'SC-1', eligible_items: [{ item_id: 1, eligible_quantity: 2 }] },
+                    { category: 'senior', name: 'Pedro', id_number: 'SC-2', eligible_items: [{ item_id: 1, eligible_quantity: 1 }] }
+                ]
+            },
+            preparedLines: [{ item_id: 1, quantity: 2, sale_price: 112, senior_pwd_discount_eligible: true }],
+            findActiveRule: async () => rules.senior
+        })).rejects.toMatchObject({ details: { reason_code: 'STATUTORY_QUANTITY_INVALID' } });
+    });
+
+    test('rejects duplicate beneficiary IDs case-insensitively', async () => {
+        await expect(resolvePosGovernedDiscount({
+            draft: {
+                type: 'senior',
+                beneficiaries: [
+                    { category: 'senior', name: 'Juan', id_number: 'SC-1', eligible_items: [{ item_id: 1, eligible_quantity: 1 }] },
+                    { category: 'senior', name: 'Pedro', id_number: 'sc-1', eligible_items: [{ item_id: 1, eligible_quantity: 1 }] }
+                ]
+            },
+            preparedLines: [{ item_id: 1, quantity: 2, sale_price: 112, senior_pwd_discount_eligible: true }],
+            findActiveRule: async () => rules.senior
+        })).rejects.toMatchObject({ details: { reason_code: 'STATUTORY_BENEFICIARY_DUPLICATE' } });
+    });
     test('uses the active statutory rule and selected eligible items', async () => {
         const result = await resolvePosGovernedDiscount({
             draft: {

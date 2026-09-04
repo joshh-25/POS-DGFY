@@ -768,7 +768,10 @@ const buildTransactionInclude = () => ([
         model: dbStore.get('PosTransactionDiscount'),
         as: 'discount',
         required: false,
-        include: [{ model: dbStore.get('PosTransactionDiscountLine'), as: 'lines', required: false }]
+        include: [
+            { model: dbStore.get('PosTransactionDiscountLine'), as: 'lines', required: false },
+            { model: dbStore.get('PosTransactionDiscountBeneficiary'), as: 'beneficiaries', required: false, include: [{ model: dbStore.get('PosTransactionDiscountLine'), as: 'lines', required: false }] }
+        ]
     },
     {
         model: dbStore.get('TenantLocation'),
@@ -1124,11 +1127,10 @@ const buildReportInclude = () => ([
         model: dbStore.get('PosTransactionDiscount'),
         as: 'discount',
         required: false,
-        include: [{
-            model: dbStore.get('PosTransactionDiscountLine'),
-            as: 'lines',
-            required: false
-        }]
+        include: [
+            { model: dbStore.get('PosTransactionDiscountLine'), as: 'lines', required: false },
+            { model: dbStore.get('PosTransactionDiscountBeneficiary'), as: 'beneficiaries', required: false, include: [{ model: dbStore.get('PosTransactionDiscountLine'), as: 'lines', required: false }] }
+        ]
     },
     {
         model: dbStore.get('User'),
@@ -1489,7 +1491,9 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
         const totalServiceFeeAmount = Number(transaction?.service_fee_amount || 0) + Number(transaction?.restaurant_service_charge_amount || 0);
         const vatAmount = Number(transaction?.vat_amount || 0);
         const discountAmount = Number(transaction?.discount_amount || 0);
-        const discountAllocations = Array.isArray(transaction?.discount?.lines) ? transaction.discount.lines : [];
+        const discountAllocations = Array.isArray(transaction?.discount?.lines)
+            ? transaction.discount.lines.filter((allocation) => allocation.beneficiary_id == null)
+            : [];
         const discountAllocationByLineId = new Map(discountAllocations.map((allocation) => [Number(allocation.transaction_line_id), allocation]));
         const sourceLabel = resolveReportSourceLabel(transaction);
 
@@ -2286,6 +2290,7 @@ export const posRepository = {
     async createGovernedTransactionDiscount({ transactionId, application, calculation }, options = {}) {
         const PosTransactionDiscount = dbStore.get('PosTransactionDiscount');
         const PosTransactionDiscountLine = dbStore.get('PosTransactionDiscountLine');
+        const PosTransactionDiscountBeneficiary = dbStore.get('PosTransactionDiscountBeneficiary');
         const PosTransactionLine = dbStore.get('PosTransactionLine');
         const transaction = options.transaction;
         const created = await PosTransactionDiscount.create({
@@ -2306,7 +2311,7 @@ export const posRepository = {
             manager_approved_at: application.manager_approved_at || null,
             self_approved: application.self_approved === true,
             reason: application.reason || null,
-            calculation_version: 'pos-discount.v2'
+            calculation_version: Array.isArray(application.beneficiaries) ? 'pos-discount.v3' : 'pos-discount.v2'
         }, { transaction });
         const transactionLines = await PosTransactionLine.findAll({
             where: { pos_transaction_id: transactionId },
@@ -2330,6 +2335,36 @@ export const posRepository = {
             };
         });
         if (rows.length > 0) await PosTransactionDiscountLine.bulkCreate(rows, { transaction });
+        if (Array.isArray(application.beneficiaries) && application.beneficiaries.length > 0 && PosTransactionDiscountBeneficiary) {
+            const beneficiaryRows = [];
+            for (const [beneficiaryIndex, beneficiary] of application.beneficiaries.entries()) {
+                const savedBeneficiary = await PosTransactionDiscountBeneficiary.create({
+                    transaction_discount_id: created.id,
+                    category: beneficiary.category || application.type,
+                    customer_name: beneficiary.name,
+                    id_number: beneficiary.id_number
+                }, { transaction });
+                const beneficiaryCalculation = calculation.beneficiaries?.[beneficiaryIndex]?.calculation;
+                for (const transactionLine of transactionLines) {
+                    const allocation = beneficiaryCalculation?.lines?.find((entry) => Number(entry.item_id) === Number(transactionLine.item_id));
+                    if (!allocation || !(Number(allocation.eligible_quantity) > 0)) continue;
+                    beneficiaryRows.push({
+                        transaction_discount_id: created.id,
+                        beneficiary_id: savedBeneficiary.id,
+                        transaction_line_id: transactionLine.line_id,
+                        item_id: transactionLine.item_id,
+                        eligible_quantity: allocation.eligible_quantity,
+                        gross_eligible_amount: allocation.gross_eligible_amount,
+                        vat_removed: allocation.vat_removed,
+                        vat_exempt_amount: allocation.vat_exempt_amount,
+                        discount_amount: allocation.discount_amount,
+                        final_line_amount: allocation.final_line_amount,
+                        eligibility_override_reason: allocation.eligibility_override_reason || null
+                    });
+                }
+            }
+            if (beneficiaryRows.length > 0) await PosTransactionDiscountLine.bulkCreate(beneficiaryRows, { transaction });
+        }
         return created;
     },
 

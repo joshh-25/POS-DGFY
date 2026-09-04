@@ -63,6 +63,13 @@ const discountBeneficiarySchema = Joi.object({
     id_number: Joi.string().trim().min(2).max(120).required()
 });
 
+const governedDiscountBeneficiarySchema = discountBeneficiarySchema.keys({
+    eligible_items: Joi.array().items(Joi.object({
+        item_id: Joi.number().integer().positive().required(),
+        eligible_quantity: Joi.number().positive().required()
+    }).unknown(false)).min(1).max(100).required()
+});
+
 const governedDiscountSchema = Joi.object({
     type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').required(),
     label: Joi.string().trim().max(100).allow('', null).optional(),
@@ -82,6 +89,7 @@ const governedDiscountSchema = Joi.object({
         item_id: Joi.number().integer().positive().required(),
         eligible_quantity: Joi.number().positive().required()
     }).unknown(false)).max(100).default([]),
+    beneficiaries: Joi.array().items(governedDiscountBeneficiarySchema).min(1).max(20).unique('id_number').optional(),
     vat_removed: Joi.number().min(0).optional(),
     vat_exempt_amount: Joi.number().min(0).optional(),
     discount_amount: Joi.number().min(0).optional()
