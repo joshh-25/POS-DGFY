@@ -10632,10 +10632,12 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
 
 // Phase 210 (#1179). Staff-only post-placement delivery-address/pin edit. Pat's confirmed decision:
 // pre-dispatch only (DELIVERY_ADDRESS_EDITABLE_STATUSES) -- an order already out_for_delivery, or in
-// any terminal state, is rejected with a 409. No radius recomputation here: outside_radius_flag is
-// left at whatever it was set to at checkout -- re-enforcing the delivery radius on an address
-// change is #478's job, not this phase's; touching it here would silently change acceptance
-// behaviour for every existing order path.
+// any terminal state, is rejected with a 409. No radius re-enforcement here either: the real
+// out-of-range signal (ADR 0078 Decision 2, road-distance-pipeline-driven) is evaluated at checkout
+// only -- re-enforcing it on an address change is out of scope for this phase; touching it here
+// would silently change acceptance behaviour for every existing order path. (The legacy haversine
+// radius flag this comment used to reference was retired by #1565 -- it was write-only with zero
+// consumers, superseded by the road-distance pipeline; see that PR for the full reconciliation.)
 export const buildUpdateOnlineOrderDeliveryAddressUseCase = ({
     posRepository,
     activityRecorder = recordDgfyOrderActivity
@@ -10785,7 +10787,7 @@ export const buildUpdateOnlineOrderDeliveryAddressUseCase = ({
                 delivery_address: newAddress,
                 delivery_latitude: newLatitude,
                 delivery_longitude: newLongitude
-                // outside_radius_flag is deliberately NOT recomputed here -- see #478.
+                // No radius re-enforcement on address edit -- see the header comment above (#1565).
             }, { transaction, lock: true });
 
             await transaction.commit();
