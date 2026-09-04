@@ -851,4 +851,60 @@ root cause was found and fixed, and #1124 became the current epic this evidence 
 The redirect was correctly implemented but recorded nowhere outside an inline YAML comment; this
 entry, plus a comment on #1063 itself, is the discoverability fix.
 
+### 2026-09-04: Per-app container SemVer — versioning obligations layered onto every leg of this
+flow (#1559, ADR 0081)
+
+Decision record: [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md)
+(epic #1548, Wave 1). Branch/promotion topology is unchanged by this entry — the flow diagram above
+and the frozen-candidate mechanics of the 2026-09-04 "Frozen promotion-candidate repair loop" entry
+still describe exactly what merges where and when. What's new is that each of the five apps
+(`dgfy-api`, `dgfy-migration-runner`, `dgfy-ims`, `dgfy-pos`, `dgfy-storefront`) now carries its own
+`X.Y.Z` version, PR-authored, and every leg of this flow has an obligation about it.
+
+**How a per-app version relates to `candidate_id`.** These are two different identities, not
+competing ones: the `YYYY-MM-DD-NN` candidate ID (2026-09-04 entry above) stays the *promotion*
+identity — one ID per frozen `develop` snapshot moving through the pipeline. The five app versions
+are the *artifact* identities living inside that candidate — what actually gets tagged and pushed to
+GHCR. A single candidate can, and typically will, carry unrelated versions per app (`dgfy-api:
+1.3.6`, `dgfy-pos: 1.3.3`, `dgfy-storefront: 1.3.0` unchanged) — the candidate ID never encodes a
+version, by ADR 0081's own design (its Related epic's Non-goals already ruled out naming
+`release/<label>` after a version, for exactly this reason: five independent versions have no single
+number to name a branch after).
+
+**Obligations by leg** (full bump-level rule: ADR 0081 Decision 6):
+
+- **Feature branch → `develop`.** Whoever's PR changes an app, or a `packages/*` `file:` dependency
+  that app lists, bumps that app's `package.json` version in the same PR. Any increase qualifies;
+  patch by default. Not policed at this leg — develop changes are non-blocking by design, and the
+  PR-time check (#1560) ships advisory first regardless (ADR 0081 Decision 9).
+- **`to-staging/<candidate_id>` → `staging` (promotion).** For every app whose files changed between
+  `staging` and the candidate, the candidate's version must be **at least one minor** above
+  `staging`'s current version for that app. Because a promotion branch carries no commits of its
+  own, this bump has to already exist on `develop` by cut time: the promoter runs a pre-cut floor
+  check (`origin/develop` vs `origin/staging`, per app) and, for anything below floor, opens and
+  merges a `chore(release): bump <apps> to X.(Y+1).0 for candidate <id>` PR into `develop` first —
+  this is a new promoter pre-flight step, alongside the existing candidate-manifest and staging-
+  target checks, tracked for implementation in epic #1548's Wave 4 (planned Phase 279; not built by
+  this entry).
+- **`fix/staging/<candidate_id>-rN` → `staging` (staging repair), and a hotfix → `main`.** Patch
+  only — major and minor unchanged, patch strictly greater. Prod ships whatever staging ended on;
+  a prod hotfix patches again from there.
+- **`release/<candidate_id>-rN` → `main`.** Inherits staging's versions unchanged — holds by
+  construction since the branch is cut from `staging`.
+- **`develop` back-port of a main hotfix** (per this doc's 2026-08-18 "Hotfix and back-port" entry
+  above). Also bumps develop's version for the app the hotfix touched — same PR-authored obligation
+  as any other `develop` PR, not a special case.
+
+**Tag/label mechanics** (`:X.Y.Z[-channel]` tags, `org.opencontainers.image.version`,
+`APP_VERSION` build-arg, the tag-immutability guard) are ADR 0081's own Decisions 1-4 and 7; not
+restated here. The builder changes that actually stamp these, and the promoter's parity gate
+(ADR 0081 Decision 8), are deferred to epic #1548's later waves (planned Phases 274, 277-279) — this
+entry records the obligation, it does not yet change what any workflow does.
+
+This is a `[default]`-tier procedure amendment under ADR 0039, layered on top of ADR 0081's own
+Decision 6 (also `[default]`) — no `[binding]` clause of this policy or of ADR 0081 is changed by
+this entry.
+
+PR: (this PR). Refs #1559, #1548, #1560. Closes #1559.
+
 PR: `claude/quality-test-gates-hljpv2`. Refs #1124, #1550, #1551, #1552, #1157, #1469. Closes #1553.
