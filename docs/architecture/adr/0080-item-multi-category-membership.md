@@ -140,6 +140,28 @@ against a column with existing NULLs, which ADR 0029's Rollout Policy 3 forbids.
 4. A legacy single-folder item with zero membership rows behaves identically before and after this
    PR on every one of the ~34 existing read sites.
 
+## Opt-in ledger (Decision 4)
+
+Not itself a decision. Decision 4 already requires an explicit, shipped phase before any surface
+reads the membership union, and Decision 5 already governs exactly what a *grouping* surface's
+opt-in looks like once it does; this table is the running, factual record of which surfaces have
+actually shipped that opt-in, kept separate from `## Amendments` because recording a fact Decision
+4/5 already pre-authorized is not a new architectural decision and needs no `status: amended` bump
+of its own (contrast the dated amendment immediately below, which *is* new scope: it widens
+Decision 2's union to a surface class -- filter matching -- neither Decision 4 nor 5 names).
+
+| Surface | Shape | Phase | Ref |
+|---|---|---|---|
+| F&B storefront menu section grouping (`fnbStorefrontViewModel.js`'s `getFoodBeverageStorefrontViewModel`) | Decision 5 fan-out: an item renders once per section (primary + each distinct secondary category), composite `{sectionKey}:{itemId}` key | Phase 289 | #1318 |
+| Services storefront category grouping (`servicesStorefrontViewModel.js`'s `getServicesStorefrontViewModel`) | Decision 5 fan-out: a service renders once per category (primary + each distinct secondary category), composite `{categoryKey}:{itemId}` key | Phase 289 | #1318 |
+| POS/IMS catalog filter matching | Filter-*match* union (Decision 2), not grouping render -- Decision 5 does not apply; see the dated amendment below for the actual decision this shipped under | Phase 286 | #1318 |
+
+Both Phase 289 rows deliberately exclude the surfaces Decision 5 itself carves out as staying
+primary-only: `buildFnbRelatedItems`' cross-sell rail (F&B "related items") and the flat
+`services`/`allServices` card list (a single-label surface, not a grouping one) are unaffected --
+their own list stays exactly one entry per item, so their stat counts (`totalItems`,
+`totalServices`, etc.) are not inflated by either surface's fan-out.
+
 ## Amendments
 
 ### 2026-09-04: POS/IMS catalog-filter matching widens to the membership union (Phase 286, #1318)

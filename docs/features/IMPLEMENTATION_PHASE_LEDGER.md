@@ -20637,3 +20637,83 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx` (Category
   Management delete-confirmation dialog's new second warning line), issue #1318.
 - Next eligible phase: 288.
+
+## Phase 289 - Wave C/C2: storefront grouping fan-out for secondary categories (#1318)
+
+- **Numbering note:** this entry was dispatched against a pre-assigned Phase 288, drafted when the
+  ledger tip on `origin/develop` was Phase 287 (making 288 the mechanically next number, per Phase
+  286's own addendum). Re-verified immediately before opening this PR: `origin/develop`'s tip is
+  still Phase 287 (no new merges), but an open sibling PR against the same #1318 program — #1581
+  (Wave C/C5, "POS's own 'Additional Categories' item-edit section") — already carries its own live
+  diff claiming Phase 288 (confirmed via `gh pr diff 1581`, whose own "Next eligible phase" line
+  points to 289) and #1581 is unmerged as of this writing. Taking 288 anyway would reproduce the
+  exact same collision this ledger's own history already documents multiple times (Phase 281/282/283,
+  284/285, 286/287) — so this entry takes **289** outright instead, the next number neither
+  develop's tip nor either open PR's diff (#1581 at 288, #1582 at a re-filled 278 placeholder, no
+  collision there) claims as of this resolution. If #1581 merges first, 288/289 land sequentially
+  with no further action needed here. If this PR merges first, #1581's author renumbers its own 288
+  claim past 289 on rebase, per AGENTS.md's Continuous Phase Numbering rule 5 (preserve already-landed
+  numbers, never renumber a merged entry).
+- Initiative/release: Item multi-category membership program (#1318) / Wave C, slice C2 — the read
+  side Phase 285 (Wave C/C1, PR #1579) gated: that phase projected
+  `secondary_categories: [{folder_id, folder_name}]` onto the storefront catalog API response but
+  implemented no consumer of it. Parallel to, and independent of, C3 (POS/IMS filter widening,
+  Phase 286) and C4 (folder-delete warning, Phase 287) — no file overlap with either.
+- Objective and scope: [ADR 0080](../architecture/adr/0080-item-multi-category-membership.md)
+  Decision 4's explicit, shipped opt-in for exactly two grouping surfaces named in Decision 5 — the
+  F&B storefront menu's section grouping (`fnbStorefrontViewModel.js`'s
+  `getFoodBeverageStorefrontViewModel`) and the services storefront's category grouping
+  (`servicesStorefrontViewModel.js`'s `getServicesStorefrontViewModel`). Both now render an item
+  once per section/category it belongs to (primary + each distinct secondary category), keyed by a
+  composite `{sectionKey}:{itemId}` / `{categoryKey}:{itemId}` per Decision 5. `secondary_categories`
+  already reached both files unmodified (confirmed by trace before implementing) — no change to the
+  API layer, `useStoreCatalogLoader.js`, `useStorefrontCatalog.js`, or `normalizeStorefrontPageModel.js`
+  was needed or made.
+- Decision 5 carve-out, explicitly preserved: neither file's flat, unsectioned item list opts in.
+  `fnbStorefrontViewModel.js`'s `menuItems` stays exactly one entry per item — it backs `totalItems`
+  and the count stats (`beverageCount`/`dessertCount`/`readyNowCount`), the unsectioned "All" tab,
+  and `fnbProductDetailsModel.js`'s `buildFnbRelatedItems` cross-sell rail (a distinct sub-surface
+  found during implementation, per the dispatch brief's ask to check for one). Only `menuSections`
+  fans out. Symmetrically, `servicesStorefrontViewModel.js`'s `services`/`allServices` (the flat "all
+  services" card grid, a single-label surface) stay one entry per service — the primary-category
+  occurrence specifically, carrying that group's `categoryMeta`/`variantName` unchanged from
+  pre-fan-out behavior — and every stat count derives from that same un-fanned list. Only
+  `serviceGroups[].items` fans out.
+- Documentation, not a new decision: ADR 0080 gets a new "Opt-in ledger (Decision 4)" table (not a
+  dated `## Amendments` entry) recording that these two surfaces have shipped their opt-in — Decision
+  4/5 already pre-authorized this exact shape, so nothing here needed a superseding ADR, a `[binding]`
+  change, or the `status: amended` treatment C3's genuinely-new filter-matching scope required.
+- Explicitly out of scope, untouched: the API layer/hooks/normalization layers named above; ADR 0080
+  Decision 1's `[binding]` primary-only readers (affiliate commission, voucher scope, F&B modifier
+  inheritance, POS reports); POS/IMS catalog filters and `TerminalOperationsWorkspace.jsx` (Phase
+  286/287, already shipped).
+- Status: completed.
+- Dependencies: Phase 257 (`item_folder_memberships` schema, already shipped), Phase 285
+  (`secondary_categories` catalog projection, already shipped, consumed unchanged here), ADR 0080
+  (Decision 4 opt-in exercised, Decision 5 fan-out shape implemented, Decision 1 `[binding]`
+  untouched).
+- Acceptance and validation evidence: 2 new test files, 13/13 passing —
+  `fnbStorefrontViewModel.test.js` (7: primary-only item renders once; one secondary category fans
+  to both sections with distinct composite keys; multiple secondary categories fan to all of them;
+  no duplicate composite keys across the fanned grouping; `menuItems`/`totalItems` not inflated for a
+  fanned item; a secondary category matching the primary section dedupes; two secondary categories
+  normalizing to the same section dedupe), `servicesStorefrontViewModel.test.js` (6: the same shape
+  for `serviceGroups`, plus confirms `services`/`allServices`/`totalServices`/`inStoreCount`/
+  `serviceFamilyCount` are not inflated). Full `apps/dgfy-storefront` suite re-run as regression
+  evidence: 193/193 test files, 1041/1041 tests passing (including the pre-existing
+  `servicesStorefrontViewModel.test.js` in `src/__tests__/`, which caught a real regression during
+  implementation — the flat `allServices` losing its `variantName`/`categoryMeta` fields — fixed
+  before this evidence was collected). `npm run build:store` (OK); `npm run check:architecture` (54
+  modules / 561 files, 0 violations); `npm run check:compliance` (no compliance-sensitive changes
+  detected — a purely additive frontend rendering change); `npm run lint` (0 errors, pre-existing
+  warnings only, none in the changed/new files).
+- Completion date: 2026-09-04.
+- Contracts/files:
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/fnbStorefrontViewModel.js`,
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/fnbStorefrontViewModel.test.js` (new),
+  `apps/dgfy-storefront/src/modes/services/storefront/model/servicesStorefrontViewModel.js`,
+  `apps/dgfy-storefront/src/modes/services/storefront/model/servicesStorefrontViewModel.test.js`
+  (new), `docs/architecture/adr/0080-item-multi-category-membership.md` (new "Opt-in ledger
+  (Decision 4)" section, not a dated Amendment), issue #1318.
+- Next eligible phase: 290 (288 remains #1581's own live, unmerged claim as of this writing — not
+  landed, so not treated as taken here beyond the numbering note above).
