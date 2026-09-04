@@ -290,6 +290,19 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: node scripts/check-pos-receipt-version-bump.js
 
+      # #1560 (#1548 Wave 1): advisory per-app container SemVer bump check --
+      # generalizes the pos-receipt check above to all five deployable apps, with a
+      # real semver-increase requirement and a (base, head) mode switch (see the
+      # script's own header). continue-on-error like every other advisory step here
+      # -- a later phase flips this to blocking once enough clean-run evidence exists.
+      - name: Enforce per-app version bump on source changes
+        if: inputs.validate_pr_metadata
+        continue-on-error: true
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: node scripts/check-app-version-bump.js
+
       # Deliberately NOT continue-on-error, unlike every other folded-in step
       # above. This check previously lived in a `code-quality` job that WAS
       # continue-on-error, which meant it could never block a merge; that job
