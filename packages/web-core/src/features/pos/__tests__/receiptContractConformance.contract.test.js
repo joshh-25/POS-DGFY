@@ -454,6 +454,30 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(hardwareText).toContain('PHP 68.00');
   });
 
+  it('prints persisted Cash and GCash split-payment amounts on the physical receipt', () => {
+    const transaction = buildTransaction({
+      payment_type: 'cash',
+      cash_received: 90,
+      change_amount: 0,
+      total_amount: 320,
+      payment_breakdown: JSON.stringify([
+        { payment_type: 'cash', payment_label: 'Cash', amount: 90 },
+        { payment_type: 'gcash', payment_label: 'GCash', amount: 230 }
+      ])
+    });
+
+    const hardwareText = formatIminReceiptText({
+      transaction,
+      businessSettings: { pos_business_name: 'Compliance Test Store' }
+    });
+
+    expect(hardwareText).toContain('Payment Breakdown');
+    expect(hardwareText).toMatch(/Cash\s+PHP 90\.00/);
+    expect(hardwareText).toMatch(/GCash\s+PHP 230\.00/);
+    expect(hardwareText).toMatch(/Cash Received\s+PHP 90\.00/);
+    expect(hardwareText).toMatch(/Change\s+PHP 0\.00/);
+  });
+
   it('renders and formats receipts when Android WebView does not provide replaceAll', () => {
     const originalReplaceAll = String.prototype.replaceAll;
     Object.defineProperty(String.prototype, 'replaceAll', {

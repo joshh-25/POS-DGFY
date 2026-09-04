@@ -20637,3 +20637,15 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx` (Category
   Management delete-confirmation dialog's new second warning line), issue #1318.
 - Next eligible phase: 288.
+
+## Phase 288 - Multiple Senior/PWD Beneficiaries Per POS Order
+
+- Initiative/release: POS statutory-discount evidence and allocation integrity / current POS cashier and fiscal-compliance sequence.
+- Objective and scope: allow one POS transaction to record multiple Senior/PWD beneficiaries; assign explicit eligible line quantities to each beneficiary; reject duplicate IDs and combined allocations above purchased quantities; persist normalized identity and per-beneficiary allocation evidence; preserve singular clients, historical orders, receipts, and reports.
+- Status: completed.
+- Dependencies: ADR 0033 Commercial Promo and Statutory POS Discount Boundaries (amended in this phase); ADR 0042 BIR RMO 24-2023 Fiscal Document and Accreditation Closure; `docs/architecture/ARCHITECTURE_BOUNDARIES.md`; `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
+- Acceptance and validation evidence: singular statutory-discount requests remain compatible; multiple beneficiaries calculate independently and reconcile to header totals; duplicate IDs, ineligible items, and over-allocated quantities fail closed; normalized beneficiary and allocation evidence persists transactionally; browser and hardware receipts identify every beneficiary; compliance exports contain one row per beneficiary; focused backend/frontend tests, migration checks, POS build, documentation lint, architecture gates, runtime doctor, and tenant-schema audits pass.
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-api/src/modules/pos/domain/posDiscountPolicy.js`; `apps/dgfy-api/src/modules/pos/domain/posDiscountCalculator.js`; `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`; `packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx`; `apps/dgfy-migration-runner/migrations/20260904000001-create-pos-discount-beneficiaries.cjs`.
+- Governance note: `within-existing-boundary` with a default-contract amendment; no architecture allowlist exception is introduced.
+- Next eligible phase: 289.
