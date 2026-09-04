@@ -46,6 +46,16 @@ on:
         required: false
         type: string
         default: '["sieitz-runner"]'  # #923: generic, either box
+      candidate_source_sha:
+        description: >-
+          ADR 0081 Decision 8 candidate source identity, threaded straight through to each builder
+          workflow's own input of the same name -- see deploy-api.yml's input description for the
+          full contract. Left empty outside a to-staging promotion (deploy.yml's DEV/STAGING calls
+          this workflow for both; only the STAGING dispatch of an actual promotion should ever set
+          this non-empty).
+        required: false
+        type: string
+        default: ''
     outputs:
       frontend_ims_sha_tag:
         value: ${{ jobs.frontend-ims.outputs.sha_tag }}
@@ -82,6 +92,7 @@ jobs:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read
@@ -97,6 +108,7 @@ jobs:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read
@@ -114,6 +126,7 @@ jobs:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read
@@ -129,6 +142,7 @@ jobs:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read
@@ -144,6 +158,7 @@ jobs:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read
