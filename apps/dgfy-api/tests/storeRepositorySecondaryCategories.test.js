@@ -1,4 +1,4 @@
-// Phase 284 (#1318, C1) -- storefront catalog projection of an item's secondary category
+// Phase 285 (#1318, C1) -- storefront catalog projection of an item's secondary category
 // memberships (ADR 0080 Decision 4's opt-in for exactly this one surface). Mocking convention
 // mirrors tests/storeRepository.locationStockFallback.test.js: dbStore is mocked model-by-model,
 // with an explicit throw for anything unlisted so a new, unexpected model lookup fails loudly
@@ -60,7 +60,7 @@ const buildCatalogRow = (overrides = {}) => ({
     storefrontCatalogOverride: { storefront_visible: true, storefront_image_url: null }
 });
 
-describe('storeRepository.listStoreCatalog secondary category projection (#1318, Phase 284)', () => {
+describe('storeRepository.listStoreCatalog secondary category projection (#1318, Phase 285)', () => {
     beforeEach(async () => {
         jest.resetModules();
         jest.clearAllMocks();

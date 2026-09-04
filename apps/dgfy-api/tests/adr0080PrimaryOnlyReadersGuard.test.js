@@ -1,4 +1,4 @@
-// Phase 284 (#1318, C1) -- static regression guard for ADR 0080 Decision 1 [binding].
+// Phase 285 (#1318, C1) -- static regression guard for ADR 0080 Decision 1 [binding].
 //
 // Decision 1 names an exhaustive list of money-adjacent readers that must resolve
 // items.folder_id (the primary category) alone, permanently: affiliate commission rate,
@@ -36,7 +36,7 @@ const PRIMARY_ONLY_FILES = [
 
 const FORBIDDEN_TOKENS = ['secondary_categories', 'attachSecondaryCategories', 'listItemFolderMemberships'];
 
-describe('ADR 0080 Decision 1 [binding] -- primary-only readers stay untouched by the Phase 284 (#1318) storefront secondary-category projection', () => {
+describe('ADR 0080 Decision 1 [binding] -- primary-only readers stay untouched by the Phase 285 (#1318) storefront secondary-category projection', () => {
     PRIMARY_ONLY_FILES.forEach((relativePath) => {
         it(`${relativePath} does not reference the storefront secondary-category projection or its membership lookup`, () => {
             const absolutePath = path.join(backendRoot, relativePath);

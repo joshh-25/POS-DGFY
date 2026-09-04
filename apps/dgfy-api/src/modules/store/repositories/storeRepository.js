@@ -18,7 +18,7 @@ import {
     resolveStockBearingDescriptor
 } from '../../shared/utils/stockBearingPolicy.js';
 import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
-// Phase 284 (#1318, C1): secondary category memberships for the storefront
+// Phase 285 (#1318, C1): secondary category memberships for the storefront
 // catalog projection. Reuses inventory's itemRepository.listItemFolderMemberships
 // (Phase 257) rather than re-querying item_folder_memberships directly -- per
 // ADR 0080 Decision 2, memberships are secondary-only and never mirrored, so
@@ -517,7 +517,7 @@ const warnStorefrontOverrideFallback = (error) => {
     });
 };
 
-// Phase 284 (#1318, C1): batches an item's secondary category memberships
+// Phase 285 (#1318, C1): batches an item's secondary category memberships
 // onto already-shaped storefront catalog rows. This is the ADR 0080
 // Decision 4 opt-in for exactly this one surface -- `folder_name`/`folder_id`
 // above stay the untouched primary projection every other read site

@@ -20406,10 +20406,20 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Contracts/files (expected): `scripts/lib/version-bump-gate-toggle.js` (the one-line flip) — no
   other file needs to change, per that module's and `shared-changed-paths.yml`/`pr-checks.js`'s own
   single-source-of-truth design (Phase 276).
-- Next eligible phase: 285.
+- Next eligible phase: 284.
 
-## Phase 284 - Wave C/C1: storefront catalog API projection of secondary categories (#1318)
+## Phase 285 - Wave C/C1: storefront catalog API projection of secondary categories (#1318)
 
+- **Numbering note:** this entry was drafted against a ledger tip of Phase 283 (making 284 the
+  mechanically next number), but at PR-open time another open PR (#1578, `fix(inventory): count
+  secondary category memberships in folder-delete warning`, Wave C4 — a sibling, unrelated slice of
+  the same #1318 program) already carries its own diff claiming Phase 284 for different work. Both
+  PRs are unmerged as of this writing, so this entry takes 285 outright to avoid opening with a
+  guaranteed collision, rather than colliding and relying on a later rebase to sort it out (the
+  pattern already used by Phase 281's and Phase 283's own "Numbering note" sections). If #1578
+  merges first, 284/285 land sequentially with no further action. If this PR merges first, #1578's
+  author renumbers its own 284 claim to 286 on rebase, per AGENTS.md's Continuous Phase Numbering
+  rule 5 (preserve already-landed numbers).
 - Initiative/release: Item multi-category membership program (#1318) / current release process.
   Wave C, slice C1 — gates a later, separate slice (C2, not part of this phase) that will consume
   this projection to render storefront catalog items grouped into every category they belong to.
@@ -20448,7 +20458,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   throws — on a membership-lookup error; skips the query entirely for an empty catalog result; a
   membership pointing at a since-deleted folder resolves to `folder_name: null`),
   `storeCatalogSecondaryCategories.usecase.test.js` (3: threads the field from repository row to
-  serialized response; defaults to `[]` for a pre-Phase-284 row shape; normalizes a non-array
+  serialized response; defaults to `[]` for a pre-Phase-285 row shape; normalizes a non-array
   value), `adr0080PrimaryOnlyReadersGuard.test.js` (6: a new static source-grep regression guard
   asserting none of ADR 0080 Decision 1's six named primary-only files reference
   `secondary_categories`/`attachSecondaryCategories`/`listItemFolderMemberships`). Plus 7
@@ -20467,4 +20477,4 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md`,
   `docs/architecture/adr/0080-item-multi-category-membership.md` (consumed unchanged, not
   amended), issue #1318.
-- Next eligible phase: 285.
+- Next eligible phase: 286.

@@ -1,4 +1,4 @@
-// Phase 284 (#1318, C1) -- buildListStoreCatalogUseCase/serializeStoreCatalogItem threading
+// Phase 285 (#1318, C1) -- buildListStoreCatalogUseCase/serializeStoreCatalogItem threading
 // secondary_categories from the repository row through to the public catalog response.
 // No database is used -- storeRepository is a hand-built fake, same convention as
 // tests/storeCatalogPaymentMode.unit.test.js (whose fixture shape this file borrows).
@@ -12,7 +12,7 @@ const TENANT_ID = '44444444-4444-4444-8444-444444444444';
 
 const resolveWorkflowCapabilitySettingsFixture = jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] });
 
-describe('buildListStoreCatalogUseCase -- Phase 284 (#1318, C1) secondary_categories projection', () => {
+describe('buildListStoreCatalogUseCase -- Phase 285 (#1318, C1) secondary_categories projection', () => {
     test('threads secondary_categories from the repository row through to the serialized item, alongside the unchanged primary folder projection', async () => {
         const storeRepository = {
             listStoreCatalog: jest.fn().mockResolvedValue([{
@@ -46,7 +46,7 @@ describe('buildListStoreCatalogUseCase -- Phase 284 (#1318, C1) secondary_catego
         expect(result.data.items[0].folder_name).toBe('Primary');
     });
 
-    test('defaults to an empty array for a repository row with no secondary_categories field (pre-Phase-284 shape, e.g. a fallback path this phase did not touch)', async () => {
+    test('defaults to an empty array for a repository row with no secondary_categories field (pre-Phase-285 shape, e.g. a fallback path this phase did not touch)', async () => {
         const storeRepository = {
             listStoreCatalog: jest.fn().mockResolvedValue([{
                 item_id: 41,
