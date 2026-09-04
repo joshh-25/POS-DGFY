@@ -41,6 +41,13 @@ git fetch origin
 git ls-remote --exit-code --heads origin main || echo "MISSING — restore before proceeding"
 
 CANDIDATE_ID=$(date +%Y-%m-%d)-01
+# candidate_source_sha (ADR 0081 Decision 8, #1588): this path never cuts to-staging/<candidate_id>
+# and so never produces a candidate manifest -- there is nothing for scripts/check-image-version-
+# parity.js's --manifest mode to point at. Its own --source-sha mode (RF-2, PR #1590 review) exists
+# for exactly this: the develop SHA release/<label> is about to be cut from IS this path's whole
+# candidate source identity, no manifest object needed. Captured before the cut, from the exact ref
+# the branch is cut from, so there is no ambiguity about which SHA it names.
+CANDIDATE_SOURCE_SHA=$(git rev-parse origin/develop)
 git switch -c release/$CANDIDATE_ID-r1 origin/develop
 git push -u origin release/$CANDIDATE_ID-r1
 
@@ -111,9 +118,15 @@ Exit 0 (`All apps at or above the minor floor.`) → proceed straight to the bra
 non-zero exit lists every app below floor with its current (head) version and the minimum
 acceptable one (`X.(Y+1).0`) — open and merge one ordinary `develop`-base PR for the bump before
 cutting anything, per `implement`'s own workflow (this is not a promotion-branch PR, no new merge
-authority needed, `pr-reviewer`'s existing unattended-merge policy on `develop` already covers it):
+authority needed, `pr-reviewer`'s existing unattended-merge policy on `develop` already covers it).
+**Same clean-tree safeguard as the branch cuts elsewhere in this runbook (RF-4, PR #1590 review):**
+`git switch -c` carries a dirty working tree's uncommitted changes onto the new branch just as
+readily here as it does for `to-staging/<candidate_id>`/`release/<label>` — a clean `git status`
+before this cut is the same cheap backstop the `#1007-gated exception` section above already asks
+for on those:
 
 ```bash
+git status   # confirm clean before cutting -- an unnoticed diff here rides straight onto the bump PR
 git switch -c chore/release/bump-$CANDIDATE_ID origin/develop
 # bump apps/<app>/package.json's "version" to X.(Y+1).0 for every app the floor check listed
 git add apps/*/package.json
@@ -278,6 +291,9 @@ git rev-list --count origin/staging..origin/main
 
 ## Deploy dispatch, after either leg merges
 
+**STAGING dispatch — default flow only.** The #1007-gated exception never reaches this block at all
+(it has no staging leg) — skip straight to "PROD dispatch" below if that's the flow in progress.
+
 ```bash
 # STAGING — unattended, per ../SKILL.md's checkpoint table. DEV dispatch is dropped from this
 # default flow entirely (#982) — use `--ref develop` only when DEV is specifically wanted, never
@@ -286,20 +302,21 @@ git rev-list --count origin/staging..origin/main
 # four build_* booleans below all default true, so omitting them builds/pushes
 # everything, same as the old components=all)
 #
-# candidate_source_sha (ADR 0081 Decision 8, #1588): only set on a real to-staging/<candidate_id>
-# promotion's STAGING dispatch -- read current_staging_sha straight from the candidate manifest
-# rather than retyping the SHA. Omit entirely (leave the default empty string) for a plain DEV
-# dispatch or an ad hoc STAGING rebuild that isn't part of a tracked candidate.
+# candidate_source_sha (ADR 0081 Decision 8, #1588): read current_staging_sha straight from the
+# candidate manifest rather than retyping the SHA. Sets the SAME variable name the #1007-gated
+# exception section captures for its own flow (from origin/develop directly, no manifest) -- the
+# PROD dispatch below reuses whichever one the promoter's actual flow set, without re-deriving it.
 CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID.json').current_staging_sha")
 gh workflow run deploy.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" --ref staging
+```
 
-# PROD — ask Pat first, every time. Same candidate_source_sha value as the STAGING dispatch above on
-# the normal three-stage flow (release/<candidate_id>-rN was cut from that exact staging SHA, so the
-# identity is unchanged by the merge). On the #1007-gated exception (release/<label> cut straight
-# from develop, no staging leg, no candidate manifest ever created) leave candidate_source_sha empty
-# -- scripts/check-image-version-parity.js reads that as "no staging predecessor," which is exactly
-# right for that path (ADR 0081 Decision 8's own "expected evidence of a #1007 expedited promotion
-# or a main hotfix, not a defect").
+**PROD dispatch — ask Pat first, every time, on either flow.** `$CANDIDATE_SOURCE_SHA` is already
+set by this point: from the STAGING block just above on the default flow (`release/<candidate_id>-rN`
+was cut from that exact staging SHA, so the identity is unchanged by the merge), or from the
+`#1007-gated exception` section's own `git rev-parse origin/develop` capture on that flow (no
+staging leg, no candidate manifest — RF-2, PR #1590 review):
+
+```bash
 gh workflow run deploy-main.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" --ref main
 
 # Verify health after either dispatch — read-only, unattended
@@ -313,14 +330,24 @@ don't retry blindly.
 
 **Promotion parity gate (ADR 0081 Decision 8, #1588)** — after `deploy-main.yml` has actually built
 and pushed the PROD images (only then does the bare `X.Y.Z` tag exist to compare against), confirm
-every changed app's STAGING and PROD images share the same candidate source identity. Read-only
-(`docker buildx imagetools inspect` only), unattended, same tier as `verify-deployment.yml`:
+every changed app's PROD image traces back to the candidate it should. Read-only (`docker buildx
+imagetools inspect` only), unattended, same tier as `verify-deployment.yml`. Two invocation forms,
+matching whichever flow actually ran (RF-2, PR #1590 review — the CLI itself refuses to run without
+exactly one of these two flags):
 
 ```bash
+# Default flow — compares PROD against its STAGING predecessor via the candidate manifest:
 node scripts/check-image-version-parity.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
+
+# #1007-gated exception instead — no manifest exists; compares PROD's own label directly against
+# the develop SHA release/<label> was cut from (the same $CANDIDATE_SOURCE_SHA captured in that
+# section):
+node scripts/check-image-version-parity.js --source-sha "$CANDIDATE_SOURCE_SHA"
 ```
 
-`PASS` includes both a real label match and a documented "no staging predecessor" case (the
-#1007/hotfix path) — both are fine to proceed on. A `FAIL` (`mismatch` or `prod-unreadable`) means
-the PROD image published for this candidate does not actually trace back to the frozen staging
-candidate it should — report and escalate, do not deploy past it or dismiss it as noise.
+`PASS` includes both a real label match and a documented "no predecessor"/"no candidate identity"
+case (the #1007/hotfix path, on either invocation form) — both are fine to proceed on. A `FAIL`
+(`mismatch`, `prod-unreadable`, or — default-flow only — `staging-unreadable`) means the PROD image
+published for this candidate does not actually trace back to where it should, or (staging-unreadable
+specifically) that STAGING's own label-stamping regressed — report and escalate either way, do not
+deploy past it or dismiss it as noise.

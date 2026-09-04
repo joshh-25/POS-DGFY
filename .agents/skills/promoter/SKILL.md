@@ -266,17 +266,25 @@ sweep do. Run it as part of deploy-dispatch verification, immediately alongside
 `verify-deployment.yml -f environment=PROD`:
 
 ```bash
+# Default flow (candidate manifest exists) -- compares PROD against its STAGING predecessor:
 node scripts/check-image-version-parity.js --manifest .tmp/release-candidates/<candidate_id>.json
+
+# #1007-gated exception instead (RF-2, PR #1590 review) -- this path never cuts to-staging/<label>
+# and so never produces a candidate manifest for --manifest to point at; --source-sha compares
+# PROD's own label directly against the develop SHA release/<label> was cut from:
+node scripts/check-image-version-parity.js --source-sha <the develop SHA release/<label> was cut from>
 ```
 
-`PASS` covers two distinct, both-fine outcomes: a real label match, and a documented "no staging
-predecessor" case — the #1007-expedited or main-hotfix path, where no candidate manifest (and so no
-`candidate_source_sha` build input) ever existed for this SHA in the first place. Decision 8's own
-text calls that expected evidence, not a defect; do not treat it as a finding. `FAIL`
-(`mismatch`/`prod-unreadable`) means the published PROD image does not actually trace back to the
-staging candidate it should — report and escalate the same way a `verify-deployment.yml` failure is
-handled (#495: no rollback exists), don't wave it through. Read-only (`docker buildx imagetools
-inspect` only, no push) — no new checkpoint, same classification as `verify-deployment.yml`.
+`PASS` covers two distinct, both-fine outcomes on either invocation: a real label match, and a
+documented "no predecessor"/"no candidate identity" case — the #1007-expedited or main-hotfix path,
+where no candidate manifest (and so no `candidate_source_sha` build input) ever existed for this SHA
+in the first place. Decision 8's own text calls that expected evidence, not a defect; do not treat
+it as a finding. `FAIL` (`mismatch`, `prod-unreadable`, or — `--manifest` mode only —
+`staging-unreadable`, an existing STAGING image whose label regressed rather than one that's simply
+absent) means the published PROD image does not actually trace back to where it should — report and
+escalate the same way a `verify-deployment.yml` failure is handled (#495: no rollback exists), don't
+wave it through. Read-only (`docker buildx imagetools inspect` only, no push) — no new checkpoint,
+same classification as `verify-deployment.yml`.
 
 ## Expedited `develop → main` override (#1007)
 

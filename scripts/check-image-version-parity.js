@@ -17,36 +17,90 @@
  * build time, sourced from a `candidate_source_sha` input the promoter threads through
  * `deploy.yml`/`deploy-main.yml` (see `.agents/skills/promoter/references/promotion-runbook.md`).
  *
- * Three outcomes per app, matching #1588's own spec:
- *   - both images exist and the label agrees             -> pass ("match")
- *   - the prod image exists but has no staging predecessor
- *     carrying this label                                -> pass ("no-staging-predecessor" --
- *                                                             expected evidence of a #1007 expedited
- *                                                             promotion or a main hotfix, not a
- *                                                             defect, per Decision 8's own text)
- *   - both images exist and the label disagrees           -> fail ("mismatch")
- * Plus two non-blocking/error states: the prod tag has not been published at all yet ("skip" -- there
- * is nothing to verify), and an inspect call failing for a reason that is not "tag not found" (auth,
- * network, registry outage -- "error", refusing to guess rather than silently passing).
+ * Two CLI modes, and a shared per-image inspection state machine underneath both:
+ *
+ *   --manifest <candidate.json>  Normal promotion mode (default `develop -> staging -> main` flow).
+ *     Reads and validates the candidate manifest (same shape check-promotion-candidate.js
+ *     validates), resolves its `current_staging_sha` as the candidate source identity, then for
+ *     every app (all five by default) reads that app's package.json version at that SHA and
+ *     compares `ghcr.io/sieitzz/<app>:<version>-staging` against `ghcr.io/sieitzz/<app>:<version>`.
+ *
+ *   --source-sha <sha>  Direct/no-staging mode (#1007's expedited `develop -> main` override, or a
+ *     main hotfix cut with a known source SHA) -- RF-2, PR #1590 review. This path never cuts
+ *     `to-staging/<candidate_id>` and so never produces a candidate manifest at all (`--manifest`
+ *     would have nothing to point at); this mode reads app versions straight from `<sha>` and
+ *     inspects only the PROD tag, confirming its stamped candidate-source-sha label (if any) equals
+ *     `<sha>` -- no staging comparison, because none exists for this path by construction.
+ *
+ * Per-image inspection states (`inspectImageLabel`), and how each CLI mode's verdict function reads
+ * them:
+ *   - 'ok'           label present and internally consistent -> its `value` is comparable.
+ *   - 'not-found'    the tag does not exist at all.
+ *   - 'no-label'     the tag exists, but the candidate-source-sha label is absent everywhere on it
+ *                    -- the legitimate "this image was never part of a tracked candidate" case (an
+ *                    empty `candidate_source_sha` build input). Distinguished from 'inconsistent'
+ *                    (below) precisely so an untracked-by-design image (PROD on the #1007/hotfix
+ *                    path) is never confused with a broken stamp on an image that SHOULD carry one
+ *                    (any STAGING image on the normal promotion path always gets a
+ *                    `candidate_source_sha` -- see the runbook -- so 'no-label' there is a real
+ *                    regression, not evidence).
+ *   - 'inconsistent' the tag exists and the label is present on at least one platform, but is
+ *                    missing on another or disagrees across platforms -- always a real defect,
+ *                    regardless of which side of the comparison it's on.
+ *   - 'error'        the inspect call itself failed for a reason that is not "tag not found" (auth,
+ *                    network, registry outage) -- refuses to guess rather than silently passing.
+ *
+ * `decideParity` (manifest mode) outcomes, matching #1588's own spec plus the PR #1590 review
+ * corrections (RF-2, RF-3):
+ *   - prod 'ok', staging 'ok', values agree                -> pass ("match")
+ *   - prod 'ok', staging 'not-found'                       -> pass ("no-staging-predecessor" --
+ *                                                              expected evidence of a #1007
+ *                                                              expedited promotion or a main hotfix,
+ *                                                              not a defect, per Decision 8's own
+ *                                                              text). RF-3: this is the ONLY staging
+ *                                                              state that passes -- 'no-label' and
+ *                                                              'inconsistent' both fail now (below).
+ *   - prod 'no-label' (regardless of staging)               -> pass ("no-candidate-identity" -- same
+ *                                                              expected-evidence case as above, just
+ *                                                              detected on the PROD side; RF-2's own
+ *                                                              bug was this case previously falling
+ *                                                              through to 'prod-unreadable'/fail)
+ *   - prod 'ok', staging 'ok', values disagree              -> fail ("mismatch")
+ *   - prod 'ok', staging 'no-label' or 'inconsistent'       -> fail ("staging-unreadable", RF-3 --
+ *                                                              the normal promotion path always
+ *                                                              stamps STAGING, so a missing/broken
+ *                                                              label there is a real regression)
+ *   - prod 'inconsistent'                                   -> fail ("prod-unreadable")
+ *   - prod 'not-found'                                      -> skip (nothing published yet)
+ *   - either side 'error'                                   -> error (refuses to guess)
+ *
+ * `decideDirectParity` (`--source-sha` mode) outcomes:
+ *   - prod 'ok', value equals the given `--source-sha`      -> pass ("match")
+ *   - prod 'no-label'                                       -> pass ("no-candidate-identity" --
+ *                                                              same expected-evidence case; this is
+ *                                                              the ordinary result for a hotfix with
+ *                                                              no candidate tracking at all)
+ *   - prod 'ok', value differs from `--source-sha`          -> fail ("mismatch")
+ *   - prod 'inconsistent'                                   -> fail ("prod-unreadable")
+ *   - prod 'not-found'                                      -> skip
+ *   - prod 'error'                                           -> error
  *
  * Read-only: only ever runs `docker buildx imagetools inspect`, never a push -- same classification
  * as `scripts/check-tag-immutability.js`'s own inspect step, no new checkpoint (see
  * `.agents/skills/promoter/SKILL.md`'s "Unattended vs. checkpoint" table).
  *
- * The multi-platform label-collection logic (`collectRevisionLabelInfo`/`resolveRevisionLabels`) is
- * reused directly from `check-tag-immutability.js` rather than re-implemented -- both scripts read
- * OCI labels out of the same `docker buildx imagetools inspect --format '{{json .}}'` shape, and
- * `resolveRevisionLabels` already takes an arbitrary `labelKey`, not just the revision label it was
- * originally written for.
- *
- * CLI:
- *   node scripts/check-image-version-parity.js --manifest <candidate.json> [--project-root <dir>]
- *     [--apps dgfy-api,dgfy-pos,...]
- *
- *   Reads and validates the candidate manifest (same shape check-promotion-candidate.js validates),
- *   resolves its `current_staging_sha` as the candidate source identity, then for every app (all
- *   five by default) reads that app's package.json version at that SHA and inspects both
- *   `ghcr.io/sieitzz/<app>:<version>-staging` and `ghcr.io/sieitzz/<app>:<version>`.
+ * The multi-platform label-collection walk (`collectRevisionLabelInfo`) is reused directly from
+ * `check-tag-immutability.js` rather than re-implemented -- both scripts read OCI labels out of the
+ * same `docker buildx imagetools inspect --format '{{json .}}'` shape, and it already takes an
+ * arbitrary `labelKey`, not just the revision label it was originally written for. Its sibling
+ * `resolveRevisionLabels` is deliberately NOT reused here, unlike in an earlier version of this
+ * file: that function's `'none'` vs `'unreadable'` split conflates two states that mean different
+ * things for an OPTIONAL label like this one -- "no Labels object exists anywhere" and "a Labels
+ * object exists but simply lacks this one key" both collapse to distinct-looking outcomes there,
+ * but for a real single-platform image (four of this repo's five apps) the second shape is the
+ * ordinary, expected result of an empty `candidate_source_sha` build input, not a defect. This file
+ * classifies `collectRevisionLabelInfo`'s raw `{ found, unreadableCount }` itself instead -- see
+ * `inspectImageLabel` below.
  */
 
 const { spawnSync } = require('node:child_process');
@@ -54,7 +108,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { validatePromotionCandidate, PromotionCandidateError } = require('./check-promotion-candidate');
-const { isNotFoundError, collectRevisionLabelInfo, resolveRevisionLabels } = require('./check-tag-immutability');
+const { isNotFoundError, collectRevisionLabelInfo } = require('./check-tag-immutability');
 const { APPS, readVersionAt } = require('./check-app-version-bump');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -85,7 +139,15 @@ function runInspect(imageRef) {
 /**
  * Inspects one `<image>:<tag>` ref for `labelKey` and classifies the result -- pure aside from the
  * injected `inspectFn`, so tests supply canned inspect fixtures instead of shelling out to `docker`.
- * Returns { ref, state: 'ok'|'not-found'|'unreadable'|'error', value?, reason? }.
+ * Returns { ref, state: 'ok'|'not-found'|'no-label'|'inconsistent'|'error', value?, reason? }.
+ *
+ * Classifies `collectRevisionLabelInfo`'s raw `{ found, unreadableCount }` directly (not via
+ * `resolveRevisionLabels` -- see the file header for why) so 'no-label' (the label is absent on
+ * EVERY platform/config entry this image has -- the ordinary shape of an untracked build) and
+ * 'inconsistent' (present on at least one platform but missing or disagreeing on another -- always a
+ * real defect) are distinguished correctly even for a single-platform image, where "the one Labels
+ * object lacks this key" must mean 'no-label', not 'inconsistent' (there is nothing else it could be
+ * inconsistent WITH). Both verdict functions below (RF-2/RF-3, PR #1590 review) depend on this split.
  */
 function inspectImageLabel({ image, tag, labelKey, inspectFn }) {
   const ref = `${image}:${tag}`;
@@ -109,22 +171,29 @@ function inspectImageLabel({ image, tag, labelKey, inspectFn }) {
     return { ref, state: 'error', reason: `could not parse "docker buildx imagetools inspect" JSON output for ${ref}: ${error.message}` };
   }
 
-  const resolved = resolveRevisionLabels(parsed, labelKey);
-  if (resolved.status === 'none') {
-    return { ref, state: 'unreadable', reason: `"${labelKey}" label not present anywhere on ${ref}` };
+  const { found, unreadableCount } = collectRevisionLabelInfo(parsed, labelKey);
+  const uniqueFound = [...new Set(found)];
+
+  if (uniqueFound.length === 0) {
+    // No platform/config entry carries this label at all -- whether because no Labels object was
+    // found anywhere, or because every Labels object found simply lacks this specific key. Either
+    // way, nobody stamped it; for an OPTIONAL label this is the expected shape of an untracked
+    // build, not evidence of a broken partial stamp.
+    return { ref, state: 'no-label', reason: `"${labelKey}" label not present anywhere on ${ref}` };
   }
-  if (resolved.status === 'unreadable') {
-    return { ref, state: 'unreadable', reason: `"${labelKey}" is missing/empty on at least one platform of ${ref} (readable elsewhere: ${resolved.found.length ? resolved.found.join(', ') : 'none'})` };
+  if (unreadableCount > 0) {
+    return { ref, state: 'inconsistent', reason: `"${labelKey}" is missing/empty on at least one platform of ${ref} (readable elsewhere: ${uniqueFound.join(', ')})` };
   }
-  if (resolved.status === 'disagree') {
-    return { ref, state: 'unreadable', reason: `"${labelKey}" disagrees across platforms of ${ref} (${resolved.revisions.join(', ')})` };
+  if (uniqueFound.length > 1) {
+    return { ref, state: 'inconsistent', reason: `"${labelKey}" disagrees across platforms of ${ref} (${uniqueFound.join(', ')})` };
   }
-  return { ref, state: 'ok', value: resolved.revision };
+  return { ref, state: 'ok', value: uniqueFound[0] };
 }
 
 /**
- * Pure verdict function for one app, given its already-inspected prod and staging label results.
- * Returns { verdict: 'pass'|'fail'|'skip'|'error', code, detail }.
+ * Pure verdict function for one app, given its already-inspected prod and staging label results
+ * (manifest mode). Returns { verdict: 'pass'|'fail'|'skip'|'error', code, detail }. See the file
+ * header's "decideParity (manifest mode) outcomes" list for the full outcome table.
  */
 function decideParity({ prod, staging }) {
   if (prod.state === 'not-found') {
@@ -133,11 +202,23 @@ function decideParity({ prod, staging }) {
   if (prod.state === 'error') {
     return { verdict: 'error', code: 'prod-inspect-error', detail: prod.reason };
   }
-  if (prod.state === 'unreadable') {
+  if (prod.state === 'inconsistent') {
     return {
       verdict: 'fail',
       code: 'prod-unreadable',
       detail: `production image exists but ${prod.reason} -- cannot establish candidate source identity (ADR 0081 Decision 8).`,
+    };
+  }
+  // RF-2 fix (PR #1590 review): a PROD image built with no candidate_source_sha at all (the
+  // #1007/hotfix path -- no to-staging leg, no candidate manifest) is expected evidence, not a
+  // defect, regardless of whatever a staging tag at this version happens to carry. Checked before
+  // looking at staging at all, since there is nothing meaningful to compare against once PROD
+  // itself carries no tracked identity.
+  if (prod.state === 'no-label') {
+    return {
+      verdict: 'pass',
+      code: 'no-candidate-identity',
+      detail: `${prod.ref} carries no candidate-source-identity label at all -- expected evidence of a #1007 expedited promotion or a main hotfix with no tracked staging leg (ADR 0081 Decision 8), not a defect.`,
     };
   }
 
@@ -145,11 +226,23 @@ function decideParity({ prod, staging }) {
   if (staging.state === 'error') {
     return { verdict: 'error', code: 'staging-inspect-error', detail: staging.reason };
   }
-  if (staging.state === 'not-found' || staging.state === 'unreadable') {
+  // RF-3 fix (PR #1590 review): 'no-staging-predecessor' now fires ONLY when the staging tag does
+  // not exist at all. On the normal promotion path a staging image at this exact version was always
+  // built with a real candidate_source_sha (see the runbook), so an existing staging image with a
+  // missing/inconsistent label is a real label-stamping regression, not evidence of anything --
+  // treated as a failure below instead of silently passing.
+  if (staging.state === 'not-found') {
     return {
       verdict: 'pass',
       code: 'no-staging-predecessor',
-      detail: `${prod.ref} (candidate-source-sha ${prod.value}) has no comparable staging predecessor under this identity (${staging.reason}) -- expected evidence of a #1007 expedited promotion or a main hotfix, not a defect (ADR 0081 Decision 8).`,
+      detail: `${prod.ref} (candidate-source-sha ${prod.value}) has no staging predecessor published at all (${staging.reason}) -- expected evidence of a #1007 expedited promotion or a main hotfix, not a defect (ADR 0081 Decision 8).`,
+    };
+  }
+  if (staging.state === 'no-label' || staging.state === 'inconsistent') {
+    return {
+      verdict: 'fail',
+      code: 'staging-unreadable',
+      detail: `staging image ${staging.ref} exists but ${staging.reason} -- the normal promotion path always stamps a candidate-source-sha on STAGING, so a missing or inconsistent label here is a label-stamping regression, not evidence of a #1007/hotfix path (ADR 0081 Decision 8).`,
     };
   }
 
@@ -164,7 +257,46 @@ function decideParity({ prod, staging }) {
   };
 }
 
-/** Orchestrates one app's version read + both inspects + the verdict. */
+/**
+ * Pure verdict function for one app in `--source-sha` (direct/no-staging) mode -- RF-2, PR #1590
+ * review. There is no staging image to compare against by construction (the #1007/hotfix path never
+ * cuts `to-staging/<candidate_id>`), so this compares the PROD image's own label directly against
+ * the caller-supplied `expectedSha` instead. See the file header's "decideDirectParity" outcome list.
+ */
+function decideDirectParity({ prod, expectedSha }) {
+  if (prod.state === 'not-found') {
+    return { verdict: 'skip', code: 'prod-not-found', detail: `${prod.ref} has not been published yet -- nothing to verify.` };
+  }
+  if (prod.state === 'error') {
+    return { verdict: 'error', code: 'prod-inspect-error', detail: prod.reason };
+  }
+  if (prod.state === 'inconsistent') {
+    return {
+      verdict: 'fail',
+      code: 'prod-unreadable',
+      detail: `production image exists but ${prod.reason} -- cannot establish candidate source identity (ADR 0081 Decision 8).`,
+    };
+  }
+  if (prod.state === 'no-label') {
+    return {
+      verdict: 'pass',
+      code: 'no-candidate-identity',
+      detail: `${prod.ref} carries no candidate-source-identity label at all -- the ordinary result for a #1007 expedited promotion or a main hotfix dispatched with no candidate_source_sha, not a defect (ADR 0081 Decision 8).`,
+    };
+  }
+
+  // prod.state === 'ok' from here on.
+  if (prod.value === expectedSha) {
+    return { verdict: 'pass', code: 'match', detail: `${prod.ref} carries candidate-source-sha ${prod.value}, matching the expected direct-promotion source SHA.` };
+  }
+  return {
+    verdict: 'fail',
+    code: 'mismatch',
+    detail: `${prod.ref} carries candidate-source-sha ${prod.value}, but the expected direct-promotion source SHA is ${expectedSha} -- these should match (ADR 0081 Decision 8).`,
+  };
+}
+
+/** Orchestrates one app's version read + both inspects + the verdict (manifest mode). */
 function checkApp({ repoRoot, app, candidateSha, inspectFn }) {
   const versionRaw = readVersionAt(repoRoot, candidateSha, `apps/${app}`);
   if (!versionRaw) {
@@ -198,8 +330,60 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
   const results = apps.map((app) => checkApp({ repoRoot, app, candidateSha, inspectFn }));
 
   return {
+    mode: 'manifest',
     candidate_id: candidate.candidate_id,
     candidate_source_sha: candidateSha,
+    results,
+    ok: results.every((entry) => entry.verdict === 'pass' || entry.verdict === 'skip'),
+  };
+}
+
+/**
+ * Orchestrates one app's version read + PROD-only inspect + the direct-mode verdict -- RF-2, PR
+ * #1590 review. No staging inspect at all: the `--source-sha` mode exists precisely for the path
+ * that never has a staging predecessor to compare against.
+ */
+function checkAppDirect({ repoRoot, app, sourceSha, inspectFn }) {
+  const versionRaw = readVersionAt(repoRoot, sourceSha, `apps/${app}`);
+  if (!versionRaw) {
+    return {
+      app,
+      verdict: 'error',
+      code: 'version-unreadable',
+      detail: `could not read apps/${app}/package.json version at ${sourceSha} -- is that SHA available locally (git fetch --depth may be too shallow)?`,
+    };
+  }
+
+  const image = IMAGE_NAME_BY_APP(app);
+  const prod = inspectImageLabel({ image, tag: versionRaw, labelKey: CANDIDATE_SOURCE_LABEL, inspectFn });
+  const result = decideDirectParity({ prod, expectedSha: sourceSha });
+
+  return { app, version: versionRaw, ...result };
+}
+
+/**
+ * Direct/no-staging mode entry point (`--source-sha`) -- RF-2, PR #1590 review. Covers the #1007
+ * expedited `develop -> main` override and a main hotfix cut with a known source SHA: neither
+ * produces a `to-staging/<candidate_id>` candidate manifest, so `runParityCheck`'s `--manifest`
+ * requirement made this path impossible to actually run before this fix.
+ *
+ * options:
+ *   - sourceSha (required): the develop/release SHA this direct promotion was cut from
+ *   - repoRoot (default: this repo)
+ *   - apps (default: all five APPS)
+ *   - inspectFn (default: runInspect) -- override lets tests skip shelling out to docker
+ */
+function runDirectParityCheck({ sourceSha, repoRoot = REPO_ROOT, apps = APPS, inspectFn = runInspect } = {}) {
+  if (!sourceSha) {
+    throw new ImageVersionParityError('--source-sha is required for direct/no-staging mode', 'INVALID_ARGS');
+  }
+
+  const results = apps.map((app) => checkAppDirect({ repoRoot, app, sourceSha, inspectFn }));
+
+  return {
+    mode: 'direct',
+    candidate_id: null,
+    candidate_source_sha: sourceSha,
     results,
     ok: results.every((entry) => entry.verdict === 'pass' || entry.verdict === 'skip'),
   };
@@ -208,11 +392,13 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
 // --- CLI ---------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const options = { projectRoot: process.cwd(), manifestPath: '', apps: null };
+  const options = { projectRoot: process.cwd(), manifestPath: '', sourceSha: '', apps: null };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--manifest') {
       options.manifestPath = argv[++index] || '';
+    } else if (arg === '--source-sha') {
+      options.sourceSha = argv[++index] || '';
     } else if (arg === '--project-root') {
       options.projectRoot = path.resolve(argv[++index] || '');
     } else if (arg === '--apps') {
@@ -222,7 +408,15 @@ function parseArgs(argv) {
       throw new ImageVersionParityError(`Unknown argument: ${arg}`, 'INVALID_ARGS');
     }
   }
-  if (!options.manifestPath) throw new ImageVersionParityError('Missing required option: --manifest', 'INVALID_ARGS');
+  if (options.manifestPath && options.sourceSha) {
+    throw new ImageVersionParityError('--manifest and --source-sha are mutually exclusive -- pick one mode', 'INVALID_ARGS');
+  }
+  if (!options.manifestPath && !options.sourceSha) {
+    throw new ImageVersionParityError(
+      'Missing required option: --manifest <candidate.json> (normal promotion mode) or --source-sha <sha> (direct/#1007/hotfix mode, no staging leg)',
+      'INVALID_ARGS',
+    );
+  }
   return options;
 }
 
@@ -232,23 +426,35 @@ function printResult(result) {
     const version = entry.version ? ` version=${entry.version}` : '';
     console.log(`[check-image-version-parity] [${label}] ${entry.app}${version} (${entry.code}): ${entry.detail}`);
   }
+  const context = result.mode === 'direct'
+    ? `mode=direct source_sha=${result.candidate_source_sha}`
+    : `candidate=${result.candidate_id} candidate_source_sha=${result.candidate_source_sha}`;
   if (result.ok) {
-    console.log(`[check-image-version-parity] PASS. candidate=${result.candidate_id} candidate_source_sha=${result.candidate_source_sha}`);
+    console.log(`[check-image-version-parity] PASS. ${context}`);
   } else {
-    console.error(`[check-image-version-parity] FAIL. candidate=${result.candidate_id} candidate_source_sha=${result.candidate_source_sha} -- see FAIL/ERROR rows above.`);
+    console.error(`[check-image-version-parity] FAIL. ${context} -- see FAIL/ERROR rows above.`);
   }
 }
 
 function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
-    const manifestPath = path.resolve(options.projectRoot, options.manifestPath);
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    const result = runParityCheck({
-      manifest,
-      repoRoot: options.projectRoot,
-      apps: options.apps || undefined,
-    });
+    let result;
+    if (options.sourceSha) {
+      result = runDirectParityCheck({
+        sourceSha: options.sourceSha,
+        repoRoot: options.projectRoot,
+        apps: options.apps || undefined,
+      });
+    } else {
+      const manifestPath = path.resolve(options.projectRoot, options.manifestPath);
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      result = runParityCheck({
+        manifest,
+        repoRoot: options.projectRoot,
+        apps: options.apps || undefined,
+      });
+    }
     printResult(result);
     process.exitCode = result.ok ? 0 : 1;
   } catch (error) {
@@ -270,7 +476,10 @@ module.exports = {
   ImageVersionParityError,
   inspectImageLabel,
   decideParity,
+  decideDirectParity,
   checkApp,
+  checkAppDirect,
   runParityCheck,
+  runDirectParityCheck,
   parseArgs,
 };

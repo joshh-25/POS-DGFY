@@ -303,15 +303,20 @@ run by `promoter` directly, not by any CI workflow:
    `main`" section; obligation text: `.agents/skills/promoter/SKILL.md`'s "Frozen candidate and
    repair loop" section.
 2. **Promotion parity gate** (ADR 0081 Decision 8). After `deploy-main.yml` publishes the PROD
-   image, `node scripts/check-image-version-parity.js --manifest <candidate.json>` confirms each
-   app's `X.Y.Z-staging` and bare `X.Y.Z` images share the same candidate source identity — the
-   frozen candidate's own tracked SHA (`scripts/check-promotion-candidate.js`'s manifest
-   `source_develop_sha`/`current_staging_sha`), stamped by `deploy-api.yml`/
-   `deploy-migration-runner.yml`/`deploy-frontend.yml` into the `org.dgfy-platform.candidate-source-sha`
-   OCI label — not `org.opencontainers.image.revision`, which differs across the `to-staging →
-   staging` and `release/* → main` merge commits even for byte-identical candidate content. A PROD
-   image with no matching STAGING predecessor under this identity (a #1007 expedited promotion or a
-   main hotfix) is expected evidence, not a defect. Read-only, runs after `deploy-main.yml`, not
+   image, `node scripts/check-image-version-parity.js --manifest <candidate.json>` (default flow) or
+   `--source-sha <develop SHA>` (the #1007-gated exception, which never produces a candidate
+   manifest — RF-2, PR #1590 review) confirms each app's PROD image traces back to the candidate it
+   should — the frozen candidate's own tracked SHA (`scripts/check-promotion-candidate.js`'s manifest
+   `source_develop_sha`/`current_staging_sha`, or the raw develop-cut SHA in `--source-sha` mode),
+   stamped by `deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml` into the
+   `org.dgfy-platform.candidate-source-sha` OCI label — not `org.opencontainers.image.revision`,
+   which differs across the `to-staging → staging` and `release/* → main` merge commits even for
+   byte-identical candidate content. A PROD image with no matching STAGING predecessor (or, in
+   `--source-sha` mode, no candidate-source-identity label at all) under this identity — a #1007
+   expedited promotion or a main hotfix — is expected evidence, not a defect. An *existing* STAGING
+   image whose label is missing or inconsistent, by contrast, is a real failure (`staging-unreadable`)
+   — the normal promotion path always stamps it, so its absence there signals a label-stamping
+   regression, not a legitimate untracked build. Read-only, runs after `deploy-main.yml`, not
    before — it cannot run pre-merge, since the PROD image it inspects does not exist until then. Full
    procedure and timing: `.agents/skills/promoter/references/promotion-runbook.md`'s "Deploy
    dispatch" section; `.agents/skills/promoter/SKILL.md`'s "Pre-`main` gates" section.

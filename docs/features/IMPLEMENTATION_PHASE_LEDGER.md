@@ -20297,12 +20297,8 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   this phase makes executable), closed out by this phase's own matching 2026-09-04 amendment entry.
   #1588.
 - Acceptance and validation evidence: `node --test scripts/check-image-version-parity.test.js`
-  (17/17 — `inspectImageLabel`'s not-found/error/ok/unreadable/disagree classification against
-  mocked `docker buildx imagetools inspect` output; `decideParity`'s three spec'd outcomes — matching
-  identity pass, missing-staging-predecessor pass with the "expected evidence, not a defect" note,
-  mismatched-identity fail — plus the prod-not-found skip and inspect-error edges;
-  `runParityCheck`/`checkApp` against this repo's real git history for `readVersionAt`, no live
-  registry call); `node --test scripts/check-deploy-version-stamping-workflow.test.js` (37/37 —
+  (32/32 — see the pr-reviewer round-1 correction below for what changed from this phase's original
+  17/17); `node --test scripts/check-deploy-version-stamping-workflow.test.js` (37/37 —
   extended by this phase with `checkMetaStepStampsCandidateLabel` and
   `checkOrchestratorCandidateSourceShaWiring`, each with a passing real-file case and a synthetic
   drift case); `node scripts/check-deploy-version-stamping-workflow.js` (PASS against the real
@@ -20315,6 +20311,26 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   unit-tested and shape-verified against this repo's real files, not exercised end to end against a
   live GHCR push/build, stated explicitly per `implement/SKILL.md`'s Tier 0 bar for a file class with
   no compiler.
+- **pr-reviewer round-1 correction (PR #1590, RF-1/RF-2/RF-3/RF-4), same PR, before merge:** `RF-1`
+  — a concurrent `origin/develop` PR (#1589) landed its own dated amendment on
+  `RELEASE_CANDIDATE_POLICY.md`, producing a real merge conflict; resolved by keeping both amendments
+  (#1589's first, matching real merge order, this phase's second). `RF-2` — the `#1007`/hotfix path
+  documented `--manifest`-only usage, but that path never produces a candidate manifest at all;
+  `check-image-version-parity.js` gained a second `--source-sha` CLI mode
+  (`decideDirectParity`/`checkAppDirect`/`runDirectParityCheck`) that needs no manifest, and the
+  runbook/`SKILL.md` now capture a real `CANDIDATE_SOURCE_SHA` (`git rev-parse origin/develop` at cut
+  time) for that path instead of documenting an empty one. `RF-3` — an *existing* STAGING image with
+  a missing/inconsistent label was silently passing as "no predecessor"; `inspectImageLabel`'s
+  classification bug (found querying `resolveRevisionLabels`, which conflates "no Labels object
+  found anywhere" with "a Labels object exists but lacks this one key" — collapsing to the same
+  outcome for every single-platform image, four of this repo's five apps) was fixed by classifying
+  `collectRevisionLabelInfo`'s raw `{ found, unreadableCount }` directly instead, splitting `'no-label'`
+  (legitimately absent) from `'inconsistent'` (a real partial-stamp defect); `decideParity` now fails
+  `staging-unreadable` for both. `RF-4` — the floor-bump recipe's `git switch -c` already had an
+  explicit `origin/develop` start point (the review's primary claim did not reproduce against this
+  PR's actual content), but the requested clean-tree `git status` safeguard was genuinely missing and
+  has been added, matching the equivalent safeguard already documented for the `#1007`-exception
+  branch cuts.
 - Completion date: 2026-09-04.
 - Contracts/files: `scripts/check-image-version-parity.js` (new) + its test file,
   `scripts/check-deploy-version-stamping-workflow.js` (extended) + its test file,
