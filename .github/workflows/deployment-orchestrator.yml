@@ -49,14 +49,24 @@ on:
     outputs:
       frontend_ims_sha_tag:
         value: ${{ jobs.frontend-ims.outputs.sha_tag }}
+      frontend_ims_version_tag:
+        value: ${{ jobs.frontend-ims.outputs.version_tag }}
       frontend_pos_sha_tag:
         value: ${{ jobs.frontend-pos.outputs.sha_tag }}
+      frontend_pos_version_tag:
+        value: ${{ jobs.frontend-pos.outputs.version_tag }}
       frontend_storefront_sha_tag:
         value: ${{ jobs.frontend-storefront.outputs.sha_tag }}
+      frontend_storefront_version_tag:
+        value: ${{ jobs.frontend-storefront.outputs.version_tag }}
       dgfy_api_sha_tag:
         value: ${{ jobs.dgfy-api.outputs.sha_tag }}
+      dgfy_api_version_tag:
+        value: ${{ jobs.dgfy-api.outputs.version_tag }}
       migration_runner_sha_tag:
         value: ${{ jobs.dgfy-migration-runner.outputs.sha_tag }}
+      migration_runner_version_tag:
+        value: ${{ jobs.dgfy-migration-runner.outputs.version_tag }}
 
 permissions:
   contents: read

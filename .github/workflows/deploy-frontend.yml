@@ -34,6 +34,7 @@ jobs:
     environment: ${{ inputs.environment }}
     outputs:
       sha_tag: ${{ steps.meta.outputs.sha_tag }}
+      version_tag: ${{ steps.meta.outputs.version_tag }}
     env:
       IMAGE_NAME: ghcr.io/sieitzz/${{ inputs.app }}
     steps:
@@ -80,7 +81,11 @@ jobs:
       - name: Compute image tags
         id: meta
         shell: bash
+        env:
+          APP: ${{ inputs.app }}
+          ENVIRONMENT: ${{ inputs.environment }}
         run: |
+          set -euo pipefail
           SHA_TAG="sha-${GITHUB_SHA::7}"
           {
             echo "tags<<EOF"
@@ -90,6 +95,21 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           echo "sha_tag=${SHA_TAG}" >> "$GITHUB_OUTPUT"
+
+          # ADR 0081 Decisions 1/3: X.Y.Z[-channel] version tag, read from
+          # apps/${APP}/package.json, never written here (Decision 6 -- bumps are PR-authored).
+          # Channel suffix keyed off this workflow's own `environment` input, which is always DEV
+          # (deploy.yml), STAGING (deploy.yml), or PROD (deploy-main.yml) -- see
+          # deployment-orchestrator.yml.
+          case "$ENVIRONMENT" in
+            DEV) CHANNEL_SUFFIX="-dev" ;;
+            STAGING) CHANNEL_SUFFIX="-staging" ;;
+            PROD) CHANNEL_SUFFIX="" ;;
+            *) echo "::error::Unknown environment '$ENVIRONMENT' -- expected DEV, STAGING, or PROD (ADR 0081 Decision 1's channel derivation)." >&2; exit 1 ;;
+          esac
+          APP_PKG_VERSION="$(node -p "require('./apps/${APP}/package.json').version")"
+          VERSION_TAG="${APP_PKG_VERSION}${CHANNEL_SUFFIX}"
+          echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -232,6 +252,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push frontend image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -241,14 +262,30 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version_tag }}
           # Registry cache (type=registry) removed 2026-08-14 (#427) -- see
           # the setup-buildx-action step comment above for why type=gha,
           # scoped per app, is the only cache now.
           cache-from: type=gha,scope=${{ inputs.app }}
           cache-to: type=gha,mode=max,scope=${{ inputs.app }}
-          build-args: ${{ steps.build_args.outputs.args }}
+          build-args: |
+            ${{ steps.build_args.outputs.args }}
+            APP_VERSION=${{ steps.meta.outputs.version_tag }}
           secrets: |
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      # ADR 0081 Decision 7 (the ADR's one [binding] clause), #1575: refuse to publish the version
+      # tag over a different revision. Deliberately a separate, cheap `docker buildx imagetools
+      # create` on the digest just pushed above, not a second tag in the build-push step's own
+      # `tags:` list -- see deploy-api.yml's matching step comment for the full "why".
+      - name: Publish version tag, refusing a different-revision overwrite (ADR 0081 Decision 7)
+        shell: bash
+        run: |
+          node scripts/check-tag-immutability.js \
+            --image "${IMAGE_NAME}" \
+            --tag "${{ steps.meta.outputs.version_tag }}" \
+            --revision "${{ github.sha }}" \
+            --digest "${{ steps.build.outputs.digest }}"
 
       # PROD server pull/restart happens in the `publish` job of
       # deployment-orchestrator.yml -> publish-platform.yml, keyed off
