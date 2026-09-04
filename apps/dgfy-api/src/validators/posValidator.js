@@ -130,7 +130,7 @@ const governedDiscountSchema = Joi.object({
         item_id: Joi.number().integer().positive().required(),
         eligible_quantity: Joi.number().positive().required()
     }).unknown(false)).max(100).default([]),
-    beneficiaries: Joi.array().items(governedDiscountBeneficiarySchema).min(1).max(20).unique('id_number').optional(),
+    beneficiaries: Joi.array().items(governedDiscountBeneficiarySchema).max(20).unique('id_number').optional(),
     vat_removed: Joi.number().min(0).optional(),
     vat_exempt_amount: Joi.number().min(0).optional(),
     discount_amount: Joi.number().min(0).optional()

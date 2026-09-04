@@ -21,9 +21,12 @@ import { Input } from '@/components/ui/input';
 import { resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { formatQuantity, money, toArray } from '../utils/posCheckoutTerminalUtils.js';
 import {
+    buildDiscountAllocationTotals,
     buildDiscountItemSelection,
+    getAvailableDiscountQuantity,
     getDiscountLineRef,
     getSelectableDiscountLines,
+    isStatutoryBeneficiaryComplete,
     isStatutoryDiscountType
 } from '../utils/posDiscountSelection.js';
 
@@ -80,23 +83,49 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
     const selectedDiscountCount = selectableDiscountRefs.filter((lineRef) => selectedDiscountRefs.has(lineRef)).length;
     const allDiscountItemsSelected = selectableDiscountRefs.length > 0
         && selectedDiscountCount === selectableDiscountRefs.length;
+    const additionalBeneficiaries = toArray(discountDraft.beneficiaries);
+    const additionalAllocatedQuantityByLine = buildDiscountAllocationTotals(
+        additionalBeneficiaries.map((beneficiary) => toArray(beneficiary.eligible_items))
+    );
+    const statutoryAllocatedQuantityByLine = buildDiscountAllocationTotals([
+        safeEligibleDiscountItems,
+        ...additionalBeneficiaries.map((beneficiary) => toArray(beneficiary.eligible_items))
+    ]);
+    const hasUnallocatedStatutoryQuantity = selectableDiscountEntries.some(({ lineRef, wholeCartQuantity }) => (
+        wholeCartQuantity > Number(statutoryAllocatedQuantityByLine.get(lineRef) || 0)
+    ));
+    const canAddStatutoryBeneficiary = hasUnallocatedStatutoryQuantity
+        && additionalBeneficiaries.every(isStatutoryBeneficiaryComplete);
 
     React.useEffect(() => {
         if (!discountModalOpen) setDiscountQuantityInput(null);
     }, [discountModalOpen]);
 
     const updateDiscountItemSelection = (nextLineRefs) => {
-        setDiscountDraft((previous) => ({
-            ...previous,
-            ...buildDiscountItemSelection({
+        setDiscountDraft((previous) => {
+            const nextSelection = buildDiscountItemSelection({
                 cart: safeCart,
                 type: previous.type,
                 draft: previous,
                 isEligible: isCartLineSeniorPwdEligible,
                 selectAllWhenEmpty: false,
                 selectedLineRefs: nextLineRefs
-            })
-        }));
+            });
+            const eligibleItems = nextSelection.eligible_items.map((entry) => {
+                const selectableEntry = selectableDiscountEntries.find(({ lineRef }) => lineRef === entry.line_ref);
+                const availableQuantity = getAvailableDiscountQuantity({
+                    allocationTotals: additionalAllocatedQuantityByLine,
+                    lineRef: entry.line_ref,
+                    wholeCartQuantity: selectableEntry?.wholeCartQuantity
+                });
+                return { ...entry, eligible_quantity: Math.min(entry.eligible_quantity, availableQuantity) };
+            }).filter((entry) => entry.eligible_quantity > 0);
+            return {
+                ...previous,
+                eligible_item_ids: [...new Set(eligibleItems.map((entry) => entry.item_id))],
+                eligible_items: eligibleItems
+            };
+        });
     };
 
     const handleDiscountTypeChange = (type) => {
@@ -254,9 +283,14 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                             const selectedEntry = safeEligibleDiscountItems.find((entry) => String(entry?.line_ref || '').trim() === lineRef);
                             const cartQuantity = wholeCartQuantity;
                             const requestedSelectedQuantity = Number(selectedEntry?.eligible_quantity ?? line.quantity);
+                            const primaryAvailableQuantity = getAvailableDiscountQuantity({
+                                allocationTotals: additionalAllocatedQuantityByLine,
+                                lineRef,
+                                wholeCartQuantity: cartQuantity
+                            });
                             const selectedQuantity = Number.isFinite(requestedSelectedQuantity) && requestedSelectedQuantity > 0
-                                ? Math.min(Math.max(1, Math.floor(requestedSelectedQuantity)), cartQuantity)
-                                : cartQuantity;
+                                ? Math.min(Math.max(1, Math.floor(requestedSelectedQuantity)), primaryAvailableQuantity)
+                                : primaryAvailableQuantity;
                             const isEditingDiscountQuantity = discountQuantityInput?.lineRef === lineRef;
                             const quantityValue = isEditingDiscountQuantity ? discountQuantityInput.value : selectedQuantity;
                             const catalogItem = safeCatalog.find((item) => item.item_id === line.item_id);
@@ -300,7 +334,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                                 type="number"
                                                 inputMode="numeric"
                                                 min="1"
-                                                max={cartQuantity}
+                                                max={primaryAvailableQuantity}
                                                 step="1"
                                                 value={quantityValue}
                                                 onClick={(event) => event.stopPropagation()}
@@ -319,7 +353,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                                     }
                                                     const requestedQuantity = Number(rawValue);
                                                     const eligibleQuantity = Number.isInteger(requestedQuantity) && requestedQuantity > 0
-                                                        ? Math.min(requestedQuantity, cartQuantity)
+                                                        ? Math.min(requestedQuantity, primaryAvailableQuantity)
                                                         : 1;
                                                     setDiscountQuantityInput({ lineRef, value: String(eligibleQuantity) });
                                                     updateDiscountQuantity(lineRef, eligibleQuantity);
@@ -330,8 +364,8 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                                         : '';
                                                     const requestedQuantity = Number(rawValue);
                                                     const eligibleQuantity = Number.isInteger(requestedQuantity) && requestedQuantity > 0
-                                                        ? Math.min(requestedQuantity, cartQuantity)
-                                                        : cartQuantity;
+                                                        ? Math.min(requestedQuantity, primaryAvailableQuantity)
+                                                        : primaryAvailableQuantity;
                                                     updateDiscountQuantity(lineRef, eligibleQuantity);
                                                     setDiscountQuantityInput(null);
                                                 }}
@@ -414,11 +448,18 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                     <div className="space-y-1">
                                         {selectableDiscountEntries.map(({ line, lineRef, wholeCartQuantity }) => {
                                             const selectedEntry = toArray(beneficiary.eligible_items).find((entry) => String(entry?.line_ref || '').trim() === lineRef);
+                                            const selectedQuantity = Number(selectedEntry?.eligible_quantity || 0);
+                                            const availableQuantity = getAvailableDiscountQuantity({
+                                                allocationTotals: statutoryAllocatedQuantityByLine,
+                                                currentQuantity: selectedQuantity,
+                                                lineRef,
+                                                wholeCartQuantity
+                                            });
                                             return (
                                                 <label key={`beneficiary-${beneficiaryIndex}-${lineRef}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-700">
-                                                    <span className="truncate">{line.item_name}</span>
-                                                    <Input aria-label={`Eligible quantity for beneficiary ${beneficiaryIndex + 2}, ${line.item_name}`} className="h-7 w-20 text-center text-[11px]" type="number" inputMode="numeric" min="0" max={wholeCartQuantity} step="1" value={selectedEntry?.eligible_quantity || ''} placeholder="Qty" onChange={(event) => {
-                                                        const quantity = Math.max(0, Math.min(Math.floor(Number(event.target.value) || 0), wholeCartQuantity));
+                                                    <span className="min-w-0 truncate">{line.item_name} <span className="text-slate-400">({availableQuantity} available)</span></span>
+                                                    <Input aria-label={`Eligible quantity for beneficiary ${beneficiaryIndex + 2}, ${line.item_name}`} className="h-7 w-20 text-center text-[11px]" type="number" inputMode="numeric" min="0" max={availableQuantity} step="1" value={selectedEntry?.eligible_quantity || ''} placeholder="Qty" disabled={availableQuantity === 0} onChange={(event) => {
+                                                        const quantity = Math.max(0, Math.min(Math.floor(Number(event.target.value) || 0), availableQuantity));
                                                         setDiscountDraft((previous) => ({
                                                             ...previous,
                                                             beneficiaries: toArray(previous.beneficiaries).map((current, index) => index === beneficiaryIndex ? {
@@ -435,9 +476,14 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                     </div>
                                 </div>
                             ))}
-                            <Button type="button" variant="outline" className="h-8 w-full text-xs" onClick={() => setDiscountDraft((previous) => ({ ...previous, beneficiaries: [...toArray(previous.beneficiaries), { category: previous.type, name: '', id_number: '', eligible_items: [] }] }))}>
+                            <Button type="button" variant="outline" className="h-8 w-full text-xs" disabled={!canAddStatutoryBeneficiary} onClick={() => setDiscountDraft((previous) => ({ ...previous, beneficiaries: [...toArray(previous.beneficiaries), { category: previous.type, name: '', id_number: '', eligible_items: [] }] }))}>
                                 <Plus className="mr-1.5 h-3.5 w-3.5" /> Add another Senior/PWD
                             </Button>
+                            {!hasUnallocatedStatutoryQuantity ? (
+                                <p className="text-center text-[10px] font-medium text-slate-500">All eligible item quantities are already assigned.</p>
+                            ) : !canAddStatutoryBeneficiary ? (
+                                <p className="text-center text-[10px] font-medium text-slate-500">Complete the current beneficiary before adding another.</p>
+                            ) : null}
                         </div>
                     ) : null}
 

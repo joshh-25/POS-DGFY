@@ -1155,7 +1155,7 @@ export default function POSCheckoutTerminal({
                 eligible_items: selectedDiscountItems.filter((entry) => (
                     type !== 'promo' || promoEligibleItemIds.includes(Number(entry?.item_id))
                 )),
-                beneficiaries: statutory ? statutoryBeneficiaries : []
+                beneficiaries: statutory ? statutoryBeneficiaries : undefined
             });
             discountApprovalRef.current = {
                 discount_type: type,
