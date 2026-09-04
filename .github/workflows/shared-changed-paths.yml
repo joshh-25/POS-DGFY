@@ -290,14 +290,29 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: node scripts/check-pos-receipt-version-bump.js
 
+      # #1569: single repo-level toggle for the step below, instead of a hardcoded
+      # continue-on-error literal -- see scripts/lib/version-bump-gate-toggle.js's own
+      # header for why this is a genuine runtime read, not a hand-kept-in-sync pair.
+      # Flipping that one module flips this step *and* scripts/pr-checks.js's own
+      # blocking argument for the same check together; nothing else to edit here.
+      - name: Load check:app-versions gate toggle
+        if: inputs.validate_pr_metadata
+        id: app_versions_gate
+        run: |
+          echo "continue_on_error=$(node -e "console.log(require('./scripts/lib/version-bump-gate-toggle').BLOCKING ? 'false' : 'true')")" >> "$GITHUB_OUTPUT"
+
       # #1560 (#1548 Wave 1): advisory per-app container SemVer bump check --
       # generalizes the pos-receipt check above to all five deployable apps, with a
       # real semver-increase requirement and a (base, head) mode switch (see the
-      # script's own header). continue-on-error like every other advisory step here
-      # -- a later phase flips this to blocking once enough clean-run evidence exists.
+      # script's own header). #1569: continue-on-error now reads the toggle step
+      # above (scripts/lib/version-bump-gate-toggle.js's BLOCKING) instead of a
+      # hardcoded literal -- a later phase flips that one module to blocking once
+      # scripts/check-version-bump-flip-readiness.js reports enough clean-run
+      # evidence exists and a human confirms it. Shipped advisory (BLOCKING: false) --
+      # see docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md.
       - name: Enforce per-app version bump on source changes
         if: inputs.validate_pr_metadata
-        continue-on-error: true
+        continue-on-error: ${{ steps.app_versions_gate.outputs.continue_on_error == 'true' }}
         env:
           GITHUB_BASE_REF: ${{ github.base_ref }}
           GITHUB_HEAD_REF: ${{ github.head_ref }}
