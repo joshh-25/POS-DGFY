@@ -20166,8 +20166,10 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   + job-log history via `gh api` — no local counter file. `scripts/lib/version-bump-gate-
   toggle.js` is the single repo-level toggle both `shared-changed-paths.yml` and `pr-checks.js` read
   at runtime, **shipped set to advisory and not flipped**. The actual advisory-to-blocking flip —
-  this phase's original full scope — is split out as its own phase, **Phase 281** below, so its
-  numbering doesn't collide with Phase 277-280 (already filed at the time of this split).
+  this phase's original full scope — is split out as its own phase, **Phase 283** below (renumbered
+  from an original 281 during this PR's `origin/develop` merge-conflict repair — see that phase's own
+  Numbering note), so its numbering doesn't collide with Phase 277-282 (already filed by the time
+  this PR merged).
 - Status: in_progress. Mechanism implemented, unit-tested, and confirmed against real GitHub
   history; PR open, not yet merged (see Acceptance and validation evidence).
 - Dependencies: Phase 274 (#1560/PR #1562) merged and running advisory for the evidence window;
@@ -20192,8 +20194,9 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `.github/workflows/shared-changed-paths.yml`, `scripts/pr-checks.js`, `package.json`,
   `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
 - Next eligible phase: 277 — builders stamp version tags and labels (already filed, unaffected by
-  this split). The version-bump check's actual advisory-to-blocking flip is Phase 281, appended
-  after Phase 280 per this ledger's continuous-numbering rule rather than inserted here.
+  this split). The version-bump check's actual advisory-to-blocking flip is Phase 283, appended after
+  Phase 282 per this ledger's continuous-numbering rule rather than inserted here or renumbered into
+  this phase's own slot.
 
 ## Phase 277 - Builders stamp `:X.Y.Z[-channel]` tags, OCI version label, `APP_VERSION` build-arg, and the tag-immutability guard (epic #1548 Wave 3, not yet filed)
 
@@ -20277,15 +20280,109 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   not re-derived here.
 - Completion date: not started (planned).
 - Contracts/files (expected): whatever #1278 itself names; not re-derived here.
-- Next eligible phase: none recorded within epic #1548's own planned wave sequence — Phase 280 was
-  epic #1548's final planned wave at filing time. Phase 281 below is not a new wave of that
-  sequence; it's the flip half of Phase 276's original scope, appended here (continuous numbering)
-  rather than renumbered into Phase 276's own slot once that phase split (#1569, PR #1572 review
-  RF-3).
+- Next eligible phase: none recorded within epic #1548 — Phase 280 is epic #1548's own final planned
+  wave; further platform-versioning work beyond it is new scope, not part of this sequence.
 
-## Phase 281 - Version-bump check: flip advisory to blocking (epic #1548 Wave 2, not yet filed)
+## Phase 281 - Delivery-fee override provenance: persist `delivery_fee_override` (#1564)
+
+- Initiative/release: Customer delivery pricing epic (#1321) follow-on correctness fix / current
+  release process. Not a new epic phase — a defect repair on Phase 238's (#1330) output, found by
+  a Verifier/QA pass while closing #1330.
+- **Numbering note (resolved 2026-09-04, merge conflict repair):** at the time this entry was
+  originally written, the ledger tip on `origin/develop` was Phase 272, and open PR #1561
+  (`pat/conduct-1559-adr`, epic #1548) already claimed **273 through 280** in its own diff — this
+  entry took 281 to avoid a duplicate number rather than taking 273 and colliding (AGENTS.md
+  "Continuous Phase Numbering" rule 5: preserve historical numbers). #1561 has since merged
+  (Phases 273-280 above are its landed content, now `completed`/`planned`), confirming 273-280 were
+  genuinely taken and 281 is the correct next number — no renumbering needed by this merge.
+- Objective and scope: `apps/dgfy-api/src/modules/pos/usecases/deliveryFeeOverrideUseCases.js`
+  wrote the persisted `pos_transactions.delivery_fee`/`total_amount` on a staff delivery-fee
+  override but never wrote `pos_transactions.delivery_fee_override`, so every applied override
+  silently broke the Phase 237 invariant `delivery_fee_base - delivery_fee_waiver === delivery_fee`
+  (documented on `PosTransaction.js`) with nothing in the columns to say an override was the
+  reason. This phase persists the override amount, restates the invariant with both halves
+  explicit, and settles — rather than assumes — the design question of whether
+  `resolveStoreDeliveryFee` needs an override as a resolve-time input (it does not; see below).
+  No money value changes and no schema change: the column already exists from Phase 237's
+  migration.
+- Design decision recorded (the question #1564 required answering): the override stays
+  **post-hoc only**. It corrects an already-persisted transaction after checkout, so there is no
+  live quote to feed it back into; accepting one at resolve time would force `resolveStoreDeliveryFee`
+  to read persisted state, breaking the I/O-free/`await`-free contract its byte-identity regression
+  tests depend on, and would add a second writer to ADR 0078 Decision 4's single storefront choke
+  point. Its `overrideAmount: null` is the truthful resolve-time value, not a placeholder.
+- Status: in_progress (PR open against `develop`; flips to `completed` on merge + QA).
+- Dependencies: #1329 (Phase 237, the breakdown columns and the invariant), #1330 (Phase 238, the
+  override use case this repairs), #1321 (the epic both sit under), ADR 0012 (amended in the same
+  PR), ADR 0078 (consumed unchanged).
+- Acceptance and validation evidence: `apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.js`
+  19/19 passing (12 pre-existing + 7 new: the invariant regression; base/waiver retained as
+  pre-override provenance; waive-to-free persisted as `0` not `NULL`; an override on a POS-created
+  delivery order; the pre-#1564 provenance-only repair with zero money movement; retry idempotency
+  across a repair; fail-loud `INTERNAL_ERROR` when persistence drops the override write); full
+  delivery-fee suite 11 suites / 169 tests passing, including
+  `storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js` and
+  `storeCheckoutDeliveryFeePin.unit.test.js` unmodified; storefront/POS money regression 21 suites
+  / 246 tests passing; `node --check` on every changed `apps/dgfy-api` file;
+  `npm run check:compliance` (fail first, pass with the new declaration),
+  `npm run check:architecture`, `npm run lint:docs`.
+- Completion date: pending (see Status).
+- Contracts/files: `apps/dgfy-api/src/modules/pos/usecases/deliveryFeeOverrideUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`,
+  `apps/dgfy-api/src/models/PosTransaction.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (comment only),
+  `apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.js`,
+  `docs/architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md`
+  (2026-09-04 amendment),
+  `docs/compliance/impact-declarations/2026-09-04-delivery-fee-override-provenance.md`,
+  issues #1564, #1330, #1329, #1321.
+- Next eligible phase: 282.
+
+## Phase 282 - Discovery from-price rendering: storefront delivery-fee UI (#1333)
+
+- Initiative/release: Discovery pricing honesty epic (#1321) / current release process.
+- **Numbering note (resolved 2026-09-04, merge conflict repair):** this entry was originally
+  written and reviewed as Phase 281, when the ledger tip on `origin/develop` was Phase 280. PR
+  #1567 (#1564, delivery-fee override provenance — Phase 281 above) merged to `develop` first and
+  landed its own Phase 281 entry, colliding with this one; both PR reviewers had already flagged
+  the collision as a known heads-up before either PR merged. This entry is renumbered to 282 on
+  merge, per AGENTS.md's Continuous Phase Numbering rule 5 (preserve historical/already-landed
+  numbers); develop's own Phase 281 entry above is untouched.
+- Objective and scope: consume the discovery API's already-shipped `store_delivery_fee` (a
+  per-mode from-price: the fixed rate in `fixed` mode, `calc.min_fee` in `calculated` mode, `0` in
+  `free` mode) and `delivery_fee_mode` fields on the storefront discovery card, the last unshipped
+  piece of #1333 (Phase 242 shipped the backend projection/read paths). Renders "Free delivery"
+  (`free` mode), "From ₱X delivery" (`calculated` mode), or plain "₱X delivery" (`fixed` mode) next
+  to the existing distance/ETA row on all three discovery card layouts (grid, mobile list, desktop
+  list). No backend change — `store_delivery_fee`/`delivery_fee_mode` already flowed through
+  `/api/v1/storefront/discovery` unused by the frontend.
+- Status: completed.
+- Dependencies: #1333's own backend half (Phase 242, already shipped) — `resolveAdvertisedDeliveryFromPrice()`
+  (`apps/dgfy-api/src/modules/deliveryPricing/domain/deliveryFromPrice.js`),
+  `StorefrontDiscoveryIndex.js`'s `delivery_fee_mode` column, and the
+  `storefrontDiscoveryRepository.js`/`geoSearchRepository.js` read paths.
+- Acceptance and validation evidence: `npm run build:store` (Vite production build, clean); `npx
+  vitest run src/__tests__/discoveryFlow.integration.test.jsx` (38/38, including a case asserting
+  all three delivery-fee-mode labels render on discovery cards, plus a null-fee regression case
+  added in the RF-1 fix round asserting a fixed-mode card with an unresolvable/null
+  `store_delivery_fee` omits the delivery-fee label entirely instead of rendering "₱0 delivery").
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-storefront/src/features/discovery/renderers/discoveryResultsRenderer.jsx`,
+  `apps/dgfy-storefront/src/__tests__/discoveryFlow.integration.test.jsx`, issue #1333 (epic #1321).
+- Next eligible phase: 283.
+
+## Phase 283 - Version-bump check: flip advisory to blocking (epic #1548 Wave 2, not yet filed)
 
 - Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- **Numbering note (resolved 2026-09-04, merge conflict repair):** this entry was originally written
+  and reviewed as Phase 281, when the ledger tip on the branch it was drafted against was Phase 280.
+  By the time this PR (#1572) was rebased onto current `origin/develop`, PR #1567 (#1564,
+  delivery-fee override provenance) and the discovery from-price PR had both already merged and
+  claimed 281 and 282 respectively (see those two entries' own "Numbering note"s above — this is the
+  same collision pattern, a third time). This entry is renumbered to 283 on merge, per AGENTS.md's
+  Continuous Phase Numbering rule 5 (preserve historical/already-landed numbers); Phase 281 and 282
+  above are untouched. Phase 276's own "Next eligible phase" line (above) is updated to point here
+  under its new number.
 - Objective and scope: the flip half of what Phase 276 originally scoped, split out by PR #1572
   review (pr-reviewer, RF-3) once Phase 276 itself narrowed to just the readiness *mechanism* (see
   that phase's entry above for the full split rationale). This phase is the one-line edit —
@@ -20309,4 +20406,4 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Contracts/files (expected): `scripts/lib/version-bump-gate-toggle.js` (the one-line flip) — no
   other file needs to change, per that module's and `shared-changed-paths.yml`/`pr-checks.js`'s own
   single-source-of-truth design (Phase 276).
-- Next eligible phase: 282.
+- Next eligible phase: 284.

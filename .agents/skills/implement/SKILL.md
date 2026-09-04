@@ -77,6 +77,10 @@ of these triggers actually firing (or correctly not firing) in practice.
      (**never** `rm` the lockfile first — that regenerates unrelated version drift, not just the
      intended change; this happened for real earlier tonight and had to be undone), then confirm
      `git diff --exit-code -- <that lockfile>` is clean before including it in the commit.
+   - **The affected app's version was bumped**, per the correct level for the PR's `(base, head)`
+     mode (ADR 0081) — run `node scripts/check-app-version-bump.js` locally before committing;
+     `check:app-versions` is currently advisory in CI, but running it locally catches the miss
+     before a reviewer has to.
    - Post Tier 0's results in the PR body's `## Testing Evidence` section at creation — it's
      already a required section per `docs/ai/PR.md`, so this doesn't add new ceremony.
 
