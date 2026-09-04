@@ -20094,3 +20094,58 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `apps/dgfy-api/package-lock.json`, `apps/dgfy-pos/package-lock.json`,
   `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issues #1124, #1550, #1551, #1552, #1553, #1157, #1469.
 - Next eligible phase: 273.
+
+## Phase 281 - Delivery-fee override provenance: persist `delivery_fee_override` (#1564)
+
+- Initiative/release: Customer delivery pricing epic (#1321) follow-on correctness fix / current
+  release process. Not a new epic phase — a defect repair on Phase 238's (#1330) output, found by
+  a Verifier/QA pass while closing #1330.
+- **Numbering note (read before taking 273):** the ledger tip on `origin/develop` at the time this
+  entry was written was Phase 272, but open PR #1561 (`pat/conduct-1559-adr`, epic #1548) already
+  claims **273 through 280** in its own diff. This entry takes 281 to avoid a duplicate number
+  rather than taking 273 and colliding — a gap is recoverable, a duplicate is not (AGENTS.md
+  "Continuous Phase Numbering" rule 5: preserve historical numbers). If #1561 is closed without
+  merging, 273–280 are freed for reuse by whoever notices next; that is a deliberate, stated
+  outcome, not an accidental skip.
+- Objective and scope: `apps/dgfy-api/src/modules/pos/usecases/deliveryFeeOverrideUseCases.js`
+  wrote the persisted `pos_transactions.delivery_fee`/`total_amount` on a staff delivery-fee
+  override but never wrote `pos_transactions.delivery_fee_override`, so every applied override
+  silently broke the Phase 237 invariant `delivery_fee_base - delivery_fee_waiver === delivery_fee`
+  (documented on `PosTransaction.js`) with nothing in the columns to say an override was the
+  reason. This phase persists the override amount, restates the invariant with both halves
+  explicit, and settles — rather than assumes — the design question of whether
+  `resolveStoreDeliveryFee` needs an override as a resolve-time input (it does not; see below).
+  No money value changes and no schema change: the column already exists from Phase 237's
+  migration.
+- Design decision recorded (the question #1564 required answering): the override stays
+  **post-hoc only**. It corrects an already-persisted transaction after checkout, so there is no
+  live quote to feed it back into; accepting one at resolve time would force `resolveStoreDeliveryFee`
+  to read persisted state, breaking the I/O-free/`await`-free contract its byte-identity regression
+  tests depend on, and would add a second writer to ADR 0078 Decision 4's single storefront choke
+  point. Its `overrideAmount: null` is the truthful resolve-time value, not a placeholder.
+- Status: in_progress (PR open against `develop`; flips to `completed` on merge + QA).
+- Dependencies: #1329 (Phase 237, the breakdown columns and the invariant), #1330 (Phase 238, the
+  override use case this repairs), #1321 (the epic both sit under), ADR 0012 (amended in the same
+  PR), ADR 0078 (consumed unchanged).
+- Acceptance and validation evidence: `apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.js`
+  19/19 passing (12 pre-existing + 7 new: the invariant regression; base/waiver retained as
+  pre-override provenance; waive-to-free persisted as `0` not `NULL`; an override on a POS-created
+  delivery order; the pre-#1564 provenance-only repair with zero money movement; retry idempotency
+  across a repair; fail-loud `INTERNAL_ERROR` when persistence drops the override write); full
+  delivery-fee suite 11 suites / 169 tests passing, including
+  `storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js` and
+  `storeCheckoutDeliveryFeePin.unit.test.js` unmodified; storefront/POS money regression 21 suites
+  / 246 tests passing; `node --check` on every changed `apps/dgfy-api` file;
+  `npm run check:compliance` (fail first, pass with the new declaration),
+  `npm run check:architecture`, `npm run lint:docs`.
+- Completion date: pending (see Status).
+- Contracts/files: `apps/dgfy-api/src/modules/pos/usecases/deliveryFeeOverrideUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`,
+  `apps/dgfy-api/src/models/PosTransaction.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (comment only),
+  `apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.js`,
+  `docs/architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md`
+  (2026-09-04 amendment),
+  `docs/compliance/impact-declarations/2026-09-04-delivery-fee-override-provenance.md`,
+  issues #1564, #1330, #1329, #1321.
+- Next eligible phase: 282.
