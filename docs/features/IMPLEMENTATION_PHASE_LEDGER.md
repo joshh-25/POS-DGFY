@@ -20406,4 +20406,65 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Contracts/files (expected): `scripts/lib/version-bump-gate-toggle.js` (the one-line flip) — no
   other file needs to change, per that module's and `shared-changed-paths.yml`/`pr-checks.js`'s own
   single-source-of-truth design (Phase 276).
-- Next eligible phase: 284.
+- Next eligible phase: 285.
+
+## Phase 284 - Wave C/C1: storefront catalog API projection of secondary categories (#1318)
+
+- Initiative/release: Item multi-category membership program (#1318) / current release process.
+  Wave C, slice C1 — gates a later, separate slice (C2, not part of this phase) that will consume
+  this projection to render storefront catalog items grouped into every category they belong to.
+- Objective and scope: Phase 257 (#1503, merged) built the foundation — the
+  `item_folder_memberships` join table, the `ItemFolderMembership` model, and
+  `itemRepository.js`'s `listItemFolderMemberships`/`replaceItemFolderMemberships`. Phase 268 added
+  the IMS authoring UI. Neither touched any of the ~34 existing item-folder read sites — every
+  catalog surface still projected only the single primary `folder_id`/`folder_name`
+  (ADR 0080 Decision 4's stated primary-only default until an explicit phase opts in). This phase
+  is that explicit opt-in for exactly one surface: `storeRepository.js`'s `listStoreCatalog` /
+  `storeUseCases.js`'s `buildListStoreCatalogUseCase`/`serializeStoreCatalogItem` now also project
+  `secondary_categories: [{folder_id, folder_name}]` (ordered by `sort_order`, reusing
+  `listItemFolderMemberships` rather than re-querying the join table), additive to the unchanged
+  primary `folder_id`/`folder_name` scalar. This phase does not implement the C2 grouping/rendering
+  itself — it only makes the data available.
+- Design decision recorded (field shape): `[{folder_id, folder_name}]` rather than a bare id array,
+  so a later C2 consumer can render a category label per section without a second round trip,
+  mirroring the existing primary projection's own `{folder_id, folder_name}` pair. Every catalog
+  row carries the field (`[]` when an item has no secondary memberships), never `null`/absent.
+- Explicitly out of scope (per the task brief and ADR 0080 Decision 1 `[binding]`, confirmed
+  untouched by a new static regression guard — see below): POS report category grouping/filtering
+  (`posRepository.js`'s `buildReportInclude`/`normalizeReportLineRows`/`resolveReportItemCategory`
+  — a different function from the catalog-listing one, primary-only *permanently* per Consequences
+  item 3); affiliate commission rate resolution (`affiliateCommissionAccrual.js`); voucher folder
+  scope resolution (`voucherFolderScope.js`, `voucherRepository.js`); F&B modifier-group
+  inheritance (`fnbRepository.js`, `effectiveFnbModifierGroups.js`). POS/IMS catalog filter chips
+  (`posCatalogWorkflow.js`, the chip components, `itemRepository.js`'s `getItems()` folder filter)
+  are a separate, parallel phase (C3, a different worktree) — no overlap found.
+- Status: in_progress (PR open against `develop`; flips to `completed` on merge + QA).
+- Dependencies: Phase 257 (#1503, the join table/model/repository methods this phase reuses),
+  Phase 268 (the IMS authoring UI, unaffected), ADR 0080 (Decision 4 opt-in exercised here;
+  Decision 1 `[binding]` and Decision 5 `[default]` both consumed unchanged, not amended).
+- Acceptance and validation evidence: 3 new test files, 14/14 passing —
+  `storeRepositorySecondaryCategories.test.js` (5: memberships attached with folder names ordered
+  by sort_order alongside the unchanged primary projection; defaults to `[]`; fails open — never
+  throws — on a membership-lookup error; skips the query entirely for an empty catalog result; a
+  membership pointing at a since-deleted folder resolves to `folder_name: null`),
+  `storeCatalogSecondaryCategories.usecase.test.js` (3: threads the field from repository row to
+  serialized response; defaults to `[]` for a pre-Phase-284 row shape; normalizes a non-array
+  value), `adr0080PrimaryOnlyReadersGuard.test.js` (6: a new static source-grep regression guard
+  asserting none of ADR 0080 Decision 1's six named primary-only files reference
+  `secondary_categories`/`attachSecondaryCategories`/`listItemFolderMemberships`). Plus 7
+  pre-existing, unmodified test files rerun as regression evidence: Phase 257's own
+  `itemFolderMembershipPrimaryOnlyInvariant.test.js` + the three named resolvers' own unit suites
+  (44 tests) and the existing `storeRepository.js`/`storeUseCases.js` coverage (77 tests) — all
+  passing. `node --check` on every changed/new `.js` file; `npm run check:compliance` (fail first,
+  naming the 2 sensitive files, pass with the new declaration); `npm run check:architecture` (54
+  modules / 561 files, 0 violations); `npm run lint:docs`.
+- Completion date: pending (see Status).
+- Contracts/files: `apps/dgfy-api/src/modules/store/repositories/storeRepository.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/tests/storeRepositorySecondaryCategories.test.js`,
+  `apps/dgfy-api/tests/storeCatalogSecondaryCategories.usecase.test.js`,
+  `apps/dgfy-api/tests/adr0080PrimaryOnlyReadersGuard.test.js`,
+  `docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md`,
+  `docs/architecture/adr/0080-item-multi-category-membership.md` (consumed unchanged, not
+  amended), issue #1318.
+- Next eligible phase: 285.
