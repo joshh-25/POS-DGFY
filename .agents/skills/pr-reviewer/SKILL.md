@@ -66,9 +66,19 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    not a finding on any PR — recording a `minor` declaration whose surfaces the live endpoint cannot
    evaluate at all; a `major`/`regulatory` declaration reaching this state instead of a real
    `no_breach` is a `should-fix` at PR time, since `check-compliance-impact.js` will fail it closed.
-4. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
+4. **Version level** — run `node scripts/propose-version-level.js --base <base> --head <head>`;
+   compare its proposed level per changed app against `check-app-version-bump.js`'s own pass/fail
+   for the PR's actual `(base, head)` mode (`npm run check:app-versions`). A proposed level
+   *higher* than what the diff's actual bump satisfies (e.g. the commits look like a `feat` but the
+   PR only bumped patch on a `develop` PR, where level isn't policed anyway) is a `nit` while the
+   check stays advisory (#1560) — **`should-fix`** once #1560's own check flips to blocking (a
+   separate, not-yet-scheduled phase), since at that point a mismatched level is a real policy gap,
+   not just a style note. A proposed level *lower* than the actual bump is never a finding —
+   bumping more than the diff calls for is never wrong. Add one row to the fixed `## Review` table
+   shape for this finding when it fires.
+5. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
    `npm run lint:docs`, which chains `check:adr`, for docs-only PRs) against the merge-result tree.
-5. **Tenant schema risk** — if the PR touches `apps/dgfy-migration-runner/migrations/` or
+6. **Tenant schema risk** — if the PR touches `apps/dgfy-migration-runner/migrations/` or
    `apps/dgfy-api/scripts/sync-tenant-schemas.js`, also read
    `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` (#539 is the worked example: a tenant
    missing required tables entirely crash-loops the whole shared API on the next restart, since the
@@ -76,10 +86,10 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    body states whether its migration has a deploy-order dependency on an open fix in that tracker,
    and flag it as a `should-fix` (not silently pass it through) if a migration PR is missing that
    check when the tracker has open entries.
-6. **Diff review** — read the actual changed files (`gh pr diff <N>`) for correctness, security,
+7. **Diff review** — read the actual changed files (`gh pr diff <N>`) for correctness, security,
    and boundary violations. Scope this to files the PR actually touches; don't re-review the whole
    repo.
-7. **Merge readiness** — `gh pr checks <N>` and `gh pr view <N> --json mergeStateStatus,mergeable`.
+8. **Merge readiness** — `gh pr checks <N>` and `gh pr view <N> --json mergeStateStatus,mergeable`.
    A pending or red check is not evidence of a broken PR by itself — this repo has a known pattern
    of transient `docker.io` anonymous-token timeouts unrelated to any given diff — but it is always
    reported, never silently waited past. **Also check for a `## Local CI` comment** (`gh pr view <N>
@@ -91,7 +101,7 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    the comment's stated `Commit:` SHA equals `gh pr view <N> --json headRefOid`** before treating it
    as qualifying — a comment generated for an earlier commit is stale, not a lesser confirmation
    (#725 RF-2).
-8. **Scope** — does the diff match what the linked issue actually asked for; name any file that
+9. **Scope** — does the diff match what the linked issue actually asked for; name any file that
    looks unrelated to the stated scope rather than silently reviewing it as if it belonged.
 
 ## Output — one PR comment, fixed shape
