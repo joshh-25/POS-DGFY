@@ -1440,6 +1440,11 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellin
         category: item.category,
         product_type: item.product_type || null,
         folder_name: item.folder_name || item.product_folder || item?.folder?.name || null,
+        // Phase 284 (#1318, C1): the item's secondary category memberships, additive to
+        // folder_name/folder_id above (ADR 0080 Decision 1/4). [{ folder_id, folder_name }],
+        // ordered by sort_order. A grouping surface (C2, not this phase) keys a render per
+        // section off this array per ADR 0080 Decision 5; this phase only projects the data.
+        secondary_categories: Array.isArray(item.secondary_categories) ? item.secondary_categories : [],
         unit_of_measure: item.unit_of_measure || null,
         default_sale_price: displaySalePrice,
         affiliate_price_applied: affiliatePriceApplied,
