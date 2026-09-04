@@ -959,6 +959,80 @@ This is a `[default]`-tier procedure amendment under ADR 0039, matching ADR 0081
 PR: (this PR). Refs #1569, #1548, #1560. Does not close #1569's parent epic (#1548) — Wave 2 has
 more phases beyond this one.
 
+### 2026-09-04: `check_whitespace` root-caused and flipped blocking; `audit_indexes` root-caused,
+fixed, stays advisory-with-reason (#1552)
+
+Both of `promotion-quality-gate.yml`'s two remaining un-triaged repeat-advisory-failure steps
+(`Check changed-file whitespace`, `repository-quality`; `Audit required indexes`,
+`dgfy-api-quality` — 6/13 and 3/13 recurrence respectively in #1124's tally) are now root-caused
+with direct log evidence. The two dispositions differ deliberately — this entry states why, rather
+than leaving the asymmetry to look like an inconsistency between two otherwise-similar fixes.
+
+**`check_whitespace` — fixed, and flipped blocking, same PR.** `git diff --check
+"${BASE_SHA}...${HEAD_SHA}"` is a correct, deterministic, git-native whitespace check; it was never
+a diff-range/SHA computation bug (one hypothesis the step's own inline comment floated, ruled out
+by the actual failing-run log, which shows genuine trailing-blank-line violations at two specific
+file:line locations). It recurred only because nothing upstream of CI caught the violation before a
+commit landed — `.husky/pre-commit` ran zero whitespace checks. Fixed by adding a `git diff --cached
+--check` block to the pre-commit hook (same git whitespace-diagnostic machinery, staged-vs-HEAD
+instead of base...head), with the known, accepted gap stated plainly: `git commit --no-verify`
+bypasses it like every other pre-commit check, which is why the CI-side step stays as a backstop
+rather than being deleted. `check_whitespace` joins `check-pr-quality-workflow.js`'s
+`BLOCKING_STEP_IDS['repository-quality']` and the reporter's `BLOCKING_STEP_NAMES` set (the same
+two-list hand-sync #1557 already flags as drift-prone — see below) on the same rationale as the
+2026-09-04 "Four contract-validation steps" entry above: pure, deterministic, zero flake surface,
+no DB/registry/network dependency, over checked-in state a diff either does or doesn't violate.
+
+**`audit_indexes` — root-caused and fixed, kept tracked-advisory-with-reason.** The prior
+investigation's "NOT YET CONFIRMED" framing was based on one run that turned out to be an unrelated
+job-envelope death, not evidence about this step itself. Pulling the actual per-step-failure
+evidence from #1124's automated advisory-failure comments finds 5 genuine `audit_indexes` failures
+in the 08-28–09-03 window; one run's raw log (`missing=3`, `duration_ms=21` — ruling out a
+timeout/resource-contention read) shows the finding is real, fast, and deterministic, but **against
+the wrong database**: `tenantSchemaBootstrap.integration.test.js`'s idempotent case creates a
+`test_tenant_schema-bootstrap-idempotent_*` tenant via Sequelize `sync({ force: true })` — not the
+real migration chain — so any index added via a raw migration rather than a model's own `indexes:
+[]` is genuinely absent from that fixture's schema. `afterEach` reliably drops this tenant on every
+ordinary pass/fail; it only survives into a later step when the test process dies before cleanup
+runs — consistent with #1432's already-tracked hosted-runner OOM class (`run_test_matrix` OOMing
+under a 2-vCPU runner), corroborated directly: `Run dgfy-api test matrix` (the step immediately
+before `audit_indexes`) also failed in all 5 confirmed runs, not a coincidence.
+`resolveAuditDatabases()` queries `tenants WHERE status = 'active'` with no opinion on whether a
+tenant is a real one or an orphaned test fixture, so it audits the orphan's deliberately-partial
+schema as if it were legitimate. The exclusion mechanism for exactly this already exists and is
+already proven — `schemaIndexAuditService.js`'s `TEST_TENANT_DB_PREFIX`/
+`applyAuditDatabaseFilters()`, gated by `SCHEMA_INDEX_AUDIT_MODE`/
+`SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS`, already unit-tested, and already wired into the local
+`audit:indexes:local` command — the CI workflow step was simply the one caller that never set
+either env var. Fixed by adding both to the step's `env:` block (`SCHEMA_INDEX_AUDIT_MODE: test`,
+matching the step's existing `NODE_ENV: test` rather than implying a different runtime mode;
+`SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS: 'true'`) — config-only, zero new script logic, activating
+the exact already-tested code path `audit:indexes:local` uses locally.
+
+**Why the dispositions differ.** `check_whitespace` has no flake surface — a diff either introduces
+trailing whitespace or it doesn't, over checked-in files, matching the "safest class of gate to make
+blocking" rationale the 2026-09-04 "Four contract-validation steps" entry already established.
+`audit_indexes` does not share that property: it depends on a live MySQL container's state, itself
+downstream of whether `run_test_matrix` (still #1469-gated advisory, known OOM-prone) completes
+cleanly in the same job. Fixing the *specific* orphan-leak mechanism found here doesn't rule out a
+different tenant-name prefix or a different orphaned-fixture shape producing the same symptom later.
+This matches this repo's own established evidence-gating discipline (#1431 Phase C: every step
+there was flipped only after both a clean-pass *and* a fault-probe run confirmed it was genuinely
+red-on-fault / green-on-clean — never on a same-PR fix alone). **Explicit unblock criterion:** flip
+`audit_indexes` to blocking in a follow-up once either (a) a real `release/*→main` promotion run
+shows it green post-fix, or (b) a `workflow_dispatch` run against a scratch branch confirms both a
+clean pass and, ideally, a fault-probe reproducing the orphan scenario and showing the exclusion
+filter catches it. `audit_indexes` does **not** join `BLOCKING_STEP_IDS['dgfy-api-quality']` or
+`BLOCKING_STEP_NAMES` in this PR.
+
+**Hand-synced-lists caveat (#1557).** `check_whitespace`'s blocking flip is the *second* step this
+repo has added to both `BLOCKING_STEP_IDS` (id-keyed, `check-pr-quality-workflow.js`) and
+`BLOCKING_STEP_NAMES` (name-keyed, the `report-advisory-failures` job's embedded `github-script`)
+by hand, with no shared source between the two lists — #1557 tracks the underlying drift risk;
+this entry does not fix it, only avoids becoming a new instance of it by editing both lists.
+
+PR: (this PR, `fix/1552-quality-gate-steps`). Refs #1552, #1124, #1557, #1432, #1469.
+
 ### 2026-09-04: Promoter pre-cut floor step and promotion parity gate, executable (#1588, epic
 #1548 Wave 4, Phase 279) — closes the loop the 2026-09-04 "Per-app container SemVer" entry above
 left as "not built by this entry"

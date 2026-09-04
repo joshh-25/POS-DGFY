@@ -20767,3 +20767,53 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `docs/compliance/impact-declarations/2026-09-04-pos-additional-categories-edit.md` (new), issue
   #1318.
 - Next eligible phase: 291.
+
+## Phase 291 - Root-cause and dispose of `check_whitespace`/`audit_indexes` advisory failures (#1552)
+
+- Initiative/release: Quality-gate trust epic (#1124), continuing Phase 272's own triage of the
+  advisory-failure backlog / current release process.
+- Objective and scope: root-cause the two remaining un-triaged repeat-advisory-failure steps in
+  `promotion-quality-gate.yml` (`Check changed-file whitespace`, `repository-quality`, 6/13
+  recurrence; `Audit required indexes`, `dgfy-api-quality`, 3/13 recurrence) and give each an
+  explicit disposition — deliberately asymmetric, not forced into symmetry. `check_whitespace`:
+  fixed via a new `.husky/pre-commit` whitespace guard (the CI step was catching genuine violations
+  with nothing upstream stopping them landing first) and flipped blocking, its first recorded
+  disposition, joining `check-pr-quality-workflow.js`'s `BLOCKING_STEP_IDS['repository-quality']`
+  and the reporter's `BLOCKING_STEP_NAMES` set. `audit_indexes`: root-caused to an orphaned
+  `test_tenant_schema-bootstrap-idempotent_*` fixture (survives into this step only when the
+  preceding test-matrix step's process dies before its own `afterEach` cleanup, #1432's already-
+  tracked OOM class) being audited as a real tenant; fixed by turning on
+  `SCHEMA_INDEX_AUDIT_MODE`/`SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS` in the step's `env:` block
+  (config-only, activating an already-existing, already-unit-tested exclusion filter this exact
+  scenario already covers), but deliberately kept tracked-advisory-with-reason pending one post-fix
+  evidence cycle, per this repo's own evidence-gating discipline (#1431 Phase C) — the flake surface
+  a live MySQL container's state carries is not the same class as `check_whitespace`'s pure diff
+  check.
+- Status: in_progress. `audit_indexes`'s blocking-flip criterion (a real `release/*→main` promotion
+  run green post-fix, or a `workflow_dispatch` scratch-branch run confirming both a clean pass and,
+  ideally, a fault-probe) is explicitly not verifiable at merge time — see the amendment below.
+- Dependencies: #1124 (advisory-failure evidence pipeline), #1432 (OOM-orphan corroboration), #1469
+  (`run_test_matrix`'s own still-open, related gating), #1557 (hand-synced `BLOCKING_STEP_IDS`/
+  `BLOCKING_STEP_NAMES` drift risk — not fixed by this phase, only not made worse).
+- Acceptance and validation evidence: `npm run check:pr-quality-workflow && npm run
+  test:pr-quality-workflow` (41/41, fixture updated for `check_whitespace`'s new blocking-step
+  shape); `npm run lint:docs`; manual pre-commit hook smoke test (staged a deliberately
+  trailing-whitespace line, confirmed `git commit` blocked pre-fix / clean post-fix). The
+  `audit_indexes` local repro against a live MySQL test DB (orphaned-tenant fixture reproducing
+  `missing=3` without the new env vars, `missing=0`/`excluded_databases` with them) **did not run**
+  in this phase's implementation environment — no local MySQL/Docker was available — stated here
+  truthfully rather than claimed; the available evidence for the exclusion-filter mechanism itself
+  is `schemaIndexAuditService.test.js`'s existing "excludes test_tenant_* databases in local mode
+  when configured" unit test at the service layer (not re-run in this phase either, since that
+  app's `node_modules` isn't installed in the same environment), which this phase's env-var change
+  wires the CI *workflow* into without altering. `node scripts/check-app-version-bump.js` (no bump
+  expected, CI-tooling/docs-only change, confirmed); the next real promotion run's, or a
+  `workflow_dispatch` scratch-branch run's, `promotion-quality-gate.yml` result remains the pending
+  validation criterion for the open acceptance box above — including first confirming the local
+  repro (or an equivalent CI-side fault probe) against a real database, not assumed from the unit
+  test alone.
+- Completion date: pending (see Status).
+- Contracts/files: `.husky/pre-commit`, `.github/workflows/promotion-quality-gate.yml`,
+  `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issue #1552.
+- Next eligible phase: 292.
