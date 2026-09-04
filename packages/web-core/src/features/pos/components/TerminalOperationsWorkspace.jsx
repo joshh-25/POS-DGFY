@@ -2202,6 +2202,10 @@ function ItemsWorkspace({
   const [secondaryFolderIds, setSecondaryFolderIds] = useState([]);
   const [secondaryFoldersLoading, setSecondaryFoldersLoading] = useState(false);
   const [secondaryFoldersSaving, setSecondaryFoldersSaving] = useState(false);
+  // #1318 PR #1581 review RF-3 — true only when the memberships GET itself
+  // failed with 403 (categories:manage required server-side), distinct from
+  // a genuinely empty membership list. See fetchSecondaryFolders below.
+  const [secondaryFoldersUnavailable, setSecondaryFoldersUnavailable] = useState(false);
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
@@ -2470,18 +2474,57 @@ function ItemsWorkspace({
   // section never renders against an unsaved/invalid item.
   const editItemIdForFolders = Number(activeEditItem?.item_id) > 0 ? Number(activeEditItem.item_id) : 0;
 
+  // #1318 PR #1581 review RF-1 (blocker) — the primary category field in this
+  // same modal (EditableFoodCategoryCombobox / the read-only <select> above)
+  // lets a manager stage a DIFFERENT primary category in editForm before
+  // "Save Item" is ever clicked. "Save Additional Categories" is a separate,
+  // independent write that can land while that staged change is still
+  // unsaved -- the server's disjointness guard only ever sees the DB's
+  // *current* primary at write time, so it cannot catch a pending primary
+  // change that would collide with an already-saved secondary membership (or
+  // the reverse order: stage primary -> save secondary against the still-old
+  // DB primary -> save item, landing both as primary AND secondary at once).
+  // Mirrors handleSave's own foodCategory resolution exactly (below, at
+  // categoryPayload) so the two can never disagree about what the pending
+  // primary actually is.
+  const pendingPrimaryFolderId = useMemo(() => {
+    const typedCategoryName = String(editCategoryInput || '').trim().replace(/\s+/g, ' ');
+    const foodCategory = resolveFoodCategorySelection(editForm.pos_category)
+      || foodCategoryOptions.find((option) => normalizeFolderNameKey(option.name) === normalizeFolderNameKey(typedCategoryName));
+    if (Number.isInteger(Number(foodCategory?.folder_id)) && Number(foodCategory.folder_id) > 0) {
+      return Number(foodCategory.folder_id);
+    }
+    // No resolvable pending category (blank, or a brand-new not-yet-created
+    // name) -- nothing has actually changed from the persisted primary yet.
+    return Number(activeEditItem?.folder_id) || 0;
+  }, [editCategoryInput, editForm.pos_category, resolveFoodCategorySelection, foodCategoryOptions, activeEditItem?.folder_id]);
+
+  // Every folder id that is, or is about to become, this item's primary
+  // category -- both the currently-persisted one (already-excluded, as
+  // before) and the staged-but-unsaved pending one, when they differ.
+  const excludedPrimaryFolderIds = useMemo(() => {
+    const ids = new Set();
+    const persisted = Number(activeEditItem?.folder_id);
+    if (Number.isInteger(persisted) && persisted > 0) ids.add(persisted);
+    if (Number.isInteger(pendingPrimaryFolderId) && pendingPrimaryFolderId > 0) ids.add(pendingPrimaryFolderId);
+    return ids;
+  }, [activeEditItem?.folder_id, pendingPrimaryFolderId]);
+
   // #1318 Wave C/C5 — every persisted folder except the item's own primary
   // one (selecting it would be redundant, and the API silently drops it
-  // anyway per the disjointness guard, ADR 0080 clause 2). Mirrors
-  // ItemFormModal.jsx's availableSecondaryFolders exactly.
+  // anyway per the disjointness guard, ADR 0080 clause 2) *and* except any
+  // pending, not-yet-saved primary selection (RF-1 above). Mirrors
+  // ItemFormModal.jsx's availableSecondaryFolders, widened for the
+  // pending-primary case IMS's own modal doesn't have to contend with here.
   const availableSecondaryFolders = useMemo(
-    () => posFolders.filter((folder) => Number(folder.folder_id) !== Number(activeEditItem?.folder_id)),
-    [posFolders, activeEditItem?.folder_id]
+    () => posFolders.filter((folder) => !excludedPrimaryFolderIds.has(Number(folder.folder_id))),
+    [posFolders, excludedPrimaryFolderIds]
   );
 
   const fetchSecondaryFolders = useCallback(async (itemId) => {
     if (!itemId) return;
     setSecondaryFoldersLoading(true);
+    setSecondaryFoldersUnavailable(false);
     try {
       const response = await listItemFolders(itemId);
       const memberships = Array.isArray(response?.memberships) ? response.memberships : [];
@@ -2489,6 +2532,15 @@ function ItemsWorkspace({
     } catch (folderFetchError) {
       console.error('Failed to load item category memberships:', folderFetchError);
       setSecondaryFolderIds([]);
+      // #1318 PR #1581 review RF-3 (should-fix) — GET /items/:item_id/folders
+      // is gated by requireTenantAdmin (categories:manage) server-side, the
+      // same permission canManageCategories mirrors client-side. The two can
+      // drift (stale client permission cache, a race, direct testing), so
+      // trust the *actual* response rather than the client flag: a 403 here
+      // means the memberships genuinely could not be read, which is a
+      // distinct state from "this item has zero secondary memberships" and
+      // must not render the same "0/10 selected" as a real empty result.
+      setSecondaryFoldersUnavailable(folderFetchError?.response?.status === 403);
     } finally {
       setSecondaryFoldersLoading(false);
     }
@@ -2499,12 +2551,26 @@ function ItemsWorkspace({
       fetchSecondaryFolders(editItemIdForFolders);
     } else {
       setSecondaryFolderIds([]);
+      setSecondaryFoldersUnavailable(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editItemIdForFolders]);
 
+  // RF-1 continued: if the pending primary selection changes (or the item's
+  // persisted primary itself changes, e.g. after a reload) to a folder id
+  // that is already checked as a secondary category, drop it immediately --
+  // otherwise a stale checked-but-now-excluded id could still be sent by
+  // "Save Additional Categories" even though its checkbox is no longer shown.
+  useEffect(() => {
+    setSecondaryFolderIds((current) => {
+      const filtered = current.filter((id) => !excludedPrimaryFolderIds.has(Number(id)));
+      return filtered.length === current.length ? current : filtered;
+    });
+  }, [excludedPrimaryFolderIds]);
+
   const toggleSecondaryFolder = (folderId, checked) => {
     const normalizedId = String(folderId);
+    if (checked && excludedPrimaryFolderIds.has(Number(folderId))) return;
     setSecondaryFolderIds((current) => {
       if (checked) {
         if (current.includes(normalizedId) || current.length >= 10) return current;
@@ -2516,9 +2582,16 @@ function ItemsWorkspace({
 
   const saveSecondaryFolders = async () => {
     if (!editItemIdForFolders) return;
+    // Defensive re-filter at the actual write boundary (RF-1) -- belt and
+    // suspenders alongside the render-time exclusion and the cleanup effect
+    // above, so a pending primary can never reach the API as a secondary
+    // selection no matter which state update ordering got us here.
+    const outgoingFolderIds = secondaryFolderIds
+      .map((id) => Number(id))
+      .filter((id) => !excludedPrimaryFolderIds.has(id));
     setSecondaryFoldersSaving(true);
     try {
-      await replaceItemFolders(editItemIdForFolders, secondaryFolderIds.map((id) => Number(id)));
+      await replaceItemFolders(editItemIdForFolders, outgoingFolderIds);
       toast.success('Additional categories saved.');
     } catch (saveFolderError) {
       toast.error(saveFolderError?.response?.data?.message || 'Unable to save additional categories.');
@@ -4713,6 +4786,12 @@ function ItemsWorkspace({
                             <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
                             Loading additional categories...
                           </div>
+                        ) : secondaryFoldersUnavailable ? (
+                          // RF-3: an honest "could not be loaded" state -- never the same
+                          // "0/10 selected" a genuinely empty membership list would show.
+                          <p role="status" className="text-xs text-amber-600">
+                            Additional categories are unavailable right now -- you don't have permission to view them.
+                          </p>
                         ) : (
                           <>
                             {availableSecondaryFolders.length > 0 ? (
