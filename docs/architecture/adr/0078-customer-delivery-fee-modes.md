@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-09-01
-last_reviewed: 2026-09-01
+last_reviewed: 2026-09-04
 review_by: 2027-03-01
 applies_to: architecture_decision
 topic: customer_delivery_fee_modes
@@ -118,6 +118,25 @@ Amendments block on their own ADR in their own implementing phase — not restat
   schema yet. Tracked as issue #1347.
 - **Ongoing cost.** Four binding clauses (1, 2, 3, 6) carry a `review_by` renewal obligation per
   ADR 0039 Decision 4; left unrenewed after 2027-03-01 they decay to default.
+
+## Amendments
+
+### 2026-09-04 — Haversine `outside_radius_flag` residue retired (#1565)
+
+- Clause amended: none — this corrects a factual claim in the Context section above, not a
+  Decision or Consequences clause, so no ADR 0039 tier applies.
+- Change: the Context section's "only an unused `outside_radius_flag` survives from that work
+  (#478)" is no longer current. #1565 (this ADR's own #478 residue, closed by Pat's 2026-09-01
+  closing comment on #478) removed `haversineDistanceKm`, `resolveDeliveryRadiusFlag`, the
+  `outside_radius_flag` column (migration `20260909000001-drop-outside-radius-flag.cjs`), the
+  `PosTransaction` model field, and every read/write site in `storeUseCases.js`/`posUseCases.js`.
+  Nothing from the pre-#1321 haversine calculation survives in the codebase as of this amendment.
+- Reason: recorded here rather than silently left stale, matching this repo's convention for
+  correcting an ADR's own prose once the code it describes has moved on — Decision 2's road-distance
+  pipeline (`resolved.delivery.outOfRange`) was and remains the sole out-of-range enforcement
+  signal; this amendment changes no enforcement behavior, only removes dead residue the Context
+  section used to name.
+- PR: this PR (#1565).
 
 ## Related
 
