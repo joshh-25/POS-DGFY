@@ -20749,6 +20749,53 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
     13); `npm run build:store` (OK); `npm run check:architecture` (0 violations); `npm run
     check:compliance` (no compliance-sensitive changes); `npm run check:adr` (88 ADRs valid); `npm
     run lint` (0 errors, same pre-existing warnings elsewhere).
+- **PR #1583 review fix round 2 (Codex GPT-5.6 Luna, pr-reviewer, BLOCK verdict), 2026-09-04:**
+  - RF-4 (blocker): fix round 1 made grouping/dedup correct at the view-model layer (folder_id-
+    based `sectionIdentity`/`categoryIdentity`), but every downstream consumer still selected,
+    keyed, and matched by the normalized `sectionKey`/`categoryKey` display text — so the review's
+    own colliding-name regression test (two distinct-`folder_id` groups sharing a normalized name)
+    was internally correct at the view-model layer yet the second group was unreachable through
+    the actual UI, and both F&B/services tab lists carried duplicate React keys/active states.
+    Fixed by threading `sectionIdentity`/`categoryIdentity` through every named adapter/consumer —
+    `buildFnbCatalogPresentation.js` (`resolvedSection`/`activeSectionModel` resolution),
+    `StorefrontCatalogToolbar.js` (shared F&B/Retail toolbar — option values, active-state match,
+    `.find()`, click handlers, React keys), `StorefrontCatalogRouteContainer.jsx` (`resolvedTab`/
+    `activeGroup` services resolution), `StorefrontClassicCatalog.jsx` (legacy services/default
+    tab strip), and `ServicesCatalogToolbar.jsx` (fixed the adapter that dropped `categoryIdentity`
+    entirely when mapping `serviceGroups` to the shared toolbar's shape). `sectionKey`/`categoryKey`
+    stay name-derived and unchanged in format everywhere — still load-bearing for icon/preset
+    matching — only identity/selection/keying moved off them. Also fixed, for the same
+    state-consistency reason though not in the reviewer's named list: `ServicesPerformanceSidebar.jsx`
+    (services quick-nav, reads the same now-identity-based `resolvedTab`) and
+    `SimpleCatalogToolbar.jsx` (Simple mode's own toolbar duplicate, consumes the same F&B view
+    model) — both would have silently broken once `resolvedTab`/`resolvedFnbSection` became
+    identity-based without the parallel fix. Added 4 new consumer-level regression test files/
+    additions (not just view-model-level) reproducing the reviewer's exact scenario end-to-end
+    through real component renders: `buildFnbCatalogPresentation.test.js` (+2 tests, including a
+    "does not resolve by sectionKey text alone" negative case), `StorefrontCatalogToolbar.test.jsx`
+    (new, 3 tests), `ServicesCatalogToolbar.test.jsx` (+1 test; also updated its pre-existing
+    fixture/assertion, which had no `categoryIdentity` and would otherwise have broken),
+    `StorefrontClassicCatalog.test.jsx` (new — incidentally also exercises
+    `ServicesPerformanceSidebar.jsx`, rendered inside it), `SimpleCatalogToolbar.test.jsx` (new).
+  - RF-5 (should-fix): ADR 0080 Consequences item 1 ("this PR opts in no surface") was a snapshot
+    of the original Phase 257 schema-introducing PR, left unqualified as this Phase 289 PR's own
+    two opt-ins shipped — contradicting Decision 4/5 and the new ledger. Rewrote it to state that
+    explicitly: the zero-migration-risk claim is scoped to Phase 257 specifically, and non-opted-in
+    read sites remain primary-only by Decision 4's own default, while the Opt-in ledger (Phase 289,
+    this PR) and the dated Amendment (Phase 286) both now record real exceptions to that default.
+  - MERGE-1 (blocker): head predated sibling PR #1581 (merged as Phase 290, merge commit
+    `999864cf3b0e59bb533dd119cebf61baa8d2c707`) — `mergeStateStatus: DIRTY`/`CONFLICTING`. Merged
+    fresh `origin/develop` (3-way conflict: `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` — pure
+    insertion-order, resolved keeping Phase 288/289/290 in correct numeric sequence, no renumbering
+    needed since 289 was never actually colliding with 288 or 290; `apps/dgfy-storefront/package.json`
+    + `package-lock.json` — #1581 had independently bumped 1.1.0→1.1.1, this PR had bumped 1.2.0;
+    kept 1.2.0, already a strict superset increase, re-synced the lockfile via `npm install`).
+    Updated this entry's own numbering note to record #1581's merge (no longer "unmerged"/"live
+    claim"). Re-ran every Tier 0 gate against the fully merged tree: `npm run build:store` (OK);
+    full `apps/dgfy-storefront` suite 196/196 files, 1054/1054 tests (+8 net new from the RF-4
+    consumer-level regression coverage); `npm run check:architecture` (0 violations); `npm run
+    check:compliance` (no compliance-sensitive changes); `npm run check:adr` (88 ADRs valid); `npm
+    run lint` (0 errors, same pre-existing warnings elsewhere, none in the changed/new files).
 - Status: completed.
 - Dependencies: Phase 257 (`item_folder_memberships` schema, already shipped), Phase 285
   (`secondary_categories` catalog projection, already shipped, consumed unchanged here), ADR 0080
@@ -20776,7 +20823,20 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `apps/dgfy-storefront/src/modes/services/storefront/model/servicesStorefrontViewModel.js`,
   `apps/dgfy-storefront/src/modes/services/storefront/model/servicesStorefrontViewModel.test.js`
   (new), `docs/architecture/adr/0080-item-multi-category-membership.md` (new "Opt-in ledger
-  (Decision 5 grouping surfaces)" section, not a dated Amendment), issue #1318.
+  (Decision 5 grouping surfaces)" section, not a dated Amendment; RF-5's Consequences item 1
+  rewrite), issue #1318. Fix round 2 (RF-4) additionally touches:
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/buildFnbCatalogPresentation.js`,
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/buildFnbCatalogPresentation.test.js`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontCatalogToolbar.jsx`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontCatalogToolbar.test.jsx` (new),
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontClassicCatalog.jsx`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontClassicCatalog.test.jsx` (new),
+  `apps/dgfy-storefront/src/app/pages/StorefrontCatalogRouteContainer.jsx`,
+  `apps/dgfy-storefront/src/modes/services/storefront/components/ServicesCatalogToolbar.jsx`,
+  `apps/dgfy-storefront/src/modes/services/storefront/components/ServicesCatalogToolbar.test.jsx`,
+  `apps/dgfy-storefront/src/modes/services/storefront/components/ServicesPerformanceSidebar.jsx`,
+  `apps/dgfy-storefront/src/modes/simple/storefront/components/SimpleCatalogToolbar.jsx`,
+  `apps/dgfy-storefront/src/modes/simple/storefront/components/SimpleCatalogToolbar.test.jsx` (new).
 - **Numbering note (merge resolution addendum):** the "Next eligible phase" pointer below was
   updated from this entry's original 290 to **291** during this PR's first fix round, since #1581
   (Wave C/C5) had confirmed live it was taking **290** for itself. Confirmed again on this PR's

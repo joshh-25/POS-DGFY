@@ -96,11 +96,17 @@ against a column with existing NULLs, which ADR 0029's Rollout Policy 3 forbids.
 
 ## Consequences
 
-1. **Zero read-site migration risk in this PR.** Because Decision 4 makes opt-in explicit and this
-   PR opts in no surface, every one of the ~34 existing item→folder read sites across
-   `apps/dgfy-api`, `packages/web-core`, and `apps/dgfy-storefront` is unaffected — verified
-   path-by-path against the read-site inventory this ADR's implementation plan produced, not
-   assumed from the additive-schema argument alone.
+1. **Zero read-site migration risk in the schema-introducing PR (Phase 257).** Because Decision 4
+   makes opt-in explicit and that PR opted in no surface, every one of the ~34 existing item→folder
+   read sites across `apps/dgfy-api`, `packages/web-core`, and `apps/dgfy-storefront` was
+   unaffected at that point — verified path-by-path against the read-site inventory this ADR's
+   implementation plan produced, not assumed from the additive-schema argument alone. **This is a
+   snapshot of that PR, not a standing claim** (RF-5, PR #1583 review) — Decision 4's own default
+   (primary-only until an explicit, shipped phase opts a surface in) still governs every read site
+   that hasn't opted in, but by now several have: the two Decision 5 grouping surfaces this ADR's
+   "Opt-in ledger" above records (F&B `menuSections`, services `serviceGroups`, both Phase 289), and
+   the POS/IMS filter-matching surface the dated Amendment below records (Phase 286). Every other
+   read site not named in either place remains primary-only.
 2. **Six existing write paths need no change, ever, for this feature to work.** Because
    memberships are secondary-only (Decision 2) rather than a mirror of the primary,
    `itemRepository.createItem`/`updateItem`/`deleteFolder`, `itemGroupingService`'s AI
