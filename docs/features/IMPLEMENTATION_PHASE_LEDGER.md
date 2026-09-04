@@ -20407,3 +20407,77 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   other file needs to change, per that module's and `shared-changed-paths.yml`/`pr-checks.js`'s own
   single-source-of-truth design (Phase 276).
 - Next eligible phase: 284.
+
+## Phase 286 - Wave C/C3: POS/IMS catalog filters widen to secondary categories (#1318)
+
+- **Numbering note:** this entry was dispatched against a pre-assigned Phase 285, drafted when the
+  ledger tip on `origin/develop` was Phase 283 (making 284 the mechanically next number). At
+  PR-open time, two sibling Wave C slices of the same #1318 program were already open against
+  `develop` and each had already claimed a number in the same range: PR #1578 (C4, "folder-delete
+  warning: count secondary category memberships") claims Phase 284, and PR #1579 (C1, "storefront
+  catalog API projection of secondary categories") claims Phase 285 — the latter's own entry
+  explicitly reasons through the same 284 collision this note is now reasoning through a second
+  time. Both PRs are unmerged as of this writing. This entry takes **286** outright, the next number
+  after both open claims, to avoid opening with a guaranteed three-way collision rather than relying
+  on a later rebase to sort it out — the same avoid-not-repair posture PR #1579 used for its own
+  284→285 move, and the same pattern Phase 281/282/283's own "Numbering note"s document for this
+  exact class of parallel-Wave collision. If #1578 and/or #1579 merge first, 284/285/286 land
+  sequentially with no further action needed here. If this PR merges before either, whichever of
+  #1578/#1579 rebases afterward renumbers its own claim past 286, per AGENTS.md's Continuous Phase
+  Numbering rule 5 (preserve already-landed numbers, never renumber a merged entry).
+- Initiative/release: Item multi-category membership program (#1318) / Wave C, slice C3 — parallel
+  to, and independent of, C1 (storefront catalog projection, PR #1579) and C4 (folder-delete
+  warning, PR #1578); no file overlap with C1, and the one file this phase shares with C4
+  (`itemRepository.js`, `TerminalOperationsWorkspace.jsx`) touches disjoint functions in each (see
+  "Contracts/files" below) — confirmed by diffing both open PRs before implementing, not assumed.
+- Objective and scope: Phase 257/268 shipped `item_folder_memberships`, the `ItemFolderMembership`
+  model, and `itemRepository.js`'s `listItemFolderMemberships`/`replaceItemFolderMemberships`, with
+  zero read sites consuming them. This phase is [ADR 0080](../architecture/adr/0080-item-multi-category-membership.md)
+  Decision 4's explicit opt-in for POS's and IMS's own catalog **filter** surfaces — the folder/
+  category chip filters merchants use while browsing the catalog, in both apps — so that selecting
+  a category also surfaces items whose SECONDARY category matches, not just their primary. Not
+  pre-authorized by Decision 5 (which only covers storefront grouping-surface composite rendering);
+  a dated `## Amendments` block on ADR 0080 covers this new decision point, `status: amended`.
+- Scope correction made mid-phase (recorded, not hidden): the dispatch brief scoped IMS to
+  backend-only (`itemRepository.js`'s `folder_id` query-param path). Investigation found that path
+  unreachable from IMS's actual live browse UI — `ItemsPage.jsx`'s `useInventoryItems` call never
+  sends a `folder_id` param; it fetches its full item set once and filters client-side via
+  `doesItemMatchFolder` instead. Backend-only would have shipped a no-op for real IMS merchants, so
+  this phase also widened `itemRepository.js`'s list response (`secondary_folder_ids` per item) and
+  `ItemsPage.jsx`'s `doesItemMatchFolder` (a new opt-in `matchSecondary` flag, default `false`) —
+  full reasoning in the compliance declaration's "Residual Risks" section.
+- Status: completed.
+- Dependencies: Phase 257/268 (`item_folder_memberships` schema/model/authoring API, already
+  shipped).
+- Acceptance and validation evidence: `apps/dgfy-api/tests/posRepository.catalogFolderWidening.test.js`
+  (new, 4/4 passing); 4 new cases in `apps/dgfy-api/tests/inventoryItemRepository.test.js` (full
+  file 90/90 passing); `apps/dgfy-api/tests/itemFolderMemberships.repository.test.js`,
+  `apps/dgfy-api/tests/posRepository.catalogImages.test.js`,
+  `apps/dgfy-api/tests/posRepository.locationStockFallback.test.js` (unchanged, regression-clean);
+  new case in `packages/web-core/src/features/pos/utils/__tests__/posCatalogWorkflow.test.js` (full
+  file 6/6 passing, run from `apps/dgfy-ims` per `docs/architecture/frontend-split-sync.md`); full
+  `packages/web-core/src/features/pos/` suite (189 files / 1190 tests) and full
+  `packages/web-core/src/features/inventory/` suite (9 files / 68 tests), both zero regressions —
+  the regression evidence for `TerminalOperationsWorkspace.jsx`'s and `ItemsPage.jsx`'s inline
+  widened-match logic, neither of which has a dedicated isolated unit test (stated as a known gap in
+  the compliance declaration, not hidden); `node --check` on every changed `apps/dgfy-api` `.js`
+  file; `npm run build:pos` and `npm run build:skupervisor` (both OK); `npm run check:architecture`
+  (OK); `npm run check:adr` (OK, validates the new ADR 0080 Amendments block); `npm run
+  check:compliance` (declaration:
+  `docs/compliance/impact-declarations/2026-09-04-pos-ims-catalog-filter-secondary-categories.md`).
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js` (`getItems`'s
+  `folder_id` filter + new `attachSecondaryFolderIds` — disjoint from PR #1578's own
+  `countSecondaryFolderMemberships`/`listFolders`/`deleteFolder` changes to the same file),
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js` (`listCatalog`'s `folder_id` filter
+  + new `attachSecondaryFolderIds`), `apps/dgfy-api/tests/inventoryItemRepository.test.js`,
+  `apps/dgfy-api/tests/posRepository.catalogFolderWidening.test.js` (new),
+  `packages/web-core/src/features/pos/utils/posCatalogWorkflow.js`
+  (`filterCatalogByFolder`/`filterAvailableCatalogFolders`),
+  `packages/web-core/src/features/pos/utils/__tests__/posCatalogWorkflow.test.js`,
+  `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx` (`filteredItems`
+  memo's `folder:<id>` chip match — disjoint from PR #1578's `CategoryManagementWorkspace` changes
+  to the same file), `packages/web-core/src/features/inventory/pages/ItemsPage.jsx`
+  (`doesItemMatchFolder`'s `matchSecondary` opt-in), `docs/architecture/adr/0080-item-multi-category-membership.md`
+  (2026-09-04 Amendment), issue #1318.
+- Next eligible phase: 287.
