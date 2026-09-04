@@ -20308,3 +20308,36 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `docs/compliance/impact-declarations/2026-09-04-delivery-fee-override-provenance.md`,
   issues #1564, #1330, #1329, #1321.
 - Next eligible phase: 282.
+
+## Phase 282 - Discovery from-price rendering: storefront delivery-fee UI (#1333)
+
+- Initiative/release: Discovery pricing honesty epic (#1321) / current release process.
+- **Numbering note (resolved 2026-09-04, merge conflict repair):** this entry was originally
+  written and reviewed as Phase 281, when the ledger tip on `origin/develop` was Phase 280. PR
+  #1567 (#1564, delivery-fee override provenance — Phase 281 above) merged to `develop` first and
+  landed its own Phase 281 entry, colliding with this one; both PR reviewers had already flagged
+  the collision as a known heads-up before either PR merged. This entry is renumbered to 282 on
+  merge, per AGENTS.md's Continuous Phase Numbering rule 5 (preserve historical/already-landed
+  numbers); develop's own Phase 281 entry above is untouched.
+- Objective and scope: consume the discovery API's already-shipped `store_delivery_fee` (a
+  per-mode from-price: the fixed rate in `fixed` mode, `calc.min_fee` in `calculated` mode, `0` in
+  `free` mode) and `delivery_fee_mode` fields on the storefront discovery card, the last unshipped
+  piece of #1333 (Phase 242 shipped the backend projection/read paths). Renders "Free delivery"
+  (`free` mode), "From ₱X delivery" (`calculated` mode), or plain "₱X delivery" (`fixed` mode) next
+  to the existing distance/ETA row on all three discovery card layouts (grid, mobile list, desktop
+  list). No backend change — `store_delivery_fee`/`delivery_fee_mode` already flowed through
+  `/api/v1/storefront/discovery` unused by the frontend.
+- Status: completed.
+- Dependencies: #1333's own backend half (Phase 242, already shipped) — `resolveAdvertisedDeliveryFromPrice()`
+  (`apps/dgfy-api/src/modules/deliveryPricing/domain/deliveryFromPrice.js`),
+  `StorefrontDiscoveryIndex.js`'s `delivery_fee_mode` column, and the
+  `storefrontDiscoveryRepository.js`/`geoSearchRepository.js` read paths.
+- Acceptance and validation evidence: `npm run build:store` (Vite production build, clean); `npx
+  vitest run src/__tests__/discoveryFlow.integration.test.jsx` (38/38, including a case asserting
+  all three delivery-fee-mode labels render on discovery cards, plus a null-fee regression case
+  added in the RF-1 fix round asserting a fixed-mode card with an unresolvable/null
+  `store_delivery_fee` omits the delivery-fee label entirely instead of rendering "₱0 delivery").
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-storefront/src/features/discovery/renderers/discoveryResultsRenderer.jsx`,
+  `apps/dgfy-storefront/src/__tests__/discoveryFlow.integration.test.jsx`, issue #1333 (epic #1321).
+- Next eligible phase: 283.
