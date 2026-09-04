@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: infra
-last_reviewed: 2026-09-04
+last_reviewed: 2026-09-05
 applies_to: promotion_quality_gates
 topic: gate_release_local_ci_mapping
 ---
@@ -222,7 +222,7 @@ gates do, and #1569 asked this status be recorded in both this doc and
 `docs/ops/RELEASE_CANDIDATE_POLICY.md` (see that doc's matching 2026-09-04 dated Amendments entry —
 kept in sync with this section, not a duplicate to maintain independently).
 
-**Current status: advisory, mechanism built, not armed.** Per
+**Current status: BLOCKING, flipped 2026-09-05 (#1592, epic #1548, Phase 283).** Per
 [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md) Decision 9, the check
 flips to blocking only once real evidence exists — either 10 merged `develop`-base PRs since PR
 #1562's merge commit with `check:app-versions` recorded pass/warn (not a crash), or one full
@@ -230,6 +230,18 @@ flips to blocking only once real evidence exists — either 10 merged `develop`-
 readiness.js` measures that threshold live from GitHub's own check-run/job-log history via `gh api`
 (no local counter file) — run it by hand (`npm run check:version-bump-flip-readiness`) before ever
 touching the toggle below.
+
+The PR-count path was re-confirmed live at #1592's implementation time (not reused from that
+issue's 2026-09-05 filing-time snapshot, which itself was already a re-confirmation of an earlier
+count): `10 of 10 qualifying develop-base PRs` since PR #1562's merge commit
+(`5eb17c3426251990d364544e3ad5fbb1a839a35e`) — 7 `pass` (#1591, #1583, #1582, #1581, #1580, #1579,
+#1578) + 3 `warn` (#1586, #1567, #1566), promotion-cycle evidence still `none yet`. #1592 also found
+and fixed a bug the flip would otherwise have shipped silently broken: `scripts/pr-checks.js`'s own
+`app version bump` check hardcoded its result to `'pass'`/`'warn'` regardless of the `blocking`
+argument, so `computeOverallResult()` could never actually reach `FAIL` for it (a `'warn'` only ever
+degrades `PASS` to `PARTIAL`) — see `scripts/pr-checks.js`'s `resolveAppVersionsCheckResult()` and
+its own header comment for the fix. The `shared-changed-paths.yml` surface had no equivalent bug —
+its `continue-on-error:` expression already read the toggle's boolean output directly.
 
 **The toggle mechanism** — deliberately not this document's own gate-table pattern (edit the
 workflow YAML's `continue-on-error:` literal directly, PR #1550/#1551's Phase 272 precedent), and
@@ -246,11 +258,14 @@ source that both consumers read directly at runtime, since a step's `continue-on
 - `scripts/pr-checks.js` requires the same module directly for the same check's `blocking` argument
   to `addCheck()`.
 
-**To arm it** (a later, separate, human-confirmed PR — not part of #1569's own scope): confirm
-`node scripts/check-version-bump-flip-readiness.js` reports the threshold met, then flip exactly one
-line — `version-bump-gate-toggle.js`'s `BLOCKING` constant, `false → true`. Both consumers move
-together; nothing else needs editing, and there is no separate "keep two files in sync" checker to
-also update, unlike the runner-routing convention this section explicitly avoided.
+**Armed** (#1592, 2026-09-05, a later, separate, human-confirmed PR — not part of #1569's own
+scope): confirmed `node scripts/check-version-bump-flip-readiness.js` reported the threshold met,
+then flipped exactly one line — `version-bump-gate-toggle.js`'s `BLOCKING` constant, `false → true`.
+Both consumers move together from that one edit alone — `scripts/pr-checks.js` needed a small,
+separate fix alongside it (see above) to actually honor the toggle's value, but that fix lives in
+the consuming surface itself, not as a second hand-kept-in-sync toggle; there is still no separate
+"keep two files in sync" checker to maintain, unlike the runner-routing convention this section
+explicitly avoided.
 
 ## Promotion-time per-app version gates (#1588, epic #1548 Wave 4) — separate mechanisms, not one of
 the 19 gates above
