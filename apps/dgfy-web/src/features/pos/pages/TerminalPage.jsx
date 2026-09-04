@@ -4487,7 +4487,10 @@ export default function TerminalPage() {
     setCloseShiftConfirmOpen(true);
   };
 
-  const getShiftCloseResolutionState = useCallback(async ({ shiftId = activeShiftId } = {}) => {
+  const getShiftCloseResolutionState = useCallback(async ({
+    shiftId = activeShiftId,
+    includeServerParkedSales = true
+  } = {}) => {
     const normalizedShiftId = Number.parseInt(shiftId, 10);
     if (!Number.isInteger(normalizedShiftId) || normalizedShiftId <= 0) {
       return { activeParkedSaleCount: 0, pendingParkedSaleCount: 0 };
@@ -4502,7 +4505,7 @@ export default function TerminalPage() {
       && Number.parseInt(entry?.shift_id || entry?.payload?.shift_id, 10) === normalizedShiftId
     )).length;
 
-    if (!isOnline) {
+    if (!isOnline || !includeServerParkedSales) {
       return { activeParkedSaleCount: 0, pendingParkedSaleCount };
     }
 
@@ -4746,7 +4749,15 @@ export default function TerminalPage() {
     }
 
     try {
-      const resolutionState = await getShiftCloseResolutionState({ shiftId: normalizedShiftId });
+      // The parked-sales list is intentionally restricted to the cashier who
+      // owns the shift. A master-admin recovery must not impersonate that
+      // cashier just to perform a preflight read. Keep the local pending-sync
+      // guard here and let the force-close use case atomically enforce active
+      // server parked sales under its audited recovery authority.
+      const resolutionState = await getShiftCloseResolutionState({
+        shiftId: normalizedShiftId,
+        includeServerParkedSales: false
+      });
       if (resolutionState.activeParkedSaleCount > 0 || resolutionState.pendingParkedSaleCount > 0) {
         toast.error('Resolve active parked sales and pending parked-sale syncs before recovering this shift.');
         return false;

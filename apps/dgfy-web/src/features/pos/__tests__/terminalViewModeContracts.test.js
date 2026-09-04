@@ -304,6 +304,9 @@ describe('POS terminal view-mode contracts', () => {
 
   it('keeps stale shift recovery master-only, audited, and isolated from generic shift actions', () => {
     expect(terminalPageContent).toContain('canRecoverStaleShifts={terminalUser?.is_master_admin === true}');
+    expect(terminalPageContent).toContain('includeServerParkedSales = true');
+    expect(terminalPageContent).toContain('if (!isOnline || !includeServerParkedSales)');
+    expect(terminalPageContent).toMatch(/getShiftCloseResolutionState\(\{[\s\S]*?shiftId: normalizedShiftId,[\s\S]*?includeServerParkedSales: false[\s\S]*?\}\);/);
     expect(terminalOperationsWorkspaceContent).toContain('Branch Shift Monitor');
     expect(terminalOperationsWorkspaceContent).toContain('Recover Stale Shift');
     expect(terminalOperationsWorkspaceContent).toContain('Force Close Stale Shift');

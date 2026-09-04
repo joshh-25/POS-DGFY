@@ -95,6 +95,9 @@ const buildRepository = () => {
         async countActiveParkedSalesForShift() {
             return activeParkedSaleCount;
         },
+        async listUnresolvedFundedPaymentSessionsForShift() {
+            return [];
+        },
         async closeTerminalShift(shiftId, payload) {
             closeCount += 1;
             Object.assign(shift, payload);
