@@ -219,8 +219,10 @@ not part of the 19-gate `gate:release:local` mapping this document otherwise tra
 `shared-changed-paths.yml`/`pr-checks.js` PR-time check, not a `gate-release-local.js` gate. It gets
 its own short section here because it follows the same advisory-to-blocking shape this document's
 gates do, and #1569 asked this status be recorded in both this doc and
-`docs/ops/RELEASE_CANDIDATE_POLICY.md` (see that doc's matching 2026-09-04 dated Amendments entry —
-kept in sync with this section, not a duplicate to maintain independently).
+`docs/ops/RELEASE_CANDIDATE_POLICY.md` — that doc's 2026-09-04 dated Amendments entry recorded the
+mechanism being built (still advisory), and its 2026-09-05 dated Amendments entry recorded the flip
+itself (the current status below); both kept in sync with this section, not a duplicate to maintain
+independently.
 
 **Current status: BLOCKING, flipped 2026-09-05 (#1592, epic #1548, Phase 283).** Per
 [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md) Decision 9, the check
@@ -251,7 +253,8 @@ hand-edited surfaces are kept in sync by a validator script instead). This toggl
 source that both consumers read directly at runtime, since a step's `continue-on-error:` CAN take a
 `${{ }}` expression against a prior step's output:
 
-- `scripts/lib/version-bump-gate-toggle.js` exports one constant, `BLOCKING` (currently `false`).
+- `scripts/lib/version-bump-gate-toggle.js` exports one constant, `BLOCKING` (currently `true`,
+  flipped 2026-09-05 — see the "Armed" paragraph below).
 - `.github/workflows/shared-changed-paths.yml`'s "Load check:app-versions gate toggle" step reads it
   via `node -e` and exposes it as a step output; the "Enforce per-app version bump on source
   changes" step's own `continue-on-error:` reads that output.
