@@ -1986,7 +1986,12 @@ jobs:
               `<!-- promotion-quality-gate-advisory-failure ${marker} run=${runId} -->`,
               `### promotion-quality-gate advisory failure(s) -- \`${headSha}\``,
               '',
-              'Since #1431 Phase 1 (PR-A), Phase 2 (P2-1), and Phase C, 15 steps across these jobs are',
+              // Count derived from BLOCKING_STEP_NAMES.size (declared above), not hand-counted, so
+              // a future blocking flip can't stale this summary the way #1552's own flip did (this
+              // read #1431's original "15" verbatim, already one behind by the time this comment
+              // would have posted). check-pr-quality-workflow.js's own BLOCKING_STEP_IDS stays a
+              // second, hand-synced list -- #1557's cross-file drift risk, unchanged by this.
+              `Since #1431 Phase 1 (PR-A), Phase 2 (P2-1), and Phase C, ${BLOCKING_STEP_NAMES.size} steps across these jobs are`,
               'blocking (no step-level `continue-on-error`) on the release/*->main leg and',
               'workflow_dispatch/workflow_call runs -- a failure there already reds out the job and',
               'this workflow\'s check-run',

@@ -20765,14 +20765,20 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Acceptance and validation evidence: `npm run check:pr-quality-workflow && npm run
   test:pr-quality-workflow` (41/41, fixture updated for `check_whitespace`'s new blocking-step
   shape); `npm run lint:docs`; manual pre-commit hook smoke test (staged a deliberately
-  trailing-whitespace line, confirmed `git commit` blocked pre-fix / clean post-fix); local
-  `audit_indexes` repro (orphaned-tenant fixture reproduces `missing=3` without the new env vars,
-  `missing=0`/`excluded_databases` populated with them) — the scenario
-  `schemaIndexAuditService.test.js`'s existing suite already unit-tests at the service layer, this
-  phase's job was proving the CI workflow env now actually invokes it; `node
-  scripts/check-app-version-bump.js` (no bump expected, CI-tooling/docs-only change, confirmed);
-  the next real promotion run's `promotion-quality-gate.yml` result for the open acceptance box
-  above.
+  trailing-whitespace line, confirmed `git commit` blocked pre-fix / clean post-fix). The
+  `audit_indexes` local repro against a live MySQL test DB (orphaned-tenant fixture reproducing
+  `missing=3` without the new env vars, `missing=0`/`excluded_databases` with them) **did not run**
+  in this phase's implementation environment — no local MySQL/Docker was available — stated here
+  truthfully rather than claimed; the available evidence for the exclusion-filter mechanism itself
+  is `schemaIndexAuditService.test.js`'s existing "excludes test_tenant_* databases in local mode
+  when configured" unit test at the service layer (not re-run in this phase either, since that
+  app's `node_modules` isn't installed in the same environment), which this phase's env-var change
+  wires the CI *workflow* into without altering. `node scripts/check-app-version-bump.js` (no bump
+  expected, CI-tooling/docs-only change, confirmed); the next real promotion run's, or a
+  `workflow_dispatch` scratch-branch run's, `promotion-quality-gate.yml` result remains the pending
+  validation criterion for the open acceptance box above — including first confirming the local
+  repro (or an equivalent CI-side fault probe) against a real database, not assumed from the unit
+  test alone.
 - Completion date: pending (see Status).
 - Contracts/files: `.husky/pre-commit`, `.github/workflows/promotion-quality-gate.yml`,
   `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
