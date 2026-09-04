@@ -10,7 +10,18 @@ if [ "$(id -u)" = '0' ]; then
   exec su-exec app "$0" "$@"
 fi
 
+# ADR 0081 Decision 4 (#1548 Wave 3, Phase 278): APP_VERSION is the published image tag, baked
+# in as a build-arg/env var since Phase 277. This is a one-shot CLI with no HTTP server -- see
+# the header comment above -- so it has no /health route to surface this on; the startup log line
+# is its only runtime-observable surface. Falls back to package.json's version (via `node -p`,
+# available in this node:22-alpine image) for a local `docker build` with no --build-arg set.
+RESOLVED_APP_VERSION="${APP_VERSION:-}"
+if [ -z "$RESOLVED_APP_VERSION" ]; then
+  RESOLVED_APP_VERSION="$(node -p "require('./package.json').version" 2>/dev/null || echo unknown)"
+fi
+
 echo "[entrypoint] NODE_ENV=${NODE_ENV:-production} DB_HOST=${DB_HOST} DB_NAME=${DB_NAME}"
+echo "[entrypoint] dgfy-migration-runner version=${RESOLVED_APP_VERSION}"
 echo "[entrypoint] Running database migrations..."
 
 # db:migrate is idempotent (tracked via the SequelizeMeta table), so it's
