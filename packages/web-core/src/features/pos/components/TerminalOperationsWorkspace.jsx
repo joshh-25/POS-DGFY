@@ -4917,6 +4917,9 @@ function CategoryManagementWorkspace() {
             name: String(folder?.name || '').trim(),
             description: String(folder?.description || '').trim(),
             item_count: Number(folder?.item_count || 0),
+            // #1318 follow-up (ADR 0080 Consequences item 4) — items that list this
+            // folder only as a secondary category, invisible to item_count above.
+            secondary_item_count: Number(folder?.secondary_item_count || 0),
             is_active: folder?.is_active !== false
           }))
           .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
@@ -5131,6 +5134,11 @@ function CategoryManagementWorkspace() {
                     ? `Make ${pendingAction.folder?.name || 'this category'} available again for new POS items?`
                     : `Remove ${pendingAction.folder?.name || 'this category'} from new item selection while retaining existing item assignments?`)}
               </p>
+              {pendingAction.type === 'delete' && pendingAction.folder?.secondary_item_count > 0 ? (
+                <p className="mt-2 text-sm leading-6 text-amber-700">
+                  {pendingAction.folder.secondary_item_count} item(s) also list this as a secondary category and will lose that link — no reassignment is offered for those, since each keeps its primary category elsewhere.
+                </p>
+              ) : null}
             </div>
             {pendingAction.type === 'delete' && pendingAction.folder?.item_count > 0 ? (
               <div className="space-y-2 px-5 py-4">

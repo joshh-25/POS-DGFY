@@ -103,6 +103,66 @@ const safeGetOptionalModel = (name) => {
     }
 };
 
+// #1318 follow-up (ADR 0080 Consequences item 4) — the pre-Phase-257 folder
+// delete warning and folder list only ever counted items whose PRIMARY
+// folder_id matched, so an item that carries this folder only as a
+// SECONDARY category (item_folder_memberships) was invisible to both. This
+// counts, for a batch of folders, how many *visible* items reference each
+// as a secondary category — excluding any item already present in that
+// folder's primary set (ADR 0080 clause 2 allows that overlap to exist; it
+// must not be double-counted as "also secondary" here) — so `listFolders`
+// and `deleteFolder` can share one counting rule instead of drifting apart.
+const countSecondaryFolderMemberships = async (folderIds, primaryItemIdsByFolder = new Map(), options = {}) => {
+    const ids = [...new Set(
+        (folderIds || [])
+            .map((id) => Number.parseInt(id, 10))
+            .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    const counts = new Map();
+    if (ids.length === 0) return counts;
+
+    const ItemFolderMembership = safeGetOptionalModel('ItemFolderMembership');
+    if (!ItemFolderMembership || typeof ItemFolderMembership.findAll !== 'function') return counts;
+
+    const membershipRows = await ItemFolderMembership.findAll({
+        where: { folder_id: { [Op.in]: ids } },
+        attributes: ['item_id', 'folder_id'],
+        transaction: options.transaction
+    });
+    if (membershipRows.length === 0) return counts;
+
+    const candidateItemIds = [...new Set(
+        membershipRows
+            .filter((row) => !primaryItemIdsByFolder.get(row.folder_id)?.has(row.item_id))
+            .map((row) => row.item_id)
+    )];
+    if (candidateItemIds.length === 0) return counts;
+
+    const Item = dbStore.get('Item');
+    const visibleItems = typeof Item?.findAll === 'function'
+        ? await Item.findAll({
+            where: visibleItemWhere({ item_id: { [Op.in]: candidateItemIds } }),
+            attributes: ['item_id'],
+            transaction: options.transaction
+        })
+        : [];
+    const visibleItemIds = new Set(visibleItems.map((item) => item.item_id));
+
+    const itemsByFolder = new Map();
+    for (const row of membershipRows) {
+        if (primaryItemIdsByFolder.get(row.folder_id)?.has(row.item_id)) continue;
+        if (!visibleItemIds.has(row.item_id)) continue;
+        const set = itemsByFolder.get(row.folder_id) || new Set();
+        set.add(row.item_id);
+        itemsByFolder.set(row.folder_id, set);
+    }
+
+    for (const [folderId, itemSet] of itemsByFolder.entries()) {
+        counts.set(folderId, itemSet.size);
+    }
+    return counts;
+};
+
 const normalizeServerVersion = (value) => {
     if (value == null || value === '') return null;
     const parsed = value instanceof Date ? value : new Date(value);
@@ -3560,6 +3620,19 @@ export const itemRepository = {
                 ]
             });
 
+            // #1318 follow-up (ADR 0080 Consequences item 4) — `item_count` above
+            // is primary-only by design (Decision 1); this adds the secondary
+            // count the folder-delete warning needs so an operator isn't shown an
+            // under-count for a folder that's only referenced as a secondary
+            // category.
+            const primaryItemIdsByFolder = new Map(
+                folders.map((folder) => [folder.folder_id, new Set((folder.items || []).map((item) => item.item_id))])
+            );
+            const secondaryCountByFolder = await countSecondaryFolderMemberships(
+                folders.map((folder) => folder.folder_id),
+                primaryItemIdsByFolder
+            );
+
             return folders.map((folder) => ({
                 folder_id: folder.folder_id,
                 name: folder.name,
@@ -3567,7 +3640,8 @@ export const itemRepository = {
                 show_in_pos_filter: folder.show_in_pos_filter !== false,
                 is_active: folder.is_active !== false,
                 parent_id: folder.parent_id,
-                item_count: folder.items?.length || 0
+                item_count: folder.items?.length || 0,
+                secondary_item_count: secondaryCountByFolder.get(folder.folder_id) || 0
             }));
         } catch (error) {
             logger.error('Error listing inventory folders:', error);
@@ -3753,12 +3827,40 @@ export const itemRepository = {
             const assignedItemCount = assignedItems.length;
             let replacementFolder = null;
 
+            // #1318 follow-up (ADR 0080 Consequences item 4) — `assignedItemCount`
+            // above is primary-only; this adds the secondary-membership count so
+            // the warning doesn't under-count an item that lists this folder only
+            // as a secondary category. Deliberately excludes any item already in
+            // `assignedItems` (ADR 0080 clause 2's overlap case) so it's never
+            // double-counted across the two figures. `ON DELETE CASCADE` on
+            // `item_folder_memberships.folder_id` still removes those rows
+            // correctly regardless — this is warning accuracy only, not a change
+            // to the reassignment requirement, which stays primary-only.
+            const targetFolderId = folder.folder_id || folderId;
+            const secondaryCountByFolder = await countSecondaryFolderMemberships(
+                [targetFolderId],
+                new Map([[targetFolderId, new Set(assignedItems.map((item) => item.item_id))]]),
+                { transaction }
+            );
+            const secondaryItemCount = secondaryCountByFolder.get(targetFolderId) || 0;
+            const secondaryNote = secondaryItemCount > 0
+                ? ` ${secondaryItemCount} item(s) also list this as a secondary category and will lose that link.`
+                : '';
+
             if (assignedItemCount > 0) {
                 const replacementId = Number(replacementFolderId);
                 if (!Number.isInteger(replacementId) || replacementId <= 0) {
-                    const error = new Error(`Category "${folder.name}" is assigned to ${assignedItemCount} item(s). Choose an active replacement category before deleting it.`);
+                    const error = new Error(`Category "${folder.name}" is assigned to ${assignedItemCount} item(s). Choose an active replacement category before deleting it.${secondaryNote}`);
                     error.statusCode = 409;
                     error.code = 'CATEGORY_REASSIGNMENT_REQUIRED';
+                    error.secondary_items_affected = secondaryItemCount;
+                    // #1318 PR #1578 review (RF-1) -- itemHandlers.js's mapInventoryControllerError
+                    // only forwards `error.details` into the DomainError it builds (a bare
+                    // top-level property like the one above is dropped), and
+                    // defaultErrorPayload serializes only `failure.details` as the response's
+                    // `errors` field. Without this, secondary_items_affected never reached the
+                    // 409 response body -- only the message string did.
+                    error.details = { secondary_items_affected: secondaryItemCount };
                     throw error;
                 }
                 if (replacementId === Number(folder.folder_id || folderId)) {
@@ -3807,9 +3909,10 @@ export const itemRepository = {
                 success: true,
                 replacement_folder_id: replacementFolder?.folder_id || null,
                 items_moved: assignedItemCount,
-                message: assignedItemCount > 0
+                secondary_items_affected: secondaryItemCount,
+                message: (assignedItemCount > 0
                     ? `Category "${folder.name}" deleted and ${assignedItemCount} item(s) moved to "${replacementFolder.name}".`
-                    : `Category "${folder.name}" deleted successfully.`
+                    : `Category "${folder.name}" deleted successfully.`) + secondaryNote
             };
         } catch (error) {
             if (!transaction.finished) await transaction.rollback();

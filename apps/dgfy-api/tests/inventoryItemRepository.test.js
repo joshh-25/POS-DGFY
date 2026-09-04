@@ -2334,7 +2334,8 @@ describe('inventory itemRepository', () => {
           show_in_pos_filter: true,
           is_active: true,
           parent_id: null,
-          item_count: 2
+          item_count: 2,
+          secondary_item_count: 0
         },
         {
           folder_id: 2,
@@ -2343,9 +2344,57 @@ describe('inventory itemRepository', () => {
           show_in_pos_filter: true,
           is_active: false,
           parent_id: null,
-          item_count: 0
+          item_count: 0,
+          secondary_item_count: 0
         }
     ]);
+  });
+
+  it('lists folders with a secondary_item_count for items that only list a folder as a secondary category', async () => {
+    const ItemFolder = {
+      findAll: jest.fn().mockResolvedValue([
+        {
+          folder_id: 1,
+          name: 'Raw Materials',
+          description: 'Core inputs',
+          parent_id: null,
+          is_active: true,
+          // item 10 is primarily assigned here.
+          items: [{ item_id: 10 }]
+        },
+        {
+          folder_id: 2,
+          name: 'Packaging',
+          description: '',
+          parent_id: null,
+          is_active: true,
+          items: []
+        }
+      ])
+    };
+    const membershipFindAll = jest.fn().mockResolvedValue([
+      // item 20 lists folder 1 only as a secondary category.
+      { item_id: 20, folder_id: 1 },
+      // item 10's primary is already folder 1 -- must not be double-counted here.
+      { item_id: 10, folder_id: 1 }
+    ]);
+    const itemFindAll = jest.fn().mockResolvedValue([{ item_id: 20 }, { item_id: 10 }]);
+    const Item = { findAll: itemFindAll };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
+      return {};
+    });
+
+    const result = await itemRepository.listFolders();
+
+    expect(membershipFindAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: { folder_id: { [Op.in]: [1, 2] } }
+    }));
+    expect(result.find((folder) => folder.folder_id === 1)).toMatchObject({ item_count: 1, secondary_item_count: 1 });
+    expect(result.find((folder) => folder.folder_id === 2)).toMatchObject({ item_count: 0, secondary_item_count: 0 });
   });
 
   it('creates folder and normalizes unique constraint errors', async () => {
@@ -2442,6 +2491,96 @@ describe('inventory itemRepository', () => {
       success: true,
       replacement_folder_id: null,
       items_moved: 0,
+      secondary_items_affected: 0,
+      message: 'Category "Legacy Folder" deleted successfully.'
+    });
+  });
+
+  it('counts an item that only lists the deleted folder as a secondary category, without double-counting a primary item that also has a stray membership row', async () => {
+    const folder = { folder_id: 7, name: 'Mains', update: jest.fn().mockResolvedValue(true) };
+    const replacementFolder = { folder_id: 8, name: 'Rice Meals', is_active: true };
+    const ItemFolder = {
+      findByPk: jest.fn().mockImplementation((folderId) => Promise.resolve(Number(folderId) === 7 ? folder : replacementFolder))
+    };
+    // item 12 is the folder's one primary assignment; item 12 also has a
+    // (legal per ADR 0080 clause 2) overlapping secondary membership row for
+    // the same folder, and item 20 has ONLY a secondary membership here.
+    const Item = {
+      findAll: jest.fn()
+        .mockResolvedValueOnce([{ item_id: 12 }]) // primary assignedItems query
+        .mockResolvedValueOnce([{ item_id: 20 }]), // visibility check for secondary candidates (item 12 excluded as overlap)
+      update: jest.fn().mockResolvedValue([1])
+    };
+    const membershipFindAll = jest.fn().mockResolvedValue([
+      { item_id: 20, folder_id: 7 },
+      { item_id: 12, folder_id: 7 }
+    ]);
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    const result = await itemRepository.deleteFolder(7, 8);
+
+    expect(membershipFindAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: { folder_id: { [Op.in]: [7] } },
+      transaction
+    }));
+    // Only item 20 should have reached the visibility check -- item 12 was
+    // already excluded as an overlap with the primary set.
+    expect(Item.findAll).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ item_id: { [Op.in]: [20] } }),
+      transaction
+    }));
+    expect(result).toEqual({
+      success: true,
+      replacement_folder_id: 8,
+      items_moved: 1,
+      secondary_items_affected: 1,
+      message: 'Category "Mains" deleted and 1 item(s) moved to "Rice Meals". 1 item(s) also list this as a secondary category and will lose that link.'
+    });
+  });
+
+  it('does not count an item as secondary when it has no membership row for the deleted folder', async () => {
+    const folder = {
+      folder_id: 7,
+      name: 'Legacy Folder',
+      update: jest.fn().mockResolvedValue(true)
+    };
+    const ItemFolder = {
+      findByPk: jest.fn().mockResolvedValue(folder)
+    };
+    const Item = {
+      findAll: jest.fn().mockResolvedValue([]),
+      update: jest.fn()
+    };
+    // No membership rows at all for folder 7 -- an item that merely exists
+    // elsewhere must never contribute to this folder's secondary count.
+    const membershipFindAll = jest.fn().mockResolvedValue([]);
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    const result = await itemRepository.deleteFolder(7);
+
+    expect(result).toEqual({
+      success: true,
+      replacement_folder_id: null,
+      items_moved: 0,
+      secondary_items_affected: 0,
       message: 'Category "Legacy Folder" deleted successfully.'
     });
   });
@@ -2470,6 +2609,7 @@ describe('inventory itemRepository', () => {
       success: true,
       replacement_folder_id: 8,
       items_moved: 2,
+      secondary_items_affected: 0,
       message: 'Category "Mains" deleted and 2 item(s) moved to "Rice Meals".'
     });
     expect(Item.update).toHaveBeenCalledWith(
@@ -2496,6 +2636,41 @@ describe('inventory itemRepository', () => {
     await expect(itemRepository.deleteFolder(7)).rejects.toMatchObject({
       statusCode: 409,
       code: 'CATEGORY_REASSIGNMENT_REQUIRED'
+    });
+    expect(transaction.rollback).toHaveBeenCalled();
+    expect(folder.update).not.toHaveBeenCalled();
+  });
+
+  it('includes the secondary-membership count in the reassignment-required error when the folder also has secondary-only items', async () => {
+    const folder = { folder_id: 7, name: 'Mains', update: jest.fn() };
+    const ItemFolder = { findByPk: jest.fn().mockResolvedValue(folder) };
+    const Item = {
+      findAll: jest.fn()
+        .mockResolvedValueOnce([{ item_id: 12 }]) // primary assignedItems
+        .mockResolvedValueOnce([{ item_id: 20 }]) // visibility check for secondary candidate
+    };
+    const membershipFindAll = jest.fn().mockResolvedValue([{ item_id: 20, folder_id: 7 }]);
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'ItemFolder') return ItemFolder;
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolderMembership') return { findAll: membershipFindAll };
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+
+    await expect(itemRepository.deleteFolder(7)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CATEGORY_REASSIGNMENT_REQUIRED',
+      secondary_items_affected: 1,
+      // itemHandlers.js's mapInventoryControllerError only forwards `error.details`
+      // into the response body (a bare top-level property is dropped) -- see #1578
+      // review RF-1. Asserted here too so a future edit can't silently drop the
+      // `.details` mirror while leaving the top-level property intact.
+      details: { secondary_items_affected: 1 },
+      message: 'Category "Mains" is assigned to 1 item(s). Choose an active replacement category before deleting it. 1 item(s) also list this as a secondary category and will lose that link.'
     });
     expect(transaction.rollback).toHaveBeenCalled();
     expect(folder.update).not.toHaveBeenCalled();
