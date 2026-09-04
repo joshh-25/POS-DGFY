@@ -304,26 +304,53 @@ export const getServiceCategoryMeta = (categoryKey, items = []) => {
   };
 };
 
+const resolveNumericFolderId = (folderId) => {
+  if (folderId === null || folderId === undefined || folderId === '') return null;
+  const numeric = Number(folderId);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+// RF-1 (PR #1583 review): grouping/dedup identity for one category occurrence, primary or
+// secondary. Prefers the folder's own stable numeric `folder_id` -- always present on a
+// `secondary_categories` row, and present on the primary occurrence whenever `items.folder_id` is
+// non-null (ADR 0080 Decision 1's "the primary category and the single tiebreak") -- over the
+// normalized display label. Two genuinely distinct folders whose *names* happen to normalize
+// identically must never collapse into one group, and a real secondary membership must never be
+// silently dropped just because its name matches the primary's. Only a genuinely ID-less
+// occurrence (no primary folder at all -- `resolveServiceGroupingLabel` fell back to
+// `service_detail.service_category` or the `'services'` default) falls back to the name-based
+// identity, unchanged from pre-Phase-289 behavior for that case.
+// NOT the same field as `categoryKey`: that stays name-derived on purpose (`getServiceCategoryMeta`
+// matches `CATEGORY_PRESETS` and derives icon/label off it, and existing tests assert its literal
+// value) and is not guaranteed unique across two distinct folders sharing a display name -- this
+// identity is what grouping, dedup, and the composite render key actually key on.
+const resolveCategoryIdentity = (folderId, categoryKey) => {
+  const numericFolderId = resolveNumericFolderId(folderId);
+  return numericFolderId !== null ? `folder:${numericFolderId}` : `name:${categoryKey}`;
+};
+
 // ADR 0080 Decision 5 opt-in (Phase 289, #1318): the distinct secondary categories a service also
 // belongs to, beyond its primary `categoryKey` already resolved via `resolveServiceGroupingLabel`.
 // `item.secondary_categories` is `[{ folder_id, folder_name }]`, ordered by sort_order (Decision
-// 6) -- reads it, writes nothing. Deduped against the primary and against itself by normalized
-// `categoryKey`, same identity the primary already groups on, so an accidental primary/secondary
-// overlap (Decision 2) or two secondary folders sharing a display name never renders the same
-// service twice under one category.
-const resolveSecondaryCategoryOccurrences = (item = {}, primaryCategoryKey) => {
+// 6) -- reads it, writes nothing. Deduped against the primary and against itself by
+// `resolveCategoryIdentity` (folder_id-based, not the normalized label), so an accidental
+// primary/secondary overlap (Decision 2) or a duplicate membership row never renders the same
+// service twice under one category -- while two genuinely distinct folders that merely share a
+// display name each still get their own occurrence.
+const resolveSecondaryCategoryOccurrences = (item = {}, primaryCategoryIdentity) => {
   const secondaryCategories = Array.isArray(item?.secondary_categories) ? item.secondary_categories : [];
   if (secondaryCategories.length === 0) return [];
 
-  const seenCategoryKeys = new Set([primaryCategoryKey]);
+  const seenIdentities = new Set([primaryCategoryIdentity]);
   const occurrences = [];
   secondaryCategories.forEach((secondaryCategory) => {
     const rawLabel = String(secondaryCategory?.folder_name || '').trim();
     if (!rawLabel) return;
     const secondaryCategoryKey = normalizeCategoryKey(rawLabel);
-    if (seenCategoryKeys.has(secondaryCategoryKey)) return;
-    seenCategoryKeys.add(secondaryCategoryKey);
-    occurrences.push(secondaryCategoryKey);
+    const secondaryIdentity = resolveCategoryIdentity(secondaryCategory?.folder_id, secondaryCategoryKey);
+    if (seenIdentities.has(secondaryIdentity)) return;
+    seenIdentities.add(secondaryIdentity);
+    occurrences.push({ categoryKey: secondaryCategoryKey, categoryIdentity: secondaryIdentity });
   });
 
   return occurrences;
@@ -353,32 +380,41 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
 
   // ADR 0080 Decision 5: the services storefront's category grouping renders a service once per
   // category it belongs to (primary + each distinct secondary category), keyed by a composite
-  // `{categoryKey}:{itemId}` so list-renderer keys stay unique. `services`/`allServices` below
-  // stay derived from the un-fanned `services` array above -- one entry per service -- so the
-  // flat "all services" card grid and every stat count (`totalServices`, `inStoreCount`, etc.)
-  // stay primary-only, matching Decision 5's carve-out for single-label surfaces; only
-  // `serviceGroups[].items` opts into the union.
+  // `{categoryIdentity}:{itemId}` (RF-1: folder_id-based, not the normalized label -- see
+  // `resolveCategoryIdentity`) so list-renderer keys stay unique AND two distinct folders never
+  // collapse into one group. `services`/`allServices` below stay derived from the un-fanned
+  // `services` array above -- one entry per service -- so the flat "all services" card grid and
+  // every stat count (`totalServices`, `inStoreCount`, etc.) stay primary-only, matching Decision
+  // 5's carve-out for single-label surfaces; only `serviceGroups[].items` opts into the union.
   const categoryEntries = [];
   services.forEach((item) => {
-    categoryEntries.push({ ...item, serviceItemKey: `${item.categoryKey}:${item.item_id}` });
-    resolveSecondaryCategoryOccurrences(item, item.categoryKey).forEach((secondaryCategoryKey) => {
+    const primaryIdentity = resolveCategoryIdentity(item.folder_id, item.categoryKey);
+    categoryEntries.push({ ...item, categoryIdentity: primaryIdentity, serviceItemKey: `${primaryIdentity}:${item.item_id}` });
+    resolveSecondaryCategoryOccurrences(item, primaryIdentity).forEach((occurrence) => {
       categoryEntries.push({
         ...item,
-        categoryKey: secondaryCategoryKey,
-        serviceItemKey: `${secondaryCategoryKey}:${item.item_id}`
+        categoryKey: occurrence.categoryKey,
+        categoryIdentity: occurrence.categoryIdentity,
+        serviceItemKey: `${occurrence.categoryIdentity}:${item.item_id}`
       });
     });
   });
 
+  // Grouped by the stable `categoryIdentity`, not `categoryKey` -- two occurrences with the same
+  // identity are always the same folder and belong in the same group, even on the rare occasion two
+  // distinct folders happen to share a `categoryKey` display text (see `resolveCategoryIdentity`
+  // above); `categoryKey` on the group is carried through unchanged (whichever occurrence created
+  // the group first) for `getServiceCategoryMeta`'s preset/icon matching and existing consumers.
   const grouped = new Map();
   categoryEntries.forEach((item) => {
-    const existing = grouped.get(item.categoryKey) || {
+    const existing = grouped.get(item.categoryIdentity) || {
       categoryKey: item.categoryKey,
+      categoryIdentity: item.categoryIdentity,
       items: [],
       firstSeenIndex: grouped.size
     };
     existing.items.push(item);
-    grouped.set(item.categoryKey, existing);
+    grouped.set(item.categoryIdentity, existing);
   });
 
   const serviceGroups = [...grouped.values()]
@@ -395,6 +431,7 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
 
       return {
         categoryKey: group.categoryKey,
+        categoryIdentity: group.categoryIdentity,
         categoryMeta,
         items: sortedItems
       };
@@ -402,11 +439,16 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
 
   // The flat, primary-only list: each service's occurrence in its own PRIMARY category group
   // (carrying that group's `categoryMeta`/`variantName`, same as pre-fan-out behavior), never its
-  // secondary-category occurrences -- see the comment above `categoryEntries` for why.
-  const primaryCategoryKeyByItemId = new Map(services.map((item) => [item.item_id, item.categoryKey]));
+  // secondary-category occurrences -- see the comment above `categoryEntries` for why. Matched by
+  // `categoryIdentity` (RF-1), not `categoryKey` text -- a secondary occurrence whose `categoryKey`
+  // happens to match the primary's display text (two distinct folders, colliding names) must never
+  // be picked up here as if it were the primary.
+  const primaryCategoryIdentityByItemId = new Map(
+    services.map((item) => [item.item_id, resolveCategoryIdentity(item.folder_id, item.categoryKey)])
+  );
   const normalizedServices = serviceGroups
     .flatMap((group) => group.items)
-    .filter((item) => item.categoryKey === primaryCategoryKeyByItemId.get(item.item_id));
+    .filter((item) => item.categoryIdentity === primaryCategoryIdentityByItemId.get(item.item_id));
   const inStoreCount = normalizedServices.filter((item) => normalizeAreaType(item?.service_detail?.service_area_type) === 'in_store').length;
   const onSiteCount = normalizedServices.filter((item) => normalizeAreaType(item?.service_detail?.service_area_type) === 'customer_location').length;
   const servicesWithRequiredIntakeCount = normalizedServices.filter((item) => item.requiredIntakeCount > 0).length;

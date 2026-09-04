@@ -140,27 +140,35 @@ against a column with existing NULLs, which ADR 0029's Rollout Policy 3 forbids.
 4. A legacy single-folder item with zero membership rows behaves identically before and after this
    PR on every one of the ~34 existing read sites.
 
-## Opt-in ledger (Decision 4)
+## Opt-in ledger (Decision 5 grouping surfaces)
 
-Not itself a decision. Decision 4 already requires an explicit, shipped phase before any surface
-reads the membership union, and Decision 5 already governs exactly what a *grouping* surface's
-opt-in looks like once it does; this table is the running, factual record of which surfaces have
-actually shipped that opt-in, kept separate from `## Amendments` because recording a fact Decision
-4/5 already pre-authorized is not a new architectural decision and needs no `status: amended` bump
-of its own (contrast the dated amendment immediately below, which *is* new scope: it widens
-Decision 2's union to a surface class -- filter matching -- neither Decision 4 nor 5 names).
+Not itself a decision. Decision 5 already governs exactly what a *grouping* surface's opt-in looks
+like once it opts into Decision 4's union; this table is the running, factual record of which
+grouping surfaces specifically have actually shipped that Decision-5-shaped opt-in, kept separate
+from `## Amendments` because recording a fact Decision 4/5 already pre-authorized is not a new
+architectural decision and needs no `status: amended` bump of its own.
+
+**Scoped to Decision 5 grouping opt-ins only, deliberately** -- Decision 4's opt-in gate is broader
+than grouping surfaces (RF-2, PR #1583 review: an earlier version of this table also listed the
+Phase 286 POS/IMS catalog-filter opt-in here, which contradicted this PR's own "exactly two
+[grouping] surfaces" framing, since filter *matching* is a Decision-4 opt-in that Decision 5 does
+not govern at all -- filter matching returns each item once regardless of how many categories it
+matches, never a per-category render). Phase 286's opt-in is fully recorded in its own dated
+Amendment below, not duplicated here; a future non-grouping Decision 4 opt-in belongs in a new
+Amendment of its own, not in this table.
 
 | Surface | Shape | Phase | Ref |
 |---|---|---|---|
-| F&B storefront menu section grouping (`fnbStorefrontViewModel.js`'s `getFoodBeverageStorefrontViewModel`) | Decision 5 fan-out: an item renders once per section (primary + each distinct secondary category), composite `{sectionKey}:{itemId}` key | Phase 289 | #1318 |
-| Services storefront category grouping (`servicesStorefrontViewModel.js`'s `getServicesStorefrontViewModel`) | Decision 5 fan-out: a service renders once per category (primary + each distinct secondary category), composite `{categoryKey}:{itemId}` key | Phase 289 | #1318 |
-| POS/IMS catalog filter matching | Filter-*match* union (Decision 2), not grouping render -- Decision 5 does not apply; see the dated amendment below for the actual decision this shipped under | Phase 286 | #1318 |
+| F&B storefront menu section grouping (`fnbStorefrontViewModel.js`'s `getFoodBeverageStorefrontViewModel`) | Decision 5 fan-out: an item renders once per section (primary + each distinct secondary category), composite `{sectionIdentity}:{itemId}` key | Phase 289 | #1318 |
+| Services storefront category grouping (`servicesStorefrontViewModel.js`'s `getServicesStorefrontViewModel`) | Decision 5 fan-out: a service renders once per category (primary + each distinct secondary category), composite `{categoryIdentity}:{itemId}` key | Phase 289 | #1318 |
 
-Both Phase 289 rows deliberately exclude the surfaces Decision 5 itself carves out as staying
-primary-only: `buildFnbRelatedItems`' cross-sell rail (F&B "related items") and the flat
-`services`/`allServices` card list (a single-label surface, not a grouping one) are unaffected --
-their own list stays exactly one entry per item, so their stat counts (`totalItems`,
-`totalServices`, etc.) are not inflated by either surface's fan-out.
+Both rows deliberately exclude the surfaces Decision 5 itself carves out as staying primary-only:
+`buildFnbRelatedItems`' cross-sell rail (F&B "related items") and the flat `services`/`allServices`
+card list (a single-label surface, not a grouping one) are unaffected -- their own list stays
+exactly one entry per item, so their stat counts (`totalItems`, `totalServices`, etc.) are not
+inflated by either surface's fan-out. The composite key's identity half is `folder_id`-based, not
+the normalized display label (RF-1, PR #1583 review) -- two distinct folders whose names happen to
+normalize identically must render as two separate sections/categories, not collapse into one.
 
 ## Amendments
 
