@@ -2665,6 +2665,11 @@ describe('inventory itemRepository', () => {
       statusCode: 409,
       code: 'CATEGORY_REASSIGNMENT_REQUIRED',
       secondary_items_affected: 1,
+      // itemHandlers.js's mapInventoryControllerError only forwards `error.details`
+      // into the response body (a bare top-level property is dropped) -- see #1578
+      // review RF-1. Asserted here too so a future edit can't silently drop the
+      // `.details` mirror while leaving the top-level property intact.
+      details: { secondary_items_affected: 1 },
       message: 'Category "Mains" is assigned to 1 item(s). Choose an active replacement category before deleting it. 1 item(s) also list this as a secondary category and will lose that link.'
     });
     expect(transaction.rollback).toHaveBeenCalled();

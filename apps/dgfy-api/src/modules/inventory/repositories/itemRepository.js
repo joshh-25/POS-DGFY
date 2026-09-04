@@ -3854,6 +3854,13 @@ export const itemRepository = {
                     error.statusCode = 409;
                     error.code = 'CATEGORY_REASSIGNMENT_REQUIRED';
                     error.secondary_items_affected = secondaryItemCount;
+                    // #1318 PR #1578 review (RF-1) -- itemHandlers.js's mapInventoryControllerError
+                    // only forwards `error.details` into the DomainError it builds (a bare
+                    // top-level property like the one above is dropped), and
+                    // defaultErrorPayload serializes only `failure.details` as the response's
+                    // `errors` field. Without this, secondary_items_affected never reached the
+                    // 409 response body -- only the message string did.
+                    error.details = { secondary_items_affected: secondaryItemCount };
                     throw error;
                 }
                 if (replacementId === Number(folder.folder_id || folderId)) {
