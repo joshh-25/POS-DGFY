@@ -12,6 +12,22 @@ const safeText = (value, fallback = '') => {
     return text || fallback;
 };
 
+const parsePaymentBreakdown = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+const formatPaymentLabel = (entry) => safeText(
+    entry?.payment_label || entry?.payment_type,
+    'Payment'
+).replace(/_/g, ' ');
+
 const displayDiscountType = (value) => safeText(value).toLowerCase() === 'manual'
     ? 'OTHER'
     : safeText(value).replace(/_/g, ' ').toUpperCase();
@@ -542,6 +558,14 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
             pair('Cash Received', money(transaction?.cash_received)),
             pair('Change', money(transaction?.change_amount))
         );
+    }
+    const paymentBreakdown = parsePaymentBreakdown(transaction?.payment_breakdown)
+        .filter((entry) => Number(entry?.amount || 0) > 0);
+    if (paymentBreakdown.length > 0) {
+        receiptRows.push('Payment Breakdown');
+        paymentBreakdown.forEach((entry) => {
+            receiptRows.push(pair(formatPaymentLabel(entry), money(entry.amount)));
+        });
     }
     if (transaction?.payment_type === 'employee_credit') {
         receiptRows.push(
