@@ -28,15 +28,22 @@
  * alone") -- a refused version tag fails this script/step, but the moving tag and sha tag it ran
  * after have already landed and are unaffected by the refusal.
  *
- * The label-extraction (`findRevisionLabel`) and verdict logic (`decideImmutability`) below are
- * pure and exported for tests -- tests inject canned `docker buildx imagetools inspect` JSON/stderr
- * fixtures rather than hitting a real registry. `docker buildx imagetools inspect --format
- * '{{json .}}'` output shape differs between a single-platform image (dgfy-api, dgfy-ims, dgfy-pos,
- * dgfy-storefront -- labels sit at `.Image.Config.Labels`) and a multi-platform index
- * (dgfy-migration-runner, built `linux/amd64,linux/arm64` -- `.Image` is keyed per platform, e.g.
- * `.Image["linux/amd64"].config.Labels`). `findRevisionLabel` searches the whole parsed structure
- * for any `Labels`/`labels` object carrying the revision key instead of hardcoding one shape, so it
- * doesn't need to track buildx's exact template-output schema per version or per platform-count.
+ * The label-extraction (`collectRevisionLabelInfo`/`resolveRevisionLabels`) and verdict logic
+ * (`decideImmutability`) below are pure and exported for tests -- tests inject canned `docker buildx
+ * imagetools inspect` JSON/stderr fixtures rather than hitting a real registry. `docker buildx
+ * imagetools inspect --format '{{json .}}'` output shape differs between a single-platform image
+ * (dgfy-api, dgfy-ims, dgfy-pos, dgfy-storefront -- one `Labels` object, at `.Image.Config.Labels`)
+ * and a multi-platform index (dgfy-migration-runner, built `linux/amd64,linux/arm64` -- `.Image` is
+ * keyed per platform, one `Labels` object per platform, e.g. `.Image["linux/amd64"].config.Labels`
+ * and `.Image["linux/arm64"].config.Labels` separately). `collectRevisionLabelInfo` walks the whole
+ * parsed structure and collects the revision label from *every* `Labels`/`labels` object it finds,
+ * not just the first (PR #1577 review, RF-2 -- picking only the first let a second, differently-
+ * revisioned platform slip past undetected, which defeats Decision 7 for exactly the multi-platform
+ * case the ADR calls out). `resolveRevisionLabels` then classifies that collection into one verdict:
+ * no label anywhere, a label missing/empty on at least one platform ("unreadable"), the platforms'
+ * labels disagreeing with each other ("disagree"), or a single value every platform agrees on
+ * ("agree") -- the first three all refuse regardless of what `currentRevision` is; only "agree" goes
+ * on to the same same/different-from-`currentRevision` comparison as before.
  *
  * CLI:
  *   node scripts/check-tag-immutability.js --image <ref, no tag> --tag <X.Y.Z[-channel]> \
@@ -73,35 +80,61 @@ function isNotFoundError(stderr) {
 }
 
 /**
- * Recursively searches a parsed `docker buildx imagetools inspect --format '{{json .}}'` structure
- * for the first `Labels`/`labels` object that carries `labelKey`, and returns its value. See the
- * file header for why this is shape-agnostic rather than keyed to one fixed path.
+ * Recursively walks a parsed `docker buildx imagetools inspect --format '{{json .}}'` structure and
+ * collects `labelKey` from *every* `Labels`/`labels` object it finds anywhere in the tree (not just
+ * the first) -- see the file header for why (multi-platform images carry one such object per
+ * platform). Accumulates into `acc` rather than returning a fresh array per call, so recursion stays
+ * a single pass: `found` collects each non-empty label value seen; `unreadableCount` counts each
+ * `Labels`/`labels` object encountered that does NOT carry a non-empty value for `labelKey` (present
+ * key with falsy/empty value, or key absent from that particular Labels object) -- a platform whose
+ * own image config exists but never got labeled is exactly the "unreadable" case RF-2 asks to
+ * refuse on, distinct from "no Labels object exists anywhere at all" (see `resolveRevisionLabels`).
  */
-function findRevisionLabel(node, labelKey = REVISION_LABEL) {
-  if (node === null || typeof node !== 'object') return null;
+function collectRevisionLabelInfo(node, labelKey = REVISION_LABEL, acc = { found: [], unreadableCount: 0 }) {
+  if (node === null || typeof node !== 'object') return acc;
   if (Array.isArray(node)) {
-    for (const item of node) {
-      const found = findRevisionLabel(item, labelKey);
-      if (found) return found;
-    }
-    return null;
+    for (const item of node) collectRevisionLabelInfo(item, labelKey, acc);
+    return acc;
   }
   for (const [key, value] of Object.entries(node)) {
-    if (
-      (key === 'Labels' || key === 'labels') &&
-      value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      Object.prototype.hasOwnProperty.call(value, labelKey)
-    ) {
-      return value[labelKey] || null;
+    if ((key === 'Labels' || key === 'labels') && value && typeof value === 'object' && !Array.isArray(value)) {
+      if (value[labelKey]) {
+        acc.found.push(value[labelKey]);
+      } else {
+        acc.unreadableCount += 1;
+      }
+    }
+    if (value && typeof value === 'object') {
+      collectRevisionLabelInfo(value, labelKey, acc);
     }
   }
-  for (const value of Object.values(node)) {
-    const found = findRevisionLabel(value, labelKey);
-    if (found) return found;
+  return acc;
+}
+
+/**
+ * Classifies `collectRevisionLabelInfo`'s accumulation into exactly one verdict:
+ *   { status: 'none' }                    -- no Labels object carrying labelKey found anywhere
+ *   { status: 'unreadable', found }        -- at least one Labels object was missing/empty for
+ *                                             labelKey, even if others had it (`found` lists what
+ *                                             the readable ones said, for the refusal message)
+ *   { status: 'disagree', revisions }      -- two or more Labels objects, with DIFFERENT values
+ *   { status: 'agree', revision }          -- one or more Labels objects, all the SAME value
+ * Only 'agree' is ever eligible to push -- 'none'/'unreadable'/'disagree' all refuse regardless of
+ * currentRevision (see decideImmutability).
+ */
+function resolveRevisionLabels(node, labelKey = REVISION_LABEL) {
+  const { found, unreadableCount } = collectRevisionLabelInfo(node, labelKey);
+  if (found.length === 0 && unreadableCount === 0) {
+    return { status: 'none' };
   }
-  return null;
+  if (unreadableCount > 0) {
+    return { status: 'unreadable', found: [...new Set(found)] };
+  }
+  const unique = [...new Set(found)];
+  if (unique.length > 1) {
+    return { status: 'disagree', revisions: unique };
+  }
+  return { status: 'agree', revision: unique[0] };
 }
 
 /**
@@ -137,14 +170,33 @@ function decideImmutability({ inspectStatus, inspectStdout, inspectStderr, curre
     return { action: 'error', reason: `could not parse "docker buildx imagetools inspect" JSON output: ${error.message}` };
   }
 
-  const existingRevision = findRevisionLabel(parsed);
-  if (!existingRevision) {
+  const resolved = resolveRevisionLabels(parsed);
+
+  if (resolved.status === 'none') {
     return {
       action: 'refuse',
       reason: `tag exists but its "${REVISION_LABEL}" label could not be read -- refusing rather than risking a silent overwrite`,
       existingRevision: null,
     };
   }
+
+  if (resolved.status === 'unreadable') {
+    return {
+      action: 'refuse',
+      reason: `tag exists but its "${REVISION_LABEL}" label is missing/empty on at least one platform or config entry (readable elsewhere: ${resolved.found.length ? resolved.found.join(', ') : 'none'}) -- refusing rather than risking a partial overwrite`,
+      existingRevision: null,
+    };
+  }
+
+  if (resolved.status === 'disagree') {
+    return {
+      action: 'refuse',
+      reason: `tag exists but its "${REVISION_LABEL}" label disagrees across platforms/config entries (${resolved.revisions.join(', ')}) -- refusing rather than risking an inconsistent overwrite (ADR 0081 Decision 7)`,
+      existingRevision: null,
+    };
+  }
+
+  const existingRevision = resolved.revision;
 
   if (existingRevision === currentRevision) {
     return { action: 'push', reason: `idempotent re-dispatch of the same revision (${existingRevision})`, existingRevision };
@@ -233,7 +285,8 @@ if (require.main === module) {
 module.exports = {
   REVISION_LABEL,
   isNotFoundError,
-  findRevisionLabel,
+  collectRevisionLabelInfo,
+  resolveRevisionLabels,
   decideImmutability,
   parseArgs,
 };
