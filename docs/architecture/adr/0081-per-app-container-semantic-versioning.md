@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
@@ -193,6 +193,37 @@ own precedent check, `scripts/check-pos-receipt-version-bump.js`.
   epic #1548** (planned Phases 274, 277-279; see `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`).
   This ADR fixes the scheme; it does not implement any of the tooling that stamps or enforces it.
 
+## Amendments
+
+### 2026-09-04 — Decision 8's label was never actually added by Phase 277; Phase 279 (#1588) adds it
+
+Decision 8's original text (above, unchanged) says "Phase 277's builder stamps this identity into a
+distinct label at build time." That was this ADR's own plan at the time it merged, not a fact yet
+verified against the merged code — and it turned out wrong: Phase 277 (#1559/#1575, PR #1577,
+completed 2026-09-04) added `org.opencontainers.image.version` and the `version_tag` job output
+(Decisions 1-4, 7), but no candidate-source-identity label of any kind. Confirmed directly against
+the merged `deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml` before Phase 279
+started: each carried exactly three labels (`org.opencontainers.image.revision`, `.source`,
+`.version`) — nothing else.
+
+Phase 279 (#1588) adds the missing label-stamping step itself, in the same three builder workflows,
+rather than treating the gap as blocking. The label is named `org.dgfy-platform.candidate-source-sha`
+(Decision 8 explicitly left naming to that phase — "naming and mechanics are that phase's job, not
+this ADR's"), sourced from a new `candidate_source_sha` input threaded through
+`deploy.yml`/`deploy-main.yml` → `deployment-orchestrator.yml` → the three builders, which the
+promoter resolves from the candidate manifest (`scripts/check-promotion-candidate.js`'s
+`source_develop_sha`/`current_staging_sha`) before dispatching. Left empty, the label is omitted
+entirely rather than stamped blank — covering DEV builds and any dispatch outside a tracked
+promotion candidate.
+
+Decision 8's substance (which SHA counts as the candidate source identity, and that the parity check
+compares that label rather than `org.opencontainers.image.revision`) is unchanged by this
+correction — only the "Phase 277 already did this" implementation detail was wrong. `[default]`
+tier, so this is a dated amendment, not a superseding ADR, per ADR 0039. Full detail:
+`scripts/check-image-version-parity.js` (the new parity-check script this label feeds),
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s matching "Promotion-time per-app version gates"
+section, issue #1588.
+
 ## Alternatives considered
 
 - **Build each frontend once and inject environment config at container start**, so one digest
@@ -218,6 +249,9 @@ own precedent check, `scripts/check-pos-receipt-version-bump.js`.
 
 - #1548 — parent epic this ADR decides Wave 1 of.
 - #1559 — the issue this ADR was filed to close.
+- #1588 — Phase 279 (epic #1548 Wave 4): the promoter's pre-cut floor step (Decision 6), the
+  candidate-source-identity label and promotion parity gate (Decision 8, corrected by this ADR's
+  2026-09-04 Amendment above), and final policy text.
 - #1560 — the PR-time version-bump check (Decision 9) this ADR hands its enforcement rule to;
   explicitly not implemented by this ADR.
 - [ADR 0072](0072-ghcr-container-image-naming.md) — governs image *names*; this ADR governs tag

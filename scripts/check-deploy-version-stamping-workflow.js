@@ -134,7 +134,40 @@ function checkOrchestratorVersionTagMapping(orchestratorText) {
   return problems;
 }
 
-/** The build-push step must bake APP_VERSION as a build-arg and stamp org.opencontainers.image.version, and must expose its digest (id: build) for the immutability-guard step to retag. */
+// #1588 (epic #1548 Wave 4, Phase 279): the five builder jobs deployment-orchestrator.yml calls,
+// each must forward candidate_source_sha straight through -- the `publish` job (calling
+// publish-platform.yml, which has no such input) is deliberately excluded here.
+const ORCHESTRATOR_BUILDER_JOBS = Object.freeze([
+  'dgfy-api', 'dgfy-migration-runner', 'frontend-ims', 'frontend-pos', 'frontend-storefront',
+]);
+
+/**
+ * ADR 0081 Decision 8 (#1588): deployment-orchestrator.yml must both declare its own
+ * `candidate_source_sha` workflow_call input and forward it, unchanged, into each of the five
+ * builder jobs' own `with:` block -- checked per-job by counting occurrences of the pass-through
+ * line rather than a single global count, so a job silently missing it isn't masked by another job
+ * having it twice.
+ */
+function checkOrchestratorCandidateSourceShaWiring(orchestratorText) {
+  const problems = [];
+
+  if (!/candidate_source_sha:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(orchestratorText)) {
+    problems.push('deployment-orchestrator.yml: "on.workflow_call.inputs" is missing a "candidate_source_sha" string input.');
+  }
+
+  const jobBlocks = orchestratorText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const jobName of ORCHESTRATOR_BUILDER_JOBS) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    if (!block || !/candidate_source_sha:\s*\$\{\{\s*inputs\.candidate_source_sha\s*\}\}/.test(block)) {
+      problems.push(`deployment-orchestrator.yml: job "${jobName}" does not forward "candidate_source_sha: \${{ inputs.candidate_source_sha }}" to its called workflow.`);
+    }
+  }
+
+  return problems;
+}
+
+/** The build-push step must bake APP_VERSION as a build-arg and reference the meta step's computed
+ * labels output, and must expose its digest (id: build) for the immutability-guard step to retag. */
 function checkBuildStepStamping(workflowText, { label }) {
   const problems = [];
 
@@ -146,8 +179,45 @@ function checkBuildStepStamping(workflowText, { label }) {
     problems.push(`${label}: the build-push step's "build-args:" does not bake "APP_VERSION=\${{ steps.meta.outputs.version_tag }}" (ADR 0081 Decision 4).`);
   }
 
-  if (!/labels:\s*\|[\s\S]{0,400}?org\.opencontainers\.image\.version=\$\{\{\s*steps\.meta\.outputs\.version_tag\s*\}\}/.test(workflowText)) {
-    problems.push(`${label}: the build-push step's "labels:" does not stamp "org.opencontainers.image.version" (ADR 0081 Decision 3).`);
+  // #1588 (epic #1548 Wave 4, Phase 279): labels are computed in the meta step's own bash (so a
+  // blank candidate_source_sha input can cleanly omit its label line, see
+  // checkMetaStepStampsCandidateLabel below) and referenced here, not inlined as a literal `|`
+  // block the way build-args still is.
+  if (!/labels:\s*\$\{\{\s*steps\.meta\.outputs\.labels\s*\}\}/.test(workflowText)) {
+    problems.push(`${label}: the build-push step's "labels:" does not reference "\${{ steps.meta.outputs.labels }}" -- labels must be computed in the meta step, not inlined here (ADR 0081 Decision 3, Decision 8/#1588).`);
+  }
+
+  return problems;
+}
+
+/**
+ * #1588 (epic #1548 Wave 4, Phase 279), ADR 0081 Decision 8: the meta step's bash must declare a
+ * `candidate_source_sha` workflow_call input, read it into the meta step's own env, compute a
+ * `labels` $GITHUB_OUTPUT heredoc carrying the unchanged revision/source/version lines plus a
+ * conditional candidate-source-identity line, and never stamp that label unconditionally (an empty
+ * input must omit the line entirely, not publish an empty label value).
+ */
+function checkMetaStepStampsCandidateLabel(workflowText, { label }) {
+  const problems = [];
+
+  if (!/candidate_source_sha:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(workflowText)) {
+    problems.push(`${label}: "on.workflow_call.inputs" is missing a "candidate_source_sha" string input (ADR 0081 Decision 8).`);
+  }
+
+  if (!/CANDIDATE_SOURCE_SHA:\s*\$\{\{\s*inputs\.candidate_source_sha\s*\}\}/.test(workflowText)) {
+    problems.push(`${label}: the meta step's "env:" is missing "CANDIDATE_SOURCE_SHA: \${{ inputs.candidate_source_sha }}".`);
+  }
+
+  if (!/labels<<LABELS_EOF/.test(workflowText) || !/echo "LABELS_EOF"/.test(workflowText)) {
+    problems.push(`${label}: the meta step does not compute a "labels" \$GITHUB_OUTPUT heredoc (LABELS_EOF).`);
+  }
+
+  if (!/org\.opencontainers\.image\.version=\$\{VERSION_TAG\}/.test(workflowText)) {
+    problems.push(`${label}: the labels heredoc does not stamp "org.opencontainers.image.version=\${VERSION_TAG}" (ADR 0081 Decision 3).`);
+  }
+
+  if (!/if \[ -n "\$\{CANDIDATE_SOURCE_SHA:-\}" \]; then\s*\n\s*echo "org\.dgfy-platform\.candidate-source-sha=\$\{CANDIDATE_SOURCE_SHA\}"/.test(workflowText)) {
+    problems.push(`${label}: the labels heredoc does not conditionally stamp "org.dgfy-platform.candidate-source-sha" only when CANDIDATE_SOURCE_SHA is non-empty (ADR 0081 Decision 8) -- an unconditional stamp would publish an empty label on every DEV/ad-hoc build.`);
   }
 
   return problems;
@@ -197,6 +267,7 @@ function runAllChecks({ readFile = read } = {}) {
     problems.push(...checkJobOutputsVersionTag(text, { label }));
     problems.push(...checkWorkflowCallOutputsVersionTag(text, { label }));
     problems.push(...checkBuildStepStamping(text, { label }));
+    problems.push(...checkMetaStepStampsCandidateLabel(text, { label }));
     problems.push(...checkImmutabilityGuardStep(text, { label }));
   }
 
@@ -205,7 +276,9 @@ function runAllChecks({ readFile = read } = {}) {
     problems.push(...checkDockerfileAcceptsAppVersion(text, { label: file }));
   }
 
-  problems.push(...checkOrchestratorVersionTagMapping(readFile(ORCHESTRATOR_FILE)));
+  const orchestratorText = readFile(ORCHESTRATOR_FILE);
+  problems.push(...checkOrchestratorVersionTagMapping(orchestratorText));
+  problems.push(...checkOrchestratorCandidateSourceShaWiring(orchestratorText));
 
   return problems;
 }
@@ -229,12 +302,15 @@ module.exports = {
   DOCKERFILES,
   ORCHESTRATOR_FILE,
   ORCHESTRATOR_VERSION_TAG_OUTPUTS,
+  ORCHESTRATOR_BUILDER_JOBS,
   checkVersionTagComputation,
   checkJobOutputsVersionTag,
   checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
+  checkMetaStepStampsCandidateLabel,
   checkImmutabilityGuardStep,
   checkDockerfileAcceptsAppVersion,
   checkOrchestratorVersionTagMapping,
+  checkOrchestratorCandidateSourceShaWiring,
   runAllChecks,
 };

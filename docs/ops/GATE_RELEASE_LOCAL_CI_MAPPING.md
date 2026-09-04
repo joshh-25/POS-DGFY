@@ -252,6 +252,41 @@ line — `version-bump-gate-toggle.js`'s `BLOCKING` constant, `false → true`. 
 together; nothing else needs editing, and there is no separate "keep two files in sync" checker to
 also update, unlike the runner-routing convention this section explicitly avoided.
 
+## Promotion-time per-app version gates (#1588, epic #1548 Wave 4) — separate mechanisms, not one of
+the 19 gates above
+
+Two more ADR 0081 mechanisms that get their own short section here for the same reason
+`check:app-versions` does immediately above: they follow the same "register the status here and in
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`" pattern #1569 established, but neither is a
+`gate-release-local.js` gate or a `pr-checks.js` PR-time check — both run only at promotion time,
+invoked by `promoter` directly against a specific candidate, never by CI.
+
+**Promoter pre-cut floor step** (ADR 0081 Decision 6) — `node scripts/check-app-version-bump.js
+--floor --base origin/staging --head origin/develop`, run before cutting
+`to-staging/<candidate_id>`. Reuses `check-app-version-bump.js`'s existing floor logic (already
+shipped by #1560/PR #1562 for the PR-time check above); this is a second, standalone entry point
+into the same script (`--floor` mode), not a new script. **Status: live from this PR (#1588) on** —
+unlike `check:app-versions` itself, there is no advisory-to-blocking rollout here to track; the
+floor check either exits clean or the promoter opens a bump PR before cutting, every time.
+
+**Promotion parity gate** (ADR 0081 Decision 8) — `scripts/check-image-version-parity.js` (new),
+comparing the `org.dgfy-platform.candidate-source-sha` OCI label (also new, stamped by
+`deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml` at build time from a
+`candidate_source_sha` input the promoter threads through `deploy.yml`/`deploy-main.yml`) between
+each app's `X.Y.Z-staging` and bare `X.Y.Z` published images. **Correction this PR made, worth
+recording here since Phase 277's own ledger entry claimed otherwise:** Phase 277 (#1575/PR #1577)
+did not actually add this label — only `org.opencontainers.image.version` and the `version_tag`
+output. This PR adds the label-stamping step Phase 277's own text (and ADR 0081 Decision 8's
+original wording) assumed already existed. `docs/architecture/adr/0081-per-app-container-semantic-versioning.md`'s
+own `## Amendments` block records the same correction on the ADR side.
+
+Both mechanisms are read-only/unattended, same tier as `verify-deployment.yml`/
+`tenant-schema-report.yml` — see `.agents/skills/promoter/SKILL.md`'s checkpoint table. Full
+procedure: `.agents/skills/promoter/references/promotion-runbook.md`. Neither has yet been exercised
+against a real `to-staging`/`release` promotion — see #1588's own PR for what was and wasn't tested
+(unit tests + shape checks against synthetic fixtures and this repo's real workflow files, no live
+GHCR push/build).
+
 ## Related
 
 #1147 (this doc's parent, now fully resolved by it), #1431 (Phase 1: PR-A flipped 7 CI steps to

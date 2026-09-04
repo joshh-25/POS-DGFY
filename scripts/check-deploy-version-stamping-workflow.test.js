@@ -6,10 +6,13 @@ const {
   checkJobOutputsVersionTag,
   checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
+  checkMetaStepStampsCandidateLabel,
   checkImmutabilityGuardStep,
   checkDockerfileAcceptsAppVersion,
   checkOrchestratorVersionTagMapping,
+  checkOrchestratorCandidateSourceShaWiring,
   ORCHESTRATOR_VERSION_TAG_OUTPUTS,
+  ORCHESTRATOR_BUILDER_JOBS,
   runAllChecks,
 } = require('./check-deploy-version-stamping-workflow');
 
@@ -163,6 +166,41 @@ test('checkOrchestratorVersionTagMapping: every mapping missing is caught, one p
   assert.equal(problems.length, ORCHESTRATOR_VERSION_TAG_OUTPUTS.length);
 });
 
+// checkOrchestratorCandidateSourceShaWiring -- ADR 0081 Decision 8 (#1588): every builder job (not
+// `publish`, which calls publish-platform.yml and has no such input) must forward
+// candidate_source_sha unchanged.
+
+function orchestratorFixture({ withInput = true, jobs = ORCHESTRATOR_BUILDER_JOBS } = {}) {
+  const inputBlock = withInput
+    ? "on:\n  workflow_call:\n    inputs:\n      candidate_source_sha:\n        required: false\n        type: string\n        default: ''\n\n"
+    : '';
+  const jobBlocks = jobs.map((name) => `  ${name}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      candidate_source_sha: \${{ inputs.candidate_source_sha }}\n    secrets: inherit\n`).join('\n');
+  return `${inputBlock}jobs:\n${jobBlocks}  publish:\n    uses: ./.github/workflows/publish-platform.yml\n    with:\n      environment: PROD\n    secrets: inherit\n`;
+}
+
+test('checkOrchestratorCandidateSourceShaWiring: every builder job wired, publish excluded -> no problems', () => {
+  assert.deepEqual(checkOrchestratorCandidateSourceShaWiring(orchestratorFixture()), []);
+});
+
+test('checkOrchestratorCandidateSourceShaWiring: missing the workflow_call input declaration is caught', () => {
+  const problems = checkOrchestratorCandidateSourceShaWiring(orchestratorFixture({ withInput: false }));
+  assert.equal(problems.filter((p) => /missing a "candidate_source_sha" string input/.test(p)).length, 1);
+});
+
+test('checkOrchestratorCandidateSourceShaWiring: one builder job missing the pass-through is caught by name, others unaffected', () => {
+  const text = orchestratorFixture().replace(
+    '  dgfy-api:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      candidate_source_sha: ${{ inputs.candidate_source_sha }}\n    secrets: inherit\n',
+    '  dgfy-api:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n    secrets: inherit\n',
+  );
+  const problems = checkOrchestratorCandidateSourceShaWiring(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /job "dgfy-api" does not forward/);
+});
+
+// #1588 (epic #1548 Wave 4, Phase 279): labels moved from a literal `|` block inline in the
+// build-push step to a reference to the meta step's own computed output, so a blank
+// candidate_source_sha input can cleanly omit its label line (see the checkMetaStepStampsCandidateLabel
+// fixture below for that shape).
 const VALID_BUILD_STEP = `
       - name: Build and push api image
         id: build
@@ -170,9 +208,7 @@ const VALID_BUILD_STEP = `
         with:
           build-args: |
             APP_VERSION=\${{ steps.meta.outputs.version_tag }}
-          labels: |
-            org.opencontainers.image.revision=\${{ github.sha }}
-            org.opencontainers.image.version=\${{ steps.meta.outputs.version_tag }}
+          labels: \${{ steps.meta.outputs.labels }}
 `;
 
 test('checkBuildStepStamping: a correctly-shaped build step reports no problems', () => {
@@ -191,10 +227,89 @@ test('checkBuildStepStamping: missing the APP_VERSION build-arg is caught', () =
   assert.equal(problems.filter((p) => /does not bake "APP_VERSION/.test(p)).length, 1);
 });
 
-test('checkBuildStepStamping: missing the org.opencontainers.image.version label is caught', () => {
-  const text = VALID_BUILD_STEP.replace('            org.opencontainers.image.version=${{ steps.meta.outputs.version_tag }}\n', '');
+test('checkBuildStepStamping: a literal inline labels: | block (the pre-#1588 shape) is caught, not silently accepted', () => {
+  const text = VALID_BUILD_STEP.replace(
+    'labels: ${{ steps.meta.outputs.labels }}',
+    'labels: |\n            org.opencontainers.image.version=${{ steps.meta.outputs.version_tag }}',
+  );
   const problems = checkBuildStepStamping(text, { label: 'fixture.yml' });
-  assert.equal(problems.filter((p) => /does not stamp "org\.opencontainers\.image\.version"/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /does not reference "\$\{\{ steps\.meta\.outputs\.labels \}\}"/.test(p)).length, 1);
+});
+
+// checkMetaStepStampsCandidateLabel -- ADR 0081 Decision 8 (#1588): the meta step declares the
+// candidate_source_sha input, reads it into its own env, and computes the labels heredoc with the
+// candidate-source-sha line conditional on a non-empty value.
+
+const VALID_CANDIDATE_LABEL_WORKFLOW = `
+on:
+  workflow_call:
+    inputs:
+      candidate_source_sha:
+        description: ADR 0081 Decision 8 candidate source identity.
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  build-and-push:
+    steps:
+      - name: Compute image tags
+        id: meta
+        shell: bash
+        env:
+          ENVIRONMENT: \${{ inputs.environment }}
+          CANDIDATE_SOURCE_SHA: \${{ inputs.candidate_source_sha }}
+        run: |
+          set -euo pipefail
+          {
+            echo "labels<<LABELS_EOF"
+            echo "org.opencontainers.image.revision=\${GITHUB_SHA}"
+            echo "org.opencontainers.image.version=\${VERSION_TAG}"
+            if [ -n "\${CANDIDATE_SOURCE_SHA:-}" ]; then
+              echo "org.dgfy-platform.candidate-source-sha=\${CANDIDATE_SOURCE_SHA}"
+            fi
+            echo "LABELS_EOF"
+          } >> "$GITHUB_OUTPUT"
+`;
+
+test('checkMetaStepStampsCandidateLabel: a correctly-shaped workflow reports no problems', () => {
+  assert.deepEqual(checkMetaStepStampsCandidateLabel(VALID_CANDIDATE_LABEL_WORKFLOW, { label: 'fixture.yml' }), []);
+});
+
+test('checkMetaStepStampsCandidateLabel: missing the candidate_source_sha workflow_call input is caught', () => {
+  const text = VALID_CANDIDATE_LABEL_WORKFLOW.replace(
+    /\s*candidate_source_sha:\n(?:.*\n)*?\s*default: ''\n/,
+    '\n',
+  );
+  const problems = checkMetaStepStampsCandidateLabel(text, { label: 'fixture.yml' });
+  assert.equal(problems.filter((p) => /missing a "candidate_source_sha" string input/.test(p)).length, 1);
+});
+
+test('checkMetaStepStampsCandidateLabel: missing CANDIDATE_SOURCE_SHA in the meta step env is caught', () => {
+  const text = VALID_CANDIDATE_LABEL_WORKFLOW.replace('          CANDIDATE_SOURCE_SHA: ${{ inputs.candidate_source_sha }}\n', '');
+  const problems = checkMetaStepStampsCandidateLabel(text, { label: 'fixture.yml' });
+  assert.equal(problems.filter((p) => /missing "CANDIDATE_SOURCE_SHA: \$\{\{ inputs\.candidate_source_sha \}\}"/.test(p)).length, 1);
+});
+
+test('checkMetaStepStampsCandidateLabel: missing the labels heredoc entirely is caught', () => {
+  const text = VALID_CANDIDATE_LABEL_WORKFLOW.replace(/echo "labels<<LABELS_EOF"[\s\S]*?echo "LABELS_EOF"\n/, '');
+  const problems = checkMetaStepStampsCandidateLabel(text, { label: 'fixture.yml' });
+  assert.equal(problems.filter((p) => /does not compute a "labels" \$GITHUB_OUTPUT heredoc/.test(p)).length, 1);
+});
+
+test('checkMetaStepStampsCandidateLabel: missing org.opencontainers.image.version inside the heredoc is caught', () => {
+  const text = VALID_CANDIDATE_LABEL_WORKFLOW.replace('            echo "org.opencontainers.image.version=${VERSION_TAG}"\n', '');
+  const problems = checkMetaStepStampsCandidateLabel(text, { label: 'fixture.yml' });
+  assert.equal(problems.filter((p) => /does not stamp "org\.opencontainers\.image\.version=\$\{VERSION_TAG\}"/.test(p)).length, 1);
+});
+
+test('checkMetaStepStampsCandidateLabel: an unconditional candidate-source-sha stamp (no "if -n" guard) is caught, not silently accepted', () => {
+  const text = VALID_CANDIDATE_LABEL_WORKFLOW.replace(
+    '            if [ -n "${CANDIDATE_SOURCE_SHA:-}" ]; then\n              echo "org.dgfy-platform.candidate-source-sha=${CANDIDATE_SOURCE_SHA}"\n            fi\n',
+    '            echo "org.dgfy-platform.candidate-source-sha=${CANDIDATE_SOURCE_SHA}"\n',
+  );
+  const problems = checkMetaStepStampsCandidateLabel(text, { label: 'fixture.yml' });
+  assert.equal(problems.filter((p) => /does not conditionally stamp "org\.dgfy-platform\.candidate-source-sha"/.test(p)).length, 1);
 });
 
 const VALID_GUARD_STEP = `

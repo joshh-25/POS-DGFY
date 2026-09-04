@@ -19,6 +19,19 @@ on:
         required: false
         type: string
         default: '["sieitz-runner"]'  # #923: generic, either box
+      candidate_source_sha:
+        description: >-
+          ADR 0081 Decision 8 candidate source identity -- scripts/check-promotion-candidate.js's
+          manifest source_develop_sha (no staging repairs yet) or current_staging_sha (once repairs
+          exist), resolved by the promoter before dispatching deploy.yml/deploy-main.yml. Stamped as
+          the org.dgfy-platform.candidate-source-sha OCI label when non-empty. Left empty for DEV
+          builds and any dispatch outside a to-staging/release promotion -- scripts/check-image-
+          version-parity.js only compares STAGING/PROD images that carry it, and treats a PROD image
+          with no matching STAGING predecessor under this identity as expected evidence of a #1007
+          expedited promotion or a main hotfix, not a defect.
+        required: false
+        type: string
+        default: ''
     outputs:
       sha_tag:
         value: ${{ jobs.build-and-push.outputs.sha_tag }}
@@ -86,6 +99,9 @@ jobs:
         env:
           APP: ${{ inputs.app }}
           ENVIRONMENT: ${{ inputs.environment }}
+          CANDIDATE_SOURCE_SHA: ${{ inputs.candidate_source_sha }}
+          IMAGE_SERVER_URL: ${{ github.server_url }}
+          IMAGE_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           SHA_TAG="sha-${GITHUB_SHA::7}"
@@ -112,6 +128,24 @@ jobs:
           APP_PKG_VERSION="$(node -p "require('./apps/${APP}/package.json').version")"
           VERSION_TAG="${APP_PKG_VERSION}${CHANNEL_SUFFIX}"
           echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
+
+          # ADR 0081 Decision 8 (#1588, epic #1548 Wave 4, Phase 279): stamp the candidate source
+          # identity as its own label, distinct from org.opencontainers.image.revision (Decision 1/7's
+          # build-commit SHA, which differs across the to-staging->staging and release/*->main merge
+          # commits even for identical candidate content). Computed here, not inline in the labels:
+          # block below, so a blank input cleanly omits the line instead of stamping an empty label --
+          # docker/build-push-action's multi-line labels input is a plain heredoc from this step's own
+          # output, same pattern already used for `tags` above.
+          {
+            echo "labels<<LABELS_EOF"
+            echo "org.opencontainers.image.revision=${GITHUB_SHA}"
+            echo "org.opencontainers.image.source=${IMAGE_SERVER_URL}/${IMAGE_REPOSITORY}"
+            echo "org.opencontainers.image.version=${VERSION_TAG}"
+            if [ -n "${CANDIDATE_SOURCE_SHA:-}" ]; then
+              echo "org.dgfy-platform.candidate-source-sha=${CANDIDATE_SOURCE_SHA}"
+            fi
+            echo "LABELS_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -261,10 +295,7 @@ jobs:
           file: infrastructure/docker/${{ inputs.app }}/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.version=${{ steps.meta.outputs.version_tag }}
+          labels: ${{ steps.meta.outputs.labels }}
           # Registry cache (type=registry) removed 2026-08-14 (#427) -- see
           # the setup-buildx-action step comment above for why type=gha,
           # scoped per app, is the only cache now.
