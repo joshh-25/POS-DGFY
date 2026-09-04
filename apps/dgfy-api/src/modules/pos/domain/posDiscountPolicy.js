@@ -237,16 +237,36 @@ export const resolvePosGovernedDiscount = async ({
 
     const application = resolveRuleApplication({ draft: { ...draft, type }, rule });
     if (STATUTORY_TYPES.has(type)) {
-        if (!text(draft.customer_name) || !text(draft.id_number)) {
-            validationError('Customer name and Senior/PWD ID number are required.', 'STATUTORY_IDENTITY_REQUIRED');
+        const rawBeneficiaries = Array.isArray(draft.beneficiaries) && draft.beneficiaries.length > 0
+            ? draft.beneficiaries
+            : [{
+                category: type,
+                name: draft.customer_name,
+                id_number: draft.id_number,
+                eligible_items: draft.eligible_items,
+                eligible_item_ids: draft.eligible_item_ids
+            }];
+        const beneficiaries = rawBeneficiaries.map((beneficiary) => ({
+            category: text(beneficiary?.category || type).toLowerCase(),
+            name: text(beneficiary?.name),
+            id_number: text(beneficiary?.id_number),
+            lines: normalizeSelectedDiscountItems(beneficiary)
+        }));
+        if (beneficiaries.some((beneficiary) => !STATUTORY_TYPES.has(beneficiary.category) || !beneficiary.name || !beneficiary.id_number)) {
+            validationError('Each Senior/PWD beneficiary requires a category, customer name, and ID number.', 'STATUTORY_IDENTITY_REQUIRED');
         }
-        const selectedItems = normalizeSelectedDiscountItems(draft);
-        const selectedIds = [...new Set(selectedItems.map((entry) => entry.item_id))];
-        if (selectedIds.length === 0) validationError('Select at least one eligible item.', 'STATUTORY_ITEM_SELECTION_REQUIRED');
-        const selectedLines = resolveSelectedDiscountLines(preparedLines, selectedItems, {
+        const normalizedIds = beneficiaries.map((beneficiary) => beneficiary.id_number.toLowerCase());
+        if (new Set(normalizedIds).size !== normalizedIds.length) {
+            validationError('Each Senior/PWD beneficiary ID number must be unique within the order.', 'STATUTORY_BENEFICIARY_DUPLICATE');
+        }
+        if (beneficiaries.some((beneficiary) => beneficiary.lines.length === 0)) {
+            validationError('Select at least one eligible item for each beneficiary.', 'STATUTORY_ITEM_SELECTION_REQUIRED');
+        }
+        const selectedItems = beneficiaries.flatMap((beneficiary) => beneficiary.lines);
+        const selectedLines = beneficiaries.flatMap((beneficiary) => resolveSelectedDiscountLines(preparedLines, beneficiary.lines, {
             invalidQuantityMessage: 'Selected Senior/PWD quantity exceeds the cart quantity.',
             invalidQuantityReason: 'STATUTORY_QUANTITY_INVALID'
-        });
+        }));
         const invalidLines = selectedLines.filter((line) => !isSeniorPwdDiscountEligible(line.senior_pwd_discount_eligible));
         if (invalidLines.length > 0) {
             validationError('One or more selected items are not eligible for Senior/PWD discount.', 'STATUTORY_ITEM_NOT_ELIGIBLE', {
@@ -254,10 +274,28 @@ export const resolvePosGovernedDiscount = async ({
                 line_refs: invalidLines.map((line) => text(line.line_ref)).filter(Boolean)
             });
         }
+        const quantityByLine = selectedItems.reduce((totals, entry) => {
+            const key = entry.line_ref || `item:${entry.item_id}`;
+            return totals.set(key, (totals.get(key) || 0) + Number(entry.eligible_quantity || 0));
+        }, new Map());
+        for (const [key, quantity] of quantityByLine.entries()) {
+            const matchingLine = preparedLines.find((line) => key.startsWith('item:')
+                ? positiveInt(line.item_id) === positiveInt(key.slice(5))
+                : text(line.line_ref) === key);
+            if (!matchingLine || quantity > Number(matchingLine.quantity || 0)) {
+                validationError('Combined Senior/PWD quantity exceeds the cart quantity.', 'STATUTORY_QUANTITY_INVALID', {
+                    item_ids: matchingLine ? [positiveInt(matchingLine.item_id)] : [],
+                    line_refs: key.startsWith('item:') ? [] : [key]
+                });
+            }
+        }
         application.method = 'percentage';
         application.rate = Number(rule.rate ?? 20);
         application.amount = null;
         application.lines = selectedItems.map((entry) => ({ ...entry }));
+        application.beneficiaries = beneficiaries;
+        application.customer_name = beneficiaries.length === 1 ? beneficiaries[0].name : null;
+        application.id_number = beneficiaries.length === 1 ? beneficiaries[0].id_number : null;
     }
 
     if (['employee', 'manual'].includes(type)) {

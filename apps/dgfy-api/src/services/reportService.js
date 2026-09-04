@@ -1171,15 +1171,29 @@ export const getComplianceBooksPackage = async (filters = {}) => {
     };
   });
 
-  const specialDiscountRows = salesRows.map((entry) => {
+  const specialDiscountRows = salesRows.flatMap((entry) => {
     const discountAmount = toNumeric(entry.discount_amount);
-    if (discountAmount <= 0) return null;
+    if (discountAmount <= 0) return [];
 
     const transactionMeta = parseTransactionMeta(entry.special_instructions);
     const beneficiary = transactionMeta?.discount_beneficiary
       && typeof transactionMeta.discount_beneficiary === 'object'
       ? transactionMeta.discount_beneficiary
       : null;
+    const beneficiaries = Array.isArray(transactionMeta?.discount_beneficiaries)
+      ? transactionMeta.discount_beneficiaries
+      : [];
+    if (beneficiaries.length > 0) {
+      return beneficiaries.map((item) => ({
+        transaction_datetime: entry.created_at,
+        invoice_number: entry.invoice_number,
+        discount_label: entry.discount_label_snapshot || null,
+        discount_amount: toNumeric(item.discount_amount),
+        beneficiary_category: String(item.category || '').trim().toLowerCase() || null,
+        beneficiary_name: String(item.name || '').trim() || null,
+        beneficiary_id_number: String(item.id_number || '').trim() || null
+      }));
+    }
     const category = String(
       beneficiary?.category
       || inferSpecialDiscountCategory(entry.discount_label_snapshot)
@@ -1187,10 +1201,10 @@ export const getComplianceBooksPackage = async (filters = {}) => {
     ).trim().toLowerCase() || null;
 
     if (!['senior', 'pwd', 'national_athlete'].includes(category)) {
-      return null;
+      return [];
     }
 
-    return {
+    return [{
       transaction_datetime: entry.created_at,
       invoice_number: entry.invoice_number,
       discount_label: entry.discount_label_snapshot || null,
@@ -1198,7 +1212,7 @@ export const getComplianceBooksPackage = async (filters = {}) => {
       beneficiary_category: category,
       beneficiary_name: String(beneficiary?.name || entry.customer_name || '').trim() || null,
       beneficiary_id_number: String(beneficiary?.id_number || entry.customer_phone || '').trim() || null
-    };
+    }];
   }).filter(Boolean);
 
   const compliancePackage = {

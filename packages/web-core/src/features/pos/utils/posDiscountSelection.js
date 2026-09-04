@@ -17,6 +17,33 @@ export const getDiscountLineRef = (line, index = 0) => String(
     line?.line_key || line?.line_id || `item-${Number(line?.item_id) || 'unknown'}-${index}`
 ).trim();
 
+export const buildDiscountAllocationTotals = (eligibleItemGroups = []) => (
+    (Array.isArray(eligibleItemGroups) ? eligibleItemGroups : []).flat().reduce((totals, entry) => {
+        const lineRef = String(entry?.line_ref || '').trim();
+        if (!lineRef) return totals;
+        totals.set(lineRef, (totals.get(lineRef) || 0) + Math.max(0, Number(entry?.eligible_quantity || 0)));
+        return totals;
+    }, new Map())
+);
+
+export const getAvailableDiscountQuantity = ({
+    allocationTotals,
+    currentQuantity = 0,
+    lineRef,
+    wholeCartQuantity = 0
+} = {}) => Math.max(
+    0,
+    Math.floor(Number(wholeCartQuantity || 0))
+        - (Number(allocationTotals?.get(String(lineRef || '').trim()) || 0) - Number(currentQuantity || 0))
+);
+
+export const isStatutoryBeneficiaryComplete = (beneficiary) => (
+    Boolean(String(beneficiary?.name || '').trim())
+    && Boolean(String(beneficiary?.id_number || '').trim())
+    && (Array.isArray(beneficiary?.eligible_items) ? beneficiary.eligible_items : [])
+        .some((entry) => Number(entry?.eligible_quantity || 0) > 0)
+);
+
 export const buildDiscountItemSelection = ({
     cart = [],
     type,

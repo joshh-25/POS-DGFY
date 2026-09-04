@@ -2742,6 +2742,14 @@ Discount policy (current contract):
     - `discount_beneficiary.name`
     - `discount_beneficiary.id_number`
   - Evidence is stored in immutable transaction metadata and exposed in compliance package exports.
+  - POS governed Senior/PWD discounts may alternatively include
+    `governed_discount.beneficiaries[]`; every entry requires `category`, `name`,
+    `id_number`, and one or more `eligible_items[]` entries containing `item_id`
+    and `eligible_quantity`.
+  - Beneficiary ID numbers must be unique within the order. For every cart line,
+    the combined eligible quantity across all beneficiaries must not exceed the
+    purchased quantity. The backend recalculates all VAT and discount amounts.
+  - The singular contract remains accepted and is normalized to one beneficiary.
 
 Payment handoff policy (current contract):
 - Optional request field: `payment_handoff_mode` (`external` | `internal`).
