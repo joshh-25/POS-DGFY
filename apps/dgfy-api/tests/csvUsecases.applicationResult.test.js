@@ -53,7 +53,10 @@ describe('csv use-cases application result contract', () => {
 
     const result = await useCase({ csvContent: 'sku_code,name\nRM-1,Flour' });
 
-    expect(previewImport).toHaveBeenCalledWith('sku_code,name\nRM-1,Flour');
+    // #1124/#1469: buildPreviewItemsImportUseCase now threads an import mode through to the
+    // service (csvUseCases.js's previewImport(csvContent, { mode })) -- this assertion predates
+    // that change.
+    expect(previewImport).toHaveBeenCalledWith('sku_code,name\nRM-1,Flour', { mode: undefined });
     expect(result).toEqual({
       success: true,
       data: { success: true, validRows: 3, invalidRows: 1 },

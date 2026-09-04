@@ -340,7 +340,11 @@ const BLOCKING_STEP_IDS = {
   'frontend-ims-quality': ['run_ims_lint', 'run_scroll_contracts', 'run_shared_fnb_contract_tests'],
   'frontend-pos-quality': ['run_pos_lint'],
   'frontend-storefront-quality': ['run_storefront_lint', 'run_storefront_vitest'],
-  'repository-quality': ['run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts'],
+  // 2026-09-04 (#1550/#1551 triage): validate_pr_quality_workflow/validate_runner_routing/
+  // validate_workspace_hygiene/validate_compliance_sweep added -- pure, deterministic contract
+  // checks over checked-in files, no registry/network/DB dependency. First recorded blocking-flip
+  // disposition for these four; see docs/ops/RELEASE_CANDIDATE_POLICY.md's 2026-09-04 amendment.
+  'repository-quality': ['run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts', 'validate_pr_quality_workflow', 'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep'],
   'frontend-budgets-quality': ['check_frontend_budgets']
 };
 

@@ -810,3 +810,45 @@ existing promotion PR checks, production tenant-schema report, or `AGENTS.md` Me
 This is a dated amendment to `[default]` release procedure; no `[binding]` clause is changed.
 
 PR: (this PR, `ci/1431-phase-cde-zero-local-gates`). Refs #1431, #1147, #1469, #1015, #925.
+
+### 2026-09-04: Four `promotion-quality-gate.yml` contract-validation steps flip advisory →
+blocking (#1550/#1551 triage); advisory-failure comments live on #1124, not #1063 (#1553)
+
+#1124's own audit-and-repair pass on run `33789462561`'s advisory-failure batch (the most recent
+`release/*→main` promotion, PR #1547) root-caused all four of that run's failing steps. Two were
+outside the 16-gate `CI_ENFORCED_GATES` framework `gate:release:local` and its 2026-09-03 closeout
+(above) cover, and had never gone through any blocking-flip triage at all — #1550 and #1551 both
+name this gap explicitly.
+
+**What changed.** `validate_pr_quality_workflow`, `validate_runner_routing`,
+`validate_workspace_hygiene`, and `validate_compliance_sweep` (all four in `repository-quality`)
+lose their step-level `continue-on-error: true` and join `check-pr-quality-workflow.js`'s
+`BLOCKING_STEP_IDS['repository-quality']` and the reporter's `BLOCKING_STEP_NAMES` set. This is
+their first recorded disposition — none of the four were ever discussed in a prior amendment here.
+Rationale: all four are pure, deterministic checks over checked-in files (workflow YAML shape,
+step ordering, contract regression tests) with no registry, network, or database dependency — the
+safest class of gate to make blocking, unlike `dependencies.audit.full` (registry-dependent,
+permanently advisory) or `backend.test_matrix` (#1469, gated on #1015/#925).
+
+`validate_compliance_sweep`'s failure on run `33789462561` was a **gate bug**, not a real
+regression: `scripts/check-compliance-sweep-workflow.test.js` required the "Clear stale per-run
+temp state" step to sit at exactly `Checkout + 1`, and #1528's workspace-hygiene rollout had
+inserted a read-only `Assert complete working tree (workspace-hygiene v1)` step between them. The
+test now checks the actual invariant (#1393's stale-state guard: Clear runs after Checkout and
+before Discover, and nothing that writes per-run state may sit between Checkout and Clear) via an
+explicit allowlist, rather than a fixed offset — #1551's acceptance criterion was explicit that
+this must be fixed "not by loosening the assertion to match an actually-wrong order," and the fix
+here is the narrower invariant, not a blanket relaxation. The other three were already passing.
+
+`Run deterministic F&B browser contract` and `Run dgfy-api test matrix` — the run's other two
+failing steps — are **not** part of this flip. The former (#1550) is a real Playwright browser
+test, structurally flakier than a pure contract check, without the clean run history this kind of
+promotion warrants yet; the latter is #1469's own gated flip. Both stay advisory.
+
+**#1553.** `promotion-quality-gate.yml`'s `report-advisory-failures` job has posted its dated
+advisory-failure comments to **#1124**, not #1063, since 2026-08-29 (#1165, PR #1067) — #1063's own
+root cause was found and fixed, and #1124 became the current epic this evidence pipeline serves.
+The redirect was correctly implemented but recorded nowhere outside an inline YAML comment; this
+entry, plus a comment on #1063 itself, is the discoverability fix.
+
+PR: `claude/quality-test-gates-hljpv2`. Refs #1124, #1550, #1551, #1552, #1157, #1469. Closes #1553.

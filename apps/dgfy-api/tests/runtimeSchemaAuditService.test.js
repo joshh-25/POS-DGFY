@@ -133,6 +133,15 @@ const buildHealthySequelizeMock = () => ({
                     show_in_pos_filter: {},
                     is_active: {}
                 },
+                // #1124/#1469: added alongside src/services/runtimeSchemaAuditService.js's
+                // Phase 257 (#1318) required-columns entry -- this fixture fell out of sync with
+                // that entry, which flipped status to 'degraded' for every test below.
+                item_folder_memberships: {
+                    item_folder_membership_id: {},
+                    item_id: {},
+                    folder_id: {},
+                    sort_order: {}
+                },
                 pos_catalog_overrides: {
                     pos_catalog_override_id: {},
                     item_id: {},

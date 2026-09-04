@@ -20065,3 +20065,32 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `.github/workflows/staging-candidate-observation.yml`, promoter/Conduct references,
   `docs/ops/RELEASE_CANDIDATE_POLICY.md`, ADR 0074, issue #1542.
 - Next eligible phase: 272 — automated staging smoke collection and Conduct handoff execution.
+
+## Phase 272 - Quality-gate advisory-failure triage and repair (#1124)
+
+- Initiative/release: Quality-gate trust epic (#1124) / current release process.
+- Objective and scope: root-cause and triage the four steps that failed on the most recent real
+  `release/*→main` promotion (run `33789462561`, PR #1547); fix what was cheap and confirmed-stale;
+  make backend fast-tier failures nameable from CI output instead of artifact-only; flip four
+  pure/deterministic contract-validation steps from advisory to blocking, their first recorded
+  disposition.
+- Status: in_progress. #1550 and #1551 both require a green `validate_compliance_sweep` /
+  `run_fnb_browser_contract` (this PR fixes the former; the latter stays advisory by design, so its
+  acceptance is about a future clean run history, not this PR alone) on the *next* real
+  `release/*→main` promotion before their acceptance boxes close — not verifiable at merge time.
+- Dependencies: #1550, #1551, #1553, #1157, #1469, #1124.
+- Acceptance and validation evidence: `node --test scripts/check-compliance-sweep-workflow.test.js`
+  (28/28); `npm run test:preflight-sweep` (100/100); `npm run audit:dependencies` (PASS across 7
+  trees); `npm run check:pr-quality-workflow && npm run test:pr-quality-workflow` (41/41); `npm run
+  check:workspace-hygiene && npm run test:workspace-hygiene` (19/19); `npm run check:runner-routing
+  && npm run test:runner-routing` (36/36); the next real promotion run's `promotion-quality-gate.yml`
+  result for the two open acceptance boxes above.
+- Completion date: pending (see Status).
+- Contracts/files: `scripts/check-compliance-sweep-workflow.test.js`,
+  `scripts/run-backend-test-matrix.js`, `scripts/summarize-backend-test-matrix.js`,
+  `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
+  `.github/workflows/promotion-quality-gate.yml`,
+  `apps/dgfy-storefront/tests/e2e/storefront-fnb-conditional-modifiers.spec.js`,
+  `apps/dgfy-api/package-lock.json`, `apps/dgfy-pos/package-lock.json`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issues #1124, #1550, #1551, #1552, #1553, #1157, #1469.
+- Next eligible phase: 273.

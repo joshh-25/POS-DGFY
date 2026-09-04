@@ -179,7 +179,10 @@ const assertConditionalFlow = async (page, runtime, onConditionalSelection = nul
   await expect(childQuantity).toHaveValue('1');
   await childQuantity.fill('3');
   await expect(childQuantity).toHaveValue('3');
-  await expect(page.getByText(/PHP 305\.00/).first()).toBeVisible();
+  // #1550: storefrontFormatters.js's money() switched from a "PHP " prefix to "₱" + grouped
+  // Intl.NumberFormat('en-PH') output (commit 2ab68238) -- this was the one remaining e2e
+  // assertion still on the old prefix. Total is unchanged: 180 (base) + 50 (combo) + 25*3 (Cola x3).
+  await expect(page.getByText(/₱\s?305\.00/).first()).toBeVisible();
   await runtime.assertHealthy('conditional modifier quantity update');
 
   const unlabeledInputs = await page.locator('input').evaluateAll((inputs) => inputs.filter((input) => {

@@ -282,9 +282,15 @@ const CORRECT_BLOCKING_JOB_BUILDERS = {
   // #1431 Phase 2 (2026-09-02), P2-1: run_production_env_fixtures (gate 7) joins run_docs_lint as
   // blocking. #1431 Phase C (2026-09-03): run_dependency_audit_prod/run_compliance_contracts join
   // too; run_dependency_audit_full stays advisory (settled permanently), so it's not listed here.
+  // 2026-09-04 (#1550/#1551 triage): validate_pr_quality_workflow/validate_runner_routing/
+  // validate_workspace_hygiene/validate_compliance_sweep join too.
   'repository-quality': () => buildJobWithNamedSteps(
     'repository-quality',
-    ['checkout', 'run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts', 'run_dependency_audit_full'],
+    [
+      'checkout', 'run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod',
+      'run_compliance_contracts', 'run_dependency_audit_full', 'validate_pr_quality_workflow',
+      'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep'
+    ],
     { coeAt: ['checkout', 'run_dependency_audit_full'] }
   ),
   // #1431 Phase C (2026-09-03): frontend-budgets-quality's first BLOCKING_STEP_IDS entry.
@@ -295,7 +301,7 @@ const CORRECT_BLOCKING_JOB_BUILDERS = {
   )
 };
 
-test('checkStepLevelAdvisory: the 15 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
+test('checkStepLevelAdvisory: the 19 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
   const text = buildAdvisoryWorkflow(CORRECT_BLOCKING_JOB_BUILDERS);
   assert.deepEqual(checkStepLevelAdvisory(text), []);
 });
@@ -333,7 +339,11 @@ test('checkStepLevelAdvisory: a blocking step id that is missing entirely (renam
     ...CORRECT_BLOCKING_JOB_BUILDERS,
     'repository-quality': () => buildJobWithNamedSteps(
       'repository-quality',
-      ['checkout', 'run_docs_lint_renamed', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts'],
+      [
+        'checkout', 'run_docs_lint_renamed', 'run_production_env_fixtures', 'run_dependency_audit_prod',
+        'run_compliance_contracts', 'validate_pr_quality_workflow', 'validate_runner_routing',
+        'validate_workspace_hygiene', 'validate_compliance_sweep'
+      ],
       { coeAt: ['checkout', 'run_docs_lint_renamed'] }
     )
   });
