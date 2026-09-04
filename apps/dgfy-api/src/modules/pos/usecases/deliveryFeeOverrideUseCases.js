@@ -7,6 +7,21 @@ import dbStore from '../../../utils/dbStore.js';
 // re-sequenced ahead of #237/calculated mode per the epic (#1321): this targets today's flat
 // column, not the (not-yet-built) breakdown object. When #237 lands, that ticket's own scope
 // extends this mechanism to `delivery.finalFee`; it is not duplicated here.
+//
+// Phase 281 (#1564). Phase 237 landed the breakdown columns before this file was written, and this
+// use case kept writing only the flat `delivery_fee`/`total_amount` -- so an applied override left
+// `delivery_fee_override` NULL while breaking `delivery_fee_base - delivery_fee_waiver ===
+// delivery_fee`, with nothing in the row to say why. The override amount is now persisted here
+// alongside the money it explains.
+//
+// Design decision, settled in #1564 rather than assumed: this override stays **post-hoc only**. It
+// is a correction to an already-persisted transaction, applied after checkout; there is no live
+// quote to feed it back into, so `resolveStoreDeliveryFee` (storeUseCases.js) does NOT gain an
+// override input. Doing so would also require that resolver to read persisted state, breaking the
+// I/O-free, await-free contract its own header and its byte-identity regression tests depend on,
+// and would put a second writer on ADR 0078 Decision 4's single storefront choke point. Its
+// `overrideAmount: null` is therefore correct, not a stub: at resolve time no override exists yet,
+// by definition.
 
 const parsePositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
@@ -14,6 +29,14 @@ const parsePositiveInt = (value) => {
 };
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+
+// #1564: `delivery_fee_override` is nullable and the null-vs-zero distinction is load-bearing --
+// NULL means "no override happened", 0.0000 means "staff set the fee to free". round4() alone
+// collapses both to 0 (`Number(null) || 0`), so every read of that column goes through this
+// instead. Same null-vs-zero convention PosTransaction.js documents on the column itself.
+const round4OrNull = (value) => (
+    value === null || value === undefined || value === '' ? null : round4(value)
+);
 
 const toSerializable = (value) => (
     value && typeof value.toJSON === 'function' ? value.toJSON() : value
@@ -122,23 +145,45 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
             const previousTotalAmount = round4(existing.total_amount);
             const previousBalanceDue = round4(existing.balance_due);
             const previousAmountPaid = round4(existing.amount_paid);
+            // #1564: NULL here means "no staff override has ever been recorded on this order",
+            // which is exactly the state Phase 238 left behind on every override it applied.
+            const previousDeliveryFeeOverride = round4OrNull(existing.delivery_fee_override);
             const newDeliveryFee = requestedDeliveryFee;
+            // The override IS the requested absolute fee -- this endpoint takes a target, never a
+            // delta (see the no-op comment below), so provenance and money are the same number by
+            // construction rather than by a second, driftable computation.
+            const newDeliveryFeeOverride = newDeliveryFee;
 
             // Re-saving the same value is a no-op -- mirrors applyWorkflowModeAuditLog's own
             // "a no-op write logs nothing" convention (settings audit trail, #234/#1327). No DB
             // write, no audit row, but still a success response so a retried request is idempotent
             // by construction (the client always sends the absolute target fee, never a delta).
-            if (previousDeliveryFee === newDeliveryFee) {
+            //
+            // #1564 narrows this: the money matching is no longer sufficient on its own, because
+            // `delivery_fee_override` is part of the state this endpoint owns. A row whose
+            // delivery_fee already equals the target but whose override column is still NULL is
+            // NOT at the target state -- it is either an order the formula happened to price at
+            // this exact number, or (the case that matters) a row written by the pre-#1564 code
+            // that applied an override and never recorded it. Both are repaired by falling through
+            // to the write below, which changes no money at all (feeDelta === 0) and only stamps
+            // provenance. Retry idempotency is preserved exactly: once the write lands, the
+            // override column equals the fee, so the next identical submit takes this branch.
+            // There is no backfill for pre-#1564 rows (ADR 0012's forward-only rule), so this
+            // reasoned, audited, staff-initiated path is the only repair route those rows have.
+            if (previousDeliveryFee === newDeliveryFee && previousDeliveryFeeOverride === newDeliveryFeeOverride) {
                 await transaction.commit();
                 return ok({
                     transaction: toSerializable(existing),
                     delivery_fee_override: {
                         previous_delivery_fee: previousDeliveryFee,
                         new_delivery_fee: newDeliveryFee,
+                        previous_delivery_fee_override: previousDeliveryFeeOverride,
+                        new_delivery_fee_override: previousDeliveryFeeOverride,
                         previous_total_amount: previousTotalAmount,
                         new_total_amount: previousTotalAmount,
                         previous_balance_due: previousBalanceDue,
                         new_balance_due: previousBalanceDue,
+                        provenance_only: false,
                         no_op: true
                     }
                 });
@@ -173,12 +218,32 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
                 ? Math.max(0, round4(newTotalAmount - previousAmountPaid))
                 : previousBalanceDue;
 
+            // #1564: `feeDelta === 0` is reachable now that the no-op branch above also requires the
+            // provenance column to match -- that is the pre-#1564-row repair case, where the only
+            // column that actually changes is delivery_fee_override. total_amount/balance_due are
+            // written back at their existing values, which is a no-change write, not a recompute.
+            const provenanceOnly = previousDeliveryFee === newDeliveryFee;
+
             const updated = await posRepository.updateTransactionLifecycle(normalizedTransactionId, {
                 delivery_fee: newDeliveryFee,
+                // #1564: the missing write this ticket exists for. Without it, `delivery_fee` no
+                // longer equals `delivery_fee_base - delivery_fee_waiver` while
+                // `delivery_fee_override` still reads NULL -- i.e. the row claims the formula
+                // produced a number the formula cannot produce, with nothing in the columns to say
+                // an override is the reason. See PosTransaction.js's two-part invariant.
+                delivery_fee_override: newDeliveryFeeOverride,
                 total_amount: newTotalAmount,
                 balance_due: newBalanceDue
             }, { transaction, lock: true });
-            if (!updated || round4(updated.delivery_fee) !== newDeliveryFee) {
+            if (
+                !updated
+                || round4(updated.delivery_fee) !== newDeliveryFee
+                || round4OrNull(updated.delivery_fee_override) !== newDeliveryFeeOverride
+            ) {
+                // Both halves are asserted, not just the money one: a persistence layer that
+                // silently dropped delivery_fee_override (an unknown attribute, a stale tenant
+                // schema missing the Phase 237 column) would otherwise reproduce exactly the
+                // provenance gap this ticket fixes, and do it silently.
                 throw new DomainError(
                     DomainErrorCode.INTERNAL_ERROR,
                     'POS transaction delivery fee could not be updated',
@@ -216,6 +281,12 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
                     transaction_id: normalizedTransactionId,
                     previous_delivery_fee: previousDeliveryFee,
                     new_delivery_fee: newDeliveryFee,
+                    // #1564: the provenance column's own before/after, so the audit trail records
+                    // a pre-#1564-row repair (null -> value, no money change) distinguishably from
+                    // an ordinary fee change, rather than both looking identical in the log.
+                    previous_delivery_fee_override: previousDeliveryFeeOverride,
+                    new_delivery_fee_override: newDeliveryFeeOverride,
+                    provenance_only: provenanceOnly,
                     previous_total_amount: previousTotalAmount,
                     new_total_amount: newTotalAmount,
                     previous_balance_due: previousBalanceDue,
@@ -231,10 +302,13 @@ export const buildOverrideDeliveryFeeUseCase = ({ posRepository }) => {
                 delivery_fee_override: {
                     previous_delivery_fee: previousDeliveryFee,
                     new_delivery_fee: newDeliveryFee,
+                    previous_delivery_fee_override: previousDeliveryFeeOverride,
+                    new_delivery_fee_override: newDeliveryFeeOverride,
                     previous_total_amount: previousTotalAmount,
                     new_total_amount: newTotalAmount,
                     previous_balance_due: previousBalanceDue,
                     new_balance_due: newBalanceDue,
+                    provenance_only: provenanceOnly,
                     no_op: false
                 }
             });

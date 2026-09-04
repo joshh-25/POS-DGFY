@@ -1307,9 +1307,16 @@ export const overrideDeliveryFee = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
+                // #1564: three states, not two -- `provenance_only` is a write that recorded the
+                // override amount on a row whose delivery_fee already matched (a pre-#1564 row
+                // repaired, or staff confirming the formula's own number). Reporting it as
+                // "overridden" would overstate a no-money change; as "unchanged" would hide a
+                // real, audited write.
                 message: result.data?.delivery_fee_override?.no_op
                     ? 'POS delivery fee unchanged'
-                    : 'POS delivery fee overridden',
+                    : (result.data?.delivery_fee_override?.provenance_only
+                        ? 'POS delivery fee override recorded (amount unchanged)'
+                        : 'POS delivery fee overridden'),
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
