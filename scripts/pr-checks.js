@@ -48,6 +48,10 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { REASON_CODES, evaluateSelfHostedPool, evaluateGithubStatusOutage } = require('./lib/runner-availability');
+// #1569: single repo-level toggle shared with .github/workflows/shared-changed-paths.yml's
+// "Load check:app-versions gate toggle" step -- see that module's own header for why this is a
+// genuine single source of truth, not a hand-kept-in-sync pair.
+const { BLOCKING: APP_VERSIONS_CHECK_BLOCKING } = require('./lib/version-bump-gate-toggle');
 
 const repoRoot = path.resolve(__dirname, '..');
 const REPO_SLUG = 'Sieitzz/dgfy-platform';
@@ -330,8 +334,11 @@ function runChecks(options, changedFiles, components) {
   const receiptResult = runCommand('node', ['scripts/check-pos-receipt-version-bump.js'], { env });
   addCheck(checks, 'pos-receipt version bump', 'node scripts/check-pos-receipt-version-bump.js', receiptResult.ok ? 'pass' : 'warn', false);
 
+  // #1569: `blocking` now reads scripts/lib/version-bump-gate-toggle.js's BLOCKING constant
+  // instead of a hardcoded `false` -- see that module's header for the flip procedure. Shipped
+  // advisory; flipping the toggle module flips both this and the CI-side step together.
   const appVersionsResult = runCommand('node', ['scripts/check-app-version-bump.js'], { env });
-  addCheck(checks, 'app version bump', 'node scripts/check-app-version-bump.js', appVersionsResult.ok ? 'pass' : 'warn', false);
+  addCheck(checks, 'app version bump', 'node scripts/check-app-version-bump.js', appVersionsResult.ok ? 'pass' : 'warn', APP_VERSIONS_CHECK_BLOCKING);
 
   const complianceResult = runCommand('npm', ['run', 'check:compliance'], { env });
   addCheck(checks, 'compliance impact declarations (stricter than CI — CI runs this advisory today)', 'npm run check:compliance', complianceResult.ok ? 'pass' : 'fail');

@@ -908,3 +908,53 @@ Decision 6 (also `[default]`) — no `[binding]` clause of this policy or of ADR
 this entry.
 
 PR: (this PR). Refs #1559, #1548, #1560. Closes #1559.
+
+### 2026-09-04: `check:app-versions` flip-readiness gate built, mechanism shipped **not armed**
+(#1569, epic #1548 Wave 2, ADR 0081 Decision 9)
+
+Decision record this implements: [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md)
+Decision 9 — the PR-time version-bump check (#1560, the entry directly above) "lands advisory first
+and flips to blocking only in a later, dedicated phase, once enough clean-run evidence exists."
+This entry is that later phase's *mechanism*, not its *flip* — said plainly, matching #1569's own
+"Explicitly out of scope" section: **`check:app-versions` is still advisory after this PR, in both
+CI and `scripts/pr-checks.js`, exactly as it was before.**
+
+**What this PR built:**
+
+- `scripts/check-version-bump-flip-readiness.js` — measures the ADR 0081 Decision 9 evidence
+  threshold (10 merged `develop`-base PRs since #1560's merge commit — PR #1562 — each with a
+  pass/warn, not a crash, recorded for `check:app-versions`; OR one full `develop → staging → main`
+  promotion cycle green throughout) directly from GitHub's own check-run/job-log history via
+  `gh api`, walking `develop`'s commit log since PR #1562's merge SHA. No local counter file — every
+  run re-derives the count from GitHub live. Run it by hand
+  (`node scripts/check-version-bump-flip-readiness.js`, or `npm run
+  check:version-bump-flip-readiness`) before ever considering the flip below. Exit 0 means ready;
+  exit 1 is informational only (this script gates nothing in CI).
+- `scripts/lib/version-bump-gate-toggle.js` — the single repo-level toggle both
+  `.github/workflows/shared-changed-paths.yml`'s `check:app-versions` step and
+  `scripts/pr-checks.js`'s own `blocking` argument for that check read directly, at runtime (a step
+  can evaluate a `${{ }}` expression against a prior step's output, so this is a genuine read, not
+  `scripts/lib/runner-routing-state.js`'s declared-constant-plus-checker pattern — see that file's
+  own header for why *that* toggle needs a second validator script and this one doesn't). One
+  module, one edit, both surfaces move together.
+
+**Current state, restated so it doesn't need re-deriving from the diff:** `BLOCKING = false` in
+`scripts/lib/version-bump-gate-toggle.js`. `check:app-versions` is advisory
+(`continue-on-error: true`, sourced from that toggle) in `shared-changed-paths.yml`, and
+non-blocking (`blocking: false`, same source) in `pr-checks.js`. As of this entry, zero PRs have
+merged into `develop` since PR #1562 (this PR is itself one of the first) and no promotion cycle has
+run since — the readiness script's own live dry run against this repo confirms `NOT READY, 0 of 10
+PRs counted, promotion-cycle evidence: none yet`. It cannot possibly read ready yet; nothing here
+claims otherwise.
+
+**To arm it, later, in a separate PR:** run `node scripts/check-version-bump-flip-readiness.js`, confirm
+it reports the threshold met, then edit exactly one line — `scripts/lib/version-bump-gate-toggle.js`'s
+`BLOCKING` constant, `false → true` — and open that as its own PR referencing the readiness script's
+output as evidence. See `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "`check:app-versions`
+flip-readiness" entry for the same status, kept in sync with this one.
+
+This is a `[default]`-tier procedure amendment under ADR 0039, matching ADR 0081 Decision 9's own
+`[default]` tag — no `[binding]` clause of this policy or of ADR 0081 is changed by this entry.
+
+PR: (this PR). Refs #1569, #1548, #1560. Does not close #1569's parent epic (#1548) — Wave 2 has
+more phases beyond this one.
