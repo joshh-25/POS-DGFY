@@ -21323,9 +21323,13 @@ rather than colliding. No other content differs from the epic plan doc's "Phase 
 
 - Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
 - Objective and scope: second PR of the #265 epic. Deprecates (does not remove) AVIF encoding from
-  the upload hot path: `getDeliveryFormats` no longer requests an `avif` format, dropping every new
-  upload from 3 delivery-format families to 2 (~55-65% of the pipeline's CPU, per the epic's own
-  instrumented-baseline estimate from Phase 294). `RESPONSIVE_ASSET_VERSION` bumps to 3; the
+  the upload hot path: `getDeliveryFormats` no longer requests an `avif` format. Because
+  `getDeliveryFormats` already deduplicated the fallback `webp` entry against an explicit one via a
+  `Map`, the drop is classification-dependent, not uniform: photos go from 2 delivery-format
+  families (webp + avif, deduped) to 1 (webp only); graphics go from 3 (png + webp + avif) to 2
+  (png + webp). The exact per-class CPU reduction depends on classification -- graphics see a
+  smaller relative drop than photos -- rather than the flat ~55-65% figure this entry previously
+  cited from Phase 294's instrumented baseline. `RESPONSIVE_ASSET_VERSION` bumps to 3; the
   hardcoded `-v2-` folder-recognition regex in both `deriveImageAssetVariantUrls` (URL derivation)
   and `removeOptimizedImageAsset` (delete-path folder recognition -- the #1379/#871 incident site)
   becomes a capturing, version-parsing pattern shared via one module constant, so a v3 folder is
