@@ -168,10 +168,10 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
       onClick={() => onOpenChange(false)}
     >
       <div
-        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+        className="pos-items-modal-panel pos-items-modal-panel--auto relative flex w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-slate-200 p-6 pr-16">
+        <div className="shrink-0 border-b border-slate-200 p-6 pr-16">
           <h2 id="product-barcode-scanner-title" className="flex items-center gap-2 text-xl font-bold text-slate-900">
             <ScanLine className="h-5 w-5 text-blue-700" aria-hidden="true" />
             Scan Product Barcode
@@ -190,7 +190,7 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
           </button>
         </div>
 
-        <div className="space-y-3 px-5 py-4 sm:px-6">
+        <div className="pos-items-modal-scroll-region flex-1 space-y-3 px-5 py-4 sm:px-6">
           <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-slate-950">
             <video
               ref={videoRef}
@@ -238,7 +238,7 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
           )}
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-slate-200 p-4">
+        <div className="pos-items-modal-footer flex shrink-0 justify-end gap-3 border-t border-slate-200 px-4 pt-4">
           <Button
             type="button"
             onClick={() => {

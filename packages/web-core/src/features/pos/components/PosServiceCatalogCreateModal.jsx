@@ -57,7 +57,7 @@ export default function PosServiceCatalogCreateModal({
       onClick={closeModal}
     >
       <div
-        className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]"
+        className="pos-items-modal-panel pos-items-modal-panel--auto flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between gap-4 bg-[#0F172A] px-5 py-4 sm:px-6">
@@ -81,7 +81,7 @@ export default function PosServiceCatalogCreateModal({
           </button>
         </div>
 
-        <div className="overflow-y-auto p-4 sm:p-6">
+        <div className="pos-items-modal-scroll-region flex-1 p-4 sm:p-6">
           {!isOnline ? (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <p className="font-bold">Service creation is available online only.</p>

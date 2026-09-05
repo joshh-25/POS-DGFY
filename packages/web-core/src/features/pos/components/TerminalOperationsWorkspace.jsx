@@ -4004,7 +4004,7 @@ function ItemsWorkspace({
           onClick={closeCreate}
         >
           <div
-            className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="pos-items-modal-panel relative flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Header */}
@@ -4031,7 +4031,7 @@ function ItemsWorkspace({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
+            <div className="pos-items-modal-scroll-region flex-1 p-5 sm:p-6 bg-white">
               <section className="mb-5 space-y-3 rounded-xl border border-blue-200 bg-blue-50/70 p-4" aria-labelledby="pos-external-barcode-heading">
                 <div className="flex items-start gap-3">
                   <div className="rounded-lg bg-white p-2 text-blue-700 shadow-sm">
@@ -4449,7 +4449,7 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="shrink-0 bg-[#0F172A] px-5 py-3 sm:px-6 flex justify-end gap-2.5">
+            <div className="pos-items-modal-footer shrink-0 bg-[#0F172A] px-5 pt-3 sm:px-6 flex justify-end gap-2.5">
               <Button
                 type="button"
                 variant="outline"
@@ -4488,7 +4488,7 @@ function ItemsWorkspace({
           onClick={closeEdit}
         >
           <div
-            className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="pos-items-modal-panel relative flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Header */}
@@ -4513,7 +4513,7 @@ function ItemsWorkspace({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 space-y-4 sm:space-y-5">
+            <div className="pos-items-modal-scroll-region flex-1 p-4 sm:p-6 bg-slate-50/50 space-y-4 sm:space-y-5">
               {/* Top Horizontal Row: 3 Toggle Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
                 {/* Toggle Card 1: Always Available */}
@@ -4882,7 +4882,7 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="shrink-0 bg-white border-t border-slate-200/80 px-5 py-3.5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="pos-items-modal-footer shrink-0 bg-white border-t border-slate-200/80 px-5 pt-3.5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-600 w-full sm:w-auto">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
                   <ShieldCheck className="h-4 w-4" aria-hidden="true" />

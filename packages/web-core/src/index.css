@@ -833,6 +833,44 @@ html.dgfy-imin-performance [class~="transition-all"] {
   scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
 }
 
+/*
+ * POS Items custom modals cannot rely on dynamic viewport units because the
+ * iMin wrapper supports Chrome 80. Keep the vh declaration first so older
+ * WebViews retain a real constraint, then let newer browsers refine it with
+ * dvh as the software keyboard and browser chrome change the visual viewport.
+ */
+.pos-items-modal-panel {
+  height: calc(100vh - 1.5rem);
+  height: calc(100dvh - 1.5rem);
+  max-height: calc(100vh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem);
+}
+
+.pos-items-modal-panel--auto {
+  height: auto;
+}
+
+.pos-items-modal-scroll-region {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.pos-items-modal-footer {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .pos-items-modal-panel {
+    height: auto;
+    max-height: calc(100vh - 3rem);
+    max-height: calc(100dvh - 3rem);
+  }
+}
+
 @media print {
 
   body.pos-modal-scroll-lock,
