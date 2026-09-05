@@ -20758,11 +20758,11 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 
 - Initiative/release: POS Items catalog-search consistency; local development.
 - Objective and scope: Implement backward-compatible pagination, pre-pagination filters/counts, and Items query state.
-- Status: planned.
+- Status: completed.
 - Dependencies: Phase 296 acceptance.
-- Acceptance and validation evidence: Pending focused API and UI regression tests; see catalog-search plan.
-- Completion date: pending.
-- Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `scripts/reproduce-pos-items-search-gap.cjs`.
+- Acceptance and validation evidence: Opt-in paginated API preserves the legacy array response; stable batched repository reads apply POS visibility, barcode/name/SKU/category search, primary-plus-secondary category membership, location stock and stock-status filters before page totals. Items requests 15-row pages, resets on filters, ignores stale reads, and retains an editor snapshot. Five focused backend suites pass (67 tests), including >500-row enriched search and legacy use-case compatibility; `npm run build:pos` passes.
+- Completion date: 2026-09-05.
+- Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `apps/dgfy-api/src/validators/posValidator.js`; `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`; `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`; `packages/web-core/src/features/pos/services/posService.js`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; focused catalog tests.
 
 ## Phase 298 - POS Items Catalog Search Verification
 
@@ -20774,4 +20774,4 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Completion date: pending.
 - Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `scripts/reproduce-pos-items-search-gap.cjs`.
 
-- Current catalog-search phase: 296 completed. Next eligible phase: 297, pending approval.
+- Current catalog-search phase: 297 completed. Next eligible phase: 298, pending approval.

@@ -15,7 +15,7 @@ Fix eligible items appearing in Sell search but missing from Items management.
 Use only `C:/xampp/htdocs/POS-DGFY` on `POS-Development`. No PR, push, deployment,
 new worktree, or production data changes. Physical iMin validation is excluded
 by user instruction on 2026-09-05. Browser verification remains required.
-Phase 296 is completed; Phases 297-298 remain planned.
+Phases 296-297 are completed; Phase 298 remains planned.
 
 ## Confirmed evidence and limits
 
@@ -57,7 +57,7 @@ Status: completed (2026-09-05).
 
 ## Phase 297 - Implement complete querying
 
-Status: planned. Depends on Phase 296 acceptance.
+Status: completed (2026-09-05).
 
 - Add opt-in server pagination with an unchanged legacy `data` array and additive
   metadata. Validate page, page size, search, category, stock and location inputs.
@@ -72,6 +72,14 @@ Status: planned. Depends on Phase 296 acceptance.
   catalog, and no matching results.
 - Acceptance: records beyond 200 and 500 are discoverable and pageable; correct
   counts and filters; Sell/scanner compatibility; hidden rows consume no slots.
+
+Implementation uses the opt-in `paginate=true` contract. The repository reads
+stable 500-row batches, enriches each batch with visibility, barcode, category,
+override and location-stock data, applies management filters, and retains only
+the requested page while counting matches. Legacy calls still receive an array.
+The Items UI requests 15 rows, ignores stale responses through its existing read
+sequence, resets pages on filter changes, and retains the active editor snapshot.
+Focused backend tests (67 assertions across five suites) and the POS build pass.
 
 ## Phase 298 - Verify and close
 
@@ -109,5 +117,5 @@ ADR 0080 `0080-item-multi-category-membership.md` under `docs/architecture/adr/`
 These keep stock ownership unchanged, refresh authoritative and tenant scoped,
 and category membership behavior intact. No new exception/allowlist is planned.
 
-Current phase: 296 completed. Next eligible phase: 297, pending approval.
+Current phase: 297 completed. Next eligible phase: 298, pending approval.
 The authoritative sequence is [the phase ledger](IMPLEMENTATION_PHASE_LEDGER.md).
