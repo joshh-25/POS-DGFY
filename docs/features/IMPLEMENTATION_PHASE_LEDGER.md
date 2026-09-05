@@ -20351,16 +20351,48 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Objective and scope: #1278 (versioned production releases + release notes, already filed, no new
   issue needed) starts consuming the promotion `candidate_id` and the five per-app prod versions
   this epic produces, closing the loop epic #1548's Context named (#633, #276, and now #1278, all
-  previously unable to answer "what is running in prod" from a real version string).
-- Status: planned.
+  previously unable to answer "what is running in prod" from a real version string). This phase is
+  PR 1 of #1278's two-PR implementation — the decision record, template, and promoter obligations;
+  the enforcement script and CI wiring are Phase 296, a separate PR.
+- Status: completed.
 - Dependencies: Phase 279 (the parity gate and finalized policy text this phase reports against);
   Phase 273 / ADR 0081 (the version identities #1278 consumes); #1278 (filed).
-- Acceptance and validation evidence: not yet started — owned by #1278's own acceptance criteria,
-  not re-derived here.
-- Completion date: not started (planned).
-- Contracts/files (expected): whatever #1278 itself names; not re-derived here.
-- Next eligible phase: none recorded within epic #1548 — Phase 280 is epic #1548's own final planned
-  wave; further platform-versioning work beyond it is new scope, not part of this sequence.
+- Acceptance and validation evidence: new
+  [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md)
+  (`status: accepted`, `authority_level: authoritative`, owner `release`) records the release unit
+  (the promotion `candidate_id`), the authoritative-record/published-mirror split
+  (`docs/releases/notes/<candidate_id>.md` committed, GitHub Release on tag `release-<candidate_id>`
+  as its mirror), the one `[binding]` clause (no production promotion reaches `main` without a
+  release-note record for its candidate), the minimum structure, the concision rule (explicitly
+  citing #1605 — a version bump alone is not evidence of a user-visible change), the edge cases
+  (`No user-visible changes.`, breaking/reversion lines, `fix/staging/*` amendment vs. a second
+  record, hotfix/#1007 records), the Android/`v2.1`/`v2.2` component-release separation, and the
+  advisory-first rollout posture for the later enforcement check. `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+  gained a 2026-09-06 dated amendment (never rewritten in place, matching every prior entry) stating
+  the per-leg obligation. `docs/releases/notes/TEMPLATE.md` + `README.md` define the
+  `sku-release-note/v1` schema and explain why this is not `docs/releases/batches/` (dead,
+  ADR-0030-era machinery frozen 2026-07-03). `.agents/skills/promoter/SKILL.md` and
+  `references/promotion-runbook.md` gained the authoring/amend/publish obligations, the
+  release-note heredoc next to the candidate-manifest heredoc, a `gh release create` block after
+  the parity-gate section, and a checkpoint-table row classifying the GitHub Release publish as
+  unattended. `docs/development/PROJECT_DEVELOPMENT_GUIDE.md` got a narrow pointer at Appendix G's
+  head and at its three CHANGELOG/SemVer recommendation bullets, without rewriting the generic
+  guide. Verification run against this PR's diff (docs/ADR/skill-file only — no `apps/**` or
+  `packages/web-core/**` touched): `npm run check:adr` (ADR 0082 well-formed, `INDEX.md`
+  regenerated via `--write-index`, 89 ADRs validated, no stale index), `npm run lint:docs` (chains
+  `check:adr`; governed-doc frontmatter/links valid), `npm run check:architecture` (pass — no
+  `apps/dgfy-api` boundary touched), `npm run check:compliance` (pass — no compliance-sensitive
+  surface changed, expected for a docs/ADR-only PR). Full command transcripts in this PR's
+  `## Testing Evidence`.
+- Completion date: 2026-09-06.
+- Contracts/files: `docs/architecture/adr/0082-production-release-record-and-release-notes.md`
+  (new), `docs/architecture/adr/INDEX.md` (regenerated), `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+  (2026-09-06 amendment), `docs/releases/notes/TEMPLATE.md` (new), `docs/releases/notes/README.md`
+  (new), `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
+  `docs/development/PROJECT_DEVELOPMENT_GUIDE.md`, this ledger entry.
+- Next eligible phase: 296 (#1278 PR 2 — the `check:release-notes` enforcement script,
+  `package.json` wiring, and its `promotion-quality-gate.yml` advisory step; tip of the ledger was
+  Phase 295 at the time this phase was planned).
 
 ## Phase 281 - Delivery-fee override provenance: persist `delivery_fee_override` (#1564)
 
