@@ -432,7 +432,12 @@ const posCatalogQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
     limit: Joi.number().integer().min(1).max(500).default(100),
     folder_id: Joi.number().integer().positive().optional(),
-    location_id: Joi.number().integer().positive().optional()
+    location_id: Joi.number().integer().positive().optional(),
+    paginate: Joi.boolean().default(false),
+    page: Joi.number().integer().min(1).default(1),
+    page_size: Joi.number().integer().min(1).max(100).default(15),
+    category_filter: Joi.string().trim().max(160).allow('').default('all'),
+    stock_filter: Joi.string().valid('all', 'in_stock', 'low_stock', 'almost_out', 'out_of_stock').default('all')
 });
 const mobilePosCatalogBootstrapQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),

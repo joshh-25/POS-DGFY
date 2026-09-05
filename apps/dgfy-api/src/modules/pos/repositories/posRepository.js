@@ -23,6 +23,7 @@ import {
     loadItemLocationStockMap,
     applyItemLocationStockMap
 } from '../../shared/repositories/itemLocationStockOverlay.js';
+import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
 import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
 import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 import { buildPosTransactionHistorySearchConditions } from '../utils/posTransactionHistorySearch.js';
@@ -4664,7 +4665,7 @@ export const posRepository = {
         };
     },
 
-    async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null } = {}) {
+    async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null, offset = 0, with_scan_info = false } = {}) {
         const Item = dbStore.get('Item');
         const where = buildVisibleWhere(
             {},
@@ -4742,42 +4743,107 @@ export const posRepository = {
                 ...buildServiceDetailInclude(),
                 ...buildFnbCatalogIncludes()
             ],
-            order: [['name', 'ASC']],
-            limit: Math.min(Number.parseInt(limit, 10) || 100, 500)
+            order: [['name', 'ASC'], ['item_id', 'ASC']],
+            limit: Math.min(Number.parseInt(limit, 10) || 100, 500),
+            offset: Math.max(Number.parseInt(offset, 10) || 0, 0)
         };
 
         try {
+            const rawItems = await Item.findAll(queryOptions);
             const catalogItems = await attachSecondaryFolderIds(
-                await applyCatalogOverrides(await Item.findAll(queryOptions), { includePrimaryBarcode: true })
+                await applyCatalogOverrides(rawItems, { includePrimaryBarcode: true })
             );
             const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 location_id
             );
             const normalizedLocationId = Number.parseInt(location_id, 10);
-            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
+            const data = Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
                 ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
+            return with_scan_info ? { data, scanned_count: rawItems.length } : data;
         } catch (error) {
             if (!isMissingVatTypeColumnError(error)) {
                 throw error;
             }
 
-            const catalogItems = await attachSecondaryFolderIds(
-                await applyCatalogOverrides(withLegacyVatFallback(await Item.findAll({
+            const rawItems = await Item.findAll({
                     ...queryOptions,
                     attributes: BASE_POS_ITEM_ATTRIBUTES
-                })), { includePrimaryBarcode: true })
+                });
+            const catalogItems = await attachSecondaryFolderIds(
+                await applyCatalogOverrides(withLegacyVatFallback(rawItems), { includePrimaryBarcode: true })
             );
             const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
                 location_id
             );
             const normalizedLocationId = Number.parseInt(location_id, 10);
-            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
+            const data = Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
                 ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
+            return with_scan_info ? { data, scanned_count: rawItems.length } : data;
         }
+    },
+
+    async listCatalogPage({ search = '', page = 1, page_size = 15, category_filter = 'all', stock_filter = 'all', location_id = null } = {}) {
+        const normalizedSearch = String(search || '').trim().toLowerCase();
+        const normalizedCategory = String(category_filter || 'all').trim();
+        const normalizedStock = String(stock_filter || 'all').trim();
+        const safePage = Math.max(Number.parseInt(page, 10) || 1, 1);
+        const safePageSize = Math.min(Math.max(Number.parseInt(page_size, 10) || 15, 1), 100);
+        const matchStart = (safePage - 1) * safePageSize;
+        const pageItems = [];
+        let matchedCount = 0;
+        let offset = 0;
+        const batchSize = 500;
+
+        while (true) {
+            const batch = await this.listCatalog({
+                limit: batchSize,
+                offset,
+                location_id,
+                with_scan_info: true
+            });
+            for (const item of batch.data) {
+                const folderName = String(item?.folder?.name || item?.product_folder || '').trim();
+                const barcode = String(item?.primary_barcode?.code || '').trim();
+                const haystack = [item?.name, item?.sku_code, folderName, barcode]
+                    .map((value) => String(value || '').toLowerCase())
+                    .join(' ');
+                const folderId = Number(item?.folder_id);
+                const secondaryFolderIds = Array.isArray(item?.secondary_folder_ids) ? item.secondary_folder_ids : [];
+                const matchesCategory = normalizedCategory === 'all'
+                    || (normalizedCategory.startsWith('folder:')
+                        ? [folderId, ...secondaryFolderIds.map(Number)].includes(Number(normalizedCategory.slice(7)))
+                        : folderName.toLowerCase() === normalizedCategory.replace(/^name:/, '').toLowerCase());
+                const quantity = Number(item?.current_stock || 0);
+                const threshold = Number(item?.min_threshold);
+                const lowThreshold = Number.isFinite(threshold) && threshold > 0 ? threshold : 5;
+                const service = isStockExemptServiceItem(item);
+                const alwaysAvailable = item?.pos_always_available === true;
+                const matchesStock = normalizedStock === 'all'
+                    || (normalizedStock === 'in_stock' && (service || alwaysAvailable || quantity > lowThreshold))
+                    || (['low_stock', 'almost_out'].includes(normalizedStock) && !service && quantity > 0 && quantity <= lowThreshold)
+                    || (normalizedStock === 'out_of_stock' && !service && !alwaysAvailable && quantity <= 0);
+                if ((!normalizedSearch || haystack.includes(normalizedSearch)) && matchesCategory && matchesStock) {
+                    if (matchedCount >= matchStart && pageItems.length < safePageSize) pageItems.push(item);
+                    matchedCount += 1;
+                }
+            }
+            offset += batch.scanned_count;
+            if (batch.scanned_count < batchSize) break;
+        }
+
+        return {
+            items: pageItems,
+            pagination: {
+                page: safePage,
+                page_size: safePageSize,
+                total: matchedCount,
+                total_pages: Math.max(1, Math.ceil(matchedCount / safePageSize))
+            }
+        };
     },
 
     async listCatalogOverrides({ search = '', limit = 200 } = {}) {

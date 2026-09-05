@@ -6239,12 +6239,27 @@ export const buildListPosCatalogUseCase = ({
                     throw error;
                 }
             }
-            const data = await posRepository.listCatalog({
+            const catalogQuery = {
                 search: query?.search || '',
                 limit: query?.limit || 100,
                 folder_id: query?.folder_id,
                 location_id: locationScope.location_id
-            });
+            };
+            if (query?.paginate === true) {
+                const data = await posRepository.listCatalogPage({
+                    search: catalogQuery.search,
+                    page: query?.page,
+                    page_size: query?.page_size,
+                    category_filter: query?.category_filter,
+                    stock_filter: query?.stock_filter,
+                    location_id: catalogQuery.location_id
+                });
+                return ok({
+                    ...data,
+                    items: data.items.map((item) => toSerializable(item))
+                });
+            }
+            const data = await posRepository.listCatalog(catalogQuery);
             const filtered = (Array.isArray(data) ? data : []).filter((item) => (
                 item?.pos_visible !== false
             ));

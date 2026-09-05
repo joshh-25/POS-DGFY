@@ -394,6 +394,43 @@ describe('pos use-cases application result contract', () => {
         expect(result.data).toEqual([]);
     });
 
+    it('listPosCatalog returns the opt-in management page without changing legacy callers', async () => {
+        const listCatalog = jest.fn();
+        const listCatalogPage = jest.fn().mockResolvedValue({
+            items: [{ item_id: 601, name: 'Tomato Meatballs', pos_visible: true }],
+            pagination: { page: 2, page_size: 15, total: 16, total_pages: 2 }
+        });
+        const useCase = buildListPosCatalogUseCase({
+            posRepository: { listCatalog, listCatalogPage },
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 4 })
+        });
+
+        const result = await useCase({
+            query: {
+                paginate: true,
+                search: 'meat',
+                page: 2,
+                page_size: 15,
+                category_filter: 'folder:8',
+                stock_filter: 'in_stock'
+            },
+            user: { user_id: 21 }
+        });
+
+        expect(listCatalog).not.toHaveBeenCalled();
+        expect(listCatalogPage).toHaveBeenCalledWith({
+            search: 'meat',
+            page: 2,
+            page_size: 15,
+            category_filter: 'folder:8',
+            stock_filter: 'in_stock',
+            location_id: 4
+        });
+        expect(result.success).toBe(true);
+        expect(result.data.pagination.total).toBe(16);
+        expect(result.data.items.map((item) => item.item_id)).toEqual([601]);
+    });
+
     it('listPosCatalog returns POS-visible items including out-of-stock rows', async () => {
         const listCatalog = jest.fn().mockResolvedValue([
             { item_id: 1, name: 'Visible In Stock', pos_visible: true, current_stock: 3 },
