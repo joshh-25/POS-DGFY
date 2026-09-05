@@ -9,6 +9,59 @@ const mockRes = () => {
 };
 
 describe('POS checkout discount policy validator', () => {
+    describe.each(['pwd', 'senior'])('%s beneficiary line references', (type) => {
+        const requestFor = (entry) => ({
+            body: {
+                idempotency_key: 'idem-beneficiary-line-ref',
+                lines: [{ line_ref: 'item-1-0', item_id: 1, quantity: 1, sale_price: 100 }],
+                governed_discount: {
+                    type,
+                    beneficiaries: [{
+                        category: type,
+                        name: 'Sample Customer',
+                        id_number: 'ID-1234',
+                        eligible_items: [{ item_id: 1, eligible_quantity: 1, ...entry }]
+                    }]
+                }
+            }
+        });
+
+        it.each(['item-1-0', 'x'.repeat(160), '', null, undefined])(
+            'accepts and preserves a supported line_ref: %p', (lineRef) => {
+                const req = requestFor(lineRef === undefined ? {} : { line_ref: lineRef });
+                const res = mockRes();
+                const next = jest.fn();
+
+                validatePosCheckout(req, res, next);
+
+                expect(res.status).not.toHaveBeenCalled();
+                expect(next).toHaveBeenCalledTimes(1);
+                expect(req.validatedData.governed_discount.beneficiaries[0].eligible_items[0])
+                    .toEqual(req.body.governed_discount.beneficiaries[0].eligible_items[0]);
+            }
+        );
+
+        it.each([
+            [{ line_ref: 'x'.repeat(161) }, 'line_ref'],
+            [{ line_ref: 123 }, 'line_ref'],
+            [{ line_ref: 'item-1-0', unexpected: true }, 'unexpected']
+        ])('rejects invalid beneficiary item input: %p', (entry, field) => {
+            const req = requestFor(entry);
+            const res = mockRes();
+            const next = jest.fn();
+
+            validatePosCheckout(req, res, next);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(422);
+            expect(res.json.mock.calls[0][0].errors).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    field: `governed_discount.beneficiaries.0.eligible_items.0.${field}`
+                })
+            ]));
+        });
+    });
+
     it('allows non-zero manual discount without a discount profile', () => {
         const req = {
             body: {
