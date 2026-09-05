@@ -89,7 +89,10 @@ release record. That gap is what this ADR closes.
    an `## Included` section listing user- or operator-visible changes in plain language, and an
    `## Operational notes` section for any required upgrade, migration, or configuration action —
    explicitly `None.` when there is nothing to report. `docs/releases/notes/TEMPLATE.md` is the
-   canonical shape; `docs/releases/notes/README.md` explains the directory's own purpose.
+   canonical shape; `docs/releases/notes/README.md` explains the directory's own purpose. The
+   production commit SHA has a two-stage lifecycle — the literal sentinel `pending` at authoring
+   time, finalized to a real 40-hex `main` merge-commit SHA post-deploy — spelled out in full by
+   Decision 8, since the real value cannot exist yet when the note is first authored.
 5. `[default]` **Concision rule.** One line per user- or operator-visible change, each naming its
    source PR or issue. This is not a commit-by-commit changelog: a change that a merchant or an
    operator cannot observe does not get a line. **Explicitly cite #1605 here**: `check:app-versions`'
@@ -111,12 +114,21 @@ release record. That gap is what this ADR closes.
      item line and updates its app's row in the version table, rather than creating a second record
      for the same `candidate_id`.
    - A `main` hotfix and a #1007 expedited promotion each get **their own** release record, keyed by
-     their own `candidate_id` — a #1007 path uses the `release/<label>` label as its candidate ID; a
-     hotfix assigns a fresh `YYYY-MM-DD-NN` ID at fix time, per `.agents/skills/incident-responder/SKILL.md`'s
-     hotfix procedure. Either path's note states the missing-staging-predecessor fact outright in its
-     `## Operational notes` section, rather than silently omitting the version table's usual
-     staging-parity context — mirroring ADR 0081 Decision 8's own instruction that "the gate
-     documents the fact, it does not forbid it."
+     their own `candidate_id`. **The #1007 path's `candidate_id` is the same `YYYY-MM-DD-NN` form
+     the default flow uses, and its branch follows the identical `release/<candidate_id>-rN`
+     pattern** — `.agents/skills/promoter/references/promotion-runbook.md`'s `#1007-gated exception`
+     section cuts `release/$CANDIDATE_ID-r1`, not a differently-shaped `release/<label>` branch;
+     `<label>` is this repo's existing narrative shorthand for "whatever the release branch is
+     called," not a second naming scheme. Decision 8's enforcement-check resolution therefore
+     already covers this path with no special-casing. **A hotfix assigns a fresh `YYYY-MM-DD-NN` ID
+     at fix time** (`.agents/skills/incident-responder/SKILL.md`'s hotfix procedure), but its PR
+     branch does *not* follow the `release/*` pattern — `implement`'s own branch-naming convention
+     names it `fix/*` — so Decision 8 states plainly that this path is not reached by the mechanical
+     check and instead carries an explicit procedural obligation, added to
+     `.agents/skills/incident-responder/SKILL.md` in this same PR. Either path's note states the
+     missing-staging-predecessor fact outright in its `## Operational notes` section, rather than
+     silently omitting the version table's usual staging-parity context — mirroring ADR 0081
+     Decision 8's own instruction that "the gate documents the fact, it does not forbid it."
 7. `[default]` **Component releases stay separate.** The Android wrapper keeps its own
    `android-<flavor>-v<X.Y>` tags and its own GitHub Releases (#615) — untouched by this ADR. The
    `release-` prefix (Decision 2) and the `android-` prefix are disjoint, so no ambiguous or
@@ -124,15 +136,38 @@ release record. That gap is what this ADR closes.
    `v2.1`/`v2.2` are explicitly noted as **dead, pre-#1548 tags** — an older versioning attempt that
    predates ADR 0081's per-app scheme and this ADR's release-note scheme; they are not to be
    extended or reused as a precedent for either.
-8. `[default]` **Rollout posture.** The enforcement check (named here, built in a later phase —
-   `check:release-notes`, validating a `release/<candidate_id>-rN` → `main` promotion PR carries a
-   matching `docs/releases/notes/<candidate_id>.md`) lands **advisory first, flips blocking only in a
-   dedicated later phase**, once clean-run evidence exists — the same pattern
-   [ADR 0081](0081-per-app-container-semantic-versioning.md) Decision 9 and Phase 272/#1550/#1551
-   already established in this repo for a new promotion-time gate. This ADR's Decision 3
-   (`[binding]`) is the substantive obligation; Decision 8 governs only how soon a script starts
-   *enforcing* it mechanically, matching Decision 3's own instruction to visibly flag before it
-   rejects.
+8. `[default]` **Rollout posture and enforcement contract.** The enforcement check (named here,
+   built in a later phase — `check:release-notes`, validating a `release/<candidate_id>-rN` →
+   `main` promotion PR carries a matching `docs/releases/notes/<candidate_id>.md`) lands **advisory
+   first, flips blocking only in a dedicated later phase**, once clean-run evidence exists — the
+   same pattern [ADR 0081](0081-per-app-container-semantic-versioning.md) Decision 9 and Phase
+   272/#1550/#1551 already established in this repo for a new promotion-time gate. This ADR's
+   Decision 3 (`[binding]`) is the substantive obligation; Decision 8 governs only how soon a script
+   starts *enforcing* it mechanically, matching Decision 3's own instruction to visibly flag before
+   it rejects. Two things the check's contract must get right, stated explicitly here rather than
+   left to whoever builds it to guess:
+   - **`production_commit`'s two-stage lifecycle — what actually makes the `release/* → main`
+     PR-time check satisfiable.** The real `main` merge-commit SHA does not exist until after that
+     PR merges, so the check must not require a 40-hex value at PR-open time. `production_commit`
+     therefore carries the literal sentinel `pending` (an exact, checkable string — never a
+     bracketed prose placeholder, never blank) from authoring time through the
+     `release/<candidate_id>-rN → main` PR. `check:release-notes` must accept **either** a
+     `^[0-9a-f]{40}$` value **or** the exact literal `pending` at that point. The promoter finalizes
+     the field to the real 40-hex SHA post-deploy, before the GitHub Release is published
+     (`.agents/skills/promoter/references/promotion-runbook.md`'s "Publish the GitHub Release"
+     section self-verifies this with a `grep` immediately before tagging). **There is no second CI
+     gate re-validating that finalization yet** — it is a procedural obligation on the promoter
+     today, tracked as Follow-up 3, not silently assumed already covered.
+   - **Path coverage.** `release/<candidate_id>-rN` covers both the default flow's final leg and the
+     #1007 exception (Decision 6 above — both share the identical branch pattern; nothing extra is
+     needed for #1007). It does **not** cover a `main` hotfix, whose branch is `fix/*` per
+     `implement`'s own naming convention — the check's `release/<candidate_id>-rN` resolution exits
+     0 ("not applicable") for that head, so Decision 3's binding obligation for a hotfix is enforced
+     **procedurally, not mechanically**, via the explicit release-note-authoring step added to
+     `.agents/skills/incident-responder/SKILL.md`'s hotfix procedure in this same PR — not by this
+     script. Mechanically closing this (extending the script, or adding a base-`main`,
+     non-`release/*` gate) is Follow-up 3 below, named as outstanding scope rather than implied
+     already solved.
 
 ## Consequences
 
@@ -163,6 +198,13 @@ release record. That gap is what this ADR closes.
   `permissions: contents: read` today; giving it `contents: write` to publish the Release itself,
   rather than the promoter doing it as a manual post-deploy step, is Follow-up 2 (below) — explicit
   future scope, not assumed to already work.
+- **Two enforcement gaps are named explicitly, not silently assumed solved** (Decision 8): the
+  `release/* → main` PR-time check cannot validate a real `production_commit` before that PR merges,
+  so it accepts a literal `pending` sentinel there instead, finalized to the real SHA post-deploy
+  with no second CI gate re-checking the finalization yet; and a `main` hotfix's non-`release/*`
+  branch is not recognized by the check's branch-pattern resolution at all, so that path's binding
+  obligation is enforced procedurally today via `.agents/skills/incident-responder/SKILL.md`'s
+  hotfix procedure, not mechanically. Both are tracked as Follow-up 3.
 
 ## Alternatives considered
 
@@ -218,6 +260,8 @@ release record. That gap is what this ADR closes.
   this ADR's Decision 4 defines, added in this same PR.
 - `docs/releases/batches/` — the frozen, ADR-0030-era precedent this ADR deliberately does not
   revive (Decision 7's own "Alternatives considered" entry above).
+- `.agents/skills/incident-responder/SKILL.md` — gains the procedural release-note-authoring step
+  for the hotfix path in this same PR (Decision 6/8's hotfix-coverage gap).
 
 ## Follow-ups (not built by this ADR — hand to `pm` to file, do not improvise)
 
@@ -226,3 +270,16 @@ release record. That gap is what this ADR closes.
 2. Auto-publish the GitHub Release from `deploy-main.yml` after its `publish` job succeeds, instead
    of the promoter doing it as a manual post-deploy step. Needs `contents: write` on a workflow
    currently pinned to `contents: read`; deliberately deferred out of this ADR's scope.
+3. **Forward guidance for whoever builds Phase 296's `scripts/check-release-notes.js`** (named here
+   so the PR 1 → PR 2 review findings that produced this section aren't rediscovered): the script's
+   frontmatter validator must accept `production_commit` as **either** `^[0-9a-f]{40}$` **or** the
+   exact literal string `pending` — the original plan text ("`production_commit` 40-hex") would fail
+   every normal promotion, since the real `main` SHA cannot exist until after the `release/* → main`
+   PR merges (Decision 8). Separately, mechanically close the two named enforcement gaps once
+   there's appetite for the extra scope: (a) a finalization re-check confirming `production_commit`
+   was actually updated to a real 40-hex value before the GitHub Release publishes (today this is
+   only the promoter's own runbook-level `grep` self-check, no CI gate); (b) recognition of the
+   `main`-hotfix path, whose branch does not match `release/<candidate_id>-rN` at all — either widen
+   `check:release-notes` to also fire on any `fix/* → main` PR, or accept that path's continued
+   procedural-only enforcement via `.agents/skills/incident-responder/SKILL.md` as a deliberate,
+   named limitation rather than an oversight.
