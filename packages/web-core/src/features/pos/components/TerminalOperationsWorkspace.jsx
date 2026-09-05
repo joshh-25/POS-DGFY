@@ -137,7 +137,7 @@ import {
 } from '@/services/settingsService.js';
 import { getAllUsers, updatePosApprovalPin, updatePosDayClosePin, updateProfile, updateUserPermissions } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
-import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
+import { buildSkuSuggestionIndex, suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveEditItemSaveError } from '../utils/editItemSaveErrors.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
 import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
@@ -2215,6 +2215,7 @@ function ItemsWorkspace({
   const [editCategoryInput, setEditCategoryInput] = useState('');
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
+  const skuSuggestionIndex = useMemo(() => buildSkuSuggestionIndex(skuSeedItems), [skuSeedItems]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
   const pendingItemImagePreviews = React.useSyncExternalStore(
     subscribeToPendingPosItemImagePreviews, getPendingPosItemImagePreviews, getPendingPosItemImagePreviews
@@ -2383,14 +2384,14 @@ function ItemsWorkspace({
     const suggestedSku = suggestNextSku({
       name: createForm.name,
       category: 'product',
-      existingItems: skuSeedItems
+      skuIndex: skuSuggestionIndex
     });
     setCreateForm((current) => (
       current.sku_code === suggestedSku
         ? current
         : { ...current, sku_code: suggestedSku }
     ));
-  }, [createForm.name, showCreateModal, skuSeedItems]);
+  }, [createForm.name, showCreateModal, skuSuggestionIndex]);
 
   const sortedItems = useMemo(
     () => [...(Array.isArray(items) ? items : [])].sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''))),

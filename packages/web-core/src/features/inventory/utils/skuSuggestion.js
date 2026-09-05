@@ -110,6 +110,35 @@ const getItemId = (item) => (
 
 const getSkuCode = (item) => String(item?.sku_code || '').trim().toUpperCase();
 
+const SKU_INDEX_PATTERNS = Object.freeze([
+  Object.freeze({ category: 'raw_material', regex: /^RM-(\d+)$/i, initialsGroup: 0, sequenceGroup: 1 }),
+  Object.freeze({ category: 'product', regex: /^PRD-([A-Z0-9]{1,4})-(\d+)$/i, initialsGroup: 1, sequenceGroup: 2 }),
+  Object.freeze({ category: 'packaging', regex: /^PKG-([A-Z0-9]{1,4})-(\d+)$/i, initialsGroup: 1, sequenceGroup: 2 }),
+  Object.freeze({ category: 'supplies', regex: /^SUP-([A-Z0-9]{1,4})-(\d+)$/i, initialsGroup: 1, sequenceGroup: 2 })
+]);
+
+const getSkuIndexKey = (category, initials = '') => `${category}:${String(initials).toUpperCase()}`;
+
+export const buildSkuSuggestionIndex = (existingItems = []) => {
+  const index = new Map();
+  (Array.isArray(existingItems) ? existingItems : []).forEach((item) => {
+    const sku = getSkuCode(item);
+    if (!sku) return;
+
+    for (const pattern of SKU_INDEX_PATTERNS) {
+      const match = sku.match(pattern.regex);
+      if (!match) continue;
+      const sequence = toPositiveInteger(match[pattern.sequenceGroup]);
+      if (!sequence) break;
+      const initials = pattern.initialsGroup ? match[pattern.initialsGroup] : '';
+      const key = getSkuIndexKey(pattern.category, initials);
+      index.set(key, Math.max(index.get(key) || 0, sequence));
+      break;
+    }
+  });
+  return index;
+};
+
 const getNextSequence = ({
   existingItems,
   category,
@@ -145,7 +174,8 @@ export const suggestNextSku = ({
   name,
   category,
   existingItems = [],
-  currentItemId = null
+  currentItemId = null,
+  skuIndex = null
 }) => {
   const normalizedName = normalizeText(name);
   if (!normalizedName) return '';
@@ -157,12 +187,17 @@ export const suggestNextSku = ({
     ? (buildSkuInitials(normalizedName) || 'GEN')
     : '';
 
-  const nextSequence = getNextSequence({
-    existingItems,
-    category: normalizedCategory,
-    initials,
-    currentItemId
-  });
+  const indexedMaximum = !currentItemId && skuIndex instanceof Map
+    ? skuIndex.get(getSkuIndexKey(normalizedCategory, initials))
+    : null;
+  const nextSequence = Number.isInteger(indexedMaximum)
+    ? indexedMaximum + 1
+    : getNextSequence({
+      existingItems,
+      category: normalizedCategory,
+      initials,
+      currentItemId
+    });
 
   const sequence = String(nextSequence).padStart(config.digits, '0');
   if (!config.requiresInitials) {

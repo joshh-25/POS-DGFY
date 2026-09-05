@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildSkuSuggestionIndex,
   buildSkuInitials,
   normalizeSkuCategory,
   suggestNextSku
@@ -82,5 +83,17 @@ describe('SKU suggestion utility', () => {
     });
 
     expect(sku).toBe('PKG-ML-010');
+  });
+
+  it('indexes a large seed once and reuses it without rescanning for each name change', () => {
+    const seed = Array.from({ length: 10000 }, (_, index) => ({
+      sku_code: `PRD-ITEM-${String(index + 1).padStart(3, '0')}`
+    }));
+    const skuIndex = buildSkuSuggestionIndex(seed);
+
+    expect(suggestNextSku({ name: 'Item', category: 'product', skuIndex })).toBe('PRD-I-001');
+    expect(suggestNextSku({ name: 'Item Test Extra', category: 'product', skuIndex })).toBe('PRD-ITE-001');
+    expect(suggestNextSku({ name: 'Item', category: 'product', skuIndex })).toBe('PRD-I-001');
+    expect(skuIndex.get('product:ITEM')).toBe(10000);
   });
 });
