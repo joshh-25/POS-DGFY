@@ -28,7 +28,18 @@ function base64ToBlob(base64, mimeType) {
   return new Blob([bytes], { type: mimeType });
 }
 
+/**
+ * `document` doesn't exist inside `encodeWorker.js`'s real Worker global scope -- this probe
+ * runs a second time there (`detectCapabilities()` is called fresh per worker instance, see
+ * that file's own comment), and `document.createElement('canvas')` throws in that scope. Branch
+ * on `typeof document === 'undefined'` and use `OffscreenCanvas`+`convertToBlob` instead,
+ * mirroring `encodeVariants.js`'s own `createDrawingSurface` helper -- rather than let the
+ * `try/catch` below swallow that throw and silently report the real capability as unsupported.
+ */
 function probeCanvasToBlobType(mimeType) {
+  if (typeof document === 'undefined') {
+    return probeOffscreenCanvasToBlobType(mimeType);
+  }
   return new Promise((resolve) => {
     try {
       const canvas = document.createElement('canvas');
@@ -45,6 +56,22 @@ function probeCanvasToBlobType(mimeType) {
       resolve(false);
     }
   });
+}
+
+async function probeOffscreenCanvasToBlobType(mimeType) {
+  if (typeof OffscreenCanvas === 'undefined') {
+    return false;
+  }
+  try {
+    const canvas = new OffscreenCanvas(1, 1);
+    if (typeof canvas.convertToBlob !== 'function') {
+      return false;
+    }
+    const blob = await canvas.convertToBlob({ type: mimeType });
+    return Boolean(blob) && blob.type === mimeType;
+  } catch {
+    return false;
+  }
 }
 
 async function probeImageOrientationOption() {
