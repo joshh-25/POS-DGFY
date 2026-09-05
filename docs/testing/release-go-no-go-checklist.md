@@ -14,7 +14,7 @@ topic: pre_promotion_local_gate
 `npm run gate:release:local` (`scripts/gate-release-local.js`) was the pre-promotion quality gate
 for this repository through 2026-09-02. As of #1431 Phase C/D (2026-09-03), every one of its 16
 remaining gates is delegated to `promotion-quality-gate.yml`'s own quality jobs. A 17th gate,
-`release.notes` (ADR 0082 Decision 8), was added by #1278 PR 2 / Phase 297 — see the table below.
+`release.notes` (ADR 0082 Decision 8), was added by #1278 PR 2 / Phase 298 — see the table below.
 `CI_ENFORCED_GATES` now carries **17** entries, `required_gate_count: 0` on a default run. **A
 promoter no longer runs this script before a `develop -> main` (or `staging -> main`) promotion** —
 the workflow's own blocking check-runs (14 of the 17 gates) plus its three deliberately advisory
@@ -112,7 +112,7 @@ Three gates (`release.target_sha`, `observability.evidence.report`, `release.ver
 in `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, "Retired gates — closed resolutions."
 
 **Delegation, completed 2026-09-03 (#1431 Phase 1 PR-B through Phase C/D) for the original 16, and
-extended 2026-09-06 (#1278 PR 2 / Phase 297) with a 17th: none of the gates below "run" here by
+extended 2026-09-06 (#1278 PR 2 / Phase 298) with a 17th: none of the gates below "run" here by
 default.** Every one runs an identical command as a step in `promotion-quality-gate.yml`; 14 are
 blocking on the `release/*→main` leg, and 3 (`dependencies.audit.full`, `backend.test_matrix`,
 `release.notes`) are deliberately advisory (see `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
@@ -154,7 +154,7 @@ it was added after the mapping closed, not one of the 19.
 | 14 | `frontend.storefront.contracts` | `npm run test:frontend:contracts:storefront` | The Storefront-workspace equivalent of gate 13 — added alongside the per-app lint fan-out (#322) but never added to this table (RF-3, PR #513); this row closes that gap. **[CI, delegated + blocking 2026-09-03 PR-B]** |
 | 15 | `frontend.budgets` | `npm run check:frontend-budgets -- --report <dir>/frontend-budgets/frontend_budget_report.json` | Defaults to `owned-build` mode — builds all three apps itself (`npm --prefix apps/dgfy-ims run build`, then `apps/dgfy-pos`, then `apps/dgfy-storefront`) and reads `apps/<app>/dist/assets`. This is why the gate is slow even beyond the test matrix. **[CI, delegated + blocking 2026-09-03, Phase C/D — CI runs a different command shape (`--skip-build --built-after`, three separate serial build steps), see `GATE_RELEASE_LOCAL_CI_MAPPING.md`'s documented exceptions]** |
 | 16 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2 POS scroll-contract spec files>` | Narrow, named-file regression pin on `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js` and `packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`, invoked from the IMS workspace because `packages/web-core` has no test runner of its own. **[CI, delegated + blocking 2026-09-03, Phase C/D]** |
-| 17 | `release.notes` | `npm run check:release-notes` | ADR 0082 Decision 8 (#1278 PR 2, Phase 297): validates a `release/<candidate_id>-rN` head carries a matching `docs/releases/notes/<candidate_id>.md` (schema, candidate_id, production_date, production_commit — `pending` or a real 40-hex SHA — the app version table, and required `## Included`/`## Operational notes` sections). Resolves "not applicable" (exit 0) on any other head, including a `main` hotfix's `fix/*` branch. Added after the original 19-gate mapping closed — not one of that count. **[CI, delegated, TEMPORARILY advisory 2026-09-06 by deliberate rollout design — flips blocking once a later phase finds clean-run evidence, ADR 0082 Follow-up 1]** |
+| 17 | `release.notes` | `npm run check:release-notes` | ADR 0082 Decision 8 (#1278 PR 2, Phase 298): validates a `release/<candidate_id>-rN` head carries a matching `docs/releases/notes/<candidate_id>.md` (schema, candidate_id, production_date, production_commit — `pending` or a real 40-hex SHA — the app version table, and required `## Included`/`## Operational notes` sections). Resolves "not applicable" (exit 0) on any other head, including a `main` hotfix's `fix/*` branch. Added after the original 19-gate mapping closed — not one of that count. **[CI, delegated, TEMPORARILY advisory 2026-09-06 by deliberate rollout design — flips blocking once a later phase finds clean-run evidence, ADR 0082 Follow-up 1]** |
 
 One gate is structurally incapable of failing on a clean promotion checkout —
 `compliance.contracts` (no compliance-relevant diff to flag) — and the artifact marks it

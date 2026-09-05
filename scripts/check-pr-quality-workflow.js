@@ -363,7 +363,7 @@ const BLOCKING_STEP_IDS = {
 //     pre-existing) on every #1431 Phase A/C evidence run. #1015 (fast/DB tier split), #925
 //     (hanging beforeAll), and the fixture rot itself are its prerequisites before it can flip
 //     blocking -- tracked by #1469, filed alongside this change.
-// 2026-09-06 (#1278 PR 2, Phase 297): a third name, for a different reason than either of the two
+// 2026-09-06 (#1278 PR 2, Phase 298): a third name, for a different reason than either of the two
 // above -- 'release.notes' (ADR 0082 Decision 8) is advisory not because of a prerequisite or a
 // flake surface, but by deliberate rollout design: it ships advisory on first landing and flips
 // blocking only once a later, dedicated phase finds clean-run evidence (ADR 0082 Follow-up 1),
@@ -838,7 +838,7 @@ function checkCiEnforcedGatesAreBlocking(ciEnforcedGates) {
     }
     if (ADVISORY_CI_ENFORCED_GATES.has(gateName)) {
       // Deliberately, permanently or temporarily advisory in CI -- see this file's own comment on
-      // ADVISORY_CI_ENFORCED_GATES for why each of the two names in that set is exempt.
+      // ADVISORY_CI_ENFORCED_GATES for why each of the three names in that set is exempt.
       continue;
     }
     for (const stepId of enforcement.steps) {

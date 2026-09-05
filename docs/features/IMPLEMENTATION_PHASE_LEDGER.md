@@ -21434,13 +21434,85 @@ rather than colliding. No other content differs from the epic plan doc's "Phase 
   Amendment), issue #265.
 - Next eligible phase: 297.
 
-## Phase 297 - `scripts/check-release-notes.js` enforcement, wired advisory into `promotion-quality-gate.yml` (ADR 0082 Decision 8, epic #1548, #1278 PR 2 of 2)
+## Phase 297 - Shared template-schema setup for the backend db test tier (#1015 residue, #925)
+
+Filed as this branch's "Phase 296" while planning started, before `origin/develop` moved --
+renumbered to 297 because 296 was independently claimed and merged first by the #265 epic's
+server-only AVIF deprecation PR (#1636) while this work was in flight. Per `AGENTS.md`'s Continuous
+Phase Numbering rule, this entry uses the next open slot rather than colliding. No other content
+differs from what was originally drafted.
+
+- Initiative/release: Backend test matrix fast/db-tier split (#1015) / current release process.
+  #1015's own checklist had already mostly shipped by PR #1023/#1124/#1452 before this phase started
+  (tier split, `verbose: false`, per-chunk timing, most of the cold-boot reduction) -- the one
+  genuinely open lever left was collapsing the three schema-repair layers the db tier pays on every
+  invocation into one shared setup, which is what this phase does. `run-fnb-readiness-gate.js`
+  consolidation stayed split out to #1025, unchanged by this phase.
+- Objective and scope: `createTestTenant()`'s `tenantSeq.sync({force:true})` -- a full ~139-table
+  DDL creation measured at ~235s during #1432 planning -- ran once per test tenant, ~10x per db-tier
+  run, and was the db tier's dominant remaining cost. `CREATE TABLE...LIKE` was disqualified before
+  implementation started: the tenant model set carries real FK constraints (24 explicit
+  `references:` blocks + 660 belongsTo/hasMany associations, only 3 explicit `constraints:false`
+  opt-outs), and `LIKE` preserves columns/indexes but not foreign keys. Built an FK-preserving
+  `SHOW CREATE TABLE` replay instead -- functionally equivalent to a `mysqldump --no-data` replay,
+  over the existing mysql2/Sequelize connection, no new external CLI dependency (the self-hosted
+  runner's host toolset can't be assumed to include mysql client tools).
+- Mechanically: `scripts/run-backend-test-matrix.js`'s `runDbTier()` gained
+  `provisionTemplateTenantDatabase()`, called once per matrix invocation (never per chunk, never
+  from `runFastTier()` -- unreachable by construction, not by a runtime DB-reachability check) to
+  build a deterministically-named `test_tenant_template_<targetSha>` database via the same
+  `getTenantModels()` + `sync({force:true})` call `createTestTenant()` makes today, in its own child
+  process (same spawnSync pattern `runSchemaPreflight()` already used). The template DB name is
+  exported to every db-tier chunk via `BACKEND_TEST_MATRIX_TEMPLATE_DB`. `runSchemaPreflight()` also
+  now runs `ensureLandlordTenantSchemaReady()` once itself (against the same landlord test database
+  every chunk connects to) and, on success, sets `BACKEND_TEST_MATRIX_LANDLORD_READY=true` on every
+  chunk's env -- an honest signal, not just an assertion, since the matrix's own preflight actually
+  ran those 24 probes first. `testTenantHelper.js`'s `createTestTenant()` clones from the template
+  when `BACKEND_TEST_MATRIX_TEMPLATE_DB` is set (`SHOW CREATE TABLE <template>.<table>` read, replay
+  against the tenant's own connection with `FOREIGN_KEY_CHECKS` disabled for the whole clone, pinned
+  to one physical connection via an explicit transaction since the flag is session-scoped) and falls
+  back to today's `sync({force:true})` when it is absent -- required so a bare `npm test` inside
+  `apps/dgfy-api`, or any single-file `npx jest`, keeps working with zero new env setup.
+  `landlordSchemaReadiness.js`'s `ensureLandlordTenantSchemaReady()` gained a module-scope
+  single-in-flight-promise memoization (concurrent callers in one process await the same run instead
+  of re-probing) plus the `BACKEND_TEST_MATRIX_LANDLORD_READY` short-circuit. Template DB lifecycle
+  ownership: the matrix runner itself drops it in a `try`/`finally` around `runDbTier()` after every
+  chunk completes -- deliberately not `globalTeardown.cjs`, which runs once per chunk's own Jest
+  process and would otherwise race ~5 processes to `DROP` a database other chunks still need; the
+  drop is best-effort (logs a warning, never throws).
+- `--skip-schema-preflight` keeps its exact pre-existing meaning: no template is built either, every
+  chunk falls back to its own per-tenant sync. `partitionByDbManifest()`'s stale-entry throw and the
+  manifest itself are unchanged. The fast tier's `DB_HOST=127.0.0.1`/`DB_PORT=1` guardrail is
+  untouched -- the new functions are only ever called from `runDbTier()`.
+- Status: completed (code), measured against a real CI dispatch -- see below.
+- Dependencies: #1023/#1124/#1452 (already shipped #1015 checklist items, not re-done here); #1025
+  (the `run-fnb-readiness-gate.js` consolidation this phase does not touch); #1432 Phase 249 (fixture
+  rot fix, a #1469 precondition this phase does not re-verify).
+- Acceptance and validation evidence: see the PR's own `## Testing Evidence` section for the full
+  before/after `promotion-quality-gate.yml` dispatch comparison (db-tier total and per-chunk
+  `duration_ms`, identical pass counts, `rtr_verification.test.js` evidence for #925) and links to
+  the closed #925 and the #1469 correction comment.
+- Completion date: see PR merge date; #925 closed independently of this PR's merge, per Pat's
+  explicit call recorded in the campaign plan.
+- Contracts/files: `scripts/run-backend-test-matrix.js`,
+  `apps/dgfy-api/tests/helpers/testTenantHelper.js`,
+  `apps/dgfy-api/tests/helpers/landlordSchemaReadiness.js` (all modified);
+  `apps/dgfy-api/tests/globalTeardown.cjs` deliberately left unmodified (see ownership decision
+  above). Issues #1015, #925, #1469 (comment only, not closed by this phase).
+- Next eligible phase: 298.
+
+## Phase 298 - `scripts/check-release-notes.js` enforcement, wired advisory into `promotion-quality-gate.yml` (ADR 0082 Decision 8, epic #1548, #1278 PR 2 of 2)
 
 Filed as this branch's "Phase 296" in Phase 280's own "Next eligible phase" note and in the plan
-doc -- renumbered to 297 because Phase 296 was independently claimed and merged first by the #265
-epic's server-only AVIF deprecation PR while this work was still being planned. Per `AGENTS.md`'s
-Continuous Phase Numbering rule, this entry uses the next open slot rather than colliding. No other
-content differs from what Phase 280 described as coming next.
+doc, then renumbered once already (to 297) because Phase 296 was independently claimed and merged
+first by the #265 epic's server-only AVIF deprecation PR while this work was still being planned.
+Renumbered a second time, to 298, on pr-reviewer's RF-1 finding (this PR, round 1): while this PR
+sat open, Phase 297 was independently claimed and merged first by the #1015/#925 shared
+template-schema setup PR (unrelated, landed via PR #1638). Per `AGENTS.md`'s Continuous Phase
+Numbering rule, this entry uses the next open slot verified against a freshly-fetched
+`origin/develop` (298 -- confirmed no `## Phase 298` heading existed there) rather than assuming a
+number is safe, mirroring the same collision-handling precedent Phase 295's own entry already set.
+No other content differs from what Phase 280 described as coming next.
 
 - Initiative/release: Container semantic versioning epic (#1548) / current release process.
 - Objective and scope: second and closing PR of #1278 (ADR 0082's own Decision 8 / Follow-up 3
@@ -21519,4 +21591,4 @@ content differs from what Phase 280 described as coming next.
   `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
   `docs/architecture/adr/0082-production-release-record-and-release-notes.md` (Follow-up 1/3, read
   not edited), issue #1278.
-- Next eligible phase: 298.
+- Next eligible phase: 299.

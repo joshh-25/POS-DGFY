@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Release-note enforcement check (ADR 0082, #1278 PR 2 / Phase 297).
+ * Release-note enforcement check (ADR 0082, #1278 PR 2 / Phase 298).
  *
  * ADR 0082 Decision 3 (`[binding]`): no production promotion reaches `main` without a release-note
  * record for its candidate. This script is the mechanical half of that obligation, named but not

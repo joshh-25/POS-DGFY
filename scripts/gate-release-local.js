@@ -26,7 +26,7 @@ const GATE_NAMES = [
   'frontend.storefront.contracts',
   'frontend.budgets',
   'scroll.contracts',
-  // ADR 0082 Decision 8 / #1278 PR 2 (Phase 297) -- the first gate added after #1431 Phase C/D
+  // ADR 0082 Decision 8 / #1278 PR 2 (Phase 298) -- the first gate added after #1431 Phase C/D
   // closed the original 19-gate mapping. Structurally cannot fail outside a release/*->main head
   // (see STRUCTURALLY_CANNOT_FAIL below), same shape as compliance.contracts above.
   'release.notes',
@@ -77,7 +77,7 @@ const CI_ENFORCED_GATES = new Map([
   ['frontend.storefront.contracts',  { job: 'frontend-storefront-quality', steps: ['run_storefront_vitest'] }], // CI superset: unfiltered `npx vitest run`
   ['frontend.budgets',               { job: 'frontend-budgets-quality',    steps: ['check_frontend_budgets'] }],
   ['scroll.contracts',               { job: 'frontend-ims-quality',        steps: ['run_scroll_contracts'] }],
-  // ADR 0082 Decision 8 / #1278 PR 2 (Phase 297): advisory on first landing by deliberate rollout
+  // ADR 0082 Decision 8 / #1278 PR 2 (Phase 298): advisory on first landing by deliberate rollout
   // design (mirroring check:app-versions' own advisory-to-blocking rollout, ADR 0081 Decision 9),
   // not a prerequisite/flake exception like the two entries above -- see the
   // ADVISORY_CI_ENFORCED_GATES comment in check-pr-quality-workflow.js. Flips blocking only in a

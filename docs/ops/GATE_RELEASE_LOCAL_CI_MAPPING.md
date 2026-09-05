@@ -19,7 +19,7 @@ required-locally count is 0.**
 ## How to read this table
 
 `scripts/gate-release-local.js`'s `GATE_NAMES` array (17 entries, in the order the script runs
-them, as of #1278 PR 2 / Phase 297 — see "A new gate after the mapping closed" below) is the source
+them, as of #1278 PR 2 / Phase 298 — see "A new gate after the mapping closed" below) is the source
 of truth for the left column — read it there before trusting a stale copy here.
 This table still lists all 19 original gates, including the 3 retired ones, for historical
 continuity — the retired rows (#1, #18, #19) no longer appear in `GATE_NAMES` or the artifact.
@@ -39,7 +39,7 @@ Each gate maps to exactly one of:
 ## Current state (2026-09-03, #1431 Phase C/D) — the short version
 
 Every "(a) Covered" row is now **delegated** to `promotion-quality-gate.yml` via
-`scripts/gate-release-local.js`'s `CI_ENFORCED_GATES` map (17 entries as of #1278 PR 2 / Phase 297
+`scripts/gate-release-local.js`'s `CI_ENFORCED_GATES` map (17 entries as of #1278 PR 2 / Phase 298
 — 16 from the original 19-gate mapping, plus `release.notes`, the first gate added after this
 umbrella closed; see "A new gate after the mapping closed" below), cross-checked by
 `scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` so a future edit cannot
@@ -71,7 +71,7 @@ rows below is now delegated. `docs/testing/release-go-no-go-checklist.md` and
 pre-`main` step; `promotion-quality-gate.yml`'s own quality jobs are the sole remaining enforcement
 mechanism.
 
-## A new gate after the mapping closed (#1278 PR 2, Phase 297)
+## A new gate after the mapping closed (#1278 PR 2, Phase 298)
 
 `release.notes` (ADR 0082 Decision 8, `scripts/check-release-notes.js` / `npm run
 check:release-notes`) is **not** one of the 19 original gates this document otherwise maps — it was

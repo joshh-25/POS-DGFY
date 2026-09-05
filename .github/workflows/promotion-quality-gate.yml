@@ -1715,7 +1715,7 @@ jobs:
         # blocking on the release/*->main leg since #1431 Phase 1
         timeout-minutes: 5
 
-      # ADR 0082 Decision 8 / #1278 PR 2 (Phase 297): validates a release/<candidate_id>-rN -> main
+      # ADR 0082 Decision 8 / #1278 PR 2 (Phase 298): validates a release/<candidate_id>-rN -> main
       # promotion PR carries a matching docs/releases/notes/<candidate_id>.md (schema, candidate_id,
       # production_date, production_commit -- either pending or a real 40-hex SHA -- the app version
       # table, and the required Included/Operational notes sections). Exits 0 ("not applicable") on

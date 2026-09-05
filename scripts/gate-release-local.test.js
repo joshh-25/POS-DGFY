@@ -86,7 +86,7 @@ test('GATE_NAMES has no duplicates and matches the documented count of 17', () =
 });
 
 // #1431 Phase D (2026-09-03) closed the original 19-gate mapping at 16 GATE_NAMES, each a
-// CI_ENFORCED_GATES entry -- required-locally 0 on a default run. #1278 PR 2 (Phase 297) added a
+// CI_ENFORCED_GATES entry -- required-locally 0 on a default run. #1278 PR 2 (Phase 298) added a
 // 17th, 'release.notes' (ADR 0082 Decision 8), the first gate added after that closure -- same
 // shape (delegated, required-locally 0), just not one of the original 19. Pinned directly rather
 // than left implicit in the individual delegation tests below.
@@ -130,7 +130,7 @@ test('--only still works as an escape hatch for a single delegated gate', () => 
 
 // #1431 Phase D (2026-09-03) shipped a two-name advisory-exemption allowlist (defined in
 // check-pr-quality-workflow.js, since that's where checkCiEnforcedGatesAreBlocking consumes it);
-// #1278 PR 2 (Phase 297) added a third, 'release.notes' (ADR 0082 Decision 8) -- pinned here too
+// #1278 PR 2 (Phase 298) added a third, 'release.notes' (ADR 0082 Decision 8) -- pinned here too
 // since it's the direct answer to "which of the 17 delegated gates stay advisory."
 test('the advisory-exemption set contains exactly dependencies.audit.full, backend.test_matrix, and release.notes', () => {
   assert.deepEqual(new Set(ADVISORY_CI_ENFORCED_GATES), new Set(['dependencies.audit.full', 'backend.test_matrix', 'release.notes']));

@@ -62,7 +62,7 @@ Promotes \`develop\` to \`main\` at $(git rev-parse --short origin/develop).
 ## Testing Evidence
 
 \`promotion-quality-gate\` check-run: <link> (14 blocking gates + 3 deliberately advisory as of
-#1278 PR 2 / Phase 297 -- gate:release:local no longer runs as part of this procedure, see
+#1278 PR 2 / Phase 298 -- gate:release:local no longer runs as part of this procedure, see
 docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md). Tenant-schema sync checked against production: <result>.
 Aggregate promotion — see \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the compliance exemption."
 
