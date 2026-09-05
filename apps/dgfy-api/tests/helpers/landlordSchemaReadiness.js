@@ -20,9 +20,18 @@ const ensureColumn = async (tableName, columnName, definitionSql, afterColumnNam
   );
 };
 
-export const ensureLandlordTenantSchemaReady = async () => {
-  if (process.env.NODE_ENV !== 'test') return;
+// #1015: previously ran all 24 probes above, strictly sequentially, on *every* call -- 3 direct
+// call sites plus every createTestTenant() indirectly. `readinessPromise` makes concurrent callers
+// within the same process await the single in-flight run instead of re-probing; a failed attempt
+// clears the cache so a later call can retry rather than caching a rejection forever.
+// BACKEND_TEST_MATRIX_LANDLORD_READY=true is a second, cheaper short-circuit: the matrix runner
+// sets it on every db-tier chunk's env once its own preflight subprocess has already run this exact
+// function once against the same landlord test database (scripts/run-backend-test-matrix.js's
+// runSchemaPreflight()) -- so a chunk process skips all 24 probes entirely instead of merely
+// deduping them within itself.
+let readinessPromise = null;
 
+const runReadinessProbes = async () => {
   await ensureColumn('tenants', 'db_host', 'VARCHAR(255) NULL DEFAULT "localhost"', 'company_token');
   await ensureColumn('tenants', 'admin_phone', 'VARCHAR(40) NULL', 'admin_email');
   await ensureColumn('tenants', 'owner_dgfy_account_id', 'CHAR(36) NULL', 'admin_password_hash');
@@ -47,4 +56,19 @@ export const ensureLandlordTenantSchemaReady = async () => {
   await ensureColumn('dgfy_accounts', 'deletion_reason', 'VARCHAR(500) NULL', 'deleted_by');
   await ensureColumn('dgfy_account_tenant_memberships', 'last_selected_at', 'DATETIME NULL', 'accepted_at');
   await ensureColumn('users', 'phone_number', 'VARCHAR(40) NULL', 'email');
+};
+
+export const ensureLandlordTenantSchemaReady = () => {
+  if (process.env.NODE_ENV !== 'test') return Promise.resolve();
+  if (process.env.BACKEND_TEST_MATRIX_LANDLORD_READY === 'true') return Promise.resolve();
+
+  if (!readinessPromise) {
+    readinessPromise = runReadinessProbes().catch((err) => {
+      // Allow a failed attempt to be retried on the next call instead of caching a rejection
+      // forever for the lifetime of the process.
+      readinessPromise = null;
+      throw err;
+    });
+  }
+  return readinessPromise;
 };
