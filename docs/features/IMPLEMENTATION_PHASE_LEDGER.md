@@ -20719,3 +20719,15 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Contracts/files: `packages/web-core/Components/ui/dialog.jsx`; `packages/web-core/Components/ui/__tests__/dialog.test.jsx`; `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`; `packages/web-core/src/features/inventory/__tests__/ProductQrScannerModal.rearm.test.jsx`.
 - Governance note: `within-existing-boundary`; no architecture exception, backend/API change, database migration, or production operation is introduced.
 - Next eligible phase: 294.
+
+## Phase 294 - POS Items SKU Suggestion Performance
+
+- Initiative/release: POS Items modal reachability and Android WebView responsiveness.
+- Objective and scope: remove repeated full-catalog scans from Add Item SKU generation while retaining the complete authorized seed and existing SKU formats, sequence rules, and backend uniqueness enforcement.
+- Status: completed.
+- Dependencies: Phase 293; Phase 291's confirmed source-level 10,000-row repeated-scan risk; existing inventory SKU suggestion contract.
+- Acceptance and validation evidence: a reusable SKU maximum index is built once per seed change and used for constant-time suggestions on each name change. Fourteen focused utility and viewport tests pass. A local Node benchmark over 10,000 seed rows and 1,000 suggestions measured 3,600.38 ms for repeated scans and 4.31 ms for indexed lookup (835.8x computation speedup). POS, IMS, and Storefront builds and repository governance checks pass. Physical iMin latency, frame, and memory evidence remains assigned to Phase 295.
+- Completion date: 2026-09-05.
+- Contracts/files: `packages/web-core/src/features/inventory/utils/skuSuggestion.js`; `packages/web-core/src/features/inventory/__tests__/skuSuggestion.test.js`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`.
+- Governance note: `within-existing-boundary`; no API, database, authorization, SKU format, or architecture exception is introduced.
+- Next eligible phase: 295.

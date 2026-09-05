@@ -132,6 +132,17 @@ restores focus to its opener, and releases its lock during every close/unmount
 path. Focused jsdom coverage exercises nested close order, pre-existing body
 overflow restoration, focus return, scanner cleanup, and keyboard wrapping.
 
+### Phase 294 implementation record (2026-09-05)
+
+The Add Item flow still loads the complete authorized dropdown seed so SKU
+uniqueness coverage is not weakened. That seed is now indexed once when it
+changes. Each item-name keystroke performs a constant-time maximum lookup instead
+of scanning up to 10,000 rows again. A local Node benchmark using 10,000 rows and
+1,000 suggestions measured 3,600.38 ms for repeated scans and 4.31 ms for indexed
+lookups (approximately 835.8x faster for this computation). This benchmark is
+local browser-side evidence only; iMin interaction, frame, and memory proof remains
+part of Phase 295.
+
 ## Authoritative references
 
 - `docs/START_HERE.md`
