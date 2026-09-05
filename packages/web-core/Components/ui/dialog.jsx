@@ -4,6 +4,26 @@ import { cn } from '../../src/lib/utils.js'
 
 const DialogContext = createContext(null)
 
+const modalScrollLocks = new Set()
+let bodyOverflowBeforeModal = ''
+
+export const acquireModalScrollLock = () => {
+  if (typeof document === 'undefined') return () => {}
+
+  const lock = Symbol('modal-scroll-lock')
+  if (modalScrollLocks.size === 0) bodyOverflowBeforeModal = document.body.style.overflow
+  modalScrollLocks.add(lock)
+  document.body.style.overflow = 'hidden'
+
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    modalScrollLocks.delete(lock)
+    if (modalScrollLocks.size === 0) document.body.style.overflow = bodyOverflowBeforeModal
+  }
+}
+
 const FOCUSABLE_SELECTOR = [
   'a[href]',
   'button:not([disabled])',
@@ -15,16 +35,23 @@ const FOCUSABLE_SELECTOR = [
 
 const Dialog = ({ open, onOpenChange, overlayClassName, children }) => {
   const rootRef = useRef(null)
+  const restoreFocusRef = useRef(null)
+
+  if (open && !restoreFocusRef.current && typeof document !== 'undefined') {
+    restoreFocusRef.current = document.activeElement
+  }
 
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = 'unset'
-    }
-    return () => {
-      document.body.style.overflow = 'unset'
-    }
+    if (!open) return undefined
+    return acquireModalScrollLock()
+  }, [open])
+
+  useEffect(() => {
+    if (open || !restoreFocusRef.current) return undefined
+    const element = restoreFocusRef.current
+    restoreFocusRef.current = null
+    if (element?.isConnected) element.focus()
+    return undefined
   }, [open])
 
   if (!open) return null
