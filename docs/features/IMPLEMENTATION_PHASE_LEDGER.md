@@ -20351,16 +20351,81 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Objective and scope: #1278 (versioned production releases + release notes, already filed, no new
   issue needed) starts consuming the promotion `candidate_id` and the five per-app prod versions
   this epic produces, closing the loop epic #1548's Context named (#633, #276, and now #1278, all
-  previously unable to answer "what is running in prod" from a real version string).
-- Status: planned.
+  previously unable to answer "what is running in prod" from a real version string). This phase is
+  PR 1 of #1278's two-PR implementation — the decision record, template, and promoter obligations;
+  the enforcement script and CI wiring are Phase 296, a separate PR.
+- Status: completed.
 - Dependencies: Phase 279 (the parity gate and finalized policy text this phase reports against);
   Phase 273 / ADR 0081 (the version identities #1278 consumes); #1278 (filed).
-- Acceptance and validation evidence: not yet started — owned by #1278's own acceptance criteria,
-  not re-derived here.
-- Completion date: not started (planned).
-- Contracts/files (expected): whatever #1278 itself names; not re-derived here.
-- Next eligible phase: none recorded within epic #1548 — Phase 280 is epic #1548's own final planned
-  wave; further platform-versioning work beyond it is new scope, not part of this sequence.
+- Acceptance and validation evidence: new
+  [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md)
+  (`status: accepted`, `authority_level: authoritative`, owner `release`) records the release unit
+  (the promotion `candidate_id`), the authoritative-record/published-mirror split
+  (`docs/releases/notes/<candidate_id>.md` committed, GitHub Release on tag `release-<candidate_id>`
+  as its mirror), the one `[binding]` clause (no production promotion reaches `main` without a
+  release-note record for its candidate), the minimum structure, the concision rule (explicitly
+  citing #1605 — a version bump alone is not evidence of a user-visible change), the edge cases
+  (`No user-visible changes.`, breaking/reversion lines, `fix/staging/*` amendment vs. a second
+  record, hotfix/#1007 records), the Android/`v2.1`/`v2.2` component-release separation, and the
+  advisory-first rollout posture for the later enforcement check. `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+  gained a 2026-09-06 dated amendment (never rewritten in place, matching every prior entry) stating
+  the per-leg obligation. `docs/releases/notes/TEMPLATE.md` + `README.md` define the
+  `sku-release-note/v1` schema and explain why this is not `docs/releases/batches/` (dead,
+  ADR-0030-era machinery frozen 2026-07-03). `.agents/skills/promoter/SKILL.md` and
+  `references/promotion-runbook.md` gained the authoring/amend/publish obligations, the
+  release-note heredoc next to the candidate-manifest heredoc, a `gh release create` block after
+  the parity-gate section, and a checkpoint-table row classifying the GitHub Release publish as
+  unattended. `docs/development/PROJECT_DEVELOPMENT_GUIDE.md` got a narrow pointer at Appendix G's
+  head and at its three CHANGELOG/SemVer recommendation bullets, without rewriting the generic
+  guide. Verification run against this PR's diff (docs/ADR/skill-file only — no `apps/**` or
+  `packages/web-core/**` touched): `npm run check:adr` (ADR 0082 well-formed, `INDEX.md`
+  regenerated via `--write-index`, 89 ADRs validated, no stale index), `npm run lint:docs` (chains
+  `check:adr`; governed-doc frontmatter/links valid), `npm run check:architecture` (pass — no
+  `apps/dgfy-api` boundary touched), `npm run check:compliance` (pass — no compliance-sensitive
+  surface changed, expected for a docs/ADR-only PR). Full command transcripts in this PR's
+  `## Testing Evidence`.
+- Completion date: 2026-09-06.
+- Contracts/files: `docs/architecture/adr/0082-production-release-record-and-release-notes.md`
+  (new), `docs/architecture/adr/INDEX.md` (regenerated), `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+  (2026-09-06 amendment), `docs/releases/notes/TEMPLATE.md` (new), `docs/releases/notes/README.md`
+  (new), `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
+  `.agents/skills/incident-responder/SKILL.md` (added in the review-fix round below),
+  `docs/development/PROJECT_DEVELOPMENT_GUIDE.md`, this ledger entry.
+- Review-fix round (`pr-reviewer`, PR #1637): RF-2 (should-fix) — the 2026-09-06 policy amendment had
+  been inserted before the prior amendment's own closing `PR:` line instead of after it; moved,
+  no historical text touched. RF-1 (blocker) — the documented lifecycle left `production_commit` as
+  an unfillable value through the `release/* → main` PR, contradicting Phase 296's planned "40-hex
+  required" validation; resolved with an explicit two-stage lifecycle (a literal `pending` sentinel
+  accepted pre-deploy, finalized to a real 40-hex SHA post-deploy) written into ADR 0082 Decisions
+  4/8, the policy amendment, `TEMPLATE.md`, and the runbook's authoring/publish steps (the latter
+  gaining a `grep` self-check). RF-3 (blocker) — ADR 0082 Decision 6's #1007 description was
+  corrected (it already shares the default flow's `release/<candidate_id>-rN` pattern, no
+  enforcement gap); the genuine gap — a `main` hotfix's `fix/*` branch not matching that pattern —
+  is now stated outright (ADR 0082 Decision 8, Follow-up 3) and closed procedurally by a new
+  release-note-authoring step in `.agents/skills/incident-responder/SKILL.md`'s hotfix procedure
+  (both loop entry points), rather than left silently uncovered.
+- Review-fix round 2 (`pr-reviewer`, PR #1637): RF-4 (blocker) — the main-hotfix release-note
+  paragraph was prose only, with no runnable command for actually creating the file, and the generic
+  finalizer assumed the note was already on `origin/develop` (true for an ordinary promotion,
+  false for a hotfix, whose note first exists only on `main` until the later back-port). Fixed with
+  a full worked heredoc in `.agents/skills/incident-responder/SKILL.md` (mirroring
+  `promotion-runbook.md`'s own pre-cut heredoc, including the explicit no-staging-predecessor
+  `## Operational notes` line ADR 0082 Decision 6 requires) and by folding `production_commit`
+  finalization into step 5's back-port branch/commit itself, since that step is already the first
+  thing to carry the note onto `develop` — the generic runbook finalizer now explicitly says a
+  hotfix candidate skips its finalization half and resumes only at tag-and-publish. RF-5 (blocker)
+  — `MAIN_SHA=$(git rev-parse origin/main)` in the runbook's "Publish the GitHub Release" section
+  ran with no preceding `git fetch origin main`, risking a stale pre-merge SHA. Fixed by fetching
+  immediately before capture and cross-checking against `deploy-main.yml`'s own reported `headSha`
+  (`gh run list --workflow=deploy-main.yml --branch main -L1 --json headSha --jq
+  '.[0].headSha'`), refusing to proceed on a mismatch; the same fetch-and-cross-check pattern was
+  reused (not reinvented) in the hotfix back-port's own finalization block for consistency.
+- Next eligible phase: 296 (#1278 PR 2 — the `check:release-notes` enforcement script,
+  `package.json` wiring, and its `promotion-quality-gate.yml` advisory step; tip of the ledger was
+  Phase 295 at the time this phase was planned). PR 2's implementer should read ADR 0082's Follow-up
+  3 and the correction note appended to the approved plan file before building the frontmatter
+  validator — the original plan's "production_commit 40-hex" contract was corrected by this
+  review-fix round.
 
 ## Phase 281 - Delivery-fee override provenance: persist `delivery_fee_override` (#1564)
 

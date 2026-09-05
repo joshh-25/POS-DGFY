@@ -117,7 +117,8 @@ Documentation is the single source of truth. Code must align with documentation,
 #### Recommended
 - Dedicated `docs/` folder with structured documentation
 - Architecture Decision Records (ADRs)
-- CHANGELOG.md for version history
+- CHANGELOG.md for version history (this repo: see Appendix G's note — release notes live in
+  `docs/releases/notes/` instead, per ADR 0082)
 - CONTRIBUTING.md for external contributors
 
 **Gold Standard Example:** This project's `docs/` folder structure:
@@ -585,7 +586,8 @@ For solo developers or early prototyping phases where speed is prioritized over 
 
 #### Recommended
 - Use feature branches even when solo (creates history)
-- Tag releases with semantic versioning
+- Tag releases with semantic versioning (this repo: see Appendix G's note — per-app SemVer plus a
+  release-note record per production promotion, per ADR 0081 and ADR 0082)
 - Weekly self-code-review of recent changes
 
 **Commit Message Format:**
@@ -611,7 +613,8 @@ For teams or production-ready code where stability and collaboration are critica
 - PR template with checklist
 - Required PR sections: Summary, Test Plan, Screenshots (if UI)
 - Conventional commits enforced
-- Semantic versioning with CHANGELOG
+- Semantic versioning with CHANGELOG (this repo: see Appendix G's note — ADR 0082 and
+  `docs/releases/notes/` instead of a `CHANGELOG.md`)
 - Code owners file for review routing
 
 **PR Template:**
@@ -1784,6 +1787,16 @@ Thank you for contributing!
 ---
 
 ### Appendix G: CHANGELOG.md Format
+
+> **Note for this repo (`dgfy-platform`):** this project does not use a `CHANGELOG.md` and does not
+> adopt the Keep-a-Changelog format below — it is kept here only as this guide's generic,
+> project-agnostic reference example. This repo's actual production-release record is
+> [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md) plus
+> `docs/releases/notes/` (one committed, schema-validated file per production promotion, published
+> as a GitHub Release after deploy) — see that ADR and `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
+> 2026-09-06 amendment for what actually governs releases here. Per-app image versioning is
+> [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md), not the single
+> project-wide SemVer number this appendix's Keep-a-Changelog format assumes.
 
 Based on [Keep a Changelog](https://keepachangelog.com/) format.
 

@@ -100,10 +100,11 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0075 | [Standalone Mobile Offline Financial Reconciliation](0075-standalone-mobile-offline-financial-reconciliation.md) | `amended` | standalone_mobile_offline_financial_reconciliation | 2027-02-27 | 13 |
 | 0076 | [Standalone Mobile Offline Order Actions](0076-standalone-mobile-offline-order-actions.md) | `accepted` | standalone_mobile_offline_order_actions | 2027-02-28 | 5 |
 | 0077 | [POS Cheque Tender Method (Scoped Supersession of ADR 0063 Clause 4)](0077-pos-cheque-tender-method-scoped-supersession.md) | `accepted` | pos_cheque_tender_method | 2027-02-28 | 9 |
-| 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `accepted` | customer_delivery_fee_modes | 2027-03-01 | 4 |
+| 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `amended` | customer_delivery_fee_modes | 2027-03-01 | 4 |
 | 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `proposed` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
-| 0080 | [Item Multi-Category Membership](0080-item-multi-category-membership.md) | `accepted` | item_multi_category_membership | 2027-03-03 | 4 |
-| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `accepted` | per_app_container_semantic_versioning | 2027-03-04 | 1 |
+| 0080 | [Item Multi-Category Membership](0080-item-multi-category-membership.md) | `amended` | item_multi_category_membership | 2027-03-03 | 6 |
+| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-04 | 1 |
+| 0082 | [Production Release Record and Release Notes](0082-production-release-record-and-release-notes.md) | `accepted` | production_release_record_and_release_notes | 2027-03-06 | 2 |
 
 ## Renumbered (collision stubs)
 
