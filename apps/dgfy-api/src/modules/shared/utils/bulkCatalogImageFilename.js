@@ -27,6 +27,12 @@ export const getSkuStem = (file = {}) => {
 /**
  * @param {object} file - a multer file object (only `originalname` is read).
  * @returns {{skuCode: string, variantKey: ('large'|'medium'|'thumbnail'|null)}}
+ *
+ * Known limitation (pr-reviewer RF-3, PR #1641): a SKU code that legitimately *ends* in
+ * `__large`/`__medium`/`__thumbnail` (e.g. `WIDGET__large`) is indistinguishable from a
+ * variant-suffixed upload for that same shorter SKU and will be misparsed as
+ * `{ skuCode: 'WIDGET', variantKey: 'large' }` -- no error is surfaced. Low-probability given
+ * typical SKU-naming conventions; not currently validated against elsewhere.
  */
 export const parseBulkCatalogFilename = (file = {}) => {
     const stem = getSkuStem(file);
