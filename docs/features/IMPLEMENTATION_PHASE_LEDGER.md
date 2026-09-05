@@ -21433,3 +21433,90 @@ rather than colliding. No other content differs from the epic plan doc's "Phase 
   `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md` (2026-09-06
   Amendment), issue #265.
 - Next eligible phase: 297.
+
+## Phase 297 - `scripts/check-release-notes.js` enforcement, wired advisory into `promotion-quality-gate.yml` (ADR 0082 Decision 8, epic #1548, #1278 PR 2 of 2)
+
+Filed as this branch's "Phase 296" in Phase 280's own "Next eligible phase" note and in the plan
+doc -- renumbered to 297 because Phase 296 was independently claimed and merged first by the #265
+epic's server-only AVIF deprecation PR while this work was still being planned. Per `AGENTS.md`'s
+Continuous Phase Numbering rule, this entry uses the next open slot rather than colliding. No other
+content differs from what Phase 280 described as coming next.
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: second and closing PR of #1278 (ADR 0082's own Decision 8 / Follow-up 3
+  forward guidance). Builds the enforcement mechanism ADR 0082 named but deliberately did not build
+  in PR 1 (Phase 280): a `release/<candidate_id>-rN` head must carry a matching
+  `docs/releases/notes/<candidate_id>.md` record. Resolves the candidate id from the head branch
+  (`release/<candidate_id>-rN`, covering both the default flow's final leg and the #1007-gated
+  exception identically -- they share the pattern, per ADR 0082 Decision 8's own "path coverage"
+  paragraph); any other head, including a `main` hotfix's `fix/*` branch, exits 0 ("not
+  applicable") -- that path stays a procedural obligation on
+  `.agents/skills/incident-responder/SKILL.md`, not this script, matching ADR 0082 Decision 8's
+  named, deliberate gap (Follow-up 3). Validates the note's frontmatter (`schema:
+  sku-release-note/v1`, `candidate_id` matching the branch, `production_date`, and
+  `production_commit` accepting **either** `^[0-9a-f]{40}$` **or** the exact literal `pending` --
+  the plan text's original "40-hex required" framing would have failed every normal promotion PR,
+  since the real `main` SHA cannot exist until after that PR merges; PR 1's own review-fix round
+  (RF-1, PR #1637) had already corrected this in ADR 0082 itself, and this PR reads the merged ADR
+  rather than the stale plan text), the per-app version table against
+  `apps/<app>/package.json` at head, and the required `## Included`/`## Operational notes`
+  sections (including the concision rule: one line per change, no fenced code block, no nested
+  list, `No user-visible changes.` accepted verbatim).
+- Mechanically: new `scripts/check-release-notes.js` (pure-function core + thin CLI, matching
+  `check-promotion-candidate.js`/`resolve-build-skip-plan.js` house style) reuses
+  `CANDIDATE_ID_PATTERN`/`PromotionCandidateError` from `check-promotion-candidate.js` and
+  `APPS`/`readVersionAt` from `check-app-version-bump.js` -- no second candidate-id regex or
+  version reader was written. New `npm run check:release-notes` /
+  `npm run test:release-notes` scripts. `.github/workflows/promotion-quality-gate.yml`'s
+  `repository-quality` job gains a `run_release_notes` step (`continue-on-error: true`, advisory
+  per ADR 0082 Decision 8's "advisory first" rollout), traced into that job's existing
+  `record_outcomes`/`real_failures` reporting chain. Registered as gate #17,
+  `release.notes`, in `scripts/gate-release-local.js`'s `GATE_NAMES`/`CI_ENFORCED_GATES` (17
+  entries, up from 16) and `STRUCTURALLY_CANNOT_FAIL` (outside a real `release/*` head it resolves
+  "not applicable," same shape as `compliance.contracts`) -- the first gate added after #1431 Phase
+  C/D closed the original 19-gate mapping; not one of that count, but reuses its exact
+  advisory/blocking tracking apparatus (`check-pr-quality-workflow.js`'s
+  `ADVISORY_CI_ENFORCED_GATES`, now three names) since its CI destination lives inside
+  `promotion-quality-gate.yml` itself, the same surface that apparatus already governs. Updated the
+  drifted "14 blocking + 2 advisory" / "16 entries" counts (now "14 blocking + 3 advisory" / "17
+  entries") everywhere they were quoted: `.agents/skills/promoter/SKILL.md`,
+  `.agents/skills/promoter/references/promotion-runbook.md`'s PR-body template,
+  `docs/testing/release-go-no-go-checklist.md` (including its own gate table, gaining row 17), and
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` (gaining a new "A new gate after the mapping closed"
+  section) -- left every dated, historical count (e.g. `RELEASE_CANDIDATE_POLICY.md`'s "7 -> 16
+  entries" Phase C/D amendment) untouched, since those describe a specific past transition, not the
+  current state.
+- Status: completed.
+- Dependencies: Phase 280 (#1278 PR 1, ADR 0082 + the release-note schema/template, merged). Closes
+  #1278.
+- Acceptance and validation evidence: `node --test scripts/check-release-notes.test.js` (16/16 --
+  happy path with `pending`, happy path with a real 40-hex `production_commit`, missing file,
+  version-table mismatch, missing `## Operational notes`, `No user-visible changes.`,
+  non-promotion head, malformed frontmatter, an invalid `production_commit` neither 40-hex nor
+  `pending`, plus candidate-id-mismatch/missing-app-row/multiline-bullet/fenced-code-block/
+  nested-list edge cases); `node --test scripts/gate-release-local.test.js` (25/25, updated for the
+  17th gate) and `scripts/check-pr-quality-workflow.test.js` (41/41, updated for the third advisory
+  name); `npm run check:pr-quality-workflow` (OK -- the workflow's advisory-shape/reporting-chain
+  contract still holds with the new step); `npm run check:adr` (89 ADRs, OK); `npm run lint:docs`
+  (29 governed docs, OK); `npm run check:architecture` (OK); `npm run check:compliance` (no
+  compliance-sensitive changes detected -- docs/scripts/workflow only, no `apps/*` runtime code
+  touched). A fixture note for the real merged candidate `2026-09-05-01` (`dgfy-api` 1.2.2,
+  `dgfy-migration-runner` 1.1.0, `dgfy-ims` 1.1.2, `dgfy-pos` 1.1.2, `dgfy-storefront` 1.2.1, built
+  in a disposable temp git repo, not committed to this repo) was run through the real CLI end to
+  end: PASS with `production_commit: pending`, PASS with a real 40-hex SHA, FAIL on a mismatched
+  `dgfy-api` table version, FAIL on a deleted note file -- all four transcripts are in the PR's
+  `## Testing Evidence` section. **The live `release/*→main` trigger itself is unverified** -- no
+  real promotion has run this step yet; that's expected for a gate landing advisory on first
+  landing (ADR 0082 Decision 8), not silently assumed proven.
+- Completion date: 2026-09-06.
+- Contracts/files: `scripts/check-release-notes.js` (new), `scripts/check-release-notes.test.js`
+  (new), `package.json` (`check:release-notes`/`test:release-notes`),
+  `.github/workflows/promotion-quality-gate.yml` (`run_release_notes` step,
+  `repository-quality` job), `scripts/gate-release-local.js` (`GATE_NAMES`/`CI_ENFORCED_GATES`/
+  `STRUCTURALLY_CANNOT_FAIL`, gate #17), `scripts/gate-release-local.test.js`,
+  `scripts/check-pr-quality-workflow.js` (`ADVISORY_CI_ENFORCED_GATES`),
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/testing/release-go-no-go-checklist.md`,
+  `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
+  `docs/architecture/adr/0082-production-release-record-and-release-notes.md` (Follow-up 1/3, read
+  not edited), issue #1278.
+- Next eligible phase: 298.
