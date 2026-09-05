@@ -625,10 +625,12 @@ const loadStorefrontCatalogImageMap = async (itemIds = [], options = {}) => {
 const resolvePosDisplayImage = ({ override, storefrontImage }) => {
     const path = override?.pos_image_path || storefrontImage?.storefront_image_path || null;
     const url = override?.pos_image_url || storefrontImage?.storefront_image_url || null;
+    const source = override?.pos_image_url ? 'override' : (storefrontImage?.storefront_image_url ? 'storefront' : null);
     return {
         path,
         url,
-        variants: deriveImageAssetVariantUrls({ storedPath: path, storedUrl: url })
+        variants: deriveImageAssetVariantUrls({ storedPath: path, storedUrl: url }),
+        source
     };
 };
 
@@ -722,6 +724,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
                 pos_image_path: posDisplayImage.path,
                 pos_image_url: posDisplayImage.url,
                 pos_image_variants: posDisplayImage.variants,
+                pos_image_source: posDisplayImage.source,
                 storefront_image_path: storefrontImage?.storefront_image_path || null,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
                 storefront_image_variants: deriveImageAssetVariantUrls({
@@ -4614,6 +4617,9 @@ export const posRepository = {
 
         const overrideMap = await loadCatalogOverridesMap([itemPayload.item_id]);
         const override = overrideMap.get(itemPayload.item_id);
+        const storefrontImageMap = await loadStorefrontCatalogImageMap([itemPayload.item_id]);
+        const storefrontImage = storefrontImageMap.get(itemPayload.item_id);
+        const posDisplayImage = resolvePosDisplayImage({ override, storefrontImage });
         const stockMap = await loadItemLocationStockMap([itemPayload.item_id], location_id);
         const [itemWithLocationStock] = Number.isInteger(Number.parseInt(location_id, 10)) && stockMap.locationScopeResolved
             ? applyItemLocationStockMap([itemPayload], stockMap.stockMap)
@@ -4644,11 +4650,14 @@ export const posRepository = {
                 pos_best_seller_mode: ['force', 'never'].includes(override?.pos_best_seller_mode)
                     ? override.pos_best_seller_mode
                     : 'auto',
-                pos_image_path: override?.pos_image_path || null,
-                pos_image_url: override?.pos_image_url || null,
-                pos_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: override?.pos_image_path || null,
-                    storedUrl: override?.pos_image_url || null
+                pos_image_path: posDisplayImage.path,
+                pos_image_url: posDisplayImage.url,
+                pos_image_variants: posDisplayImage.variants,
+                pos_image_source: posDisplayImage.source,
+                storefront_image_url: storefrontImage?.storefront_image_url || null,
+                storefront_image_variants: deriveImageAssetVariantUrls({
+                    storedPath: storefrontImage?.storefront_image_path || null,
+                    storedUrl: storefrontImage?.storefront_image_url || null
                 }),
                 pos_readiness: readiness
             }
@@ -4811,10 +4820,13 @@ export const posRepository = {
         });
 
         const overrideMap = await loadCatalogOverridesMap(items.map((item) => item.item_id));
+        const storefrontImageMap = await loadStorefrontCatalogImageMap(items.map((item) => item.item_id));
         const workflowMode = await getCurrentWorkflowMode();
         return items.map((item) => {
             const payload = toPlain(item);
             const override = overrideMap.get(payload.item_id);
+            const storefrontImage = storefrontImageMap.get(payload.item_id);
+            const posDisplayImage = resolvePosDisplayImage({ override, storefrontImage });
             const readiness = buildPosReadiness({ item: payload, override });
             const recommendation = buildCatalogSetupRecommendation({
                 item: payload,
@@ -4825,11 +4837,14 @@ export const posRepository = {
                 ...payload,
                 pos_visible: resolveCatalogVisibility({ item: payload, override, surface: 'pos' }),
                 pos_always_available: override?.pos_always_available === true,
-                pos_image_url: override?.pos_image_url || null,
-                pos_image_path: override?.pos_image_path || null,
-                pos_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: override?.pos_image_path || null,
-                    storedUrl: override?.pos_image_url || null
+                pos_image_path: posDisplayImage.path,
+                pos_image_url: posDisplayImage.url,
+                pos_image_variants: posDisplayImage.variants,
+                pos_image_source: posDisplayImage.source,
+                storefront_image_url: storefrontImage?.storefront_image_url || null,
+                storefront_image_variants: deriveImageAssetVariantUrls({
+                    storedPath: storefrontImage?.storefront_image_path || null,
+                    storedUrl: storefrontImage?.storefront_image_url || null
                 }),
                 has_override: Boolean(override),
                 pos_readiness: readiness,
