@@ -149,6 +149,50 @@ git fetch origin develop
 node scripts/check-app-version-bump.js --floor --base origin/staging --head origin/develop
 ```
 
+**Release note (#1278, ADR 0082)** — authored in the same bump branch/PR above (or its own
+note-only branch/PR if no app was below floor), before the candidate branch is cut. Reuse
+`docs/releases/notes/TEMPLATE.md`'s shape; fill the version table from each app's bumped
+`package.json`, leave `production_commit` for the eventual `main` merge commit (not known yet at
+this point — fill it in once `deploy-main.yml` completes, before publishing the GitHub Release
+below):
+
+```bash
+git status   # same clean-tree backstop as every other cut in this runbook
+git switch -c chore/release/bump-$CANDIDATE_ID origin/develop   # or reuse the bump branch above
+mkdir -p docs/releases/notes
+cat > docs/releases/notes/$CANDIDATE_ID.md <<NOTE
+---
+schema: sku-release-note/v1
+candidate_id: $CANDIDATE_ID
+production_date: $(date +%Y-%m-%d)
+production_commit: <fill in once deploy-main.yml completes>
+---
+
+# Release $CANDIDATE_ID — $(date +%Y-%m-%d)
+
+| App | Version |
+|---|---|
+| dgfy-api | <version> |
+| dgfy-migration-runner | <version> |
+| dgfy-ims | <version> |
+| dgfy-pos | <version> |
+| dgfy-storefront | <version> |
+
+## Included
+
+- <one plain-language line per user- or operator-visible change, citing its source PR/issue>
+
+## Operational notes
+
+None.
+NOTE
+git add docs/releases/notes/$CANDIDATE_ID.md
+git commit -m "docs(release): add release note for candidate $CANDIDATE_ID"
+git push
+# fold into the bump PR above if one exists, or open its own PR into develop if not --
+# either way the note must be committed before to-staging/$CANDIDATE_ID is cut.
+```
+
 Only once that reports clean does the candidate branch get cut, from the (possibly just-bumped)
 `origin/develop`:
 
@@ -238,6 +282,12 @@ the whole chain, including this parent-pointer requirement), merge into `staging
 redeploy/observe, and increment the repair revision. If the repair is live DB, secrets, SSH, or
 infrastructure work, stop and hand it to Pat. If a developer already made the fix on `develop`,
 cherry-pick only an isolated, reviewed commit with `-x`; mixed commits must be recreated narrowly.
+
+**Amend the release note in this same repair PR (#1278, ADR 0082)** — edit
+`docs/releases/notes/$CANDIDATE_ID.md` directly (this branch carries its own commits, unlike
+`to-staging/*`/`release/*`): add one `## Included` line for the repair and update the version-table
+row for whichever app(s) it touched. Never create a second `docs/releases/notes/*.md` file for the
+same `$CANDIDATE_ID`.
 
 **`apps_touched` — required on every `staging_repair` entry (ADR 0081 Decision 8 amendment, #1610).**
 List exactly the apps whose `build_*` flag was `true` on this repair's STAGING redeploy below —
@@ -430,3 +480,51 @@ staging merge" above), not the manifest's single `current_staging_sha` — an ap
 touched is expected to keep matching its earlier identity, not the candidate's latest one. Each
 printed `[PASS]`/`[FAIL]` line now also shows the `candidate_source_sha` it was actually compared
 against, so a genuine mismatch is legible without cross-referencing the manifest by hand.
+
+## Publish the GitHub Release (#1278, ADR 0082)
+
+After the parity gate above reports `PASS` — not before, and not in place of it. Fill in the
+candidate's release note's `production_commit` (left blank when the note was authored pre-cut,
+since the eventual `main` merge commit wasn't known yet), commit that update to `develop`, then tag
+and publish from the now-complete file. Unattended (see `../SKILL.md`'s checkpoint table) — this is
+a post-deploy record of a deploy Pat already authorized at the PROD dispatch ask, not a new deploy
+mutation:
+
+```bash
+MAIN_SHA=$(git rev-parse origin/main)
+
+# fill in production_commit on develop, if it was left blank at authoring time:
+git fetch origin develop
+git switch -c docs/release/$CANDIDATE_ID-commit origin/develop
+sed -i.bak "s/^production_commit:.*/production_commit: $MAIN_SHA/" docs/releases/notes/$CANDIDATE_ID.md
+rm docs/releases/notes/$CANDIDATE_ID.md.bak
+git add docs/releases/notes/$CANDIDATE_ID.md
+git commit -m "docs(release): record production commit for candidate $CANDIDATE_ID"
+git push -u origin docs/release/$CANDIDATE_ID-commit
+gh pr create --base develop --head docs/release/$CANDIDATE_ID-commit \
+  --title "docs(release): record production commit for candidate $CANDIDATE_ID" \
+  --body "## Summary
+
+Records the deployed production commit ($MAIN_SHA) on candidate $CANDIDATE_ID's release note.
+
+## Testing Evidence
+
+Docs-only change; no compliance-sensitive surface touched."
+gh pr merge <N> --merge   # ordinary develop-base PR, no new merge authority needed
+
+# tag the deployed main commit and publish the GitHub Release from the committed note --
+# fetch the note from develop (not main) since main never carries docs/releases/notes/ commits
+# of its own until a `staging -> main`/`develop -> main` forward-merge:
+git fetch origin develop
+git show origin/develop:docs/releases/notes/$CANDIDATE_ID.md > /tmp/release-note-$CANDIDATE_ID.md
+git tag release-$CANDIDATE_ID $MAIN_SHA
+git push origin release-$CANDIDATE_ID
+gh release create release-$CANDIDATE_ID \
+  --title "Release $CANDIDATE_ID" \
+  --notes-file /tmp/release-note-$CANDIDATE_ID.md \
+  --target $MAIN_SHA
+```
+
+The committed `docs/releases/notes/$CANDIDATE_ID.md` file stays authoritative regardless of what
+this Release shows — if the two ever disagree, re-run `gh release edit` from the committed file
+rather than editing the Release by hand.
