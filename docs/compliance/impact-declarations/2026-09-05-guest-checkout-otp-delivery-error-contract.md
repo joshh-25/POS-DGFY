@@ -8,7 +8,7 @@ classification: major
 surfaces: payments,settings
 reason_codes_impacted: ALLOWED,SERVICE_UNAVAILABLE
 policy_version: 2026.09.05
-verification_evidence: apps/dgfy-api/tests/storeGuestCheckoutOtp.unit.test.js -- actually executed (Jest), 6 passing (1 new),apps/dgfy-api/tests/emailOtpService.test.js -- actually executed (Jest), 19 passing (2 updated for the new explicit delivery_status write),apps/dgfy-api/tests/addPendingEmailOtpDeliveryStatus.migration.test.js -- actually executed (Jest), 6 passing (new),apps/dgfy-api/tests/fixEmailOtpDeliveryStatus.migration.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/authEmailOtpTenantScope.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/tenantHandler.emailOtp.test.js -- actually executed (Jest), unchanged, regression-clean,node --check on every changed apps/dgfy-api .js file and the new migration .cjs file,node scripts/check-app-version-bump.js and node scripts/propose-version-level.js -- confirmed a dgfy-api MINOR bump (1.2.2 -> 1.3.0, matching the bare feat commit's proposed level, corrected from an earlier patch-only bump per pr-reviewer RF-1) and a dgfy-migration-runner patch bump (1.1.0 -> 1.1.1), both PASS
+verification_evidence: apps/dgfy-api/tests/storeGuestCheckoutOtp.unit.test.js -- actually executed (Jest), 6 passing (1 new),apps/dgfy-api/tests/emailOtpService.test.js -- actually executed (Jest), 19 passing (2 updated for the new explicit delivery_status write),apps/dgfy-api/tests/addPendingEmailOtpDeliveryStatus.migration.test.js -- actually executed (Jest), 6 passing (new),apps/dgfy-api/tests/serverStartupEmailVerification.unit.test.js -- actually executed (Jest), 4 passing (new, added per pr-reviewer RF-6),apps/dgfy-api/tests/fixEmailOtpDeliveryStatus.migration.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/authEmailOtpTenantScope.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/tenantHandler.emailOtp.test.js -- actually executed (Jest), unchanged, regression-clean,node --check on every changed apps/dgfy-api .js file and the new migration .cjs file,node scripts/check-app-version-bump.js and node scripts/propose-version-level.js -- confirmed a dgfy-api MINOR bump (1.2.2 -> 1.3.0, matching the bare feat commit's proposed level, corrected from an earlier patch-only bump per pr-reviewer RF-1) and a dgfy-migration-runner patch bump (1.1.0 -> 1.1.1), both PASS
 rollback_note: No destructive change, but rollback is NOT code-only -- corrected per pr-reviewer RF-2 (2026-09-05), which caught that the pre-#1614 emailOtpService omits delivery_status on create and so inherits whatever the column default is; once this migration applies, that default is 'pending', not 'sent', so old code paired with the new default would read every successful send back as 'pending' and the guest-checkout use case would wrongly reject it as undelivered. Coordinated rollback order, if ever needed: quiesce OTP traffic (or take the API down briefly), run the migration's down() (which backfills any 'pending' row to 'failed' with an explanatory delivery_error before narrowing the enum back, the same lossy-but-honest approach the prior 20260807000001 migration's down() already established for 'recorded'/'bounced'), only then deploy the previous code, then resume traffic. Never serve old code against the widened/'pending'-defaulted schema, and never serve this PR's code against the narrowed enum. The error-contract change (storeUseCases.js) and the boot-time SMTP verify (server.js) remain independently revertible as pure code with no migration coupling.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -76,6 +76,10 @@ at PR-open time on `develop`, not a defect (see `pr-reviewer`'s own note on this
 - `apps/dgfy-api/tests/addPendingEmailOtpDeliveryStatus.migration.test.js` -- new, actually executed
   (Jest), 6 passing: no-op when the table doesn't exist, widens+defaults correctly, is idempotent,
   and the `down()` backfill-then-narrow ordering and idempotency are covered.
+- `apps/dgfy-api/tests/serverStartupEmailVerification.unit.test.js` -- new (added per pr-reviewer
+  RF-6), actually executed (Jest), 4 passing: unconfigured/no-call, configured-success,
+  configured-failure/alert, and unexpected-rejection paths for the extracted
+  `runStartupEmailVerification`.
 - `apps/dgfy-api/tests/fixEmailOtpDeliveryStatus.migration.test.js`,
   `tests/authEmailOtpTenantScope.test.js`, `tests/tenantHandler.emailOtp.test.js` -- actually
   executed (Jest), unchanged, regression-clean.
@@ -145,3 +149,13 @@ from the first round resolved, and raised two new, smaller should-fixes, both ad
   actually sent. `rollback_note` corrected above to a coordinated rollback order (quiesce traffic,
   run the migration `down()` first, only then deploy old code, then resume) rather than a
   code-only claim.
+
+## Amendment — 2026-09-05, final re-review (pr-reviewer round 3)
+
+Same Codex `pr-reviewer` terminal, re-reviewing head `e4d610208`. Verdict `COMMENT` again (no
+blockers; `mergeStateStatus: CLEAN`), confirming round-2's RF-1/RF-2 resolved and raising one
+smaller should-fix, fixed here in the same pass:
+
+- **RF-1 (should-fix, fixed):** `tests/serverStartupEmailVerification.unit.test.js` (added in the
+  first round for RF-6) was omitted from this declaration's `verification_evidence` and the
+  `## Verification Evidence` body list. Added to both above.
