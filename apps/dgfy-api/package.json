@@ -1,6 +1,6 @@
 {
   "name": "sku-inventory-manager-backend",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Backend API for SKU Inventory Manager",
   "type": "module",
   "main": "src/server.js",
