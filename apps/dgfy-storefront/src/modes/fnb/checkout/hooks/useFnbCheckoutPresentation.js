@@ -79,7 +79,6 @@ export function useFnbCheckoutPresentation({
     fnbScheduleSummaryLabel: fnbScheduleMode === 'schedule' && fnbScheduledFor
       ? new Date(fnbScheduledFor).toLocaleString()
       : 'NOW',
-    fnbSummaryFeeAndTaxes: totalsForDisplay.service_fee_amount + totalsForDisplay.vat_amount,
     isFnbOrderHandset: viewportWidth < 768,
     isFnbOrderResponsiveFlow,
     setShowFnbMobileOrderSummary,
