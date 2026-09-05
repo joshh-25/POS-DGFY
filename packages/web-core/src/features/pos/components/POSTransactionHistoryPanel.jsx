@@ -23,6 +23,7 @@ import {
 import { isPosTabletViewport } from '../utils/posTabletViewport.js';
 import { resolveAppliedVouchers } from './orderFulfillmentUi.js';
 import POSRefundWorkflowDialog from './POSRefundWorkflowDialog.jsx';
+import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
@@ -388,7 +389,7 @@ export default function POSTransactionHistoryPanel({
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-4 text-[#334155]">
-                                                    <div className="capitalize">{row.payment_type || '-'}</div>
+                                                    <div>{formatPosTransactionPaymentMethods(row)}</div>
                                                     <span
                                                         className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${getPaymentStatusClassName(row.payment_status)}`}
                                                         title={`Payment status: ${getPaymentStatusLabel(row.payment_status)}`}

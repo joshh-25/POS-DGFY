@@ -28,6 +28,7 @@ import {
   fetchPosReportsOverview
 } from '../services/posService.js';
 import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
+import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
 
 const REPORT_SECTIONS = [
   { id: 'daily', label: 'Daily Report' },
@@ -358,6 +359,7 @@ function PosReportsAnalyticsWorkspace({
   }, [categoryId, cashierId, granularity, isOnline, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, offlineReportKey, offlineSnapshotScope, paymentType, reportRefreshKey, source]);
 
   const summaryCards = reportData?.summary_cards || {};
+  const selectedTender = summaryCards.selected_tender || null;
   const filterOptions = reportData?.filter_options || {};
   const dailyReport = reportData?.daily_report || {};
   const monthlyReport = reportData?.monthly_report || {};
@@ -460,7 +462,7 @@ function PosReportsAnalyticsWorkspace({
         <td>${escapeHtml(entry.invoice_number || entry.pos_transaction_id || '-')}</td>
         <td>${escapeHtml(printDateTime(entry.created_at))}</td>
         <td>${escapeHtml(entry.cashier_name || '-')}</td>
-        <td>${escapeHtml(entry.payment_type || '-')}</td>
+        <td>${escapeHtml(formatPosTransactionPaymentMethods(entry))}</td>
         <td>${escapeHtml(entry.status || '-')}</td>
         <td style="text-align:right">${escapeHtml(money(entry.total_amount, currencySymbol))}</td>
         <td style="text-align:right">${escapeHtml(money(entry.net_sales, currencySymbol))}</td>
@@ -495,6 +497,7 @@ function PosReportsAnalyticsWorkspace({
             <div class="card"><div class="label">Gross Sales</div><div class="value">${escapeHtml(money(summaryCards.gross_sales, currencySymbol))}</div></div>
             <div class="card"><div class="label">All Discounts</div><div class="value">${escapeHtml(money(dailyReport.summary?.discounts, currencySymbol))}</div></div>
             <div class="card"><div class="label">POS Profit/Loss</div><div class="value">${escapeHtml(money(summaryCards.pos_profit_loss, currencySymbol))}</div></div>
+            ${selectedTender ? `<div class="card"><div class="label">${escapeHtml(selectedTender.payment_label)} Collected</div><div class="value">${escapeHtml(money(selectedTender.amount, currencySymbol))}</div></div>` : ''}
           </div>
           <div class="section">
             <h2>Cash Reconciliation</h2>
@@ -633,8 +636,8 @@ function PosReportsAnalyticsWorkspace({
         </div>
       </section>
 
-      <div className="order-1 grid gap-3 md:order-2 md:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Total Sales" value={money(summaryCards.total_sales, currencySymbol)} />
+      <div className={`order-1 grid gap-3 md:order-2 md:grid-cols-2 ${selectedTender ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}>
+        <MetricCard label="Total Sales" value={money(summaryCards.total_sales, currencySymbol)} hint={selectedTender ? 'Sales across all tenders in matching transactions' : undefined} />
         <MetricCard label="Transactions" value={Number(summaryCards.total_transactions || 0)} />
         <MetricCard label="Gross Sales" value={money(summaryCards.gross_sales, currencySymbol)} />
         <MetricCard label="All Discounts" value={money(dailyReport.summary?.discounts, currencySymbol)} />
@@ -643,6 +646,13 @@ function PosReportsAnalyticsWorkspace({
           value={money(summaryCards.pos_profit_loss, currencySymbol)}
           tone={Number(summaryCards.pos_profit_loss || 0) >= 0 ? 'positive' : 'negative'}
         />
+        {selectedTender && (
+          <MetricCard
+            label={`${selectedTender.payment_label} Collected`}
+            value={money(selectedTender.amount, currencySymbol)}
+            hint={`${Number(selectedTender.transaction_count || 0)} completed transactions; whole-transaction tender, excluding voids/refunds`}
+          />
+        )}
       </div>
       </div>
 
@@ -889,7 +899,7 @@ function PosReportsAnalyticsWorkspace({
                       { key: 'invoice_number', label: 'Invoice' },
                       { key: 'created_at', label: 'Datetime', render: (row) => printDateTime(row.created_at) },
                       { key: 'cashier_name', label: 'Cashier' },
-                      { key: 'payment_type', label: 'Payment' },
+                      { key: 'payment_type', label: 'Payment', render: (row) => formatPosTransactionPaymentMethods(row) },
                       { key: 'status', label: 'Status' },
                       { key: 'total_amount', label: 'Total', align: 'right', render: (row) => money(row.total_amount, currencySymbol) },
                       { key: 'net_sales', label: 'Reported Net Sales', align: 'right', render: (row) => money(row.net_sales, currencySymbol) }
