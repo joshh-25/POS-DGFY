@@ -28,6 +28,19 @@ const ensureAuthPhoneSchema = async () => {
     await ensureLandlordTenantSchemaReady();
 };
 
+// RF-4 (PR #1638 review): the matrix-generated shape is `test_tenant_template_<sha-or-"local"
+// discriminator>` (see buildTemplateTenantDbName() in scripts/run-backend-test-matrix.js) --
+// enforced here too since templateDbName arrives via BACKEND_TEST_MATRIX_TEMPLATE_DB, external
+// environment input, not something purely metadata-derived like the table names below.
+const TEMPLATE_DB_NAME_PATTERN = /^test_tenant_template_[A-Za-z0-9._-]+$/;
+
+// RF-4: one shared escaping helper for every backtick-quoted identifier this module interpolates --
+// both templateDbName (external env input, gated above by the strict shape check) and the table
+// names information_schema returns (metadata-derived, but given the same treatment rather than
+// assuming two trust tiers need two different helpers). Doubles a literal backtick per MySQL's own
+// identifier-escaping rule.
+const escapeIdentifier = (identifier) => `\`${String(identifier).replace(/`/g, '``')}\``;
+
 // #1015: when the matrix runner has built a shared template tenant database (one
 // tenantSeq.sync({force:true}) per matrix invocation instead of one per tenant -- see
 // provisionTemplateTenantDatabase() in scripts/run-backend-test-matrix.js), clone every table from
@@ -39,8 +52,16 @@ const ensureAuthPhoneSchema = async () => {
 // tenant, not the template. FOREIGN_KEY_CHECKS is a session variable, so every statement is pinned
 // to one physical connection via an explicit transaction -- table creation order need not match FK
 // dependency order either way, since checks are off for the whole clone.
-const cloneFromTemplateDatabase = async (tenantSeq, templateDbName) => {
-    const [tables] = await landlordSequelize.query(
+//
+// `landlordSeq` defaults to the module-level landlordSequelize singleton and is only overridable so
+// a unit test can pass a fake instead of a real DB connection (see
+// testTenantHelper.cloneFromTemplateDatabase.unit.test.js) -- production call sites never pass it.
+export const cloneFromTemplateDatabase = async (tenantSeq, templateDbName, landlordSeq = landlordSequelize) => {
+    if (!TEMPLATE_DB_NAME_PATTERN.test(String(templateDbName))) {
+        throw new Error(`Refusing to clone from template tenant database with unexpected name shape: ${templateDbName}`);
+    }
+
+    const [tables] = await landlordSeq.query(
         "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'",
         { replacements: [templateDbName] }
     );
@@ -51,8 +72,8 @@ const cloneFromTemplateDatabase = async (tenantSeq, templateDbName) => {
 
     const createStatements = [];
     for (const tableName of tableNames) {
-        const [rows] = await landlordSequelize.query(
-            `SHOW CREATE TABLE \`${templateDbName}\`.\`${tableName}\``
+        const [rows] = await landlordSeq.query(
+            `SHOW CREATE TABLE ${escapeIdentifier(templateDbName)}.${escapeIdentifier(tableName)}`
         );
         const createStatement = rows?.[0]?.['Create Table'];
         if (!createStatement) {
@@ -63,10 +84,21 @@ const cloneFromTemplateDatabase = async (tenantSeq, templateDbName) => {
 
     await tenantSeq.transaction(async (t) => {
         await tenantSeq.query('SET FOREIGN_KEY_CHECKS=0', { transaction: t });
-        for (const createStatement of createStatements) {
-            await tenantSeq.query(createStatement, { transaction: t });
+        // RF-1 (PR #1638 review): previously SET FOREIGN_KEY_CHECKS=1 was the last statement in this
+        // callback, so a CREATE TABLE failure mid-loop threw past it. FOREIGN_KEY_CHECKS is a session
+        // variable, not transactional state -- Sequelize's own rollback of `t` releases the pooled
+        // physical connection back to the pool without restoring it, silently corrupting FK
+        // enforcement for whichever caller acquires that connection next. The try/finally guarantees
+        // the restore always runs, still on this same `t` (same physical connection), before the
+        // error is rethrown and `transaction()` rolls back -- the exception path is exercised by
+        // testTenantHelper.cloneFromTemplateDatabase.unit.test.js.
+        try {
+            for (const createStatement of createStatements) {
+                await tenantSeq.query(createStatement, { transaction: t });
+            }
+        } finally {
+            await tenantSeq.query('SET FOREIGN_KEY_CHECKS=1', { transaction: t });
         }
-        await tenantSeq.query('SET FOREIGN_KEY_CHECKS=1', { transaction: t });
     });
 };
 
