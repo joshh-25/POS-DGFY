@@ -27,6 +27,7 @@ import {
     getDiscountLineRef,
     getSelectableDiscountLines,
     isStatutoryBeneficiaryComplete,
+    MAX_STATUTORY_BENEFICIARIES,
     isStatutoryDiscountType
 } from '../utils/posDiscountSelection.js';
 
@@ -95,6 +96,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
         wholeCartQuantity > Number(statutoryAllocatedQuantityByLine.get(lineRef) || 0)
     ));
     const canAddStatutoryBeneficiary = hasUnallocatedStatutoryQuantity
+        && additionalBeneficiaries.length + 1 < MAX_STATUTORY_BENEFICIARIES
         && additionalBeneficiaries.every(isStatutoryBeneficiaryComplete);
 
     React.useEffect(() => {
@@ -247,7 +249,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                     <label className="text-xs font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
                     <div className="relative">
                         <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                        <Input className="h-9 pl-8 text-xs" placeholder="Enter customer name" value={discountDraft.customer_name || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, customer_name: event.target.value }))} />
+                        <Input className="h-9 pl-8 text-xs" maxLength={["senior", "pwd"].includes(discountDraft.type) ? 120 : 255} placeholder="Enter customer name" value={discountDraft.customer_name || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, customer_name: event.target.value }))} />
                     </div>
                 </div>
             ) : null}
@@ -396,7 +398,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                 <label className="text-xs font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
                                 <div className="relative">
                                     <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                    <Input className="h-9 pl-8 text-xs" placeholder="Enter customer name" value={discountDraft.customer_name || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, customer_name: event.target.value }))} />
+                                    <Input className="h-9 pl-8 text-xs" maxLength={["senior", "pwd"].includes(discountDraft.type) ? 120 : 255} placeholder="Enter customer name" value={discountDraft.customer_name || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, customer_name: event.target.value }))} />
                                 </div>
                             </div>
                         )}
@@ -405,7 +407,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                 <label className="text-xs font-semibold text-[#0F172A]">Senior/PWD ID Number <span className="text-rose-500">*</span></label>
                                 <div className="relative">
                                     <CreditCard className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                    <Input className="h-9 pl-8 text-xs" placeholder="Enter ID number" value={discountDraft.id_number || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, id_number: event.target.value }))} />
+                                    <Input className="h-9 pl-8 text-xs" maxLength={100} placeholder="Enter ID number" value={discountDraft.id_number || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, id_number: event.target.value }))} />
                                 </div>
                             </div>
                         )}
@@ -442,8 +444,8 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                         </button>
                                     </div>
                                     <div className="grid gap-2 sm:grid-cols-2">
-                                        <Input aria-label={`Beneficiary ${beneficiaryIndex + 2} name`} className="h-8 text-xs" placeholder="Customer name" value={beneficiary.name || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, beneficiaries: toArray(previous.beneficiaries).map((entry, index) => index === beneficiaryIndex ? { ...entry, name: event.target.value } : entry) }))} />
-                                        <Input aria-label={`Beneficiary ${beneficiaryIndex + 2} ID number`} className="h-8 text-xs" placeholder="Senior/PWD ID" value={beneficiary.id_number || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, beneficiaries: toArray(previous.beneficiaries).map((entry, index) => index === beneficiaryIndex ? { ...entry, id_number: event.target.value } : entry) }))} />
+                                        <Input aria-label={`Beneficiary ${beneficiaryIndex + 2} name`} className="h-8 text-xs" maxLength={120} placeholder="Customer name" value={beneficiary.name || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, beneficiaries: toArray(previous.beneficiaries).map((entry, index) => index === beneficiaryIndex ? { ...entry, name: event.target.value } : entry) }))} />
+                                        <Input aria-label={`Beneficiary ${beneficiaryIndex + 2} ID number`} className="h-8 text-xs" maxLength={120} placeholder="Senior/PWD ID" value={beneficiary.id_number || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, beneficiaries: toArray(previous.beneficiaries).map((entry, index) => index === beneficiaryIndex ? { ...entry, id_number: event.target.value } : entry) }))} />
                                     </div>
                                     <div className="space-y-1">
                                         {selectableDiscountEntries.map(({ line, lineRef, wholeCartQuantity }) => {
@@ -479,7 +481,9 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                             <Button type="button" variant="outline" className="h-8 w-full text-xs" disabled={!canAddStatutoryBeneficiary} onClick={() => setDiscountDraft((previous) => ({ ...previous, beneficiaries: [...toArray(previous.beneficiaries), { category: previous.type, name: '', id_number: '', eligible_items: [] }] }))}>
                                 <Plus className="mr-1.5 h-3.5 w-3.5" /> Add another Senior/PWD
                             </Button>
-                            {!hasUnallocatedStatutoryQuantity ? (
+                            {additionalBeneficiaries.length + 1 >= MAX_STATUTORY_BENEFICIARIES ? (
+                                <p className="text-center text-[10px] font-medium text-slate-500">Maximum of 20 beneficiaries reached.</p>
+                            ) : !hasUnallocatedStatutoryQuantity ? (
                                 <p className="text-center text-[10px] font-medium text-slate-500">All eligible item quantities are already assigned.</p>
                             ) : !canAddStatutoryBeneficiary ? (
                                 <p className="text-center text-[10px] font-medium text-slate-500">Complete the current beneficiary before adding another.</p>

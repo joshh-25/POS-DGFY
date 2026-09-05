@@ -4,10 +4,22 @@ import {
     buildDiscountItemSelection,
     getAvailableDiscountQuantity,
     isStatutoryBeneficiaryComplete,
+    isStatutoryBeneficiaryIdentityValid,
     getSelectableDiscountLines
 } from '../posDiscountSelection.js';
 
 describe('POS discount whole-unit selection', () => {
+    it.each([
+        ['A', 'ID', false, false],
+        ['Ana', 'I', false, false],
+        ['A'.repeat(120), 'I'.repeat(100), true, true],
+        ['A'.repeat(121), 'ID', false, false],
+        ['Ana', 'I'.repeat(101), true, false],
+        ['Ana', 'I'.repeat(120), false, true],
+        ['Ana', 'I'.repeat(121), false, false]
+    ])('validates identity lengths and the primary ID limit', (name, id_number, primary, valid) => {
+        expect(isStatutoryBeneficiaryIdentityValid({ name, id_number }, primary)).toBe(valid);
+    });
     it('excludes cart lines that do not contain a whole unit', () => {
         const cart = [
             { item_id: 1, line_key: 'fractional', quantity: 0.5 },
