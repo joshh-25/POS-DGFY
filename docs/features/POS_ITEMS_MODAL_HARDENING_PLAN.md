@@ -113,6 +113,25 @@ for this gate.
 - Phase 295: run component, browser, physical APK, build, architecture, docs,
   compatibility, and compliance closure.
 
+### Phase 292 implementation record (2026-09-05)
+
+The shared Items modal panel now uses a Chrome-80-compatible `vh` fallback followed
+by `dvh`, one internal scroll region, and a fixed safe-area-aware footer. Add/Edit
+Item, Create/Edit Service, and Product Scanner use the bounded panel contract.
+Focused viewport contracts and browser checks at desktop, mobile portrait, and
+short landscape sizes passed. Physical APK keyboard and rotation proof remains in
+Phase 295.
+
+### Phase 293 implementation record (2026-09-05)
+
+The shared Dialog owns body scrolling through reference-counted locks and restores
+the exact previously focused element when each dialog closes. Closing a nested
+dialog cannot unlock the page while its parent remains open. The custom Product
+Scanner participates in the same lock, traps forward and reverse Tab navigation,
+restores focus to its opener, and releases its lock during every close/unmount
+path. Focused jsdom coverage exercises nested close order, pre-existing body
+overflow restoration, focus return, scanner cleanup, and keyboard wrapping.
+
 ## Authoritative references
 
 - `docs/START_HERE.md`
@@ -122,4 +141,3 @@ for this gate.
 - `docs/architecture/adr/0043-standalone-native-hardware-pos-runtime.md`
 - `docs/architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md`
 - `docs/architecture/adr/0071-frontend-split-into-three-apps.md`
-

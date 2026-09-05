@@ -20695,3 +20695,27 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Contracts/files: [POS Items Modal Hardening Plan](POS_ITEMS_MODAL_HARDENING_PLAN.md); `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/Components/ui/dialog.jsx`; `packages/web-core/Components/items/CSVImportModal.jsx`; `packages/web-core/Components/items/PdfMenuImportModal.jsx`; `packages/web-core/Components/items/MenuImportBatchModal.jsx`; `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogCreateModal.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogEditModal.jsx`; `apps/dgfy-android-bridge/imin-wrapper/app/src/main/AndroidManifest.xml`; `apps/dgfy-android-bridge/imin-wrapper/app/build.gradle.kts`.
 - Governance note: `within-existing-boundary`; no ADR amendment, allowlist exception, database migration, API behavior, or production operation is introduced by this discovery phase. Phase 292 implementation is not authorized by this approval.
 - Current phase: 291. Next eligible phase: 292 after Phase 291 acceptance; Phase 292 is not yet approved.
+
+## Phase 292 - POS Items Modal Viewport Hardening
+
+- Initiative/release: POS Items modal reachability and Android WebView responsiveness.
+- Objective and scope: constrain Add/Edit Item, Create/Edit Service, and Product Scanner panels to the visible viewport with one scrollable body and reachable safe-area-aware actions on Chrome 80-class WebViews.
+- Status: completed.
+- Dependencies: Phase 291 source/runtime inventory; ADR 0067 Chrome 80 floor; ADR 0071 shared frontend ownership.
+- Acceptance and validation evidence: six focused viewport contract tests passed; POS, IMS, and Storefront builds, architecture, compliance, and docs gates passed; rendered browser checks passed at 1440x900, 390x844, and 390x360 without page overflow, runtime errors, request failures, or unreachable final actions. Physical APK keyboard/rotation evidence is assigned to Phase 295.
+- Completion date: 2026-09-05.
+- Contracts/files: `packages/web-core/src/index.css`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogCreateModal.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogEditModal.jsx`; `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`; `packages/web-core/src/features/pos/__tests__/posItemsModalViewport.contract.test.js`.
+- Governance note: `within-existing-boundary`; no ADR amendment, allowlist exception, database migration, API behavior, or production operation is introduced.
+- Next eligible phase: 293.
+
+## Phase 293 - POS Items Modal Scroll and Focus Ownership
+
+- Initiative/release: POS Items modal reachability and Android WebView responsiveness.
+- Objective and scope: keep background scrolling locked until the final nested modal closes; contain keyboard focus in the top modal; restore focus to each opener; and release all global listeners and locks on close or unmount.
+- Status: completed.
+- Dependencies: Phase 292; shared Dialog portal and Product Scanner custom portal inventory from Phase 291.
+- Acceptance and validation evidence: shared Dialog and Product Scanner jsdom suites cover nested reference-counted locks, preservation of pre-existing body overflow, top-modal Tab wrapping, exact focus restoration, and close/unmount cleanup. Focused Phase 292 viewport contracts remain green. Physical APK interaction evidence remains assigned to Phase 295.
+- Completion date: 2026-09-05.
+- Contracts/files: `packages/web-core/Components/ui/dialog.jsx`; `packages/web-core/Components/ui/__tests__/dialog.test.jsx`; `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`; `packages/web-core/src/features/inventory/__tests__/ProductQrScannerModal.rearm.test.jsx`.
+- Governance note: `within-existing-boundary`; no architecture exception, backend/API change, database migration, or production operation is introduced.
+- Next eligible phase: 294.
