@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import { acquirePosImagePreview } from '@/src/features/pos/services/posImagePreview.js';
+const EMPTY_IMAGES = Object.freeze([]);
 
 const buildFileKey = (file, index) => (
   `${file?.name || 'item-image'}-${file?.size || 0}-${file?.lastModified || 0}-${index}`
@@ -12,10 +14,11 @@ const buildSavedImageKey = (entry, index) => (
 );
 
 export default function SelectedItemImageCarousel({
-  files = [],
-  savedGallery = [],
+  files = EMPTY_IMAGES,
+  savedGallery = EMPTY_IMAGES,
   itemName = 'Item',
   disabled = false,
+  posPreview = false,
   showPrimaryToggle = false,
   onRemove,
   onSetSavedPrimary,
@@ -24,6 +27,7 @@ export default function SelectedItemImageCarousel({
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [primaryEntryKey, setPrimaryEntryKey] = useState('');
+  const [pendingPreviewUrls, setPendingPreviewUrls] = useState([]);
   const normalizedFiles = useMemo(
     () => (Array.isArray(files) ? files.filter(Boolean) : []),
     [files]
@@ -34,26 +38,25 @@ export default function SelectedItemImageCarousel({
       : []),
     [savedGallery]
   );
-  const previews = useMemo(() => {
-    const canCreateObjectUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
-    return normalizedFiles.map((file, index) => ({
+  const previews = useMemo(() => (
+    normalizedFiles.map((file, index) => ({
       kind: 'pending',
       file,
       pendingIndex: index,
       key: `pending:${buildFileKey(file, index)}`,
       label: file?.name || `selected image ${index + 1}`,
-      url: canCreateObjectUrl ? URL.createObjectURL(file) : ''
-    }));
-  }, [normalizedFiles]);
+      url: pendingPreviewUrls[index] || ''
+    }))
+  ), [normalizedFiles, pendingPreviewUrls]);
   const savedEntries = useMemo(
     () => normalizedSavedGallery.map((entry, index) => ({
       kind: 'saved',
       savedIndex: index,
       key: buildSavedImageKey(entry, index),
       label: entry?.name || `saved image ${index + 1}`,
-      url: resolveAssetUrl(entry?.url || entry?.path)
+      url: resolveAssetUrl((posPreview && (entry?.variants?.pos_thumbnail_url || entry?.variants?.thumbnail_url)) || entry?.url || entry?.path)
     })),
-    [normalizedSavedGallery]
+    [normalizedSavedGallery, posPreview]
   );
   const baseEntries = useMemo(
     () => [...savedEntries, ...previews],
@@ -77,13 +80,44 @@ export default function SelectedItemImageCarousel({
   const combinedGallery = normalizedSavedGallery.length > 0;
   const imageLabel = combinedGallery ? 'item' : 'selected item';
 
-  useEffect(() => () => {
-    previews.forEach((entry) => {
-      if (entry.url && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
-        URL.revokeObjectURL(entry.url);
+  useEffect(() => {
+    let cancelled = false;
+    const generatedUrls = [];
+    const leases = [];
+    setPendingPreviewUrls([]);
+
+    const generateSequentially = async () => {
+      for (const file of normalizedFiles) {
+        if (cancelled) break;
+        try {
+          const lease = posPreview ? acquirePosImagePreview(file) : null;
+          if (lease) leases.push(lease);
+          const url = lease ? await lease.promise : URL.createObjectURL(file);
+          if (cancelled) {
+            if (!lease && url) URL.revokeObjectURL(url);
+            break;
+          }
+          generatedUrls.push(url);
+          setPendingPreviewUrls([...generatedUrls]);
+        } catch {
+          if (cancelled) break;
+          generatedUrls.push('');
+          setPendingPreviewUrls([...generatedUrls]);
+        }
       }
-    });
-  }, [previews]);
+    };
+
+    void generateSequentially();
+    return () => {
+      cancelled = true;
+      leases.forEach((lease) => lease.release());
+      generatedUrls.forEach((url) => {
+        if (!posPreview && url && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+          URL.revokeObjectURL(url);
+        }
+      });
+    };
+  }, [normalizedFiles, posPreview]);
 
   const goToImage = (nextIndex) => {
     if (!hasMultipleImages) return;

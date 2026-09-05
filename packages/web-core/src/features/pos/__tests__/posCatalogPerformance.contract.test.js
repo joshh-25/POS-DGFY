@@ -24,9 +24,13 @@ describe('hosted POS catalog performance contracts', () => {
     const operationsSource = readSource(operationsPath);
     const catalogImageFailureStoreSource = readSource(catalogImageFailureStorePath);
 
-    expect(checkoutUtilsSource).toContain("resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail')");
+    expect(checkoutUtilsSource).toContain("item?.pos_image_url || item?.storefront_image_url");
+    expect(checkoutUtilsSource).toContain('fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl');
     expect(checkoutSource).toContain("loading={itemIndex < 4 ? 'eager' : 'lazy'}");
     expect(checkoutSource).toContain("fetchpriority={itemIndex < 4 ? 'high' : 'auto'}");
+    expect(checkoutSource).toContain('width={144}');
+    expect(checkoutSource).toContain('height={144}');
+    expect(checkoutSource).toContain('sizes="144px"');
     expect(catalogWorkflowSource).toContain('nextCatalogImageUrls');
     expect(catalogWorkflowSource).toContain("image.fetchPriority = 'low';");
     expect(catalogWorkflowSource).toContain('loadPosCatalogImageFailures');
@@ -34,7 +38,7 @@ describe('hosted POS catalog performance contracts', () => {
     expect(catalogWorkflowSource).toContain('catalogImageErrors\n        ),');
     expect(catalogWorkflowSource).not.toContain('setCatalogImageErrors(new Set());');
     expect(catalogImageFailureStoreSource).toContain('window.sessionStorage');
-    expect(operationsSource).toContain("resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail')");
+    expect(operationsSource).toContain('<PosItemImage');
     expect(operationsSource).toContain('loading="lazy"');
   });
 
@@ -52,7 +56,7 @@ describe('hosted POS catalog performance contracts', () => {
     expect(checkoutSource).toContain('aria-busy={catalogRefreshing}');
     expect(catalogWorkflowSource).toContain('catalogRequestInFlightKeyRef');
     expect(catalogWorkflowSource).toContain('catalogRequestSequenceRef');
-    expect(catalogWorkflowSource).toContain('if (catalogRequestInFlightKeyRef.current === requestKey) return;');
+    expect(catalogWorkflowSource).toContain('catalogReadRerunRef.current = true;');
     expect(catalogWorkflowSource).toContain('if (catalogRequestSequenceRef.current !== requestSequence) return;');
   });
 
@@ -72,14 +76,17 @@ describe('hosted POS catalog performance contracts', () => {
     const checkoutSource = readCheckoutRenderSource();
     const checkoutUtilsSource = readSource(checkoutUtilsPath);
 
-    expect(checkoutUtilsSource).toContain("src: fallbackVariants.thumbnailUrl || configuredSrc || '',");
+    expect(checkoutUtilsSource).toContain("src: fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl || configuredSrc || '',");
     expect(checkoutSource).not.toContain('src: fallbackVariants.thumbnailUrl || configuredSrc || mappedSrc || fallbackSrc');
     expect(checkoutSource).toContain("hasImage ? 'bg-transparent' : 'bg-[#1A4E8D]/85'");
     expect(checkoutSource).not.toContain('flex items-center justify-center bg-[#1A4E8D]/85');
     expect(checkoutSource).toContain('text-center text-[14px] font-black leading-tight text-white');
     expect(checkoutSource).not.toContain('No POS Image');
     expect(checkoutSource).toContain('backgroundImage: `url(${imageSources.placeholderSrc})`');
-    expect(checkoutSource).toContain('next.add(String(item.item_id));');
+    expect(checkoutSource).toContain('<PosItemImage');
+    expect(checkoutSource).not.toContain('next.add(imageFailureKey);');
+    expect(checkoutSource).not.toContain('}, 5000);');
+    expect(checkoutSource).not.toContain('catalogImageErrors.has(String(item.item_id))');
   });
 
   it('keeps direct POS category chips without a redundant filter button', () => {

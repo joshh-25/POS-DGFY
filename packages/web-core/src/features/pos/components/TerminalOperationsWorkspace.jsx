@@ -88,7 +88,19 @@ import {
   updateItemBarcode,
   updateFolder
 } from '@/services/itemService.js';
-import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
+import {
+  retryFailedPosCatalogImageImport,
+  updatePosCatalogOverride,
+  uploadPosCatalogImagePackage,
+  waitForPosCatalogImageImport
+} from '@/services/posCatalogService.js';
+import {
+  bindPendingPosItemImagePreviewJob,
+  getPendingPosItemImagePreviews,
+  subscribeToPendingPosItemImagePreviews,
+  markPendingPosItemImagePreviewFailed,
+  stagePendingPosItemImagePreview
+} from '../services/posPendingItemImagePreviewStore.js';
 import {
   getGtinValidationMessage,
   normalizeBarcodeEntry,
@@ -112,6 +124,8 @@ import {
   generateStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
+import PosItemImage from './PosItemImage.jsx';
+import { preserveCatalogRows } from '../services/posCatalogReadCoordinator.js';
 import {
   deleteStorefrontAsset,
   generateStorefrontSlug,
@@ -131,7 +145,7 @@ import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
-import resolveAssetUrl, { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
+import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
 import PdfMenuImportModal from '@/components/items/PdfMenuImportModal.jsx';
 import MenuImportBatchModal from '@/components/items/MenuImportBatchModal.jsx';
@@ -2136,6 +2150,8 @@ function ItemsWorkspace({
   sectionId
 }) {
   const [items, setItems] = useState([]);
+  const itemsReadSequence = useRef(0);
+  const itemsLoaded = useRef(false);
   const [primaryBarcodes, setPrimaryBarcodes] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -2148,6 +2164,11 @@ function ItemsWorkspace({
   const menuImportEntryEnabled = pdfMenuImportEnabled || menuImportBatchEnabled;
   const menuImportButtonLabel = menuImportBatchEnabled ? 'Import Menu' : 'Import from PDF';
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const bulkPosImageInputRef = useRef(null);
+  const [bulkPosImageProgress, setBulkPosImageProgress] = useState(null);
+  const [bulkPosImageResult, setBulkPosImageResult] = useState(null);
+  const bulkPosImageAbortRef = useRef(null);
+  useEffect(() => () => bulkPosImageAbortRef.current?.abort(), []);
   const { updateItem, loading: savingItem } = useUpdateItem();
   const { deleteItem, loading: deletingItem } = useDeleteItem();
   const [editingItemId, setEditingItemId] = useState(null);
@@ -2195,6 +2216,9 @@ function ItemsWorkspace({
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
+  const pendingItemImagePreviews = React.useSyncExternalStore(
+    subscribeToPendingPosItemImagePreviews, getPendingPosItemImagePreviews, getPendingPosItemImagePreviews
+  );
   const [manualBarcode, setManualBarcode] = useState('');
   const [externalBarcode, setExternalBarcode] = useState('');
   const [externalLookupLoading, setExternalLookupLoading] = useState(false);
@@ -2204,6 +2228,12 @@ function ItemsWorkspace({
   const [externalQrScannerOpen, setExternalQrScannerOpen] = useState(false);
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
+
+  const stagePendingItemImagePreview = useCallback((input) => stagePendingPosItemImagePreview(input), []);
+  const bindPendingItemImagePreviewJob = useCallback((input) => {
+    bindPendingPosItemImagePreviewJob(input);
+    notifyPosCatalogUpdated();
+  }, []);
 
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
   const isServicesMode = normalizeWorkflowMode(workflowMode) === 'services';
@@ -2242,7 +2272,9 @@ function ItemsWorkspace({
   }, []);
 
   const loadItems = useCallback(async () => {
-    if (!canViewPos) {
+    const sequence = ++itemsReadSequence.current;
+    if (!canViewPos || locked) {
+      itemsLoaded.current = false;
       setItems([]);
       setPrimaryBarcodes({});
       setError('');
@@ -2250,21 +2282,24 @@ function ItemsWorkspace({
       return;
     }
 
-    setLoading(true);
+    setLoading(!itemsLoaded.current);
     setError('');
     try {
       const data = await fetchPosCatalog({ limit: 200 });
+      if (itemsReadSequence.current !== sequence) return;
       const catalogItems = Array.isArray(data) ? data : [];
-      setItems(catalogItems);
+      setItems((previous) => preserveCatalogRows(previous, catalogItems));
+      itemsLoaded.current = true;
       loadPrimaryBarcodes(catalogItems);
     } catch (loadError) {
-      setItems([]);
-      setPrimaryBarcodes({});
+      if (itemsReadSequence.current !== sequence) return;
       setError(loadError?.response?.data?.message || 'Failed to load POS-visible IMS items.');
     } finally {
-      setLoading(false);
+      if (itemsReadSequence.current === sequence) setLoading(false);
     }
-  }, [canViewPos, loadPrimaryBarcodes]);
+  }, [canViewPos, loadPrimaryBarcodes, locked]);
+
+  useEffect(() => () => { itemsReadSequence.current++; }, [loadItems]);
 
   const normalizePosFolders = useCallback((rows = []) => (
     (Array.isArray(rows) ? rows : [])
@@ -2305,7 +2340,14 @@ function ItemsWorkspace({
     };
     const unsubscribeLocal = subscribeToPosCatalogUpdates(refreshItems);
     const unsubscribeRemote = subscribeToRemotePosCatalogUpdates();
+    const refreshVisible = () => { if (document.visibilityState === 'visible') refreshItems(); };
+    const interval = setInterval(refreshVisible, 60000);
+    window.addEventListener('online', refreshItems);
+    document.addEventListener('visibilitychange', refreshVisible);
     return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', refreshItems);
+      document.removeEventListener('visibilitychange', refreshVisible);
       unsubscribeLocal();
       unsubscribeRemote();
     };
@@ -2458,8 +2500,16 @@ function ItemsWorkspace({
     const remainingFiles = normalizedFiles.slice(filesToUpload.length);
     if (!itemId || filesToUpload.length === 0) return;
 
+    const currentItem = items.find((item) => Number(item.item_id) === Number(itemId));
+    const keepPrimary = existingGalleryCount > 0 && filesToUpload.length > 1
+      || String(currentItem?.pos_image_path || '').startsWith('pos-catalog/');
+    const attemptId = stagePendingItemImagePreview({ itemId,
+      file: keepPrimary ? null : filesToUpload[0],
+      url: keepPrimary ? resolveAssetUrl(currentItem?.pos_image_url || currentItem?.storefront_image_url) : ''
+    });
     setPendingEditImageRefresh({
       itemId,
+      attemptId,
       existingGalleryCount,
       pendingCount: filesToUpload.length,
       remainingFiles
@@ -2469,12 +2519,17 @@ function ItemsWorkspace({
       const queued = filesToUpload.length === 1
         ? await queueStorefrontCatalogImage(itemId, filesToUpload[0])
         : await queueStorefrontCatalogImages(itemId, filesToUpload);
+      const jobId = queued?.job_id || null;
       setEditImageUploadJob((current) => (
         current?.itemId === itemId
-          ? { ...current, jobId: queued?.job_id || null }
+          ? { ...current, jobId }
           : current
       ));
+      if (jobId) {
+        bindPendingItemImagePreviewJob({ itemId, attemptId, jobId });
+      }
     } catch (error) {
+      markPendingPosItemImagePreviewFailed({ itemId, attemptId });
       setSelectedEditImageFiles([]);
       setDeferredEditImageFiles([]);
       setSelectedEditPrimaryFile(null);
@@ -2487,15 +2542,14 @@ function ItemsWorkspace({
         current?.itemId === itemId ? null : current
       ));
     }
-  }, []);
+  }, [bindPendingItemImagePreviewJob, items, stagePendingItemImagePreview]);
 
   useEffect(() => {
     if (!pendingEditImageRefresh || !activeEditItem) return;
     if (Number(activeEditItem.item_id) !== Number(pendingEditImageRefresh.itemId)) return;
-    const galleryCount = normalizeStorefrontItemGallery(activeEditItem).length;
-    const expectedGalleryCount = pendingEditImageRefresh.existingGalleryCount
-      + pendingEditImageRefresh.pendingCount;
-    if (galleryCount < expectedGalleryCount) return;
+    const preview = pendingItemImagePreviews[String(activeEditItem.item_id)];
+    if (preview?.attemptId !== pendingEditImageRefresh.attemptId) return;
+    if (!['ready', 'failed'].includes(preview.status)) return;
     const remainingFiles = Array.isArray(pendingEditImageRefresh.remainingFiles)
       ? pendingEditImageRefresh.remainingFiles.filter(Boolean)
       : [];
@@ -2503,7 +2557,7 @@ function ItemsWorkspace({
     setDeferredEditImageFiles(remainingFiles);
     setSelectedEditPrimaryFile(null);
     setPendingEditImageRefresh(null);
-  }, [activeEditItem, pendingEditImageRefresh]);
+  }, [activeEditItem, pendingEditImageRefresh, pendingItemImagePreviews]);
 
   useEffect(() => {
     if (!activeEditItem || deferredEditImageFiles.length === 0 || editImageUploadJob || pendingEditImageRefresh) return;
@@ -2756,17 +2810,30 @@ function ItemsWorkspace({
   const handleSelectCreateImageFiles = (files) => {
     const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
     if (normalizedFiles.length === 0) return;
+    const existingFileKeys = new Set(selectedImageFiles.map((file) => (
+      `${file?.name || ''}:${file?.size || 0}:${file?.lastModified || 0}:${file?.type || ''}`
+    )));
+    const uniqueFiles = normalizedFiles.filter((file) => {
+      const key = `${file?.name || ''}:${file?.size || 0}:${file?.lastModified || 0}:${file?.type || ''}`;
+      if (existingFileKeys.has(key)) return false;
+      existingFileKeys.add(key);
+      return true;
+    });
+    if (uniqueFiles.length < normalizedFiles.length) {
+      toast.info('Duplicate item images were skipped.');
+    }
+    if (uniqueFiles.length === 0) return;
     const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedImageFiles.length;
     if (remainingSlots <= 0) {
       toast.error(`Only ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images are allowed per item.`);
       return;
     }
-    if (normalizedFiles.length > remainingSlots) {
+    if (uniqueFiles.length > remainingSlots) {
       toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be selected.`);
     }
     setSelectedImageFiles((current) => [
       ...current,
-      ...normalizedFiles.slice(0, remainingSlots)
+      ...uniqueFiles.slice(0, remainingSlots)
     ]);
   };
 
@@ -2854,13 +2921,24 @@ function ItemsWorkspace({
     const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
     const itemId = Number(activeEditItem?.item_id || 0);
     if (normalizedFiles.length === 0 || !itemId) return;
+    const seenFileKeys = new Set();
+    const uniqueFiles = normalizedFiles.filter((file) => {
+      const key = `${file?.name || ''}:${file?.size || 0}:${file?.lastModified || 0}:${file?.type || ''}`;
+      if (seenFileKeys.has(key)) return false;
+      seenFileKeys.add(key);
+      return true;
+    });
+    if (uniqueFiles.length < normalizedFiles.length) {
+      toast.info('Duplicate item images were skipped.');
+    }
+    if (uniqueFiles.length === 0) return;
     if (editImageUploadJob || pendingEditImageRefresh) {
       toast.info('The previous image is still being optimized. It will be replaced automatically when ready.');
       return;
     }
     const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem || {}).length;
-    const filesToPreview = normalizedFiles.slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT);
-    if (normalizedFiles.length > filesToPreview.length) {
+    const filesToPreview = uniqueFiles.slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT);
+    if (uniqueFiles.length > filesToPreview.length) {
       toast.error(`Only ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} pending images can be selected at once.`);
     }
 
@@ -2984,6 +3062,7 @@ function ItemsWorkspace({
     itemId,
     itemName,
     imageFiles,
+    imageAttemptId = null,
     externalProductCode = '',
     requestedBarcodeCode = '',
     posAlwaysAvailable,
@@ -2992,6 +3071,7 @@ function ItemsWorkspace({
 
     const failedStages = [];
     let barcodeCode = String(requestedBarcodeCode || '').trim();
+    let imageUploadJob = null;
 
     const runStage = async (key, label, action) => {
       try {
@@ -3008,13 +3088,18 @@ function ItemsWorkspace({
     };
 
     if (Array.isArray(imageFiles) && imageFiles.length > 0) {
-      await runStage(
+      imageUploadJob = await runStage(
         'storefront_images',
         imageFiles.length === 1 ? 'Item image upload' : 'Item image gallery upload',
         () => (imageFiles.length === 1
           ? queueStorefrontCatalogImage(itemId, imageFiles[0])
           : queueStorefrontCatalogImages(itemId, imageFiles))
       );
+      if (imageUploadJob?.job_id) {
+        bindPendingItemImagePreviewJob({ itemId, attemptId: imageAttemptId, jobId: imageUploadJob.job_id });
+      } else {
+        markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
+      }
     } else if (externalProductCode) {
       await runStage(
         'external_product_image',
@@ -3048,8 +3133,8 @@ function ItemsWorkspace({
       setPendingCreateRecovery({
         itemId,
         name: itemName,
-        imageFiles,
-        externalProductCode,
+        imageFiles: failedStages.some((stage) => stage.key === 'storefront_images') ? imageFiles : [],
+        externalProductCode: failedStages.some((stage) => stage.key === 'external_product_image') ? externalProductCode : '',
         requestedBarcodeCode: barcodeCode,
         posAlwaysAvailable,
         posBestSellerMode,
@@ -3060,7 +3145,7 @@ function ItemsWorkspace({
     }
 
     setPendingCreateRecovery(null);
-    return { barcodeCode };
+    return { barcodeCode, imageUploadJob };
   };
 
   const handleCreateItem = async () => {
@@ -3181,10 +3266,14 @@ function ItemsWorkspace({
       setPostCreateSaving(true);
       if (pendingCreateRecovery?.itemId) {
         const recoveryName = pendingCreateRecovery.name || name;
+        const recoveryFiles = pendingCreateRecovery.imageFiles || [];
+        const recoveryAttemptId = recoveryFiles[0]
+          ? stagePendingItemImagePreview({ itemId: pendingCreateRecovery.itemId, file: recoveryFiles[0] }) : null;
         const result = await runPostCreateStages({
           itemId: pendingCreateRecovery.itemId,
           itemName: recoveryName,
-          imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles,
+          imageFiles: recoveryFiles,
+          imageAttemptId: recoveryAttemptId,
           externalProductCode: pendingCreateRecovery.externalProductCode || '',
           requestedBarcodeCode: pendingCreateRecovery.requestedBarcodeCode || '',
           posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable,
@@ -3205,6 +3294,9 @@ function ItemsWorkspace({
         throw new Error('Item was created but no valid item ID was returned.');
       }
 
+      const imageAttemptId = selectedImageFiles[0]
+        ? stagePendingItemImagePreview({ itemId, file: selectedImageFiles[0] }) : null;
+
       if (foodCategory?.folder_id && Number(createdItem?.folder_id || 0) !== foodCategory.folder_id) {
         await updateItem(itemId, {
           product_folder: foodCategory.name,
@@ -3216,6 +3308,7 @@ function ItemsWorkspace({
         itemId,
         itemName: name,
         imageFiles: selectedImageFiles,
+        imageAttemptId,
         externalProductCode: selectedImageFiles.length === 0 && acceptedExternalProduct?.product?.image_url
           ? acceptedExternalProduct.code
           : '',
@@ -3244,6 +3337,79 @@ function ItemsWorkspace({
     setDeleteConfirmItem(null);
   };
 
+  const handleBulkPosImageSelection = async (event) => {
+    const input = event.currentTarget;
+    const files = Array.from(input.files || []);
+    input.value = '';
+    if (files.length === 0) return;
+    const zipFile = files.find((file) => /\.zip$/i.test(file.name));
+    const csvFile = files.find((file) => /\.csv$/i.test(file.name));
+    if (files.length !== 2 || !zipFile || !csvFile) {
+      toast.error('Choose exactly one ZIP package and one CSV manifest.');
+      return;
+    }
+    const controller = new AbortController();
+    bulkPosImageAbortRef.current?.abort();
+    bulkPosImageAbortRef.current = controller;
+    setBulkPosImageResult(null);
+    setBulkPosImageProgress({ stage: 'preparing', processed: 0, total: 1 });
+    try {
+      const result = await uploadPosCatalogImagePackage({ zipFile, csvFile }, {
+        signal: controller.signal,
+        onProgress: setBulkPosImageProgress,
+        onStatus: (status) => {
+          setBulkPosImageResult(status);
+          setBulkPosImageProgress({
+            stage: status?.status || 'processing',
+            processed: Number(status?.totals?.completed || 0) + Number(status?.totals?.skipped_existing || 0)
+              + Number(status?.totals?.superseded || 0) + Number(status?.totals?.failed || 0),
+            total: Number(status?.totals?.files || 0)
+          });
+        }
+      });
+      setBulkPosImageResult(result);
+      const uploaded = Number(result?.totals?.completed || 0);
+      const failed = Number(result?.totals?.failed || 0);
+      toast[failed > 0 ? 'warning' : 'success'](
+        `${uploaded} POS images completed${failed > 0 ? `; ${failed} need review.` : '.'}`
+      );
+      await loadItems();
+      notifyPosCatalogUpdated();
+    } catch (uploadError) {
+      if (uploadError?.name === 'AbortError' || uploadError?.name === 'CanceledError') return;
+      toast.error(uploadError?.response?.data?.message || uploadError?.message || 'Bulk POS image upload failed.');
+    } finally {
+      setBulkPosImageProgress(null);
+      if (bulkPosImageAbortRef.current === controller) bulkPosImageAbortRef.current = null;
+    }
+  };
+
+  const retryBulkPosImageFailures = async () => {
+    const jobId = bulkPosImageResult?.job_id;
+    if (!jobId) return;
+    const controller = new AbortController();
+    bulkPosImageAbortRef.current = controller;
+    setBulkPosImageProgress({ stage: 'retrying', processed: 0, total: Number(bulkPosImageResult?.totals?.failed || 0) });
+    try {
+      const retry = await retryFailedPosCatalogImageImport(jobId);
+      if (!retry?.queued) {
+        toast.info('No failed images are eligible for another retry.');
+        return;
+      }
+      const result = await waitForPosCatalogImageImport(jobId, { signal: controller.signal, onStatus: setBulkPosImageResult });
+      setBulkPosImageResult(result);
+      await loadItems();
+      notifyPosCatalogUpdated();
+    } catch (retryError) {
+      if (retryError?.name !== 'AbortError' && retryError?.name !== 'CanceledError') {
+        toast.error(retryError?.response?.data?.message || retryError?.message || 'Failed images could not be retried.');
+      }
+    } finally {
+      setBulkPosImageProgress(null);
+      if (bulkPosImageAbortRef.current === controller) bulkPosImageAbortRef.current = null;
+    }
+  };
+
   const handleDelete = async (item = deleteConfirmItem) => {
     if (!item?.item_id) return;
     const itemName = String(item?.name || 'this item').trim();
@@ -3270,6 +3436,38 @@ function ItemsWorkspace({
 
   return (
     <div id={sectionId} className="min-w-0 max-w-full space-y-4">
+      <input
+        ref={bulkPosImageInputRef}
+        type="file"
+        accept=".zip,application/zip,.csv,text/csv"
+        multiple
+        className="hidden"
+        onChange={handleBulkPosImageSelection}
+      />
+      {bulkPosImageResult ? (
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm" aria-live="polite">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-semibold text-slate-800">
+              Image import: {bulkPosImageResult.status?.replaceAll('_', ' ') || 'processing'}
+            </p>
+            {Number(bulkPosImageResult?.totals?.failed || 0) > 0 ? (
+              <Button type="button" variant="outline" size="sm" onClick={retryBulkPosImageFailures} disabled={Boolean(bulkPosImageProgress)}>
+                <RefreshCcw className="mr-2 h-4 w-4" /> Retry failed
+              </Button>
+            ) : null}
+          </div>
+          <p className="mt-1 text-slate-600">
+            {Number(bulkPosImageResult?.totals?.completed || 0)} completed · {Number(bulkPosImageResult?.totals?.failed || 0)} failed · {Number(bulkPosImageResult?.totals?.pending || 0)} pending
+          </p>
+          {Array.isArray(bulkPosImageResult.files) && bulkPosImageResult.files.some((file) => file.status === 'failed') ? (
+            <ul className="mt-2 max-h-28 overflow-auto text-xs text-red-700">
+              {bulkPosImageResult.files.filter((file) => file.status === 'failed').map((file) => (
+                <li key={file.file_id}>{file.sku_code || file.filename}: {file.error_message || 'Upload failed'}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
         <div className="hidden w-full gap-3 sm:grid xl:w-auto xl:grid-cols-[minmax(18rem,24rem)_12rem_13rem_auto]">
             <div>
@@ -3334,6 +3532,21 @@ function ItemsWorkspace({
               >
                 <Upload className="mr-2 h-4 w-4" />
                 Import Items
+              </Button>
+            ) : null}
+            {canEditItems ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => bulkPosImageInputRef.current?.click()}
+                disabled={locked || !isOnline || Boolean(bulkPosImageProgress)}
+                title="Choose one ZIP with up to 500 images and its CSV manifest."
+                className="h-11 rounded-xl border-[#1A4E8D]/30 px-5 text-[#1A4E8D] shadow-sm hover:bg-[#1A4E8D]/5 xl:self-end"
+              >
+                <ImagePlus className="mr-2 h-4 w-4" />
+                {bulkPosImageProgress
+                  ? `${bulkPosImageProgress.processed}/${bulkPosImageProgress.total}`
+                  : 'Import Image Package'}
               </Button>
             ) : null}
             {isServicesMode && canManageServiceCatalog ? (
@@ -3440,6 +3653,18 @@ function ItemsWorkspace({
             >
               <Upload className="mr-2 h-4 w-4" />
               Import Items
+            </Button>
+          ) : null}
+          {canEditItems ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => bulkPosImageInputRef.current?.click()}
+              disabled={locked || !isOnline || Boolean(bulkPosImageProgress)}
+              className="mt-2 h-11 w-full rounded-xl border-[#1A4E8D]/30 text-[#1A4E8D] hover:bg-[#1A4E8D]/5 sm:hidden"
+            >
+              <ImagePlus className="mr-2 h-4 w-4" />
+              {bulkPosImageProgress ? `${bulkPosImageProgress.processed}/${bulkPosImageProgress.total}` : 'Import Image Package'}
             </Button>
           ) : null}
           {isServicesMode && canManageServiceCatalog ? (
@@ -3553,8 +3778,6 @@ function ItemsWorkspace({
           {paginatedItems.map((item) => {
             const isServiceItem = isServiceCatalogItem(item);
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
-            const imageUrl = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
-            const largeImageUrl = resolveAssetVariantUrl(item?.storefront_image_url, 'large');
             const stockQuantity = Number(item?.current_stock || 0);
             const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
@@ -3588,21 +3811,15 @@ function ItemsWorkspace({
                   <div className="flex min-w-0 gap-2.5 xl:border-r xl:border-slate-100 xl:pr-3">
                     <div className="relative flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner sm:h-[4.5rem] sm:w-[4.5rem]">
                       <ImagePlus className="h-5 w-5 text-slate-300" />
-                      {imageUrl ? (
-                        <img
-                          src={imageUrl}
+                        <PosItemImage
+                          item={item}
                           alt={item?.name || 'Item image'}
                           loading="lazy"
                           decoding="async"
-                          width={288}
-                          height={288}
+                          width={144}
+                          height={144}
                           className="absolute h-full w-full object-cover"
-                          onError={(event) => {
-                            if (advanceAssetImageFallback(event, [largeImageUrl])) return;
-                            event.currentTarget.hidden = true;
-                          }}
                         />
-                      ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex min-h-full flex-col">
@@ -3780,7 +3997,7 @@ function ItemsWorkspace({
 
       {showCreateModal && typeof document !== 'undefined' && createPortal((
         <div
-          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/50 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-create-modal-title"
@@ -3993,6 +4210,7 @@ function ItemsWorkspace({
                   </label>
 
                   <SelectedItemImageCarousel
+                    posPreview
                     files={selectedImageFiles}
                     itemName={createForm.name || 'Item'}
                     disabled={creatingItem || postCreateSaving}
@@ -4263,7 +4481,7 @@ function ItemsWorkspace({
 
       {activeEditItem && typeof document !== 'undefined' && createPortal((
         <div
-          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/50 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-edit-modal-title"
@@ -4414,6 +4632,7 @@ function ItemsWorkspace({
                           </label>
 
                           <SelectedItemImageCarousel
+                            posPreview
                             files={selectedEditImageFiles}
                             savedGallery={editGallery}
                             itemName={editForm.name || activeEditItem?.name || 'Item'}

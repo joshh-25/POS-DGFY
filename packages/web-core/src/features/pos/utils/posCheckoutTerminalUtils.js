@@ -1,4 +1,4 @@
-import { resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
+import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { matchesPosHistorySearch } from './posHistorySearch.js';
 import { getDiscountLineRef } from './posDiscountSelection.js';
 
@@ -512,8 +512,9 @@ export const getLineKey = (line = {}) => line.line_key || line.item_id;
 export const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export const resolvePosCatalogImageSources = (item = {}) => {
-    const variants = item?.storefront_image_variants || item?.pos_image_variants || {};
+    const variants = item?.pos_image_variants || item?.storefront_image_variants || {};
     const resolveVariantSet = (variantSet = {}) => {
+        const posThumbnailUrl = resolveAssetUrl(variantSet?.pos_thumbnail_url || '');
         const thumbnailUrl = resolveAssetUrl(variantSet?.thumbnail_url || '');
         const mediumUrl = resolveAssetUrl(variantSet?.medium_url || '');
         const largeUrl = resolveAssetUrl(variantSet?.large_url || '');
@@ -528,6 +529,7 @@ export const resolvePosCatalogImageSources = (item = {}) => {
         });
 
         return {
+            posThumbnailUrl,
             thumbnailUrl,
             mediumUrl,
             largeUrl,
@@ -536,18 +538,17 @@ export const resolvePosCatalogImageSources = (item = {}) => {
                 : undefined
         };
     };
-    const configuredSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
-    const configuredLargeSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'large');
+    const configuredSrc = resolveAssetUrl(item?.pos_image_url || item?.storefront_image_url || '');
+    const configuredLargeSrc = configuredSrc;
     const fallbackVariants = resolveVariantSet(variants);
-    const avifVariants = resolveVariantSet(variants?.avif);
-    const webpVariants = resolveVariantSet(variants?.webp);
     return {
         configuredSrc,
         configuredLargeSrc,
-        src: fallbackVariants.thumbnailUrl || configuredSrc || '',
-        srcSet: fallbackVariants.srcSet,
-        avifSrcSet: avifVariants.srcSet,
-        webpSrcSet: webpVariants.srcSet,
+        thumbnailFallbackSrc: fallbackVariants.thumbnailUrl || configuredSrc || '',
+        src: fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl || configuredSrc || '',
+        srcSet: undefined,
+        avifSrcSet: undefined,
+        webpSrcSet: undefined,
         placeholderSrc: resolveAssetUrl(variants?.placeholder_url || '')
     };
 };
