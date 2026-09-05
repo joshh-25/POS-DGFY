@@ -234,9 +234,14 @@ function writeLog(filePath, result) {
 function runSchemaPreflight(evidenceDir) {
   if (SKIP_SCHEMA_PREFLIGHT) {
     console.log('[backend-test-matrix] schema_preflight=skipped');
-    return { status: 'skipped' };
+    return { status: 'skipped', landlord_ready: false };
   }
 
+  // #1015: also runs ensureLandlordTenantSchemaReady() (the same 24-column repair
+  // landlordSchemaReadiness.js does per-process) once here, in the matrix's own preflight
+  // subprocess, against the same landlord test database every chunk process will connect to. This
+  // is what makes it honest to tell chunk processes "the landlord DB is already ready" via
+  // BACKEND_TEST_MATRIX_LANDLORD_READY below, instead of just asserting it.
   const script = `
     process.env.NODE_ENV = 'test';
     const { DataTypes } = await import('sequelize');
@@ -268,6 +273,8 @@ function runSchemaPreflight(evidenceDir) {
       allowNull: true
     });
     await DgfyLegalAcknowledgement.sync();
+    const { ensureLandlordTenantSchemaReady } = await import('./tests/helpers/landlordSchemaReadiness.js');
+    await ensureLandlordTenantSchemaReady();
     await sequelize.close();
     console.log(JSON.stringify({ database: dbName, repairs }));
   `;
@@ -291,10 +298,119 @@ function runSchemaPreflight(evidenceDir) {
     status: 'pass',
     log_file: relativeLog,
     stdout: result.stdout || '',
+    landlord_ready: true,
   };
 }
 
-function runChunk(groupName, chunkIndex, tests, evidenceDir) {
+// #1015: builds the shared template tenant database ONCE per matrix invocation -- the ~235s
+// tenantSeq.sync({force:true}) that createTestTenant() otherwise pays per tenant (~10x per db-tier
+// run). Only ever called from runDbTier(), never from runFastTier() -- that's what keeps this
+// unreachable from the fast tier by construction, not by a runtime "is DB reachable" check.
+// Deliberately reuses SKIP_SCHEMA_PREFLIGHT as its own escape hatch too: skipping the preflight
+// means no template is built either, so every chunk falls back to today's per-tenant sync (see
+// testTenantHelper.js's fallback branch) -- exactly the pre-existing behavior when this flag is set.
+function provisionTemplateTenantDatabase(evidenceDir, targetSha) {
+  if (SKIP_SCHEMA_PREFLIGHT) {
+    console.log('[backend-test-matrix] template_tenant_db=skipped');
+    return { status: 'skipped', db_name: null };
+  }
+
+  const dbName = `test_tenant_template_${safeName(targetSha)}`;
+  if (!/test/i.test(dbName)) {
+    throw new Error(`Refusing to provision template tenant database with non-test name: ${dbName}`);
+  }
+
+  // Delegates schema creation to getTenantModels() + sync({force:true}) -- the exact same call
+  // createTestTenant() makes today -- rather than reimplementing model loading here. Runs as its
+  // own child process, same pattern as runSchemaPreflight() above.
+  const script = `
+    process.env.NODE_ENV = 'test';
+    const { Sequelize } = await import('sequelize');
+    const { sequelize: landlordSequelize } = await import('./src/models/index.js');
+    const { getTenantModels } = await import('./src/utils/tenantModelFactory.js');
+    const dbName = ${JSON.stringify(dbName)};
+    if (!/test/i.test(dbName)) {
+      throw new Error('Refusing to provision template tenant database with non-test name: ' + dbName);
+    }
+    await landlordSequelize.query('CREATE DATABASE IF NOT EXISTS \`' + dbName + '\`');
+    const tenantSeq = new Sequelize(
+      dbName,
+      process.env.DB_USER || 'root',
+      process.env.DB_PASSWORD || '',
+      {
+        host: process.env.DB_HOST || 'localhost',
+        dialect: 'mysql',
+        logging: false,
+        pool: { max: 3, min: 0, acquire: 10000, idle: 5000 }
+      }
+    );
+    await tenantSeq.authenticate();
+    getTenantModels(tenantSeq);
+    await tenantSeq.sync({ force: true });
+    await tenantSeq.close();
+    await landlordSequelize.close();
+    console.log(JSON.stringify({ database: dbName }));
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: APP_DIR,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+    env: { ...process.env, NODE_ENV: 'test' },
+    shell: false,
+  });
+  const logFile = path.join(evidenceDir, 'template-tenant-db.log');
+  writeLog(logFile, result);
+  const relativeLog = path.relative(ROOT, logFile).replace(/\\/g, '/');
+  if (result.status !== 0) {
+    process.stdout.write(result.stdout || '');
+    process.stderr.write(result.stderr || '');
+    throw new Error(`Backend test template tenant database provisioning failed. See ${relativeLog}`);
+  }
+  console.log(`[backend-test-matrix] template_tenant_db=pass db=${dbName} log=${relativeLog}`);
+  return {
+    status: 'pass',
+    db_name: dbName,
+    log_file: relativeLog,
+  };
+}
+
+// #1015: best-effort drop, called exactly once by the matrix runner itself after every db-tier
+// chunk has finished (see the try/finally around runDbTier() in main()) -- deliberately NOT done
+// from globalTeardown.cjs, which runs once per chunk's own Jest process (~5 db-tier chunk
+// processes would otherwise race to DROP the same database each chunk still needs). A failure here
+// is logged and swallowed, never thrown -- a leaked template DB is a cheap, nameable cleanup problem
+// for a later run, not a reason to fail a CI job that otherwise passed.
+function dropTemplateTenantDatabase(dbName, evidenceDir) {
+  if (!dbName) return;
+  const script = `
+    process.env.NODE_ENV = 'test';
+    const { sequelize: landlordSequelize } = await import('./src/models/index.js');
+    const dbName = ${JSON.stringify(dbName)};
+    if (!/test/i.test(dbName)) {
+      throw new Error('Refusing to drop non-test database: ' + dbName);
+    }
+    await landlordSequelize.query('DROP DATABASE IF EXISTS \`' + dbName + '\`');
+    await landlordSequelize.close();
+    console.log(JSON.stringify({ dropped: dbName }));
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: APP_DIR,
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+    env: { ...process.env, NODE_ENV: 'test' },
+    shell: false,
+  });
+  const logFile = path.join(evidenceDir, 'template-tenant-db-teardown.log');
+  writeLog(logFile, result);
+  const relativeLog = path.relative(ROOT, logFile).replace(/\\/g, '/');
+  if (result.status !== 0) {
+    console.warn(`[backend-test-matrix] WARNING: failed to drop template tenant database ${dbName}; see ${relativeLog}`);
+    return;
+  }
+  console.log(`[backend-test-matrix] template_tenant_db_dropped=${dbName}`);
+}
+
+function runChunk(groupName, chunkIndex, tests, evidenceDir, templateDbName, landlordReady) {
   const startedAt = new Date();
   const logFile = path.join(evidenceDir, `${safeName(groupName)}-${String(chunkIndex + 1).padStart(2, '0')}.log`);
   const args = [
@@ -307,11 +423,18 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir) {
     '--runTestsByPath',
     ...tests.map(relativeTestPath),
   ];
+  const env = { ...process.env, NODE_ENV: 'test' };
+  // #1015: propagates the shared template DB name (and whether the matrix already confirmed the
+  // landlord DB is ready) into every db-tier chunk process. Absent for either reason
+  // provisionTemplateTenantDatabase()/runSchemaPreflight() can report "skipped" -- --skip-schema-
+  // preflight, or a provisioning failure that already threw and aborted the run before this point.
+  if (templateDbName) env.BACKEND_TEST_MATRIX_TEMPLATE_DB = templateDbName;
+  if (landlordReady) env.BACKEND_TEST_MATRIX_LANDLORD_READY = 'true';
   const started = Date.now();
   const result = run(process.execPath, args, {
     cwd: APP_DIR,
     timeout: DEFAULT_CHUNK_TIMEOUT_MS,
-    env: { ...process.env, NODE_ENV: 'test' },
+    env,
   });
   const durationMs = Date.now() - started;
   writeLog(logFile, result);
@@ -408,8 +531,11 @@ function runFastTier(tests, evidenceDir) {
 // mutable-so-far { schemaPreflight, chunks, failed } -- the caller uses it to persist a partial
 // snapshot so a job killed mid-loop (a self-hosted runner's job envelope dying, observed live) still
 // leaves behind everything that finished before the kill, not nothing.
-function runDbTier(dbTests, evidenceRoot, onProgress) {
+function runDbTier(dbTests, evidenceRoot, targetSha, onProgress) {
   const schemaPreflight = runSchemaPreflight(evidenceRoot);
+  const templateTenantDb = provisionTemplateTenantDatabase(evidenceRoot, targetSha);
+  const templateDbName = templateTenantDb.status === 'pass' ? templateTenantDb.db_name : null;
+  const landlordReady = schemaPreflight.status === 'pass' && Boolean(schemaPreflight.landlord_ready);
   const grouped = new Map(GROUPS.map((group) => [group.name, []]));
   for (const testPath of dbTests) {
     grouped.get(classify(testPath)).push(testPath);
@@ -430,7 +556,7 @@ function runDbTier(dbTests, evidenceRoot, onProgress) {
   const chunks = [];
   let failed = false;
   let earlyStopped = false;
-  if (onProgress) onProgress({ schemaPreflight, chunks, failed });
+  if (onProgress) onProgress({ schemaPreflight, templateTenantDb, chunks, failed });
 
   for (const group of selectedGroups) {
     const testChunks = chunk(group.tests, DEFAULT_CHUNK_SIZE);
@@ -442,10 +568,10 @@ function runDbTier(dbTests, evidenceRoot, onProgress) {
       ? testChunks.map((_, index) => index)
       : [chunkFilter - 1];
     for (const index of selectedChunkIndexes) {
-      const result = runChunk(group.name, index, testChunks[index], evidenceRoot);
+      const result = runChunk(group.name, index, testChunks[index], evidenceRoot, templateDbName, landlordReady);
       chunks.push(result);
       console.log(`[backend-test-matrix] ${result.status.toUpperCase()} tier=db group=${group.name} chunk=${result.chunk_index}/${testChunks.length} tests=${result.test_count} duration_ms=${result.duration_ms} log=${result.log_file}`);
-      if (onProgress) onProgress({ schemaPreflight, chunks, failed: failed || result.status !== 'pass' });
+      if (onProgress) onProgress({ schemaPreflight, templateTenantDb, chunks, failed: failed || result.status !== 'pass' });
       if (result.status !== 'pass') {
         failed = true;
         if (!CONTINUE_ON_FAILURE) { earlyStopped = true; break; }
@@ -456,6 +582,7 @@ function runDbTier(dbTests, evidenceRoot, onProgress) {
 
   return {
     schemaPreflight,
+    templateTenantDb,
     groups: selectedGroups.map((group) => ({
       name: group.name,
       description: group.description,
@@ -506,6 +633,7 @@ function main() {
   let failed = false;
   let earlyStopped = false;
   let schemaPreflight = { status: 'not_run', reason: `tier=${TIER}` };
+  let templateTenantDb = { status: 'not_run', db_name: null };
   let dbGroups = [];
 
   // #1124: builds the payload from current mutable state -- called after every unit of work
@@ -535,6 +663,10 @@ function main() {
     coverage_complete: !earlyStopped,
     // Only meaningful for the db tier -- the fast tier has no schema preflight by construction.
     schema_preflight: schemaPreflight,
+    // #1015: same tier scoping as schema_preflight above -- 'not_run' on the fast tier by
+    // construction, 'skipped' when --skip-schema-preflight was passed, 'pass' with the shared
+    // template DB name otherwise.
+    template_tenant_db: templateTenantDb,
     groups: dbGroups,
     chunks,
   });
@@ -555,17 +687,30 @@ function main() {
   const skipDbTier = failed && !CONTINUE_ON_FAILURE && TIER === 'all';
   if (skipDbTier) earlyStopped = true;
   if ((TIER === 'db' || TIER === 'all') && !skipDbTier) {
-    const dbResult = runDbTier(dbTests, evidenceRoot, (progress) => {
-      schemaPreflight = progress.schemaPreflight;
-      chunks = TIER === 'all' ? [chunks[0], ...progress.chunks] : [...progress.chunks];
-      failed = failed || progress.failed;
-      persist(true);
-    });
-    schemaPreflight = dbResult.schemaPreflight;
-    dbGroups = dbResult.groups;
-    chunks = TIER === 'all' ? [chunks[0], ...dbResult.chunks] : [...dbResult.chunks];
-    if (dbResult.failed) failed = true;
-    if (dbResult.earlyStopped) earlyStopped = true;
+    // #1015: the matrix runner is the sole owner of the template DB's lifecycle -- built here,
+    // dropped here (never from globalTeardown.cjs, which runs once per db-tier chunk process and
+    // would otherwise race ~5 processes to DROP the same database other chunks still need). The
+    // try/finally is the backstop for a CI job-envelope death mid-run (#1124's own precedent);
+    // the drop itself is best-effort and never throws, see dropTemplateTenantDatabase() above.
+    try {
+      const dbResult = runDbTier(dbTests, evidenceRoot, targetSha, (progress) => {
+        schemaPreflight = progress.schemaPreflight;
+        templateTenantDb = progress.templateTenantDb;
+        chunks = TIER === 'all' ? [chunks[0], ...progress.chunks] : [...progress.chunks];
+        failed = failed || progress.failed;
+        persist(true);
+      });
+      schemaPreflight = dbResult.schemaPreflight;
+      templateTenantDb = dbResult.templateTenantDb;
+      dbGroups = dbResult.groups;
+      chunks = TIER === 'all' ? [chunks[0], ...dbResult.chunks] : [...dbResult.chunks];
+      if (dbResult.failed) failed = true;
+      if (dbResult.earlyStopped) earlyStopped = true;
+    } finally {
+      if (templateTenantDb.status === 'pass' && templateTenantDb.db_name) {
+        dropTemplateTenantDatabase(templateTenantDb.db_name, evidenceRoot);
+      }
+    }
   } else if (skipDbTier) {
     console.log('[backend-test-matrix] fast tier failed; skipping db tier (--fail-fast is the opt-out flag now -- continue-on-failure is the default, see #986; drop it to run both regardless)');
   }
