@@ -291,7 +291,11 @@ floor check either exits clean or the promoter opens a bump PR before cutting, e
 comparing the `org.dgfy-platform.candidate-source-sha` OCI label (also new, stamped by
 `deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml` at build time from a
 `candidate_source_sha` input the promoter threads through `deploy.yml`/`deploy-main.yml`) between
-each app's `X.Y.Z-staging` and bare `X.Y.Z` published images. **Correction this PR made, worth
+each app's `X.Y.Z-staging` and bare `X.Y.Z` published images. **Resolved per app since #1610 (ADR
+0081 Decision 8 amendment)** — an app never touched by a staging repair keeps its earlier candidate
+identity for the life of the candidate rather than being compared against whatever the latest repair
+advanced `current_staging_sha` to; see that ADR's matching 2026-09-04 Amendment for the full
+mechanism. **Correction this PR made, worth
 recording here since Phase 277's own ledger entry claimed otherwise:** Phase 277 (#1575/PR #1577)
 did not actually add this label — only `org.opencontainers.image.version` and the `version_tag`
 output. This PR adds the label-stamping step Phase 277's own text (and ADR 0081 Decision 8's

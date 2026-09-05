@@ -306,8 +306,10 @@ run by `promoter` directly, not by any CI workflow:
    image, `node scripts/check-image-version-parity.js --manifest <candidate.json>` (default flow) or
    `--source-sha <develop SHA>` (the #1007-gated exception, which never produces a candidate
    manifest — RF-2, PR #1590 review) confirms each app's PROD image traces back to the candidate it
-   should — the frozen candidate's own tracked SHA (`scripts/check-promotion-candidate.js`'s manifest
-   `source_develop_sha`/`current_staging_sha`, or the raw develop-cut SHA in `--source-sha` mode),
+   should — the frozen candidate's own tracked SHA, resolved **per app** since #1610 (ADR 0081
+   Decision 8 amendment: `scripts/check-promotion-candidate.js`'s `resolveCandidateSourceShaByApp()`
+   — an app never touched by a staging repair keeps its earlier identity rather than being compared
+   against `current_staging_sha`, or the raw develop-cut SHA uniformly in `--source-sha` mode),
    stamped by `deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml` into the
    `org.dgfy-platform.candidate-source-sha` OCI label — not `org.opencontainers.image.revision`,
    which differs across the `to-staging → staging` and `release/* → main` merge commits even for
