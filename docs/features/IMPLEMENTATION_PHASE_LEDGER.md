@@ -20688,10 +20688,10 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 
 - Initiative/release: POS Items modal reachability and Android WebView responsiveness / pre-implementation discovery for Phases 292-295.
 - Objective and scope: identify the runtime that renders the Items modals; inventory Add/Edit Item, Create/Edit Service, QR scanner, CSV import, PDF import, and ZIP/CSV batch import modal layout/scroll ownership; reproduce clipping, overflow, keyboard, nested-scroll, and performance behavior on the affected APK before changing UI contracts.
-- Status: in_progress (approved 2026-09-05; source/runtime inventory complete, physical-device baseline pending).
+- Status: completed (source/runtime inventory scope amended by the user on 2026-09-05 to remove physical-device validation).
 - Dependencies: Phase 290 remains open for APK evidence but does not block this phase's independent modal inventory; ADR 0025 temporary wrapper topology; ADR 0043 native-versus-WebView ownership; ADR 0067 Chrome 80 floor; ADR 0071 shared frontend ownership; `docs/architecture/ARCHITECTURE_BOUNDARIES.md`; `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
-- Acceptance and validation evidence: [POS Items Modal Hardening Plan](POS_ITEMS_MODAL_HARDENING_PLAN.md) records the wrapper application/flavor IDs, source version, hosted origins, eight-modal inventory, local service availability, and exact source-level viewport/scroll/performance risks. `adb devices -l` returned no device, so APK/WebView identity, keyboard-open portrait/landscape reachability, p95 interaction latency, dropped frames, and repeated-cycle memory evidence remain pending. Phase 291 cannot be completed from source inspection or browser emulation alone.
-- Completion date: pending.
+- Acceptance and validation evidence: [POS Items Modal Hardening Plan](POS_ITEMS_MODAL_HARDENING_PLAN.md) records the wrapper application/flavor IDs, source version, hosted origins, eight-modal inventory, local service availability, and exact source-level viewport/scroll/performance risks. `adb devices -l` returned no device, so APK/WebView identity, keyboard-open portrait/landscape reachability, p95 interaction latency, dropped frames, and repeated-cycle memory evidence remain pending. The user removed these physical-device acceptance requirements on 2026-09-05; no device pass is claimed.
+- Completion date: 2026-09-05 (amended source-inventory scope).
 - Contracts/files: [POS Items Modal Hardening Plan](POS_ITEMS_MODAL_HARDENING_PLAN.md); `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/Components/ui/dialog.jsx`; `packages/web-core/Components/items/CSVImportModal.jsx`; `packages/web-core/Components/items/PdfMenuImportModal.jsx`; `packages/web-core/Components/items/MenuImportBatchModal.jsx`; `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogCreateModal.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogEditModal.jsx`; `apps/dgfy-android-bridge/imin-wrapper/app/src/main/AndroidManifest.xml`; `apps/dgfy-android-bridge/imin-wrapper/app/build.gradle.kts`.
 - Governance note: `within-existing-boundary`; no ADR amendment, allowlist exception, database migration, API behavior, or production operation is introduced by this discovery phase. Phase 292 implementation is not authorized by this approval.
 - Current phase: 291. Next eligible phase: 292 after Phase 291 acceptance; Phase 292 is not yet approved.
@@ -20702,7 +20702,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Objective and scope: constrain Add/Edit Item, Create/Edit Service, and Product Scanner panels to the visible viewport with one scrollable body and reachable safe-area-aware actions on Chrome 80-class WebViews.
 - Status: completed.
 - Dependencies: Phase 291 source/runtime inventory; ADR 0067 Chrome 80 floor; ADR 0071 shared frontend ownership.
-- Acceptance and validation evidence: six focused viewport contract tests passed; POS, IMS, and Storefront builds, architecture, compliance, and docs gates passed; rendered browser checks passed at 1440x900, 390x844, and 390x360 without page overflow, runtime errors, request failures, or unreachable final actions. Physical APK keyboard/rotation evidence is assigned to Phase 295.
+- Acceptance and validation evidence: six focused viewport contract tests passed; POS, IMS, and Storefront builds, architecture, compliance, and docs gates passed; rendered browser checks passed at 1440x900, 390x844, and 390x360 without page overflow, runtime errors, request failures, or unreachable final actions. Physical APK validation removed by user scope amendment on 2026-09-05.
 - Completion date: 2026-09-05.
 - Contracts/files: `packages/web-core/src/index.css`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogCreateModal.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogEditModal.jsx`; `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`; `packages/web-core/src/features/pos/__tests__/posItemsModalViewport.contract.test.js`.
 - Governance note: `within-existing-boundary`; no ADR amendment, allowlist exception, database migration, API behavior, or production operation is introduced.
@@ -20714,7 +20714,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Objective and scope: keep background scrolling locked until the final nested modal closes; contain keyboard focus in the top modal; restore focus to each opener; and release all global listeners and locks on close or unmount.
 - Status: completed.
 - Dependencies: Phase 292; shared Dialog portal and Product Scanner custom portal inventory from Phase 291.
-- Acceptance and validation evidence: shared Dialog and Product Scanner jsdom suites cover nested reference-counted locks, preservation of pre-existing body overflow, top-modal Tab wrapping, exact focus restoration, and close/unmount cleanup. Focused Phase 292 viewport contracts remain green. Physical APK interaction evidence remains assigned to Phase 295.
+- Acceptance and validation evidence: shared Dialog and Product Scanner jsdom suites cover nested reference-counted locks, preservation of pre-existing body overflow, top-modal Tab wrapping, exact focus restoration, and close/unmount cleanup. Focused Phase 292 viewport contracts remain green. Physical APK validation removed by user scope amendment on 2026-09-05.
 - Completion date: 2026-09-05.
 - Contracts/files: `packages/web-core/Components/ui/dialog.jsx`; `packages/web-core/Components/ui/__tests__/dialog.test.jsx`; `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`; `packages/web-core/src/features/inventory/__tests__/ProductQrScannerModal.rearm.test.jsx`.
 - Governance note: `within-existing-boundary`; no architecture exception, backend/API change, database migration, or production operation is introduced.
@@ -20726,20 +20726,52 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Objective and scope: remove repeated full-catalog scans from Add Item SKU generation while retaining the complete authorized seed and existing SKU formats, sequence rules, and backend uniqueness enforcement.
 - Status: completed.
 - Dependencies: Phase 293; Phase 291's confirmed source-level 10,000-row repeated-scan risk; existing inventory SKU suggestion contract.
-- Acceptance and validation evidence: a reusable SKU maximum index is built once per seed change and used for constant-time suggestions on each name change. Fourteen focused utility and viewport tests pass. A local Node benchmark over 10,000 seed rows and 1,000 suggestions measured 3,600.38 ms for repeated scans and 4.31 ms for indexed lookup (835.8x computation speedup). POS, IMS, and Storefront builds and repository governance checks pass. Physical iMin latency, frame, and memory evidence remains assigned to Phase 295.
+- Acceptance and validation evidence: a reusable SKU maximum index is built once per seed change and used for constant-time suggestions on each name change. Fourteen focused utility and viewport tests pass. A local Node benchmark over 10,000 seed rows and 1,000 suggestions measured 3,600.38 ms for repeated scans and 4.31 ms for indexed lookup (835.8x computation speedup). POS, IMS, and Storefront builds and repository governance checks pass. Physical-device performance validation removed by user scope amendment on 2026-09-05.
 - Completion date: 2026-09-05.
 - Contracts/files: `packages/web-core/src/features/inventory/utils/skuSuggestion.js`; `packages/web-core/src/features/inventory/__tests__/skuSuggestion.test.js`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`.
 - Governance note: `within-existing-boundary`; no API, database, authorization, SKU format, or architecture exception is introduced.
 - Next eligible phase: 295.
 
-## Phase 295 - POS Items Browser and APK Validation Closure
+## Phase 295 - POS Items Browser Validation Closure
 
 - Initiative/release: POS Items modal reachability and Android WebView responsiveness.
-- Objective and scope: close component, responsive-browser, keyboard, overflow, nested-modal, image-flow, build, architecture, compatibility, compliance, and physical iMin APK acceptance for Phases 289-294.
+- Objective and scope: close component, responsive-browser, keyboard, overflow, nested-modal, image-flow, build, architecture, compatibility, and compliance acceptance for Phases 289-294.
 - Status: in_progress.
-- Dependencies: Phases 289-294; a connected physical iMin device with the affected APK/WebView and representative catalog/import data.
-- Acceptance and validation evidence: 23 focused modal/SKU tests and all three frontend builds passed before browser validation. Authenticated Chrome exercised Add Item at 1440x900, 390x844, and 390x360 with no viewport clipping, horizontal document overflow, console errors, page errors, failed requests, or HTTP 5xx responses; final actions were reachable. The run found and then verified a corrective background-scroll lock and Escape-close fix for the custom Add/Edit Item portal. ADB exposes only a Pixel Tablet emulator on Android 15; no physical iMin package/version, WebView, keyboard/rotation, p95 interaction, dropped-frame, memory-cycle, or 500-image APK evidence is available, so this phase cannot be completed.
+- Dependencies: Phases 289-294 implementation; representative local catalog/import data. Physical iMin validation removed by the user on 2026-09-05.
+- Acceptance and validation evidence: 23 focused modal/SKU tests and all three frontend builds passed before browser validation. Authenticated Chrome exercised Add Item at 1440x900, 390x844, and 390x360 with no viewport clipping, horizontal document overflow, console errors, page errors, failed requests, or HTTP 5xx responses; final actions were reachable. The run found and then verified a corrective background-scroll lock and Escape-close fix for the custom Add/Edit Item portal. Physical iMin validation is no longer required (user scope amendment 2026-09-05), and no device pass is claimed. Remaining browser coverage for other modals, nested imports/image flows, and applicable closure gates is not established by the recorded Add Item checks; status remains in_progress.
 - Completion date: pending.
 - Contracts/files: `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/src/features/pos/__tests__/posItemsModalViewport.contract.test.js`; [POS Items Modal Hardening Plan](POS_ITEMS_MODAL_HARDENING_PLAN.md).
 - Governance note: `within-existing-boundary`; no API, database, or architecture exception is introduced by the browser-discovered correction.
-- Current phase: 295. Next eligible phase: none until the named physical iMin acceptance evidence is recorded.
+- Phase 295 remains open for browser closure only. Independent catalog-search Phase 296 is authorized and does not depend on physical-device evidence.
+
+## Phase 296 - POS Items Search Reproduction and Contract
+
+- Initiative/release: POS Items catalog-search consistency; local development.
+- Objective and scope: Reproduce Sell/Items mismatch and freeze complete query behavior.
+- Status: completed.
+- Dependencies: Independent of remaining Phase 295 browser closure.
+- Acceptance and validation evidence: `node scripts/reproduce-pos-items-search-gap.cjs` executes the current Items predicate and reproduces missing item 601 from the 200-row preload. Two focused Jest diagnostics execute `buildListPosCatalogUseCase` with 601 controlled rows and prove both the Sell/Items query mismatch and post-limit POS-visibility gap. The running authenticated HTTP endpoint correctly rejected an unauthenticated request with 401; no tenant or production data was read or changed. Production screenshot causation is not claimed.
+- Completion date: 2026-09-05.
+- Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `scripts/reproduce-pos-items-search-gap.cjs`; `apps/dgfy-api/tests/posCatalogSearchGap.phase296.test.js`.
+
+## Phase 297 - POS Items Complete Server Querying
+
+- Initiative/release: POS Items catalog-search consistency; local development.
+- Objective and scope: Implement backward-compatible pagination, pre-pagination filters/counts, and Items query state.
+- Status: planned.
+- Dependencies: Phase 296 acceptance.
+- Acceptance and validation evidence: Pending focused API and UI regression tests; see catalog-search plan.
+- Completion date: pending.
+- Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `scripts/reproduce-pos-items-search-gap.cjs`.
+
+## Phase 298 - POS Items Catalog Search Verification
+
+- Initiative/release: POS Items catalog-search consistency; local development.
+- Objective and scope: Verify complete results, isolation, browser behavior and repository gates.
+- Status: planned.
+- Dependencies: Phase 297 acceptance.
+- Acceptance and validation evidence: Pending; no physical iMin requirement.
+- Completion date: pending.
+- Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `scripts/reproduce-pos-items-search-gap.cjs`.
+
+- Current catalog-search phase: 296 completed. Next eligible phase: 297, pending approval.

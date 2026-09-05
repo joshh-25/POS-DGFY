@@ -28,7 +28,7 @@ and the temporary iMin Android WebView wrapper.
 
 ## Phase 291 - Modal inventory and device baseline
 
-Status: `in_progress`.
+Status: `completed` for the amended source-inventory scope (2026-09-05).
 
 ### Runtime evidence
 
@@ -71,36 +71,13 @@ Status: `in_progress`.
 4. The iMin performance marker already disables full-screen backdrop blur and
    long animations. These protections must be preserved through later phases.
 
-### Device baseline protocol
+### Acceptance scope amendment (2026-09-05)
 
-Run on the actual affected APK and record the exact package name, version code,
-version name, Android build, WebView package/version, resolution, density,
-orientation, and whether the wrapper origin is production, staging, dev, or a
-local override. For each inventory row above:
-
-1. Open the modal with short and long content.
-2. Open the software keyboard on the first, middle, and final editable field.
-3. Scroll to every field and footer action; record clipping and horizontal
-   overflow.
-4. Rotate when the device supports rotation and repeat the final-field check.
-5. Open and close any nested scanner or confirmation dialog and verify that the
-   underlying page does not scroll.
-6. Capture modal-open latency, typing latency, dropped-frame evidence, and
-   memory before and after 20 open/close cycles with a representative catalog.
-7. Capture screenshots or screen recordings plus WebView console/network errors.
-
-### Phase 291 acceptance
-
-- Complete: runtime ownership and source modal inventory.
-- Complete: static identification of viewport, nested-scroll, and catalog-load
-  risks with exact source locations.
-- Pending: named-device APK and WebView identity.
-- Pending: keyboard-open portrait/landscape evidence for every modal.
-- Pending: p95 open/typing latency, frame, and memory baseline.
-
-Phase 291 must remain `in_progress` until the three pending device evidence
-groups are recorded. Source inspection or browser emulation cannot substitute
-for this gate.
+The user removed physical iMin validation from this initiative. Device identity,
+physical keyboard/rotation, frame timing, memory-cycle, and device image-load
+measurements are no longer acceptance requirements. No physical APK pass is
+claimed. Source inventory is complete; outstanding browser coverage remains
+separate from device testing.
 
 ## Delivery phases after Phase 291
 
@@ -110,7 +87,7 @@ for this gate.
   modal cleanup.
 - Phase 294: optimize the SKU seed and suggestion flow only against the Phase
   291 measurements.
-- Phase 295: run component, browser, physical APK, build, architecture, docs,
+- Phase 295: run component, browser, build, architecture, docs,
   compatibility, and compliance closure.
 
 ### Phase 292 implementation record (2026-09-05)
@@ -119,8 +96,7 @@ The shared Items modal panel now uses a Chrome-80-compatible `vh` fallback follo
 by `dvh`, one internal scroll region, and a fixed safe-area-aware footer. Add/Edit
 Item, Create/Edit Service, and Product Scanner use the bounded panel contract.
 Focused viewport contracts and browser checks at desktop, mobile portrait, and
-short landscape sizes passed. Physical APK keyboard and rotation proof remains in
-Phase 295.
+short landscape sizes passed. Physical APK validation was removed from acceptance on 2026-09-05.
 
 ### Phase 293 implementation record (2026-09-05)
 
@@ -140,8 +116,8 @@ changes. Each item-name keystroke performs a constant-time maximum lookup instea
 of scanning up to 10,000 rows again. A local Node benchmark using 10,000 rows and
 1,000 suggestions measured 3,600.38 ms for repeated scans and 4.31 ms for indexed
 lookups (approximately 835.8x faster for this computation). This benchmark is
-local browser-side evidence only; iMin interaction, frame, and memory proof remains
-part of Phase 295.
+local computation evidence only; physical-device performance validation was removed
+from acceptance on 2026-09-05.
 
 ### Phase 295 validation record (2026-09-05)
 
@@ -152,10 +128,16 @@ run kept the dialog inside the viewport, exposed its final action, prevented
 horizontal document overflow, held the body lock, closed from Escape, and emitted
 no page error, console error, failed request, HTTP 5xx response, or error boundary.
 
-ADB listed only `emulator-5554` (Pixel Tablet, Android 15). A physical iMin device
-and affected APK/WebView were not present. Phase 295 therefore remains
-`in_progress` pending named-device keyboard/rotation, p95 interaction, frame,
-20-cycle memory, image request, and representative 500-image import evidence.
+Physical iMin validation was removed by the user on 2026-09-05. Phase 295 remains
+`in_progress` only for browser closure not demonstrated by the recorded Add Item
+checks: remaining modal surfaces, nested import/image flows, and applicable
+compatibility/docs/compliance evidence. This independent browser work does not
+block the catalog-search initiative, beginning at Phase 296.
+
+## Catalog-search follow-up
+
+See [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md) for Phases
+296-298 and their acceptance gates. No physical iMin validation is required.
 
 ## Authoritative references
 
