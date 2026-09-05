@@ -20389,10 +20389,27 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   (new), `docs/architecture/adr/INDEX.md` (regenerated), `docs/ops/RELEASE_CANDIDATE_POLICY.md`
   (2026-09-06 amendment), `docs/releases/notes/TEMPLATE.md` (new), `docs/releases/notes/README.md`
   (new), `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
+  `.agents/skills/incident-responder/SKILL.md` (added in the review-fix round below),
   `docs/development/PROJECT_DEVELOPMENT_GUIDE.md`, this ledger entry.
+- Review-fix round (`pr-reviewer`, PR #1637): RF-2 (should-fix) — the 2026-09-06 policy amendment had
+  been inserted before the prior amendment's own closing `PR:` line instead of after it; moved,
+  no historical text touched. RF-1 (blocker) — the documented lifecycle left `production_commit` as
+  an unfillable value through the `release/* → main` PR, contradicting Phase 296's planned "40-hex
+  required" validation; resolved with an explicit two-stage lifecycle (a literal `pending` sentinel
+  accepted pre-deploy, finalized to a real 40-hex SHA post-deploy) written into ADR 0082 Decisions
+  4/8, the policy amendment, `TEMPLATE.md`, and the runbook's authoring/publish steps (the latter
+  gaining a `grep` self-check). RF-3 (blocker) — ADR 0082 Decision 6's #1007 description was
+  corrected (it already shares the default flow's `release/<candidate_id>-rN` pattern, no
+  enforcement gap); the genuine gap — a `main` hotfix's `fix/*` branch not matching that pattern —
+  is now stated outright (ADR 0082 Decision 8, Follow-up 3) and closed procedurally by a new
+  release-note-authoring step in `.agents/skills/incident-responder/SKILL.md`'s hotfix procedure
+  (both loop entry points), rather than left silently uncovered.
 - Next eligible phase: 296 (#1278 PR 2 — the `check:release-notes` enforcement script,
   `package.json` wiring, and its `promotion-quality-gate.yml` advisory step; tip of the ledger was
-  Phase 295 at the time this phase was planned).
+  Phase 295 at the time this phase was planned). PR 2's implementer should read ADR 0082's Follow-up
+  3 and the correction note appended to the approved plan file before building the frontmatter
+  validator — the original plan's "production_commit 40-hex" contract was corrected by this
+  review-fix round.
 
 ## Phase 281 - Delivery-fee override provenance: persist `delivery_fee_override` (#1564)
 
