@@ -45,16 +45,43 @@ on:
         type: string
         # default: '["sieitz-runner"]'
         default: '["ubuntu-latest"]'
-      candidate_source_sha:
+      candidate_source_sha_api:
         description: >-
-          ADR 0081 Decision 8 candidate source identity (#1588, epic #1548 Wave 4, Phase 279) --
-          set this on the normal three-stage flow's release/<candidate_id>-rN -> main dispatch, or
-          the #1007-gated release/<label> -> main exception, to scripts/check-promotion-candidate.js's
-          manifest source_develop_sha (no staging repairs yet) or current_staging_sha (once repairs
-          exist). Leave empty for a main hotfix outside the ordinary promotion flow -- an empty value
-          omits the org.dgfy-platform.candidate-source-sha OCI label entirely, which
+          ADR 0081 Decision 8 candidate source identity, PER APP (#1610 amendment; originally one
+          shared value, #1588, epic #1548 Wave 4, Phase 279) -- covers BOTH dgfy-api and
+          dgfy-migration-runner, since build_api above always rebuilds them as one paired unit (a
+          repair that touches either always lists both in its manifest apps_touched, so they never
+          actually diverge). Set this on the normal three-stage flow's release/<candidate_id>-rN ->
+          main dispatch, or the #1007-gated release/<label> -> main exception, to
+          scripts/check-promotion-candidate.js's `resolveCandidateSourceShaByApp()` result for
+          dgfy-api (NOT the manifest's raw current_staging_sha -- an app a repair never touched must
+          keep its earlier identity, matching what its STAGING image actually carries). Leave empty
+          for a main hotfix outside the ordinary promotion flow -- an empty value omits the
+          org.dgfy-platform.candidate-source-sha OCI label entirely, which
           scripts/check-image-version-parity.js treats as expected evidence of a hotfix/#1007
           exception, not a defect. See .agents/skills/promoter/references/promotion-runbook.md.
+        required: false
+        type: string
+        default: ''
+      candidate_source_sha_frontend_ims:
+        description: >-
+          Same contract as candidate_source_sha_api above, resolved for dgfy-ims specifically (its
+          own build_frontend_ims flag rebuilds it independently of the other two frontends).
+        required: false
+        type: string
+        default: ''
+      candidate_source_sha_frontend_pos:
+        description: >-
+          Same contract as candidate_source_sha_api above, resolved for dgfy-pos specifically (its
+          own build_frontend_pos flag rebuilds it independently of the other two frontends).
+        required: false
+        type: string
+        default: ''
+      candidate_source_sha_frontend_storefront:
+        description: >-
+          Same contract as candidate_source_sha_api above, resolved for dgfy-storefront specifically
+          (its own build_frontend_storefront flag rebuilds it independently of the other two
+          frontends).
         required: false
         type: string
         default: ''
@@ -238,7 +265,7 @@ jobs:
     with:
       environment: PROD
       image_tags: "latest"
-      candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -259,7 +286,7 @@ jobs:
     with:
       environment: PROD
       image_tags: "latest"
-      candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -309,7 +336,7 @@ jobs:
       app: dgfy-ims
       environment: PROD
       image_tags: "latest"
-      candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_ims }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -330,7 +357,7 @@ jobs:
       app: dgfy-pos
       environment: PROD
       image_tags: "latest"
-      candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_pos }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -351,7 +378,7 @@ jobs:
       app: dgfy-storefront
       environment: PROD
       image_tags: "latest"
-      candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_storefront }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.

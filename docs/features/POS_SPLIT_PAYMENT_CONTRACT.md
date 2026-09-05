@@ -394,3 +394,18 @@ remaining reversible amount.
 
 Every reversal is append-only and idempotent. It preserves original cashier and
 shift attribution and records the actual refund actor/shift separately.
+
+## Payment-filter reporting (#1623)
+
+History and analytics payment filters include a transaction when its primary
+method or immutable completion breakdown contains the requested method. Filtering
+occurs before database pagination. History and report rows display every recorded
+positive tender method, including secondary methods.
+
+Total Sales retains the existing sale-level calculation for matching transactions.
+The additional selected-method Collected card sums that method's applied amounts
+on completed transactions, excluding voided/refunded sales. Its count is distinct
+transactions; shift reading counts can instead represent allocation entries.
+Category filtering selects transactions containing matching items; this card uses
+their whole-transaction tender amounts. Compare readings only with aligned date,
+location, terminal, cashier, shift, and void/refund scope.

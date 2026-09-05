@@ -21088,3 +21088,129 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md`,
   issues #1565, #478.
 - Next eligible phase: 293.
+
+## Phase 293 - Promotion parity gate resolves candidate source identity per app, not manifest-wide (#1610, epic #1548 Wave 4 residue)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: found live during candidate `2026-09-05-01`'s first real promotion --
+  `check-image-version-parity.js` FAILed for `dgfy-api`/`dgfy-migration-runner` because ADR 0081
+  Decision 8's original design applied one manifest-wide `current_staging_sha` to every app when
+  stamping PROD, even for an app a staging repair never touched (that app's STAGING image still
+  legitimately carried the earlier identity). Decision 7 (binding tag immutability) and the original
+  Decision 8 (uniform identity) turned out mutually exclusive for exactly that case. **Design
+  decision: candidate source identity is now resolved per app**, not once per candidate -- an app
+  never named in any repair's `apps_touched` keeps the initial revision's SHA for the candidate's
+  entire life. Recorded as a dated `[default]`-tier Amendment on ADR 0081 (no superseding ADR
+  needed, per ADR 0039) rather than the other two candidates the issue named: loosening Decision 7's
+  tag-immutability guard (rejected -- that's the one `[binding]` system invariant this ADR asks to
+  be a hard constraint, and "content-equivalent rebuild" is hard to prove robustly; the actual root
+  cause is stamping precision, not that guard) or special-casing the mismatch as an accepted PASS
+  category (rejected -- that would mask a genuine future stamping regression instead of fixing the
+  label, since the parity gate would stop actually comparing anything for that case).
+- Mechanically: `scripts/check-promotion-candidate.js` gains a required `apps_touched` array on
+  every `staging_repair` manifest revision and a new `resolveCandidateSourceShaByApp()` function
+  (plus a `--resolve-app-shas` CLI mode); `scripts/check-image-version-parity.js --manifest` resolves
+  each app's candidate source identity independently instead of one shared value, and each result
+  entry now reports its own resolved `candidate_source_sha`; `deploy-main.yml`'s single
+  `candidate_source_sha` workflow_dispatch input becomes four inputs matching its existing `build_*`
+  boolean groups (`candidate_source_sha_api` covers both `dgfy-api`/`dgfy-migration-runner`, one
+  each for the three frontends); a new `checkDeployMainCandidateSourceShaWiring` shape check in
+  `scripts/check-deploy-version-stamping-workflow.js` guards that wiring, mirroring the existing
+  `checkOrchestratorCandidateSourceShaWiring`. `deploy.yml`/`deployment-orchestrator.yml`'s STAGING
+  dispatch is unchanged -- it was never the source of this bug (an app skipped there via `build_*
+  =false` simply keeps its previous label untouched, so its one shared `candidate_source_sha` value
+  always already matches whatever IS being rebuilt in that exact dispatch).
+- Status: completed.
+- Dependencies: Phase 279 / ADR 0081 Decision 8 (#1588), which this phase amends rather than
+  supersedes. #1610.
+- Acceptance and validation evidence: `node --test scripts/check-promotion-candidate.test.js` (16/16
+  -- 7 new: `apps_touched` validation x4, `resolveCandidateSourceShaByApp` behavior x4, one of which
+  is shared with the validation group); `node --test scripts/check-image-version-parity.test.js`
+  (33/33 -- 1 new regression test reproducing #1610's exact untouched-app scenario against two real,
+  resolvable SHAs in this repo's own history); `node --test
+  scripts/check-deploy-version-stamping-workflow.test.js` (42/42 -- 5 new, including one asserting
+  the real `deploy-main.yml` passes the new wiring shape); manually reproduced #1610's own reported
+  scenario against a synthetic manifest matching candidate `2026-09-05-01`'s real SHAs and
+  `apps_touched` split (`dgfy-api`/`dgfy-migration-runner` correctly resolve to the pre-repair SHA
+  `d495514e2...`, the three repaired frontends to the post-repair SHA `b1459dad7...` -- exactly the
+  pair the issue reported as a false-positive mismatch). YAML-parsed `deploy-main.yml`;
+  `node scripts/check-deploy-version-stamping-workflow.js` (PASS against the real files);
+  `npm run lint:docs` (29 governed docs, OK), `npm run check:adr` (88 ADRs, OK -- ADR 0081's new
+  Amendment block validates), `npm run check:architecture` (OK), `npm run check:compliance` (no
+  compliance-sensitive changes detected -- no `apps/*` runtime code touched), `node
+  scripts/check-app-version-bump.js` in PR mode (no changed-app version-bump requirements apply --
+  this phase touches only `scripts/`, `.github/workflows/`, `docs/`, and `.agents/skills/`, none of
+  it `apps/*` or a `packages/*` fan-out dependency). No real `to-staging/<candidate_id>` or
+  `release/<candidate_id>-rN` promotion has run against this mechanism yet -- everything above is
+  unit-tested and shape-verified against this repo's real files and #1610's own real reported SHAs,
+  not exercised end to end against a live GHCR push/build. The issue's own third Definition-of-done
+  item ("re-run the parity gate against a future repaired candidate to confirm the fix actually
+  resolves the mismatch class") is explicitly NOT satisfied by this phase -- it needs a real future
+  promotion with a real partial repair, which cannot be manufactured here; left open for the next
+  candidate that repairs only some apps.
+- Completion date: 2026-09-04.
+- Contracts/files: `scripts/check-promotion-candidate.js` + its test file (both extended),
+  `scripts/check-image-version-parity.js` + its test file (both extended),
+  `scripts/check-deploy-version-stamping-workflow.js` + its test file (both extended),
+  `.github/workflows/deploy-main.yml` (single `candidate_source_sha` input split into four),
+  `.agents/skills/promoter/references/promotion-runbook.md` (`apps_touched` recording obligation,
+  per-app PROD dispatch), `docs/architecture/adr/0081-per-app-container-semantic-versioning.md`
+  (2026-09-04 Amendment, `status: amended`), `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/testing/release-go-no-go-checklist.md` (both: per-app resolution noted), issue #1610.
+- Next eligible phase: 294.
+
+## Phase 294 - POS thumbnail render fix + storefront-fallback for #218 (#265 epic, PR 1 of the epic)
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
+- Objective and scope: first PR of the #265 epic (client-side image conversion + thumbnail render
+  fix). Extracts a shared `ResponsiveImage` presentational shell
+  (`packages/web-core/src/components/media/ResponsiveImage.jsx`) and a generic
+  `buildImageVariantSources` utility (`packages/web-core/src/utils/imageVariantSources.js`) from
+  three near-duplicate implementations, migrates `POSCheckoutTerminalView.jsx` onto the shared
+  shell, and thin-wraps `StorefrontResponsiveImage.jsx` over it. Fixes every POS/IMS render site
+  that was loading a flat 1920px `large` image (or a bare string URL with no variant awareness) into
+  a small slot -- worst cases: `ItemsPage.jsx`'s `h-16 w-20` POS-menu cell and
+  `SelectedItemImageCarousel`'s thumbnail strip -- across `ItemsPage.jsx`,
+  `StorefrontImageCarousel.jsx`, `SelectedItemImageCarousel.jsx`, `ItemFormModal.jsx`,
+  `POSSetupStep.jsx`, `apps/dgfy-ims/Pages/Settings.jsx`, `TerminalOperationsWorkspace.jsx`,
+  `SkupervisorPOSCheckoutTerminal.jsx`, and `POSDiscountWorkspace.jsx`. This enforces ADR 0014's
+  existing "POS catalog cards request the thumbnail variant" clause (Hosted POS Image Delivery And
+  Navigation Addendum, 2026-07-23) rather than changing it -- no ADR amendment. Also fixes #218: two
+  `posRepository.js` sites (`listCatalogOverrides`, `resolveCatalogScan`) computed `pos_image_url`
+  inline from the POS override alone instead of calling the already-existing
+  `resolvePosDisplayImage`/`loadStorefrontCatalogImageMap` helpers (already correctly wired into
+  `applyCatalogOverrides`/`listCatalog` since #871) -- so a POS item with only a storefront image
+  (no POS-specific override) rendered blank on the Items page and on barcode-scan lookup.
+  `resolvePosDisplayImage` gains an additive `.source` field (`'override' | 'storefront' | null`).
+  Adds `storeOptimizedImageAsset` CPU/wall-time instrumentation (`imageAssetStorage.js`, 8-field
+  structured log on the success path only) as a pre-change baseline ahead of Phase 295's AVIF-drop
+  measurement. Out of scope for this phase: Phase 295 (AVIF drop), Phase 296 (client-side encoder),
+  Phase 297 (upload contract), any new npm dependency, and extracting the now four-times-duplicated
+  gallery-normalizer helper.
+- Status: planned.
+- Dependencies: none blocking (Phase 293 is unrelated). Precedes Phases 295-297 of the #265 epic.
+- Acceptance and validation evidence: see the PR's own `## Testing Evidence` section (Tier 0:
+  `build:pos`/`build:store`/`build:skupervisor`, `node --check` on the two changed `apps/dgfy-api`
+  files, lockfile sync for the three bumped apps, `check-app-version-bump.js`,
+  `check:architecture`/`check:compliance`/`lint:docs`/`check:adr`).
+- Completion date: not yet completed -- status remains `planned` until this PR merges and its
+  evidence is filled in.
+- Contracts/files: `packages/web-core/src/components/media/ResponsiveImage.jsx` (new),
+  `packages/web-core/src/utils/imageVariantSources.js` (new),
+  `packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontResponsiveImage.jsx`,
+  `packages/web-core/src/features/inventory/pages/ItemsPage.jsx`,
+  `packages/web-core/Components/items/StorefrontImageCarousel.jsx`,
+  `packages/web-core/Components/items/SelectedItemImageCarousel.jsx`,
+  `packages/web-core/Components/items/ItemFormModal.jsx`,
+  `packages/web-core/Components/products/wizard/POSSetupStep.jsx`,
+  `apps/dgfy-ims/Pages/Settings.jsx`,
+  `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`,
+  `packages/web-core/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx`,
+  `packages/web-core/src/features/pos/components/POSDiscountWorkspace.jsx`,
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/src/modules/shared/utils/imageAssetStorage.js`,
+  `docs/compliance/impact-declarations/2026-09-05-pos-thumbnail-render-fix-and-storefront-fallback.md`,
+  `apps/dgfy-ims/package.json` (1.2.3 -> 1.2.4), `apps/dgfy-pos/package.json` (1.2.3 -> 1.2.4),
+  `apps/dgfy-storefront/package.json` (1.3.4 -> 1.3.5), issues #265/#218.
+- Next eligible phase: 295.

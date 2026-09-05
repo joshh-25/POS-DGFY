@@ -3030,7 +3030,6 @@ export default function StorefrontApp() {
     fnbOrderStepRenderKey,
     fnbOrderTextOnBrand,
     fnbScheduleSummaryLabel,
-    fnbSummaryFeeAndTaxes,
     isFnbOrderHandset,
     isFnbOrderResponsiveFlow,
     setShowFnbMobileOrderSummary,
@@ -3050,7 +3049,6 @@ export default function StorefrontApp() {
     isDesktopCheckout,
     isFnbMode,
     isFnbOrderSubpage,
-    totalsForDisplay,
     viewportWidth,
   });
   const {
@@ -3326,7 +3324,6 @@ export default function StorefrontApp() {
     fnbScheduledFor,
     fnbScheduleSummaryLabel,
     fnbSpecialInstructions,
-    fnbSummaryFeeAndTaxes,
     goStoreCatalogPage,
     goStoreTrackPage,
     guestCheckoutOtpCode,

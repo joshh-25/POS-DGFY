@@ -195,6 +195,77 @@ own precedent check, `scripts/check-pos-receipt-version-bump.js`.
 
 ## Amendments
 
+### 2026-09-04 — Decision 8's `current_staging_sha` is not enough for an app untouched by a repair; candidate source identity is now resolved per app
+
+Found live during epic #1548's first real promotion (candidate `2026-09-05-01`, release revision r2,
+merged to `main` at `052753eb7`, deployed and verified healthy — a metadata/provenance-tracking gap,
+not a production incident). `check-image-version-parity.js` FAILed for `dgfy-api` and
+`dgfy-migration-runner`: their `X.Y.Z-staging` images still carried the candidate's *original*
+identity (from before a staging repair, #1603/#1605, that touched only `packages/web-core` and the
+three frontends), while their `X.Y.Z` PROD images had been stamped with the repair's *newer*
+identity — because the PROD build applies one manifest-wide `current_staging_sha` uniformly to every
+app, regardless of whether that app was actually part of the repair. `dgfy-ims`/`dgfy-pos`/
+`dgfy-storefront` (the apps the repair did touch) passed. Full incident writeup: #1610.
+
+**Root cause:** two things this ADR asked for turn out to be mutually exclusive for an app a repair
+never touches. Decision 7 (binding) correctly refuses to re-label that app's already-published
+`X.Y.Z-staging` tag under a new revision — nothing rebuilt it, so nothing should relabel it. But
+Decision 8's original text treated candidate source identity as one uniform `current_staging_sha`
+value, advancing for every app the moment *any* repair lands. PROD always rebuilds every app fresh
+(there is no existing bare `X.Y.Z` tag to skip rebuilding), so stamping every app with that one
+advanced value mislabels the untouched ones: their STAGING image is telling the truth (the earlier
+identity); their freshly-built PROD image is not.
+
+**Resolution:** candidate source identity moves from one manifest-wide value to a **per-app**
+resolution. An app's candidate source identity is the SHA of the most recent revision — the initial
+`to-staging/<candidate_id>` cut, or a `staging_repair` — that actually rebuilt/relabeled that app on
+STAGING. An app never named by any repair keeps the initial revision's SHA (`source_develop_sha`)
+for the candidate's entire life, even after `current_staging_sha` itself advances for other apps.
+
+Mechanically:
+- `scripts/check-promotion-candidate.js`'s manifest schema gains a **required** `apps_touched` array
+  on every `staging_repair` revision (non-empty, entries drawn from the five app names, no
+  duplicates) — the same apps whose `build_*` flag was `true` on that repair's STAGING redeploy.
+  `dgfy-api` and `dgfy-migration-runner` always appear together, since `build_api` always rebuilds
+  them as one paired unit (see `deploy.yml`/`deploy-main.yml`'s own pairing comment) — a repair that
+  touches either always lists both. `current_staging_sha` is unchanged in meaning (still the latest
+  revision's SHA, still validated the same way, still useful as overall candidate context) but is no
+  longer what the parity gate compares per app.
+- A new `resolveCandidateSourceShaByApp(manifest, apps)` function computes the per-app map described
+  above, and a new `--resolve-app-shas` CLI mode prints it as JSON for the promoter's runbook to
+  consume.
+- `scripts/check-image-version-parity.js --manifest` resolves each app's candidate source identity
+  independently via this function (including which SHA it reads that app's `package.json` version
+  from), instead of one shared `current_staging_sha` for every app. Each result entry now also
+  reports its own resolved `candidate_source_sha`, so a future mismatch is legible without
+  cross-referencing the manifest by hand.
+- `deploy-main.yml`'s single `candidate_source_sha` workflow_dispatch input is replaced with four
+  inputs matching its existing `build_*` boolean groups (`candidate_source_sha_api` covers both
+  `dgfy-api` and `dgfy-migration-runner`; one each for `candidate_source_sha_frontend_ims`/`_pos`/
+  `_storefront`), so PROD's build for an app untouched by any repair is stamped with that app's own
+  correct (earlier) identity, not the candidate's latest one. A new
+  `checkDeployMainCandidateSourceShaWiring` shape check
+  (`scripts/check-deploy-version-stamping-workflow.js`) guards this wiring the same way
+  `checkOrchestratorCandidateSourceShaWiring` already guards the orchestrator's.
+- `deploy.yml`/`deployment-orchestrator.yml`'s STAGING dispatch is **unchanged** — it was never the
+  source of this bug. An app skipped there (`build_api=false` etc.) simply keeps its previously-
+  stamped label untouched rather than being relabeled with a stale value, so the one shared
+  `candidate_source_sha` value it does pass always already matches whatever IS being rebuilt in that
+  exact dispatch (the dispatch always runs immediately after the manifest's `current_staging_sha`
+  advances to name that exact revision).
+
+`[default]` tier, so this is a dated amendment, not a superseding ADR, per ADR 0039. Decision 8's
+substance — the parity gate compares the candidate's own tracked source identity, not raw
+`org.opencontainers.image.revision`/`github.sha` — is unchanged; only its resolution granularity
+moves from candidate-wide to per-app. **Decision 7 is untouched by this fix** — no repair ever needs
+to re-label an already-published tag under a different revision; a PROD build always publishes a
+not-yet-existing bare tag regardless of which identity it's stamped with, so the two decisions are
+no longer in tension for this case.
+
+Full detail: `scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`,
+`scripts/check-deploy-version-stamping-workflow.js`, `.github/workflows/deploy-main.yml`,
+`.agents/skills/promoter/references/promotion-runbook.md`, issue #1610.
+
 ### 2026-09-04 — Decision 8's label was never actually added by Phase 277; Phase 279 (#1588) adds it
 
 Decision 8's original text (above, unchanged) says "Phase 277's builder stamps this identity into a
@@ -251,7 +322,10 @@ section, issue #1588.
 - #1559 — the issue this ADR was filed to close.
 - #1588 — Phase 279 (epic #1548 Wave 4): the promoter's pre-cut floor step (Decision 6), the
   candidate-source-identity label and promotion parity gate (Decision 8, corrected by this ADR's
-  2026-09-04 Amendment above), and final policy text.
+  2026-09-04 Amendments above), and final policy text.
+- #1610 — found live during candidate `2026-09-05-01`'s first real promotion: Decision 8's original
+  uniform `current_staging_sha` mislabeled an app a staging repair never touched. Resolved by this
+  ADR's per-app-resolution Amendment above.
 - #1560 — the PR-time version-bump check (Decision 9) this ADR hands its enforcement rule to;
   explicitly not implemented by this ADR.
 - [ADR 0072](0072-ghcr-container-image-naming.md) — governs image *names*; this ADR governs tag

@@ -110,6 +110,26 @@ live database changes, secrets, SSH, and infrastructure operations are hard stop
 `staging-candidate-observation.yml` workflow validates combined health, migration, API, and UI
 evidence without performing operational mutations.
 
+**Backporting a `fix/staging/*` repair to `develop` (#1611, 2026-09-04) — parallel to the
+post-main hotfix backport rule below, but for the pre-main leg.** Nothing before this documented
+what happens to a staging-repair commit once it merges into `staging`, and the gap is real: #1611
+found `develop` still carrying #1603's stale-test bug for a full promotion cycle after PR #1604
+fixed it on `staging`/`main`, saved from recurring only because an unrelated `develop` commit
+(#1602) happened to supersede it independently. That "happened to" is the failure mode this
+paragraph closes, not a plan to rely on again. **Default: mandatory, per repair, as soon as the
+`fix/staging/*` PR merges into `staging`** — don't defer it to promotion end, and don't assume the
+eventual `staging → main` forward-merge covers it; that merge reaches `main`, not `develop`, and
+nothing in this repo syncs `develop` from `main`/`staging` automatically. Same pattern as the
+main-hotfix backport: hand off to `pm` for a fresh issue (never `Refs` the closed repair PR
+directly — a closed issue can't take the `Refs #N` → `For QA` transition), `git cherry-pick -x`
+the repair's commit(s) onto a branch cut fresh off `origin/develop`, and open the PR into `develop`
+`Refs`-ing the fresh issue — an ordinary `develop`-base PR, no new merge authority needed.
+**Skippable only with verification, never by assumption**: before skipping, diff the repair's
+changed file(s)/lines against `origin/develop`'s current content and confirm `develop` already
+carries equivalent content, not merely a later commit that happens to touch the same file — #1611's
+own case resolved this way, by coincidence, which is exactly why "probably already fine" doesn't
+qualify as verification on its own.
+
 Only after staging observation passes may the promoter cut `release/<candidate_id>-rN` from the
 current staging SHA. A pre-main failure returns to the staging repair loop; discard the stale
 release head and recut it after staging changes. A post-main failure uses the incident/hotfix path
