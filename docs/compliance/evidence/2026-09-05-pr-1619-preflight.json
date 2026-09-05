@@ -1,0 +1,101 @@
+{
+  "request_ref": "PREFLIGHT-LOCAL-PR1619-1788592930801",
+  "executed_at": "2026-09-05T07:25:06.470Z",
+  "commit": "49964f40e924cc23d19893ae644d64dbc30dc708",
+  "environment": "Local loopback API using exact PR application and real authentication; isolated provisionTenant fixture, non_compliant/premium/active; startup schedulers skipped",
+  "declaration": "docs/compliance/impact-declarations/2026-09-05-pos-checkout-validation-limits.md",
+  "request": {
+    "request_name": "Compliance preflight sweep - 2026-09-05-pos-checkout-validation-limits",
+    "surfaces": [
+      "pos",
+      "terminal"
+    ],
+    "impact_declaration": {
+      "declaration_id": "2026-09-05-pos-checkout-validation-limits",
+      "classification": "major",
+      "summary": "(no summary derivable from declaration body)",
+      "affected_surfaces": [
+        "pos",
+        "terminal"
+      ],
+      "reason_codes_impacted": [
+        "ALLOWED"
+      ],
+      "policy_version": "2026.09.05",
+      "verification_evidence": [
+        "API unit tests 88 passed",
+        "frontend unit and rendered component tests 23 passed",
+        "IMS POS and Storefront production builds passed"
+      ],
+      "rollback_note": "Revert the validation and UI limit changes together; retain existing fiscal records and use a new patch version for any subsequent release. No migration is introduced."
+    }
+  },
+  "http_status": 200,
+  "response": {
+    "success": true,
+    "data": {
+      "result": "no_breach",
+      "can_proceed": true,
+      "reason_code": "ALLOWED",
+      "decisions": [
+        {
+          "operation": "pos.checkout",
+          "tenant_id": "0592ab31-b2dd-4fc4-a66f-6d05f75996a8",
+          "mode_state": "non_compliant_active",
+          "decision": "allow",
+          "reason_code": "ALLOWED",
+          "policy_version": "2026.04.07",
+          "receipt_contract": {
+            "document_type": "non_fiscal_slip",
+            "label": "NON-FISCAL SLIP",
+            "document_context": "non_fiscal"
+          },
+          "checklist": null,
+          "obligations": []
+        },
+        {
+          "operation": "pos.receipt_render",
+          "tenant_id": "0592ab31-b2dd-4fc4-a66f-6d05f75996a8",
+          "mode_state": "non_compliant_active",
+          "decision": "allow",
+          "reason_code": "ALLOWED",
+          "policy_version": "2026.04.07",
+          "receipt_contract": {
+            "document_type": "non_fiscal_slip",
+            "label": "NON-FISCAL SLIP",
+            "document_context": "non_fiscal"
+          },
+          "checklist": null,
+          "obligations": []
+        },
+        {
+          "operation": "pos.terminal_operation",
+          "tenant_id": "0592ab31-b2dd-4fc4-a66f-6d05f75996a8",
+          "mode_state": "non_compliant_active",
+          "decision": "allow",
+          "reason_code": "ALLOWED",
+          "policy_version": "2026.04.07",
+          "receipt_contract": {
+            "document_type": "non_fiscal_slip",
+            "label": "NON-FISCAL SLIP",
+            "document_context": "non_fiscal"
+          },
+          "checklist": null,
+          "obligations": []
+        }
+      ],
+      "required_actions": [],
+      "declaration_id": "2026-09-05-pos-checkout-validation-limits",
+      "actor": "2"
+    },
+    "message": "Compliance preflight passed",
+    "timestamp": "2026-09-05T07:25:06.459Z"
+  },
+  "verdict": {
+    "pass": true,
+    "result": "no_breach",
+    "can_proceed": true,
+    "reason_code": "ALLOWED"
+  },
+  "fixture_cleanup_confirmed": true
+}
