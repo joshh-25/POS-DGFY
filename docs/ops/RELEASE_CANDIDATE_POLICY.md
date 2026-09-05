@@ -1189,6 +1189,8 @@ this policy or of ADR 0081 changes. **Not yet exercised against a real dispatch*
 amendment and `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 295 entry for what is and isn't
 verified.
 
+PR: (this PR). Refs #1610 (not Closes — needs deployed verification). Refs #1548.
+
 ### 2026-09-06: Every production promotion carries a release-note record (#1278, ADR 0082)
 
 Decision record this implements: [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md),
@@ -1200,37 +1202,54 @@ this entry only for when/how within the flow this policy already governs.
 `chore(release): bump <apps> …` PR that ADR 0081 Decision 6's pre-cut floor step already requires
 (or opens as a note-only PR if every app is already at or above floor — the note PR is not optional
 even when no version bump is otherwise needed) now also adds/commits
-`docs/releases/notes/<candidate_id>.md`, following `docs/releases/notes/TEMPLATE.md`'s shape. This
-is the only workable seam: a promotion branch (`to-staging/*`/`release/*`) carries no commits of its
-own, so the note has to already be on `develop` at cut time to ride `develop → staging → main` with
-the code it describes — the same constraint ADR 0081 Decision 6 already reasoned through for version
-bumps themselves.
+`docs/releases/notes/<candidate_id>.md`, following `docs/releases/notes/TEMPLATE.md`'s shape.
+`production_commit` is written as the literal sentinel `pending` at this point (ADR 0082 Decisions
+4/8) — the real `main` merge-commit SHA does not exist yet — and stays `pending` through every
+subsequent leg until the post-deploy finalization step below. This is the only workable seam for
+authoring at all: a promotion branch (`to-staging/*`/`release/*`) carries no commits of its own, so
+the note has to already be on `develop` at cut time to ride `develop → staging → main` with the code
+it describes — the same constraint ADR 0081 Decision 6 already reasoned through for version bumps
+themselves.
 
 **`fix/staging/*` — each repair amends the candidate's existing note, in the repair PR itself.** A
 repair branch does carry its own commit(s) (unlike a promotion branch), so it edits
 `docs/releases/notes/<candidate_id>.md` directly: one new `## Included` item line for the repair and
 an updated version-table row for whichever app(s) it touched — never a second release-note file for
-the same `candidate_id`.
+the same `candidate_id`. `production_commit` stays `pending` through a repair; nothing about the
+repair leg finalizes it.
 
 **`release/* → main` — `check:release-notes` runs on this PR, advisory in its first landing (Phase
 296, a separate PR from this one), blocking only in the later dedicated phase ADR 0082 Decision 8
-names.** This entry records the obligation the check enforces; the script itself, its
-`package.json` wiring, and its `promotion-quality-gate.yml` step are out of scope for this PR — see
-`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 296 entry once it lands.
+names.** At this point the note's `production_commit` is still the literal `pending` sentinel — the
+check's contract (ADR 0082 Decision 8) must accept that value or a real 40-hex SHA, never require
+the latter here, since the real `main` SHA cannot exist until after this exact PR merges. This entry
+records the obligation the check enforces; the script itself, its `package.json` wiring, and its
+`promotion-quality-gate.yml` step are out of scope for this PR — see
+`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 296 entry once it lands, and ADR 0082's
+Follow-up 3 for the exact contract to build against.
 
-**After `deploy-main.yml` succeeds — the promoter tags `release-<candidate_id>` on the deployed
-`main` commit and publishes the GitHub Release from the note file**, mirroring the #615 Android
-precedent: `gh release create release-<candidate_id> --title … --notes-file
+**After `deploy-main.yml` succeeds — the promoter finalizes `production_commit` to the real 40-hex
+SHA, tags `release-<candidate_id>` on the deployed `main` commit, and publishes the GitHub Release
+from the note file**, mirroring the #615 Android precedent: finalize the field on `develop` via its
+own small PR, then `gh release create release-<candidate_id> --title … --notes-file
 docs/releases/notes/<candidate_id>.md --target <main SHA>`. This runs after the promotion parity
-gate (ADR 0081 Decision 8) confirms the deployed image traces back to the candidate — full command:
+gate (ADR 0081 Decision 8) confirms the deployed image traces back to the candidate — full command
+sequence, including the runbook's own `grep` self-check before publish (no CI gate re-validates the
+finalization yet, ADR 0082 Follow-up 3):
 `.agents/skills/promoter/references/promotion-runbook.md`. Publishing the Release is a post-deploy
 record of a deploy Pat already authorized, not a new deploy mutation — see
 `.agents/skills/promoter/SKILL.md`'s checkpoint table for the explicit unattended classification.
 
 **A `main` hotfix and a #1007 expedited promotion each get their own release-note record**, keyed by
-their own `candidate_id` (a hotfix assigns a fresh `YYYY-MM-DD-NN` ID at fix time; the #1007 path
-uses its `release/<label>` label), per ADR 0082 Decision 6 — neither path is exempt from Decision 3's
-binding obligation just because it skips the staging soak or the ordinary bump-PR seam.
+their own `candidate_id`, per ADR 0082 Decision 6 — neither path is exempt from Decision 3's binding
+obligation just because it skips the staging soak or the ordinary bump-PR seam. **The two paths are
+not symmetric for enforcement purposes, stated here rather than left implicit:** the #1007 path cuts
+`release/<candidate_id>-rN` — the identical branch pattern the default flow uses — so
+`check:release-notes` already covers it once Phase 296 lands, no special-casing needed. A hotfix's
+branch does not match that pattern (`fix/*`, per `implement`'s own naming convention), so its copy of
+Decision 3's binding obligation is enforced procedurally today, via the release-note-authoring step
+added to `.agents/skills/incident-responder/SKILL.md`'s hotfix procedure in this same PR — not by
+any script. ADR 0082 Follow-up 3 tracks closing this mechanically.
 
 This is a `[default]`-tier procedure amendment under ADR 0039, layered on top of ADR 0082's own
 Decisions 1, 2, 4-8 (all `[default]`) — Decision 3 (`[binding]`: no production promotion reaches
@@ -1239,5 +1258,3 @@ describes the mechanics of, not a change to its tier. No `[binding]` clause of t
 other ADR is changed by this entry.
 
 PR: (this PR). Refs #1278, #1548. Does not close #1278 — Phase 296 (enforcement) is a separate PR.
-
-PR: (this PR). Refs #1610 (not Closes — needs deployed verification). Refs #1548.
