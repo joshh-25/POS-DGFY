@@ -363,10 +363,20 @@ const BLOCKING_STEP_IDS = {
 //     pre-existing) on every #1431 Phase A/C evidence run. #1015 (fast/DB tier split), #925
 //     (hanging beforeAll), and the fixture rot itself are its prerequisites before it can flip
 //     blocking -- tracked by #1469, filed alongside this change.
-// This is a two-name allowlist, not a bypass: every OTHER CI_ENFORCED_GATES entry must still have
-// real BLOCKING_STEP_IDS coverage, and checkCiEnforcedGatesAreBlocking still fails loudly if one
-// doesn't.
-const ADVISORY_CI_ENFORCED_GATES = new Set(['dependencies.audit.full', 'backend.test_matrix']);
+// 2026-09-06 (#1278 PR 2, Phase 297): a third name, for a different reason than either of the two
+// above -- 'release.notes' (ADR 0082 Decision 8) is advisory not because of a prerequisite or a
+// flake surface, but by deliberate rollout design: it ships advisory on first landing and flips
+// blocking only once a later, dedicated phase finds clean-run evidence (ADR 0082 Follow-up 1),
+// mirroring check:app-versions' own advisory-to-blocking rollout (ADR 0081 Decision 9). Unlike
+// check:app-versions, this gate's CI destination lives inside promotion-quality-gate.yml (the
+// `run_release_notes` step, repository-quality job), which is exactly what this allowlist and
+// CI_ENFORCED_GATES both track -- so it is registered here rather than left to its own separate
+// toggle mechanism the way check:app-versions was.
+//
+// This is a three-name allowlist, not a bypass: every OTHER CI_ENFORCED_GATES entry must still
+// have real BLOCKING_STEP_IDS coverage, and checkCiEnforcedGatesAreBlocking still fails loudly if
+// one doesn't.
+const ADVISORY_CI_ENFORCED_GATES = new Set(['dependencies.audit.full', 'backend.test_matrix', 'release.notes']);
 
 /**
  * #1063 (2026-08-26), temporary: replaces the old blanket "continue-on-error anywhere in this

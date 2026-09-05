@@ -1715,6 +1715,21 @@ jobs:
         # blocking on the release/*->main leg since #1431 Phase 1
         timeout-minutes: 5
 
+      # ADR 0082 Decision 8 / #1278 PR 2 (Phase 297): validates a release/<candidate_id>-rN -> main
+      # promotion PR carries a matching docs/releases/notes/<candidate_id>.md (schema, candidate_id,
+      # production_date, production_commit -- either pending or a real 40-hex SHA -- the app version
+      # table, and the required Included/Operational notes sections). Exits 0 ("not applicable") on
+      # any other head, including a main hotfix's fix/* branch -- that path stays a procedural
+      # obligation on incident-responder's own SKILL.md, not this check (Decision 8's own "path
+      # coverage" paragraph). Ships advisory (continue-on-error: true) on first landing, per
+      # Decision 8's "advisory first, flip blocking only once clean-run evidence exists" rollout --
+      # same pattern check:app-versions (ADR 0081 Decision 9) already went through in this repo.
+      - name: Run release-notes check
+        id: run_release_notes
+        run: npm run check:release-notes
+        continue-on-error: true
+        timeout-minutes: 5
+
       - name: Run compatibility-seam contract gate
         id: run_compat_seams
         run: npm run check:compat-seams
@@ -1775,6 +1790,7 @@ jobs:
             Validate workspace hygiene contract|${{ steps.validate_workspace_hygiene.outcome }}
             Validate compliance sweep contract|${{ steps.validate_compliance_sweep.outcome }}
             Run governed documentation lint|${{ steps.run_docs_lint.outcome }}
+            Run release-notes check|${{ steps.run_release_notes.outcome }}
             Run compatibility-seam contract gate|${{ steps.run_compat_seams.outcome }}
             Check retired-path resurrection|${{ steps.check_retired_path_resurrection.outcome }}
             Check changed-file whitespace|${{ steps.check_whitespace.outcome }}
