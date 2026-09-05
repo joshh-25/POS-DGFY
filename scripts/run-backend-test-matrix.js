@@ -278,11 +278,18 @@ function runSchemaPreflight(evidenceDir) {
     await sequelize.close();
     console.log(JSON.stringify({ database: dbName, repairs }));
   `;
+  // RF-2 (PR #1638 review): clear a parent-inherited BACKEND_TEST_MATRIX_LANDLORD_READY before
+  // spawning -- landlordSchemaReadiness.js short-circuits its own repair work whenever this is
+  // 'true' (see its own comment), so a stale value surviving from a prior invocation's environment
+  // (or a CI misconfiguration) would make THIS preflight -- the one call site whose entire job is to
+  // actually run that repair -- silently skip it and still report `landlord_ready: true` downstream.
+  const env = { ...process.env, NODE_ENV: 'test' };
+  delete env.BACKEND_TEST_MATRIX_LANDLORD_READY;
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd: APP_DIR,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
-    env: { ...process.env, NODE_ENV: 'test' },
+    env,
     shell: false,
   });
   const logFile = path.join(evidenceDir, 'schema-preflight.log');
@@ -309,13 +316,26 @@ function runSchemaPreflight(evidenceDir) {
 // Deliberately reuses SKIP_SCHEMA_PREFLIGHT as its own escape hatch too: skipping the preflight
 // means no template is built either, so every chunk falls back to today's per-tenant sync (see
 // testTenantHelper.js's fallback branch) -- exactly the pre-existing behavior when this flag is set.
+// RF-3/RF-5 (PR #1638 review): shared so main()'s cleanup `finally` can independently compute the
+// exact same deterministic name this run would provision, before ever calling into
+// provisionTemplateTenantDatabase() -- see the call site below for why that matters. RF-5: keyed
+// only by SHA previously meant two concurrent `workflow_dispatch` runs against the same commit
+// (each gets its own unique GITHUB_RUN_ID) could `sync({force:true})`/DROP the same template while
+// the other run was still cloning from it -- GITHUB_RUN_ID is set by GitHub Actions for every run,
+// including manual workflow_dispatch ones, and is absent for a local/non-CI invocation, where a
+// fixed 'local' segment is fine since a local invocation is inherently single-instance.
+function buildTemplateTenantDbName(targetSha) {
+  const runDiscriminator = safeName(process.env.GITHUB_RUN_ID || 'local');
+  return `test_tenant_template_${safeName(targetSha)}_${runDiscriminator}`;
+}
+
 function provisionTemplateTenantDatabase(evidenceDir, targetSha) {
   if (SKIP_SCHEMA_PREFLIGHT) {
     console.log('[backend-test-matrix] template_tenant_db=skipped');
     return { status: 'skipped', db_name: null };
   }
 
-  const dbName = `test_tenant_template_${safeName(targetSha)}`;
+  const dbName = buildTemplateTenantDbName(targetSha);
   if (!/test/i.test(dbName)) {
     throw new Error(`Refusing to provision template tenant database with non-test name: ${dbName}`);
   }
@@ -424,6 +444,14 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir, templateDbName, lan
     ...tests.map(relativeTestPath),
   ];
   const env = { ...process.env, NODE_ENV: 'test' };
+  // RF-2 (PR #1638 review): explicitly clear both before conditionally re-setting below. Spreading
+  // process.env alone would let either variable survive from the parent's own environment (a
+  // leftover from a prior invocation in the same shell, or a CI env misconfiguration) even when
+  // `templateDbName`/`landlordReady` say this chunk should get neither -- --skip-schema-preflight is
+  // supposed to guarantee no template cloning and no skipped-readiness-check happens, and a stale
+  // inherited value would silently violate that guarantee.
+  delete env.BACKEND_TEST_MATRIX_TEMPLATE_DB;
+  delete env.BACKEND_TEST_MATRIX_LANDLORD_READY;
   // #1015: propagates the shared template DB name (and whether the matrix already confirmed the
   // landlord DB is ready) into every db-tier chunk process. Absent for either reason
   // provisionTemplateTenantDatabase()/runSchemaPreflight() can report "skipped" -- --skip-schema-
@@ -687,6 +715,15 @@ function main() {
   const skipDbTier = failed && !CONTINUE_ON_FAILURE && TIER === 'all';
   if (skipDbTier) earlyStopped = true;
   if ((TIER === 'db' || TIER === 'all') && !skipDbTier) {
+    // RF-3 (PR #1638 review): computed up front, before runDbTier() is ever called, so the cleanup
+    // `finally` below still has a name to attempt dropping even when the run never got far enough to
+    // report templateTenantDb's real state back to this scope -- provisionTemplateTenantDatabase()
+    // throwing after its own CREATE DATABASE already succeeded (a provisioning/sync failure), or an
+    // invalid --group thrown inside runDbTier() before its first onProgress callback -- both leave
+    // `templateTenantDb` here stuck at its initial `not_run`/`db_name: null`. buildTemplateTenantDbName()
+    // is a pure function of targetSha (+ GITHUB_RUN_ID), so this is guaranteed to match whatever name
+    // provisionTemplateTenantDatabase() would actually use.
+    const candidateTemplateDbName = SKIP_SCHEMA_PREFLIGHT ? null : buildTemplateTenantDbName(targetSha);
     // #1015: the matrix runner is the sole owner of the template DB's lifecycle -- built here,
     // dropped here (never from globalTeardown.cjs, which runs once per db-tier chunk process and
     // would otherwise race ~5 processes to DROP the same database other chunks still need). The
@@ -707,8 +744,14 @@ function main() {
       if (dbResult.failed) failed = true;
       if (dbResult.earlyStopped) earlyStopped = true;
     } finally {
-      if (templateTenantDb.status === 'pass' && templateTenantDb.db_name) {
-        dropTemplateTenantDatabase(templateTenantDb.db_name, evidenceRoot);
+      // RF-3: fall back to the pre-computed candidate whenever templateTenantDb never got updated
+      // with a real name -- DROP DATABASE IF EXISTS (inside dropTemplateTenantDatabase()) is a safe
+      // no-op if CREATE DATABASE never actually ran, so attempting the drop here is never harmful.
+      const dbNameToClean = (templateTenantDb.status === 'pass' && templateTenantDb.db_name)
+        ? templateTenantDb.db_name
+        : candidateTemplateDbName;
+      if (dbNameToClean) {
+        dropTemplateTenantDatabase(dbNameToClean, evidenceRoot);
       }
     }
   } else if (skipDbTier) {
