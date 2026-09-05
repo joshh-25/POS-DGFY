@@ -3,6 +3,8 @@ import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSu
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { buildFeeAndVatSummaryRows } from '../../../../shared/model/storefrontFeesAndTaxesPresentation.js';
+import { VatDisclosureNote } from '../../../../shared/components/checkout/VatDisclosureNote.jsx';
 
 function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont, headingWeight }) {
   return (
@@ -51,7 +53,7 @@ export function FnbCheckoutSummaryContent({
     ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
     ...(voucherDiscountSummaryRow ? [voucherDiscountSummaryRow] : []),
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
-    { label: 'Fees & Taxes', value: money(totals.service_fee_amount + totals.vat_amount) },
+    ...buildFeeAndVatSummaryRows({ totals, money }),
     { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true },
     ...downpaymentRows
   ];
@@ -79,12 +81,13 @@ export function FnbCheckoutSummaryContent({
       <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, display: 'grid', gap: 10 }}>
         {totalsRows.map((row) => <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, paddingTop: row.borderTop ? 8 : 0, borderTop: row.borderTop ? '1px solid #e2e8f0' : 'none', fontSize: row.emphasis ? 16 : 13, color: '#334155' }}><span style={{ fontWeight: row.emphasis ? (variant === 'customer' ? 800 : 700) : 400 }}>{row.label}</span><strong style={{ fontWeight: row.emphasis ? (variant === 'customer' ? 900 : 800) : 700 }}>{row.value}</strong></div>)}
       </div>
+      <VatDisclosureNote />
     </div>
   );
 
   return (
     <>
-      {variant === 'compact' ? <OrderSummaryCard accentColor={accentColor} totalLabel="Order Summary" totalAmount={totals.total_amount} money={money} promoPanel={promoPanel} statusRows={statusRows} lineItems={lineItems} totalsRows={totalsRows} bodyFont={bodyFont} displayFont={displayFont} /> : detailedCard}
+      {variant === 'compact' ? <OrderSummaryCard accentColor={accentColor} totalLabel="Order Summary" totalAmount={totals.total_amount} money={money} promoPanel={promoPanel} statusRows={statusRows} lineItems={lineItems} totalsRows={totalsRows} bodyFont={bodyFont} displayFont={displayFont} footnote={<VatDisclosureNote />} /> : detailedCard}
       <FnbCheckoutTrustCard accentColor={accentColor} accentSoft={accentSoft} accentTint={accentTint} displayFont={displayFont} headingWeight={variant === 'customer' ? 800 : 700} />
     </>
   );

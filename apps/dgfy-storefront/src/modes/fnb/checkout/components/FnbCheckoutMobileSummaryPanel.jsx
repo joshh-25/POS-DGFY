@@ -4,6 +4,8 @@ import { FnbCheckoutMobileSummary } from './FnbCheckoutMobileSummary.jsx';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { buildFeeAndVatSummaryRows } from '../../../../shared/model/storefrontFeesAndTaxesPresentation.js';
+import { VatDisclosureNote } from '../../../../shared/components/checkout/VatDisclosureNote.jsx';
 import { StorefrontMobileCheckoutFooter } from '../../../../shared/components/StorefrontMobileCheckoutFooter.jsx';
 import { CHECKOUT_FONT_FAMILY } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
@@ -41,7 +43,6 @@ export function FnbCheckoutMobileSummaryPanel({
   scheduleLabel,
   setSummaryOpen,
   showSummary,
-  totalFeeAndTaxes,
   totals,
 }) {
   // Phase 142 (#823): independent copy of FnbCheckoutSummaryContent's own downpayment rows -- this
@@ -51,6 +52,7 @@ export function FnbCheckoutMobileSummaryPanel({
     money,
     orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
   });
+  const feeAndVatRows = buildFeeAndVatSummaryRows({ totals, money });
   const isPrimaryDisabled = orderStep === 3
     ? !fnbCustomerStepComplete
     : orderStep === 4
@@ -135,7 +137,9 @@ export function FnbCheckoutMobileSummaryPanel({
                 {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} /> : null}
                 {voucherDiscountSummaryRow ? <SummaryRow label={voucherDiscountSummaryRow.label} value={voucherDiscountSummaryRow.value} /> : null}
                 <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
-                <SummaryRow label="Fees & Taxes" value={money(totalFeeAndTaxes)} />
+                {feeAndVatRows.map((row) => (
+                  <SummaryRow key={row.label} label={row.label} value={row.value} />
+                ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
                   <span style={{ fontWeight: 700 }}>Total</span>
                   <strong style={{ fontWeight: 800 }}>{money(totals.total_amount)}</strong>
@@ -143,6 +147,7 @@ export function FnbCheckoutMobileSummaryPanel({
                 {downpaymentRows.map((row) => (
                   <SummaryRow key={row.label} label={row.label} value={row.value} />
                 ))}
+                <VatDisclosureNote />
               </div>
             </div>
           </div>
