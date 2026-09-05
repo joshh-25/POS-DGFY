@@ -92,6 +92,13 @@ describe('Storefront guest checkout OTP', () => {
       expect(result.error.code).toBe(DomainErrorCode.SERVICE_UNAVAILABLE);
       expect(result.error.statusCode).toBe(503);
       expect(result.error.code).not.toBe('INTERNAL_ERROR');
+      // The internal EMAIL_OTP_DELIVERY_* code must never leak into `details`,
+      // since useCaseResponder.js serializes `details` straight into the public
+      // response body (`errors`) -- it belongs on observabilityReasonCode
+      // instead, which no response path reads. Regression coverage for a
+      // review finding on this same PR (RF-2).
+      expect(result.error.details).toBeNull();
+      expect(result.error.observabilityReasonCode).toBe(code);
     }
   });
 

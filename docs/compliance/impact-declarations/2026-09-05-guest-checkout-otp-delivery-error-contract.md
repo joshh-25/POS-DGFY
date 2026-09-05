@@ -89,3 +89,38 @@ at PR-open time on `develop`, not a defect (see `pr-reviewer`'s own note on this
   auth probe against both port 465 and 587, and a SOPS-decrypt fingerprint match confirming the
   encrypted secret matches what's live in the container) -- **not fixed by this PR**. This PR is
   hardening only; restoring OTP requires a credential reset + redeploy tracked separately on #1614.
+
+## Amendment — 2026-09-05 (pr-reviewer RF-1/RF-2/RF-3/RF-6)
+
+Codex-run `pr-reviewer` (`.agents/skills/pr-reviewer/SKILL.md`, first live run in this environment,
+report-only per that skill's calibration rule) reviewed PR #1616 and posted a `BLOCK` verdict with
+one blocker and several should-fixes/nits. All addressed in the same PR, same commit set:
+
+- **RF-1 (blocker, fixed):** `scripts/propose-version-level.js` classified the boot-time SMTP
+  verification commit as a bare `feat` requiring a **minor** bump, while only a patch bump had been
+  applied. `dgfy-api` re-bumped `1.2.3 -> 1.3.0`; both changed apps' lockfiles regenerated
+  (`npm install --package-lock-only`, version-string-only diffs).
+- **RF-2 (should-fix, fixed):** the RF-1-adjacent error-contract fix (Finding A in this same PR)
+  had placed the internal `EMAIL_OTP_DELIVERY_FAILED`/`_UNAVAILABLE` code in `DomainError.details`,
+  which `useCaseResponder.js` serializes straight into the public response body -- exactly the
+  anti-pattern `domainErrors.js`'s own constructor comment warns against. Moved to
+  `observabilityReasonCode` instead (never serialized), with a new regression assertion that
+  `result.error.details` is `null` and the internal code appears only on
+  `observabilityReasonCode`.
+- **RF-3 (should-fix, fixed):** both changed apps' `package-lock.json` had stale version fields
+  after the original version bumps. Regenerated via `npm install --package-lock-only`; confirmed
+  version-string-only diffs via `git diff --stat`.
+- **RF-4 (should-fix, addressed in the PR body, not this file):** added a Rollout And Safety
+  disclosure that `email_otps` is a landlord-only table with no dependency on
+  `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md`'s open per-tenant findings.
+- **RF-5 (should-fix, addressed in the PR body, not this file):** filled out the full
+  `.github/pull_request_template.md` section set (Architecture Impact/Compliance Evidence,
+  Rollout And Safety, etc.) rather than only the two required minimum sections.
+- **RF-6 (nit, fixed):** extracted the boot-time SMTP verification into a standalone, injectable,
+  exported function (`runStartupEmailVerification`, `server.js`) with a new focused unit test
+  (`tests/serverStartupEmailVerification.unit.test.js`) covering configured-success,
+  configured-failure/alert, unconfigured/no-call, and unexpected-rejection paths.
+
+No change to this declaration's `classification`, `surfaces`, or `reason_codes_impacted` -- these
+are all fixes/refinements within the scope already declared above, not a new compliance-sensitive
+surface.

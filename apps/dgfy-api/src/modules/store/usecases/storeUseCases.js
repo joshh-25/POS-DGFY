@@ -3837,10 +3837,14 @@ export const buildRequestStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) =>
                 error?.code === 'EMAIL_OTP_DELIVERY_FAILED'
                 || error?.code === 'EMAIL_OTP_DELIVERY_UNAVAILABLE'
             ) {
+                // observabilityReasonCode, not details -- details is serialized straight
+                // into the public response body (see DomainError's own constructor
+                // comment), and the internal EMAIL_OTP_DELIVERY_* code is not meant to
+                // be client-visible; only the SERVICE_UNAVAILABLE code and message are.
                 return fail(new DomainError(
                     DomainErrorCode.SERVICE_UNAVAILABLE,
                     'Email verification code could not be delivered. Please try again later.',
-                    { details: { reason_code: error.code }, cause: error }
+                    { observabilityReasonCode: error.code, cause: error }
                 ));
             }
             return fail(mapStoreUseCaseError(error, 'Failed to send guest checkout verification code'));

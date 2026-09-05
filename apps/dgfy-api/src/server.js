@@ -851,6 +851,44 @@ app.use(sentryErrorHandler);
 app.use(errorHandler);
 
 // Start server
+// #1614: verify the SMTP credential actually authenticates at boot,
+// non-blocking (same "fire and forget, never gate startup" shape as the
+// Redis init in startServer() below) -- a broken credential previously
+// surfaced only on a live customer OTP/email request, ~8h after the
+// container started in the incident this fixes. verifyConnection() sends
+// no mail, it only opens/authenticates the SMTP connection.
+//
+// Extracted to its own function (rather than inlined in startServer(),
+// which does real DB/audit work with no isolated test harness) so it can
+// be unit-tested directly with injected fakes -- see
+// tests/serverStartupEmailVerification.unit.test.js.
+export const runStartupEmailVerification = ({
+  isEmailConfiguredFn = isEmailConfigured,
+  verifyEmailConnectionFn = verifyEmailConnection,
+  raiseOperationalAlertFn = raiseOperationalAlert,
+  loggerInstance = logger
+} = {}) => {
+  if (!isEmailConfiguredFn()) {
+    loggerInstance.info('SMTP not configured, skipping startup connection verification.');
+    return Promise.resolve();
+  }
+
+  return verifyEmailConnectionFn().then((result) => {
+    if (!result.success) {
+      loggerInstance.error(`SMTP verification failed at startup: ${result.error}`);
+      return raiseOperationalAlertFn({
+        key: 'email.smtp_send_failed',
+        message: `SMTP verification failed at startup: ${result.error}`,
+        context: { stage: 'startup_verify' }
+      }).catch(() => {});
+    }
+    loggerInstance.info('SMTP connection verified at startup.');
+    return undefined;
+  }).catch((error) => {
+    loggerInstance.error('SMTP startup verification threw unexpectedly:', error.message);
+  });
+};
+
 const startServer = async () => {
   try {
     // ── Production environment guard ──────────────────────────────────────────
@@ -979,30 +1017,10 @@ const startServer = async () => {
       logger.info('No REDIS_URL found, skipping Redis initialization.');
     }
 
-    // #1614: verify the SMTP credential actually authenticates at boot,
-    // non-blocking (same "fire and forget, never gate startup" shape as the
-    // Redis init above) -- a broken credential previously surfaced only on a
-    // live customer OTP/email request, ~8h after the container started in
-    // the incident this fixes. verifyConnection() sends no mail, it only
-    // opens/authenticates the SMTP connection.
-    if (isEmailConfigured()) {
-      verifyEmailConnection().then((result) => {
-        if (!result.success) {
-          logger.error(`SMTP verification failed at startup: ${result.error}`);
-          raiseOperationalAlert({
-            key: 'email.smtp_send_failed',
-            message: `SMTP verification failed at startup: ${result.error}`,
-            context: { stage: 'startup_verify' }
-          }).catch(() => {});
-        } else {
-          logger.info('SMTP connection verified at startup.');
-        }
-      }).catch((error) => {
-        logger.error('SMTP startup verification threw unexpectedly:', error.message);
-      });
-    } else {
-      logger.info('SMTP not configured, skipping startup connection verification.');
-    }
+    // #1614: verify the SMTP credential actually authenticates at boot --
+    // see runStartupEmailVerification's own header comment for the "why".
+    // Deliberately not awaited: this call must never gate server.listen().
+    runStartupEmailVerification();
 
     const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 Server running on port ${PORT}`);
