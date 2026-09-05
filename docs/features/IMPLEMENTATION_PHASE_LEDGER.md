@@ -21500,3 +21500,79 @@ differs from what was originally drafted.
   `apps/dgfy-api/tests/globalTeardown.cjs` deliberately left unmodified (see ownership decision
   above). Issues #1015, #925, #1469 (comment only, not closed by this phase).
 - Next eligible phase: 298.
+
+## Phase 297 - Client-derived image upload contract + fan-out to catalog upload services (#265 epic, PR 4 of 5 per the epic plan doc -- built ahead of PR 3's client encoder module, which remains unbuilt; see this phase's own numbering note)
+
+Ledger phase number confirmed 297 (no collision at planning time -- only other open PR was #1638,
+unrelated). The epic plan doc's own PR-3/PR-4 numbering had already drifted from ledger reality by
+one before this phase started (see Phase 296's own entry) -- this phase is built with the epic
+plan's PR 3 (client encoder module) skipped/deferred, not merely delayed after it; when that module
+eventually gets built it claims whatever the next open ledger slot is *then*, it does not
+retroactively become "Phase 296."
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
+- Objective and scope: fourth PR of the #265 epic. Server-side contract only -- wires
+  `sourceMimeHint`/`deriveVariantsFromAcceptedLarge` (added inert in Phase 296) into
+  `storeOptimizedImageAsset`, and fixes a real ordering bug found while doing so: classification
+  ran on `reportedMime` alone *before* the metadata fetch that was supposed to feed it, so the
+  hardening Phase 296 added was never actually reachable. Adds an optional client-derived-variant
+  contract to the two single-image catalog endpoints (`POST /catalog-overrides/:item_id/image`,
+  `POST /:item_id/storefront-image`, migrated `.single('image')` -> `.fields([image, image_medium,
+  image_thumbnail])`) plus an optional `client_image_manifest` JSON field
+  (`source_mime_hint`, `large_pre_optimized`); every claim is independently validated
+  (`validateClientVariant`, new export in `imageUploadValidation.js`) before being trusted enough to
+  skip re-encoding, and a failed validation silently falls back to full server derivation -- never a
+  request failure. Extends (does not replace) the existing SKU-stem bulk-upload filename convention
+  with an opt-in `<SKU>__large/medium/thumbnail.<ext>` suffix (new shared module
+  `bulkCatalogImageFilename.js`), restructuring both bulk use cases to group by SKU before
+  processing; a bare `<SKU>.<ext>` file is unaffected byte-for-byte. Resolves the epic's
+  original-retention question by keying it off which storage module handles the call:
+  `storefrontCatalogImageStorage.js` now retains the raw original (IMS's managed surface),
+  `posCatalogImageStorage.js` stays capped -- no new client-sent signal. Two new upload patterns
+  found during verification (gallery uploads, the async/queued upload path) are confirmed out of
+  scope and left completely untouched.
+- Status: completed.
+- Dependencies: Phase 296 (#265 epic, merged) -- consumes its `sourceMimeHint`/
+  `deriveVariantsFromAcceptedLarge` surface as this phase's first real caller. Precedes Phase 298
+  (rollout) of the #265 epic and the still-unbuilt client-encoder module (epic plan's own "PR 3"),
+  which this phase's optional fields are unused capability for until that module ships a real
+  caller.
+- Acceptance and validation evidence: `node --check` on all 12 changed/new `.js` files (dgfy-api has
+  no build step); `node scripts/check-app-version-bump.js --staged` (dgfy-api 1.4.0 -> 1.5.0,
+  PASS); `npm run check:compliance` (declaration:
+  `docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md`, classification
+  `major`, surfaces `pos,terminal`); `npm run check:architecture`; `npm run check:adr` (validates the
+  third dated ADR 0017 amendment, disambiguated from Phase 296's same-day heading); full existing +
+  extended Jest suites for every touched module (all pass except one pre-existing, unrelated flake in
+  `storefrontCatalogImagePersistence.integration.test.js`, reproduced identically against an
+  unmodified `origin/develop` checkout -- not introduced by this phase). New/extended tests: a
+  classification-ordering regression test and 5 accepted-large-path tests
+  (`imageAssetStorage.util.test.js`), 5 `validateClientVariant` tests
+  (`imageUploadValidation.util.test.js`), 6 `.fields()` multipart transport tests
+  (`posHandlers.transport.test.js`, `itemHandlers.transport.test.js`), 13 pure filename/grouping unit
+  tests (new `bulkCatalogImageFilename.util.test.js`), and 4 bulk-use-case variant-grouping
+  integration tests (`posUsecases.applicationResult.test.js`, `storefrontCatalogUseCases.test.js`).
+- Completion date: 2026-09-06.
+- Contracts/files: `apps/dgfy-api/src/modules/shared/utils/imageAssetStorage.js`,
+  `apps/dgfy-api/src/modules/shared/utils/imageUploadValidation.js`,
+  `apps/dgfy-api/src/modules/shared/utils/bulkCatalogImageFilename.js` (new),
+  `apps/dgfy-api/src/config/uploadConfig.js`, `apps/dgfy-api/src/routes/pos.js`,
+  `apps/dgfy-api/src/routes/items.js`, `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`,
+  `apps/dgfy-api/src/modules/inventory/controllers/itemHandlers.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/storefrontCatalogUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/posCatalogImageStorage.js`,
+  `apps/dgfy-api/src/modules/inventory/repositories/storefrontCatalogImageStorage.js`,
+  `apps/dgfy-api/tests/imageAssetStorage.util.test.js`,
+  `apps/dgfy-api/tests/imageUploadValidation.util.test.js`,
+  `apps/dgfy-api/tests/bulkCatalogImageFilename.util.test.js` (new),
+  `apps/dgfy-api/tests/posHandlers.transport.test.js`,
+  `apps/dgfy-api/tests/itemHandlers.transport.test.js`,
+  `apps/dgfy-api/tests/posUsecases.applicationResult.test.js`,
+  `apps/dgfy-api/tests/storefrontCatalogUseCases.test.js`,
+  `apps/dgfy-api/package.json` (1.4.0 -> 1.5.0),
+  `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md` (2026-09-06, client-
+  derived upload contract Amendment),
+  `docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md` (new), issue
+  #265.
+- Next eligible phase: 298.

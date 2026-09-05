@@ -226,3 +226,69 @@ by parsing the asset version out of the folder name rather than assuming a singl
 New assets (`-v3-<hash>` folders) never advertise an `avif` URL and never had one encoded.
 
 `status: amended` (already the case from prior addenda) is unchanged.
+
+## Amendments (2026-09-06, client-derived upload contract)
+
+Disambiguated from the "## Amendments (2026-09-06)" block immediately above -- both land the same
+day (Phase 296's AVIF-deprecation entry and this one), so this heading is given an explicit
+sub-label rather than repeating the bare date, per this ADR's own precedent of never letting two
+sibling `##` headings share identical text.
+
+Phase 297 (#265 epic, PR 4 of 5) adds a **client-derived image upload contract**: the two
+single-image catalog endpoints (`POST /catalog-overrides/:item_id/image`,
+`POST /:item_id/storefront-image`) now accept two additional, fully optional multipart fields --
+`image_medium` and `image_thumbnail` -- alongside the existing required `image` field, plus an
+optional `client_image_manifest` JSON text field carrying a `source_mime_hint` (the pre-conversion
+MIME of the user's original file, before any client-side re-encoding) and a `large_pre_optimized`
+flag (declaring that `image` itself is already a validated, correctly-sized "large" delivery
+variant, not a raw original).
+
+**Trust model: the manifest is a hint, never a trust boundary.** Every client-supplied claim --
+`source_mime_hint`, `large_pre_optimized`, and each of `image_medium`/`image_thumbnail` themselves
+-- is independently validated server-side (`validateClientVariant`: header-only sharp metadata
+check against the exact format/width/pixel-cap contract the server would otherwise have produced
+itself) before being trusted enough to skip re-encoding. A failed validation never fails the
+request; it silently falls back to the server deriving that specific variant from the original,
+exactly as if the client had never sent the optional field at all. This is a graceful degradation
+ladder, not a hard contract: every caller who predates this phase, and sends only a bare `image`
+field, gets byte-identical behavior to before this amendment.
+
+**The bulk endpoints** (`POST /catalog-overrides/images/bulk`,
+`POST /storefront-images/bulk`) gain the equivalent capability through their existing SKU-stem
+filename convention, extended rather than replaced: a bare `<SKU>.<ext>` file means exactly what it
+means today (the server derives everything); `<SKU>__large.<ext>` / `<SKU>__medium.<ext>` /
+`<SKU>__thumbnail.<ext>` correlate up to three files for one SKU into a single upload, with
+`<SKU>__large.<ext>`'s presence itself serving as the bulk endpoint's opt-in signal (no manifest
+transport exists in a bulk multipart batch, so the filename convention carries the signal there
+instead). Two files claiming the same variant slot for one SKU is a new, distinct failure mode
+(`duplicate_variant_for_sku`), kept separate from the pre-existing `duplicate_filename` status
+(which still fires, unchanged, for two *bare* files sharing a stem).
+
+**Original-retention resolution**, settling the question this ADR's Context/Consequences left open
+for the two catalog-image storage modules: `storefrontCatalogImageStorage.js` now retains the raw
+original (`retainOriginal: true`, previously an unconditional `false`) -- storefront-catalog-image
+uploads are IMS's managed surface. `posCatalogImageStorage.js` keeps `retainOriginal: false` --
+POS terminals stay capped, unchanged. This is keyed off which storage module (and therefore which
+endpoint) handled the call, not a new client-sent signal -- already fully determined by the request
+path today.
+
+`buildBulkCatalogImageUpload`'s permissive `fileFilter` (the "do not make this strict without
+updating ADR 0017" comment at `uploadConfig.js`) is unaffected by this amendment -- the bulk
+endpoints' multer configuration itself does not change; only the use-case layer's filename parsing
+and per-SKU grouping do.
+
+**Explicitly out of scope, left running unaffected**: the gallery endpoints (up to 5 photos per
+item, `/:item_id/storefront-images`) and the async/queued single-image path
+(`/:item_id/storefront-image/async`, `/:item_id/storefront-images/async`,
+`workers/itemImageWorker.js`). Both predate this amendment and are unrelated to it; a future phase
+extending the client-derived contract to either is a materially larger scope (up to 15 files per
+gallery request) and should amend this ADR again in its own right, not be assumed already covered
+by this entry.
+
+No new client asset-encoding module is introduced by this phase -- `packages/web-core`'s image
+encoder remains unbuilt. Every field this amendment adds is server-side contract only; real traffic
+continues to send a bare `image` field until that separate, later phase ships a caller for the new
+optional fields.
+
+`status: amended` remains unchanged; `last_reviewed` refreshed to this entry's own land date
+(already 2026-09-06, unchanged from the amendment immediately above).
