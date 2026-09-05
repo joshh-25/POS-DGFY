@@ -491,11 +491,34 @@ Decisions 4/8's two-stage lifecycle — written at authoring time since the real
 wasn't known yet) to the real, now-known 40-hex SHA, commit that update to `develop`, then tag and
 publish from the now-complete file. Unattended (see `../SKILL.md`'s checkpoint table) — this is a
 post-deploy record of a deploy Pat already authorized at the PROD dispatch ask, not a new deploy
-mutation:
+mutation.
+
+**Hotfix candidates skip this section's finalization half.** If `$CANDIDATE_ID` was authored via
+`.agents/skills/incident-responder/SKILL.md`'s hotfix procedure, its release note doesn't reach
+`origin/develop` until that role's own "Back-port to develop" step merges — that step folds
+finalization into itself instead, for exactly this reason. Only this section's *tag-and-publish*
+half below (fetch `origin/develop`, tag, `gh release create`) still applies to a hotfix, run once
+that back-port PR has merged. A normal promotion or the #1007 exception has the note on `develop`
+already from pre-cut authoring, so both halves below apply as documented.
 
 ```bash
+# fetch immediately before capture, and cross-check against deploy-main.yml's own reported SHA --
+# an earlier `git fetch origin main` (e.g. this runbook's own pre-flight step, run well before
+# Pat's manual merge and deploy-main.yml's own dispatch) would leave this stale, and a bare
+# git rev-parse with no fetch at all here would silently trust whatever that stale ref says:
+git fetch origin main
 MAIN_SHA=$(git rev-parse origin/main)
+DEPLOY_RUN_SHA=$(gh run list --workflow=deploy-main.yml --branch main -L1 --json headSha --jq '.[0].headSha')
+[ "$MAIN_SHA" = "$DEPLOY_RUN_SHA" ] \
+  || { echo "ERROR: freshly-fetched origin/main ($MAIN_SHA) does not match deploy-main.yml's own deployed SHA ($DEPLOY_RUN_SHA) -- do not tag/publish, investigate first" >&2; exit 1; }
+```
 
+Normal promotion or #1007 exception: continue straight into the finalization block below. **Hotfix
+candidate: skip this next block** (`docs/releases/notes/$CANDIDATE_ID.md` was already finalized in
+`incident-responder`'s back-port PR) — jump to "tag the deployed main commit" further down, still
+using the `$MAIN_SHA` just captured above.
+
+```bash
 # finalize production_commit on develop, from pending to the real deployed SHA:
 git fetch origin develop
 git switch -c docs/release/$CANDIDATE_ID-commit origin/develop
@@ -519,9 +542,11 @@ Records the deployed production commit ($MAIN_SHA) on candidate $CANDIDATE_ID's 
 Docs-only change; no compliance-sensitive surface touched."
 gh pr merge <N> --merge   # ordinary develop-base PR, no new merge authority needed
 
-# tag the deployed main commit and publish the GitHub Release from the committed note --
-# fetch the note from develop (not main) since main never carries docs/releases/notes/ commits
-# of its own until a `staging -> main`/`develop -> main` forward-merge:
+# Hotfix candidates resume here (the block above was skipped -- incident-responder's back-port PR
+# already finalized and merged the note onto develop). tag the deployed main commit and publish
+# the GitHub Release from the committed note -- fetch the note from develop (not main) since main
+# never carries docs/releases/notes/ commits of its own until a `staging -> main`/
+# `develop -> main` forward-merge:
 git fetch origin develop
 git show origin/develop:docs/releases/notes/$CANDIDATE_ID.md > /tmp/release-note-$CANDIDATE_ID.md
 grep -qE '^production_commit: [0-9a-f]{40}$' /tmp/release-note-$CANDIDATE_ID.md \
