@@ -1212,6 +1212,82 @@ describe('storefront catalog use cases', () => {
         expect(await pathExists(tempPath)).toBe(false);
     });
 
+    // Phase 297 (#265): the <SKU>__<variant>.<ext> bulk correlation convention -- section 5 of
+    // the corrected plan. A bare <SKU>.<ext> file is already covered by every test above this
+    // point (unchanged behavior); these cover the new suffix-driven grouping specifically.
+    it('uploadBulkStorefrontCatalogImages combines <SKU>__large/medium/thumbnail siblings into one store() call', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-sf-variant-large' });
+        const mediumPath = await writeTempUpload({ prefix: 'bulk-sf-variant-medium' });
+        const thumbnailPath = await writeTempUpload({ prefix: 'bulk-sf-variant-thumb' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/sf-800.webp',
+            url: '/uploads/storefront-catalog/tenant/sf-800.webp'
+        });
+        const itemRepository = createBulkStorefrontRepository({
+            items: [{ item_id: 800, sku_code: 'SF-800', default_sale_price: 100 }]
+        });
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository,
+            imageStorage: { store, remove: jest.fn() }
+        });
+
+        const result = await useCase({
+            files: [
+                { path: largePath, mimetype: 'image/png', originalname: 'SF-800__large.png', size: PNG_BYTES.length },
+                { path: mediumPath, mimetype: 'image/png', originalname: 'SF-800__medium.png', size: PNG_BYTES.length },
+                { path: thumbnailPath, mimetype: 'image/png', originalname: 'SF-800__thumbnail.png', size: PNG_BYTES.length }
+            ],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({ uploaded: 1, failed: 0, unmatched: 0 });
+        expect(store).toHaveBeenCalledTimes(1);
+        expect(store).toHaveBeenCalledWith({
+            itemId: 800,
+            originalName: 'SF-800__large.png',
+            reportedMime: 'image/png',
+            tempPath: largePath,
+            acceptedAsClientLarge: true,
+            clientVariantFiles: {
+                medium: { tempPath: mediumPath, reportedMime: 'image/png' },
+                thumbnail: { tempPath: thumbnailPath, reportedMime: 'image/png' }
+            }
+        });
+        expect(result.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ filename: 'SF-800__large.png', variant_key: 'large', status: 'uploaded' }),
+            expect.objectContaining({ filename: 'SF-800__medium.png', variant_key: 'medium', status: 'uploaded' }),
+            expect.objectContaining({ filename: 'SF-800__thumbnail.png', variant_key: 'thumbnail', status: 'uploaded' })
+        ]));
+    });
+
+    it('uploadBulkStorefrontCatalogImages flags two <SKU>__large files for the same SKU as duplicate_variant_for_sku', async () => {
+        const firstPath = await writeTempUpload({ prefix: 'bulk-sf-dup-variant-a' });
+        const secondPath = await writeTempUpload({ prefix: 'bulk-sf-dup-variant-b' });
+        const store = jest.fn();
+        const itemRepository = createBulkStorefrontRepository({ items: [] });
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository,
+            imageStorage: { store, remove: jest.fn() }
+        });
+
+        const result = await useCase({
+            files: [
+                { path: firstPath, mimetype: 'image/png', originalname: 'SF-801__large.png', size: PNG_BYTES.length },
+                { path: secondPath, mimetype: 'image/png', originalname: 'SF-801__large.jpg', size: PNG_BYTES.length }
+            ],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({ duplicate_variant_for_sku: 2, duplicate_filename: 0, uploaded: 0 });
+        expect(result.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ filename: 'SF-801__large.png', status: 'duplicate_variant_for_sku' }),
+            expect.objectContaining({ filename: 'SF-801__large.jpg', status: 'duplicate_variant_for_sku' })
+        ]));
+        expect(store).not.toHaveBeenCalled();
+        expect(await pathExists(firstPath)).toBe(false);
+        expect(await pathExists(secondPath)).toBe(false);
+    });
+
     it('deleteStorefrontCatalogImage removes primary and gallery files before clearing only storefront image fields', async () => {
         const remove = jest.fn().mockResolvedValue(undefined);
         const clearStorefrontCatalogImage = jest.fn().mockResolvedValue({

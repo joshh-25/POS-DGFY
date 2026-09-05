@@ -1235,6 +1235,106 @@ describe('pos use-cases application result contract', () => {
         expect(await pathExists(tempPath)).toBe(false);
     });
 
+    // Phase 297 (#265): the <SKU>__<variant>.<ext> bulk correlation convention -- section 5 of
+    // the corrected plan. A bare <SKU>.<ext> file is already covered by every test above this
+    // point (unchanged behavior); these cover the new suffix-driven grouping specifically.
+    it('uploadBulkPosCatalogImages combines <SKU>__large/medium/thumbnail siblings into one store() call', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-pos-variant-large' });
+        const mediumPath = await writeTempUpload({ prefix: 'bulk-pos-variant-medium' });
+        const thumbnailPath = await writeTempUpload({ prefix: 'bulk-pos-variant-thumb' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'pos-catalog/tenant/pos-800.webp',
+            url: '/uploads/pos-catalog/tenant/pos-800.webp'
+        });
+        const useCase = buildUploadBulkPosCatalogImagesUseCase({
+            posRepository: createBulkPosRepository({
+                items: [{ item_id: 800, sku_code: 'POS-800', default_sale_price: 100 }]
+            }),
+            imageStorage: { store, remove: jest.fn() }
+        });
+
+        const result = await useCase({
+            files: [
+                { path: largePath, mimetype: 'image/png', originalname: 'POS-800__large.png', size: PNG_BYTES.length },
+                { path: mediumPath, mimetype: 'image/png', originalname: 'POS-800__medium.png', size: PNG_BYTES.length },
+                { path: thumbnailPath, mimetype: 'image/png', originalname: 'POS-800__thumbnail.png', size: PNG_BYTES.length }
+            ],
+            user: editableUser
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.summary).toMatchObject({ uploaded: 1, failed: 0, unmatched: 0 });
+        expect(store).toHaveBeenCalledTimes(1);
+        expect(store).toHaveBeenCalledWith({
+            itemId: 800,
+            originalName: 'POS-800__large.png',
+            reportedMime: 'image/png',
+            tempPath: largePath,
+            acceptedAsClientLarge: true,
+            clientVariantFiles: {
+                medium: { tempPath: mediumPath, reportedMime: 'image/png' },
+                thumbnail: { tempPath: thumbnailPath, reportedMime: 'image/png' }
+            }
+        });
+        expect(result.data.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ filename: 'POS-800__large.png', variant_key: 'large', status: 'uploaded' }),
+            expect.objectContaining({ filename: 'POS-800__medium.png', variant_key: 'medium', status: 'uploaded' }),
+            expect.objectContaining({ filename: 'POS-800__thumbnail.png', variant_key: 'thumbnail', status: 'uploaded' })
+        ]));
+    });
+
+    it('uploadBulkPosCatalogImages flags two <SKU>__large files for the same SKU as duplicate_variant_for_sku', async () => {
+        const firstPath = await writeTempUpload({ prefix: 'bulk-pos-dup-variant-a' });
+        const secondPath = await writeTempUpload({ prefix: 'bulk-pos-dup-variant-b' });
+        const store = jest.fn();
+        const useCase = buildUploadBulkPosCatalogImagesUseCase({
+            posRepository: createBulkPosRepository({ items: [] }),
+            imageStorage: { store, remove: jest.fn() }
+        });
+
+        const result = await useCase({
+            files: [
+                { path: firstPath, mimetype: 'image/png', originalname: 'POS-801__large.png', size: PNG_BYTES.length },
+                { path: secondPath, mimetype: 'image/png', originalname: 'POS-801__large.jpg', size: PNG_BYTES.length }
+            ],
+            user: editableUser
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.summary).toMatchObject({ duplicate_variant_for_sku: 2, duplicate_filename: 0, uploaded: 0 });
+        expect(result.data.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ filename: 'POS-801__large.png', status: 'duplicate_variant_for_sku' }),
+            expect.objectContaining({ filename: 'POS-801__large.jpg', status: 'duplicate_variant_for_sku' })
+        ]));
+        expect(store).not.toHaveBeenCalled();
+        expect(await pathExists(firstPath)).toBe(false);
+        expect(await pathExists(secondPath)).toBe(false);
+    });
+
+    it('uploadBulkPosCatalogImages fails an orphan __medium file with no large/bare sibling in the same batch', async () => {
+        const mediumPath = await writeTempUpload({ prefix: 'bulk-pos-orphan-medium' });
+        const store = jest.fn();
+        const useCase = buildUploadBulkPosCatalogImagesUseCase({
+            posRepository: createBulkPosRepository({
+                items: [{ item_id: 802, sku_code: 'POS-802', default_sale_price: 100 }]
+            }),
+            imageStorage: { store, remove: jest.fn() }
+        });
+
+        const result = await useCase({
+            files: [{ path: mediumPath, mimetype: 'image/png', originalname: 'POS-802__medium.png', size: PNG_BYTES.length }],
+            user: editableUser
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.summary).toMatchObject({ failed: 1, uploaded: 0 });
+        expect(result.data.results).toEqual([
+            expect.objectContaining({ filename: 'POS-802__medium.png', item_id: 802, status: 'failed' })
+        ]);
+        expect(store).not.toHaveBeenCalled();
+        expect(await pathExists(mediumPath)).toBe(false);
+    });
+
     it('listIncomingOnlineOrders derives queue visibility from the authenticated active shift', async () => {
         const activeShift = {
             pos_terminal_shift_id: 12,
