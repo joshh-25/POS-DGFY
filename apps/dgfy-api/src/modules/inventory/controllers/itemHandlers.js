@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { parseClientImageManifest } from '../../shared/utils/imageUploadValidation.js';
 import {
   getItemsUseCase,
   getItemByIdUseCase,
@@ -785,10 +786,15 @@ export const updateBulkStorefrontCatalogOverrides = async (req, res, next) => {
 
 export const uploadStorefrontCatalogImage = async (req, res, next) => {
   try {
+    // Phase 297 (#265): this route now parses via .fields(), so the file lands in
+    // req.files.image[0] rather than req.file (see routes/items.js). clientImageManifest is a
+    // best-effort hint -- a malformed/absent one resolves to null and the use case falls back to
+    // today's behavior entirely.
     const result = await runInventoryUseCase(
       () => uploadStorefrontCatalogImageUseCase({
         itemId: req.validatedParams?.item_id || req.params.item_id,
-        file: req.file,
+        files: req.files,
+        clientImageManifest: parseClientImageManifest(req.body?.client_image_manifest),
         user: req.user
       }),
       'Failed to upload storefront catalog image'
