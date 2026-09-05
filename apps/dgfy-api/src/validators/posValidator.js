@@ -93,6 +93,7 @@ const discountBeneficiarySchema = Joi.object({
 
 const governedDiscountBeneficiarySchema = discountBeneficiarySchema.keys({
     eligible_items: Joi.array().items(Joi.object({
+        line_ref: Joi.string().trim().max(160).allow(null, '').optional(),
         item_id: Joi.number().integer().positive().required(),
         eligible_quantity: Joi.number().positive().required()
     }).unknown(false)).min(1).max(100).required()
@@ -104,7 +105,11 @@ const governedDiscountSchema = Joi.object({
     // (checkoutLineSchema.item_discount, below) is added for this type.
     type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher').required(),
     label: Joi.string().trim().max(100).allow('', null).optional(),
-    method: Joi.string().valid('percentage', 'fixed').optional(),
+    method: Joi.when('type', {
+        is: 'voucher',
+        then: Joi.string().valid('percentage', 'fixed').allow(null).optional(),
+        otherwise: Joi.string().valid('percentage', 'fixed').optional()
+    }),
     rate: Joi.number().min(0).max(100).allow(null).optional(),
     amount: Joi.number().min(0).allow(null).optional(),
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),

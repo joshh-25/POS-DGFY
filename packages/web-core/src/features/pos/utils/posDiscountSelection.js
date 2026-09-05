@@ -37,9 +37,17 @@ export const getAvailableDiscountQuantity = ({
         - (Number(allocationTotals?.get(String(lineRef || '').trim()) || 0) - Number(currentQuantity || 0))
 );
 
+export const MAX_STATUTORY_BENEFICIARIES = 20;
+
+export const isStatutoryBeneficiaryIdentityValid = (beneficiary, primary = false) => {
+    const name = String(beneficiary?.name || '').trim();
+    const id = String(beneficiary?.id_number || '').trim();
+    return name.length >= 2 && name.length <= 120
+        && id.length >= 2 && id.length <= (primary ? 100 : 120);
+};
+
 export const isStatutoryBeneficiaryComplete = (beneficiary) => (
-    Boolean(String(beneficiary?.name || '').trim())
-    && Boolean(String(beneficiary?.id_number || '').trim())
+    isStatutoryBeneficiaryIdentityValid(beneficiary)
     && (Array.isArray(beneficiary?.eligible_items) ? beneficiary.eligible_items : [])
         .some((entry) => Number(entry?.eligible_quantity || 0) > 0)
 );
