@@ -152,9 +152,11 @@ node scripts/check-app-version-bump.js --floor --base origin/staging --head orig
 **Release note (#1278, ADR 0082)** — authored in the same bump branch/PR above (or its own
 note-only branch/PR if no app was below floor), before the candidate branch is cut. Reuse
 `docs/releases/notes/TEMPLATE.md`'s shape; fill the version table from each app's bumped
-`package.json`, leave `production_commit` for the eventual `main` merge commit (not known yet at
-this point — fill it in once `deploy-main.yml` completes, before publishing the GitHub Release
-below):
+`package.json`. `production_commit` gets the literal sentinel `pending` — an exact, checkable
+string, not a bracketed placeholder — since the real `main` merge-commit SHA does not exist yet at
+this point (ADR 0082 Decisions 4/8's two-stage lifecycle: `pending` is valid and expected all the
+way through the `release/<candidate_id>-rN → main` PR itself). "Publish the GitHub Release" below
+finalizes it to the real 40-hex SHA post-deploy:
 
 ```bash
 git status   # same clean-tree backstop as every other cut in this runbook
@@ -165,7 +167,7 @@ cat > docs/releases/notes/$CANDIDATE_ID.md <<NOTE
 schema: sku-release-note/v1
 candidate_id: $CANDIDATE_ID
 production_date: $(date +%Y-%m-%d)
-production_commit: <fill in once deploy-main.yml completes>
+production_commit: pending
 ---
 
 # Release $CANDIDATE_ID — $(date +%Y-%m-%d)
@@ -483,21 +485,26 @@ against, so a genuine mismatch is legible without cross-referencing the manifest
 
 ## Publish the GitHub Release (#1278, ADR 0082)
 
-After the parity gate above reports `PASS` — not before, and not in place of it. Fill in the
-candidate's release note's `production_commit` (left blank when the note was authored pre-cut,
-since the eventual `main` merge commit wasn't known yet), commit that update to `develop`, then tag
-and publish from the now-complete file. Unattended (see `../SKILL.md`'s checkpoint table) — this is
-a post-deploy record of a deploy Pat already authorized at the PROD dispatch ask, not a new deploy
+After the parity gate above reports `PASS` — not before, and not in place of it. Finalize the
+candidate's release note's `production_commit` from the literal sentinel `pending` (ADR 0082
+Decisions 4/8's two-stage lifecycle — written at authoring time since the real `main` merge commit
+wasn't known yet) to the real, now-known 40-hex SHA, commit that update to `develop`, then tag and
+publish from the now-complete file. Unattended (see `../SKILL.md`'s checkpoint table) — this is a
+post-deploy record of a deploy Pat already authorized at the PROD dispatch ask, not a new deploy
 mutation:
 
 ```bash
 MAIN_SHA=$(git rev-parse origin/main)
 
-# fill in production_commit on develop, if it was left blank at authoring time:
+# finalize production_commit on develop, from pending to the real deployed SHA:
 git fetch origin develop
 git switch -c docs/release/$CANDIDATE_ID-commit origin/develop
-sed -i.bak "s/^production_commit:.*/production_commit: $MAIN_SHA/" docs/releases/notes/$CANDIDATE_ID.md
+sed -i.bak "s/^production_commit: pending$/production_commit: $MAIN_SHA/" docs/releases/notes/$CANDIDATE_ID.md
 rm docs/releases/notes/$CANDIDATE_ID.md.bak
+# self-check: no CI gate re-validates this finalization yet (ADR 0082 Decision 8, Follow-up 3) --
+# this grep is the only thing catching a missed/mistyped substitution before publish:
+grep -qE '^production_commit: [0-9a-f]{40}$' docs/releases/notes/$CANDIDATE_ID.md \
+  || { echo "ERROR: production_commit did not finalize to a real 40-hex SHA -- do not publish" >&2; exit 1; }
 git add docs/releases/notes/$CANDIDATE_ID.md
 git commit -m "docs(release): record production commit for candidate $CANDIDATE_ID"
 git push -u origin docs/release/$CANDIDATE_ID-commit
@@ -517,6 +524,8 @@ gh pr merge <N> --merge   # ordinary develop-base PR, no new merge authority nee
 # of its own until a `staging -> main`/`develop -> main` forward-merge:
 git fetch origin develop
 git show origin/develop:docs/releases/notes/$CANDIDATE_ID.md > /tmp/release-note-$CANDIDATE_ID.md
+grep -qE '^production_commit: [0-9a-f]{40}$' /tmp/release-note-$CANDIDATE_ID.md \
+  || { echo "ERROR: fetched note still carries pending -- do not publish" >&2; exit 1; }
 git tag release-$CANDIDATE_ID $MAIN_SHA
 git push origin release-$CANDIDATE_ID
 gh release create release-$CANDIDATE_ID \

@@ -9,8 +9,18 @@ not for.
 schema: sku-release-note/v1
 candidate_id: 2026-09-05-01
 production_date: 2026-09-05
-production_commit: <40-char sha>
+production_commit: pending
 ---
+
+<!--
+production_commit has a two-stage lifecycle (ADR 0082 Decisions 4 and 8) -- write the literal
+sentinel `pending` (exactly that string, not a bracketed placeholder) when this note is authored
+pre-cut, since the real `main` merge-commit SHA does not exist yet at that point. `pending` is
+valid and expected on the release/<candidate_id>-rN -> main promotion PR itself. The promoter
+finalizes this field to the real 40-hex SHA post-deploy, before the GitHub Release is published
+(.agents/skills/promoter/references/promotion-runbook.md's "Publish the GitHub Release" section) --
+a finished release note carries a real 40-hex SHA here, never `pending`.
+-->
 
 # Release 2026-09-05-01 — 2026-09-05
 
