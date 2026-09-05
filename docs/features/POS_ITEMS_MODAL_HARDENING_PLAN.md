@@ -143,6 +143,20 @@ lookups (approximately 835.8x faster for this computation). This benchmark is
 local browser-side evidence only; iMin interaction, frame, and memory proof remains
 part of Phase 295.
 
+### Phase 295 validation record (2026-09-05)
+
+Authenticated Chrome validation passed Add Item at 1440x900, 390x844, and
+390x360 after correcting two observed custom-portal gaps: background scrolling
+was initially unlocked and Escape initially did not close the modal. The final
+run kept the dialog inside the viewport, exposed its final action, prevented
+horizontal document overflow, held the body lock, closed from Escape, and emitted
+no page error, console error, failed request, HTTP 5xx response, or error boundary.
+
+ADB listed only `emulator-5554` (Pixel Tablet, Android 15). A physical iMin device
+and affected APK/WebView were not present. Phase 295 therefore remains
+`in_progress` pending named-device keyboard/rotation, p95 interaction, frame,
+20-cycle memory, image request, and representative 500-image import evidence.
+
 ## Authoritative references
 
 - `docs/START_HERE.md`

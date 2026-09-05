@@ -20731,3 +20731,15 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Contracts/files: `packages/web-core/src/features/inventory/utils/skuSuggestion.js`; `packages/web-core/src/features/inventory/__tests__/skuSuggestion.test.js`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`.
 - Governance note: `within-existing-boundary`; no API, database, authorization, SKU format, or architecture exception is introduced.
 - Next eligible phase: 295.
+
+## Phase 295 - POS Items Browser and APK Validation Closure
+
+- Initiative/release: POS Items modal reachability and Android WebView responsiveness.
+- Objective and scope: close component, responsive-browser, keyboard, overflow, nested-modal, image-flow, build, architecture, compatibility, compliance, and physical iMin APK acceptance for Phases 289-294.
+- Status: in_progress.
+- Dependencies: Phases 289-294; a connected physical iMin device with the affected APK/WebView and representative catalog/import data.
+- Acceptance and validation evidence: 23 focused modal/SKU tests and all three frontend builds passed before browser validation. Authenticated Chrome exercised Add Item at 1440x900, 390x844, and 390x360 with no viewport clipping, horizontal document overflow, console errors, page errors, failed requests, or HTTP 5xx responses; final actions were reachable. The run found and then verified a corrective background-scroll lock and Escape-close fix for the custom Add/Edit Item portal. ADB exposes only a Pixel Tablet emulator on Android 15; no physical iMin package/version, WebView, keyboard/rotation, p95 interaction, dropped-frame, memory-cycle, or 500-image APK evidence is available, so this phase cannot be completed.
+- Completion date: pending.
+- Contracts/files: `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/src/features/pos/__tests__/posItemsModalViewport.contract.test.js`; [POS Items Modal Hardening Plan](POS_ITEMS_MODAL_HARDENING_PLAN.md).
+- Governance note: `within-existing-boundary`; no API, database, or architecture exception is introduced by the browser-discovered correction.
+- Current phase: 295. Next eligible phase: none until the named physical iMin acceptance evidence is recorded.
