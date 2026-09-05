@@ -133,7 +133,9 @@ import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
-import resolveAssetUrl, { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
+import resolveAssetUrl, { advanceAssetImageFallback } from '@/src/utils/assetUrl.js';
+import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
+import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
 import PdfMenuImportModal from '@/components/items/PdfMenuImportModal.jsx';
 import MenuImportBatchModal from '@/components/items/MenuImportBatchModal.jsx';
@@ -314,6 +316,7 @@ const normalizeStorefrontItemGallery = (item = {}) => {
     .map((entry, index) => ({
       path: entry?.path || null,
       url: resolveStoredItemImageUrl(entry?.url || entry?.image_url || entry?.path || entry),
+      variants: entry?.variants || entry?.image_variants || null,
       is_primary: index === 0,
       sort_order: index
     }))
@@ -322,6 +325,7 @@ const normalizeStorefrontItemGallery = (item = {}) => {
     gallery.unshift({
       path: item?.storefront_image_path || null,
       url: primaryUrl,
+      variants: item?.storefront_image_variants || null,
       is_primary: true,
       sort_order: 0
     });
@@ -3702,8 +3706,7 @@ function ItemsWorkspace({
           {paginatedItems.map((item) => {
             const isServiceItem = isServiceCatalogItem(item);
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
-            const imageUrl = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
-            const largeImageUrl = resolveAssetVariantUrl(item?.storefront_image_url, 'large');
+            const imageSources = resolvePosCatalogImageSources(item);
             const stockQuantity = Number(item?.current_stock || 0);
             const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
@@ -3737,17 +3740,16 @@ function ItemsWorkspace({
                   <div className="flex min-w-0 gap-2.5 xl:border-r xl:border-slate-100 xl:pr-3">
                     <div className="relative flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner sm:h-[4.5rem] sm:w-[4.5rem]">
                       <ImagePlus className="h-5 w-5 text-slate-300" />
-                      {imageUrl ? (
-                        <img
-                          src={imageUrl}
+                      {imageSources.src ? (
+                        <ResponsiveImage
+                          sources={imageSources}
                           alt={item?.name || 'Item image'}
-                          loading="lazy"
-                          decoding="async"
+                          sizes="72px"
                           width={288}
                           height={288}
                           className="absolute h-full w-full object-cover"
                           onError={(event) => {
-                            if (advanceAssetImageFallback(event, [largeImageUrl])) return;
+                            if (advanceAssetImageFallback(event, [imageSources.configuredLargeSrc])) return;
                             event.currentTarget.hidden = true;
                           }}
                         />
@@ -8407,14 +8409,14 @@ function SettingsWorkspace({
           <div className="relative sm:hidden">
             <div className="h-32 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
               {storefrontAssets.cover ? (
-                <img src={resolveAssetUrl(storefrontAssets.cover)} alt="Storefront cover preview" className="h-full w-full object-cover" />
+                <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.cover) }} alt="Storefront cover preview" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-xs font-medium text-slate-500">No cover photo uploaded</div>
               )}
             </div>
             <div className="absolute -bottom-8 left-4 h-16 w-16 overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow">
               {storefrontAssets.profile ? (
-                <img src={resolveAssetUrl(storefrontAssets.profile)} alt="Storefront profile preview" className="h-full w-full object-contain" />
+                <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" className="h-full w-full object-contain" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500">No icon</div>
               )}
@@ -8423,14 +8425,14 @@ function SettingsWorkspace({
           <div className="relative hidden sm:block">
             <div className="h-32 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 md:h-40">
               {storefrontAssets.cover ? (
-                <img src={resolveAssetUrl(storefrontAssets.cover)} alt="Storefront cover preview" className="h-full w-full object-cover" />
+                <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.cover) }} alt="Storefront cover preview" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-xs font-medium text-slate-500">No cover photo uploaded</div>
               )}
             </div>
             <div className="absolute -bottom-8 left-4 h-16 w-16 overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow md:h-20 md:w-20">
               {storefrontAssets.profile ? (
-                <img src={resolveAssetUrl(storefrontAssets.profile)} alt="Storefront profile preview" className="h-full w-full object-cover" />
+                <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500 md:text-xs">No icon</div>
               )}

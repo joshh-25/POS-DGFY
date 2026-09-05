@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
+import { buildImageVariantSources } from '@/src/utils/imageVariantSources.js';
 
 const buildFileKey = (file, index) => (
   `${file?.name || 'item-image'}-${file?.size || 0}-${file?.lastModified || 0}-${index}`
@@ -51,7 +53,8 @@ export default function SelectedItemImageCarousel({
       savedIndex: index,
       key: buildSavedImageKey(entry, index),
       label: entry?.name || `saved image ${index + 1}`,
-      url: resolveAssetUrl(entry?.url || entry?.path)
+      url: resolveAssetUrl(entry?.url || entry?.path),
+      variants: entry?.variants || entry?.image_variants || null
     })),
     [normalizedSavedGallery]
   );
@@ -127,9 +130,11 @@ export default function SelectedItemImageCarousel({
     >
       <div className="relative overflow-hidden rounded-md border border-slate-200 bg-white">
         {activeEntry.url ? (
-          <img
-            src={activeEntry.url}
+          <ResponsiveImage
+            sources={buildImageVariantSources({ url: activeEntry.url, variants: activeEntry.variants, preferred: 'medium' })}
             alt={activeImageLabel}
+            sizes="448px"
+            loading="lazy"
             className="h-32 w-full object-cover sm:h-36"
           />
         ) : (
@@ -189,9 +194,11 @@ export default function SelectedItemImageCarousel({
               disabled={disabled}
             >
               {entry.url ? (
-                <img
-                  src={entry.url}
+                <ResponsiveImage
+                  sources={buildImageVariantSources({ url: entry.url, variants: entry.variants, preferred: 'thumbnail' })}
                   alt=""
+                  sizes="64px"
+                  loading="lazy"
                   className="h-full w-full object-cover"
                   aria-hidden="true"
                 />

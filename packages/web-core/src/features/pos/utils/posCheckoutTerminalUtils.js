@@ -513,8 +513,23 @@ export const buildStockExceededMessage = ({ itemName, requestedQty, availableSto
 export const getLineKey = (line = {}) => line.line_key || line.item_id;
 export const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+// POS-specific override takes precedence over the shared Storefront image --
+// the same contract posRepository.js's resolvePosDisplayImage() implements
+// server-side (docs/compliance/impact-declarations/2026-06-15-pos-shared-item-image-gallery.md).
+// `pos_image_url` is the effective-image signal: whenever a POS-specific
+// override exists it is truthy, so its own `pos_image_variants` (which may be
+// a flat override with no derived variant set at all) is used as-is rather
+// than silently widened with unrelated `storefront_image_variants` -- #1635's
+// own regression, since a naive `pos_image_variants || storefront_image_variants`
+// would still leak the Storefront srcSet onto a flat POS override. Only when
+// no POS-specific image exists at all does resolution fall back to the
+// Storefront fields, matching the number-218 fallback case.
 export const resolvePosCatalogImageSources = (item = {}) => {
-    const variants = item?.storefront_image_variants || item?.pos_image_variants || {};
+    const hasPosOverride = Boolean(item?.pos_image_url);
+    const effectiveUrl = item?.pos_image_url || item?.storefront_image_url || '';
+    const variants = hasPosOverride
+        ? (item?.pos_image_variants || {})
+        : (item?.storefront_image_variants || {});
     const resolveVariantSet = (variantSet = {}) => {
         const thumbnailUrl = resolveAssetUrl(variantSet?.thumbnail_url || '');
         const mediumUrl = resolveAssetUrl(variantSet?.medium_url || '');
@@ -538,8 +553,12 @@ export const resolvePosCatalogImageSources = (item = {}) => {
                 : undefined
         };
     };
-    const configuredSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
-    const configuredLargeSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'large');
+    // Flat effective url with no derived variant set (e.g. a legacy
+    // pos_image_url override with no pos_image_variants) still resolves to a
+    // plain src via resolveAssetVariantUrl's path-rewrite heuristic, just
+    // without a srcSet/avif/webp source.
+    const configuredSrc = resolveAssetVariantUrl(effectiveUrl, 'thumbnail');
+    const configuredLargeSrc = resolveAssetVariantUrl(effectiveUrl, 'large');
     const fallbackVariants = resolveVariantSet(variants);
     const avifVariants = resolveVariantSet(variants?.avif);
     const webpVariants = resolveVariantSet(variants?.webp);
