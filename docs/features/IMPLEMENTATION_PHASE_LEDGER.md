@@ -21312,3 +21312,55 @@ colliding. No other content changed.
   (2026-09-05 Amendment, `[snapshot]` tier), `.agents/skills/promoter/references/promotion-runbook.md`,
   `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issue #1610.
 - Next eligible phase: 296.
+
+## Phase 296 - Server-only AVIF deprecation and v3 responsive-asset versioning (#265 epic, PR 2 of 5)
+
+Filed as this branch's "Phase 295" in the epic plan doc and in the branch name
+(`fix/295-avif-deprecate-server-encode`) -- renumbered to 296 because Phase 295 was independently
+claimed and merged first by #1610/epic #1548 Wave 4 (PR #1634) while this work was still being
+planned. Per `AGENTS.md`'s Continuous Phase Numbering rule, this entry uses the next open slot
+rather than colliding. No other content differs from the epic plan doc's "Phase 295" section.
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
+- Objective and scope: second PR of the #265 epic. Deprecates (does not remove) AVIF encoding from
+  the upload hot path: `getDeliveryFormats` no longer requests an `avif` format, dropping every new
+  upload from 3 delivery-format families to 2 (~55-65% of the pipeline's CPU, per the epic's own
+  instrumented-baseline estimate from Phase 294). `RESPONSIVE_ASSET_VERSION` bumps to 3; the
+  hardcoded `-v2-` folder-recognition regex in both `deriveImageAssetVariantUrls` (URL derivation)
+  and `removeOptimizedImageAsset` (delete-path folder recognition -- the #1379/#871 incident site)
+  becomes a capturing, version-parsing pattern shared via one module constant, so a v3 folder is
+  still correctly recursed on delete and a v2 folder's URLs still resolve `.avif` unaffected --
+  zero migration for existing assets. `AVIF_QUALITY_STEPS` and the `encoder === 'avif'` branches in
+  `buildVariantOutput` are retained, marked `@deprecated`, not deleted -- kept for potential future
+  reactivation or offline/manual AVIF regeneration. Also hardens `classifyImageAsset` with an
+  optional `sourceMimeHint` and a `sharp.metadata()` alpha heuristic (precedence: hint -> metadata
+  -> reported MIME, unchanged today when both are omitted) and adds a new export
+  `deriveVariantsFromAcceptedLarge` -- neither is wired into any caller in this PR; both exist so
+  Phase 297 (upload contract + fan-out) is a wiring change, not new logic. Out of scope: any
+  frontend/`packages/web-core` change (none needed for this drop -- every consumer already
+  null-guards a missing `avif` key), Phase 296's own client encoder module (a different,
+  unfortunately-same-numbered-in-the-old-scheme phase -- see the epic doc's now-stale "Phase 296"
+  heading, which this ledger entry's number does not correspond to), and Phase 297's upload-contract
+  wiring.
+- Status: completed.
+- Dependencies: Phase 294 (#1635, merged) -- relies on its CPU/wall-time instrumentation in
+  `storeOptimizedImageAsset` as the pre-change baseline. Precedes Phase 297 (upload contract) and
+  Phase 298 (rollout) of the #265 epic, which both consume the `sourceMimeHint`/
+  `deriveVariantsFromAcceptedLarge` surface added here.
+- Acceptance and validation evidence: `node --check` on the changed module (dgfy-api has no build
+  step); `apps/dgfy-api/package-lock.json` unchanged (`git diff --exit-code` clean -- only the
+  `version` field changed, no dependency change); `node scripts/check-app-version-bump.js --staged`
+  (dgfy-api 1.3.0 -> 1.3.1, PASS); `npm run check:compliance` (no compliance-sensitive changes
+  detected); `npm run check:architecture`; `npm run check:adr` (validates the ADR 0017 amendment);
+  `npm run lint:docs`; updated/new unit tests in
+  `apps/dgfy-api/tests/imageAssetStorage.util.test.js` (existing avif/version assertions updated for
+  v3; new coverage for the v2/v3 `deriveImageAssetVariantUrls` gate, the `removeOptimizedImageAsset`
+  v2/v3 folder-recognition regression matrix, the `classifyImageAsset` precedence table, and a
+  `deriveVariantsFromAcceptedLarge` smoke test) -- see the PR's Testing Evidence for exact results.
+- Completion date: 2026-09-06.
+- Contracts/files: `apps/dgfy-api/src/modules/shared/utils/imageAssetStorage.js`,
+  `apps/dgfy-api/tests/imageAssetStorage.util.test.js`,
+  `apps/dgfy-api/package.json` (1.3.0 -> 1.3.1),
+  `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md` (2026-09-06
+  Amendment), issue #265.
+- Next eligible phase: 297.
