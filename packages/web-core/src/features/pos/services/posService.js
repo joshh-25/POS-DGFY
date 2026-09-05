@@ -34,6 +34,21 @@ export const fetchPosCatalog = async (params = {}) => {
     return response.data?.data || [];
 };
 
+export const fetchPosCatalogPage = async (params = {}) => {
+    const session = getBrowserSessionSnapshot();
+    const pagedParams = { ...params, paginate: true };
+    const key = JSON.stringify([session.companyToken, session.generation, Object.entries(pagedParams).sort()]);
+    const response = await coordinateCatalogRead(key, () => api.get('/pos/catalog', { params: pagedParams }));
+    if (getBrowserSessionSnapshot().generation !== session.generation) throw new Error('Catalog session changed.');
+    const payload = response.data?.data || {};
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    void reconcilePosImageUploads(items);
+    return {
+        items,
+        pagination: payload.pagination || { page: 1, page_size: 15, total: 0, total_pages: 1 }
+    };
+};
+
 // Preserve the POS-facing names while keeping one Services API implementation
 // shared by SKUpervisor and POS.
 export const fetchPosServiceOptionGroups = listServiceOptionGroups;
