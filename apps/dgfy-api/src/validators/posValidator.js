@@ -93,6 +93,7 @@ const discountBeneficiarySchema = Joi.object({
 
 const governedDiscountBeneficiarySchema = discountBeneficiarySchema.keys({
     eligible_items: Joi.array().items(Joi.object({
+        line_ref: Joi.string().trim().max(160).allow(null, '').optional(),
         item_id: Joi.number().integer().positive().required(),
         eligible_quantity: Joi.number().positive().required()
     }).unknown(false)).min(1).max(100).required()
