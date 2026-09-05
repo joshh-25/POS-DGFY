@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-05
+last_reviewed: 2026-09-06
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1188,5 +1188,56 @@ This is a `[snapshot]`-tier procedure change under ADR 0039 — no `[binding]`/`
 this policy or of ADR 0081 changes. **Not yet exercised against a real dispatch** — see the ADR
 amendment and `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 295 entry for what is and isn't
 verified.
+
+### 2026-09-06: Every production promotion carries a release-note record (#1278, ADR 0082)
+
+Decision record this implements: [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md),
+new in this PR. Not rewritten in place, same convention as every entry above. This entry states the
+obligation per promotion leg; it does not restate ADR 0082's own reasoning — read that ADR for why,
+this entry only for when/how within the flow this policy already governs.
+
+**Pre-cut — the release note is authored in the bump PR, not a separate step.** The same
+`chore(release): bump <apps> …` PR that ADR 0081 Decision 6's pre-cut floor step already requires
+(or opens as a note-only PR if every app is already at or above floor — the note PR is not optional
+even when no version bump is otherwise needed) now also adds/commits
+`docs/releases/notes/<candidate_id>.md`, following `docs/releases/notes/TEMPLATE.md`'s shape. This
+is the only workable seam: a promotion branch (`to-staging/*`/`release/*`) carries no commits of its
+own, so the note has to already be on `develop` at cut time to ride `develop → staging → main` with
+the code it describes — the same constraint ADR 0081 Decision 6 already reasoned through for version
+bumps themselves.
+
+**`fix/staging/*` — each repair amends the candidate's existing note, in the repair PR itself.** A
+repair branch does carry its own commit(s) (unlike a promotion branch), so it edits
+`docs/releases/notes/<candidate_id>.md` directly: one new `## Included` item line for the repair and
+an updated version-table row for whichever app(s) it touched — never a second release-note file for
+the same `candidate_id`.
+
+**`release/* → main` — `check:release-notes` runs on this PR, advisory in its first landing (Phase
+296, a separate PR from this one), blocking only in the later dedicated phase ADR 0082 Decision 8
+names.** This entry records the obligation the check enforces; the script itself, its
+`package.json` wiring, and its `promotion-quality-gate.yml` step are out of scope for this PR — see
+`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 296 entry once it lands.
+
+**After `deploy-main.yml` succeeds — the promoter tags `release-<candidate_id>` on the deployed
+`main` commit and publishes the GitHub Release from the note file**, mirroring the #615 Android
+precedent: `gh release create release-<candidate_id> --title … --notes-file
+docs/releases/notes/<candidate_id>.md --target <main SHA>`. This runs after the promotion parity
+gate (ADR 0081 Decision 8) confirms the deployed image traces back to the candidate — full command:
+`.agents/skills/promoter/references/promotion-runbook.md`. Publishing the Release is a post-deploy
+record of a deploy Pat already authorized, not a new deploy mutation — see
+`.agents/skills/promoter/SKILL.md`'s checkpoint table for the explicit unattended classification.
+
+**A `main` hotfix and a #1007 expedited promotion each get their own release-note record**, keyed by
+their own `candidate_id` (a hotfix assigns a fresh `YYYY-MM-DD-NN` ID at fix time; the #1007 path
+uses its `release/<label>` label), per ADR 0082 Decision 6 — neither path is exempt from Decision 3's
+binding obligation just because it skips the staging soak or the ordinary bump-PR seam.
+
+This is a `[default]`-tier procedure amendment under ADR 0039, layered on top of ADR 0082's own
+Decisions 1, 2, 4-8 (all `[default]`) — Decision 3 (`[binding]`: no production promotion reaches
+`main` without a release-note record for its candidate) is the substantive obligation this entry
+describes the mechanics of, not a change to its tier. No `[binding]` clause of this policy or of any
+other ADR is changed by this entry.
+
+PR: (this PR). Refs #1278, #1548. Does not close #1278 — Phase 296 (enforcement) is a separate PR.
 
 PR: (this PR). Refs #1610 (not Closes — needs deployed verification). Refs #1548.
