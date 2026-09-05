@@ -82,6 +82,12 @@ const proxyTargets = {
 export default defineConfig({
   base: './',
   plugins: [react(), esCompatGuardPlugin(), posOfflinePrecachePlugin(), buildStampPlugin(appVersion), ...buildSentryVitePlugins(appSurface)],
+  // `config.plugins` above only applies to workers in dev -- Vite 6 requires `worker.plugins`
+  // separately for the production worker build, or the ADR 0067 Layer 2 guardrail silently
+  // stops covering any module Worker's bundled output (epic #265, Phase 296).
+  worker: {
+    plugins: () => [esCompatGuardPlugin()],
+  },
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos'),
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
