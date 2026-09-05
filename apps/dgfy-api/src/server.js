@@ -33,6 +33,8 @@ import logger from './config/logger.js';
 import { generalLimiter, getRateLimiterStoreMode } from './middleware/rateLimiter.js';
 import { initializeRedis, closeRedis, isRedisConnected } from './config/redis.js';
 import { initCleanupJob } from './services/cleanupService.js';
+import { verifyConnection as verifyEmailConnection, isEmailConfigured } from './services/emailService.js';
+import { raiseOperationalAlert } from './services/operationalAlertService.js';
 import { initBillingScheduler } from './schedulers/billingScheduler.js';
 import sequelize from './config/database.js';
 import './models/index.js'; // Initialize model associations
@@ -975,6 +977,31 @@ const startServer = async () => {
       });
     } else {
       logger.info('No REDIS_URL found, skipping Redis initialization.');
+    }
+
+    // #1614: verify the SMTP credential actually authenticates at boot,
+    // non-blocking (same "fire and forget, never gate startup" shape as the
+    // Redis init above) -- a broken credential previously surfaced only on a
+    // live customer OTP/email request, ~8h after the container started in
+    // the incident this fixes. verifyConnection() sends no mail, it only
+    // opens/authenticates the SMTP connection.
+    if (isEmailConfigured()) {
+      verifyEmailConnection().then((result) => {
+        if (!result.success) {
+          logger.error(`SMTP verification failed at startup: ${result.error}`);
+          raiseOperationalAlert({
+            key: 'email.smtp_send_failed',
+            message: `SMTP verification failed at startup: ${result.error}`,
+            context: { stage: 'startup_verify' }
+          }).catch(() => {});
+        } else {
+          logger.info('SMTP connection verified at startup.');
+        }
+      }).catch((error) => {
+        logger.error('SMTP startup verification threw unexpectedly:', error.message);
+      });
+    } else {
+      logger.info('SMTP not configured, skipping startup connection verification.');
     }
 
     const server = app.listen(PORT, '0.0.0.0', () => {
