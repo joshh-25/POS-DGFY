@@ -39,7 +39,6 @@ export function useFnbCheckoutPresentation({
   isDesktopCheckout,
   isFnbMode,
   isFnbOrderSubpage,
-  totalsForDisplay,
   viewportWidth,
 }) {
   const [mobileSummaryState, setMobileSummaryState] = useState({ key: '', visible: false });

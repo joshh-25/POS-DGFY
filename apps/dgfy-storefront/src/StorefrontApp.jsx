@@ -3049,7 +3049,6 @@ export default function StorefrontApp() {
     isDesktopCheckout,
     isFnbMode,
     isFnbOrderSubpage,
-    totalsForDisplay,
     viewportWidth,
   });
   const {
