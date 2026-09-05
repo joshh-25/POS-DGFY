@@ -129,6 +129,14 @@ export const requestEmailOtp = async ({
     tenant_id: normalizedTenantId,
     code_hash: codeHash,
     max_attempts: Math.max(1, OTP_MAX_ATTEMPTS),
+    // #1614: explicit, not relying on the column default. Previously this
+    // row started life as delivery_status: 'sent' (the pre-existing column
+    // default) before any send was even attempted -- so an
+    // EMAIL_OTP_DELIVERY_UNAVAILABLE throw just below left a permanent,
+    // actively misleading 'sent' row for an email nothing ever tried to
+    // send. 'pending' is set here and only ever becomes 'sent' once
+    // sendEmailOtpCode has actually succeeded, below.
+    delivery_status: 'pending',
     expires_at: expiresAt,
     metadata
   });
@@ -136,6 +144,10 @@ export const requestEmailOtp = async ({
   const canDeliverEmail = emailSender?.isEmailConfigured?.() === true;
   if (!canDeliverEmail) {
     if (!isDevOtpFallbackEnabled()) {
+      await otp.update({
+        delivery_status: 'failed',
+        delivery_error: 'Email verification cannot be sent because SMTP is not configured'
+      });
       throw createError('Email verification cannot be sent because SMTP is not configured', 503, 'EMAIL_OTP_DELIVERY_UNAVAILABLE');
     }
 
@@ -163,13 +175,20 @@ export const requestEmailOtp = async ({
       expiresInMinutes: Math.max(1, OTP_TTL_MINUTES),
       tenantId: normalizedTenantId
     });
-    if (deliveryResult?.deliveryId) {
-      // Links this OTP row back to its canonical send record in
-      // email_delivery_logs (issue #279) -- previously the return value was
-      // dropped entirely, so the OTP row had no way to be correlated to a
-      // later async bounce.
-      await otp.update({ email_delivery_id: deliveryResult.deliveryId });
-    }
+    // #1614: delivery_status no longer defaults to 'sent' at create time
+    // (see the create() call above), so a confirmed send must now set it
+    // explicitly -- this is the only place in this function delivery_status
+    // becomes 'sent'.
+    await otp.update({
+      delivery_status: 'sent',
+      ...(deliveryResult?.deliveryId
+        // Links this OTP row back to its canonical send record in
+        // email_delivery_logs (issue #279) -- previously the return value was
+        // dropped entirely, so the OTP row had no way to be correlated to a
+        // later async bounce.
+        ? { email_delivery_id: deliveryResult.deliveryId }
+        : {})
+    });
     return buildPublicOtpPayload(otp);
   } catch (error) {
     if (isDevOtpFallbackEnabled()) {

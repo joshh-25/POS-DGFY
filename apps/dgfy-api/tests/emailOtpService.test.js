@@ -110,7 +110,9 @@ describe('email OTP service', () => {
     });
 
     expect(sender.sendEmailOtpCode).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-7' }));
-    expect(otpRow.update).toHaveBeenCalledWith({ email_delivery_id: 'delivery-42' });
+    // #1614: delivery_status is now set explicitly on a confirmed send, not
+    // left to the (now-removed) 'sent' column default.
+    expect(otpRow.update).toHaveBeenCalledWith({ delivery_status: 'sent', email_delivery_id: 'delivery-42' });
   });
 
   it('does not attempt to link email_delivery_id when the send result carries none', async () => {
@@ -135,7 +137,9 @@ describe('email OTP service', () => {
       emailSender: sender
     });
 
-    expect(otpRow.update).not.toHaveBeenCalled();
+    // #1614: still confirms no delivery_id linkage is attempted; the send is
+    // still confirmed via the now-explicit delivery_status: 'sent' write.
+    expect(otpRow.update).toHaveBeenCalledWith({ delivery_status: 'sent' });
   });
 
   it('falls back to a local dev code when email delivery is unavailable outside production', async () => {
