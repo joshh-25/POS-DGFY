@@ -21591,4 +21591,101 @@ No other content differs from what Phase 280 described as coming next.
   `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
   `docs/architecture/adr/0082-production-release-record-and-release-notes.md` (Follow-up 1/3, read
   not edited), issue #1278.
-- Next eligible phase: 299.
+
+## Phase 300 - Client-side canvas image encoder module for POS catalog image uploads (#265 epic, PR 3 of 5)
+
+Filed as the epic plan doc's own "Phase 296" section (a doc-internal label, not a ledger number) --
+renumbered here per this file's Continuous Phase Numbering rule. The ledger's own Phase 296 was
+independently claimed by the unrelated AVIF-deprecation PR (#1636, merged first) and Phase 297 by
+an unrelated #1015 backend-test-matrix PR (#1638, merged during this phase's own implementation
+session); this entry was then written as Phase 298. Renumbered a second time, to 300, when this
+branch was rebased onto a `develop` that had, in the meantime, independently merged its own
+unrelated Phase 298 (`scripts/check-release-notes.js` enforcement, #1278 PR 2 of 2, PR #1639) --
+see that entry immediately above. 299 is skipped deliberately, not merely unused: it is currently
+claimed (but not yet merged, and so not yet authoritative) by the sibling, still-open PR #1641
+(#265 epic, "client-derived image upload contract" work) on `feature/265-297-client-derived-upload-
+contract`; claiming 300 here avoids a second collision against that PR once it lands, rather than
+racing it for 299. Re-checked `git show origin/develop:docs/features/IMPLEMENTATION_PHASE_LEDGER.md
+| grep '^## Phase' | tail -5` immediately before writing this entry, per the epic's own Phase 296
+(AVIF) precedent and this task's explicit coordination instruction, rather than trusting a number
+decided at an earlier point in this branch's own history.
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
+- Objective and scope: third PR of the #265 epic. Adds a new, isolated, hand-rolled client-side
+  canvas image encoder module -- `packages/web-core/src/utils/imageEncoding/{index,capabilities,
+  encodeVariants,encodeWorker,variantManifest,rolloutFlag}.js` -- that resizes/re-encodes an
+  uploaded POS catalog image into a `{large, medium, thumbnail}` variant ladder (1920/1024/400px
+  max widths, never upscaling past the source), entirely in the browser. `capabilities.js` probes
+  WebP `canvas.toBlob` support (rejecting WebKit's silent `image/png` downgrade and a null-blob
+  result, not just a non-throw), `OffscreenCanvas`/`Worker` availability, and whether
+  `createImageBitmap(file, { imageOrientation: 'from-image' })` is honored. `encodeVariants.js` is
+  the pure, worker-safe pipeline: EXIF orientation (hand-rolled tag-0x0112 parser as a fallback when
+  the runtime option isn't honored, degrading to the original file untouched -- `degraded:
+  ['orientation_unknown']` -- rather than guessing when both paths fail), a pre-drawImage resize
+  pass via `createImageBitmap`'s own `resizeWidth`/`resizeHeight`/`resizeQuality` options for
+  sources over ~16.7M px (several browsers silently blank/garble a canvas above that area), and a
+  post-encode 4-corner-plus-center pixel sample that flags (not silently ships) an all-transparent
+  or all-black render. Runs inside a dedicated module Worker when `Worker`+`OffscreenCanvas` are
+  available (falling back to the main thread otherwise); cancellation is `worker.terminate()`
+  outright rather than a cloned `AbortSignal`, since `AbortSignal` can't cross `postMessage`. Caps
+  concurrency to one encode at a time (a second concurrent call rejects). Never calls the global
+  `structuredClone()` shim anywhere in the module -- verified both by design and by a static
+  source-scan test -- since that Layer-1 runtime shim (`chrome80Runtime.js`) has no Blob/File/
+  ArrayBuffer/ImageBitmap support and silently produces an empty object for them on Chrome 80-84.
+  `rolloutFlag.js` is a deliberately inert stub (`getImageClientConversionFlag` hardcoded to
+  `'off'`) for Phase 298-in-the-epic-doc's-own-numbering's (not this ledger phase's) future
+  server-authoritative `image_client_conversion` flag -- not wired into any bootstrap/runtime-config
+  plumbing yet, on purpose. `posCatalogService.js`'s `uploadPosCatalogImage` gets a minimal,
+  single-variant-only wiring diff behind that stub (sends only `image` = `variants.large`, falling
+  back to the original file when the flag is off or no large variant survives) --
+  `image_medium`/`image_thumbnail`/`client_image_manifest` multipart fields are Phase 297-in-the-
+  epic-doc's-own-numbering's (the sibling upload-contract phase) job, not this one's. Also adds
+  `worker: { plugins: () => [esCompatGuardPlugin()] } ` to all three `apps/{dgfy-ims,dgfy-pos,
+  dgfy-storefront}/vite.config.js` -- a real, previously-latent gap this phase would otherwise have
+  introduced silently: Vite's `worker.plugins` is a separate config surface from the main `plugins`
+  array for production builds, so without this addition `encodeWorker.js`'s built output would ship
+  completely unscanned by the ADR 0067 Layer 2 guardrail (verified live: a deliberately-injected
+  `Array.fromAsync(` call inside `encodeWorker.js` failed the `dgfy-pos` build with the guard's own
+  error message once this addition was in place, then reverted). Explicitly out of scope, corrected
+  against the epic plan doc's own claim: `MenuPhotoCaptureSheet.jsx` is untouched -- its
+  `scoreCurrentFrame` downscale sampler and `handleShutter` full-res capture are two unrelated
+  functions serving the menu-import/OCR pipeline, not a forked copy of variant-generation logic to
+  "generalize and delete"; touching it would risk exactly the OCR-legibility regression the epic
+  plan itself warns against for Phase 297-in-the-epic-doc's-own-numbering.
+- Status: completed.
+- Dependencies: none on Phase 296 (AVIF deprecation, server-side only) or Phase 297 (unrelated
+  #1015 backend-test-matrix work) -- both are independent server/tooling changes this phase's
+  purely client-side, `packages/web-core`-scoped work does not touch or rely on. Precedes the
+  epic's own Phase 297 (upload-contract fan-out, concurrently implemented in a sibling worktree of
+  this same run) and Phase 298 (rollout, per the epic plan doc's own numbering -- flips
+  `rolloutFlag.js`'s stub to a real bootstrap-driven getter), which both consume this phase's
+  `prepareImageVariants`/`variantManifest.js` surface.
+- Acceptance and validation evidence: `npm test` (`vitest run`) from `apps/dgfy-ims` -- 344 test
+  files / 2199 tests passed, including 7 new imageEncoding test files (18 tests: WebP capability
+  probe correctness including the WebKit-downgrade and null-blob cases; EXIF orientation's 3 paths
+  -- runtime-honored option, hand-rolled fallback with a synthesized EXIF-6 byte fixture, and the
+  both-paths-fail degrade; the never-upscale guarantee; the canvas max-dimension resize pre-pass and
+  blank-output-sample degrade; worker abort/cancellation via a mocked `Worker` (immediate reject on
+  an already-aborted signal, `terminate()` + ignored-late-message on a mid-flight abort); the
+  concurrency cap; and a static source-scan guard against calling the global `structuredClone()`)
+  plus 3 new `posCatalogService.js` wiring tests (flag-off passthrough, flag-on large-variant
+  wiring, flag-on-with-no-large-variant fallback); `npm run build:skupervisor`, `build:pos`, and
+  `build:store` (all three succeed, confirming `esCompatGuardPlugin` scans `encodeWorker.js`'s
+  built-output chunk cleanly -- and, per the live-injected-then-reverted `Array.fromAsync(` check
+  above, actually fails the build when it should); `npm run check:compliance` (no
+  compliance-sensitive changes detected -- every changed path was checked against
+  `COMPLIANCE_SENSITIVE_RULES` and matches none); `node scripts/check-app-version-bump.js --staged`
+  (dgfy-ims 1.2.4->1.2.5, dgfy-pos 1.2.4->1.2.5, dgfy-storefront 1.3.5->1.3.6, all PASS under
+  `any-increase` mode); `npm run check:adr` (89 ADRs validated, no regression).
+- Completion date: 2026-09-06.
+- Contracts/files: `packages/web-core/src/utils/imageEncoding/{index,capabilities,encodeVariants,
+  encodeWorker,variantManifest,rolloutFlag}.js` (new), `packages/web-core/src/utils/imageEncoding/
+  __tests__/**` (new, 7 files + 2 shared test helpers), `packages/web-core/src/services/
+  posCatalogService.js` (modified), `packages/web-core/src/services/__tests__/
+  posCatalogService.imageEncoding.test.js` (new), `apps/{dgfy-ims,dgfy-pos,dgfy-storefront}/
+  vite.config.js` (modified, `worker.plugins` addition), `apps/{dgfy-ims,dgfy-pos,dgfy-storefront}/
+  package.json` (version bumps only), issue #265.
+- Next eligible phase: 301. Phase 299 is tentatively held by unmerged sibling PR #1641
+  (`feature/265-297-client-derived-upload-contract`, #265 epic) -- not yet real/authoritative until
+  that PR merges, and its number could itself still change on merge per this same collision
+  handling; do not treat 299 as free without re-checking that PR's status.
