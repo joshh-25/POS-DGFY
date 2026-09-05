@@ -8,8 +8,8 @@ classification: major
 surfaces: payments,settings
 reason_codes_impacted: ALLOWED,SERVICE_UNAVAILABLE
 policy_version: 2026.09.05
-verification_evidence: apps/dgfy-api/tests/storeGuestCheckoutOtp.unit.test.js -- actually executed (Jest), 6 passing (1 new),apps/dgfy-api/tests/emailOtpService.test.js -- actually executed (Jest), 19 passing (2 updated for the new explicit delivery_status write),apps/dgfy-api/tests/addPendingEmailOtpDeliveryStatus.migration.test.js -- actually executed (Jest), 6 passing (new),apps/dgfy-api/tests/fixEmailOtpDeliveryStatus.migration.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/authEmailOtpTenantScope.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/tenantHandler.emailOtp.test.js -- actually executed (Jest), unchanged, regression-clean,node --check on every changed apps/dgfy-api .js file and the new migration .cjs file,node scripts/check-app-version-bump.js -- confirmed to require and receive a dgfy-api patch bump
-rollback_note: No destructive change. The ENUM widening (pending added to email_otps.delivery_status, default flips from sent to pending) is additive and forward-compatible -- reverting the code alone (leaving the migration applied) is safe, since no code path after this revert writes or reads 'pending'. The migration's own down() is provided and collapses any 'pending' row to 'failed' with an explanatory delivery_error before narrowing the enum back, the same lossy-but-honest approach the prior 20260807000001 migration's down() already established for 'recorded'/'bounced'. The error-contract change (storeUseCases.js) and the boot-time SMTP verify (server.js) are both pure code; reverting either needs no data migration.
+verification_evidence: apps/dgfy-api/tests/storeGuestCheckoutOtp.unit.test.js -- actually executed (Jest), 6 passing (1 new),apps/dgfy-api/tests/emailOtpService.test.js -- actually executed (Jest), 19 passing (2 updated for the new explicit delivery_status write),apps/dgfy-api/tests/addPendingEmailOtpDeliveryStatus.migration.test.js -- actually executed (Jest), 6 passing (new),apps/dgfy-api/tests/fixEmailOtpDeliveryStatus.migration.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/authEmailOtpTenantScope.test.js -- actually executed (Jest), unchanged, regression-clean,apps/dgfy-api/tests/tenantHandler.emailOtp.test.js -- actually executed (Jest), unchanged, regression-clean,node --check on every changed apps/dgfy-api .js file and the new migration .cjs file,node scripts/check-app-version-bump.js and node scripts/propose-version-level.js -- confirmed a dgfy-api MINOR bump (1.2.2 -> 1.3.0, matching the bare feat commit's proposed level, corrected from an earlier patch-only bump per pr-reviewer RF-1) and a dgfy-migration-runner patch bump (1.1.0 -> 1.1.1), both PASS
+rollback_note: No destructive change, but rollback is NOT code-only -- corrected per pr-reviewer RF-2 (2026-09-05), which caught that the pre-#1614 emailOtpService omits delivery_status on create and so inherits whatever the column default is; once this migration applies, that default is 'pending', not 'sent', so old code paired with the new default would read every successful send back as 'pending' and the guest-checkout use case would wrongly reject it as undelivered. Coordinated rollback order, if ever needed: quiesce OTP traffic (or take the API down briefly), run the migration's down() (which backfills any 'pending' row to 'failed' with an explanatory delivery_error before narrowing the enum back, the same lossy-but-honest approach the prior 20260807000001 migration's down() already established for 'recorded'/'bounced'), only then deploy the previous code, then resume traffic. Never serve old code against the widened/'pending'-defaulted schema, and never serve this PR's code against the narrowed enum. The error-contract change (storeUseCases.js) and the boot-time SMTP verify (server.js) remain independently revertible as pure code with no migration coupling.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-09-05T03:48:59.000Z
@@ -83,7 +83,9 @@ at PR-open time on `develop`, not a defect (see `pr-reviewer`'s own note on this
   `models/Landlord/EmailOtp.js`) and the new migration `.cjs` file -- dgfy-api has no real build
   step, this is the Tier 0 equivalent per `implement`'s checkpoint policy.
 - `node scripts/check-app-version-bump.js` -- confirmed to require, then pass with, a `dgfy-api`
-  patch version bump for this change set.
+  minor version bump (`1.2.2 -> 1.3.0`, matching the bare `feat` commit's proposed level per
+  `propose-version-level.js`; corrected from an earlier patch-only bump per pr-reviewer RF-1) for
+  this change set.
 - Production root cause for #1614 is a rejected SMTP credential at the mail provider, verified
   read-only via `ssh dgfy` (log correlation to the exact repro timestamp, a live `nodemailer.verify()`
   auth probe against both port 465 and 587, and a SOPS-decrypt fingerprint match confirming the
@@ -124,3 +126,22 @@ one blocker and several should-fixes/nits. All addressed in the same PR, same co
 No change to this declaration's `classification`, `surfaces`, or `reason_codes_impacted` -- these
 are all fixes/refinements within the scope already declared above, not a new compliance-sensitive
 surface.
+
+## Amendment — 2026-09-05, re-review (pr-reviewer RF-1/RF-2, second round)
+
+Same Codex `pr-reviewer` terminal, re-reviewing head `930dae991`. Verdict `COMMENT` (no blockers;
+all required static/GitHub checks green, `mergeStateStatus: CLEAN`) — confirmed RF-1 through RF-6
+from the first round resolved, and raised two new, smaller should-fixes, both addressed here:
+
+- **RF-1 (should-fix, fixed):** this declaration's `verification_evidence` still described the
+  `dgfy-api` bump as `patch`, stale after the RF-1 (first round) correction to a `minor` bump.
+  Corrected above.
+- **RF-2 (should-fix, fixed) — the more substantive one.** The original `rollback_note` claimed
+  reverting the code alone (leaving the migration applied) was safe. Caught correctly: pre-#1614
+  `emailOtpService` never wrote `delivery_status` explicitly on create, relying entirely on the
+  column default. Once this migration ships, that default becomes `'pending'` — so old code would
+  read a genuinely successful send back as `'pending'`, and the guest-checkout use case's own
+  `deliveryStatus !== 'sent'` guard would then reject it as undelivered, even though the email was
+  actually sent. `rollback_note` corrected above to a coordinated rollback order (quiesce traffic,
+  run the migration `down()` first, only then deploy old code, then resume) rather than a
+  code-only claim.
