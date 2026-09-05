@@ -3,7 +3,9 @@ import os from 'os';
 import path from 'path';
 import sharp from 'sharp';
 import {
+    classifyImageAsset,
     deriveImageAssetVariantUrls,
+    deriveVariantsFromAcceptedLarge,
     MAX_PUBLIC_IMAGE_BYTES,
     removeOptimizedImageAsset,
     storeOptimizedImageAsset
@@ -48,21 +50,19 @@ describe('imageAssetStorage utility', () => {
         expect(stored.image_variants.thumbnail_url).toMatch(/\/thumb\.webp$/);
         expect(stored.image_variants.medium_url).toMatch(/\/medium\.webp$/);
         expect(stored.image_variants.large_url).toMatch(/\/large\.webp$/);
-        expect(stored.image_variants.version).toBe(2);
+        expect(stored.image_variants.version).toBe(3);
         expect(stored.image_variants.placeholder_url).toMatch(/\/placeholder\.webp$/);
-        expect(stored.image_variants.avif.thumbnail_url).toMatch(/\/thumb\.avif$/);
+        expect(stored.image_variants.avif).toBeUndefined();
         expect(stored.image_variants.webp.large_url).toMatch(/\/large\.webp$/);
 
         await expect(fs.access(path.join(uploadsRoot, stored.path))).resolves.toBeUndefined();
         await expect(fs.access(path.join(uploadsRoot, stored.original.path))).resolves.toBeUndefined();
         await expect(fs.access(path.join(
             uploadsRoot,
-            stored.image_variants.avif.thumbnail_url.replace(/^\/uploads\//, '')
-        ))).resolves.toBeUndefined();
-        await expect(fs.access(path.join(
-            uploadsRoot,
             stored.image_variants.placeholder_url.replace(/^\/uploads\//, '')
         ))).resolves.toBeUndefined();
+        const publicAssetDirEntries = await fs.readdir(path.join(uploadsRoot, path.dirname(stored.path)));
+        expect(publicAssetDirEntries.some((entry) => entry.endsWith('.avif'))).toBe(false);
         expect(stored.variants.large.size).toBeLessThanOrEqual(MAX_PUBLIC_IMAGE_BYTES);
     });
 
@@ -131,7 +131,7 @@ describe('imageAssetStorage utility', () => {
         expect(stored.variants.large.url).toMatch(/\/large\.png$/);
         expect(stored.path).toMatch(/storefront-assets\/tenant-b\/cover-test-.*\/large\.png$/);
         expect(stored.image_variants.webp.thumbnail_url).toMatch(/\/thumb\.webp$/);
-        expect(stored.image_variants.avif.thumbnail_url).toMatch(/\/thumb\.avif$/);
+        expect(stored.image_variants.avif).toBeUndefined();
     });
 
     it('derives sibling variant urls and removes the full asset footprint', async () => {
@@ -191,7 +191,7 @@ describe('imageAssetStorage utility', () => {
         await expect(fs.access(path.join(legacyOriginalDir, siblingFile))).resolves.toBeUndefined();
     });
 
-    it('still recurses and removes the full asset footprint for a v2 optimized-asset path (no regression)', async () => {
+    it('still recurses and removes the full asset footprint for a versioned optimized-asset path (no regression)', async () => {
         const tempPath = path.join(uploadsRoot, 'upload-photo-v2-guard.jpg');
         await sharp({
             create: {
@@ -223,5 +223,119 @@ describe('imageAssetStorage utility', () => {
         // The v2 asset's own folder is gone, but the parent tenant directory
         // itself is untouched.
         await expect(fs.access(tenantDir)).resolves.toBeUndefined();
+    });
+
+    describe('deriveImageAssetVariantUrls -- version-gated avif', () => {
+        it('v2 asset variants still include avif', () => {
+            const storedPath = 'storefront-catalog/tenant-x/item-1-1700000000000-v2-a1b2c3d4/large.webp';
+            const variants = deriveImageAssetVariantUrls({ storedPath });
+
+            expect(variants.avif).toBeDefined();
+            expect(variants.avif.thumbnail_url).toMatch(/thumb\.avif$/);
+            expect(variants.version).toBe(2);
+        });
+
+        it('v3 asset variants omit avif', () => {
+            const storedPath = 'storefront-catalog/tenant-x/item-1-1700000000000-v3-a1b2c3d4/large.webp';
+            const variants = deriveImageAssetVariantUrls({ storedPath });
+
+            expect(variants.avif).toBeUndefined();
+            expect(variants.webp).toBeDefined();
+            expect(variants.version).toBe(3);
+        });
+    });
+
+    describe('removeOptimizedImageAsset -- versioned folder recognition regression matrix', () => {
+        it('recursively removes a manually-constructed -v2- asset folder', async () => {
+            const assetFolder = 'item-50-1700000000000-v2-deadbeef';
+            const assetDir = path.join(uploadsRoot, 'storefront-catalog', 'tenant-matrix', assetFolder);
+            await fs.mkdir(assetDir, { recursive: true });
+            await fs.writeFile(path.join(assetDir, 'large.webp'), 'bytes');
+
+            await removeOptimizedImageAsset({
+                uploadsRoot,
+                storedPath: `storefront-catalog/tenant-matrix/${assetFolder}/large.webp`
+            });
+
+            await expect(fs.access(assetDir)).rejects.toThrow();
+        });
+
+        it('recursively removes a manually-constructed -v3- asset folder', async () => {
+            const assetFolder = 'item-51-1700000000000-v3-deadbeef';
+            const assetDir = path.join(uploadsRoot, 'storefront-catalog', 'tenant-matrix', assetFolder);
+            await fs.mkdir(assetDir, { recursive: true });
+            await fs.writeFile(path.join(assetDir, 'large.webp'), 'bytes');
+
+            await removeOptimizedImageAsset({
+                uploadsRoot,
+                storedPath: `storefront-catalog/tenant-matrix/${assetFolder}/large.webp`
+            });
+
+            await expect(fs.access(assetDir)).rejects.toThrow();
+        });
+    });
+
+    describe('classifyImageAsset precedence -- sourceMimeHint > metadata alpha > reportedMime', () => {
+        it('falls through to reportedMime when hint and metadata are both absent (unchanged today)', () => {
+            expect(classifyImageAsset({ reportedMime: 'image/webp' })).toBe('photo');
+        });
+
+        it('sourceMimeHint overrides reportedMime (mime says photo, hint says graphic)', () => {
+            expect(classifyImageAsset({ reportedMime: 'image/webp', sourceMimeHint: 'image/png' })).toBe('graphic');
+        });
+
+        it('sourceMimeHint overrides reportedMime the other direction (mime says graphic, hint says photo)', () => {
+            expect(classifyImageAsset({ reportedMime: 'image/png', sourceMimeHint: 'image/jpeg' })).toBe('photo');
+        });
+
+        it('metadata alpha heuristic promotes a photo mime to graphic when hint is absent', () => {
+            expect(classifyImageAsset({ reportedMime: 'image/webp', metadata: { hasAlpha: true } })).toBe('graphic');
+        });
+
+        it('metadata present without alpha falls through unchanged', () => {
+            expect(classifyImageAsset({ reportedMime: 'image/webp', metadata: { hasAlpha: false } })).toBe('photo');
+        });
+
+        it('an unrecognized hint is ignored, falling through to the metadata heuristic rather than straight to mime', () => {
+            expect(classifyImageAsset({
+                reportedMime: 'image/webp',
+                sourceMimeHint: 'image/heic',
+                metadata: { hasAlpha: true }
+            })).toBe('graphic');
+        });
+    });
+
+    describe('deriveVariantsFromAcceptedLarge', () => {
+        it('derives medium/thumbnail variants in the requested formats from an accepted large file', async () => {
+            const assetId = 'item-60-1700000000000-v3-cafebabe';
+            const publicAssetDir = path.join(uploadsRoot, 'storefront-catalog', 'tenant-smoke', assetId);
+            await fs.mkdir(publicAssetDir, { recursive: true });
+            const acceptedLargePath = path.join(publicAssetDir, 'large.jpg');
+            await sharp({
+                create: {
+                    width: 1920,
+                    height: 1080,
+                    channels: 3,
+                    background: { r: 10, g: 20, b: 30 }
+                }
+            }).jpeg({ quality: 90 }).toFile(acceptedLargePath);
+
+            const result = await deriveVariantsFromAcceptedLarge({
+                acceptedLargePath,
+                publicAssetDir,
+                normalizedSurface: 'storefront-catalog',
+                normalizedScopeSegments: ['tenant-smoke'],
+                assetId,
+                deliveryFormats: [{ ext: '.webp', encoder: 'webp' }],
+                sourceWidth: 1920
+            });
+
+            expect(result.webp.medium).toBeDefined();
+            expect(result.webp.thumbnail).toBeDefined();
+            expect(result.webp.medium.url).toMatch(/\/medium\.webp$/);
+            expect(result.webp.thumbnail.url).toMatch(/\/thumb\.webp$/);
+            await expect(fs.access(path.join(publicAssetDir, 'medium.webp'))).resolves.toBeUndefined();
+            await expect(fs.access(path.join(publicAssetDir, 'thumb.webp'))).resolves.toBeUndefined();
+        });
     });
 });

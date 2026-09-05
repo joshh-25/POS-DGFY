@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-03
-last_reviewed: 2026-08-14
+last_reviewed: 2026-09-06
 review_by: 2026-11-03
 applies_to: architecture_decision
 topic: customer_access_modes_and_inventory_display
@@ -210,3 +210,19 @@ The in-process queue fallback is limited to local development when Redis is
 unavailable. Service-worker caching continues to bypass `/api/` and
 `/uploads/`; image binaries are not placed in the browser, WebView, or Redis
 cache as a substitute for the persisted catalog asset.
+
+## Amendments (2026-09-06)
+
+AVIF encoding is deprecated and disabled by default in the image upload pipeline as of Phase 296
+(#265 epic, PR 2 of 5) -- it is not removed. `storeOptimizedImageAsset`'s delivery-format set no
+longer requests an AVIF encode for new uploads (`RESPONSIVE_ASSET_VERSION` is now 3); the AVIF
+encoder path (`AVIF_QUALITY_STEPS`, the `encoder === 'avif'` branches) remains in code, marked
+`@deprecated`, for potential future reactivation or a manual/offline AVIF regeneration tool.
+
+Existing assets written under the prior responsive-asset version (`-v2-<hash>` folders) are
+unaffected and require no migration: their `.avif` files remain on disk and continue to be served,
+and `deriveImageAssetVariantUrls` continues to advertise `avif` URLs for those folders specifically
+by parsing the asset version out of the folder name rather than assuming a single global version.
+New assets (`-v3-<hash>` folders) never advertise an `avif` URL and never had one encoded.
+
+`status: amended` (already the case from prior addenda) is unchanged.

@@ -14,10 +14,24 @@ export const IMAGE_VARIANT_WIDTHS = Object.freeze({
 export const MAX_PUBLIC_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_INPUT_IMAGE_PIXELS = 40 * 1024 * 1024;
 const PHOTO_QUALITY_STEPS = Object.freeze([80, 76, 72, 68]);
+/**
+ * @deprecated AVIF dropped from the active upload pipeline as of Phase 296 (#265) --
+ * getDeliveryFormats() no longer requests the 'avif' format, so this constant is unreferenced
+ * from the default encode path. Kept for potential future reactivation or a manual/offline AVIF
+ * regeneration tool. Existing v2 assets' .avif files on disk continue to be served unaffected --
+ * see the assetVersion <= 2 gate in deriveImageAssetVariantUrls.
+ */
 const AVIF_QUALITY_STEPS = Object.freeze([65, 60, 55, 50]);
 const GRAPHIC_QUALITY_STEPS = Object.freeze([100, 90, 80]);
-const RESPONSIVE_ASSET_VERSION = 2;
+const RESPONSIVE_ASSET_VERSION = 3;
 const PLACEHOLDER_WIDTH = 32;
+
+// Matches the per-asset optimized-variant folder suffix this module has ever produced --
+// `-v<N>-<8-hex-hash>`, e.g. `-v2-a1b2c3d4` or `-v3-a1b2c3d4`. Capturing group 1 is the parsed
+// asset version. Single source of truth for both deriveImageAssetVariantUrls (URL derivation)
+// and removeOptimizedImageAsset (delete-path folder recognition) -- see the #1379/#871 comment
+// below on why these two must never drift apart again.
+const RESPONSIVE_ASSET_FOLDER_PATTERN = /-v(\d+)-[0-9a-f]{8}$/i;
 
 const IMAGE_VARIANT_FILE_NAMES = Object.freeze({
     thumbnail: 'thumb',
@@ -64,7 +78,39 @@ const getOriginalExtension = ({ originalName, reportedMime }) => {
     }
 };
 
-const classifyImageAsset = ({ reportedMime }) => {
+/**
+ * Classifies an uploaded image as 'photo' or 'graphic' to pick the public fallback encoder
+ * (webp vs png-family). Precedence: sourceMimeHint -> metadata alpha heuristic -> reportedMime
+ * (this last step is today's entire behavior, unchanged when the two new params are omitted).
+ *
+ * sourceMimeHint and metadata are both optional and NOT wired into storeOptimizedImageAsset's own
+ * call site in this PR (Phase 296, #265) -- that wiring is Phase 297's job, once the client starts
+ * sending its own re-encoded MIME type and a pre-fetched sharp metadata() object. Added now so
+ * Phase 297 is a caller-side change, not new classification logic.
+ *
+ * @param {object} params
+ * @param {string} [params.reportedMime] - the sniffed/reported MIME of the file actually being
+ *   encoded (today: always the original upload's own MIME).
+ * @param {string|null} [params.sourceMimeHint] - the *pre-conversion* MIME the client claims the
+ *   user's original file had, before any client-side re-encoding. Highest precedence: once wired
+ *   (Phase 297), this is what keeps a client-converted-to-WebP PNG logo from being misclassified.
+ *   Untrusted hint, not a security boundary -- an unrecognized value is ignored, never throws.
+ * @param {{hasAlpha?: boolean}|null} [params.metadata] - an already-fetched sharp metadata()
+ *   result for the file being encoded (not fetched by this function -- keeps it pure/sync and
+ *   avoids a second redundant metadata() disk read; storeOptimizedImageAsset already fetches one
+ *   at line ~263). When hasAlpha is true, promotes an otherwise photo-classified MIME (namely
+ *   image/webp, which the client-conversion path will make common) to 'graphic' -- alpha channels
+ *   are a strong graphic/logo signal a JPEG-only classifier can't see. Never demotes an
+ *   already-graphic MIME back to 'photo'.
+ * @returns {'photo'|'graphic'}
+ */
+export const classifyImageAsset = ({ reportedMime, sourceMimeHint = null, metadata = null } = {}) => {
+    const normalizedHint = String(sourceMimeHint || '').trim().toLowerCase();
+    if (PHOTO_MIME_TYPES.has(normalizedHint)) return 'photo';
+    if (GRAPHIC_MIME_TYPES.has(normalizedHint)) return 'graphic';
+
+    if (metadata && metadata.hasAlpha === true) return 'graphic';
+
     const normalizedMime = String(reportedMime || '').trim().toLowerCase();
     if (PHOTO_MIME_TYPES.has(normalizedMime)) return 'photo';
     if (GRAPHIC_MIME_TYPES.has(normalizedMime)) return 'graphic';
@@ -81,7 +127,6 @@ const getDeliveryFormats = ({ classification }) => {
     const fallback = getPublicFormat({ classification });
     const formats = new Map([[fallback.encoder, fallback]]);
     formats.set('webp', { ext: '.webp', encoder: 'webp' });
-    formats.set('avif', { ext: '.avif', encoder: 'avif' });
     return Array.from(formats.values());
 };
 
@@ -136,6 +181,9 @@ const buildVariantOutput = async ({
 
             if (encoder === 'webp') {
                 transform.webp({ quality, effort: 5 });
+            // @deprecated -- unreachable from the default upload path as of Phase 296 (#265); see
+            // AVIF_QUALITY_STEPS above. Retained only for potential future reactivation or a
+            // manual/offline AVIF regeneration tool.
             } else if (encoder === 'avif') {
                 transform.avif({ quality, effort: 5 });
             } else {
@@ -159,6 +207,87 @@ const buildVariantOutput = async ({
 };
 
 const buildPublicUrl = (relativePath) => `/uploads/${toPosixRelative(relativePath)}`;
+
+/**
+ * Derives the medium/thumbnail delivery variants for a set of formats from an already-accepted
+ * `large` file on disk, instead of re-deriving from the original source image. Not wired into
+ * storeOptimizedImageAsset in this PR -- Phase 297 (#265) is expected to call this once a
+ * client-supplied `large` variant has already passed validation, so the server can skip
+ * re-encoding from the original entirely for that request.
+ *
+ * Mirrors storeOptimizedImageAsset's own per-format/per-variant loop (lines ~268-298) exactly,
+ * scoped to non-large variant keys only -- deliberately close to that loop rather than a generic
+ * abstraction the two share, since reconciling them into one shared loop is Phase 297's wiring
+ * job, not this PR's.
+ *
+ * @param {object} params
+ * @param {string} params.acceptedLargePath - absolute path to the already-accepted `large` file.
+ * @param {string} params.publicAssetDir - absolute directory to write the derived files into
+ *   (the same per-asset directory the `large` file itself already lives in).
+ * @param {string} params.normalizedSurface - matches storeOptimizedImageAsset's own sanitized
+ *   surface segment, for building the returned relative URL paths.
+ * @param {string[]} [params.normalizedScopeSegments] - matches storeOptimizedImageAsset's own
+ *   sanitized scope segments.
+ * @param {string} params.assetId - the asset folder name (e.g. `item-10-<ts>-v3-<hash>`).
+ * @param {Array<{ext: string, encoder: string}>} params.deliveryFormats - result of
+ *   getDeliveryFormats({ classification }); same shape storeOptimizedImageAsset already builds.
+ * @param {number|null} [params.sourceWidth] - width of the accepted large file, if already known
+ *   (avoids a redundant metadata() read); buildVariantOutput never upscales regardless.
+ * @param {('medium'|'thumbnail')[]} [params.variantKeys] - which non-large variants to derive.
+ *   Defaults to both. A 'large' entry, if ever passed, is silently skipped (this function only
+ *   derives *from* an accepted large, it never re-derives large itself).
+ * @returns {Promise<Record<string, Record<string, {path: string, url: string, width: number|null,
+ *   height: number|null, size: number|null, mime: string}>>>} a generatedByFormat-shaped map
+ *   (same shape as storeOptimizedImageAsset's own `generatedByFormat`), containing only the
+ *   requested variantKeys.
+ */
+export const deriveVariantsFromAcceptedLarge = async ({
+    acceptedLargePath,
+    publicAssetDir,
+    normalizedSurface,
+    normalizedScopeSegments = [],
+    assetId,
+    deliveryFormats,
+    sourceWidth = null,
+    variantKeys = ['medium', 'thumbnail']
+}) => {
+    if (!acceptedLargePath || !publicAssetDir || !assetId || !Array.isArray(deliveryFormats)) {
+        throw new Error('acceptedLargePath, publicAssetDir, assetId, and deliveryFormats are required');
+    }
+
+    const generatedByFormat = {};
+    for (const format of deliveryFormats) {
+        generatedByFormat[format.encoder] = {};
+        for (const variantKey of variantKeys) {
+            const width = IMAGE_VARIANT_WIDTHS[variantKey];
+            if (!width) continue; // guards a 'large' or unrecognized key in variantKeys
+            const variantFilename = `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${format.ext}`;
+            const variantRelativePath = path.posix.join(
+                normalizedSurface,
+                ...normalizedScopeSegments.map((segment) => toPosixRelative(segment)),
+                assetId,
+                variantFilename
+            );
+            const variantAbsolutePath = path.join(publicAssetDir, variantFilename);
+            const output = await buildVariantOutput({
+                sourcePath: acceptedLargePath,
+                destinationPath: variantAbsolutePath,
+                encoder: format.encoder,
+                width,
+                sourceWidth
+            });
+            generatedByFormat[format.encoder][variantKey] = {
+                path: variantRelativePath,
+                url: buildPublicUrl(variantRelativePath),
+                width: output.width,
+                height: output.height,
+                size: output.size,
+                mime: `image/${format.encoder}`
+            };
+        }
+    }
+    return generatedByFormat;
+};
 
 export const deriveImageAssetVariantUrls = ({ storedPath = null, storedUrl = null } = {}) => {
     const relative = String(storedPath || '').trim()
@@ -194,7 +323,9 @@ export const deriveImageAssetVariantUrls = ({ storedPath = null, storedUrl = nul
 
     const parentDir = path.posix.dirname(normalized);
     const assetFolder = path.posix.basename(parentDir);
-    const isResponsiveAsset = /-v2-[0-9a-f]{8}$/i.test(assetFolder);
+    const responsiveAssetMatch = RESPONSIVE_ASSET_FOLDER_PATTERN.exec(assetFolder);
+    const isResponsiveAsset = Boolean(responsiveAssetMatch);
+    const assetVersion = responsiveAssetMatch ? Number(responsiveAssetMatch[1]) : null;
     const buildUrlForVariant = (variantKey, targetExtension = extension) => buildPublicUrl(path.posix.join(
         parentDir,
         `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${targetExtension}`
@@ -213,14 +344,17 @@ export const deriveImageAssetVariantUrls = ({ storedPath = null, storedUrl = nul
         large_url: buildUrlForVariant('large', targetExtension)
     });
 
-    return {
+    const responsiveVariants = {
         ...fallbackVariants,
         placeholder_url: buildPublicUrl(path.posix.join(parentDir, 'placeholder.webp')),
-        avif: buildFormatVariants('.avif'),
         webp: buildFormatVariants('.webp'),
         widths: { ...IMAGE_VARIANT_WIDTHS },
-        version: RESPONSIVE_ASSET_VERSION
+        version: assetVersion // Finding 3: parsed version, not the module constant
     };
+    if (assetVersion <= 2) {
+        responsiveVariants.avif = buildFormatVariants('.avif');
+    }
+    return responsiveVariants;
 };
 
 export const storeOptimizedImageAsset = async ({
@@ -413,14 +547,14 @@ export const removeOptimizedImageAsset = async ({ uploadsRoot, storedPath }) => 
     const assetFolderAbsolute = path.resolve(uploadsRoot, relativeDir);
     const assetFolderRelative = toPosixRelative(relativeDir);
     // #1379/#871: `relativeDir` is only safe to recurse into when it is a real
-    // per-asset optimized-variant folder (`<base>-<ts>-v2-<hash>/`), the same
+    // per-asset optimized-variant folder (`<base>-<ts>-v<N>-<hash>/`), the same
     // shape `deriveImageAssetVariantUrls` above already recognizes. For a
     // legacy flat path (`<surface>/<tenant>/item-41-<ts>.jpg`), `relativeDir`
     // resolves to the tenant's *entire* catalog directory -- recursing there
     // deleted every image for that tenant (confirmed live in production,
     // 2026-09-01/02). A legacy path must only ever unlink the single file.
     const assetFolderName = path.posix.basename(assetFolderRelative);
-    const isResponsiveAssetFolder = /-v2-[0-9a-f]{8}$/i.test(assetFolderName);
+    const isResponsiveAssetFolder = RESPONSIVE_ASSET_FOLDER_PATTERN.test(assetFolderName);
     const assetFolderExists = isResponsiveAssetFolder && await fileExists(assetFolderAbsolute);
     if (assetFolderExists) {
         await fsPromises.rm(assetFolderAbsolute, { recursive: true, force: true });
