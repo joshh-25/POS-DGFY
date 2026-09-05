@@ -1,6 +1,8 @@
 import { ShieldCheck } from 'lucide-react';
 import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { buildFeeAndVatSummaryRows } from '../../../../shared/model/storefrontFeesAndTaxesPresentation.js';
+import { VatDisclosureNote } from '../../../../shared/components/checkout/VatDisclosureNote.jsx';
 
 const SIMPLE_ACCENT = '#176B3A';
 const SIMPLE_ACCENT_SOFT = '#E4C98E';
@@ -68,7 +70,7 @@ export function SimpleCheckoutSummaryContent({
     ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
     ...(voucherDiscountSummaryRow ? [voucherDiscountSummaryRow] : []),
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
-    { label: 'Fees & Taxes', value: money((totals.service_fee_amount || 0) + (totals.vat_amount || 0)) },
+    ...buildFeeAndVatSummaryRows({ totals, money }),
     { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true },
     ...downpaymentRows
   ];
@@ -87,6 +89,7 @@ export function SimpleCheckoutSummaryContent({
         totalsRows={totalsRows}
         bodyFont={bodyFont}
         displayFont={displayFont}
+        footnote={<VatDisclosureNote />}
       />
       <SimpleCheckoutTrustCard displayFont={displayFont} />
     </div>

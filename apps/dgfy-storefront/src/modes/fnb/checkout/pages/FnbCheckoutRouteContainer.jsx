@@ -115,7 +115,6 @@ export function FnbCheckoutRouteContainer({
   fnbScheduledFor,
   fnbScheduleSummaryLabel,
   fnbSpecialInstructions,
-  fnbSummaryFeeAndTaxes,
   goStoreCatalogPage,
   goStoreTrackPage,
   guestCheckoutOtpCode,
@@ -853,7 +852,6 @@ export function FnbCheckoutRouteContainer({
           scheduleLabel={fnbScheduleSummaryLabel}
           setSummaryOpen={setShowFnbMobileOrderSummary}
           showSummary={showFnbMobileOrderSummary}
-          totalFeeAndTaxes={fnbSummaryFeeAndTaxes}
           totals={totalsForDisplay}
           withAssetOrigin={withAssetOrigin}
         />

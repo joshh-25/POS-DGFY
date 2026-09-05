@@ -239,6 +239,26 @@ redeploy/observe, and increment the repair revision. If the repair is live DB, s
 infrastructure work, stop and hand it to Pat. If a developer already made the fix on `develop`,
 cherry-pick only an isolated, reviewed commit with `-x`; mixed commits must be recreated narrowly.
 
+**`apps_touched` — required on every `staging_repair` entry (ADR 0081 Decision 8 amendment, #1610).**
+List exactly the apps whose `build_*` flag was `true` on this repair's STAGING redeploy below —
+`dgfy-api` and `dgfy-migration-runner` always appear together (`build_api` always rebuilds them as
+one paired unit), each frontend independently. Get this wrong and an app this repair didn't actually
+touch will silently claim the wrong candidate identity at PROD dispatch time — that's the exact bug
+#1610 was filed for. Example, a repair that only rebuilt `dgfy-ims`:
+
+```json
+{ "kind": "staging_repair", "revision": 1, "sha": "<sha>", "parent_sha": "<prev-sha>",
+  "branch": "fix/staging/$CANDIDATE_ID-r1", "pr": 1234, "issue": 1233,
+  "apps_touched": ["dgfy-ims"] }
+```
+
+`check-promotion-candidate.js` now rejects a `staging_repair` revision missing `apps_touched`
+entirely, so this isn't optional — validate right after editing:
+
+```bash
+node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
+```
+
 When observation passes, cut the next release revision from the latest staging head:
 
 ```bash
@@ -317,15 +337,48 @@ CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID
 gh workflow run deploy.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" --ref staging
 ```
 
-**PROD dispatch — ask Pat first, every time, on either flow.** `$CANDIDATE_SOURCE_SHA` is already
-set by this point: from the STAGING block just above on the default flow (`release/<candidate_id>-rN`
-was cut from that exact staging SHA, so the identity is unchanged by the merge), or from the
-`#1007-gated exception` section's own `git rev-parse origin/develop` capture on that flow (no
-staging leg, no candidate manifest — RF-2, PR #1590 review):
+**PROD dispatch — ask Pat first, every time, on either flow.** `deploy-main.yml` takes candidate
+source identity **per app group** (ADR 0081 Decision 8 amendment, #1610) — `candidate_source_sha_api`
+(covers both `dgfy-api` and `dgfy-migration-runner`), `candidate_source_sha_frontend_ims`, `_pos`,
+`_storefront` — not one shared value, since PROD rebuilds every app unconditionally and a single
+shared value would mislabel any app a staging repair never touched.
+
+**Default flow** (candidate manifest exists): resolve each app's own value via
+`resolveCandidateSourceShaByApp()` rather than reusing `$CANDIDATE_SOURCE_SHA` uniformly:
 
 ```bash
-gh workflow run deploy-main.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" --ref main
+eval "$(node -e "
+const { resolveCandidateSourceShaByApp } = require('./scripts/check-promotion-candidate');
+const manifest = require('./.tmp/release-candidates/$CANDIDATE_ID.json');
+const byApp = resolveCandidateSourceShaByApp(manifest);
+console.log('CANDIDATE_SOURCE_SHA_API=' + byApp['dgfy-api']);
+console.log('CANDIDATE_SOURCE_SHA_IMS=' + byApp['dgfy-ims']);
+console.log('CANDIDATE_SOURCE_SHA_POS=' + byApp['dgfy-pos']);
+console.log('CANDIDATE_SOURCE_SHA_STOREFRONT=' + byApp['dgfy-storefront']);
+")"
 
+gh workflow run deploy-main.yml -f deploy=true \
+  -f candidate_source_sha_api="$CANDIDATE_SOURCE_SHA_API" \
+  -f candidate_source_sha_frontend_ims="$CANDIDATE_SOURCE_SHA_IMS" \
+  -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA_POS" \
+  -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA_STOREFRONT" \
+  --ref main
+```
+
+**#1007-gated exception** (no manifest, no repair concept, nothing has diverged per app): the single
+`$CANDIDATE_SOURCE_SHA` captured in that section (`git rev-parse origin/develop` at cut time) is the
+correct value for all four inputs:
+
+```bash
+gh workflow run deploy-main.yml -f deploy=true \
+  -f candidate_source_sha_api="$CANDIDATE_SOURCE_SHA" \
+  -f candidate_source_sha_frontend_ims="$CANDIDATE_SOURCE_SHA" \
+  -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA" \
+  -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA" \
+  --ref main
+```
+
+```bash
 # Verify health after either dispatch — read-only, unattended
 gh workflow run verify-deployment.yml -f environment=<DEV|STAGING|PROD> -f poll_minutes=5
 gh run list --workflow=verify-deployment.yml -L1 --json databaseId,status
@@ -358,3 +411,11 @@ case (the #1007/hotfix path, on either invocation form) — both are fine to pro
 published for this candidate does not actually trace back to where it should, or (staging-unreadable
 specifically) that STAGING's own label-stamping regressed — report and escalate either way, do not
 deploy past it or dismiss it as noise.
+
+**Per app now, not one shared value (ADR 0081 Decision 8 amendment, #1610).** `--manifest` mode
+resolves and compares each app against its OWN candidate source identity (the SHA of the last
+revision that actually rebuilt it — see the `apps_touched` note in "Candidate repair after the
+staging merge" above), not the manifest's single `current_staging_sha` — an app a repair never
+touched is expected to keep matching its earlier identity, not the candidate's latest one. Each
+printed `[PASS]`/`[FAIL]` line now also shows the `candidate_source_sha` it was actually compared
+against, so a genuine mismatch is legible without cross-referencing the manifest by hand.

@@ -166,6 +166,60 @@ function checkOrchestratorCandidateSourceShaWiring(orchestratorText) {
   return problems;
 }
 
+// #1610 (ADR 0081 Decision 8 amendment): unlike deployment-orchestrator.yml above (STAGING/DEV),
+// deploy-main.yml (PROD) rebuilds every app on every dispatch regardless of what changed -- there
+// is no bare X.Y.Z tag yet to skip rebuilding -- so a single shared candidate_source_sha would
+// mislabel any app a staging repair didn't touch with the candidate's LATEST identity instead of
+// the earlier one its STAGING image actually carries (scripts/check-promotion-candidate.js's
+// resolveCandidateSourceShaByApp() is what resolves the correct value per app). Each job below
+// reads its OWN grouped input instead; dgfy-api and dgfy-migration-runner share
+// candidate_source_sha_api since build_api always rebuilds them together as one paired unit.
+const DEPLOY_MAIN_FILE = '.github/workflows/deploy-main.yml';
+
+const DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS = Object.freeze([
+  'candidate_source_sha_api',
+  'candidate_source_sha_frontend_ims',
+  'candidate_source_sha_frontend_pos',
+  'candidate_source_sha_frontend_storefront',
+]);
+
+const DEPLOY_MAIN_JOB_INPUT_NAMES = Object.freeze([
+  ['dgfy-api', 'candidate_source_sha_api'],
+  ['dgfy-migration-runner', 'candidate_source_sha_api'],
+  ['frontend-ims-prod', 'candidate_source_sha_frontend_ims'],
+  ['frontend-pos-prod', 'candidate_source_sha_frontend_pos'],
+  ['frontend-storefront-prod', 'candidate_source_sha_frontend_storefront'],
+]);
+
+/**
+ * ADR 0081 Decision 8 amendment (#1610): deploy-main.yml must declare all four per-app-group
+ * `candidate_source_sha_*` workflow_dispatch inputs, and each of its five builder jobs (not
+ * `publish`) must forward its own correctly-grouped one -- checked per-job, same shape as
+ * checkOrchestratorCandidateSourceShaWiring above, so one job silently missing or misrouting its
+ * input isn't masked by another job having the right one.
+ */
+function checkDeployMainCandidateSourceShaWiring(deployMainText) {
+  const problems = [];
+
+  for (const inputName of DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS) {
+    const pattern = new RegExp(`${inputName}:\\s*\\n(?:[^\\n]*\\n)*?\\s*type:\\s*string`);
+    if (!pattern.test(deployMainText)) {
+      problems.push(`deploy-main.yml: "on.workflow_dispatch.inputs" is missing a "${inputName}" string input.`);
+    }
+  }
+
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const [jobName, inputName] of DEPLOY_MAIN_JOB_INPUT_NAMES) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    const forwardPattern = new RegExp(`candidate_source_sha:\\s*\\$\\{\\{\\s*inputs\\.${inputName}\\s*\\}\\}`);
+    if (!block || !forwardPattern.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not forward "candidate_source_sha: \${{ inputs.${inputName} }}" to its called workflow.`);
+    }
+  }
+
+  return problems;
+}
+
 /** The build-push step must bake APP_VERSION as a build-arg and reference the meta step's computed
  * labels output, and must expose its digest (id: build) for the immutability-guard step to retag. */
 function checkBuildStepStamping(workflowText, { label }) {
@@ -280,6 +334,9 @@ function runAllChecks({ readFile = read } = {}) {
   problems.push(...checkOrchestratorVersionTagMapping(orchestratorText));
   problems.push(...checkOrchestratorCandidateSourceShaWiring(orchestratorText));
 
+  const deployMainText = readFile(DEPLOY_MAIN_FILE);
+  problems.push(...checkDeployMainCandidateSourceShaWiring(deployMainText));
+
   return problems;
 }
 
@@ -312,5 +369,9 @@ module.exports = {
   checkDockerfileAcceptsAppVersion,
   checkOrchestratorVersionTagMapping,
   checkOrchestratorCandidateSourceShaWiring,
+  checkDeployMainCandidateSourceShaWiring,
+  DEPLOY_MAIN_FILE,
+  DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS,
+  DEPLOY_MAIN_JOB_INPUT_NAMES,
   runAllChecks,
 };
