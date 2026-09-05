@@ -32,11 +32,14 @@ import { Input } from '@/components/ui/input';
 import { CATALOG_GRID_GAP_PX } from '../hooks/usePosCatalogWorkflow.js';
 import { QTY_METER_MAX_QTY, QTY_METER_MIN_QTY } from '../hooks/usePosCartWorkflow.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
+import {
+    getPendingPosItemImagePreviews,
+    subscribeToPendingPosItemImagePreviews
+} from '../services/posPendingItemImagePreviewStore.js';
 import { getCatalogStockColorClassName, isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
-import { advanceAssetImageFallback } from '@/src/utils/assetUrl.js';
-import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
+import PosItemImage from './PosItemImage.jsx';
 import { formatQuantity, getCartLineSubtotal, getLineKey, money, resolvePosCatalogImageSources, sanitizeQuantityInput, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
 import POSCheckoutConfirmDialog from './POSCheckoutConfirmDialog.jsx';
 import { POSCheckoutTerminalReceiptDialogs } from './POSCheckoutTerminalReceiptDialogs.jsx';
@@ -81,6 +84,11 @@ const renderViewModeControls = ({ sectionTitle = '', action = null } = {}) => {
 };
 
 export default function POSCheckoutTerminalView({ viewModel = {} }) {
+    const pendingItemImagePreviews = React.useSyncExternalStore(
+        subscribeToPendingPosItemImagePreviews,
+        getPendingPosItemImagePreviews,
+        getPendingPosItemImagePreviews
+    );
     const {
         activeParkedSale,
         activeShiftId,
@@ -107,7 +115,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         catalogGridClassName,
         catalogGridLayout,
         catalogGridRef,
-        catalogImageErrors,
         catalogLoading,
         catalogPage,
         catalogPageSize,
@@ -254,7 +261,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setActiveParkedSale,
         setAffiliateCodeInput,
         setBillRequestDraft,
-        setCatalogImageErrors,
         setCurrentSaleHelpOpen,
         setCurrentViewMode,
         setDiscountModalOpen,
@@ -628,12 +634,19 @@ return (
                             const isAlwaysAvailable = item?.pos_always_available === true;
                             const isBestSeller = item?.is_best_seller === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
-                            const imageSources = resolvePosCatalogImageSources(item, receiptSettings);
-                            const {
-                                configuredLargeSrc: largePosImageSrc,
-                                src: posImageSrc
-                            } = imageSources;
-                            const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(String(item.item_id));
+                            const resolvedImageSources = resolvePosCatalogImageSources(item, receiptSettings);
+                            const pendingImagePreview = pendingItemImagePreviews[String(item.item_id)]?.url || '';
+                            const imageSources = pendingImagePreview
+                                ? {
+                                    ...resolvedImageSources,
+                                    src: pendingImagePreview,
+                                    srcSet: undefined,
+                                    avifSrcSet: undefined,
+                                    webpSrcSet: undefined
+                                }
+                                : resolvedImageSources;
+                            const { src: posImageSrc } = imageSources;
+                            const hasImage = Boolean(posImageSrc);
                             const cartQuantityForItem = safeCart
                                 .filter((line) => line.item_id === item.item_id)
                                 .reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
@@ -676,24 +689,16 @@ return (
                                         aria-hidden="true"
                                     >
                                         {hasImage ? (
-                                            <ResponsiveImage
-                                                sources={imageSources}
+                                            <PosItemImage
+                                                item={item}
                                                 alt={`${item.name} menu`}
                                                 loading={itemIndex < 4 ? 'eager' : 'lazy'}
                                                 decoding="async"
                                                 fetchpriority={itemIndex < 4 ? 'high' : 'auto'}
-                                                width={400}
-                                                height={400}
-                                                sizes="(max-width: 640px) 118px, (max-width: 1024px) 33vw, 25vw"
+                                                width={144}
+                                                height={144}
+                                                sizes="144px"
                                                 className="product-image h-full w-full object-cover object-center"
-                                                onError={(event) => {
-                                                    if (advanceAssetImageFallback(event, [largePosImageSrc])) return;
-                                                    setCatalogImageErrors((previous) => {
-                                                        const next = new Set(previous);
-                                                        next.add(String(item.item_id));
-                                                        return next;
-                                                    });
-                                                }}
                                             />
                                         ) : (
                                             <div
