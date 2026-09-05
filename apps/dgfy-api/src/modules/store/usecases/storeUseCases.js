@@ -3824,6 +3824,29 @@ export const buildRequestStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) =>
             }
             return ok({ email, idempotency_key: idempotencyKey, delivery_status: deliveryStatus });
         } catch (error) {
+            // #1614: emailOtpService throws a plain Error with .statusCode/.code
+            // (EMAIL_OTP_DELIVERY_FAILED / EMAIL_OTP_DELIVERY_UNAVAILABLE) rather
+            // than a DomainError, so mapStoreUseCaseError below would otherwise
+            // flatten it to a generic INTERNAL_ERROR -- discarding the fact that
+            // this is a well-classified delivery failure and hiding it behind the
+            // same fallback message as an unrelated bug. Route it through the
+            // same SERVICE_UNAVAILABLE contract the delivery_status guard above
+            // already uses, so a real SMTP outage is reported honestly instead of
+            // looking like an unclassified internal error.
+            if (
+                error?.code === 'EMAIL_OTP_DELIVERY_FAILED'
+                || error?.code === 'EMAIL_OTP_DELIVERY_UNAVAILABLE'
+            ) {
+                // observabilityReasonCode, not details -- details is serialized straight
+                // into the public response body (see DomainError's own constructor
+                // comment), and the internal EMAIL_OTP_DELIVERY_* code is not meant to
+                // be client-visible; only the SERVICE_UNAVAILABLE code and message are.
+                return fail(new DomainError(
+                    DomainErrorCode.SERVICE_UNAVAILABLE,
+                    'Email verification code could not be delivered. Please try again later.',
+                    { observabilityReasonCode: error.code, cause: error }
+                ));
+            }
             return fail(mapStoreUseCaseError(error, 'Failed to send guest checkout verification code'));
         }
     };
