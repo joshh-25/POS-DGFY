@@ -28,6 +28,48 @@ const ensureAuthPhoneSchema = async () => {
     await ensureLandlordTenantSchemaReady();
 };
 
+// #1015: when the matrix runner has built a shared template tenant database (one
+// tenantSeq.sync({force:true}) per matrix invocation instead of one per tenant -- see
+// provisionTemplateTenantDatabase() in scripts/run-backend-test-matrix.js), clone every table from
+// it instead of re-running the ~235s full-schema sync for this tenant. FK-preserving by
+// construction: SHOW CREATE TABLE returns the exact CREATE statement sync() itself produced,
+// including every FOREIGN KEY constraint, and every statement here executes on `tenantSeq` (already
+// connected to *this* tenant's own database) with unqualified identifiers -- both the table being
+// created and any FK targets it references resolve against tenantSeq's current database, i.e. this
+// tenant, not the template. FOREIGN_KEY_CHECKS is a session variable, so every statement is pinned
+// to one physical connection via an explicit transaction -- table creation order need not match FK
+// dependency order either way, since checks are off for the whole clone.
+const cloneFromTemplateDatabase = async (tenantSeq, templateDbName) => {
+    const [tables] = await landlordSequelize.query(
+        "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'",
+        { replacements: [templateDbName] }
+    );
+    const tableNames = tables.map((row) => row.name);
+    if (tableNames.length === 0) {
+        throw new Error(`Template tenant database ${templateDbName} has no tables to clone`);
+    }
+
+    const createStatements = [];
+    for (const tableName of tableNames) {
+        const [rows] = await landlordSequelize.query(
+            `SHOW CREATE TABLE \`${templateDbName}\`.\`${tableName}\``
+        );
+        const createStatement = rows?.[0]?.['Create Table'];
+        if (!createStatement) {
+            throw new Error(`Unable to read CREATE TABLE for ${templateDbName}.${tableName}`);
+        }
+        createStatements.push(createStatement);
+    }
+
+    await tenantSeq.transaction(async (t) => {
+        await tenantSeq.query('SET FOREIGN_KEY_CHECKS=0', { transaction: t });
+        for (const createStatement of createStatements) {
+            await tenantSeq.query(createStatement, { transaction: t });
+        }
+        await tenantSeq.query('SET FOREIGN_KEY_CHECKS=1', { transaction: t });
+    });
+};
+
 /**
  * Create a fully-provisioned test tenant:
  *  1. Insert a Tenant row in the landlord DB (status: active)
@@ -77,9 +119,17 @@ export async function createTestTenant(label = 'default') {
     // 4. Bind all app models to this connection
     const models = getTenantModels(tenantSeq);
 
-    // 5. Sync schema (create all tables)
-    await tenantSeq.sync({ force: true });
-    logger.info(`[TestTenantHelper] Synced schema into: ${dbName}`);
+    // 5. Create the tables -- clone from the matrix's shared template DB when one exists,
+    //    otherwise fall back to exactly today's full sync (so a bare `npm test`, or any
+    //    single-file `npx jest`, keeps working unchanged with zero new env setup).
+    const templateDbName = process.env.BACKEND_TEST_MATRIX_TEMPLATE_DB;
+    if (templateDbName) {
+        await cloneFromTemplateDatabase(tenantSeq, templateDbName);
+        logger.info(`[TestTenantHelper] Cloned schema into: ${dbName} (template: ${templateDbName})`);
+    } else {
+        await tenantSeq.sync({ force: true });
+        logger.info(`[TestTenantHelper] Synced schema into: ${dbName}`);
+    }
 
     return { tenant, token, dbName, tenantSeq, models };
 }
