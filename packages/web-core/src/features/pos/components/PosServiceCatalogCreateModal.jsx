@@ -7,6 +7,7 @@ import {
 } from '../../services/catalog/serviceCatalogFormModel.js';
 import { createServiceCatalogEntry } from '../../services/api/servicesApi.js';
 import { posToast as toast } from '../../../utils/iminRuntimeFeedback.js';
+import { acquireModalScrollLock } from '@/components/ui/dialog';
 
 export default function PosServiceCatalogCreateModal({
   open,
@@ -19,6 +20,11 @@ export default function PosServiceCatalogCreateModal({
 
   useEffect(() => {
     if (open) setValues(createServiceCatalogFormValues());
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    return acquireModalScrollLock();
   }, [open]);
 
   if (!open) return null;

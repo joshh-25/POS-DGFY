@@ -36,4 +36,12 @@ describe('POS Items modal viewport contract', () => {
     expect(source.match(/pos-items-modal-scroll-region/g)).toHaveLength(2);
     expect(source.match(/pos-items-modal-footer/g)).toHaveLength(2);
   });
+
+  it('locks background scrolling and closes custom item modals from Escape', () => {
+    const source = read('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    expect(source).toContain('const releaseScrollLock = acquireModalScrollLock();');
+    expect(source).toContain("event.key !== 'Escape'");
+    expect(source).toContain("document.addEventListener('keydown', handleKeyDown, true)");
+    expect(source).toContain("document.removeEventListener('keydown', handleKeyDown, true)");
+  });
 });

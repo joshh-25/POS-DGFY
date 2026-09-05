@@ -4,6 +4,7 @@ import ServiceCatalogForm from '../../services/components/ServiceCatalogForm.jsx
 import { buildServiceCatalogPayload, createServiceCatalogFormValues } from '../../services/catalog/serviceCatalogFormModel.js';
 import { listServicesCatalog, updateServiceCatalogEntry } from '../../services/api/servicesApi.js';
 import { posToast as toast } from '../../../utils/iminRuntimeFeedback.js';
+import { acquireModalScrollLock } from '@/components/ui/dialog';
 
 export default function PosServiceCatalogEditModal({
   serviceItem,
@@ -16,6 +17,11 @@ export default function PosServiceCatalogEditModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open || !serviceItem) return undefined;
+    return acquireModalScrollLock();
+  }, [open, serviceItem]);
 
   useEffect(() => {
     if (!open || !serviceItem?.item_id) return undefined;

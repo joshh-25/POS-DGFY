@@ -71,7 +71,8 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
+  acquireModalScrollLock
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -2229,6 +2230,22 @@ function ItemsWorkspace({
   const [externalQrScannerOpen, setExternalQrScannerOpen] = useState(false);
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
+
+  useEffect(() => {
+    if (!showCreateModal && !editingItemId) return undefined;
+    const releaseScrollLock = acquireModalScrollLock();
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape' || itemSaveInFlight) return;
+      event.preventDefault();
+      if (editingItemId) setEditingItemId(null);
+      else setShowCreateModal(false);
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      releaseScrollLock();
+    };
+  }, [editingItemId, itemSaveInFlight, showCreateModal]);
 
   const stagePendingItemImagePreview = useCallback((input) => stagePendingPosItemImagePreview(input), []);
   const bindPendingItemImagePreviewJob = useCallback((input) => {
