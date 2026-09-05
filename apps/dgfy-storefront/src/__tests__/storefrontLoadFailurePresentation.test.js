@@ -22,11 +22,17 @@ describe('storefront load failure presentation', () => {
     expect(boundary).toContain('if (errorMessage && !isLoading)');
   });
 
-  it('forwards image fetch priority without triggering the React unknown-prop warning', () => {
+  it('adapts to the shared ResponsiveImage shell, forwarding props under this app\'s own prop contract', () => {
+    // StorefrontResponsiveImage.jsx is now a thin wrapper around the shared
+    // packages/web-core/src/components/media/ResponsiveImage.jsx -- the
+    // fetchPriority/fetchpriority DOM-attribute handling this test used to
+    // assert here now lives there instead (see ResponsiveImage.test.jsx for
+    // that contract). This test only checks the adapter's own job: renaming
+    // `imageSources` to `sources` and forwarding every other prop through.
     const image = readSource('shared/components/storefront/StorefrontResponsiveImage.jsx');
 
-    expect(image).toContain('fetchPriority,');
-    expect(image).toContain('fetchpriority={fetchPriority}');
-    expect(image).not.toContain('<img\n        {...imageProps}\n        fetchPriority=');
+    expect(image).toContain("import { ResponsiveImage } from '../../../../../../packages/web-core/src/components/media/ResponsiveImage.jsx';");
+    expect(image).toContain('({ imageSources, ...rest })');
+    expect(image).toContain('<ResponsiveImage sources={imageSources} {...rest} />');
   });
 });

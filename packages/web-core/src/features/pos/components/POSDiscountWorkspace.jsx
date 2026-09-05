@@ -19,7 +19,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
-import { formatQuantity, money, toArray } from '../utils/posCheckoutTerminalUtils.js';
+import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
+import { formatQuantity, money, resolvePosCatalogImageSources, toArray } from '../utils/posCheckoutTerminalUtils.js';
 import {
     buildDiscountAllocationTotals,
     buildDiscountItemSelection,
@@ -296,8 +297,12 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                             const isEditingDiscountQuantity = discountQuantityInput?.lineRef === lineRef;
                             const quantityValue = isEditingDiscountQuantity ? discountQuantityInput.value : selectedQuantity;
                             const catalogItem = safeCatalog.find((item) => item.item_id === line.item_id);
-                            const imageSrc = catalogItem?.pos_image_url || catalogItem?.image_url || line.pos_image_url || '';
-                            const resolvedSrc = imageSrc ? resolveAssetVariantUrl(imageSrc, 'thumbnail') : '';
+                            // catalogItem carries pos_image_variants/storefront_image_variants and is the
+                            // preferred source; if the item has since left safeCatalog, fall back to the
+                            // line's own flat pos_image_url so a discount line never silently loses its icon.
+                            const discountThumbSources = catalogItem
+                                ? resolvePosCatalogImageSources(catalogItem)
+                                : (line.pos_image_url ? { src: resolveAssetVariantUrl(line.pos_image_url, 'thumbnail') } : null);
 
                             return (
                                 <label
@@ -321,8 +326,8 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                             className="h-3.5 w-3.5 shrink-0 accent-teal-600"
                                         />
                                         <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-100 bg-slate-50">
-                                            {resolvedSrc
-                                                ? <img src={resolvedSrc} alt="" className="h-full w-full object-cover" />
+                                            {discountThumbSources?.src
+                                                ? <ResponsiveImage sources={discountThumbSources} sizes="24px" alt="" className="h-full w-full object-cover" />
                                                 : <span className="text-[9px] font-bold uppercase text-slate-400">{line.item_name?.substring(0, 2) || 'IT'}</span>}
                                         </div>
                                         <span className="truncate font-semibold text-slate-700">{line.item_name}</span>

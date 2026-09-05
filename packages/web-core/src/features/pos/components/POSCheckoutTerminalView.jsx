@@ -36,6 +36,7 @@ import { getCatalogStockColorClassName, isServiceCatalogItem } from '../utils/po
 import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { advanceAssetImageFallback } from '@/src/utils/assetUrl.js';
+import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
 import { formatQuantity, getCartLineSubtotal, getLineKey, money, resolvePosCatalogImageSources, sanitizeQuantityInput, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
 import POSCheckoutConfirmDialog from './POSCheckoutConfirmDialog.jsx';
 import { POSCheckoutTerminalReceiptDialogs } from './POSCheckoutTerminalReceiptDialogs.jsx';
@@ -65,31 +66,6 @@ const CatalogItemBadges = ({ isServiceItem = false, isAlwaysAvailable = false, i
         </div>
     );
 };
-
-const PosResponsiveImage = React.memo(({ sources = {}, style, onError, ...imageProps }) => (
-    <picture style={{ display: 'contents' }}>
-        {sources.avifSrcSet ? <source type="image/avif" srcSet={sources.avifSrcSet} sizes={imageProps.sizes} /> : null}
-        {sources.webpSrcSet ? <source type="image/webp" srcSet={sources.webpSrcSet} sizes={imageProps.sizes} /> : null}
-        <img
-            {...imageProps}
-            src={sources.src}
-            srcSet={sources.srcSet}
-            style={{
-                backgroundColor: '#F1F5F9',
-                backgroundImage: sources.placeholderSrc ? `url(${sources.placeholderSrc})` : undefined,
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-                backgroundSize: 'cover',
-                ...style
-            }}
-            onError={(event) => {
-                event.currentTarget.parentElement?.querySelectorAll('source').forEach((source) => source.remove());
-                onError?.(event);
-            }}
-        />
-    </picture>
-));
-PosResponsiveImage.displayName = 'PosResponsiveImage';
 
 const renderViewModeControls = ({ sectionTitle = '', action = null } = {}) => {
     if (!sectionTitle && !action) return null;
@@ -700,7 +676,7 @@ return (
                                         aria-hidden="true"
                                     >
                                         {hasImage ? (
-                                            <PosResponsiveImage
+                                            <ResponsiveImage
                                                 sources={imageSources}
                                                 alt={`${item.name} menu`}
                                                 loading={itemIndex < 4 ? 'eager' : 'lazy'}

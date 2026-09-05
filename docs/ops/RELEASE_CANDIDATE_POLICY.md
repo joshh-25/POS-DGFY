@@ -1186,7 +1186,7 @@ now notes that neither canonical dispatch command needs any manual `build_*` unc
 
 This is a `[snapshot]`-tier procedure change under ADR 0039 — no `[binding]`/`[default]` clause of
 this policy or of ADR 0081 changes. **Not yet exercised against a real dispatch** — see the ADR
-amendment and `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 294 entry for what is and isn't
+amendment and `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 295 entry for what is and isn't
 verified.
 
 PR: (this PR). Refs #1610 (not Closes — needs deployed verification). Refs #1548.
