@@ -1,6 +1,7 @@
 import { resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { matchesPosHistorySearch } from './posHistorySearch.js';
 import { getDiscountLineRef } from './posDiscountSelection.js';
+import { matchesPosTransactionPaymentMethod } from './posPaymentMethods.js';
 
 export const money = (value) => Number(value || 0).toFixed(2);
 export const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
@@ -430,6 +431,7 @@ export const buildOfflineCheckoutHistoryRow = ({
         created_at: queuedTimestamp,
         order_source: 'in_store',
         payment_type: String(payload?.payment_type || '').trim() || 'cash',
+        payment_breakdown: payload?.payment_breakdown || null,
         order_method: String(payload?.order_method || '').trim() || 'takeout',
         total_amount: Number(cartTotal || 0),
         subtotal_amount: Number(cartSubtotal || 0),
@@ -455,7 +457,7 @@ export const rowMatchesHistoryFilters = (row, filters) => {
     if (!matchesPosHistorySearch(row, filters?.historySearch)) return false;
 
     const paymentType = String(filters?.historyPaymentType || 'all').trim();
-    if (paymentType !== 'all' && String(row?.payment_type || '').trim() !== paymentType) {
+    if (!matchesPosTransactionPaymentMethod(row, paymentType)) {
         return false;
     }
 

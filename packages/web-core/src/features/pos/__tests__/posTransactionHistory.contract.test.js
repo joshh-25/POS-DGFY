@@ -8,6 +8,10 @@ const panelContent = fs.readFileSync(
     path.resolve(webCoreRoot, 'src/features/pos/components/POSTransactionHistoryPanel.jsx'),
     'utf8'
 );
+const skupervisorPanelContent = fs.readFileSync(
+    path.resolve(webCoreRoot, 'src/features/pos/components/SkupervisorPOSTransactionHistoryPanel.jsx'),
+    'utf8'
+);
 const receiptDialogsContent = fs.readFileSync(
     path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalReceiptDialogs.jsx'),
     'utf8'
@@ -73,5 +77,10 @@ describe('POS transaction history search and filter contract', () => {
         expect(searchUtilityContent).toContain("'employee_credit_employee_name_snapshot'");
         expect(searchUtilityContent).toContain("'discount.employee_name'");
         expect(searchUtilityContent).toContain("'total_amount'");
+    });
+
+    it('renders every successful payment method for split transactions on both POS history surfaces', () => {
+        expect(panelContent).toContain('formatPosTransactionPaymentMethods(row)');
+        expect(skupervisorPanelContent).toContain('formatPosTransactionPaymentMethods(row)');
     });
 });

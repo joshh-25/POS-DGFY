@@ -242,6 +242,17 @@ describe('POS checkout terminal pure utilities', () => {
             historyDateTo: '2026-08-18',
             historyStatus: 'pending_sync'
         })).toBe(true);
+        const splitRow = {
+            ...row,
+            payment_type: 'cash',
+            payment_breakdown: [
+                { payment_type: 'gcash', amount: 365 },
+                { payment_type: 'cash', amount: 100 }
+            ]
+        };
+        expect(rowMatchesHistoryFilters(splitRow, { historyPaymentType: 'gcash' })).toBe(true);
+        expect(rowMatchesHistoryFilters(splitRow, { historyPaymentType: 'cash' })).toBe(true);
+        expect(rowMatchesHistoryFilters(splitRow, { historyPaymentType: 'card' })).toBe(false);
         expect(rowMatchesHistoryFilters(row, { historyStatus: 'completed' })).toBe(false);
         expect(buildOfflineCheckoutHistoryRow({ payload: {} })).toBeNull();
     });
