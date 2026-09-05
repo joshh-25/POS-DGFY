@@ -1,4 +1,4 @@
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import {
     Pencil,
     Printer,
@@ -141,6 +141,12 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
     const [paymentAmountDraft, setPaymentAmountDraft] = useState(null);
     const [orderSummaryOpen, setOrderSummaryOpen] = useState(false);
     const [isIminRuntime] = useState(() => isIminWrapperRuntime());
+
+    useEffect(() => {
+        if (checkoutConfirmModalOpen) return;
+        setPaymentAmountDraft(null);
+        setOrderSummaryOpen(false);
+    }, [checkoutConfirmModalOpen]);
 
     if (!checkoutConfirmModalOpen) return null;
 
