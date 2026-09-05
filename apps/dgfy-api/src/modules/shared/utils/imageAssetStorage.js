@@ -3,6 +3,7 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import path from 'path';
 import sharp from 'sharp';
+import logger from '../../../config/logger.js';
 
 export const IMAGE_VARIANT_WIDTHS = Object.freeze({
     thumbnail: 400,
@@ -122,8 +123,10 @@ const buildVariantOutput = async ({
             ? AVIF_QUALITY_STEPS
             : GRAPHIC_QUALITY_STEPS;
 
+    let attempts = 0;
     for (const candidateWidth of candidateWidths) {
         for (const quality of qualitySteps) {
+            attempts += 1;
             const transform = getSafeImageInput(sourcePath).rotate();
             if (Number.isFinite(candidateWidth) && candidateWidth > 0) {
                 transform.resize({ width: candidateWidth, fit: 'inside', withoutEnlargement: true });
@@ -147,7 +150,7 @@ const buildVariantOutput = async ({
             };
 
             if (!maxBytes || output.size <= maxBytes) {
-                return output;
+                return { ...output, attempts };
             }
         }
     }
@@ -234,6 +237,10 @@ export const storeOptimizedImageAsset = async ({
         throw new Error('uploadsRoot, surfaceFolder, and tempPath are required');
     }
 
+    const wallStart = Date.now();
+    const cpuStart = process.cpuUsage();
+    let encodeCount = 0;
+
     const normalizedSurface = sanitizeSegment(surfaceFolder, 'assets');
     const normalizedScopeSegments = (Array.isArray(scopeSegments) ? scopeSegments : [])
         .map((segment) => sanitizeSegment(segment, 'default'))
@@ -278,6 +285,7 @@ export const storeOptimizedImageAsset = async ({
                     sourceWidth,
                     maxBytes: variantKey === 'large' ? MAX_PUBLIC_IMAGE_BYTES : null
                 });
+                encodeCount += output.attempts;
                 generatedByFormat[format.encoder][variantKey] = {
                     path: variantRelativePath,
                     url: buildPublicUrl(variantRelativePath),
@@ -303,6 +311,7 @@ export const storeOptimizedImageAsset = async ({
             width: PLACEHOLDER_WIDTH,
             sourceWidth
         });
+        encodeCount += placeholderOutput.attempts;
 
         const generatedVariants = generatedByFormat[encoder];
 
@@ -346,6 +355,18 @@ export const storeOptimizedImageAsset = async ({
         if (!retainOriginal) {
             await fsPromises.rm(originalAssetDir, { recursive: true, force: true });
         }
+
+        const cpuDelta = process.cpuUsage(cpuStart);
+        logger.info('[ImageAssetStorage] storeOptimizedImageAsset completed', {
+            asset_id: assetId,
+            classification,
+            source_bytes: manifest.original.size,
+            source_w: sourceWidth,
+            source_h: sourceHeight,
+            encode_count: encodeCount,
+            wall_ms: Date.now() - wallStart,
+            cpu_ms: Math.round((cpuDelta.user + cpuDelta.system) / 1000)
+        });
 
         return {
             path: largeVariant.path,
