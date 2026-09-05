@@ -21501,14 +21501,19 @@ differs from what was originally drafted.
   above). Issues #1015, #925, #1469 (comment only, not closed by this phase).
 - Next eligible phase: 298.
 
-## Phase 297 - Client-derived image upload contract + fan-out to catalog upload services (#265 epic, PR 4 of 5 per the epic plan doc -- built ahead of PR 3's client encoder module, which remains unbuilt; see this phase's own numbering note)
+## Phase 299 - Client-derived image upload contract + fan-out to catalog upload services (#265 epic, PR 4 of 5 per the epic plan doc -- built ahead of PR 3's client encoder module, which remains unbuilt; see this phase's own numbering note)
 
-Ledger phase number confirmed 297 (no collision at planning time -- only other open PR was #1638,
-unrelated). The epic plan doc's own PR-3/PR-4 numbering had already drifted from ledger reality by
-one before this phase started (see Phase 296's own entry) -- this phase is built with the epic
-plan's PR 3 (client encoder module) skipped/deferred, not merely delayed after it; when that module
-eventually gets built it claims whatever the next open ledger slot is *then*, it does not
-retroactively become "Phase 296."
+Ledger phase number originally claimed as 297 at planning time, when the only other open PR was
+believed to be #1638 (unrelated). That was stale by the time this phase's own ledger commit landed:
+PR #1638 had already merged into `develop` claiming the real Phase 297 (2026-09-05T19:05:58Z,
+"Shared template-schema setup for the backend db test tier"), and a separate sibling PR (#1640, the
+epic's client-encoder module) separately claimed Phase 298 after re-checking fresh at its own commit
+time. This entry is corrected to Phase 299, the next available slot confirmed by re-fetching
+`origin/develop` immediately before making this fix -- see the fixup commit for detail. The epic
+plan doc's own PR-3/PR-4 numbering had already drifted from ledger reality by one before this phase
+started (see Phase 296's own entry) -- this phase is built with the epic plan's PR 3 (client encoder
+module) skipped/deferred, not merely delayed after it; when that module eventually gets built it
+claims whatever the next open ledger slot is *then*, it does not retroactively become "Phase 296."
 
 - Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
 - Objective and scope: fourth PR of the #265 epic. Server-side contract only -- wires
@@ -21575,4 +21580,4 @@ retroactively become "Phase 296."
   derived upload contract Amendment),
   `docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md` (new), issue
   #265.
-- Next eligible phase: 298.
+- Next eligible phase: 300. (298 is already claimed by sibling PR #1640; 299 is this entry.)

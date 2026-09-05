@@ -185,7 +185,7 @@ export const posPaymentProofUpload = buildStrictImageUpload({
 });
 
 export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: STOREFRONT_ASSET_SOURCE_MAX_BYTES, maxFiles: 1 });
-// Phase 297 (#265): these two single-image catalog uploads move from `.single('image')` to
+// Phase 299 (#265): these two single-image catalog uploads move from `.single('image')` to
 // `.fields([...])` at the route (routes/pos.js, routes/items.js) so a client can optionally also
 // send `image_medium`/`image_thumbnail` alongside the required `image` field -- `maxFiles: 3`
 // reflects the new per-request cap (1 required + 2 optional variants), not a broadened per-file

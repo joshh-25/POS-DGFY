@@ -786,7 +786,7 @@ export const updateBulkStorefrontCatalogOverrides = async (req, res, next) => {
 
 export const uploadStorefrontCatalogImage = async (req, res, next) => {
   try {
-    // Phase 297 (#265): this route now parses via .fields(), so the file lands in
+    // Phase 299 (#265): this route now parses via .fields(), so the file lands in
     // req.files.image[0] rather than req.file (see routes/items.js). clientImageManifest is a
     // best-effort hint -- a malformed/absent one resolves to null and the use case falls back to
     // today's behavior entirely.

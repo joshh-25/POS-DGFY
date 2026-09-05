@@ -48,7 +48,7 @@ describe('imageUploadValidation util', () => {
     expect(result.reason).toBe('unsupported_reported_mime');
   });
 
-  // Phase 297 (#265): validateClientVariant is the trust-boundary check for a client-supplied,
+  // Phase 299 (#265): validateClientVariant is the trust-boundary check for a client-supplied,
   // already-optimized image_medium/image_thumbnail (or accepted-large) file -- these tests never
   // touch validateImageUploadFile's own logic above, confirming the existing mime_signature_mismatch
   // test (unmodified) still proves that boundary didn't move.

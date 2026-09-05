@@ -1,6 +1,6 @@
 // Single source of truth for the bulk-catalog-image-upload filename convention, shared by
 // posUseCases.js and storefrontCatalogUseCases.js (both previously carried their own duplicate
-// copy of `getSkuStem`). Phase 297 (#265) extends the convention -- documented at
+// copy of `getSkuStem`). Phase 299 (#265) extends the convention -- documented at
 // docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md's newest Amendments
 // block -- without breaking it:
 //

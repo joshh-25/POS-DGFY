@@ -23,7 +23,7 @@ const createLocalPosCatalogImageStorage = () => ({
         originalName,
         reportedMime = null,
         tempPath,
-        // Phase 297 (#265): optional client-derived-variant contract, threaded straight through to
+        // Phase 299 (#265): optional client-derived-variant contract, threaded straight through to
         // storeOptimizedImageAsset -- see that function's own docs for what each does. All inert
         // when omitted, so every pre-existing caller is unaffected.
         sourceMimeHint = null,
@@ -44,7 +44,7 @@ const createLocalPosCatalogImageStorage = () => ({
             originalName,
             reportedMime,
             tempPath,
-            // POS terminals stay capped -- unchanged (#265 epic, Phase 297 scope decision: keyed
+            // POS terminals stay capped -- unchanged (#265 epic, Phase 299 scope decision: keyed
             // off which storage module handles the call, not a new client-sent signal).
             retainOriginal: false,
             sourceMimeHint,

@@ -1394,9 +1394,9 @@ describe('posHandlers transport contracts', () => {
         expect(next).not.toHaveBeenCalled();
     });
 
-    // Phase 297 (#265): uploadCatalogImage's route now parses via multer .fields(), so the
+    // Phase 299 (#265): uploadCatalogImage's route now parses via multer .fields(), so the
     // controller reads req.files (not req.file) and forwards a parsed client_image_manifest.
-    describe('uploadCatalogImage -- .fields() multipart transport (#265 Phase 297)', () => {
+    describe('uploadCatalogImage -- .fields() multipart transport (#265 Phase 299)', () => {
         it('forwards the required image plus optional client-derived variants and manifest', async () => {
             mockUploadPosCatalogImageUseCase.mockResolvedValue({
                 success: true,

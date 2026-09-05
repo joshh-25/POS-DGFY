@@ -23,7 +23,7 @@ const createLocalStorefrontCatalogImageStorage = () => ({
         originalName,
         reportedMime = null,
         tempPath,
-        // Phase 297 (#265): optional client-derived-variant contract, threaded straight through to
+        // Phase 299 (#265): optional client-derived-variant contract, threaded straight through to
         // storeOptimizedImageAsset -- see that function's own docs for what each does. All inert
         // when omitted, so every pre-existing caller (including itemImageWorker.js's generated-image
         // path, which never passes any of these) is unaffected.
@@ -45,7 +45,7 @@ const createLocalStorefrontCatalogImageStorage = () => ({
             originalName,
             reportedMime,
             tempPath,
-            // Phase 297 (#265) resolution of the #265 epic's original-retention question (ADR 0017
+            // Phase 299 (#265) resolution of the #265 epic's original-retention question (ADR 0017
             // amendment): retain the raw original for storefront-catalog-image uploads, since this
             // is IMS's managed surface, not POS's. Was unconditionally `false`; the two surfaces
             // used to be identical here. Keyed off which storage module handles the call -- no new

@@ -29,7 +29,7 @@ preflight_run_at: 2026-09-06T00:00:00.000Z
 preflight_request_ref: NOT-EXECUTED-265-297-CLIENT-DERIVED-UPLOAD-CONTRACT
 ---
 
-# Client-derived image upload contract + fan-out to catalog upload services (Phase 297, #265 epic)
+# Client-derived image upload contract + fan-out to catalog upload services (Phase 299, #265 epic)
 
 ## Compliance Impact Classification
 
@@ -88,7 +88,7 @@ single-image, POS bulk-50, storefront bulk-50):
    or absent manifest resolves to `null`, never throws).
 3. **`apps/dgfy-api/src/modules/shared/utils/bulkCatalogImageFilename.js`** (new) -- single source
    of truth for the SKU-stem filename convention (`getSkuStem`, previously duplicated verbatim in
-   both `posUseCases.js` and `storefrontCatalogUseCases.js`) and its Phase 297 extension
+   both `posUseCases.js` and `storefrontCatalogUseCases.js`) and its Phase 299 extension
    (`parseBulkCatalogFilename`, `groupBulkCatalogFilesBySku`): a bare `<SKU>.<ext>` still means
    exactly what it means today; `<SKU>__large/medium/thumbnail.<ext>` is the new opt-in suffix
    convention correlating up to three files per SKU into one upload.
