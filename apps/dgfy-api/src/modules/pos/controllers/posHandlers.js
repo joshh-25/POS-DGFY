@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 import { recordPosCashierLifecycleSignal } from '../../../services/metricsService.js';
+import { isPosBulkImageImportEnabled } from '../../../config/posBulkImageImportFeature.js';
+import { posBulkImageImportJobRepository } from '../repositories/posBulkImageImportJobRepository.js';
 import {
     verifyPosTerminalUseCase,
     listPosCatalogUseCase,
@@ -2720,8 +2722,24 @@ export const updateBulkCatalogOverrides = async (req, res, next) => {
 };
 
 export const uploadCatalogImage = async (req, res, next) => {
+    let itemLeaseToken = null;
+    let itemId = null;
+    let tenantId = null;
     try {
-        const itemId = req.validatedParams?.item_id || req.params.item_id;
+        itemId = req.validatedParams?.item_id || req.params.item_id;
+        tenantId = req.user?.tenant_id;
+        if (isPosBulkImageImportEnabled()) {
+            itemLeaseToken = await posBulkImageImportJobRepository.acquireItemLease({ tenantId, itemId });
+            if (!itemLeaseToken) {
+                const busy = new Error('This item image is currently being updated. Please retry shortly.');
+                busy.statusCode = 409;
+                busy.code = 'POS_IMAGE_UPDATE_BUSY';
+                throw busy;
+            }
+            // Single-image edits participate in the same version fence as bulk
+            // imports, so an older queued file can never overwrite this choice.
+            await posBulkImageImportJobRepository.advanceItemVersion({ tenantId, itemId });
+        }
         const result = await uploadPosCatalogImageUseCase({
             itemId,
             file: req.file,
@@ -2743,6 +2761,12 @@ export const uploadCatalogImage = async (req, res, next) => {
         });
     } catch (error) {
         next(error);
+    } finally {
+        if (itemLeaseToken) {
+            await posBulkImageImportJobRepository.releaseItemLease({
+                tenantId, itemId, token: itemLeaseToken
+            }).catch(() => {});
+        }
     }
 };
 
@@ -2772,8 +2796,22 @@ export const uploadBulkCatalogImages = async (req, res, next) => {
 };
 
 export const deleteCatalogImage = async (req, res, next) => {
+    let itemLeaseToken = null;
+    let itemId = null;
+    let tenantId = null;
     try {
-        const itemId = req.validatedParams?.item_id || req.params.item_id;
+        itemId = req.validatedParams?.item_id || req.params.item_id;
+        tenantId = req.user?.tenant_id;
+        if (isPosBulkImageImportEnabled()) {
+            itemLeaseToken = await posBulkImageImportJobRepository.acquireItemLease({ tenantId, itemId });
+            if (!itemLeaseToken) {
+                const busy = new Error('This item image is currently being updated. Please retry shortly.');
+                busy.statusCode = 409;
+                busy.code = 'POS_IMAGE_UPDATE_BUSY';
+                throw busy;
+            }
+            await posBulkImageImportJobRepository.advanceItemVersion({ tenantId, itemId });
+        }
         const result = await deletePosCatalogImageUseCase({
             itemId,
             user: req.user
@@ -2794,6 +2832,12 @@ export const deleteCatalogImage = async (req, res, next) => {
         });
     } catch (error) {
         next(error);
+    } finally {
+        if (itemLeaseToken) {
+            await posBulkImageImportJobRepository.releaseItemLease({
+                tenantId, itemId, token: itemLeaseToken
+            }).catch(() => {});
+        }
     }
 };
 

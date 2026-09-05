@@ -5,6 +5,7 @@ import path from 'path';
 import sharp from 'sharp';
 
 export const IMAGE_VARIANT_WIDTHS = Object.freeze({
+    pos_thumbnail: 144,
     thumbnail: 400,
     medium: 1024,
     large: 1920
@@ -19,6 +20,7 @@ const RESPONSIVE_ASSET_VERSION = 2;
 const PLACEHOLDER_WIDTH = 32;
 
 const IMAGE_VARIANT_FILE_NAMES = Object.freeze({
+    pos_thumbnail: 'pos-thumb',
     thumbnail: 'thumb',
     medium: 'medium',
     large: 'large'
@@ -109,6 +111,7 @@ const buildVariantOutput = async ({
     sourcePath,
     destinationPath,
     encoder,
+    variantKey,
     width,
     sourceWidth,
     maxBytes = null
@@ -125,7 +128,9 @@ const buildVariantOutput = async ({
     for (const candidateWidth of candidateWidths) {
         for (const quality of qualitySteps) {
             const transform = getSafeImageInput(sourcePath).rotate();
-            if (Number.isFinite(candidateWidth) && candidateWidth > 0) {
+            if (variantKey === 'pos_thumbnail') {
+                transform.resize({ width, height: width, fit: 'cover', position: 'centre' });
+            } else if (Number.isFinite(candidateWidth) && candidateWidth > 0) {
                 transform.resize({ width: candidateWidth, fit: 'inside', withoutEnlargement: true });
             } else {
                 transform.resize({ fit: 'inside', withoutEnlargement: true });
@@ -180,6 +185,10 @@ export const deriveImageAssetVariantUrls = ({ storedPath = null, storedUrl = nul
     const normalized = toPosixRelative(relative);
     const extension = path.posix.extname(normalized);
     const basename = path.posix.basename(normalized, extension);
+    if (basename === 'pos-thumb') {
+        const url = storedUrl || buildPublicUrl(normalized);
+        return { pos_thumbnail_url: url, thumbnail_url: url, medium_url: url, large_url: url };
+    }
     if (!Object.values(IMAGE_VARIANT_FILE_NAMES).includes(basename)) {
         const url = storedUrl || buildPublicUrl(normalized);
         return {
@@ -246,8 +255,9 @@ export const storeOptimizedImageAsset = async ({
 
     try {
         const classification = classifyImageAsset({ reportedMime });
-        const { encoder } = getPublicFormat({ classification });
-        const deliveryFormats = getDeliveryFormats({ classification });
+        const posOnly = normalizedSurface === 'pos-catalog';
+        const { encoder } = posOnly ? { encoder: 'webp' } : getPublicFormat({ classification });
+        const deliveryFormats = posOnly ? [{ encoder: 'webp', ext: '.webp' }] : getDeliveryFormats({ classification });
         const originalExt = getOriginalExtension({ originalName, reportedMime });
         const originalFilename = `original${originalExt}`;
         const originalAbsolutePath = path.join(originalAssetDir, originalFilename);
@@ -261,7 +271,10 @@ export const storeOptimizedImageAsset = async ({
         const generatedByFormat = {};
         for (const format of deliveryFormats) {
             generatedByFormat[format.encoder] = {};
-            for (const [variantKey, width] of Object.entries(IMAGE_VARIANT_WIDTHS)) {
+            const variantWidths = posOnly
+                ? { pos_thumbnail: IMAGE_VARIANT_WIDTHS.pos_thumbnail }
+                : { thumbnail: 400, medium: 1024, large: 1920 };
+            for (const [variantKey, width] of Object.entries(variantWidths)) {
                 const variantFilename = `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${format.ext}`;
                 const variantRelativePath = path.posix.join(
                     normalizedSurface,
@@ -274,6 +287,7 @@ export const storeOptimizedImageAsset = async ({
                     sourcePath: originalAbsolutePath,
                     destinationPath: variantAbsolutePath,
                     encoder: format.encoder,
+                    variantKey,
                     width,
                     sourceWidth,
                     maxBytes: variantKey === 'large' ? MAX_PUBLIC_IMAGE_BYTES : null
@@ -306,7 +320,7 @@ export const storeOptimizedImageAsset = async ({
 
         const generatedVariants = generatedByFormat[encoder];
 
-        const largeVariant = generatedVariants.large;
+        const largeVariant = generatedVariants.large || generatedVariants.pos_thumbnail;
         if (!largeVariant?.path || !largeVariant?.url) {
             throw new Error('Large image variant was not generated');
         }
@@ -347,20 +361,28 @@ export const storeOptimizedImageAsset = async ({
             await fsPromises.rm(originalAssetDir, { recursive: true, force: true });
         }
 
+        const buildStoredFormatUrls = (formatVariants = {}) => ({
+            ...(posOnly ? { pos_thumbnail_url: formatVariants.pos_thumbnail?.url || null } : {}),
+            thumbnail_url: (formatVariants.thumbnail || formatVariants.pos_thumbnail)?.url || null,
+            medium_url: (formatVariants.medium || formatVariants.pos_thumbnail)?.url || null,
+            large_url: (formatVariants.large || formatVariants.pos_thumbnail)?.url || null
+        });
+        const imageVariants = {
+            ...buildStoredFormatUrls(generatedVariants),
+            placeholder_url: manifest.placeholder.url,
+            avif: buildStoredFormatUrls(generatedByFormat.avif),
+            webp: buildStoredFormatUrls(generatedByFormat.webp),
+            widths: posOnly ? { pos_thumbnail: 144 } : { thumbnail: 400, medium: 1024, large: 1920 },
+            version: RESPONSIVE_ASSET_VERSION
+        };
+
         return {
             path: largeVariant.path,
             url: largeVariant.url,
-            variants: {
-                thumbnail: generatedVariants.thumbnail,
-                medium: generatedVariants.medium,
-                large: generatedVariants.large
-            },
+            variants: generatedVariants,
             format_variants: generatedByFormat,
             placeholder: manifest.placeholder,
-            image_variants: deriveImageAssetVariantUrls({
-                storedPath: largeVariant.path,
-                storedUrl: largeVariant.url
-            }),
+            image_variants: imageVariants,
             original: {
                 path: manifest.original.path,
                 url: null,
@@ -376,6 +398,40 @@ export const storeOptimizedImageAsset = async ({
         await fsPromises.rm(originalAssetDir, { recursive: true, force: true });
         throw error;
     }
+};
+
+const resolvePosThumbnailPaths = ({ uploadsRoot, storedPath }) => {
+    const normalized = String(storedPath || '').replace(/\\/g, '/');
+    if (!/^(pos-catalog|storefront-catalog)\//.test(normalized)) return null;
+    const source = path.resolve(uploadsRoot, normalized);
+    const root = path.resolve(uploadsRoot) + path.sep;
+    if (!source.startsWith(root) || !/-v2-[0-9a-f]{8}$/i.test(path.basename(path.dirname(source)))) return null;
+    const destination = path.join(path.dirname(source), 'pos-thumb.webp');
+    return { source, destination, url: buildPublicUrl(path.posix.join(path.posix.dirname(normalized), 'pos-thumb.webp')) };
+};
+
+// POS delivery derivative only: no Storefront URL, manifest, or gallery mutation.
+export const ensurePosImageThumbnail = async ({ uploadsRoot, storedPath }) => {
+    const paths = resolvePosThumbnailPaths({ uploadsRoot, storedPath });
+    if (!paths) return null;
+    if (!await fileExists(paths.destination)) {
+        const temporary = `${paths.destination}.${crypto.randomUUID()}.tmp`;
+        try {
+            await getSafeImageInput(paths.source).rotate().resize(144, 144, { fit: 'cover' })
+                .webp({ quality: 78, effort: 2 }).toFile(temporary);
+            await fsPromises.rename(temporary, paths.destination);
+        } finally {
+            await fsPromises.unlink(temporary).catch(() => {});
+        }
+    }
+    return paths.url;
+};
+
+export const readPosImageVariantUrls = async ({ uploadsRoot, storedPath, storedUrl, variants }) => {
+    const result = variants || deriveImageAssetVariantUrls({ storedPath, storedUrl });
+    const paths = resolvePosThumbnailPaths({ uploadsRoot, storedPath });
+    const exists = paths && await fileExists(paths.destination);
+    return { ...result, pos_thumbnail_url: exists ? paths.url : null };
 };
 
 export const removeOptimizedImageAsset = async ({ uploadsRoot, storedPath }) => {

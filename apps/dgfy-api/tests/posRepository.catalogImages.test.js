@@ -197,6 +197,10 @@ describe('posRepository catalog image mapping', () => {
               {
                 path: 'storefront/new-iced-latte.png',
                 url: '/uploads/storefront/new-iced-latte.png',
+                variants: {
+                  pos_thumbnail_url: '/uploads/storefront/new-iced-latte-pos-thumb.webp',
+                  thumbnail_url: '/uploads/storefront/new-iced-latte-thumb.webp'
+                },
                 is_primary: true,
                 sort_order: 0
               }
@@ -229,6 +233,8 @@ describe('posRepository catalog image mapping', () => {
       // unaffected by which image POS chooses to display.
       storefront_image_url: '/uploads/storefront/new-iced-latte.png'
     }));
+    expect(result[0].storefront_image_variants.pos_thumbnail_url)
+      .toBe('/uploads/storefront/new-iced-latte-pos-thumb.webp');
   });
 
   it('prefers a working POS-specific override image over the Storefront fallback in getCatalogReadinessByItemId (#871)', async () => {

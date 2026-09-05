@@ -332,6 +332,7 @@ const normalizeStorefrontImageGallery = (value) => {
             url: String(entry?.url || '').trim() || null,
             variants: entry?.variants && typeof entry.variants === 'object'
                 ? {
+                    pos_thumbnail_url: entry.variants.pos_thumbnail_url || null,
                     thumbnail_url: entry.variants.thumbnail_url || null,
                     medium_url: entry.variants.medium_url || null,
                     large_url: entry.variants.large_url || null
@@ -398,7 +399,7 @@ const buildStorefrontImageGallery = ({ primaryPath = null, primaryUrl = null, ga
     const enrichedPrimary = (primary.path || primary.url)
         ? {
             ...primary,
-            variants: deriveImageAssetVariantUrls({
+            variants: normalized[0]?.variants || deriveImageAssetVariantUrls({
                 storedPath: primary.path || null,
                 storedUrl: primary.url || null
             }),

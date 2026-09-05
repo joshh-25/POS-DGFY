@@ -4,6 +4,8 @@ import path from 'path';
 import sharp from 'sharp';
 import {
     deriveImageAssetVariantUrls,
+    ensurePosImageThumbnail,
+    readPosImageVariantUrls,
     MAX_PUBLIC_IMAGE_BYTES,
     removeOptimizedImageAsset,
     storeOptimizedImageAsset
@@ -11,6 +13,9 @@ import {
 
 describe('imageAssetStorage utility', () => {
     let uploadsRoot;
+    // libvips' file cache holds Windows handles beyond metadata() completion.
+    beforeAll(() => sharp.cache(false));
+    afterAll(() => sharp.cache(true));
 
     beforeEach(async () => {
         uploadsRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dgfy-image-asset-'));
@@ -45,6 +50,7 @@ describe('imageAssetStorage utility', () => {
 
         expect(stored.path).toMatch(/storefront-catalog\/tenant-a\/item-10-.*\/large\.webp$/);
         expect(stored.original.path).toMatch(/originals\/storefront-catalog\/tenant-a\/item-10-.*\/original\.jpg$/);
+        expect(stored.image_variants.pos_thumbnail_url).toBeUndefined();
         expect(stored.image_variants.thumbnail_url).toMatch(/\/thumb\.webp$/);
         expect(stored.image_variants.medium_url).toMatch(/\/medium\.webp$/);
         expect(stored.image_variants.large_url).toMatch(/\/large\.webp$/);
@@ -52,6 +58,15 @@ describe('imageAssetStorage utility', () => {
         expect(stored.image_variants.placeholder_url).toMatch(/\/placeholder\.webp$/);
         expect(stored.image_variants.avif.thumbnail_url).toMatch(/\/thumb\.avif$/);
         expect(stored.image_variants.webp.large_url).toMatch(/\/large\.webp$/);
+        const manifestPath = path.join(uploadsRoot, path.dirname(stored.path), 'asset.json');
+        const beforeManifest = await fs.readFile(manifestPath, 'utf8');
+        const before = await readPosImageVariantUrls({ uploadsRoot, storedPath: stored.path });
+        expect(before.pos_thumbnail_url).toBeNull();
+        const posUrl = await ensurePosImageThumbnail({ uploadsRoot, storedPath: stored.path });
+        const posMetadata = await sharp(path.join(uploadsRoot, posUrl.replace('/uploads/', ''))).metadata();
+        expect([posMetadata.width, posMetadata.height]).toEqual([144, 144]);
+        expect((await readPosImageVariantUrls({ uploadsRoot, storedPath: stored.path })).pos_thumbnail_url).toBe(posUrl);
+        expect(await fs.readFile(manifestPath, 'utf8')).toBe(beforeManifest);
 
         await expect(fs.access(path.join(uploadsRoot, stored.path))).resolves.toBeUndefined();
         await expect(fs.access(path.join(uploadsRoot, stored.original.path))).resolves.toBeUndefined();
@@ -155,7 +170,14 @@ describe('imageAssetStorage utility', () => {
             tempPath
         });
 
-        expect(deriveImageAssetVariantUrls({ storedPath: stored.path })).toEqual(stored.image_variants);
+        const derivedLegacySafeVariants = deriveImageAssetVariantUrls({ storedPath: stored.path });
+        expect(derivedLegacySafeVariants.pos_thumbnail_url).toBe(stored.url);
+        expect(derivedLegacySafeVariants.thumbnail_url).toBe(stored.image_variants.thumbnail_url);
+        expect(stored.image_variants.pos_thumbnail_url).toMatch(/\/pos-thumb\.webp$/);
+        expect(Object.keys(stored.format_variants)).toEqual(['webp']);
+        expect(Object.keys(stored.variants)).toEqual(['pos_thumbnail']);
+        const posMetadata = await sharp(path.join(uploadsRoot, stored.path)).metadata();
+        expect([posMetadata.width, posMetadata.height]).toEqual([144, 144]);
 
         const publicAssetDir = path.join(uploadsRoot, path.dirname(stored.path));
         const originalAssetDir = path.join(uploadsRoot, stored.original.path.split('/').slice(0, -1).join(path.sep));

@@ -1,5 +1,7 @@
 import fs from 'fs/promises';
 import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+import { ensurePosImageThumbnail } from '../modules/shared/utils/imageAssetStorage.js';
 import logger from '../config/logger.js';
 import { uploadStorefrontCatalogImageUseCase, uploadStorefrontCatalogGalleryImagesUseCase } from '../modules/inventory/index.js';
 import { findTenantById } from '../services/landlordService.js';
@@ -17,6 +19,7 @@ let timer = null;
 let running = false;
 let inFlight = 0;
 const localQueue = [];
+const activeItems = new Set();
 
 const unlinkQuietly = async (filePath) => {
     if (!filePath) return;
@@ -113,7 +116,22 @@ export const processCatalogImageUploadTask = async (task) => {
     await setCatalogImageUploadStatus({ tenantId, itemId, jobId, status: 'processing' });
     try {
         const data = await processTaskInTenantContext(task);
-        await setCatalogImageUploadStatus({ tenantId, itemId, jobId, status: 'completed' });
+        // Only the POS derivative is added; Storefront primary/gallery semantics stay intact.
+        const gallery = typeof data?.storefront_image_gallery === 'string'
+            ? JSON.parse(data.storefront_image_gallery) : data?.storefront_image_gallery;
+        const imagePaths = new Set([data?.storefront_image_path, ...(Array.isArray(gallery) ? gallery.map((entry) => entry.path) : [])].filter(Boolean));
+        for (const storedPath of imagePaths) {
+            try {
+                await ensurePosImageThumbnail({
+                    uploadsRoot: fileURLToPath(new URL('../../uploads/', import.meta.url)), storedPath
+                });
+            } catch (error) {
+                // The gallery is already committed. Do not report a persisted upload
+                // as failed just because its optional POS derivative could not be made.
+                logger.warn('[CatalogImageUploadWorker] POS thumbnail unavailable', { itemId, reason: error?.message });
+            }
+        }
+        await setCatalogImageUploadStatus({ tenantId, itemId, jobId, status: 'completed', image_url: data?.storefront_image_url || null });
         await publishCatalogChange({
             tenantId,
             reason: 'catalog_image_upload_completed',
@@ -136,16 +154,21 @@ export const processCatalogImageUploadTask = async (task) => {
             error_message: error?.message || 'Image optimization failed'
         });
         await Promise.all(files.map((file) => unlinkQuietly(file?.path)));
+        await publishCatalogChange({ tenantId, reason: 'catalog_image_upload_failed', itemIds: [itemId] });
     }
 };
 
 const drainLocalQueue = async () => {
     while (running && inFlight < WORKER_CONCURRENCY && localQueue.length > 0) {
-        const task = localQueue.shift();
+        const nextIndex = localQueue.findIndex((entry) => !activeItems.has(`${entry.tenant_id}:${entry.item_id}`));
+        if (nextIndex < 0) break;
+        const [task] = localQueue.splice(nextIndex, 1);
+        const itemKey = `${task.tenant_id}:${task.item_id}`;
+        activeItems.add(itemKey);
         inFlight++;
         processCatalogImageUploadTask(task)
             .catch((error) => logger.error('[CatalogImageUploadWorker] Unexpected local task failure', { reason: error?.message }))
-            .finally(() => { inFlight--; });
+            .finally(() => { inFlight--; activeItems.delete(itemKey); if (running) setImmediate(drainLocalQueue); });
     }
 };
 
@@ -154,15 +177,6 @@ const tick = async () => {
     let dequeued = 0;
     try {
         await drainLocalQueue();
-        while (inFlight < WORKER_CONCURRENCY) {
-            const task = localQueue.shift();
-            if (!task) break;
-            dequeued++;
-            inFlight++;
-            processCatalogImageUploadTask(task)
-                .catch((error) => logger.error('[CatalogImageUploadWorker] Unexpected task failure', { reason: error?.message }))
-                .finally(() => { inFlight--; });
-        }
     } catch (error) {
         logger.error('[CatalogImageUploadWorker] Tick failed', { reason: error?.message });
     }

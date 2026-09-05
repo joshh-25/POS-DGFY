@@ -117,6 +117,7 @@ import {
     validateDeliveryRunListQuery
 } from '../validators/posValidator.js';
 import * as deliveryRunController from '../modules/pos/controllers/deliveryRunHandlers.js';
+import * as posBulkImageImportController from '../modules/pos/controllers/posBulkImageImportHandlers.js';
 
 const router = express.Router();
 const employeeCreditCheckoutPermission = checkPermission(PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT);
@@ -191,6 +192,16 @@ router.post('/scan', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validate
 router.get('/catalog-overrides', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogOverridesQuery, posController.listCatalogOverrides);
 router.patch('/catalog-overrides/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), posController.updateBulkCatalogOverrides);
 router.post('/catalog-overrides/images/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), preserveTenantContext(posCatalogBulkImageUpload.array('images', 50)), posController.uploadBulkCatalogImages);
+router.post('/catalog-image-imports', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), posBulkImageImportController.createCatalogImageImport);
+router.put(
+    '/catalog-image-imports/:job_id/chunks/:chunk_index',
+    checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS),
+    express.raw({ type: 'application/octet-stream', limit: '6mb' }),
+    posBulkImageImportController.uploadCatalogImageImportChunk
+);
+router.post('/catalog-image-imports/:job_id/complete', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), posBulkImageImportController.completeCatalogImageImport);
+router.get('/catalog-image-imports/:job_id', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), posBulkImageImportController.getCatalogImageImport);
+router.post('/catalog-image-imports/:job_id/retry-failed', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), posBulkImageImportController.retryCatalogImageImportFailures);
 router.patch('/catalog-overrides/:item_id', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, validateUpdatePosCatalogOverride, posController.updateCatalogOverride);
 router.post('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, preserveTenantContext(posCatalogImageUpload.single('image')), posController.uploadCatalogImage);
 router.delete('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, posController.deleteCatalogImage);

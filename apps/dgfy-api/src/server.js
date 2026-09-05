@@ -65,6 +65,10 @@ import {
   startCatalogImageUploadWorker,
   stopCatalogImageUploadWorker
 } from './workers/catalogImageUploadWorker.js';
+import {
+  startPosBulkImageImportWorker,
+  stopPosBulkImageImportWorker
+} from './workers/posBulkImageImportWorker.js';
 import { ITEM_IMAGE_GENERATION_ENABLED, requireItemImageGenerationConfig } from './config/itemImageFeature.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
@@ -936,6 +940,7 @@ const startServer = async () => {
     startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
     startCatalogImageUploadWorker();
+    startPosBulkImageImportWorker();
 
     // Batch menu import worker — gated on its own flag (like geo inventory
     // above, its tick() no-ops whenever Redis isn't connected, so it's safe
@@ -1024,6 +1029,7 @@ const startServer = async () => {
         stopItemImageWorker();
       }
       stopCatalogImageUploadWorker();
+      stopPosBulkImageImportWorker();
       aiController.stopAiCleanupScheduler?.();
 
       // Close Redis connection
