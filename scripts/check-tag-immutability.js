@@ -289,4 +289,7 @@ module.exports = {
   resolveRevisionLabels,
   decideImmutability,
   parseArgs,
+  // #1610: exported so scripts/resolve-build-skip-plan.js reuses the actual `docker buildx
+  // imagetools inspect` call, not just this file's pure decision logic -- no behavior change.
+  runInspect,
 };
