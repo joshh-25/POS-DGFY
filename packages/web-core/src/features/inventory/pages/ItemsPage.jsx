@@ -55,6 +55,8 @@ import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSen
 import { usePermission } from '@/hooks/usePermission';
 import { normalizeApiError } from '@/src/utils/errorHandler.js';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
+import { buildImageVariantSources } from '@/src/utils/imageVariantSources.js';
 import { useNavigate } from 'react-router-dom';
 import {
   getPosCatalogOverrides,
@@ -424,6 +426,7 @@ export default function Items() {
       pos_visible: override ? override.pos_visible !== false : getDefaultPosVisibility(item),
       pos_always_available: override?.pos_always_available === true,
       pos_image_url: resolveAssetUrl(override?.pos_image_url) || null,
+      pos_image_variants: override?.pos_image_variants || null,
       pos_readiness: override?.pos_readiness || null
     };
   }, [getDefaultPosVisibility, posCatalogOverrides]);
@@ -453,6 +456,7 @@ export default function Items() {
       storefront_visible: override ? override.storefront_visible !== false : getDefaultStorefrontVisibility(item),
       storefront_image_path: override?.storefront_image_path || null,
       storefront_image_url: resolveAssetUrl(primaryEntry?.url || primaryEntry?.image_url || override?.storefront_image_url) || null,
+      storefront_image_variants: primaryEntry?.variants || override?.storefront_image_variants || null,
       storefront_image_gallery: gallery,
       location_availability: Array.isArray(override?.location_availability) ? override.location_availability : []
     };
@@ -731,12 +735,19 @@ export default function Items() {
       .map((entry, index) => ({
         path: entry?.path || null,
         url: entry?.url || entry?.image_url || entry,
+        variants: entry?.variants || entry?.image_variants || null,
         is_primary: index === 0,
         sort_order: index
       }))
       .filter((entry) => entry.url || entry.path);
     if (primaryUrl && !gallery.some((entry) => entry.url === primaryUrl)) {
-      gallery.unshift({ path: storefrontConfig?.storefront_image_path || null, url: primaryUrl, is_primary: true, sort_order: 0 });
+      gallery.unshift({
+        path: storefrontConfig?.storefront_image_path || null,
+        url: primaryUrl,
+        variants: storefrontConfig?.storefront_image_variants || null,
+        is_primary: true,
+        sort_order: 0
+      });
     }
     return gallery.map((entry, index) => ({
       ...entry,
@@ -2893,9 +2904,11 @@ export default function Items() {
                           <td className="p-3">
                             <div className="space-y-2">
                               {posImageUrl ? (
-                                <img
-                                  src={posImageUrl}
+                                <ResponsiveImage
+                                  sources={buildImageVariantSources({ url: posImageUrl, variants: posConfigResolved.pos_image_variants, preferred: 'thumbnail' })}
                                   alt={`${item.name} POS menu`}
+                                  sizes="80px"
+                                  loading="lazy"
                                   className="h-16 w-20 rounded-md border border-slate-200 object-cover"
                                 />
                               ) : (

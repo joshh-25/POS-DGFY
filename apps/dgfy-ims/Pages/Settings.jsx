@@ -78,6 +78,7 @@ import {
 import StorefrontBusinessHoursScheduler from '../../../packages/web-core/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { evaluateFulfillmentLeadTime } from '../../../packages/web-core/src/features/settings/fulfillmentLeadTime.js';
 import resolveAssetUrl from '../../../packages/web-core/src/utils/assetUrl.js';
+import { ResponsiveImage } from '../../../packages/web-core/src/components/media/ResponsiveImage.jsx';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../../../packages/web-core/src/utils/phoneNumber.js';
 import { generateReadablePassword, isPasswordLongEnough } from '../../../packages/web-core/src/utils/passwordPolicy.js';
 import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
@@ -2395,7 +2396,7 @@ export default function Settings() {
       <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
         <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100 h-32 md:h-40">
           {coverPreviewUrl ? (
-            <img src={coverPreviewUrl} alt="Storefront cover preview" className="h-full w-full object-cover" />
+            <ResponsiveImage sources={{ src: coverPreviewUrl }} alt="Storefront cover preview" className="h-full w-full object-cover" />
           ) : (
             <div className="h-full w-full flex items-center justify-center text-xs text-slate-500 font-medium">
               No cover photo uploaded
@@ -2403,7 +2404,7 @@ export default function Settings() {
           )}
           <div className="absolute -bottom-8 left-4 h-16 w-16 md:h-20 md:w-20 rounded-full border-4 border-white bg-slate-100 overflow-hidden shadow">
             {profilePreviewUrl ? (
-              <img src={profilePreviewUrl} alt="Storefront profile preview" className="h-full w-full object-cover" />
+              <ResponsiveImage sources={{ src: profilePreviewUrl }} alt="Storefront profile preview" className="h-full w-full object-cover" />
             ) : (
               <div className="h-full w-full flex items-center justify-center text-[10px] md:text-xs text-slate-500 font-semibold">
                 No icon
