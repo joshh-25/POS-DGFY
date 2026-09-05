@@ -44,6 +44,19 @@ promoter (or observer's Sentry sweep) monitors
 loop stops and escalates to Pat — it does not attempt a third fix unattended, and it does not fall
 back to a rollback that doesn't exist (see prerequisite gap below).
 
+**Release-note obligation, applies to both entry points below (#1278, ADR 0082 Decisions 3/6/8).**
+Whenever this loop's hotfix branch bases off — and therefore reaches — `main` (not `staging`),
+`implement`'s hotfix PR also authors `docs/releases/notes/<candidate_id>.md`, using a fresh
+`YYYY-MM-DD-NN` ID assigned at fix time (not the incident issue's own number) and
+`production_commit: pending`, finalized post-deploy by the promoter — the same two-stage lifecycle
+an ordinary promotion's note follows
+(`.agents/skills/promoter/references/promotion-runbook.md`'s "Publish the GitHub Release" section).
+A hotfix branch does not match `check:release-notes`'s `release/<candidate_id>-rN` pattern (Phase
+296), so it exits 0 ("not applicable") for this PR — this procedural step is what actually satisfies
+ADR 0082 Decision 3's binding no-record rule here today, not a script gate, until ADR 0082 Follow-up
+3 closes that mechanical gap. A `staging`-based fix does not need this — it rides the next ordinary
+promotion's own release note instead.
+
 ## Manual entry point — `/hotfix`
 
 Added 2026-08-22 (#861). The loop above starts from an automated monitor signal
@@ -79,7 +92,9 @@ no new capability and no second path to `main`.
      silently.
 3. **Hand off to `implement`** to branch off the chosen base (never off `develop` for a same-day
    prod fix — `develop` doesn't reach `main` on this timeline), fix, commit, and open the PR — same
-   as the monitor path.
+   as the monitor path. If the base is `main`, this PR also carries the release-note obligation
+   stated above ("The loop" section) — not optional, and not something the monitor-triggered path
+   gets to skip either.
 4. **`pr-reviewer` fast-tracks** (as defined above), **`promoter`/this role's own override
    deploys** — unchanged.
 5. **Back-port to `develop` (#861 gap 2) — part of "done," not a follow-up.** If the fix landed on
