@@ -21158,3 +21158,59 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   (2026-09-04 Amendment, `status: amended`), `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
   `docs/testing/release-go-no-go-checklist.md` (both: per-app resolution noted), issue #1610.
 - Next eligible phase: 294.
+
+## Phase 294 - POS thumbnail render fix + storefront-fallback for #218 (#265 epic, PR 1 of the epic)
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
+- Objective and scope: first PR of the #265 epic (client-side image conversion + thumbnail render
+  fix). Extracts a shared `ResponsiveImage` presentational shell
+  (`packages/web-core/src/components/media/ResponsiveImage.jsx`) and a generic
+  `buildImageVariantSources` utility (`packages/web-core/src/utils/imageVariantSources.js`) from
+  three near-duplicate implementations, migrates `POSCheckoutTerminalView.jsx` onto the shared
+  shell, and thin-wraps `StorefrontResponsiveImage.jsx` over it. Fixes every POS/IMS render site
+  that was loading a flat 1920px `large` image (or a bare string URL with no variant awareness) into
+  a small slot -- worst cases: `ItemsPage.jsx`'s `h-16 w-20` POS-menu cell and
+  `SelectedItemImageCarousel`'s thumbnail strip -- across `ItemsPage.jsx`,
+  `StorefrontImageCarousel.jsx`, `SelectedItemImageCarousel.jsx`, `ItemFormModal.jsx`,
+  `POSSetupStep.jsx`, `apps/dgfy-ims/Pages/Settings.jsx`, `TerminalOperationsWorkspace.jsx`,
+  `SkupervisorPOSCheckoutTerminal.jsx`, and `POSDiscountWorkspace.jsx`. This enforces ADR 0014's
+  existing "POS catalog cards request the thumbnail variant" clause (Hosted POS Image Delivery And
+  Navigation Addendum, 2026-07-23) rather than changing it -- no ADR amendment. Also fixes #218: two
+  `posRepository.js` sites (`listCatalogOverrides`, `resolveCatalogScan`) computed `pos_image_url`
+  inline from the POS override alone instead of calling the already-existing
+  `resolvePosDisplayImage`/`loadStorefrontCatalogImageMap` helpers (already correctly wired into
+  `applyCatalogOverrides`/`listCatalog` since #871) -- so a POS item with only a storefront image
+  (no POS-specific override) rendered blank on the Items page and on barcode-scan lookup.
+  `resolvePosDisplayImage` gains an additive `.source` field (`'override' | 'storefront' | null`).
+  Adds `storeOptimizedImageAsset` CPU/wall-time instrumentation (`imageAssetStorage.js`, 8-field
+  structured log on the success path only) as a pre-change baseline ahead of Phase 295's AVIF-drop
+  measurement. Out of scope for this phase: Phase 295 (AVIF drop), Phase 296 (client-side encoder),
+  Phase 297 (upload contract), any new npm dependency, and extracting the now four-times-duplicated
+  gallery-normalizer helper.
+- Status: planned.
+- Dependencies: none blocking (Phase 293 is unrelated). Precedes Phases 295-297 of the #265 epic.
+- Acceptance and validation evidence: see the PR's own `## Testing Evidence` section (Tier 0:
+  `build:pos`/`build:store`/`build:skupervisor`, `node --check` on the two changed `apps/dgfy-api`
+  files, lockfile sync for the three bumped apps, `check-app-version-bump.js`,
+  `check:architecture`/`check:compliance`/`lint:docs`/`check:adr`).
+- Completion date: not yet completed -- status remains `planned` until this PR merges and its
+  evidence is filled in.
+- Contracts/files: `packages/web-core/src/components/media/ResponsiveImage.jsx` (new),
+  `packages/web-core/src/utils/imageVariantSources.js` (new),
+  `packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontResponsiveImage.jsx`,
+  `packages/web-core/src/features/inventory/pages/ItemsPage.jsx`,
+  `packages/web-core/Components/items/StorefrontImageCarousel.jsx`,
+  `packages/web-core/Components/items/SelectedItemImageCarousel.jsx`,
+  `packages/web-core/Components/items/ItemFormModal.jsx`,
+  `packages/web-core/Components/products/wizard/POSSetupStep.jsx`,
+  `apps/dgfy-ims/Pages/Settings.jsx`,
+  `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`,
+  `packages/web-core/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx`,
+  `packages/web-core/src/features/pos/components/POSDiscountWorkspace.jsx`,
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/src/modules/shared/utils/imageAssetStorage.js`,
+  `docs/compliance/impact-declarations/2026-09-05-pos-thumbnail-render-fix-and-storefront-fallback.md`,
+  `apps/dgfy-ims/package.json` (1.2.3 -> 1.2.4), `apps/dgfy-pos/package.json` (1.2.3 -> 1.2.4),
+  `apps/dgfy-storefront/package.json` (1.3.4 -> 1.3.5), issues #265/#218.
+- Next eligible phase: 295.
