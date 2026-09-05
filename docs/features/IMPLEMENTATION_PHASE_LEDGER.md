@@ -20404,6 +20404,22 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   is now stated outright (ADR 0082 Decision 8, Follow-up 3) and closed procedurally by a new
   release-note-authoring step in `.agents/skills/incident-responder/SKILL.md`'s hotfix procedure
   (both loop entry points), rather than left silently uncovered.
+- Review-fix round 2 (`pr-reviewer`, PR #1637): RF-4 (blocker) — the main-hotfix release-note
+  paragraph was prose only, with no runnable command for actually creating the file, and the generic
+  finalizer assumed the note was already on `origin/develop` (true for an ordinary promotion,
+  false for a hotfix, whose note first exists only on `main` until the later back-port). Fixed with
+  a full worked heredoc in `.agents/skills/incident-responder/SKILL.md` (mirroring
+  `promotion-runbook.md`'s own pre-cut heredoc, including the explicit no-staging-predecessor
+  `## Operational notes` line ADR 0082 Decision 6 requires) and by folding `production_commit`
+  finalization into step 5's back-port branch/commit itself, since that step is already the first
+  thing to carry the note onto `develop` — the generic runbook finalizer now explicitly says a
+  hotfix candidate skips its finalization half and resumes only at tag-and-publish. RF-5 (blocker)
+  — `MAIN_SHA=$(git rev-parse origin/main)` in the runbook's "Publish the GitHub Release" section
+  ran with no preceding `git fetch origin main`, risking a stale pre-merge SHA. Fixed by fetching
+  immediately before capture and cross-checking against `deploy-main.yml`'s own reported `headSha`
+  (`gh run list --workflow=deploy-main.yml --branch main -L1 --json headSha --jq
+  '.[0].headSha'`), refusing to proceed on a mismatch; the same fetch-and-cross-check pattern was
+  reused (not reinvented) in the hotfix back-port's own finalization block for consistency.
 - Next eligible phase: 296 (#1278 PR 2 — the `check:release-notes` enforcement script,
   `package.json` wiring, and its `promotion-quality-gate.yml` advisory step; tip of the ledger was
   Phase 295 at the time this phase was planned). PR 2's implementer should read ADR 0082's Follow-up
