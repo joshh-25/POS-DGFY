@@ -40,7 +40,7 @@ import { resolveModifierDelta } from '../utils/posCheckoutTerminalModifiers.js';
 import { flyImageToCheckoutBar } from '../utils/posCatalogAnimations.js';
 import { getPosTerminalLayoutClasses } from '../utils/posTerminalLayout.js';
 import { normalizeAppliedDiscount, normalizePosTerminalDraftState, parseTerminalPermissions } from '../utils/posTerminalDraftState.js';
-import { buildDiscountItemSelection, getDiscountLineRef } from '../utils/posDiscountSelection.js';
+import { buildDiscountItemSelection, getDiscountLineRef, isStatutoryBeneficiaryIdentityValid, MAX_STATUTORY_BENEFICIARIES } from '../utils/posDiscountSelection.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const POSCheckoutTerminalView = lazyWithChunkRetry(() => import('./POSCheckoutTerminalView.jsx'));
 
@@ -1038,8 +1038,12 @@ export default function POSCheckoutTerminal({
             toast.error('Customer name is required for this discount.');
             return;
         }
-        if (statutory && statutoryBeneficiaries.some((beneficiary) => !beneficiary.name || !beneficiary.id_number)) {
-            toast.error('Each Senior/PWD beneficiary requires a customer name and ID number.');
+        if (statutory && statutoryBeneficiaries.length > MAX_STATUTORY_BENEFICIARIES) {
+            toast.error('A maximum of 20 Senior/PWD beneficiaries is allowed per order.');
+            return;
+        }
+        if (statutory && statutoryBeneficiaries.some((beneficiary, index) => !isStatutoryBeneficiaryIdentityValid(beneficiary, index === 0))) {
+            toast.error('Use 2–120 characters for beneficiary names, 2–100 for the first ID, and 2–120 for additional IDs.');
             return;
         }
         if (statutory && statutoryBeneficiaries.some((beneficiary) => beneficiary.eligible_items.length === 0)) {
