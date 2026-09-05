@@ -343,6 +343,17 @@ source identity **per app group** (ADR 0081 Decision 8 amendment, #1610) — `ca
 `_storefront` — not one shared value, since PROD rebuilds every app unconditionally and a single
 shared value would mislabel any app a staging repair never touched.
 
+**Neither dispatch command below needs any manual `build_*` unchecking any more (#1610, ADR 0081
+Decision 7 residue).** Both canonical commands leave all four `build_*` inputs at their `default:
+true` — they always have, since this runbook never documented a manual-uncheck step in the first
+place. That used to mean every real PROD dispatch rebuilt all five apps regardless of what actually
+changed, and a retry after one app's Decision 7 refusal re-tripped the same guard for every app that
+had already succeeded. `deploy-main.yml` now resolves a per-app build-skip verdict automatically (a
+new `resolve-build-plan` job, ahead of the five build jobs) — an app whose version tag is already
+published and whose tracked build inputs are content-unchanged is skipped without any dispatch input
+needing to change. Nothing below needs editing for this; it's automatic and safe. Full mechanism:
+`scripts/resolve-build-skip-plan.js`'s own header comment, ADR 0081's 2026-09-05 Amendment.
+
 **Default flow** (candidate manifest exists): resolve each app's own value via
 `resolveCandidateSourceShaByApp()` rather than reusing `$CANDIDATE_SOURCE_SHA` uniformly:
 

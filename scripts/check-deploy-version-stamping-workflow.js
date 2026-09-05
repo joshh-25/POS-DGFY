@@ -277,6 +277,88 @@ function checkMetaStepStampsCandidateLabel(workflowText, { label }) {
   return problems;
 }
 
+// #1610 (ADR 0081 Decision 7 residue): each of deploy-main.yml's five builder jobs must gate its
+// `if:` on its OWN `should_build_<app>` output from the new `resolve-build-plan` job -- keyed by
+// job name here (not app name) since `frontend-ims-prod` etc. don't share their job name with the
+// app-keyed output name the way `dgfy-api`/`dgfy-migration-runner` do.
+const DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES = Object.freeze([
+  ['dgfy-api', 'should_build_dgfy_api'],
+  ['dgfy-migration-runner', 'should_build_dgfy_migration_runner'],
+  ['frontend-ims-prod', 'should_build_dgfy_ims'],
+  ['frontend-pos-prod', 'should_build_dgfy_pos'],
+  ['frontend-storefront-prod', 'should_build_dgfy_storefront'],
+]);
+
+/**
+ * ADR 0081 Decision 7 residue (#1610): deploy-main.yml must declare a `resolve-build-plan` job
+ * (`needs: guard-branch`), and each of its five builder jobs must both list "resolve-build-plan" in
+ * its own `needs:` array AND reference its own `should_build_<app>` output in its `if:` --
+ * referencing `needs.resolve-build-plan` in a job's `if:` without also listing it in that job's own
+ * `needs:` silently evaluates to empty in GitHub Actions (a parse-time gap, not a runtime failure),
+ * so both halves are checked independently, same shape as checkDeployMainCandidateSourceShaWiring
+ * above.
+ */
+function checkDeployMainBuildSkipPlanJob(deployMainText) {
+  const problems = [];
+
+  if (!/resolve-build-plan:\s*\n\s*needs:\s*guard-branch/.test(deployMainText)) {
+    problems.push('deploy-main.yml: no "resolve-build-plan" job found with "needs: guard-branch".');
+  }
+
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const [jobName, outputName] of DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    if (!block) {
+      problems.push(`deploy-main.yml: job "${jobName}" not found.`);
+      continue;
+    }
+    if (!/needs:\s*\[\s*guard-branch\s*,\s*resolve-build-plan\s*\]/.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not list "[ guard-branch, resolve-build-plan ]" in its "needs:".`);
+    }
+    const outputPattern = new RegExp(`needs\\.resolve-build-plan\\.outputs\\.${outputName}\\s*==\\s*'true'`);
+    if (!outputPattern.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not gate its "if:" on "needs.resolve-build-plan.outputs.${outputName} == 'true'" (#1610).`);
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * #1610: `publish`'s `needs:` must be extended with "guard-branch" and "resolve-build-plan" (both
+ * referenced in its own `if:`), and its `if:` must no longer require "at least one build actually
+ * succeeded" -- that clause could never be satisfied by a legitimate "every app is skip-eligible"
+ * dispatch (every build job 'skipped', none 'success'), which is exactly the case #1610's own
+ * acceptance criterion names. See deploy-main.yml's own `publish` job comment for the full argument.
+ */
+function checkDeployMainPublishGate(deployMainText) {
+  const problems = [];
+
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  const block = jobBlocks.find((chunk) => chunk.startsWith('publish:\n'));
+  if (!block) {
+    problems.push('deploy-main.yml: "publish" job not found.');
+    return problems;
+  }
+
+  if (!/needs:\s*\[\s*guard-branch\s*,\s*resolve-build-plan\s*,/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "needs:" does not start with "[ guard-branch, resolve-build-plan, ..." (#1610).');
+  }
+
+  if (!/needs\.guard-branch\.result == 'success'/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "if:" does not require "needs.guard-branch.result == \'success\'" (#1610).');
+  }
+  if (!/needs\.resolve-build-plan\.result == 'success'/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "if:" does not require "needs.resolve-build-plan.result == \'success\'" (#1610).');
+  }
+
+  if (/\.result == 'success' \|\|/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "if:" still contains an "at least one build succeeded" OR-clause -- #1610 requires dropping it so a legitimate "every app skip-eligible" dispatch can still publish.');
+  }
+
+  return problems;
+}
+
 /** A step must exist that runs the tag-immutability guard script, wired to this build's digest, tag, and revision (ADR 0081 Decision 7, the ADR's one [binding] clause). */
 function checkImmutabilityGuardStep(workflowText, { label }) {
   const problems = [];
@@ -336,6 +418,8 @@ function runAllChecks({ readFile = read } = {}) {
 
   const deployMainText = readFile(DEPLOY_MAIN_FILE);
   problems.push(...checkDeployMainCandidateSourceShaWiring(deployMainText));
+  problems.push(...checkDeployMainBuildSkipPlanJob(deployMainText));
+  problems.push(...checkDeployMainPublishGate(deployMainText));
 
   return problems;
 }
@@ -370,8 +454,11 @@ module.exports = {
   checkOrchestratorVersionTagMapping,
   checkOrchestratorCandidateSourceShaWiring,
   checkDeployMainCandidateSourceShaWiring,
+  checkDeployMainBuildSkipPlanJob,
+  checkDeployMainPublishGate,
   DEPLOY_MAIN_FILE,
   DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS,
   DEPLOY_MAIN_JOB_INPUT_NAMES,
+  DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES,
   runAllChecks,
 };

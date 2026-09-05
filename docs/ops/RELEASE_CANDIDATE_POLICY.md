@@ -1166,3 +1166,27 @@ same status, kept in sync with this one.
 
 PR: (this PR). Closes #1592. Refs #1548. Does not close epic #1548 — Wave 2 may have further phases
 beyond this one.
+
+### 2026-09-05: `deploy-main.yml` auto-skips a build whose version tag is already published and content-unchanged (#1610, epic #1548 Wave 4 residue) — closes a second, distinct #1610 symptom alongside Decision 8's per-app resolution above
+
+Decision record this implements: [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+2026-09-05 Amendment (`[snapshot]` tier — Decision 7 itself is unmodified). Not rewritten in place,
+same convention as every entry above.
+
+`deploy-main.yml` rebuilds every app on every dispatch by default — its four `build_*` inputs are
+manual, and this policy's own promotion runbook never set them. A retry after one app's Decision 7
+refusal therefore re-rebuilt every app that already succeeded too, tripping the same guard for each
+in turn. A new `resolve-build-plan` job now resolves, per app, whether a build is safely skippable
+(tag already published under the current revision, or under a different revision with
+content-identical tracked build inputs) — Decision 7's guard itself is untouched and still runs,
+unconditionally, in every build that is actually attempted. Full mechanism and the fail-closed
+reasoning: `scripts/resolve-build-skip-plan.js`'s own header comment; the amendment above for the
+full argument. `.agents/skills/promoter/references/promotion-runbook.md`'s PROD dispatch section
+now notes that neither canonical dispatch command needs any manual `build_*` unchecking as a result.
+
+This is a `[snapshot]`-tier procedure change under ADR 0039 — no `[binding]`/`[default]` clause of
+this policy or of ADR 0081 changes. **Not yet exercised against a real dispatch** — see the ADR
+amendment and `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 295 entry for what is and isn't
+verified.
+
+PR: (this PR). Refs #1610 (not Closes — needs deployed verification). Refs #1548.

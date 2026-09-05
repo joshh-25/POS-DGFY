@@ -21213,4 +21213,102 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `docs/compliance/impact-declarations/2026-09-05-pos-thumbnail-render-fix-and-storefront-fallback.md`,
   `apps/dgfy-ims/package.json` (1.2.3 -> 1.2.4), `apps/dgfy-pos/package.json` (1.2.3 -> 1.2.4),
   `apps/dgfy-storefront/package.json` (1.3.4 -> 1.3.5), issues #265/#218.
-- Next eligible phase: 295.
+
+## Phase 295 - deploy-main.yml auto-skips a build whose version tag is already published and content-unchanged, preventing Decision 7 from being unnecessarily tripped (#1610, epic #1548 Wave 4 residue)
+
+Renumbered from this branch's original "Phase 294" -- #265's own Phase 294 entry (below, in this
+same conflict) landed on `develop` first via PR #1635 while this PR was still in flight, so this
+entry moves to the next open slot per `AGENTS.md`'s Continuous Phase Numbering rule rather than
+colliding. No other content changed.
+
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: found live via #1610's own two follow-up comments (07:41, 07:53), a second,
+  distinct symptom of the same root gap Phase 293 above closed half of. `deploy-main.yml` rebuilds
+  every app on every dispatch by default -- its four `build_*` inputs are manual, and the promoter's
+  own documented runbook never sets them (confirmed directly against
+  `.agents/skills/promoter/references/promotion-runbook.md`'s two canonical dispatch commands). A
+  retry after one app's build fails ADR 0081 Decision 7's tag-immutability guard therefore
+  re-rebuilds every app that already succeeded too, tripping the SAME guard for each of them in
+  turn -- not a single-incident fluke but the guaranteed behavior of "always rebuild everything, and
+  Decision 7 always refuses a second publish of an unchanged tag." PRs #1624/#1625/#1630 were
+  hand-rolled workarounds for this same recurring symptom before this mechanism. **Design decision:**
+  compute, per app, whether a build can be safely SKIPPED (tag already published under the current
+  revision, or under a different revision with byte-for-byte-unchanged tracked build inputs) --
+  rejected two other candidates the issue's own investigation named: loosening Decision 7 for a
+  content-equivalent rebuild (rejected -- a `[binding]` clause change needs its own deliberate
+  superseding-ADR process, not a ride-along on an unblock, and turned out unnecessary once the actual
+  fix was "never attempt the doomed build" rather than "make the doomed build succeed") and the
+  parity-gate PASS-category candidate from the issue's earlier scope (shelved, not built, not
+  re-argued -- a different mechanism from what actually blocks real dispatches). Recorded as a dated
+  `[snapshot]`-tier Amendment on ADR 0081 (no superseding ADR needed, per ADR 0039, since Decision 7
+  itself is unmodified and still runs unconditionally in every build that is actually attempted).
+- Mechanically: new `scripts/resolve-build-skip-plan.js` exports a pure `decideBuildSkip()` (plus
+  `resolveBuildSkipPlan()` across all five apps and a CLI printing one JSON blob, mirroring
+  `check-promotion-candidate.js --resolve-app-shas`'s convention) that reuses
+  `check-tag-immutability.js`'s `decideImmutability`/`runInspect` (the latter newly exported, no
+  behavior change) for the registry read, and `check-app-version-bump.js`'s
+  `resolveFileDependencyPackages`/`readVersionAt`/`APPS` for the dependency-fan-out and version-read
+  logic -- no second GHCR inspector or dependency-graph resolver was written. Content-equivalence
+  path scope is `apps/<app>/` + resolved `file:` deps + `infrastructure/docker/<app>/` --
+  deliberately WIDER than `check-app-version-bump.js`'s own `detectChangedApps()` scope, since a
+  Dockerfile-only change genuinely changes the built image without requiring a version bump under
+  Decision 6. `.github/workflows/deploy-main.yml` gains a new `resolve-build-plan` job (`needs:
+  guard-branch`, full checkout with `fetch-depth: 0` since the content diff needs to reach an
+  arbitrary, dynamically-discovered "already published" revision no shallow checkout would contain);
+  each of the five build jobs' `if:` gains `needs.resolve-build-plan.outputs.should_build_<app> ==
+  'true'` alongside its existing `build_*` input check, and each job's `needs:` gains
+  `resolve-build-plan` (referencing a job's outputs in `if:` without listing it in `needs:` is a
+  GitHub Actions parse-time gap, not a runtime failure -- the easy-to-miss mechanical detail this PR
+  had to get right). `dgfy-api`/`dgfy-migration-runner` keep ONE shared `build_api` dispatch
+  checkbox but resolve TWO independent skip verdicts -- genuinely separate images, genuinely
+  separate versions, no deploy-order dependency on their CI build cycles marching in lockstep.
+  `publish`'s `needs:` gains `guard-branch`/`resolve-build-plan` and its `if:` drops the "at least
+  one build succeeded" OR-clause (a real gap found while designing this, not introduced by it -- that
+  clause could never be satisfied by a legitimate "every app is skip-eligible" dispatch, exactly the
+  case this issue's own acceptance criterion names), replaced by gating directly on
+  `needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success'`.
+  `scripts/check-deploy-version-stamping-workflow.js` gains two new shape-check functions
+  (`checkDeployMainBuildSkipPlanJob`, `checkDeployMainPublishGate`) guarding this wiring, mirroring
+  the existing `checkDeployMainCandidateSourceShaWiring`.
+- Fail-closed asymmetry, deliberate and stated in the code's own comments: a per-app indeterminate
+  read (registry unreachable, unreadable/disagreeing label, an undiffable revision) degrades to BUILD
+  for that one app, never to skip -- building unnecessarily costs CI minutes and, at worst, reproduces
+  today's already-loud Decision 7 refusal; skipping unnecessarily would run PROD on stale code with
+  no visible failure. Only a genuine crash of the `resolve-build-plan` job itself (a script bug, not
+  a per-app read -- `resolveBuildSkipPlan()` catches per-app exceptions so one app's freak failure
+  can't crash the plan for every other app) is allowed to halt the whole dispatch, transitively
+  skipping every downstream build the same way a `guard-branch` failure already does today.
+- Status: completed (code), open for deployed verification (see below).
+- Dependencies: Phase 277/279 (#1575/#1588) and Phase 293 above, all of which this phase builds on
+  without modifying. #1610.
+- Acceptance and validation evidence: `node --test scripts/resolve-build-skip-plan.test.js` (17/17 --
+  covers all four outcomes, the fail-closed cases at every layer including an unresolvable-diff
+  case, the dgfy-api/dgfy-migration-runner independence case, and the load-bearing
+  Dockerfile-only-change scope test); `node --test scripts/check-tag-immutability.test.js` (26/26 --
+  confirms the new `runInspect` export didn't disturb anything); `node --test
+  scripts/check-deploy-version-stamping-workflow.test.js` (53/53 -- 11 new: the two new check
+  functions' fixture coverage plus each passing against the real `deploy-main.yml`);
+  `node scripts/check-deploy-version-stamping-workflow.js` (PASS against the real files); YAML-parsed
+  `deploy-main.yml` and inspected its full `needs:` graph directly; `npm run check:adr` (88 ADRs, OK
+  -- ADR 0081's new Amendment validates); `npm run check:compliance` (no compliance-sensitive changes
+  detected -- no `apps/*` runtime code touched, only `.github/workflows/`, `scripts/`, `docs/`); `node
+  scripts/check-app-version-bump.js --staged` (no changed-app version-bump requirements apply -- this
+  phase touches zero `apps/*` directories and zero `file:` dependency packages). **No real
+  `deploy-main.yml` dispatch has run against this mechanism yet** -- there is no YAML schema linter
+  or GitHub Actions expression evaluator in this repo, so the regex-based workflow-shape checks above
+  prove the YAML's text shape, not GitHub Actions' runtime expression semantics
+  (`needs.*.outputs.*` propagation, the all-five-skipped `publish` case, real retry convergence
+  against a real GHCR) -- everything above is unit-tested and shape-verified against this repo's real
+  files, not exercised end to end. This is why the PR uses `Refs #1610`, not `Closes` -- a real
+  dispatch that exercises an already-published, content-unchanged app (ideally the retry-convergence
+  shape the issue's own incident showed) is required before this can be considered fully done.
+- Completion date: not yet deployed-verified; code completed 2026-09-05.
+- Contracts/files: `scripts/resolve-build-skip-plan.js` + its test file (both new),
+  `scripts/check-tag-immutability.js` (one-line `runInspect` export addition, no behavior change),
+  `scripts/check-deploy-version-stamping-workflow.js` + its test file (both extended),
+  `.github/workflows/deploy-main.yml` (new `resolve-build-plan` job; five build jobs' `if:`/`needs:`
+  extended; `publish`'s `if:`/`needs:` revised), `docs/architecture/adr/0081-per-app-container-semantic-versioning.md`
+  (2026-09-05 Amendment, `[snapshot]` tier), `.agents/skills/promoter/references/promotion-runbook.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issue #1610.
+- Next eligible phase: 296.
