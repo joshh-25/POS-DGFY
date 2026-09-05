@@ -103,6 +103,21 @@ test('rejects an apps_touched entry listed twice', () => {
   assert.throws(() => validatePromotionCandidate(manifest), /lists dgfy-ims more than once/);
 });
 
+// PR #1612 review RF-1: dgfy-api and dgfy-migration-runner are always rebuilt/relabeled as one
+// paired unit -- a one-sided apps_touched would make resolveCandidateSourceShaByApp return
+// different SHAs for the pair while PROD actually stamps both with the same API-group SHA.
+test('rejects an apps_touched that lists dgfy-api but not dgfy-migration-runner', () => {
+  const manifest = candidate();
+  manifest.revisions[1].apps_touched = ['dgfy-api'];
+  assert.throws(() => validatePromotionCandidate(manifest), /must list dgfy-api and dgfy-migration-runner together or not at all/);
+});
+
+test('rejects an apps_touched that lists dgfy-migration-runner but not dgfy-api', () => {
+  const manifest = candidate();
+  manifest.revisions[1].apps_touched = ['dgfy-migration-runner'];
+  assert.throws(() => validatePromotionCandidate(manifest), /must list dgfy-api and dgfy-migration-runner together or not at all/);
+});
+
 test('resolveCandidateSourceShaByApp: an app never named in any repair keeps the initial SHA, even after later repairs advance current_staging_sha for other apps', () => {
   // The fixture's r1 touches only dgfy-ims, r2 touches dgfy-api/dgfy-migration-runner -- matching
   // #1610's own real-world case: dgfy-pos and dgfy-storefront are never touched by either repair.

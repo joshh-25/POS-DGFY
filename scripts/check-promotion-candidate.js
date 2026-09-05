@@ -57,6 +57,18 @@ function assertAppsTouched(value, position) {
     assert(!seen.has(app), `Repair revision ${position}'s apps_touched lists ${app} more than once`, 'DUPLICATE_APPS_TOUCHED');
     seen.add(app);
   }
+  // PR #1612 review RF-1: dgfy-api and dgfy-migration-runner are always rebuilt/relabeled as one
+  // paired unit -- a single build_api flag covers both (deploy.yml's/deploy-main.yml's own pairing
+  // comment), and deploy-main.yml exposes only one candidate_source_sha_api input for the pair. A
+  // one-sided apps_touched (only one of the two listed) would make resolveCandidateSourceShaByApp
+  // return different SHAs for dgfy-api vs dgfy-migration-runner while PROD actually stamps both
+  // with the same API-group SHA -- incorrect provenance, or an avoidable parity failure. Reject it
+  // outright rather than silently accepting a manifest that can't be honestly resolved per-app.
+  assert(
+    seen.has('dgfy-api') === seen.has('dgfy-migration-runner'),
+    `Repair revision ${position}'s apps_touched must list dgfy-api and dgfy-migration-runner together or not at all (they are always rebuilt as one paired unit) -- got: ${value.join(', ')}`,
+    'ONE_SIDED_API_MIGRATION_PAIR'
+  );
 }
 
 function assertReleaseBranch(branch, candidateId, revision) {

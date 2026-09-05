@@ -61,21 +61,25 @@
  *   - 'error'        the inspect call itself failed for a reason that is not "tag not found" (auth,
  *                    network, registry outage) -- refuses to guess rather than silently passing.
  *
- * `decideParity` (manifest mode) outcomes, matching #1588's own spec plus the PR #1590 review
- * corrections (RF-2, RF-3):
+ * `decideParity` (manifest mode) outcomes, matching #1588's own spec, the PR #1590 review
+ * corrections (RF-2, RF-3), and PR #1612's review (RF-2), which restricts the "no tracked candidate
+ * identity" evidence-pass exclusively to decideDirectParity/--source-sha mode -- manifest mode
+ * implies a real candidate.json with a to-staging/<id> leg, which always stamps a labeled image on
+ * both PROD and STAGING, so an unlabeled/missing image here means a broken dispatch, not #1007/
+ * hotfix evidence:
  *   - prod 'ok', staging 'ok', values agree                -> pass ("match")
- *   - prod 'ok', staging 'not-found'                       -> pass ("no-staging-predecessor" --
- *                                                              expected evidence of a #1007
- *                                                              expedited promotion or a main hotfix,
- *                                                              not a defect, per Decision 8's own
- *                                                              text). RF-3: this is the ONLY staging
- *                                                              state that passes -- 'no-label' and
- *                                                              'inconsistent' both fail now (below).
- *   - prod 'no-label' (regardless of staging)               -> pass ("no-candidate-identity" -- same
- *                                                              expected-evidence case as above, just
- *                                                              detected on the PROD side; RF-2's own
- *                                                              bug was this case previously falling
- *                                                              through to 'prod-unreadable'/fail)
+ *   - prod 'ok', staging 'not-found'                       -> fail ("staging-not-found-in-manifest-
+ *                                                              mode", PR #1612 RF-2 -- manifest mode
+ *                                                              expects the to-staging/<id> leg's own
+ *                                                              staging image to exist; #1007/hotfix
+ *                                                              evidence belongs to decideDirectParity
+ *                                                              instead, which never reaches here)
+ *   - prod 'no-label' (regardless of staging)               -> fail ("prod-no-label-in-manifest-
+ *                                                              mode", PR #1612 RF-2 -- same
+ *                                                              reasoning, detected on the PROD side;
+ *                                                              supersedes PR #1590's RF-2 fix, which
+ *                                                              incorrectly passed this in manifest
+ *                                                              mode too)
  *   - prod 'ok', staging 'ok', values disagree              -> fail ("mismatch")
  *   - prod 'ok', staging 'no-label' or 'inconsistent'       -> fail ("staging-unreadable", RF-3 --
  *                                                              the normal promotion path always
@@ -220,16 +224,18 @@ function decideParity({ prod, staging }) {
       detail: `production image exists but ${prod.reason} -- cannot establish candidate source identity (ADR 0081 Decision 8).`,
     };
   }
-  // RF-2 fix (PR #1590 review): a PROD image built with no candidate_source_sha at all (the
-  // #1007/hotfix path -- no to-staging leg, no candidate manifest) is expected evidence, not a
-  // defect, regardless of whatever a staging tag at this version happens to carry. Checked before
-  // looking at staging at all, since there is nothing meaningful to compare against once PROD
-  // itself carries no tracked identity.
+  // PR #1612 review RF-2: the #1007/hotfix "no tracked candidate identity" case is now covered
+  // exclusively by decideDirectParity (--source-sha mode, added by PR #1590's own RF-2). Manifest
+  // mode means a real candidate.json exists -- a candidate that went through to-staging/<id> always
+  // gets a real per-app candidate_source_sha label stamped on PROD by deploy-main.yml, so an
+  // unlabeled PROD image here is not legitimate hotfix evidence, it means the normal-dispatch input
+  // was empty/wrong and the parity gate would otherwise wave through unlabeled provenance. Fails
+  // instead of silently passing.
   if (prod.state === 'no-label') {
     return {
-      verdict: 'pass',
-      code: 'no-candidate-identity',
-      detail: `${prod.ref} carries no candidate-source-identity label at all -- expected evidence of a #1007 expedited promotion or a main hotfix with no tracked staging leg (ADR 0081 Decision 8), not a defect.`,
+      verdict: 'fail',
+      code: 'prod-no-label-in-manifest-mode',
+      detail: `${prod.ref} carries no candidate-source-identity label at all, but manifest mode expects one (a real candidate.json implies a to-staging/<id> leg that always stamps this label) -- this looks like a normal dispatch run with an empty/incorrect candidate_source_sha input, not a #1007/hotfix path (which has its own --source-sha mode and would not reach here). Not a silent pass (ADR 0081 Decision 8).`,
     };
   }
 
@@ -237,16 +243,16 @@ function decideParity({ prod, staging }) {
   if (staging.state === 'error') {
     return { verdict: 'error', code: 'staging-inspect-error', detail: staging.reason };
   }
-  // RF-3 fix (PR #1590 review): 'no-staging-predecessor' now fires ONLY when the staging tag does
-  // not exist at all. On the normal promotion path a staging image at this exact version was always
-  // built with a real candidate_source_sha (see the runbook), so an existing staging image with a
-  // missing/inconsistent label is a real label-stamping regression, not evidence of anything --
-  // treated as a failure below instead of silently passing.
+  // PR #1612 review RF-2 (supersedes PR #1590's own RF-3 fix): same reasoning as the prod-side
+  // no-label case above -- manifest mode implies a real to-staging/<id> leg, which always publishes
+  // a labeled staging image at this version. A missing staging predecessor here is not #1007/hotfix
+  // evidence (that path has no candidate manifest and uses decideDirectParity instead); it means the
+  // expected staging image was never published or was mis-tagged. Fails instead of silently passing.
   if (staging.state === 'not-found') {
     return {
-      verdict: 'pass',
-      code: 'no-staging-predecessor',
-      detail: `${prod.ref} (candidate-source-sha ${prod.value}) has no staging predecessor published at all (${staging.reason}) -- expected evidence of a #1007 expedited promotion or a main hotfix, not a defect (ADR 0081 Decision 8).`,
+      verdict: 'fail',
+      code: 'staging-not-found-in-manifest-mode',
+      detail: `${prod.ref} (candidate-source-sha ${prod.value}) has no staging predecessor published at all (${staging.reason}), but manifest mode expects one -- the normal to-staging/<id> leg this candidate manifest implies always publishes a labeled staging image at this version. Not a silent pass (ADR 0081 Decision 8).`,
     };
   }
   if (staging.state === 'no-label' || staging.state === 'inconsistent') {
