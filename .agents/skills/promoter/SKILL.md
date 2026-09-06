@@ -97,6 +97,39 @@ is not optional. Full obligation and per-leg detail (authoring, `fix/staging/*` 
 `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-09-06 amendment — not restated here. Command:
 `references/promotion-runbook.md`, next to the candidate-manifest heredoc.
 
+**Compliance preflight — execute and resolve, before the cut (#1648, 2026-09-06).** This used to run
+only right before `release/<label>` merges into `main` (see "Pre-`main` gates" below) — moved
+earlier because that was too late in practice. The continuous sweep
+(`compliance-preflight-sweep.yml`) already reconciles most declarations within minutes of landing on
+`develop`, but its reconciliation PR can't auto-merge (`github-actions[bot]` is org-blocked from
+opening/merging PRs — see `docs/compliance/request-time-preflight-protocol.md`'s "Operator handoff
+procedure"), so it files a standing `compliance:preflight-handoff` issue instead and waits for a
+human or credentialed AI session to notice it. Nothing was checking for that issue until the
+pre-`main` gate ran, which can be days or weeks after `to-staging/<candidate_id>` merged during a
+full staging soak — the actual bottleneck behind seven identical recurring tickets
+(#1387/#1419/#1430/#1505/#1544/#1574/#1618). Running the same check-and-resolve procedure here,
+before the branch is even cut, catches it at the earliest point instead of relying on someone
+noticing a standing issue later.
+
+**Go past verify into resolve — don't leave either case for a human to notice separately:** a
+full-scan check for outstanding `NOT-EXECUTED-*` declarations, plus a check for a stuck
+`compliance:preflight-handoff` issue (`gh pr create` from `github-actions[bot]` is blocked by org
+policy #1295, so a sweep whose preflight passed can leave a reconciliation branch pushed with no PR
+ever opened for it — invisible to the first check alone). If either finds something: dispatch the
+sweep and/or open and merge the resulting reconciliation PR — an ordinary `develop`-base PR,
+unattended-mergeable per this role's own merge table below (no destructive action, no `main`, and
+every bundled declaration already passed a real preflight evaluation before the branch was ever
+pushed) — rather than leaving it for a human to notice separately. A `breach`/`review_required`
+result on the live endpoint means stop and escalate like any other compliance failure; do not
+proceed to cut `to-staging/<candidate_id>`.
+
+**Exact commands, pinned to a clean checkout of `origin/develop`, not whatever's checked out
+locally (fixed per PR #1672 review, RF-2 — an earlier version of this step read `git ls-files` from
+the current working directory, never pinned or refreshed):**
+`references/promotion-runbook.md`'s "Compliance preflight — pinned target-ref scan" section, run
+against `origin/develop`. Only cut `to-staging/<candidate_id>` once that procedure reports both
+checks clear.
+
 **Candidate manifest, written locally at cut time (ADR 0081 Decision 8, #1588).** The manifest
 `scripts/check-promotion-candidate.js` validates is also this candidate's own tracked source
 identity — `source_develop_sha` (no repairs yet) or `current_staging_sha` (once repairs land) — the
@@ -170,10 +203,16 @@ for the full ladder the #1007 exception collapses from three stages into two —
 itself keeps all three.
 
 **Stated the other direction, explicitly, since #1097 found this gets over-applied in practice:
-none of this — including `gate:release:local` — runs on the `develop → staging` leg** (the
-`to-staging/<label>` PR, the default flow's first leg since #1404). That leg's own procedure is in
-`references/promotion-runbook.md`'s `## Default: develop → staging → main` section and stops at
-`pr-checks.yml`'s build checks; don't reach for this section's gates there.
+`gate:release:local` (and the CI-side `promotion-quality-gate.yml`, which this leg's own PR never
+triggers) still do not run on the `develop → staging` leg** (the `to-staging/<label>` PR, the
+default flow's first leg since #1404) — that stays unchanged by #1648. **The one exception, as of
+#1648 (2026-09-06): the compliance-preflight execute-and-resolve step now also runs on this leg**,
+before the branch is even cut — see "Frozen candidate and repair loop" above. Everything else in
+this "Pre-`main` gates" section stays exactly what it says — a `main`-leg gate only; the
+`develop → staging` leg's own procedure is in `references/promotion-runbook.md`'s
+`## Default: develop → staging → main` section and stops at `pr-checks.yml`'s build checks plus the
+compliance-preflight step above; don't reach for `gate:release:local` or this section's other gates
+there.
 
 **Ordering — historical context, one real dependency remains (#1359).** This paragraph originally
 described three gates (`gate:release:local`, the compliance preflight sweep, the production
@@ -197,54 +236,61 @@ Since 2026-09-02 (#1431 Phase 1, PR-A), a red `promotion-quality-gate.yml` check
 is a real failure to read and address before the Merge Safety poll below, not noise to skim past —
 7 of its steps now drive the check-run conclusion directly, no `continue-on-error` absorbing them.
 
-**Compliance preflight sweep — verify, don't dispatch (changed #1163/#1248, 2026-08-31; PR handoff
-is now supervised, not auto-merge, #1295/#1374, 2026-09-02).** The sweep
-(`compliance-preflight-sweep.yml`) is no longer a promotion-time step this role runs — it
-auto-triggers whenever a declaration lands on `develop` and, once every result in a run passes,
-reconciles the front matter and pushes a `compliance-sweep/<run_id>` branch
-(`docs/compliance/request-time-preflight-protocol.md`, "Where live preflight actually runs"). In
-the ordinary case every declaration in the batch is already reconciled by the time promotion
-starts. This role's job here is two checks, not one — verify outstanding declarations, **and**
-check for a stuck handoff:
+**Compliance preflight sweep — kept here too, on purpose, as of #1648 (2026-09-06).** The primary
+execute-and-resolve run now happens earlier, at the `develop → staging` leg, before
+`to-staging/<candidate_id>` is even cut — see "Frozen candidate and repair loop" above for the full
+procedure, commands, and the #1387/#1419/#1430/#1505/#1544/#1574/#1618 history it exists to close.
+This pre-`main` check is **not deleted; its fate is a deliberate decision, not an oversight**, and
+it splits by flow:
 
-```bash
-git ls-files -- docs/compliance/impact-declarations | grep '\.md$' \
-  | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
-gh issue list --label compliance:preflight-handoff --state open --json number,title,url
-```
+- **Default flow (three-stage):** by the time `release/<label>` is cut from `origin/staging`, the
+  staging-leg step above should already have cleared every declaration — the frozen-candidate rule
+  (no wholesale `develop` merge into an active candidate, above) and the mid-soak "ship, don't fold"
+  rule (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-09-06 #1660 entry) both guarantee nothing new
+  lands into the candidate between the two cuts. So here, this check is **redundant
+  defense-in-depth** — cheap (read-only unless it actually has to resolve something) and unattended,
+  kept as a double-check, not because it's expected to ever find anything. A finding here in the
+  default flow is itself an anomaly — something bypassed the staging-leg check or violated the
+  frozen-candidate rule — worth flagging as such, not treated as routine.
+- **#1007-gated exception (direct `develop → main`):** this path never cuts
+  `to-staging/<candidate_id>` at all, so the staging-leg step above never runs for it. This
+  pre-`main` check is this flow's **only** compliance-preflight gate — not redundant here,
+  load-bearing — so it keeps the identical execute-and-resolve behavior (below), run here instead,
+  immediately before cutting `release/<label>`.
 
-The first command is a **full scan of the checked-out ref**, not a `develop..main` diff — the diff
-had a permanent blind spot (a declaration that reached `main` via a #1007-override promotion sits on
-both branches and never appears in a diff between them; #1374's own research found 26 outstanding on
-a full scan where the diff found 4). Empty output means zero outstanding.
+Either way it's the same two-check-then-resolve procedure defined in "Frozen candidate and repair
+loop" above, re-run here rather than trusting a staging-leg pass from days or weeks earlier — same
+`references/promotion-runbook.md`'s "Compliance preflight — pinned target-ref scan" section,
+parameterized by `TARGET_REF` (RF-4, PR #1672 review) rather than hard-coded, and pinned to a
+per-run checkout at a unique path, never a fixed shared one (RF-6, same review): set `TARGET_REF` to
+`origin/staging` for the default flow's `release/<candidate_id>-rN` cut (the runbook's own
+established `origin/staging`-in-place-of-`origin/develop` substitution for this leg — `origin/staging`
+is what `release/<label>` is actually cut from here, and per the frozen-candidate rule newer
+`origin/develop` work was never folded into this candidate, so scanning `develop` instead would risk
+both false positives from unrelated later work and blindness to a staging-only repair's own
+declaration changes), or `origin/develop` for the #1007-gated exception's direct `release/<label>`
+cut. Empty output on both checks → clear, proceed to cut the branch.
 
-The second command is the **fast signal for a stuck handoff**: `gh pr create` from
-`github-actions[bot]` is blocked by an org-level policy (#1295), so a sweep whose preflight passed
-can leave a reconciliation branch pushed with no PR ever opened for it — invisible to the first
-command alone, since the declarations *are* reconciled in that pushed branch's working tree, just
-not yet merged into `develop`. **If this returns any open issue, open and merge that handoff PR
-before cutting `release/<label>`** — follow `docs/compliance/request-time-preflight-protocol.md`'s
-"Operator handoff procedure" (find the branch/commands from the issue or the run's
-`compliance-preflight-sweep-handoff` artifact, `gh pr create` + Merge Safety poll + merge). Its merge
-re-triggers one more sweep that reports zero outstanding and closes the issue.
+**Otherwise, the resolve behavior itself now splits by `$TARGET_REF` too (RF-4, PR #1672 review) —
+this is not a symmetric substitution.** When `TARGET_REF` is `origin/develop`, resolve exactly as
+described above before cutting. When `TARGET_REF` is `origin/staging` and something is found: **stop,
+don't dispatch the sweep against it.** `compliance-preflight-sweep.yml`'s reconciliation PR is
+hardcoded to `--base develop` (its own workflow file), so dispatching it with `--ref staging` would
+still open a `develop`-based PR — but built from `staging`'s tree, which would bundle every unrelated
+difference between the two branches into that PR, not just the declaration fix; it also would not
+actually update `origin/staging` at all, so refreshing and re-checking afterward would show no
+change regardless. A finding here in the default flow is exactly the anomaly named above — treat it
+as such, escalate, and route any genuine fix through `references/promotion-runbook.md`'s "Candidate
+repair after the staging merge" (a `fix/staging/*` branch PR'd directly into `staging`,
+hand-reconciling the declaration via `docs/compliance/request-time-preflight-protocol.md`'s
+local-debugging scripts if a live preflight run is actually needed) — never this section's
+`develop`-based dispatch-and-merge flow.
 
-If the first command lists any file and the second returns no open issue, the continuous trigger
-hasn't caught up yet (or a declaration landed via a path this repo's automation doesn't cover, e.g.
-a direct commit — shouldn't happen, but check): dispatch the sweep manually and wait for it —
-
-```bash
-gh workflow run compliance-preflight-sweep.yml
-gh run list --workflow=compliance-preflight-sweep.yml -L1 --json databaseId,status
-```
-
-— rather than treat a missed declaration as blocking indefinitely. The workflow runs against its
-own ephemeral CI-provisioned instance now — no `environment:` input, no secrets, nothing to
-provision (superseded #1121's `stage.dgfy.ph` bot-account design; see the ADR 0074 amendment dated
-2026-08-31 for why). **No `NOT-EXECUTED-*` declaration may reach `main`** — unchanged — but the
-sweep itself is what clears them now, continuously (once its PR is actually merged — see the handoff
-check above), not a step this role dispatches and waits on per promotion; #1007's expedited override
-(below) remains the one case a `NOT-EXECUTED-*` declaration may legitimately still reach `main`,
-logged and authorized, not silent.
+The workflow runs against its own ephemeral CI-provisioned instance — no `environment:` input, no
+secrets, nothing to provision (superseded #1121's `stage.dgfy.ph` bot-account design; see the ADR
+0074 amendment dated 2026-08-31 for why). **No `NOT-EXECUTED-*` declaration may reach `main`** —
+unchanged — and #1007's expedited override (below) remains the one case a `NOT-EXECUTED-*`
+declaration may legitimately still reach `main`, logged and authorized, not silent.
 
 **`gate:release:local` is no longer a step in this procedure (since 2026-09-03, #1431 Phase C/D).**
 Every gate it used to run locally is now delegated to `promotion-quality-gate.yml`
@@ -362,8 +408,9 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 | Running `node scripts/check-image-version-parity.js` after `deploy-main.yml` (ADR 0081 Decision 8, #1588) | Unattended — read-only, `docker buildx imagetools inspect` only, no push |
 | Publishing the GitHub Release (`gh release create release-<candidate_id> ...`) after the promotion parity gate confirms the deploy (#1278, ADR 0082) | Unattended — this is a post-deploy **record** of a deploy Pat already authorized at the PROD dispatch ask, not a mutation of a deployed environment and not a second deploy dispatch. Do not confuse it with the `deploy-main.yml` dispatch row below, which stays an every-time ask |
 | Running `npm run preflight:runner` (Phase 233, #1365, H1) before the `deploy-main.yml` dispatch ask | Unattended — read-only (`gh api`/`curl`, self-cancelling `--canary` if used). An exit-`3` "flip required" result still requires logging the flip in the promotion PR before acting on it — that's a documentation step, not a new ask |
-| Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched. No longer auto-merges (#1295/#1374): a passing run pushes its reconciliation branch and attempts the PR, but a policy-blocked `gh pr create` finishes green-with-warning and hands off to a human/credentialed AI session instead — see "Compliance preflight sweep" above. Dispatching itself is still unattended either way, same reasoning as `verify-deployment.yml`'s read-only classification |
-| Opening and merging a stuck compliance-sweep handoff PR (per the "Compliance preflight sweep" fast-signal check above, before cutting `release/<label>`) | Unattended — same reasoning as any other `develop`-base PR merge in this role's table (pre-flight, branch cut, PR open, merge into `develop` row above): no destructive action, no `main`, and every declaration in it already passed a real preflight evaluation before the branch was ever pushed. Still subject to `AGENTS.md`'s Merge Safety hard stop, unchanged |
+| Running the compliance-preflight execute-and-resolve check (full-scan + stuck-handoff check) before cutting `to-staging/<candidate_id>` **or** `release/<label>` (#1648, 2026-09-06) | Unattended — read-only until it needs to resolve something; see "Frozen candidate and repair loop" and "Compliance preflight sweep" above |
+| Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched. No longer auto-merges (#1295/#1374): a passing run pushes its reconciliation branch and attempts the PR, but a policy-blocked `gh pr create` finishes green-with-warning and hands off to a human/credentialed AI session instead — see "Frozen candidate and repair loop" / "Compliance preflight sweep" above. Dispatching itself is still unattended either way, same reasoning as `verify-deployment.yml`'s read-only classification |
+| Opening and merging a stuck compliance-sweep handoff PR (per the fast-signal check described in "Frozen candidate and repair loop" above, before cutting `to-staging/<candidate_id>` **or** `release/<label>`) | Unattended — same reasoning as any other `develop`-base PR merge in this role's table (pre-flight, branch cut, PR open, merge into `develop` row above): no destructive action, no `main`, and every declaration in it already passed a real preflight evaluation before the branch was ever pushed. Still subject to `AGENTS.md`'s Merge Safety hard stop, unchanged |
 | Dispatching `deploy-main.yml` (PROD deploy) | Ask, every time — no standing pre-authorization, matching `implement`'s existing deploy-dispatch tier |
 | Merging a `release/<label>` PR into `main` | **Never**, no exception — restate this rule explicitly whenever the boundary is hit, don't just silently stop. **Two** narrow, phrase-gated exceptions exist, neither a standing pre-authorization: `incident-responder`'s own override for an actively open production incident (`.agents/skills/incident-responder/SKILL.md` — belongs to that role, invoked there, not here), and this role's own #1007 expedited override (below) for Pat's business-urgency call, invoked here |
 | Invoking the #1007 expedited override (skipping `gate:release:local` and/or the compliance preflight sweep before a `main` merge) | **Only** on Pat's explicit real-time phrase given in this exact moment — never inferred, never a standing pre-authorization from a prior invocation. Restate the standing "these are normally required" rule out loud, then post the authorization comment on the promotion PR/tracking issue **before** merging, not after. The production tenant-schema report, `AGENTS.md` Merge Safety, never-`--squash`, and the `release/` head-cut rule stay mandatory regardless — this override never touches those. Run the retro-verification checklist (`RELEASE_CANDIDATE_POLICY.md`'s amendment) afterward as part of "done," not a follow-up |

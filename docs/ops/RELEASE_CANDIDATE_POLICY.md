@@ -1258,3 +1258,113 @@ describes the mechanics of, not a change to its tier. No `[binding]` clause of t
 other ADR is changed by this entry.
 
 PR: (this PR). Refs #1278, #1548. Does not close #1278 — Phase 296 (enforcement) is a separate PR.
+
+### 2026-09-06: Mid-soak `develop` update — ship the frozen candidate, don't fold new work in (#1660)
+
+Names, as its own decision, a case the 2026-09-04 "Frozen promotion-candidate repair loop" entry
+above already implied but never stated directly: **new work lands on `develop` while a candidate is
+already soaking in `staging`, still on its way to `main`.** Do you fold the new work into what's
+about to ship, or not?
+
+**Resolved: ship the current candidate as already qualified; the new `develop` work becomes the seed
+of the next ordinary candidate.** Three options were weighed:
+
+1. Hold the current candidate, merge the new `develop` work into it, requalify the combined set
+   under a bumped version before shipping anything.
+2. Keep the current candidate's version number, merge the new work in anyway, and call the result a
+   "hotfix" to that same version.
+3. Ship the current candidate to `main` as already qualified; treat the new `develop` work as the
+   seed of the next ordinary candidate, cut whenever it's ready.
+
+**Option 2 is rejected outright, not just discouraged.** It collides with two separate rules at
+once: ADR 0081 Decision 7 (`[binding]`, tag immutability) forbids changing what a published version
+tag's content is without a real version bump — there is no such thing as silently re-shipping the
+same number with different contents. And it misuses the `fix/staging/<candidate_id>-rN` repair
+mechanism, which exists specifically to fix a defect discovered *in* the candidate already soaking —
+not to admit unrelated new feature work that happened to land on `develop` in the meantime. The word
+"hotfix" doesn't change what the merge structurally is.
+
+**Option 1 is mechanically valid but strictly worse than Option 3, not a cheaper path.** The frozen-
+candidate rule already requires that merging anything new into an active candidate invalidates its
+qualification — so Option 1 pays the exact same full re-soak cost Option 3 does, while additionally
+throwing away a candidate that was otherwise ready to ship. There is no version of "fold it in to
+save a promotion cycle" that is actually cheaper once the re-soak requirement is accounted for.
+
+**Option 3 is simply the frozen-candidate rule working as designed, not a special case.** Cutting a
+new candidate shortly after the previous one shipped is unremarkable — nothing in the per-candidate
+floor-check (ADR 0081 Decision 6) or release-note obligation (ADR 0082 Decision 3) treats back-to-
+back candidates as exceptional. If the new `develop` work is genuinely too urgent to wait for its own
+ordinary `staging` soak, that is what the #1007 expedited `develop → main` override exists for
+(phrase-gated, logged every invocation) — a deliberate, separate lever, not a reason to fold new
+scope into an already-soaking candidate.
+
+This is a `[default]`-tier clarification under ADR 0039 of the existing frozen-candidate principle —
+no `[binding]` clause is changed, including ADR 0081 Decision 7 itself, which this entry only cites
+as the reason Option 2 fails.
+
+PR: (this PR). Closes #1660.
+
+### 2026-09-06: Compliance preflight execute-and-resolve moves to the `develop → staging` leg, not
+just verified before `main` (#1648)
+
+Resolves the gap named in #1648, itself filed right after #1618 — the seventh occurrence of the
+identical `compliance:preflight-handoff` ticket (#1387, #1419, #1430, #1505, #1544, #1574, #1618,
+all closed by a human or credentialed AI session happening to notice the standing issue, not by any
+step in this flow). The continuous sweep (`compliance-preflight-sweep.yml`) reconciles most
+declarations within minutes of landing on `develop`, but its reconciliation PR can't auto-merge
+(org-blocked `github-actions[bot]`, #1295/#1374) — and nothing checked for that stuck handoff until
+`promoter`'s pre-`main` gate ran, which can be days or weeks after `to-staging/<candidate_id>`
+already merged during a full staging soak. Deferring the check to right before `main` deferred the
+fix for just as long.
+
+**What changed.** `promoter` now runs the same check as before — full-scan for outstanding
+`NOT-EXECUTED-*` declarations, plus a check for a stuck `compliance:preflight-handoff` issue — much
+earlier, before `to-staging/<candidate_id>` is even cut, not only before `release/<label>` merges
+into `main`. It also now **goes past verify into resolve** at that point: if either check turns up
+something, `promoter` dispatches `compliance-preflight-sweep.yml` itself and then opens and merges
+the resulting reconciliation PR itself (an ordinary `develop`-base PR, already unattended-mergeable
+per `promoter`'s own merge table — no new merge authority granted by this entry), rather than
+leaving that step for a human to notice a separate GitHub issue after the fact. Full procedure:
+`.agents/skills/promoter/SKILL.md`'s "Frozen candidate and repair loop" section;
+executable commands: `.agents/skills/promoter/references/promotion-runbook.md`'s
+"Default: `develop` → `staging` → `main`" section. This changes ADR 0074 Decision 5's own anchor
+(`[default]` tier) — amended in the same PR, see that ADR's 2026-09-06 #1648 amendment rather than
+restated here.
+
+**The compliance verification ladder table** (2026-08-22 amendment above, updated 2026-08-25,
+2026-09-02) is **not rewritten in place**, same established convention as every amendment on this
+table before it. Read it as follows going forward: its "`develop → staging`" row's "What runs" cell
+now additionally includes the execute-and-resolve compliance-preflight step described above, run
+before the branch is cut — this is new, not previously true of that row. Its "`develop → main`" row
+still lists the compliance preflight check, but per the decision below that check is now largely
+redundant there for the default flow, kept as an explicit defense-in-depth double-check rather than
+the primary gate the ladder table's original wording implied.
+
+**Decision on the existing pre-`main` check: kept, not removed — and why, explicitly, rather than
+silently.** Deleting it outright would have been wrong, not just less thorough: the #1007-gated
+expedited `develop → main` exception (this document's 2026-08-25/2026-09-02 amendments above) skips
+the `develop → staging` leg entirely, so for that specific flow the pre-`main` check is not
+redundant at all — it remains the **only** compliance-preflight gate that flow ever runs. For the
+default three-stage flow, by contrast, it genuinely is defense-in-depth: the frozen-candidate rule
+(no wholesale `develop` merge into an active candidate) and the mid-soak "ship, don't fold" rule
+(this document's own 2026-09-06 #1660 entry above) together guarantee nothing new lands into a
+candidate between the `to-staging/<candidate_id>` cut and the `release/<label>` cut, so the pre-`main`
+check should always find the same clean state the staging-leg check already established. **Not a
+symmetric substitution, though**: the default flow's pre-`main` check scans `origin/staging` (what
+`release/<label>` is actually cut from there), and because the sweep's reconciliation PR is
+hardcoded to `--base develop`, a finding against `origin/staging` cannot go through the same
+dispatch-and-merge resolve path — it's a frozen-candidate anomaly instead, escalated and routed
+through a `fix/staging/*` repair. The `#1007`-gated exception's and the staging-leg's own checks
+(both against `origin/develop`) do share the identical execute-and-resolve behavior. Full split by
+flow: `.agents/skills/promoter/SKILL.md`'s "Compliance preflight sweep" section under "Pre-`main`
+gates".
+
+**What's unchanged:** "No `NOT-EXECUTED-*` declaration may reach `main`" (this document's own
+standing rule), the full-scan discovery method (#1374, not a `develop..main` diff), the supervised
+handoff mechanics themselves (#1295/#1374 — `github-actions[bot]` still cannot open or approve PRs,
+`promoter` doing so on its behalf is the same "ordinary `develop`-base PR, already
+unattended-mergeable" authority it already had, not a new grant), and #1007's expedited override as
+the one case a `NOT-EXECUTED-*` declaration may legitimately still reach `main`, logged and
+authorized, not silent.
+
+PR: (this PR). Closes #1648. Refs #1618.

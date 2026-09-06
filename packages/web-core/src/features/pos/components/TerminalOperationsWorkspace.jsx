@@ -148,6 +148,7 @@ import PosFnbModifiersWorkspace from './PosFnbModifiersWorkspace.jsx';
 import {
   fetchPosSetupCashiers,
   fetchPosCatalog,
+  fetchPosCatalogPage,
   fetchPosTransactions,
   fetchTerminalTodayDashboard,
   fetchMerchantTenderReconciliation,
@@ -288,6 +289,16 @@ const money = (value) => Number(value || 0).toFixed(2);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
+
+// RF-2 (PR #1656 review, #1410): the create-item modal disables its own close button while
+// postCreateSaving is true, so a stuck background upload job locks the operator out of the
+// modal for the full poll duration -- unlike handleGenerateEditImage's edit-modal path, which
+// stays dismissible throughout its own poll. Reusing useItemImageGenerationPoll's full
+// ITEM_IMAGE_POLL_TIMEOUT_MS (90s) here would mean a genuinely stuck job locks the modal that
+// long; bound it to a much shorter ceiling instead -- the common/fast case still resolves in a
+// couple of seconds well under this, and a timeout here degrades to today's pre-fix behavior
+// (soft warning, pos.catalog.changed SSE backstop), not a hard failure.
+const CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS = 15 * 1000;
 
 const resolveStoredItemImageUrl = (urlOrPath) => {
   const raw = String(urlOrPath || '').trim();
@@ -2143,6 +2154,9 @@ function ItemsWorkspace({
   sectionId
 }) {
   const [items, setItems] = useState([]);
+  const [itemsTotal, setItemsTotal] = useState(0);
+  const itemsReadSequence = useRef(0);
+  const itemsLoaded = useRef(false);
   const [primaryBarcodes, setPrimaryBarcodes] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -2174,7 +2188,11 @@ function ItemsWorkspace({
   // catalog-image-upload-status endpoint instead of the AI-generation one --
   // used by runPostCreateStages below to wait out the async image upload
   // worker (catalogImageUploadWorker.js) before the post-create item refetch.
-  const { pollItemImageGeneration: pollCatalogImageUploadStatus } = useItemImageGenerationPoll(getStorefrontCatalogImageUploadStatus);
+  // A shorter timeout than the hook's 90s default (see
+  // CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS above) -- this poll runs while
+  // the create-item modal is locked, unlike the AI-generation path this hook
+  // was originally built for.
+  const { pollItemImageGeneration: pollCatalogImageUploadStatus } = useItemImageGenerationPoll(getStorefrontCatalogImageUploadStatus, CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS);
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
@@ -2197,6 +2215,8 @@ function ItemsWorkspace({
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
   const [itemsPage, setItemsPage] = useState(1);
+  const deferredItemsSearch = React.useDeferredValue(searchQuery);
+  const [editingItemSnapshot, setEditingItemSnapshot] = useState(null);
   const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateServiceModal, setShowCreateServiceModal] = useState(false);
@@ -2266,30 +2286,43 @@ function ItemsWorkspace({
   }, []);
 
   const loadItems = useCallback(async () => {
-    if (!canViewPos) {
+    const sequence = ++itemsReadSequence.current;
+    if (!canViewPos || locked) {
+      itemsLoaded.current = false;
       setItems([]);
+      setItemsTotal(0);
       setPrimaryBarcodes({});
       setError('');
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    setLoading(!itemsLoaded.current);
     setError('');
     try {
-      const data = await fetchPosCatalog({ limit: 200 });
-      const catalogItems = Array.isArray(data) ? data : [];
+      const data = await fetchPosCatalogPage({
+        search: deferredItemsSearch,
+        page: itemsPage,
+        page_size: POS_ITEMS_PAGE_SIZE,
+        category_filter: categoryFilter,
+        stock_filter: stockFilter,
+        ...(operatingLocationId ? { location_id: operatingLocationId } : {})
+      });
+      if (itemsReadSequence.current !== sequence) return;
+      const catalogItems = Array.isArray(data?.items) ? data.items : [];
       setItems(catalogItems);
+      setItemsTotal(Number(data?.pagination?.total || 0));
+      itemsLoaded.current = true;
       loadPrimaryBarcodes(catalogItems);
     } catch (loadError) {
-      setItems([]);
-      setPrimaryBarcodes({});
+      if (itemsReadSequence.current !== sequence) return;
       setError(loadError?.response?.data?.message || 'Failed to load POS-visible IMS items.');
     } finally {
-      setLoading(false);
+      if (itemsReadSequence.current === sequence) setLoading(false);
     }
-  }, [canViewPos, loadPrimaryBarcodes]);
+  }, [canViewPos, categoryFilter, deferredItemsSearch, itemsPage, loadPrimaryBarcodes, locked, operatingLocationId, stockFilter]);
 
+  useEffect(() => () => { itemsReadSequence.current++; }, [loadItems]);
   const normalizePosFolders = useCallback((rows = []) => (
     (Array.isArray(rows) ? rows : [])
       .map((folder) => ({
@@ -2401,68 +2434,18 @@ function ItemsWorkspace({
     return foodCategoryOptions.find((option) => option.value === normalizedSelection) || null;
   }, [foodCategoryOptions]);
 
-  const filteredItems = useMemo(() => {
-    const normalizedQuery = String(searchQuery || '').trim().toLowerCase();
-    return sortedItems.filter((item) => {
-      const folderId = Number(item?.folder_id);
-      const folderName = String(item?.folder?.name || item?.product_folder || '').trim();
-      const barcode = primaryBarcodes[String(item?.item_id)]?.code || '';
-      const isServiceItem = isServiceCatalogItem(item);
-      const stockQuantity = Number(item?.current_stock || 0);
-      const isAlwaysAvailable = item?.pos_always_available === true;
-      const threshold = Number(item?.min_threshold);
-      const lowStockThreshold = Number.isFinite(threshold) && threshold > 0 ? threshold : 5;
-      const matchesStock = (() => {
-        switch (stockFilter) {
-          case 'in_stock':
-            return isServiceItem || isAlwaysAvailable || stockQuantity > lowStockThreshold;
-          case 'low_stock':
-            return !isServiceItem && stockQuantity > 0 && stockQuantity <= lowStockThreshold;
-          case 'almost_out':
-            return !isServiceItem && stockQuantity > 0 && stockQuantity <= lowStockThreshold;
-          case 'out_of_stock':
-            return !isServiceItem && !isAlwaysAvailable && stockQuantity <= 0;
-          default:
-            return true;
-        }
-      })();
-      // ADR 0080 Amendment (Phase 286, #1318): the folder:<id> chip filter widens to the
-      // membership union -- an item also matches when the selected category is one of its
-      // SECONDARY categories (item?.secondary_folder_ids), not just its primary folder_id.
-      // The name:<slug> fallback (items without a real folder_id) is unaffected -- no
-      // secondary-category data exists to widen it with.
-      const secondaryFolderIds = Array.isArray(item?.secondary_folder_ids) ? item.secondary_folder_ids : [];
-      const matchesCategory = categoryFilter === 'all'
-        || (categoryFilter.startsWith('folder:')
-          ? (() => {
-            const selectedFolderId = Number(categoryFilter.replace('folder:', ''));
-            return selectedFolderId === folderId
-              || secondaryFolderIds.some((id) => Number(id) === selectedFolderId);
-          })()
-          : normalizeFolderNameKey(folderName) === normalizeFolderNameKey(categoryFilter.replace('name:', '')));
-      const haystack = [
-        item?.name,
-        item?.sku_code,
-        folderName,
-        barcode
-      ]
-        .map((value) => String(value || '').toLowerCase())
-        .join(' ');
-      const matchesQuery = !normalizedQuery || haystack.includes(normalizedQuery);
-      return matchesCategory && matchesStock && matchesQuery;
-    });
-  }, [categoryFilter, primaryBarcodes, searchQuery, sortedItems, stockFilter]);
+  const filteredItems = sortedItems;
+  const hasActiveItemsFilters = Boolean(String(searchQuery || '').trim())
+    || categoryFilter !== 'all'
+    || stockFilter !== 'all';
 
   useEffect(() => {
     setItemsPage(1);
   }, [categoryFilter, searchQuery, stockFilter]);
 
-  const totalItemsPages = Math.max(1, Math.ceil(filteredItems.length / POS_ITEMS_PAGE_SIZE));
+  const totalItemsPages = Math.max(1, Math.ceil(itemsTotal / POS_ITEMS_PAGE_SIZE));
   const currentItemsPage = Math.min(itemsPage, totalItemsPages);
-  const paginatedItems = useMemo(() => {
-    const start = (currentItemsPage - 1) * POS_ITEMS_PAGE_SIZE;
-    return filteredItems.slice(start, start + POS_ITEMS_PAGE_SIZE);
-  }, [currentItemsPage, filteredItems]);
+  const paginatedItems = filteredItems;
 
   useEffect(() => {
     if (itemsPage !== currentItemsPage) {
@@ -2471,8 +2454,8 @@ function ItemsWorkspace({
   }, [currentItemsPage, itemsPage]);
 
   const activeEditItem = useMemo(
-    () => sortedItems.find((item) => Number(item?.item_id) === Number(editingItemId)) || null,
-    [editingItemId, sortedItems]
+    () => sortedItems.find((item) => Number(item?.item_id) === Number(editingItemId)) || editingItemSnapshot,
+    [editingItemId, editingItemSnapshot, sortedItems]
   );
 
   // Real, already-persisted item id backing the open edit modal, or 0 when
@@ -2692,6 +2675,7 @@ function ItemsWorkspace({
       ? foodCategoryOptions.find((option) => Number(option?.folder_id) === savedFolderId)
       : foodCategoryOptions.find((option) => normalizeFolderNameKey(option?.name) === normalizeFolderNameKey(savedFolderName));
     setEditingItemId(item?.item_id || null);
+    setEditingItemSnapshot(item || null);
     setFocusedEditMoneyField('');
     const savedBarcode = primaryBarcodes[String(item?.item_id)] || item?.primary_barcode || null;
     const savedBarcodeCode = String(savedBarcode?.code || '').trim();
@@ -2726,6 +2710,7 @@ function ItemsWorkspace({
     if (!force && (savingItem || persistingEditAssets || generatingEditImage || pollingEditImage)) return;
     cancelImageGenerationPoll();
     setEditingItemId(null);
+    setEditingItemSnapshot(null);
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setSelectedEditImageFiles([]);
@@ -3713,11 +3698,15 @@ function ItemsWorkspace({
       ) : filteredItems.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-8 text-center shadow-sm shadow-slate-200/60">
           <ClipboardList className="mx-auto h-10 w-10 text-slate-300" />
-          <p className="mt-3 text-base font-black text-[#0F172A]">No POS items found</p>
-          <p className="mt-1 text-sm text-[#64748B]">
-            Only IMS items with POS visibility enabled appear here.
+          <p className="mt-3 text-base font-black text-[#0F172A]">
+            {hasActiveItemsFilters ? 'No matching items' : 'No POS items found'}
           </p>
-          {canCreateItems && (
+          <p className="mt-1 text-sm text-[#64748B]">
+            {hasActiveItemsFilters
+              ? 'Try changing your search or filters.'
+              : 'Only IMS items with POS visibility enabled appear here.'}
+          </p>
+          {canCreateItems && !hasActiveItemsFilters && (
             <Button
               type="button"
               onClick={openCreate}
@@ -3928,7 +3917,7 @@ function ItemsWorkspace({
 
           <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-200/60 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm font-medium text-[#64748B]">
-              Showing {Math.min(((currentItemsPage - 1) * POS_ITEMS_PAGE_SIZE) + 1, filteredItems.length)}–{Math.min(currentItemsPage * POS_ITEMS_PAGE_SIZE, filteredItems.length)} of {filteredItems.length} items
+              Showing {itemsTotal === 0 ? 0 : ((currentItemsPage - 1) * POS_ITEMS_PAGE_SIZE) + 1}–{Math.min(currentItemsPage * POS_ITEMS_PAGE_SIZE, itemsTotal)} of {itemsTotal} items
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -9872,3 +9861,4 @@ export default function TerminalOperationsWorkspace({
     </WorkspaceShell>
   );
 }
+

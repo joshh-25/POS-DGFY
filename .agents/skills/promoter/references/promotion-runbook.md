@@ -3,6 +3,150 @@
 Mechanics only. Rule sources (why, and what gates apply) are in `../SKILL.md` and the docs it
 points at — don't duplicate the reasoning here, just the commands.
 
+## Compliance preflight — pinned target-ref scan, resolve, and refresh (shared by both flows, #1648; pinned-scan fix from PR #1672 review, RF-1/RF-2; parameterized RF-4, unique-path fix RF-6; fail-loud guard + pinned-SHA cut fix RF-8/RF-10; fail-closed strict-mode fix RF-12)
+
+Every call site below needs the identical check before its next branch is cut, but against
+different target refs: the `#1007`-gated exception's direct `release/<label>` cut and the default
+flow's `to-staging/<candidate_id>` cut both scan `origin/develop`; the default flow's own
+`release/<candidate_id>-rN` cut scans `origin/staging` instead — that's what `release/<label>` is
+actually cut from on that leg (see the substitution note where that call site sends you here). Set
+`TARGET_REF` **before** this block, then run the rest of this section unmodified — never hard-code
+the ref inline, that's exactly the gap RF-4 (PR #1672 review) found in this section's first version,
+which offered no way to invoke it against anything but `origin/develop`. This block itself never
+assigns a default value: RF-8 (PR #1672 review) found that the block's own `TARGET_REF=origin/develop`
+fallback silently clobbered a call site's `origin/staging` choice whenever both were pasted in
+sequence — exactly what "run unmodified" tells the reader to do — so a missing assignment now fails
+loudly instead of silently defaulting. Every block in this section also runs under strict mode from
+here on — set once, it persists for the rest of this shell session, no need to restate it in the
+blocks below. RF-12 (PR #1672 review, round 4) found the real gap without it: an unchecked failure
+in `git fetch`, `git rev-parse`, `git worktree add`, or the declaration-listing step could produce
+empty output that gets misread as "both checks clear," letting the caller cut from `$TARGET_SHA`
+without ever actually evaluating it:
+
+```bash
+set -euo pipefail
+: "${TARGET_REF:?set TARGET_REF before running this procedure}"
+REF_NAME="${TARGET_REF#origin/}"
+git fetch origin "$REF_NAME"
+TARGET_SHA=$(git rev-parse "$TARGET_REF")
+```
+
+`TARGET_SHA` is the immutable commit every check below actually evaluates, and — once both checks
+come back clear — the exact commit every call site cuts its next branch from (RF-10, PR #1672
+review): the branch-cut commands used to re-read `origin/develop`/`origin/staging` fresh, after a
+*second*, later, unqualified `git fetch origin` at each call site — so a push landing in the gap
+between "scan clear" and "cut" could carry an unscanned declaration straight onto the new promotion
+branch. Reading `$TARGET_SHA` instead of the ref closes that gap outright: there is no later fetch
+for the ref to move underneath it.
+
+The scan must reflect `$TARGET_REF`'s exact committed state — not whatever the promoter's own
+working directory happens to have checked out, and not a `develop..main`/`develop..staging` diff (a
+diff misses a declaration already reconciled on both branches via a prior #1007-override promotion —
+#1374's own finding: 26 outstanding on a full scan vs. 4 on a diff). Fixed with a disposable
+worktree pinned to the freshly fetched target ref, at a **path unique to this run** — never a fixed
+shared path (RF-6, PR #1672 review: a fixed path's unconditional `rm -rf` could delete a
+concurrent/interrupted promoter session's own active worktree at that same path) — with a cleanup
+trap as the crash/interrupt backstop. `git worktree add` failing here already aborts the whole
+session under the strict mode set above (RF-12) — no separate check needed on this line, only the
+trap's own `2>/dev/null` stays deliberately suppressed, since a best-effort cleanup failing on exit
+is not itself a finding worth surfacing:
+
+```bash
+WORKTREE_DIR="$(git rev-parse --show-toplevel)/.tmp/compliance-scan-$REF_NAME-$$"
+trap 'git worktree remove --force "$WORKTREE_DIR" 2>/dev/null' EXIT
+git worktree add --detach "$WORKTREE_DIR" "$TARGET_SHA"
+```
+
+Scan that pinned checkout, never the current working directory. RF-12 (PR #1672 review, round 4)
+found three fail-open traps in this block's previous version, all fixed below:
+
+- Listing files as its own checked statement (`DECLARATION_FILES=$(...)`), not inline inside the
+  `for` loop's own `$(...)` — strict mode's `set -e` does **not** catch a command substitution's
+  failure when it sits inside a `for ... in $(...)` word list, only when it's a plain assignment.
+  `for f in $(git ls-files ...); do ...` failing silently and iterating zero times is exactly how a
+  broken worktree/scan produced "empty output" that got misread as "clear."
+- Filtering by extension with a `case` match instead of piping through `grep '\.md$'` — under
+  `pipefail`, that pipe would fail the whole assignment the moment zero `.md` files exist, which is
+  a normal, expected outcome (no compliance-sensitive declarations at all), not an error. Don't
+  reintroduce that pipe here even under strict mode; it trades one fail-open trap for a fail-closed
+  false positive on a perfectly clean repo.
+- Checking `is-preflight-outstanding.js`'s actual output, not just `&&`-gating on its exit code —
+  the script exits 1 for two different reasons (a reconciled declaration, expected, or a read/parse
+  failure, a real error — see its own header comment) and only its stdout ("reconciled" vs. nothing)
+  tells them apart. Blindly treating every non-zero exit as "not outstanding" is the same fail-open
+  shape as the other two, just at the per-file level instead of the per-scan level. No blanket
+  `2>/dev/null` either — a real failure here has to be visible, not silently discarded:
+
+```bash
+DECLARATION_FILES=$(git -C "$WORKTREE_DIR" ls-files -- docs/compliance/impact-declarations)
+for f in $DECLARATION_FILES; do
+  case "$f" in
+    *.md) ;;
+    *) continue ;;
+  esac
+  status=0
+  output=$(node scripts/is-preflight-outstanding.js "$WORKTREE_DIR/$f") || status=$?
+  if [ "$status" -eq 0 ]; then
+    echo "$f"   # outstanding
+  elif [ "$status" -ne 1 ] || [ "$output" != "reconciled" ]; then
+    echo "ERROR: is-preflight-outstanding.js failed on $f (exit $status): $output" >&2
+    exit 1
+  fi
+done
+gh issue list --label compliance:preflight-handoff --state open --json number,title,url
+```
+
+Empty output on both → clear; tear the worktree down now (`git worktree remove --force
+"$WORKTREE_DIR"` — the trap above is only the crash/interrupt backstop, not a substitute for
+cleaning up on the happy path) and proceed to whichever branch cut sent you here — **cut from
+`$TARGET_SHA`, not a freshly re-read `$TARGET_REF`** (RF-10, PR #1672 review), so nothing landing
+after this point rides along unscanned.
+
+**If `$TARGET_REF` is `origin/develop`** and either check finds something, resolve — don't just
+report and wait:
+
+```bash
+# a stuck handoff issue exists (second command returned one) -- open and merge it now, per
+# docs/compliance/request-time-preflight-protocol.md's "Operator handoff procedure":
+gh pr create --base develop --head compliance-sweep/<run_id> \
+  --title "docs(compliance): reconcile preflight sweep results (<date>)" --body-file <pr_body>
+gh pr checks <N> --watch   # Merge Safety poll -- AGENTS.md
+gh pr merge <N> --merge --delete-branch
+
+# OR: a declaration is outstanding with no handoff issue yet (first command listed a file, second
+# returned nothing) -- the continuous trigger hasn't caught up, dispatch it manually and wait:
+gh workflow run compliance-preflight-sweep.yml
+gh run list --workflow=compliance-preflight-sweep.yml -L1 --json databaseId,status
+gh run view <id> --json conclusion
+# then re-run the two check commands above -- a passing run almost always produces a fresh
+# stuck-handoff issue (same org-policy block), so open and merge it the same way as above.
+```
+
+Either resolve path moves `origin/develop` — **refresh the pinned worktree and `$TARGET_SHA` before
+re-checking**, don't re-scan the stale copy already on disk:
+
+```bash
+git fetch origin "$REF_NAME"
+TARGET_SHA=$(git rev-parse "$TARGET_REF")
+git -C "$WORKTREE_DIR" reset --hard "$TARGET_SHA"
+```
+
+Re-run both check commands against the refreshed worktree. Repeat resolve → refresh → re-check until
+both come back clear, then tear it down and proceed:
+
+```bash
+git worktree remove --force "$WORKTREE_DIR"
+```
+
+**If `$TARGET_REF` is `origin/staging` and either check finds something: stop, don't dispatch the
+sweep against it.** `compliance-preflight-sweep.yml`'s reconciliation PR is hardcoded to
+`--base develop` (its own workflow file) — dispatching it with `--ref staging` would check out
+`staging`'s tree but still open a `develop`-based PR from it, bundling every unrelated difference
+between the two branches into that PR, not just the declaration fix. This should not happen in the
+ordinary default flow — see `../SKILL.md`'s "Compliance preflight sweep" section for why a finding
+here is a frozen-candidate anomaly, not a routine case, and where a genuine fix actually goes
+instead (a `fix/staging/*` repair, not this section's `develop`-based flow).
+
 ## #1007-gated exception: direct `develop` → `main`
 
 **Ran `gate:release:local` locally at any point earlier in this session? `git status` before
@@ -18,15 +162,18 @@ cheap backstop that catches it regardless of cause.
 
 Pre-flight, then confirm the compliance sweep is clear against the target SHA — the one real
 precondition here, since no `NOT-EXECUTED-*` declaration may reach `main` (full detail:
-`../SKILL.md`'s "Pre-`main` gates" section, "Ordering" note, #1359):
+`../SKILL.md`'s "Pre-`main` gates" section, "Ordering" note, #1359). `release/<label>` is cut
+directly from `origin/develop` in this flow:
 
 ```bash
-git fetch origin main develop
-git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/ \
-  | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
-# empty output → clear, proceed. Any line printed → the continuous sweep hasn't caught up yet —
-# dispatch it manually (`gh workflow run compliance-preflight-sweep.yml`) and wait, per ../SKILL.md.
+TARGET_REF=origin/develop
 ```
+
+— then run the "Compliance preflight — pinned target-ref scan" procedure above, same as the default
+flow's staging-leg cut below, since both cut their next branch from the identical ref. **Do not use
+a `develop..main` diff to find outstanding declarations** (the shape this section used before PR
+#1672 review, RF-1) — it misses a declaration already reconciled on both branches, exactly the blind
+spot the shared procedure's own explanation names.
 
 Once that's clear, cut `release/<label>` and open its PR into `main` right away — **do not wait on
 the production tenant-schema report first.** It has no dependency on the compliance sweep or on the
@@ -37,7 +184,6 @@ completion before the branch was even cut. Since 2026-09-03, #1431 Phase C/D, `g
 is no longer part of this procedure at all — see `../SKILL.md`'s own note.)
 
 ```bash
-git fetch origin
 git ls-remote --exit-code --heads origin main || echo "MISSING — restore before proceeding"
 
 CANDIDATE_ID=$(date +%Y-%m-%d)-01
@@ -45,10 +191,13 @@ CANDIDATE_ID=$(date +%Y-%m-%d)-01
 # and so never produces a candidate manifest -- there is nothing for scripts/check-image-version-
 # parity.js's --manifest mode to point at. Its own --source-sha mode (RF-2, PR #1590 review) exists
 # for exactly this: the develop SHA release/<label> is about to be cut from IS this path's whole
-# candidate source identity, no manifest object needed. Captured before the cut, from the exact ref
-# the branch is cut from, so there is no ambiguity about which SHA it names.
-CANDIDATE_SOURCE_SHA=$(git rev-parse origin/develop)
-git switch -c release/$CANDIDATE_ID-r1 origin/develop
+# candidate source identity, no manifest object needed.
+# $TARGET_SHA (RF-10, PR #1672 review) is that exact SHA -- the same commit the compliance scan
+# above already confirmed clear. Deliberately not a fresh `git fetch origin` + `git rev-parse
+# origin/develop` here: re-reading the ref after the scan would reopen the exact gap the pinned scan
+# exists to close, if develop advanced in the interim.
+CANDIDATE_SOURCE_SHA="$TARGET_SHA"
+git switch -c release/$CANDIDATE_ID-r1 "$TARGET_SHA"
 git push -u origin release/$CANDIDATE_ID-r1
 
 gh pr create \
@@ -57,7 +206,7 @@ gh pr create \
   --title "chore: promote candidate $CANDIDATE_ID to main (r1)" \
   --body "## Summary
 
-Promotes \`develop\` to \`main\` at $(git rev-parse --short origin/develop).
+Promotes \`develop\` to \`main\` at $(git rev-parse --short "$TARGET_SHA").
 
 ## Testing Evidence
 
@@ -92,8 +241,10 @@ section.
 (and `staging → main`) leg only — see the "#1007-gated exception" section above, where it's the
 first thing run.
 This isn't an omission to infer from silence: this leg's own CI-side check
-(`promotion-quality-gate.yml`) is also skipped entirely here (#1063), so a `to-staging/<label>` PR
-is deliberately gated on nothing beyond `pr-checks.yml`'s Docker build checks. Filed as #1097 after
+(`promotion-quality-gate.yml`) is also skipped entirely here (#1063), so the `to-staging/<label>`
+PR's own CI is deliberately gated on nothing beyond `pr-checks.yml`'s Docker build checks — that's
+unchanged by #1648's compliance-preflight addition below, which is a promoter-run precondition on
+cutting the branch in the first place, not a CI check on the PR once opened. Filed as #1097 after
 a live promotion attempt ran the local gate here anyway and stopped a `develop → staging` promotion
 on failures (a real dependency advisory plus false negatives from an uninstalled isolated checkout)
 that were never this leg's gate to fail on. (Briefly untrue 2026-08-29→2026-08-31 — #1124/#1165
@@ -195,13 +346,32 @@ git push
 # either way the note must be committed before to-staging/$CANDIDATE_ID is cut.
 ```
 
-Only once that reports clean does the candidate branch get cut, from the (possibly just-bumped)
-`origin/develop`:
+**Compliance preflight — execute and resolve, before the cut (#1648, 2026-09-06).** The real
+precondition, same reasoning as the "#1007-gated exception" section's own compliance check above but
+now run here too, earlier, since this leg previously ran nothing at all here — see `../SKILL.md`'s
+"Frozen candidate and repair loop" section for the full rationale
+(#1387/#1419/#1430/#1505/#1544/#1574/#1618):
 
 ```bash
-git switch -c to-staging/$CANDIDATE_ID origin/develop
+TARGET_REF=origin/develop
+```
+
+— then run the "Compliance preflight — pinned target-ref scan" procedure at the top of this file.
+`origin/develop` is the exact ref `to-staging/$CANDIDATE_ID` is about to be cut from — not a scan of
+whatever the current working directory happens to have checked out (the gap PR #1672's review, RF-2,
+found in this section's previous version: an unpinned `git ls-files` scan that never refreshed after
+a reconciliation merge). Only cut `to-staging/$CANDIDATE_ID` once that procedure reports both checks
+clear.
+
+Only once that reports clean does the candidate branch get cut — from `$TARGET_SHA`, the exact
+(possibly just-bumped) `origin/develop` commit the scan already confirmed clear, not a freshly
+re-read `origin/develop` (RF-10, PR #1672 review — the same pinned-SHA fix applied at every call
+site in this file, not only the one the finding cited directly):
+
+```bash
+git switch -c to-staging/$CANDIDATE_ID "$TARGET_SHA"
 git push -u origin to-staging/$CANDIDATE_ID
-CANDIDATE_SHA=$(git rev-parse origin/to-staging/$CANDIDATE_ID)
+CANDIDATE_SHA="$TARGET_SHA"
 ```
 
 **Candidate manifest (ADR 0081 Decision 8, #1588)** — the parity gate downstream needs a durable
@@ -239,7 +409,7 @@ gh pr create \
   --title "chore: promote develop to staging (candidate $CANDIDATE_ID)" \
   --body "## Summary
 
-Promotes \`develop\` to \`staging\` at $(git rev-parse --short origin/develop) — the default soak leg
+Promotes \`develop\` to \`staging\` at $(git rev-parse --short "$TARGET_SHA") — the default soak leg
 before promoting to \`main\`.
 
 ## Testing Evidence
@@ -251,9 +421,23 @@ See \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the promotion-PR compliance exe
 gh pr merge <N> --merge   # never --squash — see SKILL.md
 ```
 
-Then cut `release/<candidate_id>-rN` from `origin/staging` instead of `origin/develop` in the
-"#1007-gated exception" section above — same commands, `origin/staging` in place of
-`origin/develop`.
+Then cut `release/<candidate_id>-rN` from `origin/staging` instead of `origin/develop`: set
+`TARGET_REF` accordingly and run the identical commands from the "#1007-gated exception" section
+above. After the RF-10 (PR #1672 review) fix, those commands already read `$TARGET_SHA` rather than a
+literal `origin/develop` — there is no text left in them to substitute; only the `TARGET_REF`
+assignment below actually differs between the two call sites. This includes the compliance-preflight
+pinned-target-ref scan:
+
+```bash
+TARGET_REF=origin/staging
+```
+
+— deliberately, not a copy-paste of the whole section with a different ref name: `origin/staging` is
+what `release/<label>` is actually cut from on this leg, and the frozen-candidate rule means
+`origin/develop` may have moved on to unrelated work this candidate never absorbed. If the scan
+finds something outstanding here, **stop rather than dispatching the sweep** — see the "Compliance
+preflight — pinned target-ref scan" section's own `origin/staging` case above for why, and
+`../SKILL.md`'s "Compliance preflight sweep" section for what to do instead.
 
 ## Candidate repair after the staging merge
 
@@ -429,8 +613,8 @@ gh workflow run deploy-main.yml -f deploy=true \
 ```
 
 **#1007-gated exception** (no manifest, no repair concept, nothing has diverged per app): the single
-`$CANDIDATE_SOURCE_SHA` captured in that section (`git rev-parse origin/develop` at cut time) is the
-correct value for all four inputs:
+`$CANDIDATE_SOURCE_SHA` captured in that section (set equal to `$TARGET_SHA`, the compliance-scanned
+commit `release/<label>` was actually cut from) is the correct value for all four inputs:
 
 ```bash
 gh workflow run deploy-main.yml -f deploy=true \

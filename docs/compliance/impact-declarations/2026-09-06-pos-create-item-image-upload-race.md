@@ -23,8 +23,8 @@ rollback_note: Plain revert removes the new poll-before-refetch step and the sec
   reachable under the same permission gate.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-06T11:32:40.258Z
-preflight_request_ref: PREFLIGHT-34030400362-2026-09-06-POS-CREATE-ITEM-IMAGE-UPLOAD-RACE
+preflight_run_at: 2026-09-06T13:58:44.688Z
+preflight_request_ref: PREFLIGHT-34037535202-2026-09-06-POS-CREATE-ITEM-IMAGE-UPLOAD-RACE
 ---
 
 # POS create-item image upload race (frozen-candidate 2026-09-06-01, repair r5)
@@ -59,15 +59,21 @@ write path, or data-visibility change.
      `useItemImageGenerationPoll(readStatus)` hook, pointed at that reader instead of the
      AI-generation-status one the hook was originally built for (`generatingEditImage`'s
      `handleGenerateEditImage` flow) -- reused directly, no second bespoke poller written.
-   - `runPostCreateStages`'s image-upload stage now awaits that poll (bounded by the hook's own
-     existing `ITEM_IMAGE_POLL_TIMEOUT_MS` = 90s ceiling, 2s interval) immediately after
-     `queueStorefrontCatalogImage`/`queueStorefrontCatalogImages` accepts the upload, before this
-     function returns control to `handleCreateItem` -> `finalizeCreatedItem`'s
+   - `runPostCreateStages`'s image-upload stage now awaits that poll (2s interval) immediately
+     after `queueStorefrontCatalogImage`/`queueStorefrontCatalogImages` accepts the upload, before
+     this function returns control to `handleCreateItem` -> `finalizeCreatedItem`'s
      `await Promise.all([loadItems(), loadPosFolders()])` refetch. A `failed` or `timeout` poll
      outcome surfaces a `toast.warning` and otherwise proceeds -- it does not throw, does not add
      to `failedStages`, and does not block the rest of item creation; the existing
      `pos.catalog.changed` SSE self-heal remains an unconditional backstop regardless of how this
-     poll resolves.
+     poll resolves. **Updated (backport #1659, RF-2 on PR #1656's review):** this poll now passes
+     `useItemImageGenerationPoll` a `timeoutMs` of `CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS` = 15s,
+     not the hook's own 90s `ITEM_IMAGE_POLL_TIMEOUT_MS` default -- the create-item modal disables
+     its own close button for the poll's full duration (see Residual Risk 1), so reusing the
+     AI-generation path's full 90s ceiling here meant a genuinely stuck background job could lock
+     the operator out of the modal for that long. `handleGenerateEditImage`'s own
+     `useItemImageGenerationPoll()` instantiation (edit-modal path) is unchanged and keeps the 90s
+     default -- only the create-item call site was tightened.
 2. **`packages/web-core/src/features/pos/__tests__/posCreateItemImageUploadPoll.contract.test.js`**
    (new) -- source-text contract test asserting the import, the hook reuse, the queue-then-poll
    ordering, the queue-failure gate (no poll when the queue POST itself failed), and the
@@ -97,12 +103,27 @@ write path, or data-visibility change.
 
 ## Verification Evidence
 
-- `npm run build:pos` -- passes (this change is POS-only; `packages/web-core` has no build step of
-  its own, and neither `apps/dgfy-ims` nor `apps/dgfy-storefront` render
-  `TerminalOperationsWorkspace.jsx`, so building POS alone is sufficient here).
+- `npm run build:pos` -- passes. **Correction (backport #1659, RF-1 on PR #1656's review):** the
+  original version of this declaration claimed neither `apps/dgfy-ims` nor `apps/dgfy-storefront`
+  render `TerminalOperationsWorkspace.jsx` -- that's factually wrong, and the PR body itself said
+  the opposite. `apps/dgfy-ims` does render it: `main.jsx:128,283` lazy-loads
+  `packages/web-core/src/features/pos/pages/TerminalPage.jsx` for the `/terminal` route, which
+  lazy-loads `TerminalPageLayout.jsx` (`:157,6602`), which lazy-loads and renders
+  `TerminalOperationsWorkspace.jsx` (`:22,25,945`) for every POS operations view mode except
+  `audit`. `npm run build:skupervisor` confirms this in practice -- it produces its own
+  `TerminalOperationsWorkspace-*.js` chunk. `apps/dgfy-storefront` genuinely does not render it
+  (it has no POS terminal surface at all), so that half of the original claim stood. Building POS
+  alone remains sufficient verification for *this* change only because `dgfy-ims`'s copy of the
+  same file is byte-identical (both import the one file under `packages/web-core`) -- not because
+  `dgfy-ims` doesn't render it.
 - `npx vitest run` (via `apps/dgfy-ims`, which is how `packages/web-core`'s own test suite executes)
   against every contract test referencing `TerminalOperationsWorkspace.jsx` (24 files, 153 tests) --
-  all pass, including the 6 new tests in `posCreateItemImageUploadPoll.contract.test.js`.
+  all pass, including the 6 tests in `posCreateItemImageUploadPoll.contract.test.js` (original PR
+  #1656 count). **Updated (backport #1659):** re-run against the 3 directly affected files after
+  the RF-1/RF-2 fixes above -- `posCreateItemImageUploadPoll.contract.test.js` (7 tests, +1 for
+  RF-2's timeout-constant coverage), `useItemImageGenerationPoll.test.js` (9 tests, +2 for RF-2's
+  `timeoutMs` behavior), `posGenerateItemImage.contract.test.js` (8 tests, unchanged) -- **24/24
+  pass**. `npm run build:pos` and `npm run build:skupervisor` both pass with the RF-2 change.
 - `npm run check:compliance` -- this declaration is what satisfies it; re-run after adding this file
   to confirm it clears.
 - `node scripts/check-app-version-bump.js` -- confirms whether `dgfy-pos`'s version needs bumping
@@ -120,25 +141,34 @@ above, captured at PR-open time.
    modal mid-poll in the first place -- the hook's own unmount-cleanup still resolves the promise
    with `{status: 'cancelled'}` if the whole workspace unmounts regardless (e.g. navigation away),
    so nothing hangs forever either way.
-2. **Worst case, item creation now takes up to ~90s longer** (the poll's own existing timeout
-   ceiling) when the backend worker is unusually slow or stuck -- acceptable per the task's own
-   framing ("the common/fast case... should now make loadItems() reliably return the item WITH its
-   image on the very first render"); the timeout path degrades to today's exact behavior (soft
-   warning, SSE backstop), it does not regress past it.
-3. **This repair branch bases off `staging`, not `develop`**, so the continuous
-   `compliance-preflight-sweep.yml` trigger (path-filtered to pushes on `develop`) will not
-   auto-fire when this PR merges. Per `docs/ops/RELEASE_CANDIDATE_POLICY.md`/promoter's own
-   procedure, the full-scan check before cutting `release/2026-09-06-01-rN` from `staging` will
-   still catch this declaration's outstanding `NOT-EXECUTED-*` ref and the sweep can be dispatched
-   manually at that point -- flagged here so it isn't a surprise at promotion time, not treated as
-   already resolved by this PR.
+2. **Worst case, item creation now takes up to ~15s longer** when the backend worker is unusually
+   slow or stuck -- acceptable per the task's own framing ("the common/fast case... should now make
+   loadItems() reliably return the item WITH its image on the very first render"); the timeout path
+   degrades to today's exact behavior (soft warning, SSE backstop), it does not regress past it.
+   **Updated (backport #1659, RF-2):** originally this bullet said "~90s" (the hook's shared
+   default, reused unmodified by the original PR). RF-2's fix bounds the create-item call site to
+   its own shorter `CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS` = 15s instead, since unlike
+   `handleGenerateEditImage`'s dismissible edit-modal path, this poll runs while the create-item
+   modal's close button is disabled (Residual Risk 1) -- a genuinely stuck job no longer locks the
+   operator out for up to a minute and a half.
+3. **This repair was originally shipped as `fix/staging/2026-09-06-01-r5` (PR #1656), based on
+   `staging`, not `develop`** -- so the continuous `compliance-preflight-sweep.yml` trigger
+   (path-filtered to pushes on `develop`) did not auto-fire when that PR merged; it was manually
+   dispatched against `staging` and reconciled via PR #1664 instead. **This backport PR (#1659)**
+   re-introduces this declaration onto `develop` for the first time, so the continuous sweep *will*
+   auto-fire here on merge and reconcile `preflight_request_ref` on its own -- no manual dispatch
+   expected for this leg.
 
 ## Preflight Reconciliation
 
 `POST /api/v1/compliance/preflight` has not been executed against a live environment --
 `preflight_request_ref` is declared `NOT-EXECUTED-1410-R5-POS-CREATE-ITEM-IMAGE-UPLOAD-RACE`. This
 is expected at PR-open time for a `major` declaration, per
-`docs/compliance/request-time-preflight-protocol.md`. Because this PR's base is `staging` rather
-than `develop` (see Residual Risk 3 above), reconciliation here is a promotion-time step rather than
-an automatic same-day one -- named explicitly so a reviewer or the promoter doesn't assume the
-continuous sweep already covers it.
+`docs/compliance/request-time-preflight-protocol.md`.
+
+**Updated (backport #1659):** on `staging` (the original PR #1656), this ref was reconciled
+manually via PR #1664, since the continuous sweep only triggers on `develop` pushes (see Residual
+Risk 3 above). This backport PR pushes the declaration to `develop` for the first time, so the
+continuous `compliance-preflight-sweep.yml` trigger is expected to fire automatically on merge and
+reconcile this ref on its own -- no manual dispatch anticipated for this leg, though it should still
+be confirmed rather than assumed.
