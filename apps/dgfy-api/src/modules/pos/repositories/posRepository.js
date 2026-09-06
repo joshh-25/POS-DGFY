@@ -4826,7 +4826,8 @@ export const posRepository = {
                     || (normalizedStock === 'in_stock' && (service || alwaysAvailable || quantity > lowThreshold))
                     || (['low_stock', 'almost_out'].includes(normalizedStock) && !service && quantity > 0 && quantity <= lowThreshold)
                     || (normalizedStock === 'out_of_stock' && !service && !alwaysAvailable && quantity <= 0);
-                if ((!normalizedSearch || haystack.includes(normalizedSearch)) && matchesCategory && matchesStock) {
+                const matchesVisibility = item?.pos_visible !== false;
+                if (matchesVisibility && (!normalizedSearch || haystack.includes(normalizedSearch)) && matchesCategory && matchesStock) {
                     if (matchedCount >= matchStart && pageItems.length < safePageSize) pageItems.push(item);
                     matchedCount += 1;
                 }
