@@ -124,18 +124,21 @@ describe('Food & Beverage storefront contract', () => {
     expect(productCard).not.toContain('openCart: true');
   });
 
-  it('keeps the retail cart surface on product details while hiding it on order routes', () => {
+  it('hides the retail floating cart on product details while keeping its drawer available', () => {
     const cartShell = cartDrawerShellContainerSource();
 
     expect(cartShell).toContain('&& !(isRetailMode && isResolvedOrderSubpage);');
-    expect(cartShell).not.toContain('isRetailMode && (isResolvedOrderSubpage || isFnbDetailsSubpage)');
+    expect(cartShell).toContain('const shouldShowProductCartFab = !isFnbDetailsSubpage;');
+    expect(cartShell).toContain('shouldShowProductCartFab && (\n            <DefaultProductCartFab');
+    expect(cartShell).toContain('<DefaultProductCartDrawer {...defaultProductCartDrawerProps.drawerSurfaceProps} />');
   });
 
-  it('keeps the Simple cart surface on product-details routes', () => {
+  it('hides the Simple floating cart on product details while keeping its drawer available', () => {
     const cartShell = cartDrawerShellContainerSource();
 
     expect(cartShell).toContain('!isAccountDrawerOpen && isSimpleCartSurfaceMode && (');
-    expect(cartShell).not.toContain('isSimpleCartSurfaceMode && !isFnbDetailsSubpage');
+    expect(cartShell).toContain('shouldShowProductCartFab && (\n            <SimpleCartFloatingButton');
+    expect(cartShell).toContain('<SimpleCartDrawerSurface {...simpleCartDrawerProps.drawerSurfaceProps} />');
   });
 
   it('gates required add-ons behind customization and supports cart editing', () => {
