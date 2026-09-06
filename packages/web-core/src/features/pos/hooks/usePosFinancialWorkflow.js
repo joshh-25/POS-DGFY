@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { calculatePosItemDiscounts } from '../utils/posItemDiscount.js';
 import {
     calculateGovernedDiscount,
+    isPaymentAmountSufficient,
     round4,
     VAT_RATE
 } from '../utils/posCheckoutTerminalUtils.js';
@@ -179,7 +180,7 @@ export const usePosFinancialWorkflow = ({
     );
     const isCustomerPaymentSufficient = isEmployeeCreditPayment
         ? employeeCreditReady
-        : customerPaymentAmount >= cartTotal;
+        : isPaymentAmountSufficient(customerPaymentAmount, cartTotal);
 
     const splitPaymentReady = splitPaymentSession?.status === 'ready_to_complete'
         && round4(splitPaymentSession?.remaining_amount) === 0;

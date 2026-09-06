@@ -11,7 +11,7 @@ describe('POS item list pagination', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
 
     expect(workspace).toContain('const POS_ITEMS_PAGE_SIZE = 15;');
-    expect(workspace).toContain('filteredItems.slice(start, start + POS_ITEMS_PAGE_SIZE)');
+    expect(workspace).toContain('page_size: POS_ITEMS_PAGE_SIZE');
     expect(workspace).toContain('{paginatedItems.map((item) => {');
     expect(workspace).toContain('Previous items page');
     expect(workspace).toContain('Next items page');

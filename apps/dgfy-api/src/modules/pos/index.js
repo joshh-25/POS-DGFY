@@ -274,7 +274,8 @@ export const uploadPosCatalogImageUseCase = buildUploadPosCatalogImageUseCase({
 });
 export const uploadBulkPosCatalogImagesUseCase = buildUploadBulkPosCatalogImagesUseCase({
     posRepository,
-    imageStorage: posCatalogImageStorage
+    imageStorage: posCatalogImageStorage,
+    settingsRepository
 });
 export const deletePosCatalogImageUseCase = buildDeletePosCatalogImageUseCase({
     posRepository,

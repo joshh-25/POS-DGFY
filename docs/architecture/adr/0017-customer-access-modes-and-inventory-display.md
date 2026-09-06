@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-03
-last_reviewed: 2026-09-09
-review_by: 2026-11-03
+last_reviewed: 2026-09-10
+review_by: 2026-11-10
 applies_to: architecture_decision
 topic: customer_access_modes_and_inventory_display
 ---
@@ -338,3 +338,86 @@ immediately above already carves out the gallery/async endpoints with the same d
 
 `status: amended` remains unchanged; `last_reviewed` refreshed to this entry's own land date
 (2026-09-09).
+
+## Amendments (2026-09-10, bulk client wiring / 298d)
+
+#1643 (epic #265's "298d" stage) ships the **bulk client wiring** the amendment immediately above
+explicitly deferred. Three genuinely new pieces of client code, none a config flip:
+
+- A byte-based batch splitter (`packages/web-core/src/utils/imageEncoding/bulkBatchSplitter.js`,
+  `splitIntoByteBoundedBatches`) -- greedy, order-preserving packing of same-SKU-stem file groups
+  into as few outgoing multipart requests as possible, targeting `6 * 1024 * 1024` bytes per
+  request (see that file's own doc comment for the nginx-8-MB-ceiling reasoning this target is
+  inferred from -- not a value read from any spec) and never splitting a single stem group across
+  two requests, since the server's own `groupBulkCatalogFilesBySku` duplicate detection
+  (`duplicate_filename`/`duplicate_variant_for_sku`) only sees files within one request.
+- The client-side `<SKU>__large/medium/thumbnail.<ext>` filename construction
+  (`bulkVariantFilename.js`'s `buildBulkVariantFilename`), mirroring the server's own
+  `getSkuStem` "slice at the last dot" rule, plus `parseBulkVariantFilename`/
+  `getBulkFileGroupingKey` for the pre-conversion same-stem grouping pass the splitter's own doc
+  comment requires.
+- `prepareImageVariants` wiring for the two real bulk call sites, orchestrated by
+  `bulkCatalogUpload.js`'s `uploadBulkCatalogImagesWithClientConversion` (sequential per-file
+  conversion, stem-grouped packing, sequential multi-request send, summary/results merge) and
+  invoked from `posCatalogService.js`'s `uploadBulkPosCatalogImages`
+  (`scope: 'pos_catalog_bulk'`) and `storefrontCatalogService.js`'s
+  **`uploadBulkStorefrontCatalogImages`** (`scope: 'storefront_catalog_bulk'`).
+
+**Correcting the amendment immediately above:** that entry's own text names the second function as
+`uploadStorefrontCatalogImages`. That is the wrong function -- `uploadStorefrontCatalogImages`
+(plural) is the **per-item gallery** upload (`POST /items/:item_id/storefront-images`, up to 5
+files, already carved out as out of scope by the 2026-09-06 "client-derived upload contract"
+amendment above), not the cross-SKU bulk function this entry wires. The correct target, and the
+one this entry actually implements, is **`uploadBulkStorefrontCatalogImages`** (singular item,
+plural "Images" only in the sense of "many SKUs," `POST /items/storefront-images/bulk`) -- the
+only storefront function that calls `groupBulkCatalogFilesBySku`/`parseBulkCatalogFilename` and
+mirrors `uploadBulkPosCatalogImages` in shape. The mis-reference originated in this ADR's own
+2026-09-09 entry (not in #1643's issue text, which independently repeated the same error) and is
+corrected here rather than edited in place, per this ADR's own precedent of amending forward
+instead of silently rewriting a prior entry.
+
+**Server-side bulk gate gap closed.** The 2026-09-09 amendment's "server-authoritative kill
+switch" framing was true only for the two single-image usecases
+(`buildUploadStorefrontCatalogImageUseCase`, `buildUploadPosCatalogImageUseCase`) -- neither bulk
+usecase (`buildUploadBulkStorefrontCatalogImagesUseCase`, its POS counterpart) ever consulted
+`resolveImageClientConversionGate` at all. `acceptedAsClientLarge`/`clientVariantFiles` were
+decided purely from the filename convention (a `<SKU>__large.<ext>` file was honored
+unconditionally), meaning a caller sending that filename shape directly to either bulk endpoint --
+bypassing the browser, and therefore bypassing the tenant's `image_client_conversion` setting
+entirely -- got the "already-optimized, skip re-encode" fast path regardless of the kill switch's
+position. This was a pre-existing gap from Phase 301/302 (not introduced by this entry), but this
+entry is the point at which it stops being theoretical, since real client traffic now starts
+sending those filenames. Fixed here: both bulk usecase builders now take an optional
+`settingsRepository` parameter (mirroring the single-image builders' own
+`settingsRepository = null` default) and resolve
+`resolveImageClientConversionGate({ scope: IMAGE_CLIENT_CONVERSION_SCOPE.STOREFRONT_CATALOG_BULK
+/ POS_CATALOG_BULK, settingsRepository })` **once per request** (not once per SKU group, since the
+setting is request-wide) -- when the gate is closed, `acceptedAsClientLarge` and
+`clientVariantFiles` are forced off for every SKU group in the batch regardless of what any
+filename in it claims, the same "force to null before it reaches `imageStorage.store()`" contract
+the single-image path already implements. `parseBulkCatalogFilename`/`groupBulkCatalogFilesBySku`
+themselves are unchanged -- grouping/parsing stays filename-driven either way; only whether the
+parsed variant signal is *honored* is now gate-controlled. Wired through
+`apps/dgfy-api/src/modules/inventory/index.js` and `.../modules/pos/index.js`, mirroring how the
+single-image builders are already wired there.
+
+**Reconfirming, not silently dropping, the 2026-09-06 gallery carve-out**: the gallery endpoints
+(`/:item_id/storefront-images`, both `OnboardingSetupModal.jsx`'s and `ItemsPage.jsx`'s own
+per-item "Add Photos" flows) remain untouched and out of scope for this entry too --
+`OnboardingSetupModal.jsx` in particular calls only the per-item gallery function
+(`uploadItemImages` -> `uploadStorefrontCatalogImages`), never either bulk function, so it needed
+no changes here despite #1643's own issue text listing it as an intended call site. `ItemsPage.jsx`
+remains the only real UI call site for the SKU-stem bulk upload (`uploadBulkCatalogImages(surface)`,
+its "Bulk Upload" section) -- it required no changes beyond a documentation comment, since the gate
+check lives inside the service functions (matching where the single-image gate check already
+lives) and both service functions preserve their existing `{summary, results}` response shape
+exactly.
+
+`pos_catalog_bulk`/`storefront_catalog_bulk` move from "valid, gate-resolvable, unused" (as of the
+2026-09-09 entry) to real client-wiring call sites -- the same status the two `_single` tokens
+already had. No new scope tokens are introduced (matches #1643's own Non-goals). There is no
+separate scopes-doc file; this ADR's own amendment text remains the only documentation surface for
+the token ladder.
+
+`status: amended` remains unchanged; `last_reviewed` refreshed to this entry's own land date
+(2026-09-10).

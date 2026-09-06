@@ -6239,12 +6239,27 @@ export const buildListPosCatalogUseCase = ({
                     throw error;
                 }
             }
-            const data = await posRepository.listCatalog({
+            const catalogQuery = {
                 search: query?.search || '',
                 limit: query?.limit || 100,
                 folder_id: query?.folder_id,
                 location_id: locationScope.location_id
-            });
+            };
+            if (query?.paginate === true) {
+                const data = await posRepository.listCatalogPage({
+                    search: catalogQuery.search,
+                    page: query?.page,
+                    page_size: query?.page_size,
+                    category_filter: query?.category_filter,
+                    stock_filter: query?.stock_filter,
+                    location_id: catalogQuery.location_id
+                });
+                return ok({
+                    ...data,
+                    items: data.items.map((item) => toSerializable(item))
+                });
+            }
+            const data = await posRepository.listCatalog(catalogQuery);
             const filtered = (Array.isArray(data) ? data : []).filter((item) => (
                 item?.pos_visible !== false
             ));
@@ -6701,7 +6716,7 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage,
     };
 };
 
-export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageStorage }) => {
+export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageStorage, settingsRepository = null }) => {
     return async ({ files = [], user }) => {
         const normalizedFiles = Array.isArray(files) ? files : [];
         if (normalizedFiles.length === 0) {
@@ -6718,6 +6733,17 @@ export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageSto
                 { statusCode: 400 }
             ));
         }
+
+        // #1643 (298d): server-authoritative gate for the bulk path -- mirrors
+        // buildUploadPosCatalogImageUseCase's single-image gate check, but resolved once per
+        // request (not once per SKU group) since the tenant setting is request-wide, not per-file.
+        // Closes the Finding-3 gap flagged on #1643: before this, a `<SKU>__large/medium/thumbnail`
+        // filename was honored unconditionally by the bulk endpoint regardless of
+        // `image_client_conversion` -- the kill switch never actually governed this path.
+        const gate = await resolveImageClientConversionGate({
+            scope: IMAGE_CLIENT_CONVERSION_SCOPE.POS_CATALOG_BULK,
+            settingsRepository
+        });
 
         try {
             if (!hasPermission(user, PERMISSION_EDIT_POS_CATALOG)) {
@@ -6838,13 +6864,18 @@ export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageSto
                     }) !== false;
                     const readinessEnvelope = await posRepository.getCatalogReadinessByItemId(item.item_id);
 
-                    const mediumFile = medium[0] || null;
-                    const thumbnailFile = thumbnail[0] || null;
+                    const rawMediumFile = medium[0] || null;
+                    const rawThumbnailFile = thumbnail[0] || null;
                     // An explicit `__large` suffix is the bulk endpoint's own opt-in signal for
                     // the client-already-optimized fast path -- there is no manifest transport in
                     // bulk requests, so the filename convention itself carries the signal. A bare
                     // filename (today's format) never sets this, preserving exact legacy behavior.
-                    const acceptedAsClientLarge = parseBulkCatalogFilename(largeFile).variantKey === 'large';
+                    // Gated by the same server-authoritative check the single-image path uses
+                    // (#1643/Finding 3): when the gate is closed, the filename's signal is never
+                    // honored, regardless of what it says.
+                    const mediumFile = gate.enabled ? rawMediumFile : null;
+                    const thumbnailFile = gate.enabled ? rawThumbnailFile : null;
+                    const acceptedAsClientLarge = gate.enabled && parseBulkCatalogFilename(largeFile).variantKey === 'large';
 
                     stored = await imageStorage.store({
                         itemId: item.item_id,
@@ -6855,7 +6886,12 @@ export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageSto
                         clientVariantFiles: (mediumFile || thumbnailFile) ? {
                             ...(mediumFile ? { medium: { tempPath: mediumFile.path, reportedMime: mediumFile.mimetype } } : {}),
                             ...(thumbnailFile ? { thumbnail: { tempPath: thumbnailFile.path, reportedMime: thumbnailFile.mimetype } } : {})
-                        } : null
+                        } : null,
+                        // #1643 (298d): threaded through to the shared Phase 294 structured log,
+                        // mirroring the single-image usecase, so the bulk path's client-vs-server
+                        // fallback rate is sliceable by rollout stage too.
+                        imageClientConversionState: gate.mode,
+                        imageClientConversionScope: gate.scope
                     });
                     const updated = await posRepository.updateCatalogImage(item.item_id, {
                         path: stored.path,
@@ -6889,7 +6925,10 @@ export const buildUploadBulkPosCatalogImagesUseCase = ({ posRepository, imageSto
 
                     summary.uploaded += 1;
                     for (const file of groupFiles) {
-                        const variantKey = file === largeFile ? 'large' : (file === mediumFile ? 'medium' : 'thumbnail');
+                        // Labels the physical file's own filename-derived variant slot --
+                        // unaffected by whether the gate honored it, so this always uses the raw
+                        // (ungated) references.
+                        const variantKey = file === largeFile ? 'large' : (file === rawMediumFile ? 'medium' : 'thumbnail');
                         results.push({
                             filename: file.originalname,
                             sku_code: group.skuCode,

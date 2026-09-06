@@ -10,6 +10,13 @@ import { getStorefrontImageGenerationStatus } from '../../../services/storefront
  * The caller (TerminalOperationsWorkspace.jsx) already owns its own
  * in-flight UI state (generatingEditImage/pollingEditImage) around the
  * await, so there's nothing this hook needs to expose beyond the outcome.
+ *
+ * `timeoutMs` (default `ITEM_IMAGE_POLL_TIMEOUT_MS`, 90s) is a second,
+ * optional constructor argument so a caller whose UI is blocked for the
+ * full duration of the poll -- unlike `handleGenerateEditImage`'s edit-modal
+ * path, which stays dismissible while its own poll runs -- can pass a
+ * tighter ceiling instead of inheriting the AI-image-generation path's full
+ * default. See TerminalOperationsWorkspace.jsx's create-item call site.
  */
 
 // Matches useMenuImportJob.js's interval. A single image + watermark should
@@ -24,12 +31,12 @@ const TERMINAL_STATUSES = ['completed', 'failed'];
  * Lives at module scope (not inside the hook) because it reads the clock —
  * the same reasoning useMenuImportJob.js's runJobPoll documents for itself.
  */
-const runStatusPoll = ({ itemId, timerRef, isCurrent, resolve, readStatus }) => {
+const runStatusPoll = ({ itemId, timerRef, isCurrent, resolve, readStatus, timeoutMs }) => {
     const startedAt = Date.now();
 
     const scheduleOrTimeout = () => {
         if (!isCurrent()) return;
-        if (Date.now() - startedAt > ITEM_IMAGE_POLL_TIMEOUT_MS) {
+        if (Date.now() - startedAt > timeoutMs) {
             resolve({ status: 'timeout' });
             return;
         }
@@ -56,7 +63,12 @@ const runStatusPoll = ({ itemId, timerRef, isCurrent, resolve, readStatus }) => 
     tick();
 };
 
-export const useItemImageGenerationPoll = (readStatus = getStorefrontImageGenerationStatus) => {
+/**
+ * @param {(itemId: number) => Promise<object>} [readStatus] status reader; defaults to the
+ *   AI-image-generation endpoint.
+ * @param {number} [timeoutMs] poll ceiling in ms; defaults to ITEM_IMAGE_POLL_TIMEOUT_MS (90s).
+ */
+export const useItemImageGenerationPoll = (readStatus = getStorefrontImageGenerationStatus, timeoutMs = ITEM_IMAGE_POLL_TIMEOUT_MS) => {
     // Bumped on every new poll, cancel(), and unmount — the same staleness
     // guard useMenuImportJob.js uses, so a tick from an abandoned poll can
     // never resolve a promise a newer poll (or nothing) is now waiting on.
@@ -107,9 +119,9 @@ export const useItemImageGenerationPoll = (readStatus = getStorefrontImageGenera
 
         return new Promise((resolve) => {
             resolveRef.current = resolve;
-            runStatusPoll({ itemId, timerRef, isCurrent, resolve: settle, readStatus });
+            runStatusPoll({ itemId, timerRef, isCurrent, resolve: settle, readStatus, timeoutMs });
         });
-    }, [cancel, readStatus, settle]);
+    }, [cancel, readStatus, settle, timeoutMs]);
 
     return { pollItemImageGeneration, cancel };
 };

@@ -88,6 +88,41 @@ describe('useItemImageGenerationPoll', () => {
         expect(await pollPromise).toEqual({ status: 'timeout' });
     });
 
+    it('RF-2: honors a caller-supplied timeoutMs shorter than the default ceiling', async () => {
+        getStorefrontImageGenerationStatus.mockResolvedValue({ status: 'processing' });
+        const customTimeoutMs = 15 * 1000;
+        const { result } = renderHook(() => useItemImageGenerationPoll(undefined, customTimeoutMs));
+
+        const pollPromise = act(async () => {
+            const promise = result.current.pollItemImageGeneration(42);
+            // Well past the custom 15s ceiling, but far short of the 90s default --
+            // proves timeoutMs is actually honored, not just accepted and ignored.
+            await vi.advanceTimersByTimeAsync(customTimeoutMs + ITEM_IMAGE_POLL_INTERVAL_MS);
+            return promise;
+        });
+
+        expect(await pollPromise).toEqual({ status: 'timeout' });
+    });
+
+    it('RF-2: omitting timeoutMs keeps the default 90s ceiling (backward compatible)', async () => {
+        getStorefrontImageGenerationStatus.mockResolvedValue({ status: 'processing' });
+        const customTimeoutMs = 15 * 1000;
+        const { result } = renderHook(() => useItemImageGenerationPoll());
+
+        const pollPromise = act(async () => {
+            const promise = result.current.pollItemImageGeneration(42);
+            // Past a 15s-class ceiling but still well short of the real 90s default --
+            // if the default silently shrank, this would resolve 'timeout' instead.
+            await vi.advanceTimersByTimeAsync(customTimeoutMs + ITEM_IMAGE_POLL_INTERVAL_MS);
+            expect(getStorefrontImageGenerationStatus).toHaveBeenCalled();
+            getStorefrontImageGenerationStatus.mockResolvedValue({ status: 'completed' });
+            await vi.advanceTimersByTimeAsync(ITEM_IMAGE_POLL_INTERVAL_MS);
+            return promise;
+        });
+
+        expect(await pollPromise).toEqual({ status: 'completed', error_message: null });
+    });
+
     it('resolves cancelled when cancel() is called mid-poll, so the caller\'s await never hangs', async () => {
         getStorefrontImageGenerationStatus.mockResolvedValue({ status: 'processing' });
         const { result } = renderHook(() => useItemImageGenerationPoll());

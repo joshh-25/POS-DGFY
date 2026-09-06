@@ -83,10 +83,23 @@ export const deleteStorefrontCatalogGalleryImage = async (itemId, imageIndex) =>
 };
 
 export const uploadBulkStorefrontCatalogImages = async (files = []) => {
-  const formData = new FormData();
-  files.forEach((file) => formData.append('images', file));
-  const response = await api.post('/items/storefront-images/bulk', formData);
-  return response.data.data;
+  // Client-side encode is gated by rolloutFlag.js's server-authoritative `image_client_conversion`
+  // flag (#1643, epic #265's 298d), scoped to 'storefront_catalog_bulk'. Shared orchestration
+  // (batch packing, sequential conversion, multi-request send/merge) lives in
+  // bulkCatalogUpload.js -- see its own doc comment for why this deviates from the single-image
+  // pattern's per-service-file duplication. Do not confuse this with
+  // `uploadStorefrontCatalogImages` above (the per-item gallery endpoint) -- that function is
+  // out of scope for this phase; see ADR 0017's #1643 amendment.
+  const { uploadBulkCatalogImagesWithClientConversion } = await import('../utils/imageEncoding/bulkCatalogUpload.js');
+  return uploadBulkCatalogImagesWithClientConversion({
+    files,
+    scope: 'storefront_catalog_bulk',
+    postBatch: (batchFiles) => {
+      const formData = new FormData();
+      batchFiles.forEach((file) => formData.append('images', file));
+      return api.post('/items/storefront-images/bulk', formData);
+    },
+  });
 };
 
 export const deleteStorefrontCatalogImage = async (itemId) => {

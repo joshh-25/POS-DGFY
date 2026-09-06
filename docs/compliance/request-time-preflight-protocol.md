@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-09-02
+last_reviewed: 2026-09-06
 applies_to: compliance_sensitive_feature_work
 topic: request_time_preflight_protocol
 related_adr: 0007-dual-mode-pos-compliance-program.md
@@ -115,7 +115,8 @@ itself make `check:compliance` able to verify a ref's authenticity — that
 remains open, tracked as a follow-up rather than solved here.
 
 ### Where live preflight actually runs (#884, 2026-08-22; token minting automated #1121, 2026-08-28;
-### run against an ephemeral CI instance, no secrets, #1163/#1248, 2026-08-31)
+### run against an ephemeral CI instance, no secrets, #1163/#1248, 2026-08-31; execute+resolve moved
+### earlier, to the `develop → staging` leg, #1648, 2026-09-06)
 
 The endpoint requires an authenticated session against a running backend
 (`SYSTEM.EDIT_SETTINGS`), which no `develop`-merge PR ever has — so a per-PR
@@ -133,9 +134,43 @@ lands on `develop` (`.github/workflows/compliance-preflight-sweep.yml`'s
 `push` trigger, path-filtered to
 `docs/compliance/impact-declarations/**`). In the ordinary case a
 `NOT-EXECUTED-*` ref is cleared within minutes of merge, well before any
-promotion is cut — the promotion-time run described below is what a promoter
-still explicitly verifies (per `.agents/skills/promoter/SKILL.md`), not the
-only place the sweep executes.
+promotion is cut — the continuous trigger is not the only place the sweep
+executes, and (as of #1648, 2026-09-06) it's no longer true that a promoter
+only ever *verifies* this at one late point either.
+
+**Two promotion-time checkpoints now, not one — but only the `origin/develop`-scanning ones resolve
+rather than merely verify (#1648, 2026-09-06; scoping corrected RF-11, PR #1672 review, round 4 —
+the prior wording claimed both checkpoints resolve, contradicting this same section's own correct
+explanation below).** `promoter` runs the same check (full scan
+for outstanding `NOT-EXECUTED-*` declarations, plus a check for a stuck
+`compliance:preflight-handoff` issue) at two points: primarily *before cutting
+`to-staging/<candidate_id>`* — the `develop → staging` leg, the earliest point
+a promotion can catch this, added specifically because the old single
+pre-`main` checkpoint could sit unexercised for the days or weeks of a full
+staging soak while a stuck handoff issue went unnoticed (the bottleneck behind
+seven identical recurring tickets: #1387, #1419, #1430, #1505, #1544, #1574,
+#1618) — and again, kept on purpose as a defense-in-depth double-check, before
+cutting `release/<label>` into `main` (this second checkpoint is also the
+*only* one the #1007-gated expedited exception ever runs, since that path
+skips the staging leg entirely). At the staging-leg checkpoint, and at the
+pre-`main` checkpoint whenever it's scanning `origin/develop` (the #1007
+exception's own case), `promoter` now goes past verify into resolve: if a
+check turns up something outstanding, it dispatches
+`compliance-preflight-sweep.yml` itself and then opens and merges the
+resulting reconciliation PR itself — an ordinary `develop`-base PR, already
+unattended-mergeable per `promoter`'s own merge table — rather than leaving
+that step for a human or credentialed AI session to notice the standing issue
+afterward. The default flow's own pre-`main` checkpoint instead scans
+`origin/staging` (what `release/<label>` is actually cut from there); since
+the sweep's reconciliation PR is hardcoded to `--base develop`, a finding
+there can't go through this same dispatch-and-merge path — it's treated as a
+frozen-candidate anomaly and escalated instead. Full procedure and the
+flow-by-flow split: `.agents/skills/promoter/SKILL.md`'s "Frozen candidate and
+repair loop" and "Compliance preflight sweep" sections;
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-09-06 #1648 amendment owns the
+policy-level record of this change; `docs/architecture/adr/
+0074-retire-staging-branch-from-default-promotion-path.md`'s 2026-09-06
+amendment owns the architectural decision record.
 
 **Discovery is a full scan, not a `develop..main` diff (#1374, 2026-09-02, ADR
 0074 Decision 5 amendment).** The sweep used to auto-discover its work by
@@ -328,11 +363,22 @@ DGFY_DEV_TOKEN=$(node scripts/mint-preflight-token.js)
 **No `NOT-EXECUTED-*` declaration may reach `main`** — unchanged. In the
 ordinary case the continuous trigger above already clears every declaration
 well before a promotion is cut, so this is now rarely something a promoter
-has to actively wait on; `promoter`'s own procedure still verifies zero
-outstanding declarations before cutting `release/<label>`, and #1007's
-phrase-gated expedited override remains the one case a `NOT-EXECUTED-*`
-declaration may legitimately still reach `main`, logged and authorized, not
-silent (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25 amendment).
+has to actively wait on; `promoter`'s own procedure checks zero outstanding
+declarations before cutting `to-staging/<candidate_id>` **and** before cutting
+`release/<label>` (#1648, 2026-09-06 — see "Where live preflight actually
+runs" above). The `to-staging/<candidate_id>` checkpoint, and the
+`release/<label>` checkpoint whenever it's scanning `origin/develop` (the
+#1007 exception's own case), resolve rather than just wait if a check finds
+something (RF-11, PR #1672 review, round 4 — this used to read "if either
+check finds something," overclaiming resolve for the default flow's own
+`release/<label>` checkpoint too). That checkpoint instead scans
+`origin/staging` in the default flow and stays verify-only: a finding there
+escalates as a frozen-candidate anomaly, routed through a `fix/staging/*`
+repair, never through this dispatch-and-merge resolve path. #1007's
+phrase-gated expedited override remains the one case a
+`NOT-EXECUTED-*` declaration may legitimately still reach `main`, logged and
+authorized, not silent (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25
+amendment).
 
 **What's deleted from this protocol, not just changed:** the manual
 bot-account-provisioning procedure (register on the tenant's own

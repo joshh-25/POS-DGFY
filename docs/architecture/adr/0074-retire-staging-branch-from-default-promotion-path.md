@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-08-25
-last_reviewed: 2026-09-04
+last_reviewed: 2026-09-06
 review_by: 2027-02-25
 applies_to: development_to_production_release_flow
 topic: retire_staging_branch_from_default_promotion_path
@@ -532,6 +532,80 @@ again on the leg into `main` (#1431 Phase 1, PR-A)
   `[binding]` controls remain unchanged.
 - Refs: #1542, #1008.
 
+### 2026-09-06 — Decision 5 gains a second, earlier checkpoint: `develop -> staging`, execute-and-
+resolve, not just verify (#1648)
+
+- Clause amended: **Decision 5** (`[default]` tier per ADR 0039), continuing the 2026-08-31/#1163/
+  #1248 and 2026-09-02/#1295/#1374 lineage above. Decision 5's own base text — unedited, per this
+  ADR's established convention of restating drift rather than rewriting decisions in place — has
+  accumulated two separate points of drift by this point: (1) it still literally reads "against a
+  deployed non-production host, DEV sufficing," already superseded by the 2026-08-31 amendment
+  above (restated there, not corrected here a second time); and (2) it still frames the sweep as
+  anchored to "the one promotion leg that now exists" (`develop -> main`) "instead of the
+  `develop -> staging` leg that no longer runs by default" — no longer accurate now that the
+  three-stage flow is restored as default (the 2026-09-02 #1404 amendment above) and #1648 adds a
+  real checkpoint back onto that leg.
+- Why: #1648 names the actual operational gap left by anchoring only to the leg immediately before
+  `main`. The continuous sweep (`compliance-preflight-sweep.yml`, the 2026-08-31 amendment's own
+  mechanism) reconciles most declarations within minutes of landing on `develop`, but its
+  reconciliation PR can't auto-merge (the 2026-09-02 amendment's own supervised-handoff finding —
+  `github-actions[bot]` is org-blocked from opening/merging PRs) and instead files a standing
+  `compliance:preflight-handoff` issue. Nothing checked for that issue until the sole pre-`main`
+  checkpoint ran — which, once the three-stage default was restored, could be days or weeks after
+  `to-staging/<candidate_id>` already merged during a full staging soak. That gap produced seven
+  identical recurring tickets: #1387, #1419, #1430, #1505, #1544, #1574, #1618.
+- Change: Decision 5's sweep-verification behavior now runs at **two** checkpoints, not one:
+  1. **Primary — before `to-staging/<candidate_id>` is cut** (the `develop -> staging` leg). This is
+     the earliest point a promotion can catch an outstanding declaration or stuck handoff, and the
+     one meant to close the recurring-ticket gap above.
+  2. **Kept, on purpose, before `release/<label>` is cut** (the leg immediately before `main`) — for
+     the default three-stage flow this is now **redundant defense-in-depth** (the frozen-candidate
+     rule, the 2026-09-04/#1542 amendment above, plus the "ship, don't fold" rule,
+     `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-09-06 #1660 entry, together guarantee nothing new
+     lands into a candidate between the two cuts); for the #1007-gated exception — which skips the
+     `develop -> staging` leg entirely — this remains the **only** compliance-preflight checkpoint
+     that flow ever runs, so it is not deleted.
+
+  At the checkpoint(s) that scan `origin/develop` — checkpoint 1 above (the `develop -> staging` leg
+  cut), and the #1007-gated exception's own single checkpoint, which also scans `origin/develop`
+  since that exception skips the staging leg entirely — the behavior also **goes past verify into
+  resolve**: if the full-scan check (unchanged, still the 2026-09-02 amendment's discovery method —
+  every outstanding declaration on a pinned checkout of the target ref, not a diff) finds an
+  outstanding `NOT-EXECUTED-*` declaration, or a check for an open `compliance:preflight-handoff`
+  issue finds a stuck handoff, `promoter` itself now dispatches `compliance-preflight-sweep.yml` and
+  opens + merges the resulting reconciliation PR — an ordinary `develop`-base PR, already
+  unattended-mergeable per `promoter`'s own merge table — rather than leaving that for a separate
+  human or credentialed AI session to notice the standing issue afterward. This is a refinement of,
+  not a reversal of, the 2026-09-02 amendment's "supervised handoff" finding: the handoff is still
+  supervised (a credentialed session performs it, `github-actions[bot]` still cannot), it is just no
+  longer decoupled in time from the promotion itself — `promoter`'s own procedure is the supervising
+  session, acting inline rather than waiting for someone else to notice later.
+
+  Checkpoint 2 in the default flow (pre-`main`, scanning `origin/staging` — what `release/<label>` is
+  actually cut from on that leg, not `origin/develop`) explicitly does **not** get this resolve
+  behavior — not a symmetric two-checkpoint substitution. It stays verify-only, unchanged from before
+  this amendment: scanning `develop` there instead would risk both false positives from unrelated
+  later `develop` work the frozen candidate never absorbed, and blindness to a `fix/staging/*`
+  repair's own declaration changes. And because `compliance-preflight-sweep.yml`'s reconciliation PR
+  is hardcoded to `--base develop` (its own workflow file), a finding against `origin/staging` could
+  not be resolved through this same dispatch-and-merge mechanism even if it were attempted — it is a
+  frozen-candidate anomaly instead, routed through a `fix/staging/*` repair, not through this
+  Decision's resolve path.
+- Scope check against this ADR's `[binding]` clauses, confirmed unaffected: Decision 6 (production
+  tenant-schema report) and Decision 8 (`AGENTS.md` Merge Safety, never-`--squash`, the
+  `release/<label>` head-cut rule) are untouched — this amendment only changes when and how many
+  times Decision 5's own preflight-verification behavior runs, and adds resolve behavior on top of
+  it; it does not touch either `[binding]` control. Decision 9 (#1007's mechanism) is also
+  untouched — the expedited override's own skippable list (the live compliance preflight sweep)
+  still names this same Decision 5 behavior, now running at whichever single checkpoint the #1007
+  exception actually reaches.
+- Full executable procedure and commands, not duplicated here: `.agents/skills/promoter/SKILL.md`'s
+  "Frozen candidate and repair loop" and "Compliance preflight sweep" sections;
+  `.agents/skills/promoter/references/promotion-runbook.md`'s "Compliance preflight — pinned
+  target-ref scan" section. Policy-level record: `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
+  2026-09-06 #1648 amendment.
+- PR: #1672 (resolve-scoping wording fixed per RF-9, PR #1672 review, round 3). Refs #1648, #1618.
+
 ## Related
 
 #980 (the decision this ADR records), #1007 (the override mechanism this ADR references but does
@@ -539,7 +613,10 @@ not define), #1019 (the doc retirement this ADR's Decision 10 executes), #1008 (
 / PR #1036 (the CI quality gate that makes this affordable), #860 / PR #858 (the concrete precedent
 and the risk this ADR answers directly), #639, #495, #408, #409, #927 (resolved, unaffected),
 #1063 / PR #1064 (the amendment above), #1295 (the org-policy finding), #1374 (the supervised-
-handoff + full-scan-discovery amendment above), #1404 (this reversal),
+handoff + full-scan-discovery amendment above), #1404 (this reversal), #1542 (frozen-candidate
+amendment above), #1648 / PR #1672 (the two-checkpoint execute-and-resolve amendment above), #1618
+(the recurring ticket #1648 closes), #1660 (the mid-soak "ship, don't fold" rule this amendment
+cites),
 `docs/ops/RELEASE_CANDIDATE_POLICY.md` (the
 executable policy this ADR governs),
 `docs/architecture/adr/0030-free-tier-signed-release-authorization.md` (superseded, the model
