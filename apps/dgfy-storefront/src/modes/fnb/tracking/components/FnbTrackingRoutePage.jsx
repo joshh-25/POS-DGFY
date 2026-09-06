@@ -117,7 +117,6 @@ export function FnbTrackingRoutePage({
       presentation: {
         backLabel: presentation?.backLabel || 'Back to Menu',
         returnToCatalog: presentation?.returnToCatalog === true,
-        showTrustStrip: presentation?.showTrustStrip !== false,
       },
       isPickup,
       orderTypeLabel: isPickup ? 'Pickup' : 'Delivery',

@@ -14,6 +14,8 @@ import {
 import { renderDeliveryPinSpriteSvg } from '../discovery/model/businessModePins.js';
 import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../packages/web-core/src/components/maps/mapLibreShared.js';
 import { useStoreRoute } from '../shared/hooks/useStoreRoute.js';
+import { TRACKING_MAP_HEIGHT } from './trackingMapSizing.js';
+import './TrackingRouteMap.css';
 // Re-exported for back-compat with anything importing both the component
 // and the helper from this path (see extractTrackingMapCoordinates.js for
 // why production code should prefer importing the helper from there
@@ -33,7 +35,7 @@ export default function TrackingRouteMap({
   customerPin = null,
   styleUrl,
   transformRequest,
-  mapHeight = 280
+  mapHeight = TRACKING_MAP_HEIGHT
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -164,15 +166,20 @@ export default function TrackingRouteMap({
     setRouteLineData(map, routeGeometry);
   }, [routeGeometry, mapReady, hasCustomerPin]);
 
-  const resolvedHeight = typeof mapHeight === 'number' ? `${mapHeight}px` : String(mapHeight || '280px');
+  const hasCustomHeight = typeof mapHeight === 'number'
+    || (typeof mapHeight === 'string' && mapHeight.trim().length > 0 && mapHeight !== TRACKING_MAP_HEIGHT);
+  const resolvedHeight = hasCustomHeight
+    ? (typeof mapHeight === 'number' ? `${mapHeight}px` : String(mapHeight))
+    : null;
+  const mapFrameStyle = resolvedHeight ? { height: resolvedHeight } : {};
 
   if (!hasStorePin || mapUnavailable) {
     return (
-      <div style={{ height: resolvedHeight, borderRadius: 20, border: '1px solid #dbe5ee', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#64748b', fontSize: 13, fontWeight: 600 }}>
+      <div className="storefront-tracking-map-frame" style={{ ...mapFrameStyle, borderRadius: 20, border: '1px solid #dbe5ee', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#64748b', fontSize: 13, fontWeight: 600 }}>
         Store map unavailable
       </div>
     );
   }
 
-  return <div ref={containerRef} style={{ height: resolvedHeight, borderRadius: 20, overflow: 'hidden', border: '1px solid #dbe5ee' }} />;
+  return <div ref={containerRef} className="storefront-tracking-map-frame" style={{ ...mapFrameStyle, borderRadius: 20, overflow: 'hidden', border: '1px solid #dbe5ee' }} />;
 }

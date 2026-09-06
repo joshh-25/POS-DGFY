@@ -1,4 +1,6 @@
 import { lazy, Suspense } from 'react';
+import { TRACKING_MAP_HEIGHT } from './trackingMapSizing.js';
+import './TrackingRouteMap.css';
 
 // Issue #282, Phase E: maplibre-gl (~1.1MB / 285kB gzip) was previously
 // statically imported by TrackingRouteMap.jsx and reachable from every
@@ -14,9 +16,13 @@ import { lazy, Suspense } from 'react';
 const LazyTrackingRouteMapImpl = lazy(() => import('./TrackingRouteMap.jsx'));
 
 export default function TrackingRouteMap(props) {
-  const resolvedHeight = typeof props.mapHeight === 'number' ? `${props.mapHeight}px` : String(props.mapHeight || '280px');
+  const hasCustomHeight = typeof props.mapHeight === 'number'
+    || (typeof props.mapHeight === 'string' && props.mapHeight.trim().length > 0 && props.mapHeight !== TRACKING_MAP_HEIGHT);
+  const resolvedHeight = hasCustomHeight
+    ? (typeof props.mapHeight === 'number' ? `${props.mapHeight}px` : String(props.mapHeight))
+    : null;
   return (
-    <Suspense fallback={<div style={{ height: resolvedHeight, borderRadius: 20, border: '1px solid #dbe5ee', background: '#f8fafc' }} />}>
+    <Suspense fallback={<div className="storefront-tracking-map-frame" style={{ ...(resolvedHeight ? { height: resolvedHeight } : {}), borderRadius: 20, border: '1px solid #dbe5ee', background: '#f8fafc' }} />}>
       <LazyTrackingRouteMapImpl {...props} />
     </Suspense>
   );
