@@ -163,7 +163,7 @@ any bulk-endpoint gate logic beyond the two scope tokens (`pos_catalog_bulk`/
   `rolloutFlag.test.js` (new, 9 cases), `posCatalogService.imageEncoding.test.js` (extended, +1
   degradation-metric case, existing 3 cases updated to the new scoped-getter mock shape),
   `storefrontCatalogService.imageEncoding.test.js` (new, 4 cases) -- all pass, plus the full
-  existing `dgfy-ims` Vitest suite (455 tests, 57 files) re-run clean, confirming
+  existing `dgfy-ims` Vitest suite (2217 tests, 347 files) re-run clean, confirming
   `WorkflowModeContext.jsx`'s existing tests are unaffected.
 - `GITHUB_BASE_REF=develop node scripts/check-app-version-bump.js` -- confirms `dgfy-api`
   1.5.0 -> 1.6.0, `dgfy-ims` 1.3.0 -> 1.4.0 (both direct, real behavior change),

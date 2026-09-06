@@ -21847,7 +21847,7 @@ planning time.
   `packages/web-core` module (new: `rolloutFlag.test.js` 9 cases,
   `storefrontCatalogService.imageEncoding.test.js` 4 cases; extended:
   `posCatalogService.imageEncoding.test.js` +1 degradation-metric case) -- all pass, plus the
-  full existing `dgfy-ims` Vitest suite (455 tests, 57 files) re-run clean.
+  full existing `dgfy-ims` Vitest suite (2217 tests, 347 files) re-run clean.
 - Completion date: 2026-09-09.
 - Contracts/files: `apps/dgfy-api/src/modules/shared/utils/imageClientConversionGate.js` (new),
   `apps/dgfy-api/src/modules/shared/utils/imageAssetStorage.js`,
