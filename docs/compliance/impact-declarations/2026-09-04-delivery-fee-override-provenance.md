@@ -17,8 +17,8 @@ verification_evidence: apps/dgfy-api/tests/posDeliveryFeeOverride.usecase.test.j
 rollback_note: Revert this PR's diff. No migration and no schema change -- pos_transactions.delivery_fee_override already exists (Phase 237, migration 20260903000001-add-delivery-fee-breakdown.cjs); this PR only starts writing a column that was already there and already nullable-with-NULL-default. Reverting stops that write; rows written while it was live keep a delivery_fee_override value that is simply ignored again by every reader, and no money column (delivery_fee, total_amount, balance_due) changes value on rollback because the override amount always equals the delivery_fee it explains. The one behavior that disappears on revert is the in-place repair path for pre-#1564 rows, which is a capability loss, not a data loss.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-04T06:10:00.000Z
-preflight_request_ref: NOT-EXECUTED-1564-DELIVERY-FEE-OVERRIDE-PROVENANCE
+preflight_run_at: 2026-09-04T16:07:17.505Z
+preflight_request_ref: PREFLIGHT-33893050690-2026-09-04-DELIVERY-FEE-OVERRIDE-PROVENANCE
 ---
 
 # Delivery-fee override provenance (Phase 281, #1564)

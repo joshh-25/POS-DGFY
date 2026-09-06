@@ -67,6 +67,41 @@ describe('Storefront guest checkout OTP', () => {
     expect(result.error.statusCode).toBe(503);
   });
 
+  it('#1614: reports an SMTP delivery failure as SERVICE_UNAVAILABLE, not a generic INTERNAL_ERROR', async () => {
+    // emailOtpService.requestEmailOtp throws a plain Error carrying
+    // .statusCode/.code (EMAIL_OTP_DELIVERY_FAILED / EMAIL_OTP_DELIVERY_UNAVAILABLE)
+    // rather than a DomainError -- regression coverage for the #1614 incident,
+    // where this was silently flattened to INTERNAL_ERROR by
+    // mapStoreUseCaseError, hiding a well-classified SMTP outage behind a
+    // generic error and forcing production log access just to triage it.
+    for (const code of ['EMAIL_OTP_DELIVERY_FAILED', 'EMAIL_OTP_DELIVERY_UNAVAILABLE']) {
+      const emailOtpService = {
+        EMAIL_OTP_PURPOSES: { STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout' },
+        requestEmailOtp: async () => {
+          const error = new Error('Email verification code could not be sent');
+          error.statusCode = 503;
+          error.code = code;
+          throw error;
+        }
+      };
+      const request = buildRequestStoreGuestCheckoutOtpUseCase({ emailOtpService });
+
+      const result = await request({ tenantId, payload: { email, idempotency_key: idempotencyKey } });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe(DomainErrorCode.SERVICE_UNAVAILABLE);
+      expect(result.error.statusCode).toBe(503);
+      expect(result.error.code).not.toBe('INTERNAL_ERROR');
+      // The internal EMAIL_OTP_DELIVERY_* code must never leak into `details`,
+      // since useCaseResponder.js serializes `details` straight into the public
+      // response body (`errors`) -- it belongs on observabilityReasonCode
+      // instead, which no response path reads. Regression coverage for a
+      // review finding on this same PR (RF-2).
+      expect(result.error.details).toBeNull();
+      expect(result.error.observabilityReasonCode).toBe(code);
+    }
+  });
+
   it('does not require a guest proof for a DGFY-linked customer', () => {
     expect(() => assertGuestCheckoutProof({
       tenantId,

@@ -39,6 +39,8 @@ export const getAvailableDiscountQuantity = ({
 
 export const MAX_STATUTORY_BENEFICIARIES = 20;
 
+// #1622: primary's 100-char cap is a legacy UI-only constraint, stricter than but not tied to
+// the backend's uniform 120-char discountBeneficiarySchema.id_number limit (posValidator.js).
 export const isStatutoryBeneficiaryIdentityValid = (beneficiary, primary = false) => {
     const name = String(beneficiary?.name || '').trim();
     const id = String(beneficiary?.id_number || '').trim();

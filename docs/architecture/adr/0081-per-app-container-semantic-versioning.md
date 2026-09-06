@@ -195,6 +195,77 @@ own precedent check, `scripts/check-pos-receipt-version-bump.js`.
 
 ## Amendments
 
+### 2026-09-04 — Decision 8's `current_staging_sha` is not enough for an app untouched by a repair; candidate source identity is now resolved per app
+
+Found live during epic #1548's first real promotion (candidate `2026-09-05-01`, release revision r2,
+merged to `main` at `052753eb7`, deployed and verified healthy — a metadata/provenance-tracking gap,
+not a production incident). `check-image-version-parity.js` FAILed for `dgfy-api` and
+`dgfy-migration-runner`: their `X.Y.Z-staging` images still carried the candidate's *original*
+identity (from before a staging repair, #1603/#1605, that touched only `packages/web-core` and the
+three frontends), while their `X.Y.Z` PROD images had been stamped with the repair's *newer*
+identity — because the PROD build applies one manifest-wide `current_staging_sha` uniformly to every
+app, regardless of whether that app was actually part of the repair. `dgfy-ims`/`dgfy-pos`/
+`dgfy-storefront` (the apps the repair did touch) passed. Full incident writeup: #1610.
+
+**Root cause:** two things this ADR asked for turn out to be mutually exclusive for an app a repair
+never touches. Decision 7 (binding) correctly refuses to re-label that app's already-published
+`X.Y.Z-staging` tag under a new revision — nothing rebuilt it, so nothing should relabel it. But
+Decision 8's original text treated candidate source identity as one uniform `current_staging_sha`
+value, advancing for every app the moment *any* repair lands. PROD always rebuilds every app fresh
+(there is no existing bare `X.Y.Z` tag to skip rebuilding), so stamping every app with that one
+advanced value mislabels the untouched ones: their STAGING image is telling the truth (the earlier
+identity); their freshly-built PROD image is not.
+
+**Resolution:** candidate source identity moves from one manifest-wide value to a **per-app**
+resolution. An app's candidate source identity is the SHA of the most recent revision — the initial
+`to-staging/<candidate_id>` cut, or a `staging_repair` — that actually rebuilt/relabeled that app on
+STAGING. An app never named by any repair keeps the initial revision's SHA (`source_develop_sha`)
+for the candidate's entire life, even after `current_staging_sha` itself advances for other apps.
+
+Mechanically:
+- `scripts/check-promotion-candidate.js`'s manifest schema gains a **required** `apps_touched` array
+  on every `staging_repair` revision (non-empty, entries drawn from the five app names, no
+  duplicates) — the same apps whose `build_*` flag was `true` on that repair's STAGING redeploy.
+  `dgfy-api` and `dgfy-migration-runner` always appear together, since `build_api` always rebuilds
+  them as one paired unit (see `deploy.yml`/`deploy-main.yml`'s own pairing comment) — a repair that
+  touches either always lists both. `current_staging_sha` is unchanged in meaning (still the latest
+  revision's SHA, still validated the same way, still useful as overall candidate context) but is no
+  longer what the parity gate compares per app.
+- A new `resolveCandidateSourceShaByApp(manifest, apps)` function computes the per-app map described
+  above, and a new `--resolve-app-shas` CLI mode prints it as JSON for the promoter's runbook to
+  consume.
+- `scripts/check-image-version-parity.js --manifest` resolves each app's candidate source identity
+  independently via this function (including which SHA it reads that app's `package.json` version
+  from), instead of one shared `current_staging_sha` for every app. Each result entry now also
+  reports its own resolved `candidate_source_sha`, so a future mismatch is legible without
+  cross-referencing the manifest by hand.
+- `deploy-main.yml`'s single `candidate_source_sha` workflow_dispatch input is replaced with four
+  inputs matching its existing `build_*` boolean groups (`candidate_source_sha_api` covers both
+  `dgfy-api` and `dgfy-migration-runner`; one each for `candidate_source_sha_frontend_ims`/`_pos`/
+  `_storefront`), so PROD's build for an app untouched by any repair is stamped with that app's own
+  correct (earlier) identity, not the candidate's latest one. A new
+  `checkDeployMainCandidateSourceShaWiring` shape check
+  (`scripts/check-deploy-version-stamping-workflow.js`) guards this wiring the same way
+  `checkOrchestratorCandidateSourceShaWiring` already guards the orchestrator's.
+- `deploy.yml`/`deployment-orchestrator.yml`'s STAGING dispatch is **unchanged** — it was never the
+  source of this bug. An app skipped there (`build_api=false` etc.) simply keeps its previously-
+  stamped label untouched rather than being relabeled with a stale value, so the one shared
+  `candidate_source_sha` value it does pass always already matches whatever IS being rebuilt in that
+  exact dispatch (the dispatch always runs immediately after the manifest's `current_staging_sha`
+  advances to name that exact revision).
+
+`[default]` tier, so this is a dated amendment, not a superseding ADR, per ADR 0039. Decision 8's
+substance — the parity gate compares the candidate's own tracked source identity, not raw
+`org.opencontainers.image.revision`/`github.sha` — is unchanged; only its resolution granularity
+moves from candidate-wide to per-app. **Decision 7 is untouched by this fix** — no repair ever needs
+to re-label an already-published tag under a different revision; a PROD build always publishes a
+not-yet-existing bare tag regardless of which identity it's stamped with, so the two decisions are
+no longer in tension for this case.
+
+Full detail: `scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`,
+`scripts/check-deploy-version-stamping-workflow.js`, `.github/workflows/deploy-main.yml`,
+`.agents/skills/promoter/references/promotion-runbook.md`, issue #1610.
+
 ### 2026-09-04 — Decision 8's label was never actually added by Phase 277; Phase 279 (#1588) adds it
 
 Decision 8's original text (above, unchanged) says "Phase 277's builder stamps this identity into a
@@ -224,6 +295,75 @@ tier, so this is a dated amendment, not a superseding ADR, per ADR 0039. Full de
 `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s matching "Promotion-time per-app version gates"
 section, issue #1588.
 
+### 2026-09-05 — `deploy-main.yml` auto-skips a build whose version tag is already published and content-unchanged, so Decision 7 is never unnecessarily tripped (#1610)
+
+Found live via #1610's own two follow-up comments (07:41, 07:53): `deploy-main.yml` rebuilds every
+app on every dispatch by default — its four `build_*` inputs are manual, and (checked directly
+against `.agents/skills/promoter/references/promotion-runbook.md`) the promoter's own documented
+dispatch commands never set them. A retry after one app's build fails Decision 7's guard (its
+version tag is already published under a different revision) therefore re-rebuilds every app that
+already succeeded too, tripping the SAME guard for each of them in turn — not a single-incident
+fluke, but the guaranteed behavior of "always rebuild everything, and Decision 7 always refuses a
+second publish of an unchanged tag." PRs #1624/#1625/#1630 were hand-rolled workarounds for this
+same recurring symptom before this mechanism.
+
+**Resolution:** a new job, `resolve-build-plan` (`.github/workflows/deploy-main.yml`, `needs:
+guard-branch`), computes, per app, whether this dispatch's build can be safely SKIPPED — the
+version tag is already published under the CURRENT revision (an idempotent re-dispatch), or
+published under a DIFFERENT revision whose tracked build inputs (`apps/<app>/`, its resolved
+`file:` dependencies, and `infrastructure/docker/<app>/`) are byte-for-byte unchanged between that
+revision and the current one. Reuses `check-tag-immutability.js`'s own `decideImmutability`/
+`runInspect` for the registry read (the same GHCR inspect Decision 7's guard itself performs) and
+`check-app-version-bump.js`'s `resolveFileDependencyPackages`/`readVersionAt`/`APPS` for the
+dependency-fan-out and version-read logic — no second GHCR inspector or dependency-graph resolver
+was written. Full algorithm and the four-outcome table: `scripts/resolve-build-skip-plan.js`'s own
+header comment.
+
+**Fail-closed asymmetry, deliberate:** a per-app indeterminate read (registry unreachable,
+unreadable/disagreeing label, an undiffable revision — e.g. history too shallow to contain it)
+degrades to BUILD for that one app, never to skip — building unnecessarily costs CI minutes and, at
+worst, reproduces today's already-loud Decision 7 refusal; skipping unnecessarily would run PROD on
+stale code with no visible failure. A genuine CRASH of the `resolve-build-plan` job itself (a script
+bug, not a per-app read) is the one thing allowed to halt the whole dispatch — every downstream
+build job's `if:` requires `needs.resolve-build-plan.result == 'success'`, so a job failure there
+transitively skips every build, the same way a `guard-branch` failure already does today.
+
+**`publish`'s own gate changed too** (a real gap found while designing this, not introduced by it):
+its previous `if:` required at least one build job to report `'success'`, which a legitimate
+"every app is skip-eligible" dispatch (a true no-op re-dispatch, or an operator forcing a compose
+restart with nothing to rebuild) could never satisfy — every build job `'skipped'`, none
+`'success'`, `publish` would never run. `publish` now gates directly on
+`needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success'` instead
+(both added to its `needs:` array, which GitHub Actions requires before a job's `if:` may reference
+them), which already covers the one other way every build job could legitimately end up
+`'skipped'` (a whole-job crash upstream, transitively skipping everything) — so the OR-clause
+became unnecessary rather than merely redundant.
+
+**`dgfy-api`/`dgfy-migration-runner` stay ONE shared `build_api` dispatch checkbox, but resolve TWO
+independent skip verdicts.** These are genuinely separate images with genuinely separate
+`package.json` versions; nothing about deploy-order or the server's compose `depends_on` requires
+their CI build cycles to march in lockstep, only their human-facing checkbox stays coupled (the same
+pairing the existing `candidate_source_sha_api` grouping above already established for a different
+reason — provenance labeling, not build eligibility).
+
+`[snapshot]` tier — no Decision clause changes tier or substance. **Decision 7 is byte-for-byte
+unchanged** and still runs, unconditionally, in every build job that actually executes; this only
+changes whether a doomed, already-guard-refused attempt is ever started in the first place. A
+version tag published at a revision whose content genuinely differs from `github.sha` is NEVER
+treated as skip-eligible — that case falls straight through to a normal build attempt, so the
+existing, unmodified guard still refuses it exactly as it does today. Per ADR 0039, a `[snapshot]`
+entry records ordinary implementation work and needs neither a superseding ADR nor a dated Amendment
+with `status: amended` — added here anyway to match this ADR's own established practice of
+recording every operationally-significant build/deploy mechanism change.
+
+Full detail: `scripts/resolve-build-skip-plan.js` (+ its test file), `.github/workflows/deploy-main.yml`,
+`scripts/check-deploy-version-stamping-workflow.js` (+ its test file — asserts the new job wiring),
+`.agents/skills/promoter/references/promotion-runbook.md`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`,
+issue #1610. **Not yet exercised against a real dispatch** — everything above is unit-tested and
+shape-verified against this repo's real files, same caveat the Phase 293 Amendment above already
+states for its own mechanism; the issue stays open (`Refs #1610`, not `Closes`) pending a real
+`deploy-main.yml` dispatch that exercises an already-published, content-unchanged app.
+
 ## Alternatives considered
 
 - **Build each frontend once and inject environment config at container start**, so one digest
@@ -251,7 +391,15 @@ section, issue #1588.
 - #1559 — the issue this ADR was filed to close.
 - #1588 — Phase 279 (epic #1548 Wave 4): the promoter's pre-cut floor step (Decision 6), the
   candidate-source-identity label and promotion parity gate (Decision 8, corrected by this ADR's
-  2026-09-04 Amendment above), and final policy text.
+  2026-09-04 Amendments above), and final policy text.
+- #1610 — found live during candidate `2026-09-05-01`'s first real promotion, with two distinct
+  symptoms from the same root gap. First: Decision 8's original uniform `current_staging_sha`
+  mislabeled an app a staging repair never touched — resolved by this ADR's 2026-09-04
+  per-app-resolution Amendment above. Second: `deploy-main.yml` rebuilding every app on every
+  dispatch by default meant a retry after one app's Decision 7 refusal re-tripped the SAME guard for
+  every app that had already succeeded — resolved by this ADR's 2026-09-05 build-skip Amendment
+  above. Both symptoms trace back to the same fact (PROD always rebuilds unconditionally); neither
+  fix loosens Decision 7 itself.
 - #1560 — the PR-time version-bump check (Decision 9) this ADR hands its enforcement rule to;
   explicitly not implemented by this ADR.
 - [ADR 0072](0072-ghcr-container-image-naming.md) — governs image *names*; this ADR governs tag

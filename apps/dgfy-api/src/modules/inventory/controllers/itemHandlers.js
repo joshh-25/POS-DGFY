@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { parseClientImageManifest } from '../../shared/utils/imageUploadValidation.js';
 import {
   getItemsUseCase,
   getItemByIdUseCase,
@@ -785,14 +786,26 @@ export const updateBulkStorefrontCatalogOverrides = async (req, res, next) => {
 
 export const uploadStorefrontCatalogImage = async (req, res, next) => {
   try {
+    const itemId = req.validatedParams?.item_id || req.params.item_id;
+    // Phase 301 (#265): this route now parses via .fields(), so the file lands in
+    // req.files.image[0] rather than req.file (see routes/items.js). clientImageManifest is a
+    // best-effort hint -- a malformed/absent one resolves to null and the use case falls back to
+    // today's behavior entirely.
     const result = await runInventoryUseCase(
       () => uploadStorefrontCatalogImageUseCase({
-        itemId: req.validatedParams?.item_id || req.params.item_id,
-        file: req.file,
+        itemId,
+        files: req.files,
+        clientImageManifest: parseClientImageManifest(req.body?.client_image_manifest),
         user: req.user
       }),
       'Failed to upload storefront catalog image'
     );
+
+    if (result.success) {
+      // #1410: POS terminals subscribe to pos.catalog.changed via SSE; without this the
+      // uploaded image stays invisible on the POS item list until a manual page refresh.
+      await publishCatalogInvalidation(req, 'storefront_catalog_image_uploaded', [itemId]);
+    }
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
@@ -1076,14 +1089,21 @@ export const bulkGenerateItemImages = async (req, res, next) => {
 
 export const uploadStorefrontCatalogGalleryImages = async (req, res, next) => {
   try {
+    const itemId = req.validatedParams?.item_id || req.params.item_id;
     const result = await runInventoryUseCase(
       () => uploadStorefrontCatalogGalleryImagesUseCase({
-        itemId: req.validatedParams?.item_id || req.params.item_id,
+        itemId,
         files: req.files,
         user: req.user
       }),
       'Failed to upload storefront catalog image gallery'
     );
+
+    if (result.success) {
+      // #1410: same SSE invalidation this file's uploadStorefrontCatalogImage now sends --
+      // otherwise POS terminals don't see the new gallery image until a manual refresh.
+      await publishCatalogInvalidation(req, 'storefront_catalog_gallery_images_uploaded', [itemId]);
+    }
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
@@ -1110,6 +1130,19 @@ export const uploadBulkStorefrontCatalogImages = async (req, res, next) => {
       'Failed to upload storefront catalog images in bulk'
     );
 
+    if (result.success) {
+      // #1410: bulk upload matches files to items by SKU internally, so there's no single
+      // itemId param -- pull the actually-uploaded item ids out of the per-file results.
+      const uploadedItemIds = [...new Set(
+        (result.data?.results || [])
+          .filter((entry) => entry.status === 'uploaded' && entry.item_id)
+          .map((entry) => entry.item_id)
+      )];
+      if (uploadedItemIds.length > 0) {
+        await publishCatalogInvalidation(req, 'storefront_catalog_images_bulk_uploaded', uploadedItemIds);
+      }
+    }
+
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({
@@ -1127,14 +1160,20 @@ export const uploadBulkStorefrontCatalogImages = async (req, res, next) => {
 
 export const updateStorefrontCatalogGallery = async (req, res, next) => {
   try {
+    const itemId = req.validatedParams?.item_id || req.params.item_id;
     const result = await runInventoryUseCase(
       () => updateStorefrontCatalogGalleryUseCase({
-        itemId: req.validatedParams?.item_id || req.params.item_id,
+        itemId,
         payload: req.body,
         user: req.user
       }),
       'Failed to update storefront catalog image gallery'
     );
+
+    if (result.success) {
+      // #1410: gallery reorder/removal also needs to invalidate the POS SSE cache.
+      await publishCatalogInvalidation(req, 'storefront_catalog_gallery_updated', [itemId]);
+    }
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
@@ -1153,14 +1192,20 @@ export const updateStorefrontCatalogGallery = async (req, res, next) => {
 
 export const deleteStorefrontCatalogGalleryImage = async (req, res, next) => {
   try {
+    const itemId = req.validatedParams?.item_id || req.params.item_id;
     const result = await runInventoryUseCase(
       () => deleteStorefrontCatalogGalleryImageUseCase({
-        itemId: req.validatedParams?.item_id || req.params.item_id,
+        itemId,
         imageIndex: req.params.image_index,
         user: req.user
       }),
       'Failed to delete storefront catalog gallery image'
     );
+
+    if (result.success) {
+      // #1410: deleting a gallery image also needs to invalidate the POS SSE cache.
+      await publishCatalogInvalidation(req, 'storefront_catalog_gallery_image_deleted', [itemId]);
+    }
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
@@ -1179,13 +1224,19 @@ export const deleteStorefrontCatalogGalleryImage = async (req, res, next) => {
 
 export const deleteStorefrontCatalogImage = async (req, res, next) => {
   try {
+    const itemId = req.validatedParams?.item_id || req.params.item_id;
     const result = await runInventoryUseCase(
       () => deleteStorefrontCatalogImageUseCase({
-        itemId: req.validatedParams?.item_id || req.params.item_id,
+        itemId,
         user: req.user
       }),
       'Failed to delete storefront catalog image'
     );
+
+    if (result.success) {
+      // #1410: deleting the primary storefront image also needs to invalidate the POS SSE cache.
+      await publishCatalogInvalidation(req, 'storefront_catalog_image_deleted', [itemId]);
+    }
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,

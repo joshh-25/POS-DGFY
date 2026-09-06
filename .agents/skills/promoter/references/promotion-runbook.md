@@ -61,8 +61,8 @@ Promotes \`develop\` to \`main\` at $(git rev-parse --short origin/develop).
 
 ## Testing Evidence
 
-\`promotion-quality-gate\` check-run: <link> (14 blocking gates + 2 deliberately advisory since
-2026-09-03, #1431 Phase C/D -- gate:release:local no longer runs as part of this procedure, see
+\`promotion-quality-gate\` check-run: <link> (14 blocking gates + 3 deliberately advisory as of
+#1278 PR 2 / Phase 298 -- gate:release:local no longer runs as part of this procedure, see
 docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md). Tenant-schema sync checked against production: <result>.
 Aggregate promotion — see \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the compliance exemption."
 
@@ -149,6 +149,52 @@ git fetch origin develop
 node scripts/check-app-version-bump.js --floor --base origin/staging --head origin/develop
 ```
 
+**Release note (#1278, ADR 0082)** — authored in the same bump branch/PR above (or its own
+note-only branch/PR if no app was below floor), before the candidate branch is cut. Reuse
+`docs/releases/notes/TEMPLATE.md`'s shape; fill the version table from each app's bumped
+`package.json`. `production_commit` gets the literal sentinel `pending` — an exact, checkable
+string, not a bracketed placeholder — since the real `main` merge-commit SHA does not exist yet at
+this point (ADR 0082 Decisions 4/8's two-stage lifecycle: `pending` is valid and expected all the
+way through the `release/<candidate_id>-rN → main` PR itself). "Publish the GitHub Release" below
+finalizes it to the real 40-hex SHA post-deploy:
+
+```bash
+git status   # same clean-tree backstop as every other cut in this runbook
+git switch -c chore/release/bump-$CANDIDATE_ID origin/develop   # or reuse the bump branch above
+mkdir -p docs/releases/notes
+cat > docs/releases/notes/$CANDIDATE_ID.md <<NOTE
+---
+schema: sku-release-note/v1
+candidate_id: $CANDIDATE_ID
+production_date: $(date +%Y-%m-%d)
+production_commit: pending
+---
+
+# Release $CANDIDATE_ID — $(date +%Y-%m-%d)
+
+| App | Version |
+|---|---|
+| dgfy-api | <version> |
+| dgfy-migration-runner | <version> |
+| dgfy-ims | <version> |
+| dgfy-pos | <version> |
+| dgfy-storefront | <version> |
+
+## Included
+
+- <one plain-language line per user- or operator-visible change, citing its source PR/issue>
+
+## Operational notes
+
+None.
+NOTE
+git add docs/releases/notes/$CANDIDATE_ID.md
+git commit -m "docs(release): add release note for candidate $CANDIDATE_ID"
+git push
+# fold into the bump PR above if one exists, or open its own PR into develop if not --
+# either way the note must be committed before to-staging/$CANDIDATE_ID is cut.
+```
+
 Only once that reports clean does the candidate branch get cut, from the (possibly just-bumped)
 `origin/develop`:
 
@@ -181,6 +227,11 @@ cat > .tmp/release-candidates/$CANDIDATE_ID.json <<JSON
 }
 JSON
 node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
+
+# current_staging_sha above is exactly what the "Deploy dispatch" section's STAGING
+# `gh workflow run deploy.yml` command reads back out via `-f candidate_source_sha=...`, once the
+# PR below merges and that step actually runs (#1598) -- nothing to do with it here, just don't
+# lose track of where it comes from.
 
 gh pr create \
   --base staging \
@@ -233,6 +284,32 @@ the whole chain, including this parent-pointer requirement), merge into `staging
 redeploy/observe, and increment the repair revision. If the repair is live DB, secrets, SSH, or
 infrastructure work, stop and hand it to Pat. If a developer already made the fix on `develop`,
 cherry-pick only an isolated, reviewed commit with `-x`; mixed commits must be recreated narrowly.
+
+**Amend the release note in this same repair PR (#1278, ADR 0082)** — edit
+`docs/releases/notes/$CANDIDATE_ID.md` directly (this branch carries its own commits, unlike
+`to-staging/*`/`release/*`): add one `## Included` line for the repair and update the version-table
+row for whichever app(s) it touched. Never create a second `docs/releases/notes/*.md` file for the
+same `$CANDIDATE_ID`.
+
+**`apps_touched` — required on every `staging_repair` entry (ADR 0081 Decision 8 amendment, #1610).**
+List exactly the apps whose `build_*` flag was `true` on this repair's STAGING redeploy below —
+`dgfy-api` and `dgfy-migration-runner` always appear together (`build_api` always rebuilds them as
+one paired unit), each frontend independently. Get this wrong and an app this repair didn't actually
+touch will silently claim the wrong candidate identity at PROD dispatch time — that's the exact bug
+#1610 was filed for. Example, a repair that only rebuilt `dgfy-ims`:
+
+```json
+{ "kind": "staging_repair", "revision": 1, "sha": "<sha>", "parent_sha": "<prev-sha>",
+  "branch": "fix/staging/$CANDIDATE_ID-r1", "pr": 1234, "issue": 1233,
+  "apps_touched": ["dgfy-ims"] }
+```
+
+`check-promotion-candidate.js` now rejects a `staging_repair` revision missing `apps_touched`
+entirely, so this isn't optional — validate right after editing:
+
+```bash
+node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
+```
 
 When observation passes, cut the next release revision from the latest staging head:
 
@@ -302,23 +379,69 @@ git rev-list --count origin/staging..origin/main
 # four build_* booleans below all default true, so omitting them builds/pushes
 # everything, same as the old components=all)
 #
-# candidate_source_sha (ADR 0081 Decision 8, #1588): read current_staging_sha straight from the
-# candidate manifest rather than retyping the SHA. Sets the SAME variable name the #1007-gated
-# exception section captures for its own flow (from origin/develop directly, no manifest) -- the
-# PROD dispatch below reuses whichever one the promoter's actual flow set, without re-deriving it.
+# candidate_source_sha (ADR 0081 Decision 8, #1588; cross-referenced #1598): read
+# current_staging_sha straight from the candidate manifest written above in this file's "Default:
+# develop -> staging -> main" section, immediately after the branch cut -- rather than retyping the
+# SHA. Sets the SAME variable name the #1007-gated exception section captures for its own flow
+# (from origin/develop directly, no manifest) -- the PROD dispatch below reuses whichever one the
+# promoter's actual flow set, without re-deriving it.
 CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID.json').current_staging_sha")
 gh workflow run deploy.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" --ref staging
 ```
 
-**PROD dispatch — ask Pat first, every time, on either flow.** `$CANDIDATE_SOURCE_SHA` is already
-set by this point: from the STAGING block just above on the default flow (`release/<candidate_id>-rN`
-was cut from that exact staging SHA, so the identity is unchanged by the merge), or from the
-`#1007-gated exception` section's own `git rev-parse origin/develop` capture on that flow (no
-staging leg, no candidate manifest — RF-2, PR #1590 review):
+**PROD dispatch — ask Pat first, every time, on either flow.** `deploy-main.yml` takes candidate
+source identity **per app group** (ADR 0081 Decision 8 amendment, #1610) — `candidate_source_sha_api`
+(covers both `dgfy-api` and `dgfy-migration-runner`), `candidate_source_sha_frontend_ims`, `_pos`,
+`_storefront` — not one shared value, since PROD rebuilds every app unconditionally and a single
+shared value would mislabel any app a staging repair never touched.
+
+**Neither dispatch command below needs any manual `build_*` unchecking any more (#1610, ADR 0081
+Decision 7 residue).** Both canonical commands leave all four `build_*` inputs at their `default:
+true` — they always have, since this runbook never documented a manual-uncheck step in the first
+place. That used to mean every real PROD dispatch rebuilt all five apps regardless of what actually
+changed, and a retry after one app's Decision 7 refusal re-tripped the same guard for every app that
+had already succeeded. `deploy-main.yml` now resolves a per-app build-skip verdict automatically (a
+new `resolve-build-plan` job, ahead of the five build jobs) — an app whose version tag is already
+published and whose tracked build inputs are content-unchanged is skipped without any dispatch input
+needing to change. Nothing below needs editing for this; it's automatic and safe. Full mechanism:
+`scripts/resolve-build-skip-plan.js`'s own header comment, ADR 0081's 2026-09-05 Amendment.
+
+**Default flow** (candidate manifest exists): resolve each app's own value via
+`resolveCandidateSourceShaByApp()` rather than reusing `$CANDIDATE_SOURCE_SHA` uniformly:
 
 ```bash
-gh workflow run deploy-main.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" --ref main
+eval "$(node -e "
+const { resolveCandidateSourceShaByApp } = require('./scripts/check-promotion-candidate');
+const manifest = require('./.tmp/release-candidates/$CANDIDATE_ID.json');
+const byApp = resolveCandidateSourceShaByApp(manifest);
+console.log('CANDIDATE_SOURCE_SHA_API=' + byApp['dgfy-api']);
+console.log('CANDIDATE_SOURCE_SHA_IMS=' + byApp['dgfy-ims']);
+console.log('CANDIDATE_SOURCE_SHA_POS=' + byApp['dgfy-pos']);
+console.log('CANDIDATE_SOURCE_SHA_STOREFRONT=' + byApp['dgfy-storefront']);
+")"
 
+gh workflow run deploy-main.yml -f deploy=true \
+  -f candidate_source_sha_api="$CANDIDATE_SOURCE_SHA_API" \
+  -f candidate_source_sha_frontend_ims="$CANDIDATE_SOURCE_SHA_IMS" \
+  -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA_POS" \
+  -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA_STOREFRONT" \
+  --ref main
+```
+
+**#1007-gated exception** (no manifest, no repair concept, nothing has diverged per app): the single
+`$CANDIDATE_SOURCE_SHA` captured in that section (`git rev-parse origin/develop` at cut time) is the
+correct value for all four inputs:
+
+```bash
+gh workflow run deploy-main.yml -f deploy=true \
+  -f candidate_source_sha_api="$CANDIDATE_SOURCE_SHA" \
+  -f candidate_source_sha_frontend_ims="$CANDIDATE_SOURCE_SHA" \
+  -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA" \
+  -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA" \
+  --ref main
+```
+
+```bash
 # Verify health after either dispatch — read-only, unattended
 gh workflow run verify-deployment.yml -f environment=<DEV|STAGING|PROD> -f poll_minutes=5
 gh run list --workflow=verify-deployment.yml -L1 --json databaseId,status
@@ -351,3 +474,91 @@ case (the #1007/hotfix path, on either invocation form) — both are fine to pro
 published for this candidate does not actually trace back to where it should, or (staging-unreadable
 specifically) that STAGING's own label-stamping regressed — report and escalate either way, do not
 deploy past it or dismiss it as noise.
+
+**Per app now, not one shared value (ADR 0081 Decision 8 amendment, #1610).** `--manifest` mode
+resolves and compares each app against its OWN candidate source identity (the SHA of the last
+revision that actually rebuilt it — see the `apps_touched` note in "Candidate repair after the
+staging merge" above), not the manifest's single `current_staging_sha` — an app a repair never
+touched is expected to keep matching its earlier identity, not the candidate's latest one. Each
+printed `[PASS]`/`[FAIL]` line now also shows the `candidate_source_sha` it was actually compared
+against, so a genuine mismatch is legible without cross-referencing the manifest by hand.
+
+## Publish the GitHub Release (#1278, ADR 0082)
+
+After the parity gate above reports `PASS` — not before, and not in place of it. Finalize the
+candidate's release note's `production_commit` from the literal sentinel `pending` (ADR 0082
+Decisions 4/8's two-stage lifecycle — written at authoring time since the real `main` merge commit
+wasn't known yet) to the real, now-known 40-hex SHA, commit that update to `develop`, then tag and
+publish from the now-complete file. Unattended (see `../SKILL.md`'s checkpoint table) — this is a
+post-deploy record of a deploy Pat already authorized at the PROD dispatch ask, not a new deploy
+mutation.
+
+**Hotfix candidates skip this section's finalization half.** If `$CANDIDATE_ID` was authored via
+`.agents/skills/incident-responder/SKILL.md`'s hotfix procedure, its release note doesn't reach
+`origin/develop` until that role's own "Back-port to develop" step merges — that step folds
+finalization into itself instead, for exactly this reason. Only this section's *tag-and-publish*
+half below (fetch `origin/develop`, tag, `gh release create`) still applies to a hotfix, run once
+that back-port PR has merged. A normal promotion or the #1007 exception has the note on `develop`
+already from pre-cut authoring, so both halves below apply as documented.
+
+```bash
+# fetch immediately before capture, and cross-check against deploy-main.yml's own reported SHA --
+# an earlier `git fetch origin main` (e.g. this runbook's own pre-flight step, run well before
+# Pat's manual merge and deploy-main.yml's own dispatch) would leave this stale, and a bare
+# git rev-parse with no fetch at all here would silently trust whatever that stale ref says:
+git fetch origin main
+MAIN_SHA=$(git rev-parse origin/main)
+DEPLOY_RUN_SHA=$(gh run list --workflow=deploy-main.yml --branch main -L1 --json headSha --jq '.[0].headSha')
+[ "$MAIN_SHA" = "$DEPLOY_RUN_SHA" ] \
+  || { echo "ERROR: freshly-fetched origin/main ($MAIN_SHA) does not match deploy-main.yml's own deployed SHA ($DEPLOY_RUN_SHA) -- do not tag/publish, investigate first" >&2; exit 1; }
+```
+
+Normal promotion or #1007 exception: continue straight into the finalization block below. **Hotfix
+candidate: skip this next block** (`docs/releases/notes/$CANDIDATE_ID.md` was already finalized in
+`incident-responder`'s back-port PR) — jump to "tag the deployed main commit" further down, still
+using the `$MAIN_SHA` just captured above.
+
+```bash
+# finalize production_commit on develop, from pending to the real deployed SHA:
+git fetch origin develop
+git switch -c docs/release/$CANDIDATE_ID-commit origin/develop
+sed -i.bak "s/^production_commit: pending$/production_commit: $MAIN_SHA/" docs/releases/notes/$CANDIDATE_ID.md
+rm docs/releases/notes/$CANDIDATE_ID.md.bak
+# self-check: no CI gate re-validates this finalization yet (ADR 0082 Decision 8, Follow-up 3) --
+# this grep is the only thing catching a missed/mistyped substitution before publish:
+grep -qE '^production_commit: [0-9a-f]{40}$' docs/releases/notes/$CANDIDATE_ID.md \
+  || { echo "ERROR: production_commit did not finalize to a real 40-hex SHA -- do not publish" >&2; exit 1; }
+git add docs/releases/notes/$CANDIDATE_ID.md
+git commit -m "docs(release): record production commit for candidate $CANDIDATE_ID"
+git push -u origin docs/release/$CANDIDATE_ID-commit
+gh pr create --base develop --head docs/release/$CANDIDATE_ID-commit \
+  --title "docs(release): record production commit for candidate $CANDIDATE_ID" \
+  --body "## Summary
+
+Records the deployed production commit ($MAIN_SHA) on candidate $CANDIDATE_ID's release note.
+
+## Testing Evidence
+
+Docs-only change; no compliance-sensitive surface touched."
+gh pr merge <N> --merge   # ordinary develop-base PR, no new merge authority needed
+
+# Hotfix candidates resume here (the block above was skipped -- incident-responder's back-port PR
+# already finalized and merged the note onto develop). tag the deployed main commit and publish
+# the GitHub Release from the committed note -- fetch the note from develop (not main) since main
+# never carries docs/releases/notes/ commits of its own until a `staging -> main`/
+# `develop -> main` forward-merge:
+git fetch origin develop
+git show origin/develop:docs/releases/notes/$CANDIDATE_ID.md > /tmp/release-note-$CANDIDATE_ID.md
+grep -qE '^production_commit: [0-9a-f]{40}$' /tmp/release-note-$CANDIDATE_ID.md \
+  || { echo "ERROR: fetched note still carries pending -- do not publish" >&2; exit 1; }
+git tag release-$CANDIDATE_ID $MAIN_SHA
+git push origin release-$CANDIDATE_ID
+gh release create release-$CANDIDATE_ID \
+  --title "Release $CANDIDATE_ID" \
+  --notes-file /tmp/release-note-$CANDIDATE_ID.md \
+  --target $MAIN_SHA
+```
+
+The committed `docs/releases/notes/$CANDIDATE_ID.md` file stays authoritative regardless of what
+this Release shows — if the two ever disagree, re-run `gh release edit` from the committed file
+rather than editing the Release by hand.

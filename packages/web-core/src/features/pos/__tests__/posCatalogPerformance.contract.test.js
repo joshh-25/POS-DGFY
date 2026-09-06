@@ -24,7 +24,10 @@ describe('hosted POS catalog performance contracts', () => {
     const operationsSource = readSource(operationsPath);
     const catalogImageFailureStoreSource = readSource(catalogImageFailureStorePath);
 
-    expect(checkoutUtilsSource).toContain("resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail')");
+    // #1635 RF-2 moved the flat-URL thumbnail derivation off `storefront_image_url`
+    // specifically and onto the POS-first/Storefront-fallback `effectiveUrl` --
+    // update this contract alongside that fix rather than asserting stale source text.
+    expect(checkoutUtilsSource).toContain("resolveAssetVariantUrl(effectiveUrl, 'thumbnail')");
     expect(checkoutSource).toContain("loading={itemIndex < 4 ? 'eager' : 'lazy'}");
     expect(checkoutSource).toContain("fetchpriority={itemIndex < 4 ? 'high' : 'auto'}");
     expect(catalogWorkflowSource).toContain('nextCatalogImageUrls');
@@ -34,7 +37,12 @@ describe('hosted POS catalog performance contracts', () => {
     expect(catalogWorkflowSource).toContain('catalogImageErrors\n        ),');
     expect(catalogWorkflowSource).not.toContain('setCatalogImageErrors(new Set());');
     expect(catalogImageFailureStoreSource).toContain('window.sessionStorage');
-    expect(operationsSource).toContain("resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail')");
+    // Pre-existing stale assertion, found failing while verifying #1635's own fix (not one of
+    // its 3 blockers): TerminalOperationsWorkspace.jsx no longer calls resolveAssetVariantUrl
+    // inline -- it was migrated to the shared resolvePosCatalogImageSources() resolver by this
+    // same PR's earlier "render the correct image variant at every POS/IMS thumbnail slot"
+    // commit, which missed updating this contract. Assert the actual current contract instead.
+    expect(operationsSource).toContain('resolvePosCatalogImageSources(item)');
     expect(operationsSource).toContain('loading="lazy"');
   });
 

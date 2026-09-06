@@ -46,7 +46,22 @@ export const updateBulkPosCatalogOverrides = async ({ itemIds, posVisible }) => 
 
 export const uploadPosCatalogImage = async (itemId, file) => {
   const formData = new FormData();
-  formData.append('image', file);
+
+  // Client-side encode is gated by rolloutFlag.js's server-authoritative `image_client_conversion`
+  // flag (epic #265, Phase 298), scoped to 'pos_catalog_single'. Single-variant only:
+  // `image_medium`/`image_thumbnail`/`client_image_manifest` multipart fields are a follow-up
+  // job (#298d bulk excluded), not this phase's.
+  const { isImageClientConversionEnabledForScope } = await import('../utils/imageEncoding/rolloutFlag.js');
+  if (isImageClientConversionEnabledForScope('pos_catalog_single')) {
+    const { prepareImageVariants } = await import('../utils/imageEncoding/index.js');
+    const { reportImageClientConversionDegradation } = await import('../utils/imageEncoding/reportDegradation.js');
+    const { variants, manifest, degraded } = await prepareImageVariants(file);
+    reportImageClientConversionDegradation({ scope: 'pos_catalog_single', degraded, manifest });
+    formData.append('image', variants.large || file);
+  } else {
+    formData.append('image', file);
+  }
+
   const response = await api.post(`/pos/catalog-overrides/${itemId}/image`, formData);
   return response.data.data;
 };

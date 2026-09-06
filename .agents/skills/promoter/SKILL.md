@@ -88,6 +88,15 @@ existing unattended-merge policy on `develop` already covers it, per this repo's
 convention). Full command sequence: `references/promotion-runbook.md`'s "Default: `develop` →
 `staging` → `main`" section.
 
+**Release note, authored in this same PR (#1278, ADR 0082).** Every candidate needs
+`docs/releases/notes/<candidate_id>.md` committed on `develop` before the cut, same seam as the
+version bump above and for the same reason — a promotion branch carries no commits of its own. If
+every app is already at or above floor and no bump is otherwise needed, open the note PR anyway; it
+is not optional. Full obligation and per-leg detail (authoring, `fix/staging/*` amendment, the
+`release/* → main` check, and post-deploy GitHub Release publication): ADR 0082 and
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-09-06 amendment — not restated here. Command:
+`references/promotion-runbook.md`, next to the candidate-manifest heredoc.
+
 **Candidate manifest, written locally at cut time (ADR 0081 Decision 8, #1588).** The manifest
 `scripts/check-promotion-candidate.js` validates is also this candidate's own tracked source
 identity — `source_develop_sha` (no repairs yet) or `current_staging_sha` (once repairs land) — the
@@ -104,11 +113,37 @@ and re-observe the same candidate after each merge. An isolated developer fix ma
 with `git cherry-pick -x` after diff review. If it is mixed with newer work, recreate the narrow fix
 on the staging repair branch. Never merge `develop` wholesale into an active candidate.
 
+**Every repair also amends the candidate's release note, in the same PR (#1278, ADR 0082).** A
+repair branch carries its own commit(s), so `docs/releases/notes/<candidate_id>.md` is edited
+directly here — one new `## Included` line for the repair and an updated version-table row for
+whichever app(s) it touched — never a second release-note file for the same `candidate_id`. Full
+rule: ADR 0082 Decision 6, `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-09-06 amendment.
+
 Code-level repair work is handed to Conduct with the candidate ID, exact staging SHA, failure
 evidence, and repair issue. Conduct may address code, tests, migrations, API/UI behavior, or CI;
 live database changes, secrets, SSH, and infrastructure operations are hard stops. The report-only
 `staging-candidate-observation.yml` workflow validates combined health, migration, API, and UI
 evidence without performing operational mutations.
+
+**Backporting a `fix/staging/*` repair to `develop` (#1611, 2026-09-04) — parallel to the
+post-main hotfix backport rule below, but for the pre-main leg.** Nothing before this documented
+what happens to a staging-repair commit once it merges into `staging`, and the gap is real: #1611
+found `develop` still carrying #1603's stale-test bug for a full promotion cycle after PR #1604
+fixed it on `staging`/`main`, saved from recurring only because an unrelated `develop` commit
+(#1602) happened to supersede it independently. That "happened to" is the failure mode this
+paragraph closes, not a plan to rely on again. **Default: mandatory, per repair, as soon as the
+`fix/staging/*` PR merges into `staging`** — don't defer it to promotion end, and don't assume the
+eventual `staging → main` forward-merge covers it; that merge reaches `main`, not `develop`, and
+nothing in this repo syncs `develop` from `main`/`staging` automatically. Same pattern as the
+main-hotfix backport: hand off to `pm` for a fresh issue (never `Refs` the closed repair PR
+directly — a closed issue can't take the `Refs #N` → `For QA` transition), `git cherry-pick -x`
+the repair's commit(s) onto a branch cut fresh off `origin/develop`, and open the PR into `develop`
+`Refs`-ing the fresh issue — an ordinary `develop`-base PR, no new merge authority needed.
+**Skippable only with verification, never by assumption**: before skipping, diff the repair's
+changed file(s)/lines against `origin/develop`'s current content and confirm `develop` already
+carries equivalent content, not merely a later commit that happens to touch the same file — #1611's
+own case resolved this way, by coincidence, which is exactly why "probably already fine" doesn't
+qualify as verification on its own.
 
 Only after staging observation passes may the promoter cut `release/<candidate_id>-rN` from the
 current staging SHA. A pre-main failure returns to the staging repair loop; discard the stale
@@ -213,9 +248,11 @@ logged and authorized, not silent.
 
 **`gate:release:local` is no longer a step in this procedure (since 2026-09-03, #1431 Phase C/D).**
 Every gate it used to run locally is now delegated to `promotion-quality-gate.yml`
-(`CI_ENFORCED_GATES`, 16 entries — `required_gate_count: 0` on a default run); 14 of the 16 are
-blocking on this leg, and 2 (`dependencies.audit.full`, permanently; `backend.test_matrix`,
-temporarily, tracked by #1469) are deliberately advisory. **Do not run this script as part of a
+(`CI_ENFORCED_GATES`, 17 entries as of #1278 PR 2 / Phase 298 — `required_gate_count: 0` on a
+default run); 14 of the 17 are blocking on this leg, and 3 (`dependencies.audit.full`,
+permanently; `backend.test_matrix`, temporarily, tracked by #1469; `release.notes`, temporarily by
+deliberate ADR 0082 Decision 8 rollout design, tracked by ADR 0082 Follow-up 1) are deliberately
+advisory. **Do not run this script as part of a
 promotion** — there is nothing left in its required set to invoke it for. Read the promotion PR's
 own `promotion-quality-gate` check instead (`gh pr checks <N>`, or per-job conclusions — see the
 run-rollup trap below, never the workflow-run rollup) as the evidence for the release go/no-go
@@ -286,6 +323,16 @@ escalate the same way a `verify-deployment.yml` failure is handled (#495: no rol
 wave it through. Read-only (`docker buildx imagetools inspect` only, no push) — no new checkpoint,
 same classification as `verify-deployment.yml`.
 
+**Publish the GitHub Release (#1278, ADR 0082) — after the parity gate above confirms the deploy,
+not before.** Tag `release-<candidate_id>` on the deployed `main` commit and publish a GitHub
+Release from the candidate's committed `docs/releases/notes/<candidate_id>.md`, mirroring the #615
+Android precedent (`gh release create`, full command in `references/promotion-runbook.md` next to
+the parity-gate block). The committed file stays authoritative; this Release is a published mirror
+cut from it, never edited independently. This is a post-deploy **record** of a deploy Pat already
+authorized via the PROD dispatch ask above — not a new deploy mutation, not a second dispatch, and
+not itself gated by the deploy-dispatch checkpoint. See the checkpoint table below for the explicit
+unattended classification and the reasoning for it.
+
 ## Expedited `develop → main` override (#1007)
 
 A second, narrow, phrase-gated exception to "never merge `main`" — parallel to, and independent of,
@@ -313,6 +360,7 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 | Dispatching `verify-deployment.yml` (any environment) | Unattended — every remote command it runs is read-only |
 | Dispatching `tenant-schema-report.yml` (any environment, including PROD) | Unattended — read-only, `--mode report` only, no write path exists |
 | Running `node scripts/check-image-version-parity.js` after `deploy-main.yml` (ADR 0081 Decision 8, #1588) | Unattended — read-only, `docker buildx imagetools inspect` only, no push |
+| Publishing the GitHub Release (`gh release create release-<candidate_id> ...`) after the promotion parity gate confirms the deploy (#1278, ADR 0082) | Unattended — this is a post-deploy **record** of a deploy Pat already authorized at the PROD dispatch ask, not a mutation of a deployed environment and not a second deploy dispatch. Do not confuse it with the `deploy-main.yml` dispatch row below, which stays an every-time ask |
 | Running `npm run preflight:runner` (Phase 233, #1365, H1) before the `deploy-main.yml` dispatch ask | Unattended — read-only (`gh api`/`curl`, self-cancelling `--canary` if used). An exit-`3` "flip required" result still requires logging the flip in the promotion PR before acting on it — that's a documentation step, not a new ask |
 | Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched. No longer auto-merges (#1295/#1374): a passing run pushes its reconciliation branch and attempts the PR, but a policy-blocked `gh pr create` finishes green-with-warning and hands off to a human/credentialed AI session instead — see "Compliance preflight sweep" above. Dispatching itself is still unattended either way, same reasoning as `verify-deployment.yml`'s read-only classification |
 | Opening and merging a stuck compliance-sweep handoff PR (per the "Compliance preflight sweep" fast-signal check above, before cutting `release/<label>`) | Unattended — same reasoning as any other `develop`-base PR merge in this role's table (pre-flight, branch cut, PR open, merge into `develop` row above): no destructive action, no `main`, and every declaration in it already passed a real preflight evaluation before the branch was ever pushed. Still subject to `AGENTS.md`'s Merge Safety hard stop, unchanged |

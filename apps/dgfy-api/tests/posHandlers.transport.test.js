@@ -216,10 +216,12 @@ let collectCashDeliveryOrder;
 let assignDeliveryPersonnel;
 let updateDeliveryJobStatus;
 let updateOnlineOrderStatus;
+let uploadCatalogImage;
 
 beforeAll(async () => {
     const mod = await import('../src/modules/pos/controllers/posHandlers.js');
     listCatalog = mod.listCatalog;
+    uploadCatalogImage = mod.uploadCatalogImage;
     checkout = mod.checkout;
     voidTransaction = mod.voidTransaction;
     listTransactions = mod.listTransactions;
@@ -1390,5 +1392,98 @@ describe('posHandlers transport contracts', () => {
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();
+    });
+
+    // Phase 301 (#265): uploadCatalogImage's route now parses via multer .fields(), so the
+    // controller reads req.files (not req.file) and forwards a parsed client_image_manifest.
+    describe('uploadCatalogImage -- .fields() multipart transport (#265 Phase 301)', () => {
+        it('forwards the required image plus optional client-derived variants and manifest', async () => {
+            mockUploadPosCatalogImageUseCase.mockResolvedValue({
+                success: true,
+                data: { item_id: 42, pos_image_url: '/uploads/pos.webp' }
+            });
+
+            const imageFile = { path: '/tmp/image.jpg', originalname: 'image.jpg', mimetype: 'image/jpeg', size: 1000 };
+            const mediumFile = { path: '/tmp/medium.webp', originalname: 'medium.webp', mimetype: 'image/webp', size: 200 };
+            const thumbnailFile = { path: '/tmp/thumb.webp', originalname: 'thumb.webp', mimetype: 'image/webp', size: 50 };
+            const req = {
+                validatedParams: { item_id: 42 },
+                params: { item_id: '42' },
+                files: { image: [imageFile], image_medium: [mediumFile], image_thumbnail: [thumbnailFile] },
+                body: { client_image_manifest: JSON.stringify({ source_mime_hint: 'image/png', large_pre_optimized: true }) },
+                user: { user_id: 1, is_master_admin: true, permissions: ['items:edit'] }
+            };
+            const res = createRes();
+            const next = jest.fn();
+
+            await uploadCatalogImage(req, res, next);
+
+            expect(mockUploadPosCatalogImageUseCase).toHaveBeenCalledWith({
+                itemId: 42,
+                files: { image: [imageFile], image_medium: [mediumFile], image_thumbnail: [thumbnailFile] },
+                clientImageManifest: { sourceMimeHint: 'image/png', largePreOptimized: true },
+                user: req.user
+            });
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(next).not.toHaveBeenCalled();
+        });
+
+        it('still works with only the required image field present (no variants, no manifest)', async () => {
+            mockUploadPosCatalogImageUseCase.mockResolvedValue({
+                success: true,
+                data: { item_id: 43, pos_image_url: '/uploads/pos.webp' }
+            });
+
+            const imageFile = { path: '/tmp/image-only.jpg', originalname: 'image-only.jpg', mimetype: 'image/jpeg', size: 1000 };
+            const req = {
+                validatedParams: { item_id: 43 },
+                params: { item_id: '43' },
+                files: { image: [imageFile] },
+                body: {},
+                user: { user_id: 1, is_master_admin: true, permissions: ['items:edit'] }
+            };
+            const res = createRes();
+            const next = jest.fn();
+
+            await uploadCatalogImage(req, res, next);
+
+            expect(mockUploadPosCatalogImageUseCase).toHaveBeenCalledWith({
+                itemId: 43,
+                files: { image: [imageFile] },
+                clientImageManifest: null,
+                user: req.user
+            });
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(next).not.toHaveBeenCalled();
+        });
+
+        it('ignores a malformed client_image_manifest rather than failing the request', async () => {
+            mockUploadPosCatalogImageUseCase.mockResolvedValue({
+                success: true,
+                data: { item_id: 44, pos_image_url: '/uploads/pos.webp' }
+            });
+
+            const imageFile = { path: '/tmp/image-bad-manifest.jpg', originalname: 'image.jpg', mimetype: 'image/jpeg', size: 1000 };
+            const req = {
+                validatedParams: { item_id: 44 },
+                params: { item_id: '44' },
+                files: { image: [imageFile] },
+                body: { client_image_manifest: '{not valid json' },
+                user: { user_id: 1, is_master_admin: true, permissions: ['items:edit'] }
+            };
+            const res = createRes();
+            const next = jest.fn();
+
+            await uploadCatalogImage(req, res, next);
+
+            expect(mockUploadPosCatalogImageUseCase).toHaveBeenCalledWith({
+                itemId: 44,
+                files: { image: [imageFile] },
+                clientImageManifest: null,
+                user: req.user
+            });
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(next).not.toHaveBeenCalled();
+        });
     });
 });

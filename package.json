@@ -116,6 +116,8 @@
     "test:app-versions": "node --test scripts/check-app-version-bump.test.js",
     "check:version-bump-flip-readiness": "node scripts/check-version-bump-flip-readiness.js",
     "test:version-bump-flip-readiness": "node --test scripts/check-version-bump-flip-readiness.test.js",
+    "check:release-notes": "node scripts/check-release-notes.js",
+    "test:release-notes": "node --test scripts/check-release-notes.test.js",
     "propose:version-level": "node scripts/propose-version-level.js",
     "check:deploy-version-stamping": "node scripts/check-deploy-version-stamping-workflow.js",
     "test:deploy-version-stamping": "node --test scripts/check-deploy-version-stamping-workflow.test.js",

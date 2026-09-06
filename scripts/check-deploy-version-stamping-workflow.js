@@ -166,6 +166,60 @@ function checkOrchestratorCandidateSourceShaWiring(orchestratorText) {
   return problems;
 }
 
+// #1610 (ADR 0081 Decision 8 amendment): unlike deployment-orchestrator.yml above (STAGING/DEV),
+// deploy-main.yml (PROD) rebuilds every app on every dispatch regardless of what changed -- there
+// is no bare X.Y.Z tag yet to skip rebuilding -- so a single shared candidate_source_sha would
+// mislabel any app a staging repair didn't touch with the candidate's LATEST identity instead of
+// the earlier one its STAGING image actually carries (scripts/check-promotion-candidate.js's
+// resolveCandidateSourceShaByApp() is what resolves the correct value per app). Each job below
+// reads its OWN grouped input instead; dgfy-api and dgfy-migration-runner share
+// candidate_source_sha_api since build_api always rebuilds them together as one paired unit.
+const DEPLOY_MAIN_FILE = '.github/workflows/deploy-main.yml';
+
+const DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS = Object.freeze([
+  'candidate_source_sha_api',
+  'candidate_source_sha_frontend_ims',
+  'candidate_source_sha_frontend_pos',
+  'candidate_source_sha_frontend_storefront',
+]);
+
+const DEPLOY_MAIN_JOB_INPUT_NAMES = Object.freeze([
+  ['dgfy-api', 'candidate_source_sha_api'],
+  ['dgfy-migration-runner', 'candidate_source_sha_api'],
+  ['frontend-ims-prod', 'candidate_source_sha_frontend_ims'],
+  ['frontend-pos-prod', 'candidate_source_sha_frontend_pos'],
+  ['frontend-storefront-prod', 'candidate_source_sha_frontend_storefront'],
+]);
+
+/**
+ * ADR 0081 Decision 8 amendment (#1610): deploy-main.yml must declare all four per-app-group
+ * `candidate_source_sha_*` workflow_dispatch inputs, and each of its five builder jobs (not
+ * `publish`) must forward its own correctly-grouped one -- checked per-job, same shape as
+ * checkOrchestratorCandidateSourceShaWiring above, so one job silently missing or misrouting its
+ * input isn't masked by another job having the right one.
+ */
+function checkDeployMainCandidateSourceShaWiring(deployMainText) {
+  const problems = [];
+
+  for (const inputName of DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS) {
+    const pattern = new RegExp(`${inputName}:\\s*\\n(?:[^\\n]*\\n)*?\\s*type:\\s*string`);
+    if (!pattern.test(deployMainText)) {
+      problems.push(`deploy-main.yml: "on.workflow_dispatch.inputs" is missing a "${inputName}" string input.`);
+    }
+  }
+
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const [jobName, inputName] of DEPLOY_MAIN_JOB_INPUT_NAMES) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    const forwardPattern = new RegExp(`candidate_source_sha:\\s*\\$\\{\\{\\s*inputs\\.${inputName}\\s*\\}\\}`);
+    if (!block || !forwardPattern.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not forward "candidate_source_sha: \${{ inputs.${inputName} }}" to its called workflow.`);
+    }
+  }
+
+  return problems;
+}
+
 /** The build-push step must bake APP_VERSION as a build-arg and reference the meta step's computed
  * labels output, and must expose its digest (id: build) for the immutability-guard step to retag. */
 function checkBuildStepStamping(workflowText, { label }) {
@@ -218,6 +272,88 @@ function checkMetaStepStampsCandidateLabel(workflowText, { label }) {
 
   if (!/if \[ -n "\$\{CANDIDATE_SOURCE_SHA:-\}" \]; then\s*\n\s*echo "org\.dgfy-platform\.candidate-source-sha=\$\{CANDIDATE_SOURCE_SHA\}"/.test(workflowText)) {
     problems.push(`${label}: the labels heredoc does not conditionally stamp "org.dgfy-platform.candidate-source-sha" only when CANDIDATE_SOURCE_SHA is non-empty (ADR 0081 Decision 8) -- an unconditional stamp would publish an empty label on every DEV/ad-hoc build.`);
+  }
+
+  return problems;
+}
+
+// #1610 (ADR 0081 Decision 7 residue): each of deploy-main.yml's five builder jobs must gate its
+// `if:` on its OWN `should_build_<app>` output from the new `resolve-build-plan` job -- keyed by
+// job name here (not app name) since `frontend-ims-prod` etc. don't share their job name with the
+// app-keyed output name the way `dgfy-api`/`dgfy-migration-runner` do.
+const DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES = Object.freeze([
+  ['dgfy-api', 'should_build_dgfy_api'],
+  ['dgfy-migration-runner', 'should_build_dgfy_migration_runner'],
+  ['frontend-ims-prod', 'should_build_dgfy_ims'],
+  ['frontend-pos-prod', 'should_build_dgfy_pos'],
+  ['frontend-storefront-prod', 'should_build_dgfy_storefront'],
+]);
+
+/**
+ * ADR 0081 Decision 7 residue (#1610): deploy-main.yml must declare a `resolve-build-plan` job
+ * (`needs: guard-branch`), and each of its five builder jobs must both list "resolve-build-plan" in
+ * its own `needs:` array AND reference its own `should_build_<app>` output in its `if:` --
+ * referencing `needs.resolve-build-plan` in a job's `if:` without also listing it in that job's own
+ * `needs:` silently evaluates to empty in GitHub Actions (a parse-time gap, not a runtime failure),
+ * so both halves are checked independently, same shape as checkDeployMainCandidateSourceShaWiring
+ * above.
+ */
+function checkDeployMainBuildSkipPlanJob(deployMainText) {
+  const problems = [];
+
+  if (!/resolve-build-plan:\s*\n\s*needs:\s*guard-branch/.test(deployMainText)) {
+    problems.push('deploy-main.yml: no "resolve-build-plan" job found with "needs: guard-branch".');
+  }
+
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const [jobName, outputName] of DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    if (!block) {
+      problems.push(`deploy-main.yml: job "${jobName}" not found.`);
+      continue;
+    }
+    if (!/needs:\s*\[\s*guard-branch\s*,\s*resolve-build-plan\s*\]/.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not list "[ guard-branch, resolve-build-plan ]" in its "needs:".`);
+    }
+    const outputPattern = new RegExp(`needs\\.resolve-build-plan\\.outputs\\.${outputName}\\s*==\\s*'true'`);
+    if (!outputPattern.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not gate its "if:" on "needs.resolve-build-plan.outputs.${outputName} == 'true'" (#1610).`);
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * #1610: `publish`'s `needs:` must be extended with "guard-branch" and "resolve-build-plan" (both
+ * referenced in its own `if:`), and its `if:` must no longer require "at least one build actually
+ * succeeded" -- that clause could never be satisfied by a legitimate "every app is skip-eligible"
+ * dispatch (every build job 'skipped', none 'success'), which is exactly the case #1610's own
+ * acceptance criterion names. See deploy-main.yml's own `publish` job comment for the full argument.
+ */
+function checkDeployMainPublishGate(deployMainText) {
+  const problems = [];
+
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  const block = jobBlocks.find((chunk) => chunk.startsWith('publish:\n'));
+  if (!block) {
+    problems.push('deploy-main.yml: "publish" job not found.');
+    return problems;
+  }
+
+  if (!/needs:\s*\[\s*guard-branch\s*,\s*resolve-build-plan\s*,/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "needs:" does not start with "[ guard-branch, resolve-build-plan, ..." (#1610).');
+  }
+
+  if (!/needs\.guard-branch\.result == 'success'/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "if:" does not require "needs.guard-branch.result == \'success\'" (#1610).');
+  }
+  if (!/needs\.resolve-build-plan\.result == 'success'/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "if:" does not require "needs.resolve-build-plan.result == \'success\'" (#1610).');
+  }
+
+  if (/\.result == 'success' \|\|/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "if:" still contains an "at least one build succeeded" OR-clause -- #1610 requires dropping it so a legitimate "every app skip-eligible" dispatch can still publish.');
   }
 
   return problems;
@@ -280,6 +416,11 @@ function runAllChecks({ readFile = read } = {}) {
   problems.push(...checkOrchestratorVersionTagMapping(orchestratorText));
   problems.push(...checkOrchestratorCandidateSourceShaWiring(orchestratorText));
 
+  const deployMainText = readFile(DEPLOY_MAIN_FILE);
+  problems.push(...checkDeployMainCandidateSourceShaWiring(deployMainText));
+  problems.push(...checkDeployMainBuildSkipPlanJob(deployMainText));
+  problems.push(...checkDeployMainPublishGate(deployMainText));
+
   return problems;
 }
 
@@ -312,5 +453,12 @@ module.exports = {
   checkDockerfileAcceptsAppVersion,
   checkOrchestratorVersionTagMapping,
   checkOrchestratorCandidateSourceShaWiring,
+  checkDeployMainCandidateSourceShaWiring,
+  checkDeployMainBuildSkipPlanJob,
+  checkDeployMainPublishGate,
+  DEPLOY_MAIN_FILE,
+  DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS,
+  DEPLOY_MAIN_JOB_INPUT_NAMES,
+  DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES,
   runAllChecks,
 };

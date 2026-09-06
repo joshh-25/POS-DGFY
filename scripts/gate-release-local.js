@@ -26,6 +26,10 @@ const GATE_NAMES = [
   'frontend.storefront.contracts',
   'frontend.budgets',
   'scroll.contracts',
+  // ADR 0082 Decision 8 / #1278 PR 2 (Phase 298) -- the first gate added after #1431 Phase C/D
+  // closed the original 19-gate mapping. Structurally cannot fail outside a release/*->main head
+  // (see STRUCTURALLY_CANNOT_FAIL below), same shape as compliance.contracts above.
+  'release.notes',
 ];
 
 // Gates that are structurally incapable of failing on a clean promotion checkout -- flagged so a
@@ -35,6 +39,7 @@ const GATE_NAMES = [
 // docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md's "Retired gates -- closed resolutions".
 const STRUCTURALLY_CANNOT_FAIL = new Set([
   'compliance.contracts', // no compliance-relevant diff on a clean checkout -> nothing to flag
+  'release.notes', // head branch isn't release/<candidate_id>-rN outside a real promotion -> not applicable
 ]);
 
 // Gates whose identical command runs as a BLOCKING step in promotion-quality-gate.yml on the
@@ -72,6 +77,12 @@ const CI_ENFORCED_GATES = new Map([
   ['frontend.storefront.contracts',  { job: 'frontend-storefront-quality', steps: ['run_storefront_vitest'] }], // CI superset: unfiltered `npx vitest run`
   ['frontend.budgets',               { job: 'frontend-budgets-quality',    steps: ['check_frontend_budgets'] }],
   ['scroll.contracts',               { job: 'frontend-ims-quality',        steps: ['run_scroll_contracts'] }],
+  // ADR 0082 Decision 8 / #1278 PR 2 (Phase 298): advisory on first landing by deliberate rollout
+  // design (mirroring check:app-versions' own advisory-to-blocking rollout, ADR 0081 Decision 9),
+  // not a prerequisite/flake exception like the two entries above -- see the
+  // ADVISORY_CI_ENFORCED_GATES comment in check-pr-quality-workflow.js. Flips blocking only in a
+  // dedicated later phase, once clean-run evidence exists (ADR 0082 Follow-up 1).
+  ['release.notes',                  { job: 'repository-quality',          steps: ['run_release_notes'] }],
 ]);
 
 class GateSelectionError extends Error {
@@ -288,6 +299,7 @@ function main() {
     ]),
     'npm --prefix apps/dgfy-ims test -- --run <scroll-contract-suite>'
   );
+  runGate(gates, selection, 'release.notes', runCommand(npmCmd, ['run', 'check:release-notes']), 'npm run check:release-notes');
 
   const summary = summarizeGates(gates);
   // A partial run (--only/--skip) must never be citable as a full gate pass -- run_mode makes

@@ -20,7 +20,21 @@ export const updateBulkStorefrontCatalogOverrides = async ({ itemIds, storefront
 
 export const uploadStorefrontCatalogImage = async (itemId, file) => {
   const formData = new FormData();
-  formData.append('image', file);
+
+  // Mirrors posCatalogService.js's uploadPosCatalogImage wiring exactly (epic #265, Phase 298),
+  // scoped to 'storefront_catalog_single'. Single-variant only -- image_medium/image_thumbnail/
+  // client_image_manifest are a separate, already-shipped phase's job, not this one's.
+  const { isImageClientConversionEnabledForScope } = await import('../utils/imageEncoding/rolloutFlag.js');
+  if (isImageClientConversionEnabledForScope('storefront_catalog_single')) {
+    const { prepareImageVariants } = await import('../utils/imageEncoding/index.js');
+    const { reportImageClientConversionDegradation } = await import('../utils/imageEncoding/reportDegradation.js');
+    const { variants, manifest, degraded } = await prepareImageVariants(file);
+    reportImageClientConversionDegradation({ scope: 'storefront_catalog_single', degraded, manifest });
+    formData.append('image', variants.large || file);
+  } else {
+    formData.append('image', file);
+  }
+
   const response = await api.post(`/items/${itemId}/storefront-image`, formData);
   return response.data.data;
 };

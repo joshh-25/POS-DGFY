@@ -47,6 +47,12 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain('reportCashierLabel');
   });
 
+  it('separates selected tender collections from full sales and displays mixed payment methods', () => {
+    expect(workspaceSource).toContain('summaryCards.selected_tender');
+    expect(workspaceSource).toContain("label={`${selectedTender.payment_label} Collected`}");
+    expect(workspaceSource).toContain('formatPosTransactionPaymentMethods(row)');
+  });
+
   // Phase 261 (#1488): pre-run procurement CSV export button, independent of the loaded report.
   it('exposes a procurement CSV export button that is not gated on report data', () => {
     expect(workspaceSource).toContain('exportProcurementCsv');

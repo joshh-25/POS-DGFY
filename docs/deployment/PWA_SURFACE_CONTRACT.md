@@ -85,6 +85,11 @@ This issue only produces the surface — it does not wire #633's Sentry release 
 toast-polling logic; both were handed the exact field names/shapes above by comment once this
 phase merged (ADR 0081 Decision 5).
 
+**Consumed by a UI reader as of #1597**: the first row above (`import.meta.env.VITE_APP_VERSION`)
+now has a real reader — `packages/web-core/src/components/common/VersionBadge.jsx`, mounted at the
+root shell of all three frontends, always visible. The other two rows (`<meta name="dgfy-version">`,
+`version.json`) remain unconsumed by any UI; #276/#633 above are still their eventual consumers.
+
 ## POS And Storefront Contract
 
 POS and Storefront retain their existing service-worker entrypoints.

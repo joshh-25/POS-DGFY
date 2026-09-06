@@ -46,6 +46,9 @@ const mockTrackProductUsageFromResult = jest.fn();
 const mockEnqueueItemImageGeneration = jest.fn();
 const mockSetItemImageStatus = jest.fn();
 const mockGetItemImageStatus = jest.fn();
+// #1410 review RF-3: regression coverage for the 6 storefront-catalog-image
+// handlers that now call publishCatalogInvalidation on success.
+const mockPublishCatalogChange = jest.fn();
 
 jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   getItemsUseCase: mockGetItemsUseCase,
@@ -104,6 +107,10 @@ jest.unstable_mockModule('../src/workers/itemImageStatusStore.js', () => ({
   getItemImageStatus: mockGetItemImageStatus
 }));
 
+jest.unstable_mockModule('../src/modules/shared/services/catalogChangeEventBus.js', () => ({
+  publishCatalogChange: mockPublishCatalogChange
+}));
+
 let getItems;
 let createItem;
 let deleteItem;
@@ -117,10 +124,22 @@ let importExternalStorefrontCatalogImage;
 let generateItemImage;
 let bulkGenerateItemImages;
 let getItemImageGenerationStatus;
+let uploadStorefrontCatalogImage;
+let uploadStorefrontCatalogGalleryImages;
+let uploadBulkStorefrontCatalogImages;
+let updateStorefrontCatalogGallery;
+let deleteStorefrontCatalogGalleryImage;
+let deleteStorefrontCatalogImage;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/inventory/controllers/itemHandlers.js');
   getItems = mod.getItems;
+  uploadStorefrontCatalogImage = mod.uploadStorefrontCatalogImage;
+  uploadStorefrontCatalogGalleryImages = mod.uploadStorefrontCatalogGalleryImages;
+  uploadBulkStorefrontCatalogImages = mod.uploadBulkStorefrontCatalogImages;
+  updateStorefrontCatalogGallery = mod.updateStorefrontCatalogGallery;
+  deleteStorefrontCatalogGalleryImage = mod.deleteStorefrontCatalogGalleryImage;
+  deleteStorefrontCatalogImage = mod.deleteStorefrontCatalogImage;
   createItem = mod.createItem;
   deleteItem = mod.deleteItem;
   restoreItem = mod.restoreItem;
@@ -149,6 +168,7 @@ describe('itemHandlers transport contracts', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockTrackProductUsageFromResult.mockResolvedValue({ created: true });
+    mockPublishCatalogChange.mockResolvedValue(true);
   });
 
   it('getItems returns stable success payload', async () => {
@@ -765,6 +785,379 @@ describe('itemHandlers transport contracts', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       const [payload] = res.json.mock.calls[0];
       expect(payload.data.status).toBe('unknown');
+    });
+  });
+
+  // Phase 301 (#265): uploadStorefrontCatalogImage's route now parses via multer .fields(), so
+  // the controller reads req.files (not req.file) and forwards a parsed client_image_manifest.
+  describe('uploadStorefrontCatalogImage -- .fields() multipart transport (#265 Phase 301)', () => {
+    it('forwards the required image plus optional client-derived variants and manifest', async () => {
+      mockUploadStorefrontCatalogImageUseCase.mockResolvedValue({
+        item_id: 55,
+        storefront_image_url: '/uploads/storefront.webp'
+      });
+
+      const imageFile = { path: '/tmp/sf-image.jpg', originalname: 'image.jpg', mimetype: 'image/jpeg', size: 1000 };
+      const mediumFile = { path: '/tmp/sf-medium.webp', originalname: 'medium.webp', mimetype: 'image/webp', size: 200 };
+      const thumbnailFile = { path: '/tmp/sf-thumb.webp', originalname: 'thumb.webp', mimetype: 'image/webp', size: 50 };
+      const req = {
+        validatedParams: { item_id: 55 },
+        params: { item_id: '55' },
+        files: { image: [imageFile], image_medium: [mediumFile], image_thumbnail: [thumbnailFile] },
+        body: { client_image_manifest: JSON.stringify({ source_mime_hint: 'image/png', large_pre_optimized: true }) },
+        user: { user_id: 1, is_master_admin: true, permissions: ['items:edit'] }
+      };
+      const res = createRes();
+      const next = jest.fn();
+
+      await uploadStorefrontCatalogImage(req, res, next);
+
+      expect(mockUploadStorefrontCatalogImageUseCase).toHaveBeenCalledWith({
+        itemId: 55,
+        files: { image: [imageFile], image_medium: [mediumFile], image_thumbnail: [thumbnailFile] },
+        clientImageManifest: { sourceMimeHint: 'image/png', largePreOptimized: true },
+        user: req.user
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('still works with only the required image field present (no variants, no manifest)', async () => {
+      mockUploadStorefrontCatalogImageUseCase.mockResolvedValue({
+        item_id: 56,
+        storefront_image_url: '/uploads/storefront.webp'
+      });
+
+      const imageFile = { path: '/tmp/sf-image-only.jpg', originalname: 'image-only.jpg', mimetype: 'image/jpeg', size: 1000 };
+      const req = {
+        validatedParams: { item_id: 56 },
+        params: { item_id: '56' },
+        files: { image: [imageFile] },
+        body: {},
+        user: { user_id: 1, is_master_admin: true, permissions: ['items:edit'] }
+      };
+      const res = createRes();
+      const next = jest.fn();
+
+      await uploadStorefrontCatalogImage(req, res, next);
+
+      expect(mockUploadStorefrontCatalogImageUseCase).toHaveBeenCalledWith({
+        itemId: 56,
+        files: { image: [imageFile] },
+        clientImageManifest: null,
+        user: req.user
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('ignores a malformed client_image_manifest rather than failing the request', async () => {
+      mockUploadStorefrontCatalogImageUseCase.mockResolvedValue({
+        item_id: 57,
+        storefront_image_url: '/uploads/storefront.webp'
+      });
+
+      const imageFile = { path: '/tmp/sf-image-bad-manifest.jpg', originalname: 'image.jpg', mimetype: 'image/jpeg', size: 1000 };
+      const req = {
+        validatedParams: { item_id: 57 },
+        params: { item_id: '57' },
+        files: { image: [imageFile] },
+        body: { client_image_manifest: '{not valid json' },
+        user: { user_id: 1, is_master_admin: true, permissions: ['items:edit'] }
+      };
+      const res = createRes();
+      const next = jest.fn();
+
+      await uploadStorefrontCatalogImage(req, res, next);
+
+      expect(mockUploadStorefrontCatalogImageUseCase).toHaveBeenCalledWith({
+        itemId: 57,
+        files: { image: [imageFile] },
+        clientImageManifest: null,
+        user: req.user
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  // #1410 review RF-3: regression coverage for the 6 storefront-catalog-image handlers'
+  // publishCatalogInvalidation call sites -- these controller-to-event-bus paths previously had
+  // no coverage at all, so the bug (image uploaded, POS terminal never refetches) shipped silent.
+  describe('#1410 catalog invalidation on storefront-catalog-image mutations', () => {
+    describe('uploadStorefrontCatalogImage', () => {
+      it('invalidates the POS catalog cache for the uploaded item on success', async () => {
+        mockUploadStorefrontCatalogImageUseCase.mockResolvedValue({
+          item_id: 60,
+          storefront_image_url: '/uploads/storefront-60.webp'
+        });
+
+        const imageFile = { path: '/tmp/sf-60.jpg', originalname: 'sf-60.jpg', mimetype: 'image/jpeg', size: 10 };
+        const req = {
+          validatedParams: { item_id: 60 },
+          params: { item_id: '60' },
+          files: { image: [imageFile] },
+          body: {},
+          user: { user_id: 1, tenant_id: 'tenant-1', is_master_admin: true, permissions: ['items:edit'] }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await uploadStorefrontCatalogImage(req, res, next);
+
+        expect(mockPublishCatalogChange).toHaveBeenCalledTimes(1);
+        expect(mockPublishCatalogChange).toHaveBeenCalledWith({
+          tenantId: 'tenant-1',
+          reason: 'storefront_catalog_image_uploaded',
+          itemIds: [60]
+        });
+      });
+
+      it('does not invalidate the catalog when the use case fails', async () => {
+        mockUploadStorefrontCatalogImageUseCase.mockRejectedValue(new Error('upload failed'));
+
+        const imageFile = { path: '/tmp/sf-60.jpg', originalname: 'sf-60.jpg', mimetype: 'image/jpeg', size: 10 };
+        const req = {
+          validatedParams: { item_id: 60 },
+          params: { item_id: '60' },
+          files: { image: [imageFile] },
+          body: {},
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await uploadStorefrontCatalogImage(req, res, next);
+
+        expect(mockPublishCatalogChange).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('uploadStorefrontCatalogGalleryImages', () => {
+      it('invalidates the POS catalog cache for the item on success', async () => {
+        mockUploadStorefrontCatalogGalleryImagesUseCase.mockResolvedValue({ item_id: 61 });
+
+        const req = {
+          validatedParams: { item_id: 61 },
+          params: { item_id: '61' },
+          files: [{ path: '/tmp/gallery-1.jpg', originalname: 'gallery-1.jpg', mimetype: 'image/jpeg', size: 10 }],
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await uploadStorefrontCatalogGalleryImages(req, res, next);
+
+        expect(mockPublishCatalogChange).toHaveBeenCalledTimes(1);
+        expect(mockPublishCatalogChange).toHaveBeenCalledWith({
+          tenantId: 'tenant-1',
+          reason: 'storefront_catalog_gallery_images_uploaded',
+          itemIds: [61]
+        });
+      });
+
+      it('does not invalidate the catalog when the use case fails', async () => {
+        mockUploadStorefrontCatalogGalleryImagesUseCase.mockRejectedValue(new Error('gallery upload failed'));
+
+        const req = {
+          validatedParams: { item_id: 61 },
+          params: { item_id: '61' },
+          files: [{ path: '/tmp/gallery-1.jpg', originalname: 'gallery-1.jpg', mimetype: 'image/jpeg', size: 10 }],
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await uploadStorefrontCatalogGalleryImages(req, res, next);
+
+        expect(mockPublishCatalogChange).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('uploadBulkStorefrontCatalogImages', () => {
+      it('invalidates the POS catalog cache once with the deduplicated uploaded item ids', async () => {
+        // Two result rows for item 70 (large + medium variant of the same SKU) must collapse to
+        // one id; the unmatched row (null item_id) must be excluded entirely.
+        mockUploadBulkStorefrontCatalogImagesUseCase.mockResolvedValue({
+          summary: { uploaded: 2, failed: 0, unmatched: 1, duplicate_filename: 0, duplicate_variant_for_sku: 0, blocked_readiness: 0 },
+          results: [
+            { filename: 'RM-1.jpg', sku_code: 'RM-1', item_id: 70, status: 'uploaded' },
+            { filename: 'RM-1__medium.jpg', sku_code: 'RM-1', item_id: 70, status: 'uploaded' },
+            { filename: 'RM-2.jpg', sku_code: 'RM-2', item_id: 71, status: 'uploaded' },
+            { filename: 'RM-3.jpg', sku_code: 'RM-3', item_id: null, status: 'unmatched' }
+          ]
+        });
+
+        const req = {
+          files: [{ path: '/tmp/bulk-1.jpg', originalname: 'RM-1.jpg', mimetype: 'image/jpeg', size: 10 }],
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await uploadBulkStorefrontCatalogImages(req, res, next);
+
+        expect(mockPublishCatalogChange).toHaveBeenCalledTimes(1);
+        expect(mockPublishCatalogChange).toHaveBeenCalledWith({
+          tenantId: 'tenant-1',
+          reason: 'storefront_catalog_images_bulk_uploaded',
+          itemIds: [70, 71]
+        });
+      });
+
+      it('does not invalidate the catalog when nothing was actually uploaded', async () => {
+        mockUploadBulkStorefrontCatalogImagesUseCase.mockResolvedValue({
+          summary: { uploaded: 0, failed: 0, unmatched: 1, duplicate_filename: 0, duplicate_variant_for_sku: 0, blocked_readiness: 0 },
+          results: [
+            { filename: 'RM-9.jpg', sku_code: 'RM-9', item_id: null, status: 'unmatched' }
+          ]
+        });
+
+        const req = {
+          files: [{ path: '/tmp/bulk-9.jpg', originalname: 'RM-9.jpg', mimetype: 'image/jpeg', size: 10 }],
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await uploadBulkStorefrontCatalogImages(req, res, next);
+
+        expect(mockPublishCatalogChange).not.toHaveBeenCalled();
+      });
+
+      it('does not invalidate the catalog when the use case fails', async () => {
+        mockUploadBulkStorefrontCatalogImagesUseCase.mockRejectedValue(new Error('bulk upload failed'));
+
+        const req = {
+          files: [{ path: '/tmp/bulk-1.jpg', originalname: 'RM-1.jpg', mimetype: 'image/jpeg', size: 10 }],
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await uploadBulkStorefrontCatalogImages(req, res, next);
+
+        expect(mockPublishCatalogChange).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('updateStorefrontCatalogGallery', () => {
+      it('invalidates the POS catalog cache for the item on success', async () => {
+        mockUpdateStorefrontCatalogGalleryUseCase.mockResolvedValue({ item_id: 62 });
+
+        const req = {
+          validatedParams: { item_id: 62 },
+          params: { item_id: '62' },
+          body: { gallery: [] },
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await updateStorefrontCatalogGallery(req, res, next);
+
+        expect(mockPublishCatalogChange).toHaveBeenCalledTimes(1);
+        expect(mockPublishCatalogChange).toHaveBeenCalledWith({
+          tenantId: 'tenant-1',
+          reason: 'storefront_catalog_gallery_updated',
+          itemIds: [62]
+        });
+      });
+
+      it('does not invalidate the catalog when the use case fails', async () => {
+        mockUpdateStorefrontCatalogGalleryUseCase.mockRejectedValue(new Error('gallery update failed'));
+
+        const req = {
+          validatedParams: { item_id: 62 },
+          params: { item_id: '62' },
+          body: { gallery: [] },
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await updateStorefrontCatalogGallery(req, res, next);
+
+        expect(mockPublishCatalogChange).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('deleteStorefrontCatalogGalleryImage', () => {
+      it('invalidates the POS catalog cache for the item on success', async () => {
+        mockDeleteStorefrontCatalogGalleryImageUseCase.mockResolvedValue({ item_id: 63 });
+
+        const req = {
+          validatedParams: { item_id: 63 },
+          params: { item_id: '63', image_index: '0' },
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await deleteStorefrontCatalogGalleryImage(req, res, next);
+
+        expect(mockPublishCatalogChange).toHaveBeenCalledTimes(1);
+        expect(mockPublishCatalogChange).toHaveBeenCalledWith({
+          tenantId: 'tenant-1',
+          reason: 'storefront_catalog_gallery_image_deleted',
+          itemIds: [63]
+        });
+      });
+
+      it('does not invalidate the catalog when the use case fails', async () => {
+        mockDeleteStorefrontCatalogGalleryImageUseCase.mockRejectedValue(new Error('gallery delete failed'));
+
+        const req = {
+          validatedParams: { item_id: 63 },
+          params: { item_id: '63', image_index: '0' },
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await deleteStorefrontCatalogGalleryImage(req, res, next);
+
+        expect(mockPublishCatalogChange).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('deleteStorefrontCatalogImage', () => {
+      it('invalidates the POS catalog cache for the item on success', async () => {
+        mockDeleteStorefrontCatalogImageUseCase.mockResolvedValue({ item_id: 64 });
+
+        const req = {
+          validatedParams: { item_id: 64 },
+          params: { item_id: '64' },
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await deleteStorefrontCatalogImage(req, res, next);
+
+        expect(mockPublishCatalogChange).toHaveBeenCalledTimes(1);
+        expect(mockPublishCatalogChange).toHaveBeenCalledWith({
+          tenantId: 'tenant-1',
+          reason: 'storefront_catalog_image_deleted',
+          itemIds: [64]
+        });
+      });
+
+      it('does not invalidate the catalog when the use case fails', async () => {
+        mockDeleteStorefrontCatalogImageUseCase.mockRejectedValue(new Error('delete failed'));
+
+        const req = {
+          validatedParams: { item_id: 64 },
+          params: { item_id: '64' },
+          user: { user_id: 1, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await deleteStorefrontCatalogImage(req, res, next);
+
+        expect(mockPublishCatalogChange).not.toHaveBeenCalled();
+      });
     });
   });
 });

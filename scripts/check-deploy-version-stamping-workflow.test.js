@@ -11,8 +11,14 @@ const {
   checkDockerfileAcceptsAppVersion,
   checkOrchestratorVersionTagMapping,
   checkOrchestratorCandidateSourceShaWiring,
+  checkDeployMainCandidateSourceShaWiring,
+  checkDeployMainBuildSkipPlanJob,
+  checkDeployMainPublishGate,
   ORCHESTRATOR_VERSION_TAG_OUTPUTS,
   ORCHESTRATOR_BUILDER_JOBS,
+  DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS,
+  DEPLOY_MAIN_JOB_INPUT_NAMES,
+  DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES,
   runAllChecks,
 } = require('./check-deploy-version-stamping-workflow');
 
@@ -195,6 +201,149 @@ test('checkOrchestratorCandidateSourceShaWiring: one builder job missing the pas
   const problems = checkOrchestratorCandidateSourceShaWiring(text);
   assert.equal(problems.length, 1);
   assert.match(problems[0], /job "dgfy-api" does not forward/);
+});
+
+// checkDeployMainCandidateSourceShaWiring -- #1610 (ADR 0081 Decision 8 amendment): unlike the
+// orchestrator above, deploy-main.yml groups candidate_source_sha per app (dgfy-api and
+// dgfy-migration-runner share candidate_source_sha_api; each frontend gets its own), since PROD
+// rebuilds every app unconditionally and a single shared value would mislabel an app a staging
+// repair never touched.
+
+function deployMainFixture({ missingInputs = [], jobInputOverrides = {} } = {}) {
+  const inputLines = DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS
+    .filter((name) => !missingInputs.includes(name))
+    .map((name) => `      ${name}:\n        required: false\n        type: string\n        default: ''`)
+    .join('\n');
+  const inputBlock = `on:\n  workflow_dispatch:\n    inputs:\n${inputLines}\n\n`;
+  const jobBlocks = DEPLOY_MAIN_JOB_INPUT_NAMES
+    .map(([jobName, defaultInputName]) => {
+      const inputName = jobInputOverrides[jobName] ?? defaultInputName;
+      return `  ${jobName}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      candidate_source_sha: \${{ inputs.${inputName} }}\n    secrets: inherit\n`;
+    })
+    .join('\n');
+  return `${inputBlock}jobs:\n${jobBlocks}  publish:\n    uses: ./.github/workflows/publish-platform.yml\n    with:\n      environment: PROD\n    secrets: inherit\n`;
+}
+
+test('checkDeployMainCandidateSourceShaWiring: every job forwards its own correctly-grouped input -> no problems', () => {
+  assert.deepEqual(checkDeployMainCandidateSourceShaWiring(deployMainFixture()), []);
+});
+
+test('checkDeployMainCandidateSourceShaWiring: a missing workflow_dispatch input is caught by name', () => {
+  const problems = checkDeployMainCandidateSourceShaWiring(deployMainFixture({ missingInputs: ['candidate_source_sha_frontend_pos'] }));
+  assert.equal(problems.filter((p) => /missing a "candidate_source_sha_frontend_pos" string input/.test(p)).length, 1);
+});
+
+test('checkDeployMainCandidateSourceShaWiring: dgfy-migration-runner forwarding the wrong (frontend) input is caught, not silently accepted', () => {
+  const text = deployMainFixture({ jobInputOverrides: { 'dgfy-migration-runner': 'candidate_source_sha_frontend_ims' } });
+  const problems = checkDeployMainCandidateSourceShaWiring(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /job "dgfy-migration-runner" does not forward "candidate_source_sha: \$\{\{ inputs\.candidate_source_sha_api \}\}"/);
+});
+
+test('checkDeployMainCandidateSourceShaWiring: dgfy-api and dgfy-migration-runner sharing candidate_source_sha_api is the expected (not flagged) shape', () => {
+  // The default fixture already has both pointing at candidate_source_sha_api -- this test exists
+  // to name that as deliberate (the paired-build reality), not an oversight a future reviewer
+  // "fixes" into two separate inputs.
+  const problems = checkDeployMainCandidateSourceShaWiring(deployMainFixture());
+  assert.equal(problems.length, 0);
+});
+
+test('checkDeployMainCandidateSourceShaWiring: real deploy-main.yml passes', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/deploy-main.yml'), 'utf8');
+  assert.deepEqual(checkDeployMainCandidateSourceShaWiring(text), []);
+});
+
+// checkDeployMainBuildSkipPlanJob / checkDeployMainPublishGate -- #1610 (ADR 0081 Decision 7
+// residue): deploy-main.yml gains a `resolve-build-plan` job, each of the five builder jobs gates
+// its `if:` on its own `should_build_<app>` output (and lists `resolve-build-plan` in its own
+// `needs:`), and `publish`'s `needs:`/`if:` both change (§5 -- no more "at least one success").
+
+function deployMainBuildSkipFixture({
+  missingResolveJob = false,
+  jobNeedsOverrides = {},
+  jobOutputOverrides = {},
+  publishNeeds = '[ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]',
+  publishIf = "inputs.deploy && !cancelled() &&\n      needs.guard-branch.result == 'success' &&\n      needs.resolve-build-plan.result == 'success' &&\n      needs.dgfy-api.result != 'failure'",
+} = {}) {
+  const resolveJobBlock = missingResolveJob ? '' : '  resolve-build-plan:\n    needs: guard-branch\n    if: needs.guard-branch.result == \'success\'\n    runs-on: ubuntu-latest\n\n';
+
+  const jobBlocks = DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES
+    .map(([jobName, defaultOutputName]) => {
+      const needs = jobNeedsOverrides[jobName] ?? '[ guard-branch, resolve-build-plan ]';
+      const outputName = jobOutputOverrides[jobName] ?? defaultOutputName;
+      return `  ${jobName}:\n    needs: ${needs}\n    if: >-\n      needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success' &&\n      inputs.build_x && needs.resolve-build-plan.outputs.${outputName} == 'true'\n    uses: ./.github/workflows/some-workflow.yml\n\n`;
+    })
+    .join('');
+
+  const publishBlock = `  publish:\n    needs: ${publishNeeds}\n    if: >-\n      ${publishIf}\n    uses: ./.github/workflows/publish-platform.yml\n`;
+
+  return `jobs:\n${resolveJobBlock}${jobBlocks}${publishBlock}`;
+}
+
+test('checkDeployMainBuildSkipPlanJob: a correctly-shaped fixture reports no problems', () => {
+  assert.deepEqual(checkDeployMainBuildSkipPlanJob(deployMainBuildSkipFixture()), []);
+});
+
+test('checkDeployMainBuildSkipPlanJob: the resolve-build-plan job missing entirely is caught', () => {
+  const problems = checkDeployMainBuildSkipPlanJob(deployMainBuildSkipFixture({ missingResolveJob: true }));
+  assert.equal(problems.filter((p) => /no "resolve-build-plan" job found/.test(p)).length, 1);
+});
+
+test('checkDeployMainBuildSkipPlanJob: a build job missing resolve-build-plan in its own needs: is caught', () => {
+  const problems = checkDeployMainBuildSkipPlanJob(deployMainBuildSkipFixture({ jobNeedsOverrides: { 'dgfy-api': 'guard-branch' } }));
+  assert.equal(problems.filter((p) => /job "dgfy-api" does not list "\[ guard-branch, resolve-build-plan \]"/.test(p)).length, 1);
+});
+
+test('checkDeployMainBuildSkipPlanJob: a build job referencing the WRONG app\'s should_build output is caught', () => {
+  const problems = checkDeployMainBuildSkipPlanJob(deployMainBuildSkipFixture({ jobOutputOverrides: { 'dgfy-migration-runner': 'should_build_dgfy_api' } }));
+  assert.equal(problems.filter((p) => /job "dgfy-migration-runner" does not gate its "if:" on "needs\.resolve-build-plan\.outputs\.should_build_dgfy_migration_runner/.test(p)).length, 1);
+});
+
+test('checkDeployMainBuildSkipPlanJob: real deploy-main.yml passes', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/deploy-main.yml'), 'utf8');
+  assert.deepEqual(checkDeployMainBuildSkipPlanJob(text), []);
+});
+
+test('checkDeployMainPublishGate: a correctly-shaped fixture reports no problems', () => {
+  assert.deepEqual(checkDeployMainPublishGate(deployMainBuildSkipFixture()), []);
+});
+
+test('checkDeployMainPublishGate: publish job not found is caught', () => {
+  const text = deployMainBuildSkipFixture().replace(/  publish:[\s\S]*/, '');
+  const problems = checkDeployMainPublishGate(text);
+  assert.equal(problems.filter((p) => /"publish" job not found/.test(p)).length, 1);
+});
+
+test('checkDeployMainPublishGate: needs: missing guard-branch/resolve-build-plan is caught', () => {
+  const problems = checkDeployMainPublishGate(deployMainBuildSkipFixture({
+    publishNeeds: '[ dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]',
+  }));
+  assert.equal(problems.filter((p) => /"needs:" does not start with "\[ guard-branch, resolve-build-plan, \.\.\."/.test(p)).length, 1);
+});
+
+test('checkDeployMainPublishGate: if: missing needs.resolve-build-plan.result == \'success\' is caught', () => {
+  const problems = checkDeployMainPublishGate(deployMainBuildSkipFixture({
+    publishIf: "inputs.deploy && !cancelled() &&\n      needs.guard-branch.result == 'success' &&\n      needs.dgfy-api.result != 'failure'",
+  }));
+  assert.equal(problems.filter((p) => /does not require "needs\.resolve-build-plan\.result == 'success'"/.test(p)).length, 1);
+});
+
+test('checkDeployMainPublishGate: RF-1 regression -- the old "at least one build succeeded" OR-clause is caught, not silently accepted', () => {
+  const problems = checkDeployMainPublishGate(deployMainBuildSkipFixture({
+    publishIf: "inputs.deploy && !cancelled() &&\n      needs.guard-branch.result == 'success' &&\n      needs.resolve-build-plan.result == 'success' &&\n      needs.dgfy-api.result != 'failure' &&\n      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success')",
+  }));
+  assert.equal(problems.filter((p) => /still contains an "at least one build succeeded" OR-clause/.test(p)).length, 1);
+});
+
+test('checkDeployMainPublishGate: real deploy-main.yml passes', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/deploy-main.yml'), 'utf8');
+  assert.deepEqual(checkDeployMainPublishGate(text), []);
 });
 
 // #1588 (epic #1548 Wave 4, Phase 279): labels moved from a literal `|` block inline in the
