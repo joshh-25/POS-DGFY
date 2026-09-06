@@ -18,7 +18,8 @@ vi.mock('../services/posService.js', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    fetchPosCatalog: vi.fn().mockResolvedValue([])
+    fetchPosCatalog: vi.fn().mockResolvedValue([]),
+    fetchPosCatalogPage: vi.fn().mockResolvedValue({ items: [], pagination: { page: 1, page_size: 15, total: 0, total_pages: 1 } })
   };
 });
 
