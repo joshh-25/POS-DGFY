@@ -20,8 +20,8 @@ rollback_note: Plain revert restores today's ungated bulk behavior end to end --
   before this PR, and go back to doing so after a revert removes the gate call.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-06T21:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1643-298D-BULK-GATE
+preflight_run_at: 2026-09-06T13:58:44.690Z
+preflight_request_ref: PREFLIGHT-34037535202-2026-09-10-BULK-IMAGE-CONVERSION-GATE
 ---
 
 # Client-side conversion for bulk catalog image uploads, and the server-side bulk gate gap it closes (#1643, epic #265's 298d)
