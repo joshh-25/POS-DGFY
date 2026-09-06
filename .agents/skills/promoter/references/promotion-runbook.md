@@ -92,8 +92,10 @@ section.
 (and `staging → main`) leg only — see the "#1007-gated exception" section above, where it's the
 first thing run.
 This isn't an omission to infer from silence: this leg's own CI-side check
-(`promotion-quality-gate.yml`) is also skipped entirely here (#1063), so a `to-staging/<label>` PR
-is deliberately gated on nothing beyond `pr-checks.yml`'s Docker build checks. Filed as #1097 after
+(`promotion-quality-gate.yml`) is also skipped entirely here (#1063), so the `to-staging/<label>`
+PR's own CI is deliberately gated on nothing beyond `pr-checks.yml`'s Docker build checks — that's
+unchanged by #1648's compliance-preflight addition below, which is a promoter-run precondition on
+cutting the branch in the first place, not a CI check on the PR once opened. Filed as #1097 after
 a live promotion attempt ran the local gate here anyway and stopped a `develop → staging` promotion
 on failures (a real dependency advisory plus false negatives from an uninstalled isolated checkout)
 that were never this leg's gate to fail on. (Briefly untrue 2026-08-29→2026-08-31 — #1124/#1165
@@ -194,6 +196,41 @@ git push
 # fold into the bump PR above if one exists, or open its own PR into develop if not --
 # either way the note must be committed before to-staging/$CANDIDATE_ID is cut.
 ```
+
+**Compliance preflight — execute and resolve, before the cut (#1648, 2026-09-06).** The real
+precondition, same reasoning as the "#1007-gated exception" section's own compliance check above but
+now run here too, earlier, since this leg previously ran nothing at all here — see `../SKILL.md`'s
+"Frozen candidate and repair loop" section for the full rationale
+(#1387/#1419/#1430/#1505/#1544/#1574/#1618):
+
+```bash
+git ls-files -- docs/compliance/impact-declarations | grep '\.md$' \
+  | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
+gh issue list --label compliance:preflight-handoff --state open --json number,title,url
+```
+
+Empty output on both → clear, proceed to the branch cut below. Otherwise, resolve — don't just
+report and wait:
+
+```bash
+# a stuck handoff issue exists (second command returned one) -- open and merge it now, per
+# docs/compliance/request-time-preflight-protocol.md's "Operator handoff procedure":
+gh pr create --base develop --head compliance-sweep/<run_id> \
+  --title "docs(compliance): reconcile preflight sweep results (<date>)" --body-file <pr_body>
+gh pr checks <N> --watch   # Merge Safety poll -- AGENTS.md
+gh pr merge <N> --merge --delete-branch
+
+# OR: a declaration is outstanding with no handoff issue yet (first command listed a file, second
+# returned nothing) -- the continuous trigger hasn't caught up, dispatch it manually and wait:
+gh workflow run compliance-preflight-sweep.yml
+gh run list --workflow=compliance-preflight-sweep.yml -L1 --json databaseId,status
+gh run view <id> --json conclusion
+# then re-run the two check commands above -- a passing run almost always produces a fresh
+# stuck-handoff issue (same org-policy block), so open and merge it the same way as above.
+```
+
+Re-run both check commands once more after any resolve action — only cut `to-staging/$CANDIDATE_ID`
+once both come back clear.
 
 Only once that reports clean does the candidate branch get cut, from the (possibly just-bumped)
 `origin/develop`:
