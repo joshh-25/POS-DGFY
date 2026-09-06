@@ -24,8 +24,8 @@ rollback_note: Plain revert restores today's inert Phase 296 stub end to end -- 
   today's server-derivation path.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-09T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-265-298-ROLLOUT-LADDER-KILL-SWITCH
+preflight_run_at: 2026-09-06T06:19:25.427Z
+preflight_request_ref: PREFLIGHT-34016076574-2026-09-09-ROLLOUT-LADDER-KILL-SWITCH
 ---
 
 # Rollout ladder, server-authoritative kill switch, and fallback-rate measurement for

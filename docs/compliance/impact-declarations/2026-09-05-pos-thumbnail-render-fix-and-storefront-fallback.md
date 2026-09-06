@@ -21,8 +21,8 @@ rollback_note: Plain revert restores today's flat-image render (a raw `<img src>
   every field this PR adds is additive on existing response payloads.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T21:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-265-218-POS-IMAGE-RENDER-FIX
+preflight_run_at: 2026-09-06T06:19:25.427Z
+preflight_request_ref: PREFLIGHT-34016076574-2026-09-05-POS-THUMBNAIL-RENDER-FIX-AND-STOREFRONT-FALLBACK
 ---
 
 # POS thumbnail render fix + storefront-fallback for #218 (Phase 294, PR 1 of the #265 epic)

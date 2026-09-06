@@ -25,8 +25,8 @@ rollback_note: Plain revert restores today's single-file `image` upload contract
   any already retained).
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-06T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-265-297-CLIENT-DERIVED-UPLOAD-CONTRACT
+preflight_run_at: 2026-09-06T06:19:25.427Z
+preflight_request_ref: PREFLIGHT-34016076574-2026-09-06-CLIENT-DERIVED-UPLOAD-CONTRACT
 ---
 
 # Client-derived image upload contract + fan-out to catalog upload services (Phase 301, #265 epic)
