@@ -11,8 +11,8 @@ verification_evidence: git diff --check origin/main...HEAD (before/after), no fu
 rollback_note: Revert the single trailing-newline change; no stored data, migration, payment, receipt, or production operation is involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-07T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-TERMINAL-OPERATIONS-WORKSPACE-EOF-WHITESPACE
+preflight_run_at: 2026-09-06T18:25:05.087Z
+preflight_request_ref: PREFLIGHT-34051428358-2026-09-07-TERMINAL-OPERATIONS-WORKSPACE-EOF-WHITESPACE
 ---
 
 ## Compliance Impact Classification
