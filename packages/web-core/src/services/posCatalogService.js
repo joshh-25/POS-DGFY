@@ -67,10 +67,21 @@ export const uploadPosCatalogImage = async (itemId, file) => {
 };
 
 export const uploadBulkPosCatalogImages = async (files = []) => {
-  const formData = new FormData();
-  files.forEach((file) => formData.append('images', file));
-  const response = await api.post('/pos/catalog-overrides/images/bulk', formData);
-  return response.data.data;
+  // Client-side encode is gated by rolloutFlag.js's server-authoritative `image_client_conversion`
+  // flag (#1643, epic #265's 298d), scoped to 'pos_catalog_bulk'. Shared orchestration (batch
+  // packing, sequential conversion, multi-request send/merge) lives in bulkCatalogUpload.js -- see
+  // its own doc comment for why this deviates from the single-image pattern's per-service-file
+  // duplication.
+  const { uploadBulkCatalogImagesWithClientConversion } = await import('../utils/imageEncoding/bulkCatalogUpload.js');
+  return uploadBulkCatalogImagesWithClientConversion({
+    files,
+    scope: 'pos_catalog_bulk',
+    postBatch: (batchFiles) => {
+      const formData = new FormData();
+      batchFiles.forEach((file) => formData.append('images', file));
+      return api.post('/pos/catalog-overrides/images/bulk', formData);
+    },
+  });
 };
 
 export const deletePosCatalogImage = async (itemId) => {

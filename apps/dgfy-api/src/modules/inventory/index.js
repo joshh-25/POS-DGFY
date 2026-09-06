@@ -127,7 +127,8 @@ export const uploadStorefrontCatalogGalleryImagesUseCase = buildUploadStorefront
 });
 export const uploadBulkStorefrontCatalogImagesUseCase = buildUploadBulkStorefrontCatalogImagesUseCase({
   itemRepository,
-  imageStorage: storefrontCatalogImageStorage
+  imageStorage: storefrontCatalogImageStorage,
+  settingsRepository
 });
 export const updateStorefrontCatalogGalleryUseCase = buildUpdateStorefrontCatalogGalleryUseCase({
   itemRepository,

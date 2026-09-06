@@ -1412,7 +1412,7 @@ describe('pos use-cases application result contract', () => {
     // Phase 301 (#265): the <SKU>__<variant>.<ext> bulk correlation convention -- section 5 of
     // the corrected plan. A bare <SKU>.<ext> file is already covered by every test above this
     // point (unchanged behavior); these cover the new suffix-driven grouping specifically.
-    it('uploadBulkPosCatalogImages combines <SKU>__large/medium/thumbnail siblings into one store() call', async () => {
+    it('uploadBulkPosCatalogImages combines <SKU>__large/medium/thumbnail siblings into one store() call when the gate is "on"', async () => {
         const largePath = await writeTempUpload({ prefix: 'bulk-pos-variant-large' });
         const mediumPath = await writeTempUpload({ prefix: 'bulk-pos-variant-medium' });
         const thumbnailPath = await writeTempUpload({ prefix: 'bulk-pos-variant-thumb' });
@@ -1420,11 +1420,17 @@ describe('pos use-cases application result contract', () => {
             path: 'pos-catalog/tenant/pos-800.webp',
             url: '/uploads/pos-catalog/tenant/pos-800.webp'
         });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'on' }
+            })
+        };
         const useCase = buildUploadBulkPosCatalogImagesUseCase({
             posRepository: createBulkPosRepository({
                 items: [{ item_id: 800, sku_code: 'POS-800', default_sale_price: 100 }]
             }),
-            imageStorage: { store, remove: jest.fn() }
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
         });
 
         const result = await useCase({
@@ -1448,13 +1454,130 @@ describe('pos use-cases application result contract', () => {
             clientVariantFiles: {
                 medium: { tempPath: mediumPath, reportedMime: 'image/png' },
                 thumbnail: { tempPath: thumbnailPath, reportedMime: 'image/png' }
-            }
+            },
+            imageClientConversionState: 'on',
+            imageClientConversionScope: 'pos_catalog_bulk'
         });
         expect(result.data.results).toEqual(expect.arrayContaining([
             expect.objectContaining({ filename: 'POS-800__large.png', variant_key: 'large', status: 'uploaded' }),
             expect.objectContaining({ filename: 'POS-800__medium.png', variant_key: 'medium', status: 'uploaded' }),
             expect.objectContaining({ filename: 'POS-800__thumbnail.png', variant_key: 'thumbnail', status: 'uploaded' })
         ]));
+    });
+
+    // #1643 (298d, Finding 3): mirrors the storefront bulk gate cases above, applied to the POS
+    // bulk usecase -- closed, opt_in-excluded, opt_in-included (the "on" case is covered by the
+    // combine test just above). Before this, a `<SKU>__large/medium` filename was honored
+    // unconditionally regardless of `image_client_conversion`.
+    it('uploadBulkPosCatalogImages forces acceptedAsClientLarge/clientVariantFiles off when image_client_conversion is "off"', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-pos-gate-off-large' });
+        const mediumPath = await writeTempUpload({ prefix: 'bulk-pos-gate-off-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'pos-catalog/tenant/pos-810.webp',
+            url: '/uploads/pos-catalog/tenant/pos-810.webp'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'off' }
+            })
+        };
+        const useCase = buildUploadBulkPosCatalogImagesUseCase({
+            posRepository: createBulkPosRepository({
+                items: [{ item_id: 810, sku_code: 'POS-810', default_sale_price: 100 }]
+            }),
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            files: [
+                { path: largePath, mimetype: 'image/png', originalname: 'POS-810__large.png', size: PNG_BYTES.length },
+                { path: mediumPath, mimetype: 'image/png', originalname: 'POS-810__medium.png', size: PNG_BYTES.length }
+            ],
+            user: editableUser
+        });
+
+        expect(result.data.summary).toMatchObject({ uploaded: 1, failed: 0 });
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            itemId: 810,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'off',
+            imageClientConversionScope: 'pos_catalog_bulk'
+        }));
+        expect(result.data.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ filename: 'POS-810__medium.png', variant_key: 'medium', status: 'uploaded' })
+        ]));
+    });
+
+    it('uploadBulkPosCatalogImages forces off when "opt_in" excludes pos_catalog_bulk', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-pos-gate-excluded-large' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'pos-catalog/tenant/pos-811.webp',
+            url: '/uploads/pos-catalog/tenant/pos-811.webp'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['storefront_catalog_bulk'] }
+            })
+        };
+        const useCase = buildUploadBulkPosCatalogImagesUseCase({
+            posRepository: createBulkPosRepository({
+                items: [{ item_id: 811, sku_code: 'POS-811', default_sale_price: 100 }]
+            }),
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            files: [{ path: largePath, mimetype: 'image/png', originalname: 'POS-811__large.png', size: PNG_BYTES.length }],
+            user: editableUser
+        });
+
+        expect(result.data.summary).toMatchObject({ uploaded: 1 });
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            itemId: 811,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'pos_catalog_bulk'
+        }));
+    });
+
+    it('uploadBulkPosCatalogImages honors the filename when "opt_in" includes pos_catalog_bulk', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-pos-gate-included-large' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'pos-catalog/tenant/pos-812.webp',
+            url: '/uploads/pos-catalog/tenant/pos-812.webp'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['pos_catalog_bulk'] }
+            })
+        };
+        const useCase = buildUploadBulkPosCatalogImagesUseCase({
+            posRepository: createBulkPosRepository({
+                items: [{ item_id: 812, sku_code: 'POS-812', default_sale_price: 100 }]
+            }),
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            files: [{ path: largePath, mimetype: 'image/png', originalname: 'POS-812__large.png', size: PNG_BYTES.length }],
+            user: editableUser
+        });
+
+        expect(result.data.summary).toMatchObject({ uploaded: 1 });
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            itemId: 812,
+            acceptedAsClientLarge: true,
+            clientVariantFiles: null,
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'pos_catalog_bulk'
+        }));
     });
 
     it('uploadBulkPosCatalogImages flags two <SKU>__large files for the same SKU as duplicate_variant_for_sku', async () => {
