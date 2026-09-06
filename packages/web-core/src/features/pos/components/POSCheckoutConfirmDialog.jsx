@@ -20,6 +20,7 @@ import { isIminWrapperRuntime } from '../../../utils/iminRuntimeFeedback.js';
 import {
     formatSplitPaymentMethod,
     getCartLineSubtotal,
+    isPaymentAmountSufficient,
     money,
     resolveEmployeeDiscountCreditPreference,
     resolvePaymentMethodColorStyles,
@@ -174,7 +175,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         : round4(governedDiscountTotals.vatRemoved);
     const paymentIsSufficient = isEmployeeCreditPayment
         ? Boolean(isCustomerPaymentSufficient)
-        : customerPaymentAmount >= Number(cartTotal || 0);
+        : isPaymentAmountSufficient(customerPaymentAmount, cartTotal);
 
     const selectPaymentAmount = (nextValue, autoFilled = false) => {
         setPaymentAmountDraft({ value: nextValue, autoFilled });

@@ -9,6 +9,7 @@ import {
     getCartLineSubtotal,
     getPriceOverrideReasonValidationMessage,
     inferReceiptContract,
+    isPaymentAmountSufficient,
     isSeniorPwdDiscountEligible,
     money,
     normalizeDiscountProfiles,
@@ -44,6 +45,12 @@ describe('POS checkout terminal pure utilities', () => {
         expect(normalizePromoCode('  spring-2026-extra-long-code  ')).toBe('SPRING-2026-EXTRA-LONG-CODE');
         expect(isSeniorPwdDiscountEligible('1')).toBe(true);
         expect(isSeniorPwdDiscountEligible('true')).toBe(false);
+    });
+
+    it('compares checkout payments at the centavo precision shown to the cashier', () => {
+        expect(isPaymentAmountSufficient(51.01, 51.0101)).toBe(true);
+        expect(isPaymentAmountSufficient(51.00, 51.0101)).toBe(false);
+        expect(isPaymentAmountSufficient(51.02, 51.0101)).toBe(true);
     });
 
     it('requires a reason only when a line price differs from its effective default', () => {
