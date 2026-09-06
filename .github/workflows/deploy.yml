@@ -80,6 +80,17 @@ on:
         description: SSH-deploy to the server after images are pushed
         type: boolean
         default: true
+      candidate_source_sha:
+        description: >-
+          ADR 0081 Decision 8 candidate source identity (#1588, epic #1548 Wave 4, Phase 279) --
+          set this ONLY when dispatching against staging as part of a to-staging/<candidate_id>
+          promotion, to scripts/check-promotion-candidate.js's manifest source_develop_sha (no
+          staging repairs yet) or current_staging_sha (once repairs exist). Leave empty for a DEV
+          dispatch or any ad hoc STAGING rebuild outside a real promotion -- an empty value omits
+          the org.dgfy-platform.candidate-source-sha OCI label entirely rather than stamping a
+          misleading one. See .agents/skills/promoter/references/promotion-runbook.md.
+        type: string
+        default: ''
 
 concurrency:
   group: deploy-${{ github.ref_name }}
@@ -137,6 +148,7 @@ jobs:
       build_frontend_pos: ${{ inputs.build_frontend_pos }}
       build_frontend_storefront: ${{ inputs.build_frontend_storefront }}
       runner_labels_json: '["sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { recordPosCashierLifecycleSignal } from '../../../services/metricsService.js';
 import { isPosBulkImageImportEnabled } from '../../../config/posBulkImageImportFeature.js';
 import { posBulkImageImportJobRepository } from '../repositories/posBulkImageImportJobRepository.js';
+import { parseClientImageManifest } from '../../shared/utils/imageUploadValidation.js';
 import {
     verifyPosTerminalUseCase,
     listPosCatalogUseCase,
@@ -2742,7 +2743,8 @@ export const uploadCatalogImage = async (req, res, next) => {
         }
         const result = await uploadPosCatalogImageUseCase({
             itemId,
-            file: req.file,
+            files: req.files,
+            clientImageManifest: parseClientImageManifest(req.body?.client_image_manifest),
             user: req.user
         });
         if (result.success) {

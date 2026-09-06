@@ -3,6 +3,8 @@
 const fs = require('fs');
 const path = require('path');
 
+const { APPS } = require('./check-app-version-bump');
+
 const CANDIDATE_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-\d{2}$/;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const STATUS_VALUES = new Set([
@@ -38,6 +40,35 @@ function assertCandidateBranch(branch, candidateId) {
 
 function assertRepairBranch(branch, candidateId, revision) {
   assert(branch === `fix/staging/${candidateId}-r${revision}`, `Repair revision ${revision} must use fix/staging/${candidateId}-r${revision}`, 'INVALID_REPAIR_BRANCH');
+}
+
+// #1610 (ADR 0081 Decision 8 amendment): every staging_repair revision must declare which apps it
+// actually rebuilt/relabeled on STAGING -- the same apps whose build_* flag was true on that
+// repair's STAGING redeploy. dgfy-api and dgfy-migration-runner are always rebuilt as one paired
+// unit (a single build_api flag covers both -- see deploy.yml's/deploy-main.yml's own pairing
+// comment), so a repair that touches either always lists both. This is what
+// resolveCandidateSourceShaByApp below walks to answer "which SHA is THIS app's candidate source
+// identity" per app, instead of assuming every app advanced to the same current_staging_sha.
+function assertAppsTouched(value, position) {
+  assert(Array.isArray(value) && value.length > 0, `Repair revision ${position} must declare a non-empty apps_touched array`, 'MISSING_APPS_TOUCHED');
+  const seen = new Set();
+  for (const app of value) {
+    assert(typeof app === 'string' && APPS.includes(app), `Repair revision ${position}'s apps_touched contains an unrecognized app: ${app}`, 'INVALID_APPS_TOUCHED');
+    assert(!seen.has(app), `Repair revision ${position}'s apps_touched lists ${app} more than once`, 'DUPLICATE_APPS_TOUCHED');
+    seen.add(app);
+  }
+  // PR #1612 review RF-1: dgfy-api and dgfy-migration-runner are always rebuilt/relabeled as one
+  // paired unit -- a single build_api flag covers both (deploy.yml's/deploy-main.yml's own pairing
+  // comment), and deploy-main.yml exposes only one candidate_source_sha_api input for the pair. A
+  // one-sided apps_touched (only one of the two listed) would make resolveCandidateSourceShaByApp
+  // return different SHAs for dgfy-api vs dgfy-migration-runner while PROD actually stamps both
+  // with the same API-group SHA -- incorrect provenance, or an avoidable parity failure. Reject it
+  // outright rather than silently accepting a manifest that can't be honestly resolved per-app.
+  assert(
+    seen.has('dgfy-api') === seen.has('dgfy-migration-runner'),
+    `Repair revision ${position}'s apps_touched must list dgfy-api and dgfy-migration-runner together or not at all (they are always rebuilt as one paired unit) -- got: ${value.join(', ')}`,
+    'ONE_SIDED_API_MIGRATION_PAIR'
+  );
 }
 
 function assertReleaseBranch(branch, candidateId, revision) {
@@ -76,6 +107,7 @@ function validatePromotionCandidate(manifest) {
     assertRepairBranch(revision.branch, candidateId, repairRevision);
     assert(Number.isInteger(revision.pr) && revision.pr > 0, `Repair revision ${repairRevision} must identify its PR`, 'MISSING_REPAIR_PR');
     assert(Number.isInteger(revision.issue) && revision.issue > 0, `Repair revision ${repairRevision} must identify its issue`, 'MISSING_REPAIR_ISSUE');
+    assertAppsTouched(revision.apps_touched, repairRevision);
     previousSha = revision.sha;
     seenShas.add(revision.sha);
   });
@@ -111,14 +143,42 @@ function validatePromotionCandidate(manifest) {
   };
 }
 
+/**
+ * #1610 (ADR 0081 Decision 8 amendment) -- resolves each app's own candidate source identity
+ * instead of assuming every app shares the manifest-wide current_staging_sha. An app never named
+ * in any staging_repair's apps_touched keeps the initial revision's SHA (== source_develop_sha)
+ * for the life of the candidate, even after later repairs advance current_staging_sha for other
+ * apps -- that's exactly the bug this resolves: a repair touching only some apps must not make the
+ * untouched apps' PROD build claim a candidate identity their STAGING image never actually carried.
+ *
+ * Expects an already-validated manifest (call validatePromotionCandidate first) -- this function
+ * does not re-validate, it just walks revisions.apps_touched.
+ */
+function resolveCandidateSourceShaByApp(manifest, apps = APPS) {
+  const initialSha = manifest.revisions[0].sha;
+  const byApp = {};
+  for (const app of apps) {
+    let sha = initialSha;
+    for (const revision of manifest.revisions.slice(1)) {
+      if (Array.isArray(revision.apps_touched) && revision.apps_touched.includes(app)) {
+        sha = revision.sha;
+      }
+    }
+    byApp[app] = sha;
+  }
+  return byApp;
+}
+
 function parseArgs(argv) {
-  const options = { projectRoot: process.cwd(), manifestPath: '' };
+  const options = { projectRoot: process.cwd(), manifestPath: '', resolveAppShas: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--manifest') {
       options.manifestPath = argv[++index] || '';
     } else if (arg === '--project-root') {
       options.projectRoot = path.resolve(argv[++index] || '');
+    } else if (arg === '--resolve-app-shas') {
+      options.resolveAppShas = true;
     } else {
       throw new PromotionCandidateError(`Unknown argument: ${arg}`, 'INVALID_ARGS');
     }
@@ -133,6 +193,12 @@ function main() {
     const manifestPath = path.resolve(options.projectRoot, options.manifestPath);
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     const result = validatePromotionCandidate(manifest);
+    if (options.resolveAppShas) {
+      // Machine-readable only, on its own stdout line -- the promoter's runbook parses this with
+      // `node -e`/JSON.parse rather than screen-scraping the PASS line below.
+      console.log(JSON.stringify(resolveCandidateSourceShaByApp(manifest)));
+      return;
+    }
     console.log(`[promotion-candidate] PASS candidate=${result.candidate_id} staging_sha=${result.current_staging_sha} repairs=${result.repair_count} release_revision=${result.release_revision}`);
   } catch (error) {
     if (error instanceof PromotionCandidateError || error instanceof SyntaxError || error.code === 'ENOENT') {
@@ -151,4 +217,5 @@ module.exports = {
   CANDIDATE_ID_PATTERN,
   PromotionCandidateError,
   validatePromotionCandidate,
+  resolveCandidateSourceShaByApp,
 };

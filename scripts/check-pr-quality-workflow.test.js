@@ -284,12 +284,14 @@ const CORRECT_BLOCKING_JOB_BUILDERS = {
   // too; run_dependency_audit_full stays advisory (settled permanently), so it's not listed here.
   // 2026-09-04 (#1550/#1551 triage): validate_pr_quality_workflow/validate_runner_routing/
   // validate_workspace_hygiene/validate_compliance_sweep join too.
+  // 2026-09-04 (#1552): check_whitespace joins too.
   'repository-quality': () => buildJobWithNamedSteps(
     'repository-quality',
     [
       'checkout', 'run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod',
       'run_compliance_contracts', 'run_dependency_audit_full', 'validate_pr_quality_workflow',
-      'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep'
+      'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep',
+      'check_whitespace'
     ],
     { coeAt: ['checkout', 'run_dependency_audit_full'] }
   ),
@@ -301,7 +303,7 @@ const CORRECT_BLOCKING_JOB_BUILDERS = {
   )
 };
 
-test('checkStepLevelAdvisory: the 19 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
+test('checkStepLevelAdvisory: the 20 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
   const text = buildAdvisoryWorkflow(CORRECT_BLOCKING_JOB_BUILDERS);
   assert.deepEqual(checkStepLevelAdvisory(text), []);
 });
@@ -342,7 +344,7 @@ test('checkStepLevelAdvisory: a blocking step id that is missing entirely (renam
       [
         'checkout', 'run_docs_lint_renamed', 'run_production_env_fixtures', 'run_dependency_audit_prod',
         'run_compliance_contracts', 'validate_pr_quality_workflow', 'validate_runner_routing',
-        'validate_workspace_hygiene', 'validate_compliance_sweep'
+        'validate_workspace_hygiene', 'validate_compliance_sweep', 'check_whitespace'
       ],
       { coeAt: ['checkout', 'run_docs_lint_renamed'] }
     )

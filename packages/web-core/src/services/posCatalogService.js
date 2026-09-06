@@ -46,32 +46,42 @@ export const updateBulkPosCatalogOverrides = async ({ itemIds, posVisible }) => 
 
 export const uploadPosCatalogImage = async (itemId, file) => {
   const formData = new FormData();
-  formData.append('image', file);
+
+  // Client-side encode is gated by rolloutFlag.js's server-authoritative `image_client_conversion`
+  // flag (epic #265, Phase 298), scoped to 'pos_catalog_single'. Single-variant only:
+  // `image_medium`/`image_thumbnail`/`client_image_manifest` multipart fields are a follow-up
+  // job (#298d bulk excluded), not this phase's.
+  const { isImageClientConversionEnabledForScope } = await import('../utils/imageEncoding/rolloutFlag.js');
+  if (isImageClientConversionEnabledForScope('pos_catalog_single')) {
+    const { prepareImageVariants } = await import('../utils/imageEncoding/index.js');
+    const { reportImageClientConversionDegradation } = await import('../utils/imageEncoding/reportDegradation.js');
+    const { variants, manifest, degraded } = await prepareImageVariants(file);
+    reportImageClientConversionDegradation({ scope: 'pos_catalog_single', degraded, manifest });
+    formData.append('image', variants.large || file);
+  } else {
+    formData.append('image', file);
+  }
+
   const response = await api.post(`/pos/catalog-overrides/${itemId}/image`, formData);
   return response.data.data;
 };
 
-export const uploadBulkPosCatalogImages = async (files = [], { onProgress } = {}) => {
-  const normalizedFiles = Array.from(files || []).filter(Boolean);
-  if (normalizedFiles.length > 500) {
-    throw new Error('A bulk POS image upload cannot exceed 500 files.');
-  }
-
-  const batchSize = 25;
-  const aggregate = { summary: {}, results: [] };
-  for (let offset = 0; offset < normalizedFiles.length; offset += batchSize) {
-    const batch = normalizedFiles.slice(offset, offset + batchSize);
-    const formData = new FormData();
-    batch.forEach((file) => formData.append('images', file));
-    const response = await api.post('/pos/catalog-overrides/images/bulk', formData);
-    const data = response.data.data || {};
-    Object.entries(data.summary || {}).forEach(([key, value]) => {
-      aggregate.summary[key] = Number(aggregate.summary[key] || 0) + Number(value || 0);
-    });
-    aggregate.results.push(...(Array.isArray(data.results) ? data.results : []));
-    onProgress?.({ processed: Math.min(offset + batch.length, normalizedFiles.length), total: normalizedFiles.length });
-  }
-  return aggregate;
+export const uploadBulkPosCatalogImages = async (files = []) => {
+  // Client-side encode is gated by rolloutFlag.js's server-authoritative `image_client_conversion`
+  // flag (#1643, epic #265's 298d), scoped to 'pos_catalog_bulk'. Shared orchestration (batch
+  // packing, sequential conversion, multi-request send/merge) lives in bulkCatalogUpload.js -- see
+  // its own doc comment for why this deviates from the single-image pattern's per-service-file
+  // duplication.
+  const { uploadBulkCatalogImagesWithClientConversion } = await import('../utils/imageEncoding/bulkCatalogUpload.js');
+  return uploadBulkCatalogImagesWithClientConversion({
+    files,
+    scope: 'pos_catalog_bulk',
+    postBatch: (batchFiles) => {
+      const formData = new FormData();
+      batchFiles.forEach((file) => formData.append('images', file));
+      return api.post('/pos/catalog-overrides/images/bulk', formData);
+    },
+  });
 };
 
 export const POS_BULK_IMAGE_CHUNK_BYTES = 6 * 1024 * 1024;

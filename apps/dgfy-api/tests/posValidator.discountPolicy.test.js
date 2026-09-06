@@ -9,6 +9,36 @@ const mockRes = () => {
 };
 
 describe('POS checkout discount policy validator', () => {
+    it.each(['cash', 'card', 'gcash', 'maya', 'bank_transfer', 'employee_credit'])(
+        'accepts the Voucher UI null method with %s payment', (payment_type) => {
+            const req = { body: {
+                idempotency_key: 'idem-voucher-null-method',
+                payment_type,
+                ...(payment_type === 'employee_credit' ? { employee_credit: { account_code: 'TEST123' } } : {}),
+                governed_discount: { type: 'voucher', voucher_code: 'TEST', method: null, rate: null },
+                lines: [{ item_id: 1, quantity: 1 }]
+            } };
+            const res = mockRes();
+            const next = jest.fn();
+            validatePosCheckout(req, res, next);
+            expect(res.status).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(req.validatedData.governed_discount.method).toBeNull();
+        }
+    );
+
+    it('still rejects null method for Other discounts', () => {
+        const req = { body: {
+            idempotency_key: 'idem-manual-null-method',
+            governed_discount: { type: 'manual', method: null },
+            lines: [{ item_id: 1, quantity: 1 }]
+        } };
+        const res = mockRes();
+        const next = jest.fn();
+        validatePosCheckout(req, res, next);
+        expect(res.status).toHaveBeenCalledWith(422);
+        expect(next).not.toHaveBeenCalled();
+    });
     describe.each(['pwd', 'senior'])('%s beneficiary line references', (type) => {
         const requestFor = (entry) => ({
             body: {

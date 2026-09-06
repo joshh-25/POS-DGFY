@@ -134,7 +134,94 @@ function checkOrchestratorVersionTagMapping(orchestratorText) {
   return problems;
 }
 
-/** The build-push step must bake APP_VERSION as a build-arg and stamp org.opencontainers.image.version, and must expose its digest (id: build) for the immutability-guard step to retag. */
+// #1588 (epic #1548 Wave 4, Phase 279): the five builder jobs deployment-orchestrator.yml calls,
+// each must forward candidate_source_sha straight through -- the `publish` job (calling
+// publish-platform.yml, which has no such input) is deliberately excluded here.
+const ORCHESTRATOR_BUILDER_JOBS = Object.freeze([
+  'dgfy-api', 'dgfy-migration-runner', 'frontend-ims', 'frontend-pos', 'frontend-storefront',
+]);
+
+/**
+ * ADR 0081 Decision 8 (#1588): deployment-orchestrator.yml must both declare its own
+ * `candidate_source_sha` workflow_call input and forward it, unchanged, into each of the five
+ * builder jobs' own `with:` block -- checked per-job by counting occurrences of the pass-through
+ * line rather than a single global count, so a job silently missing it isn't masked by another job
+ * having it twice.
+ */
+function checkOrchestratorCandidateSourceShaWiring(orchestratorText) {
+  const problems = [];
+
+  if (!/candidate_source_sha:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(orchestratorText)) {
+    problems.push('deployment-orchestrator.yml: "on.workflow_call.inputs" is missing a "candidate_source_sha" string input.');
+  }
+
+  const jobBlocks = orchestratorText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const jobName of ORCHESTRATOR_BUILDER_JOBS) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    if (!block || !/candidate_source_sha:\s*\$\{\{\s*inputs\.candidate_source_sha\s*\}\}/.test(block)) {
+      problems.push(`deployment-orchestrator.yml: job "${jobName}" does not forward "candidate_source_sha: \${{ inputs.candidate_source_sha }}" to its called workflow.`);
+    }
+  }
+
+  return problems;
+}
+
+// #1610 (ADR 0081 Decision 8 amendment): unlike deployment-orchestrator.yml above (STAGING/DEV),
+// deploy-main.yml (PROD) rebuilds every app on every dispatch regardless of what changed -- there
+// is no bare X.Y.Z tag yet to skip rebuilding -- so a single shared candidate_source_sha would
+// mislabel any app a staging repair didn't touch with the candidate's LATEST identity instead of
+// the earlier one its STAGING image actually carries (scripts/check-promotion-candidate.js's
+// resolveCandidateSourceShaByApp() is what resolves the correct value per app). Each job below
+// reads its OWN grouped input instead; dgfy-api and dgfy-migration-runner share
+// candidate_source_sha_api since build_api always rebuilds them together as one paired unit.
+const DEPLOY_MAIN_FILE = '.github/workflows/deploy-main.yml';
+
+const DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS = Object.freeze([
+  'candidate_source_sha_api',
+  'candidate_source_sha_frontend_ims',
+  'candidate_source_sha_frontend_pos',
+  'candidate_source_sha_frontend_storefront',
+]);
+
+const DEPLOY_MAIN_JOB_INPUT_NAMES = Object.freeze([
+  ['dgfy-api', 'candidate_source_sha_api'],
+  ['dgfy-migration-runner', 'candidate_source_sha_api'],
+  ['frontend-ims-prod', 'candidate_source_sha_frontend_ims'],
+  ['frontend-pos-prod', 'candidate_source_sha_frontend_pos'],
+  ['frontend-storefront-prod', 'candidate_source_sha_frontend_storefront'],
+]);
+
+/**
+ * ADR 0081 Decision 8 amendment (#1610): deploy-main.yml must declare all four per-app-group
+ * `candidate_source_sha_*` workflow_dispatch inputs, and each of its five builder jobs (not
+ * `publish`) must forward its own correctly-grouped one -- checked per-job, same shape as
+ * checkOrchestratorCandidateSourceShaWiring above, so one job silently missing or misrouting its
+ * input isn't masked by another job having the right one.
+ */
+function checkDeployMainCandidateSourceShaWiring(deployMainText) {
+  const problems = [];
+
+  for (const inputName of DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS) {
+    const pattern = new RegExp(`${inputName}:\\s*\\n(?:[^\\n]*\\n)*?\\s*type:\\s*string`);
+    if (!pattern.test(deployMainText)) {
+      problems.push(`deploy-main.yml: "on.workflow_dispatch.inputs" is missing a "${inputName}" string input.`);
+    }
+  }
+
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const [jobName, inputName] of DEPLOY_MAIN_JOB_INPUT_NAMES) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    const forwardPattern = new RegExp(`candidate_source_sha:\\s*\\$\\{\\{\\s*inputs\\.${inputName}\\s*\\}\\}`);
+    if (!block || !forwardPattern.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not forward "candidate_source_sha: \${{ inputs.${inputName} }}" to its called workflow.`);
+    }
+  }
+
+  return problems;
+}
+
+/** The build-push step must bake APP_VERSION as a build-arg and reference the meta step's computed
+ * labels output, and must expose its digest (id: build) for the immutability-guard step to retag. */
 function checkBuildStepStamping(workflowText, { label }) {
   const problems = [];
 
@@ -146,8 +233,127 @@ function checkBuildStepStamping(workflowText, { label }) {
     problems.push(`${label}: the build-push step's "build-args:" does not bake "APP_VERSION=\${{ steps.meta.outputs.version_tag }}" (ADR 0081 Decision 4).`);
   }
 
-  if (!/labels:\s*\|[\s\S]{0,400}?org\.opencontainers\.image\.version=\$\{\{\s*steps\.meta\.outputs\.version_tag\s*\}\}/.test(workflowText)) {
-    problems.push(`${label}: the build-push step's "labels:" does not stamp "org.opencontainers.image.version" (ADR 0081 Decision 3).`);
+  // #1588 (epic #1548 Wave 4, Phase 279): labels are computed in the meta step's own bash (so a
+  // blank candidate_source_sha input can cleanly omit its label line, see
+  // checkMetaStepStampsCandidateLabel below) and referenced here, not inlined as a literal `|`
+  // block the way build-args still is.
+  if (!/labels:\s*\$\{\{\s*steps\.meta\.outputs\.labels\s*\}\}/.test(workflowText)) {
+    problems.push(`${label}: the build-push step's "labels:" does not reference "\${{ steps.meta.outputs.labels }}" -- labels must be computed in the meta step, not inlined here (ADR 0081 Decision 3, Decision 8/#1588).`);
+  }
+
+  return problems;
+}
+
+/**
+ * #1588 (epic #1548 Wave 4, Phase 279), ADR 0081 Decision 8: the meta step's bash must declare a
+ * `candidate_source_sha` workflow_call input, read it into the meta step's own env, compute a
+ * `labels` $GITHUB_OUTPUT heredoc carrying the unchanged revision/source/version lines plus a
+ * conditional candidate-source-identity line, and never stamp that label unconditionally (an empty
+ * input must omit the line entirely, not publish an empty label value).
+ */
+function checkMetaStepStampsCandidateLabel(workflowText, { label }) {
+  const problems = [];
+
+  if (!/candidate_source_sha:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(workflowText)) {
+    problems.push(`${label}: "on.workflow_call.inputs" is missing a "candidate_source_sha" string input (ADR 0081 Decision 8).`);
+  }
+
+  if (!/CANDIDATE_SOURCE_SHA:\s*\$\{\{\s*inputs\.candidate_source_sha\s*\}\}/.test(workflowText)) {
+    problems.push(`${label}: the meta step's "env:" is missing "CANDIDATE_SOURCE_SHA: \${{ inputs.candidate_source_sha }}".`);
+  }
+
+  if (!/labels<<LABELS_EOF/.test(workflowText) || !/echo "LABELS_EOF"/.test(workflowText)) {
+    problems.push(`${label}: the meta step does not compute a "labels" \$GITHUB_OUTPUT heredoc (LABELS_EOF).`);
+  }
+
+  if (!/org\.opencontainers\.image\.version=\$\{VERSION_TAG\}/.test(workflowText)) {
+    problems.push(`${label}: the labels heredoc does not stamp "org.opencontainers.image.version=\${VERSION_TAG}" (ADR 0081 Decision 3).`);
+  }
+
+  if (!/if \[ -n "\$\{CANDIDATE_SOURCE_SHA:-\}" \]; then\s*\n\s*echo "org\.dgfy-platform\.candidate-source-sha=\$\{CANDIDATE_SOURCE_SHA\}"/.test(workflowText)) {
+    problems.push(`${label}: the labels heredoc does not conditionally stamp "org.dgfy-platform.candidate-source-sha" only when CANDIDATE_SOURCE_SHA is non-empty (ADR 0081 Decision 8) -- an unconditional stamp would publish an empty label on every DEV/ad-hoc build.`);
+  }
+
+  return problems;
+}
+
+// #1610 (ADR 0081 Decision 7 residue): each of deploy-main.yml's five builder jobs must gate its
+// `if:` on its OWN `should_build_<app>` output from the new `resolve-build-plan` job -- keyed by
+// job name here (not app name) since `frontend-ims-prod` etc. don't share their job name with the
+// app-keyed output name the way `dgfy-api`/`dgfy-migration-runner` do.
+const DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES = Object.freeze([
+  ['dgfy-api', 'should_build_dgfy_api'],
+  ['dgfy-migration-runner', 'should_build_dgfy_migration_runner'],
+  ['frontend-ims-prod', 'should_build_dgfy_ims'],
+  ['frontend-pos-prod', 'should_build_dgfy_pos'],
+  ['frontend-storefront-prod', 'should_build_dgfy_storefront'],
+]);
+
+/**
+ * ADR 0081 Decision 7 residue (#1610): deploy-main.yml must declare a `resolve-build-plan` job
+ * (`needs: guard-branch`), and each of its five builder jobs must both list "resolve-build-plan" in
+ * its own `needs:` array AND reference its own `should_build_<app>` output in its `if:` --
+ * referencing `needs.resolve-build-plan` in a job's `if:` without also listing it in that job's own
+ * `needs:` silently evaluates to empty in GitHub Actions (a parse-time gap, not a runtime failure),
+ * so both halves are checked independently, same shape as checkDeployMainCandidateSourceShaWiring
+ * above.
+ */
+function checkDeployMainBuildSkipPlanJob(deployMainText) {
+  const problems = [];
+
+  if (!/resolve-build-plan:\s*\n\s*needs:\s*guard-branch/.test(deployMainText)) {
+    problems.push('deploy-main.yml: no "resolve-build-plan" job found with "needs: guard-branch".');
+  }
+
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const [jobName, outputName] of DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    if (!block) {
+      problems.push(`deploy-main.yml: job "${jobName}" not found.`);
+      continue;
+    }
+    if (!/needs:\s*\[\s*guard-branch\s*,\s*resolve-build-plan\s*\]/.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not list "[ guard-branch, resolve-build-plan ]" in its "needs:".`);
+    }
+    const outputPattern = new RegExp(`needs\\.resolve-build-plan\\.outputs\\.${outputName}\\s*==\\s*'true'`);
+    if (!outputPattern.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not gate its "if:" on "needs.resolve-build-plan.outputs.${outputName} == 'true'" (#1610).`);
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * #1610: `publish`'s `needs:` must be extended with "guard-branch" and "resolve-build-plan" (both
+ * referenced in its own `if:`), and its `if:` must no longer require "at least one build actually
+ * succeeded" -- that clause could never be satisfied by a legitimate "every app is skip-eligible"
+ * dispatch (every build job 'skipped', none 'success'), which is exactly the case #1610's own
+ * acceptance criterion names. See deploy-main.yml's own `publish` job comment for the full argument.
+ */
+function checkDeployMainPublishGate(deployMainText) {
+  const problems = [];
+
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  const block = jobBlocks.find((chunk) => chunk.startsWith('publish:\n'));
+  if (!block) {
+    problems.push('deploy-main.yml: "publish" job not found.');
+    return problems;
+  }
+
+  if (!/needs:\s*\[\s*guard-branch\s*,\s*resolve-build-plan\s*,/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "needs:" does not start with "[ guard-branch, resolve-build-plan, ..." (#1610).');
+  }
+
+  if (!/needs\.guard-branch\.result == 'success'/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "if:" does not require "needs.guard-branch.result == \'success\'" (#1610).');
+  }
+  if (!/needs\.resolve-build-plan\.result == 'success'/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "if:" does not require "needs.resolve-build-plan.result == \'success\'" (#1610).');
+  }
+
+  if (/\.result == 'success' \|\|/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job\'s "if:" still contains an "at least one build succeeded" OR-clause -- #1610 requires dropping it so a legitimate "every app skip-eligible" dispatch can still publish.');
   }
 
   return problems;
@@ -197,6 +403,7 @@ function runAllChecks({ readFile = read } = {}) {
     problems.push(...checkJobOutputsVersionTag(text, { label }));
     problems.push(...checkWorkflowCallOutputsVersionTag(text, { label }));
     problems.push(...checkBuildStepStamping(text, { label }));
+    problems.push(...checkMetaStepStampsCandidateLabel(text, { label }));
     problems.push(...checkImmutabilityGuardStep(text, { label }));
   }
 
@@ -205,7 +412,14 @@ function runAllChecks({ readFile = read } = {}) {
     problems.push(...checkDockerfileAcceptsAppVersion(text, { label: file }));
   }
 
-  problems.push(...checkOrchestratorVersionTagMapping(readFile(ORCHESTRATOR_FILE)));
+  const orchestratorText = readFile(ORCHESTRATOR_FILE);
+  problems.push(...checkOrchestratorVersionTagMapping(orchestratorText));
+  problems.push(...checkOrchestratorCandidateSourceShaWiring(orchestratorText));
+
+  const deployMainText = readFile(DEPLOY_MAIN_FILE);
+  problems.push(...checkDeployMainCandidateSourceShaWiring(deployMainText));
+  problems.push(...checkDeployMainBuildSkipPlanJob(deployMainText));
+  problems.push(...checkDeployMainPublishGate(deployMainText));
 
   return problems;
 }
@@ -229,12 +443,22 @@ module.exports = {
   DOCKERFILES,
   ORCHESTRATOR_FILE,
   ORCHESTRATOR_VERSION_TAG_OUTPUTS,
+  ORCHESTRATOR_BUILDER_JOBS,
   checkVersionTagComputation,
   checkJobOutputsVersionTag,
   checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
+  checkMetaStepStampsCandidateLabel,
   checkImmutabilityGuardStep,
   checkDockerfileAcceptsAppVersion,
   checkOrchestratorVersionTagMapping,
+  checkOrchestratorCandidateSourceShaWiring,
+  checkDeployMainCandidateSourceShaWiring,
+  checkDeployMainBuildSkipPlanJob,
+  checkDeployMainPublishGate,
+  DEPLOY_MAIN_FILE,
+  DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS,
+  DEPLOY_MAIN_JOB_INPUT_NAMES,
+  DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES,
   runAllChecks,
 };

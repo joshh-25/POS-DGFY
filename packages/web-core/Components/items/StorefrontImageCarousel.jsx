@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { Switch } from '@/components/ui/switch';
+import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
+import { buildImageVariantSources } from '@/src/utils/imageVariantSources.js';
 
 const normalizeGalleryEntryKey = (entry, index) => `${entry?.url || entry?.path || 'storefront-image'}-${index}`;
 
@@ -43,9 +44,11 @@ export default function StorefrontImageCarousel({
       aria-label={hasMultipleImages ? `${itemName} item image carousel` : undefined}
     >
       <div className="relative overflow-hidden rounded-md border border-slate-200 bg-white">
-        <img
-          src={resolveAssetUrl(activeEntry.url || activeEntry.path)}
+        <ResponsiveImage
+          sources={buildImageVariantSources({ url: activeEntry.url || activeEntry.path, variants: activeEntry.variants, preferred: 'medium' })}
           alt={`${itemName} storefront image ${resolvedActiveIndex + 1}`}
+          sizes={isTableVariant ? '96px' : '384px'}
+          loading="lazy"
           className={isTableVariant ? 'h-16 w-24 object-cover' : 'h-32 w-full object-cover sm:h-36'}
         />
         {activeImageIsPrimary && !showPrimaryToggle && (

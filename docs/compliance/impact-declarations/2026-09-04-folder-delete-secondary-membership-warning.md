@@ -11,8 +11,8 @@ verification_evidence: node --check apps/dgfy-api/src/modules/inventory/reposito
 rollback_note: Revert this PR's diff. Both changed backend functions (listFolders, deleteFolder in apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js) are purely additive -- a new countSecondaryFolderMemberships helper and one new response field per function (secondary_item_count, secondary_items_affected) plus an appended message/error-message note; every existing field, the primary count computation, the reassignment-required gate, and the actual delete/reassign writes are byte-identical to before. The frontend change (TerminalOperationsWorkspace.jsx) only adds an extra warning line and coerces one new response field -- it introduces no new state, no new API call, and does not change the existing client-side reassignment gate (still primary-item_count-only, unchanged). Reverting fully restores prior behavior with no data migration involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-04T10:56:41.000Z
-preflight_request_ref: NOT-EXECUTED-1318
+preflight_run_at: 2026-09-04T16:07:17.508Z
+preflight_request_ref: PREFLIGHT-33893050690-2026-09-04-FOLDER-DELETE-SECONDARY-MEMBERSHIP-WARNING
 ---
 
 # Folder-delete warning under-counts secondary category memberships (#1318)

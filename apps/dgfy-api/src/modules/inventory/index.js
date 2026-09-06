@@ -56,6 +56,12 @@ import { buildImportExternalProductImageUseCase } from './usecases/importExterna
 import { buildOpenFoodFactsProductRegistry } from './integrations/openFoodFactsProductRegistry.js';
 import { buildOpenPricesProductPriceRegistry } from './integrations/openPricesProductPriceRegistry.js';
 import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogImageStorage.js';
+// Phase 298 (#265): static import, deliberately -- itemRepository.js (this same module) already
+// statically imports `getAllSettingsUseCase` from '../../settings/index.js' with no reverse cycle
+// (the two dynamic settings->inventory imports in updateSettingsUseCase.js/
+// updateSettingByKeyUseCase.js exist for the opposite direction and stay dynamic). A direct import
+// of the settings repository here carries the same, already-proven-safe direction.
+import { settingsRepository } from '../settings/repositories/settingsRepository.js';
 import { resolveMovementLocation } from '../../services/locationInventoryService.js';
 import * as cacheService from '../../services/cacheService.js';
 import * as stockCommandService from './commands/stockCommandService.js';
@@ -112,7 +118,8 @@ export const updateStorefrontCatalogOverrideUseCase = buildUpdateStorefrontCatal
 export const updateBulkStorefrontCatalogOverridesUseCase = buildUpdateBulkStorefrontCatalogOverridesUseCase({ itemRepository });
 export const uploadStorefrontCatalogImageUseCase = buildUploadStorefrontCatalogImageUseCase({
   itemRepository,
-  imageStorage: storefrontCatalogImageStorage
+  imageStorage: storefrontCatalogImageStorage,
+  settingsRepository
 });
 export const uploadStorefrontCatalogGalleryImagesUseCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
   itemRepository,
@@ -120,7 +127,8 @@ export const uploadStorefrontCatalogGalleryImagesUseCase = buildUploadStorefront
 });
 export const uploadBulkStorefrontCatalogImagesUseCase = buildUploadBulkStorefrontCatalogImagesUseCase({
   itemRepository,
-  imageStorage: storefrontCatalogImageStorage
+  imageStorage: storefrontCatalogImageStorage,
+  settingsRepository
 });
 export const updateStorefrontCatalogGalleryUseCase = buildUpdateStorefrontCatalogGalleryUseCase({
   itemRepository,

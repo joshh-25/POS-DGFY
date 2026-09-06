@@ -20233,54 +20233,116 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   (new), issue #1575.
 - Next eligible phase: 278 — runtime version observability.
 
-## Phase 278 - Runtime version observability: `/health` and the frontend build stamp (epic #1548 Wave 3, not yet filed)
+## Phase 278 - Runtime version observability: `/health` and the frontend build stamp (#1576, epic #1548 Wave 3)
 
 - Initiative/release: Container semantic versioning epic (#1548) / current release process.
 - Objective and scope: backend `/health` reports the published `version` (ADR 0081 Decision 4);
   frontends gain a `VITE_APP_VERSION` build-time value plus a `version.json` (or equivalent meta-tag)
   the PWA update-toast flow can read — feeding #633 (Sentry release) and #276 (PWA "new version
   available" toast) per ADR 0081 Decision 5's handoff.
-- Status: planned.
+- Status: completed.
 - Dependencies: Phase 277 (the build-arg this phase surfaces at runtime); Phase 273 / ADR 0081
-  Decisions 4 and 5. Not yet filed.
-- Acceptance and validation evidence: not yet started. Expected at implementation: `/health`
-  response inspection per environment confirming `version` matches the published tag; a frontend
-  build confirming `VITE_APP_VERSION`/`version.json` matches the same tag.
-- Completion date: not started (planned).
-- Contracts/files (expected): `apps/dgfy-api`'s `/health` route, each frontend app's build config
-  and a shared build-stamp helper (`packages/web-core` candidate).
+  Decisions 4 and 5.
+- Acceptance and validation evidence: `apps/dgfy-api/tests/healthService.test.js`'s new
+  `resolveAppVersionInfo` describe block (APP_VERSION-over-package.json precedence, blank-env
+  treated as unset, both-missing null case, and a `buildHealthResponse` case asserting
+  `services.observability.version`/`version_source` sit alongside `runtime_sha`);
+  `packages/web-core/vite/__tests__/buildStampPlugin.test.js` (same precedence/fallback behavior
+  for `resolveAppVersion`, plus the plugin's `transformIndexHtml`/`generateBundle` hook shapes);
+  `node --check` on `apps/dgfy-api/src/services/healthService.js`; `sh -n` on the migration-runner
+  `entrypoint.sh`; `npm run build:skupervisor` / `build:pos` / `build:store` (Tier 0, per
+  `implement/SKILL.md`) confirming the three builds succeed with `VITE_APP_VERSION` defined and
+  emitting `dist/version.json` + the `dgfy-version` meta tag. Phase 277/PR #1577 had already merged
+  to `develop` (46b8099a6) when this phase started, so `APP_VERSION` is a real build-arg/env in all
+  five images — the package.json fallback was exercised via explicit unset-env test cases rather
+  than as the only available path.
+- Completion date: 2026-09-04.
+- Contracts/files: `apps/dgfy-api/src/services/healthService.js` (+ its test file),
+  `infrastructure/docker/dgfy-migration-runner/entrypoint.sh`, `apps/dgfy-ims/vite.config.js`,
+  `apps/dgfy-pos/vite.config.js`, `apps/dgfy-storefront/vite.config.js`,
+  `packages/web-core/vite/buildStampPlugin.js` (new, shared by all three frontends) + its test file,
+  `docs/deployment/PWA_SURFACE_CONTRACT.md`, issue #1576.
 - Next eligible phase: 279 — promoter floor check and promotion parity gate.
 
-## Phase 279 - Promoter pre-cut floor check, promotion parity gate, and final policy text (epic #1548 Wave 4, not yet filed)
+## Phase 279 - Promoter pre-cut floor check, promotion parity gate, and final policy text (#1588, epic #1548 Wave 4)
 
 - Initiative/release: Container semantic versioning epic (#1548) / current release process.
 - Objective and scope: the promoter's pre-cut floor step (`origin/develop` vs `origin/staging` per
   app; opens a `chore(release): bump <apps> to X.(Y+1).0 for candidate <id>` PR into `develop` for
   anything below floor) wired into `.agents/skills/promoter/SKILL.md` and
-  `references/promotion-runbook.md`, implementing this PR's `RELEASE_CANDIDATE_POLICY.md` amendment;
-  the staging/prod parity gate (ADR 0081 Decision 8, revised: `X.Y.Z-staging` and the later `X.Y.Z`
-  share the same *candidate source identity* — the frozen candidate manifest's `source_develop_sha`/
-  `current_staging_sha`, stamped by Phase 277's builder into its own label — not the raw
-  `org.opencontainers.image.revision`/`github.sha` of each environment's own merge commit, which
-  differ by construction across the `to-staging → staging` and `release/* → main` merges even for
-  identical candidate content); final policy text lands in
-  `docs/testing/release-go-no-go-checklist.md` and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
-- Status: planned.
-- Dependencies: Phase 273 / ADR 0081 Decisions 6 and 8; Phase 277 (the builder-side label this
-  phase's parity check reads); this PR's `RELEASE_CANDIDATE_POLICY.md` amendment (the obligations
-  this phase makes executable). Not yet filed.
-- Acceptance and validation evidence: not yet started. Expected at implementation: a real
-  `to-staging/<candidate_id>` promotion exercising the floor check against at least one app below
-  floor; a real `release/<candidate_id>-rN` → `main` promotion on the *normal* three-stage path
-  confirming the parity gate passes on an unchanged app by comparing the candidate-source-identity
-  label (not `org.opencontainers.image.revision`) — the case RF-1 on PR #1561 found the original
-  revision-label wording would have failed even on the normal path; and a second case confirming the
-  gate correctly flags a #1007-expedited or hotfix promotion (no matching staging predecessor under
-  that same identity) as expected evidence, not a defect, per Decision 8.
-- Completion date: not started (planned).
-- Contracts/files (expected): `.agents/skills/promoter/SKILL.md`,
+  `references/promotion-runbook.md`, implementing `RELEASE_CANDIDATE_POLICY.md`'s 2026-09-04
+  "Per-app container SemVer" amendment; the staging/prod parity gate (ADR 0081 Decision 8: `X.Y.Z-staging`
+  and the later `X.Y.Z` share the same *candidate source identity* — the frozen candidate manifest's
+  `source_develop_sha`/`current_staging_sha` — not the raw `org.opencontainers.image.revision`/
+  `github.sha` of each environment's own merge commit, which differ by construction across the
+  `to-staging → staging` and `release/* → main` merges even for identical candidate content); final
+  policy text lands in `docs/testing/release-go-no-go-checklist.md` and
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+- **Correction found during this phase, not assumed away:** Phase 277's own entry below (and ADR
+  0081 Decision 8's original text) assumed Phase 277 would stamp the candidate-source-identity label
+  as part of its own scope. Confirmed against the real merged `deploy-api.yml`/
+  `deploy-migration-runner.yml`/`deploy-frontend.yml` before this phase started: Phase 277 stamped
+  only `org.opencontainers.image.revision`/`.source`/`.version` — no candidate-source-identity label
+  existed anywhere. This phase adds that missing label-stamping step itself (a new
+  `candidate_source_sha` input threaded `deploy.yml`/`deploy-main.yml` →
+  `deployment-orchestrator.yml` → the three builders, stamped as the new
+  `org.dgfy-platform.candidate-source-sha` label when non-empty) — not previously in this phase's own
+  scope statement, but required for the parity check to have anything to compare. Recorded in full on
+  ADR 0081's own 2026-09-04 Amendment; Phase 277's entry below is left as-is per this doc's
+  don't-rewrite-history convention.
+- Status: completed.
+- Dependencies: Phase 273 / ADR 0081 Decisions 6 and 8; Phase 277 (builder version-tag stamping this
+  phase's meta step reuses, though not the label itself — see the correction above);
+  `RELEASE_CANDIDATE_POLICY.md`'s 2026-09-04 "Per-app container SemVer" amendment (the obligations
+  this phase makes executable), closed out by this phase's own matching 2026-09-04 amendment entry.
+  #1588.
+- Acceptance and validation evidence: `node --test scripts/check-image-version-parity.test.js`
+  (32/32 — see the pr-reviewer round-1 correction below for what changed from this phase's original
+  17/17); `node --test scripts/check-deploy-version-stamping-workflow.test.js` (37/37 —
+  extended by this phase with `checkMetaStepStampsCandidateLabel` and
+  `checkOrchestratorCandidateSourceShaWiring`, each with a passing real-file case and a synthetic
+  drift case); `node scripts/check-deploy-version-stamping-workflow.js` (PASS against the real
+  `deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml`/`deployment-orchestrator.yml`);
+  YAML-parsed all six edited workflow files (`deploy.yml`, `deploy-main.yml`,
+  `deployment-orchestrator.yml`, and the three builders); `npm run lint:docs` (29 governed docs, OK),
+  `npm run check:adr` (88 ADRs, OK — ADR 0081's `status: amended` + new `## Amendments` block
+  validate), `npm run check:architecture` (OK). No real `to-staging/<candidate_id>` or
+  `release/<candidate_id>-rN` promotion has run against this mechanism yet — everything above is
+  unit-tested and shape-verified against this repo's real files, not exercised end to end against a
+  live GHCR push/build, stated explicitly per `implement/SKILL.md`'s Tier 0 bar for a file class with
+  no compiler.
+- **pr-reviewer round-1 correction (PR #1590, RF-1/RF-2/RF-3/RF-4), same PR, before merge:** `RF-1`
+  — a concurrent `origin/develop` PR (#1589) landed its own dated amendment on
+  `RELEASE_CANDIDATE_POLICY.md`, producing a real merge conflict; resolved by keeping both amendments
+  (#1589's first, matching real merge order, this phase's second). `RF-2` — the `#1007`/hotfix path
+  documented `--manifest`-only usage, but that path never produces a candidate manifest at all;
+  `check-image-version-parity.js` gained a second `--source-sha` CLI mode
+  (`decideDirectParity`/`checkAppDirect`/`runDirectParityCheck`) that needs no manifest, and the
+  runbook/`SKILL.md` now capture a real `CANDIDATE_SOURCE_SHA` (`git rev-parse origin/develop` at cut
+  time) for that path instead of documenting an empty one. `RF-3` — an *existing* STAGING image with
+  a missing/inconsistent label was silently passing as "no predecessor"; `inspectImageLabel`'s
+  classification bug (found querying `resolveRevisionLabels`, which conflates "no Labels object
+  found anywhere" with "a Labels object exists but lacks this one key" — collapsing to the same
+  outcome for every single-platform image, four of this repo's five apps) was fixed by classifying
+  `collectRevisionLabelInfo`'s raw `{ found, unreadableCount }` directly instead, splitting `'no-label'`
+  (legitimately absent) from `'inconsistent'` (a real partial-stamp defect); `decideParity` now fails
+  `staging-unreadable` for both. `RF-4` — the floor-bump recipe's `git switch -c` already had an
+  explicit `origin/develop` start point (the review's primary claim did not reproduce against this
+  PR's actual content), but the requested clean-tree `git status` safeguard was genuinely missing and
+  has been added, matching the equivalent safeguard already documented for the `#1007`-exception
+  branch cuts.
+- Completion date: 2026-09-04.
+- Contracts/files: `scripts/check-image-version-parity.js` (new) + its test file,
+  `scripts/check-deploy-version-stamping-workflow.js` (extended) + its test file,
+  `.github/workflows/deploy-api.yml`, `.github/workflows/deploy-migration-runner.yml`,
+  `.github/workflows/deploy-frontend.yml`, `.github/workflows/deployment-orchestrator.yml`,
+  `.github/workflows/deploy.yml`, `.github/workflows/deploy-main.yml` (all six: new
+  `candidate_source_sha` input, threaded end to end), `.agents/skills/promoter/SKILL.md`,
   `.agents/skills/promoter/references/promotion-runbook.md`,
-  `docs/testing/release-go-no-go-checklist.md`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+  `docs/testing/release-go-no-go-checklist.md`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-09-04 closing amendment),
+  `docs/architecture/adr/0081-per-app-container-semantic-versioning.md` (2026-09-04 Amendment,
+  `status: amended`), issue #1588.
 - Next eligible phase: 280 — release notes epic (#1278) consumes candidate_id + the five prod versions.
 
 ## Phase 280 - #1278 release notes start consuming `candidate_id` and the five prod versions (epic #1548 Wave 4, tracked in #1278)
@@ -20289,16 +20351,81 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Objective and scope: #1278 (versioned production releases + release notes, already filed, no new
   issue needed) starts consuming the promotion `candidate_id` and the five per-app prod versions
   this epic produces, closing the loop epic #1548's Context named (#633, #276, and now #1278, all
-  previously unable to answer "what is running in prod" from a real version string).
-- Status: planned.
+  previously unable to answer "what is running in prod" from a real version string). This phase is
+  PR 1 of #1278's two-PR implementation — the decision record, template, and promoter obligations;
+  the enforcement script and CI wiring are Phase 296, a separate PR.
+- Status: completed.
 - Dependencies: Phase 279 (the parity gate and finalized policy text this phase reports against);
   Phase 273 / ADR 0081 (the version identities #1278 consumes); #1278 (filed).
-- Acceptance and validation evidence: not yet started — owned by #1278's own acceptance criteria,
-  not re-derived here.
-- Completion date: not started (planned).
-- Contracts/files (expected): whatever #1278 itself names; not re-derived here.
-- Next eligible phase: none recorded within epic #1548 — Phase 280 is epic #1548's own final planned
-  wave; further platform-versioning work beyond it is new scope, not part of this sequence.
+- Acceptance and validation evidence: new
+  [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md)
+  (`status: accepted`, `authority_level: authoritative`, owner `release`) records the release unit
+  (the promotion `candidate_id`), the authoritative-record/published-mirror split
+  (`docs/releases/notes/<candidate_id>.md` committed, GitHub Release on tag `release-<candidate_id>`
+  as its mirror), the one `[binding]` clause (no production promotion reaches `main` without a
+  release-note record for its candidate), the minimum structure, the concision rule (explicitly
+  citing #1605 — a version bump alone is not evidence of a user-visible change), the edge cases
+  (`No user-visible changes.`, breaking/reversion lines, `fix/staging/*` amendment vs. a second
+  record, hotfix/#1007 records), the Android/`v2.1`/`v2.2` component-release separation, and the
+  advisory-first rollout posture for the later enforcement check. `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+  gained a 2026-09-06 dated amendment (never rewritten in place, matching every prior entry) stating
+  the per-leg obligation. `docs/releases/notes/TEMPLATE.md` + `README.md` define the
+  `sku-release-note/v1` schema and explain why this is not `docs/releases/batches/` (dead,
+  ADR-0030-era machinery frozen 2026-07-03). `.agents/skills/promoter/SKILL.md` and
+  `references/promotion-runbook.md` gained the authoring/amend/publish obligations, the
+  release-note heredoc next to the candidate-manifest heredoc, a `gh release create` block after
+  the parity-gate section, and a checkpoint-table row classifying the GitHub Release publish as
+  unattended. `docs/development/PROJECT_DEVELOPMENT_GUIDE.md` got a narrow pointer at Appendix G's
+  head and at its three CHANGELOG/SemVer recommendation bullets, without rewriting the generic
+  guide. Verification run against this PR's diff (docs/ADR/skill-file only — no `apps/**` or
+  `packages/web-core/**` touched): `npm run check:adr` (ADR 0082 well-formed, `INDEX.md`
+  regenerated via `--write-index`, 89 ADRs validated, no stale index), `npm run lint:docs` (chains
+  `check:adr`; governed-doc frontmatter/links valid), `npm run check:architecture` (pass — no
+  `apps/dgfy-api` boundary touched), `npm run check:compliance` (pass — no compliance-sensitive
+  surface changed, expected for a docs/ADR-only PR). Full command transcripts in this PR's
+  `## Testing Evidence`.
+- Completion date: 2026-09-06.
+- Contracts/files: `docs/architecture/adr/0082-production-release-record-and-release-notes.md`
+  (new), `docs/architecture/adr/INDEX.md` (regenerated), `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+  (2026-09-06 amendment), `docs/releases/notes/TEMPLATE.md` (new), `docs/releases/notes/README.md`
+  (new), `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
+  `.agents/skills/incident-responder/SKILL.md` (added in the review-fix round below),
+  `docs/development/PROJECT_DEVELOPMENT_GUIDE.md`, this ledger entry.
+- Review-fix round (`pr-reviewer`, PR #1637): RF-2 (should-fix) — the 2026-09-06 policy amendment had
+  been inserted before the prior amendment's own closing `PR:` line instead of after it; moved,
+  no historical text touched. RF-1 (blocker) — the documented lifecycle left `production_commit` as
+  an unfillable value through the `release/* → main` PR, contradicting Phase 296's planned "40-hex
+  required" validation; resolved with an explicit two-stage lifecycle (a literal `pending` sentinel
+  accepted pre-deploy, finalized to a real 40-hex SHA post-deploy) written into ADR 0082 Decisions
+  4/8, the policy amendment, `TEMPLATE.md`, and the runbook's authoring/publish steps (the latter
+  gaining a `grep` self-check). RF-3 (blocker) — ADR 0082 Decision 6's #1007 description was
+  corrected (it already shares the default flow's `release/<candidate_id>-rN` pattern, no
+  enforcement gap); the genuine gap — a `main` hotfix's `fix/*` branch not matching that pattern —
+  is now stated outright (ADR 0082 Decision 8, Follow-up 3) and closed procedurally by a new
+  release-note-authoring step in `.agents/skills/incident-responder/SKILL.md`'s hotfix procedure
+  (both loop entry points), rather than left silently uncovered.
+- Review-fix round 2 (`pr-reviewer`, PR #1637): RF-4 (blocker) — the main-hotfix release-note
+  paragraph was prose only, with no runnable command for actually creating the file, and the generic
+  finalizer assumed the note was already on `origin/develop` (true for an ordinary promotion,
+  false for a hotfix, whose note first exists only on `main` until the later back-port). Fixed with
+  a full worked heredoc in `.agents/skills/incident-responder/SKILL.md` (mirroring
+  `promotion-runbook.md`'s own pre-cut heredoc, including the explicit no-staging-predecessor
+  `## Operational notes` line ADR 0082 Decision 6 requires) and by folding `production_commit`
+  finalization into step 5's back-port branch/commit itself, since that step is already the first
+  thing to carry the note onto `develop` — the generic runbook finalizer now explicitly says a
+  hotfix candidate skips its finalization half and resumes only at tag-and-publish. RF-5 (blocker)
+  — `MAIN_SHA=$(git rev-parse origin/main)` in the runbook's "Publish the GitHub Release" section
+  ran with no preceding `git fetch origin main`, risking a stale pre-merge SHA. Fixed by fetching
+  immediately before capture and cross-checking against `deploy-main.yml`'s own reported `headSha`
+  (`gh run list --workflow=deploy-main.yml --branch main -L1 --json headSha --jq
+  '.[0].headSha'`), refusing to proceed on a mismatch; the same fetch-and-cross-check pattern was
+  reused (not reinvented) in the hotfix back-port's own finalization block for consistency.
+- Next eligible phase: 296 (#1278 PR 2 — the `check:release-notes` enforcement script,
+  `package.json` wiring, and its `promotion-quality-gate.yml` advisory step; tip of the ledger was
+  Phase 295 at the time this phase was planned). PR 2's implementer should read ADR 0082's Follow-up
+  3 and the correction note appended to the approved plan file before building the frontmatter
+  validator — the original plan's "production_commit 40-hex" contract was corrected by this
+  review-fix round.
 
 ## Phase 281 - Delivery-fee override provenance: persist `delivery_fee_override` (#1564)
 
@@ -20388,7 +20515,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   `apps/dgfy-storefront/src/__tests__/discoveryFlow.integration.test.jsx`, issue #1333 (epic #1321).
 - Next eligible phase: 283.
 
-## Phase 283 - Version-bump check: flip advisory to blocking (epic #1548 Wave 2, not yet filed)
+## Phase 283 - Version-bump check: flip advisory to blocking (#1592, epic #1548 Wave 2)
 
 - Initiative/release: Container semantic versioning epic (#1548) / current release process.
 - **Numbering note (resolved 2026-09-04, merge conflict repair):** this entry was originally written
@@ -20407,26 +20534,39 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   run `node scripts/check-version-bump-flip-readiness.js` (Phase 276) and confirmed the ADR 0081
   Decision 9 evidence threshold is actually met. Explicitly **not** part of #1569's own scope (that
   issue's own "Explicitly out of scope" section) and not part of Phase 276 as re-scoped above.
-- Status: planned. Blocked on Phase 276 merging and then on real evidence actually accumulating —
-  the live dry run backing Phase 276's own acceptance evidence reports 1 of 10 qualifying PRs and no
-  promotion cycle as of this entry, nowhere near the threshold.
+- Status: **completed** (2026-09-05, #1592).
 - Dependencies: Phase 276 (#1569, the readiness mechanism) merged; the evidence threshold itself
-  actually being met, confirmed by re-running `scripts/check-version-bump-flip-readiness.js`. Not
-  yet filed as a GitHub issue — matches Phase 275/276's own original deferred-decomposition posture
-  (`docs/process/ISSUE-TAXONOMY.md`), graduated when epic #1548's Wave 2 is actually scheduled for
-  this piece.
-- Acceptance and validation evidence: not yet started. Expected at implementation: the readiness
-  script's own `READY` output cited as evidence in the flip PR's body, plus confirmation that
-  `check:app-versions` genuinely blocks a PR whose version bump is missing/insufficient after the
-  flip (a real or deliberately-crafted PR exercising the now-blocking check).
-- Completion date: not started (planned).
-- Contracts/files (expected): `scripts/lib/version-bump-gate-toggle.js` (the one-line flip) — no
-  other file needs to change, per that module's and `shared-changed-paths.yml`/`pr-checks.js`'s own
-  single-source-of-truth design (Phase 276).
-- Next eligible phase: 285 (updated 2026-09-04 — 284 was vacated: this entry originally pointed to
-  284, but the Phase 284/285 collision between PR #1578 and PR #1579, described in Phase 285's own
-  "Numbering note" below, resolved with 284 renumbered away and 285 landing first; see Phase 287's
-  own numbering note for the rest of the chain).
+  actually being met, confirmed by re-running `scripts/check-version-bump-flip-readiness.js` —
+  both satisfied. Filed as #1592 once epic #1548's Wave 2 was scheduled for this piece, per Phase
+  275/276's original deferred-decomposition posture (`docs/process/ISSUE-TAXONOMY.md`).
+- Acceptance and validation evidence: re-confirmed live at implementation time (2026-09-05, not
+  reused from #1592's own filing-time snapshot):
+  ```
+  PR-count evidence: 10 of 10 qualifying develop-base PRs.
+  Promotion-cycle evidence: none yet
+  [check-version-bump-flip-readiness] READY -- the ADR 0081 Decision 9 evidence threshold is met.
+  ```
+  10 counted PRs: 7 `pass` (#1591, #1583, #1582, #1581, #1580, #1579, #1578) + 3 `warn` (#1586,
+  #1567, #1566), since PR #1562's merge commit `5eb17c3426251990d364544e3ad5fbb1a839a35e`. Both
+  consuming surfaces confirmed to actually block, not just documented as blocking: (1)
+  `scripts/pr-checks.js` — found and fixed a genuine bug where the check's result was hardcoded to
+  `'pass'`/`'warn'` regardless of the `blocking` argument, so `computeOverallResult()` could never
+  reach `FAIL` for it even with `BLOCKING = true`; fixed via `resolveAppVersionsCheckResult()`,
+  covered by new tests in `scripts/pr-checks.test.js` asserting `FAIL` against the real toggle
+  module; (2) `.github/workflows/shared-changed-paths.yml` — verified via a throwaway branch/PR
+  carrying the flip plus a deliberately unbumped `apps/dgfy-api` change, confirmed the "Enforce
+  per-app version bump on source changes" step actually failed the job, then closed without
+  merging. See PR body (this PR) for the run link.
+- Completion date: 2026-09-05.
+- Contracts/files: `scripts/lib/version-bump-gate-toggle.js` (the one-line flip);
+  `scripts/pr-checks.js` + `scripts/pr-checks.test.js` (the result-severity fix and its regression
+  coverage, found necessary by this phase's own validation step, not anticipated by Phase 276's
+  "no other file needs to change" claim); `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, `.agents/skills/pr-reviewer/SKILL.md` (documentation
+  consequences).
+- Next eligible phase: this entry's own prior pointer (285) is long superseded — the chain moved on
+  through Phases 285-292 while this phase sat planned; Phase 292's own "Next eligible phase" line
+  (293) is the current authoritative tip, not restated here as a fresh claim from this entry.
 
 ## Phase 285 - Wave C/C1: storefront catalog API projection of secondary categories (#1318)
 
@@ -20650,6 +20790,14 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Governance note: `within-existing-boundary` with a default-contract amendment; no architecture allowlist exception is introduced.
 - Next eligible phase: 289.
 
+## Local POS phase records retained during develop integration
+
+Numbering reconciliation (2026-09-06): the local POS initiatives below and the
+independently merged develop initiatives reused phase numbers. Both historical
+records are preserved without renumbering. References to these existing phases
+must include the initiative title; new phases continue above the highest number
+in this combined ledger, never from the local POS sequence.
+
 ## Phase 289 - POS Immediate Image Preview and Worker Swap
 
 - Initiative/release: POS item-image responsiveness / current POS back-office workflow.
@@ -20775,3 +20923,1095 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `scripts/reproduce-pos-items-search-gap.cjs`.
 
 - Current catalog-search phase: 298 in progress. No later phase is eligible until authenticated browser acceptance passes or the governing plan is explicitly amended.
+
+## Develop phase records
+
+## Phase 289 - Wave C/C2: storefront grouping fan-out for secondary categories (#1318)
+
+- **Numbering note:** this entry was dispatched against a pre-assigned Phase 288, drafted when the
+  ledger tip on `origin/develop` was Phase 287 (making 288 the mechanically next number, per Phase
+  286's own addendum). Re-verified immediately before opening this PR: `origin/develop`'s tip was
+  still Phase 287 (no new merges) at PR-open time, but an open sibling PR against the same #1318
+  program — #1581 (Wave C/C5, "POS's own 'Additional Categories' item-edit section") — already
+  carried its own live diff claiming Phase 288, so this entry took **289** outright instead.
+  **Updated on merging `origin/develop` into this branch (review-fix round):** by that point
+  `origin/develop`'s tip had actually advanced to a *landed* Phase 288 — "Multiple Senior/PWD
+  Beneficiaries Per POS Order" (immediately above), an unrelated PR (#1586) that merged before
+  #1581 did, independently of the #1318 program's own internal 288/289/290 coordination. No number
+  collision resulted: 288 and 289 are two different numbers, so this entry keeps its own **289**
+  unchanged, now sequenced directly after the real Phase 288 rather than after Phase 287. #1581 has
+  since confirmed this live too (`gh pr diff 1581`): it found the same landed Phase 288, correctly
+  left it as landed per AGENTS.md's Continuous Phase Numbering rule 5, saw this entry's own 289
+  claim, and renumbered itself to **290** to avoid colliding with either — the same avoid-not-repair
+  posture this ledger's history already uses repeatedly (Phase 281/282/283, 284/285, 286/287).
+  **Updated again on this PR's MERGE-1 fix round (second `origin/develop` merge):** #1581 has since
+  actually **merged** as Phase 290 (merge commit `999864cf3b0e59bb533dd119cebf61baa8d2c707`,
+  immediately below) — no longer just a live, unmerged claim. This entry's own number (289) is
+  unaffected either way, since it was already sequenced correctly between the real Phase 288 and
+  #1581's Phase 290 before #1581 merged.
+- Initiative/release: Item multi-category membership program (#1318) / Wave C, slice C2 — the read
+  side Phase 285 (Wave C/C1, PR #1579) gated: that phase projected
+  `secondary_categories: [{folder_id, folder_name}]` onto the storefront catalog API response but
+  implemented no consumer of it. Parallel to, and independent of, C3 (POS/IMS filter widening,
+  Phase 286) and C4 (folder-delete warning, Phase 287) — no file overlap with either.
+- Objective and scope: [ADR 0080](../architecture/adr/0080-item-multi-category-membership.md)
+  Decision 4's explicit, shipped opt-in for exactly two grouping surfaces named in Decision 5 — the
+  F&B storefront menu's section grouping (`fnbStorefrontViewModel.js`'s
+  `getFoodBeverageStorefrontViewModel`) and the services storefront's category grouping
+  (`servicesStorefrontViewModel.js`'s `getServicesStorefrontViewModel`). Both now render an item
+  once per section/category it belongs to (primary + each distinct secondary category), keyed by a
+  composite `{sectionIdentity}:{itemId}` / `{categoryIdentity}:{itemId}` per Decision 5 — that
+  identity is `folder_id`-based, not the normalized display label (see the RF-1 fix-round note
+  below); `secondary_categories` already reached both files unmodified (confirmed by trace before
+  implementing) — no change to the API layer, `useStoreCatalogLoader.js`, `useStorefrontCatalog.js`,
+  or `normalizeStorefrontPageModel.js` was needed or made.
+- Decision 5 carve-out, explicitly preserved: neither file's flat, unsectioned item list opts in.
+  `fnbStorefrontViewModel.js`'s `menuItems` stays exactly one entry per item — it backs `totalItems`
+  and the count stats (`beverageCount`/`dessertCount`/`readyNowCount`), the unsectioned "All" tab,
+  and `fnbProductDetailsModel.js`'s `buildFnbRelatedItems` cross-sell rail (a distinct sub-surface
+  found during implementation, per the dispatch brief's ask to check for one). Only `menuSections`
+  fans out. Symmetrically, `servicesStorefrontViewModel.js`'s `services`/`allServices` (the flat "all
+  services" card grid, a single-label surface) stay one entry per service — the primary-category
+  occurrence specifically, carrying that group's `categoryMeta`/`variantName` unchanged from
+  pre-fan-out behavior — and every stat count derives from that same un-fanned list. Only
+  `serviceGroups[].items` fans out.
+- Documentation, not a new decision: ADR 0080 gets a new "Opt-in ledger (Decision 5 grouping
+  surfaces)" table (not a dated `## Amendments` entry) recording that these two surfaces have
+  shipped their opt-in — Decision 4/5 already pre-authorized this exact shape, so nothing here
+  needed a superseding ADR, a `[binding]` change, or the `status: amended` treatment C3's
+  genuinely-new filter-matching scope required. The table's title/scope was tightened during the
+  RF-2 fix round below — see that note.
+- Explicitly out of scope, untouched: the API layer/hooks/normalization layers named above; ADR 0080
+  Decision 1's `[binding]` primary-only readers (affiliate commission, voucher scope, F&B modifier
+  inheritance, POS reports); POS/IMS catalog filters and `TerminalOperationsWorkspace.jsx` (Phase
+  286/287, already shipped).
+- **PR #1583 review fix round (Codex GPT-5.6 Luna, pr-reviewer, BLOCK verdict), 2026-09-04:**
+  - RF-1 (blocker): both view models derived grouping/dedup identity and the composite render key
+    from the normalized display **name**, not the stable `folder_id` — two genuinely distinct
+    folders whose names happened to normalize identically (e.g. "A B"/"A_B" both -> `a_b`) would
+    collapse into one group, silently dropping a real secondary membership. Fixed via
+    `resolveSectionIdentity`/`resolveCategoryIdentity`: prefer the folder's numeric `folder_id`
+    (always present on a `secondary_categories` row, present on the primary whenever
+    `items.folder_id` is non-null) over the normalized label, falling back to the name-based
+    identity only for a genuinely ID-less occurrence. `sectionKey`/`categoryKey` stay name-derived
+    and unchanged in format (load-bearing for preset/icon matching and the pre-existing
+    `src/__tests__/servicesStorefrontViewModel.test.js`); only the new `sectionIdentity`/
+    `categoryIdentity` field and the keys derived from it changed. Also fixed the same latent
+    name-vs-identity ambiguity in `servicesStorefrontViewModel`'s "which occurrence is the primary"
+    filter for the flat `services`/`allServices` list. Added the reviewer's exact repro (two
+    folders, colliding normalized names, distinct `folder_id`s) as a regression test in both files,
+    plus a fallback-identity test for the genuinely ID-less case; reworked the "duplicate secondary"
+    dedup tests to share a `folder_id` (a true duplicate) rather than a shared name.
+  - RF-2 (should-fix): removed the ADR 0080 ledger's Phase 286 (POS/IMS filter matching) row — a
+    Decision 4 opt-in, not a Decision 5 grouping opt-in, already fully recorded in its own dated
+    Amendment — and retitled the table to "Opt-in ledger (Decision 5 grouping surfaces)" to make
+    that scope explicit going forward.
+  - RF-3 (nit): both test files' header comments corrected from "Phase 288" to "Phase 289".
+  - Re-verification evidence: full `apps/dgfy-storefront` suite 193/193 files, 1046/1046 tests
+    (+5 net new from the RF-1 regression coverage, 18 new tests total across both files, up from
+    13); `npm run build:store` (OK); `npm run check:architecture` (0 violations); `npm run
+    check:compliance` (no compliance-sensitive changes); `npm run check:adr` (88 ADRs valid); `npm
+    run lint` (0 errors, same pre-existing warnings elsewhere).
+- **PR #1583 review fix round 2 (Codex GPT-5.6 Luna, pr-reviewer, BLOCK verdict), 2026-09-04:**
+  - RF-4 (blocker): fix round 1 made grouping/dedup correct at the view-model layer (folder_id-
+    based `sectionIdentity`/`categoryIdentity`), but every downstream consumer still selected,
+    keyed, and matched by the normalized `sectionKey`/`categoryKey` display text — so the review's
+    own colliding-name regression test (two distinct-`folder_id` groups sharing a normalized name)
+    was internally correct at the view-model layer yet the second group was unreachable through
+    the actual UI, and both F&B/services tab lists carried duplicate React keys/active states.
+    Fixed by threading `sectionIdentity`/`categoryIdentity` through every named adapter/consumer —
+    `buildFnbCatalogPresentation.js` (`resolvedSection`/`activeSectionModel` resolution),
+    `StorefrontCatalogToolbar.js` (shared F&B/Retail toolbar — option values, active-state match,
+    `.find()`, click handlers, React keys), `StorefrontCatalogRouteContainer.jsx` (`resolvedTab`/
+    `activeGroup` services resolution), `StorefrontClassicCatalog.jsx` (legacy services/default
+    tab strip), and `ServicesCatalogToolbar.jsx` (fixed the adapter that dropped `categoryIdentity`
+    entirely when mapping `serviceGroups` to the shared toolbar's shape). `sectionKey`/`categoryKey`
+    stay name-derived and unchanged in format everywhere — still load-bearing for icon/preset
+    matching — only identity/selection/keying moved off them. Also fixed, for the same
+    state-consistency reason though not in the reviewer's named list: `ServicesPerformanceSidebar.jsx`
+    (services quick-nav, reads the same now-identity-based `resolvedTab`) and
+    `SimpleCatalogToolbar.jsx` (Simple mode's own toolbar duplicate, consumes the same F&B view
+    model) — both would have silently broken once `resolvedTab`/`resolvedFnbSection` became
+    identity-based without the parallel fix. Added 4 new consumer-level regression test files/
+    additions (not just view-model-level) reproducing the reviewer's exact scenario end-to-end
+    through real component renders: `buildFnbCatalogPresentation.test.js` (+2 tests, including a
+    "does not resolve by sectionKey text alone" negative case), `StorefrontCatalogToolbar.test.jsx`
+    (new, 3 tests), `ServicesCatalogToolbar.test.jsx` (+1 test; also updated its pre-existing
+    fixture/assertion, which had no `categoryIdentity` and would otherwise have broken),
+    `StorefrontClassicCatalog.test.jsx` (new — incidentally also exercises
+    `ServicesPerformanceSidebar.jsx`, rendered inside it), `SimpleCatalogToolbar.test.jsx` (new).
+  - RF-5 (should-fix): ADR 0080 Consequences item 1 ("this PR opts in no surface") was a snapshot
+    of the original Phase 257 schema-introducing PR, left unqualified as this Phase 289 PR's own
+    two opt-ins shipped — contradicting Decision 4/5 and the new ledger. Rewrote it to state that
+    explicitly: the zero-migration-risk claim is scoped to Phase 257 specifically, and non-opted-in
+    read sites remain primary-only by Decision 4's own default, while the Opt-in ledger (Phase 289,
+    this PR) and the dated Amendment (Phase 286) both now record real exceptions to that default.
+  - MERGE-1 (blocker): head predated sibling PR #1581 (merged as Phase 290, merge commit
+    `999864cf3b0e59bb533dd119cebf61baa8d2c707`) — `mergeStateStatus: DIRTY`/`CONFLICTING`. Merged
+    fresh `origin/develop` (3-way conflict: `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` — pure
+    insertion-order, resolved keeping Phase 288/289/290 in correct numeric sequence, no renumbering
+    needed since 289 was never actually colliding with 288 or 290; `apps/dgfy-storefront/package.json`
+    + `package-lock.json` — #1581 had independently bumped 1.1.0→1.1.1, this PR had bumped 1.2.0;
+    kept 1.2.0, already a strict superset increase, re-synced the lockfile via `npm install`).
+    Updated this entry's own numbering note to record #1581's merge (no longer "unmerged"/"live
+    claim"). Re-ran every Tier 0 gate against the fully merged tree: `npm run build:store` (OK);
+    full `apps/dgfy-storefront` suite 196/196 files, 1054/1054 tests (+8 net new from the RF-4
+    consumer-level regression coverage); `npm run check:architecture` (0 violations); `npm run
+    check:compliance` (no compliance-sensitive changes); `npm run check:adr` (88 ADRs valid); `npm
+    run lint` (0 errors, same pre-existing warnings elsewhere, none in the changed/new files).
+- Status: completed.
+- Dependencies: Phase 257 (`item_folder_memberships` schema, already shipped), Phase 285
+  (`secondary_categories` catalog projection, already shipped, consumed unchanged here), ADR 0080
+  (Decision 4 opt-in exercised, Decision 5 fan-out shape implemented, Decision 1 `[binding]`
+  untouched).
+- Acceptance and validation evidence: 2 new test files, 13/13 passing —
+  `fnbStorefrontViewModel.test.js` (7: primary-only item renders once; one secondary category fans
+  to both sections with distinct composite keys; multiple secondary categories fan to all of them;
+  no duplicate composite keys across the fanned grouping; `menuItems`/`totalItems` not inflated for a
+  fanned item; a secondary category matching the primary section dedupes; two secondary categories
+  normalizing to the same section dedupe), `servicesStorefrontViewModel.test.js` (6: the same shape
+  for `serviceGroups`, plus confirms `services`/`allServices`/`totalServices`/`inStoreCount`/
+  `serviceFamilyCount` are not inflated). Full `apps/dgfy-storefront` suite re-run as regression
+  evidence: 193/193 test files, 1041/1041 tests passing (including the pre-existing
+  `servicesStorefrontViewModel.test.js` in `src/__tests__/`, which caught a real regression during
+  implementation — the flat `allServices` losing its `variantName`/`categoryMeta` fields — fixed
+  before this evidence was collected). `npm run build:store` (OK); `npm run check:architecture` (54
+  modules / 561 files, 0 violations); `npm run check:compliance` (no compliance-sensitive changes
+  detected — a purely additive frontend rendering change); `npm run lint` (0 errors, pre-existing
+  warnings only, none in the changed/new files).
+- Completion date: 2026-09-04.
+- Contracts/files:
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/fnbStorefrontViewModel.js`,
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/fnbStorefrontViewModel.test.js` (new),
+  `apps/dgfy-storefront/src/modes/services/storefront/model/servicesStorefrontViewModel.js`,
+  `apps/dgfy-storefront/src/modes/services/storefront/model/servicesStorefrontViewModel.test.js`
+  (new), `docs/architecture/adr/0080-item-multi-category-membership.md` (new "Opt-in ledger
+  (Decision 5 grouping surfaces)" section, not a dated Amendment; RF-5's Consequences item 1
+  rewrite), issue #1318. Fix round 2 (RF-4) additionally touches:
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/buildFnbCatalogPresentation.js`,
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/buildFnbCatalogPresentation.test.js`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontCatalogToolbar.jsx`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontCatalogToolbar.test.jsx` (new),
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontClassicCatalog.jsx`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontClassicCatalog.test.jsx` (new),
+  `apps/dgfy-storefront/src/app/pages/StorefrontCatalogRouteContainer.jsx`,
+  `apps/dgfy-storefront/src/modes/services/storefront/components/ServicesCatalogToolbar.jsx`,
+  `apps/dgfy-storefront/src/modes/services/storefront/components/ServicesCatalogToolbar.test.jsx`,
+  `apps/dgfy-storefront/src/modes/services/storefront/components/ServicesPerformanceSidebar.jsx`,
+  `apps/dgfy-storefront/src/modes/simple/storefront/components/SimpleCatalogToolbar.jsx`,
+  `apps/dgfy-storefront/src/modes/simple/storefront/components/SimpleCatalogToolbar.test.jsx` (new).
+- **Numbering note (merge resolution addendum):** the "Next eligible phase" pointer below was
+  updated from this entry's original 290 to **291** during this PR's first fix round, since #1581
+  (Wave C/C5) had confirmed live it was taking **290** for itself. Confirmed again on this PR's
+  MERGE-1 fix round: #1581 has since actually merged as Phase 290 (immediately below), whose own
+  trailing pointer independently also reads **291** — consistent with this line, no further change
+  needed.
+- Next eligible phase: 291 (290 is #1581's own landed claim, merge commit
+  `999864cf3b0e59bb533dd119cebf61baa8d2c707`).
+
+## Phase 290 - Wave C/C5: POS's own "Additional Categories" item-edit section (#1318)
+
+- **Numbering note:** originally claimed Phase 288 (the ledger tip at this PR's open time was
+  Phase 287, and `gh pr list --repo Sieitzz/dgfy-platform --base develop --state open` returned no
+  open PRs at investigation/open time). By the time this branch merged fresh `origin/develop`, PR
+  #1586 ("fix/pos-receipt-search-discount-hardening") had already landed and its own ledger entry
+  had independently claimed 288 too, for unrelated work ("Multiple Senior/PWD Beneficiaries Per POS
+  Order", above) — a genuine collision, not detectable at this PR's own open time since #1586 was
+  not yet open then. Per AGENTS.md's Continuous Phase Numbering rule 5 (preserve already-landed
+  numbers, never renumber a landed entry), #1586's 288 stays as landed and this entry renumbers
+  instead. It does **not** take 289 either, even though 288's own "Next eligible phase" line above
+  says 289: another open, unmerged PR (#1583, Wave C/C2 — storefront grouping surfaces fan out to
+  secondary categories, same #1318 program) already carries its own diff claiming Phase 289 for
+  different work, confirmed live via `gh pr diff 1583` at the time of this resolution — the exact
+  same check Phase 287's own numbering note (above) used to avoid an identical collision one round
+  earlier. Taking 289 anyway would just reproduce that collision one number later, so this entry
+  takes 290 instead, the next number neither develop's tip nor any open PR's diff claims as of this
+  resolution.
+- Initiative/release: Item multi-category membership epic (#1318), Wave C/C5 — POS authoring-UI
+  reach gap. Independent of C2 (also Wave C), run in a separate parallel worktree per the dispatch
+  brief; touches no file C2 is scoped to.
+- Objective and scope: Phase 268 (PR #1515) built the "Additional Categories" secondary-category
+  membership editor for IMS inside `ItemFormModal.jsx`, using the `listItemFolders`/
+  `replaceItemFolders` client functions Phase 257 (PR #1503) shipped. POS has no route sharing that
+  component — its item editor is a completely separate, hand-built modal inline in
+  `TerminalOperationsWorkspace.jsx`. This phase adds the same capability there: a new section in the
+  edit modal's existing Category & QR column, adapted to this file's `activeEditItem`-based state
+  (no `itemIdForFolders`-equivalent create/edit ambiguity exists here, since this modal only ever
+  opens for an already-persisted item — item creation is a fully separate `createForm` flow in the
+  same file), reusing the existing `canManageCategories` prop (`categories:manage` permission,
+  confirmed identical to `ItemFormModal.jsx`'s `canManageFolders`) rather than inventing a new
+  permission check. No backend change — the write API already existed and is unchanged.
+
+  Fix round 1 (PR #1581 review, Codex — RF-1/RF-2/RF-3): RF-1 (blocker) closed a client-side gap
+  where a staged-but-unsaved primary category change in the same edit modal could produce a
+  primary/secondary disjointness violation (ADR 0080 Decision 2) once "Save Additional Categories"
+  and "Save Item" landed in a particular order — fixed with a `pendingPrimaryFolderId`/
+  `excludedPrimaryFolderIds` pair excluding both the persisted and staged-pending primary, a cleanup
+  effect for a selection that becomes excluded mid-edit, and a save-time payload re-filter. RF-2
+  (should-fix) added real max-10-boundary and pre-existing-membership runtime test coverage the
+  original test file lacked. RF-3 (should-fix) added a `secondaryFoldersUnavailable` state
+  distinguishing an HTTP 403 (permission failure) from a genuinely empty membership list, rendering
+  an honest "unavailable" status instead of a false `0/10 selected` — frontend-only, no backend
+  permission model change.
+- Status: completed.
+- Dependencies: Phase 257 (`item_folder_memberships` schema, `listItemFolders`/`replaceItemFolders`
+  client functions) and Phase 268 (the IMS UX/behavior pattern this phase mirrors), both already
+  shipped.
+- Acceptance and validation evidence: `packages/web-core/src/features/pos/__tests__/additionalCategoriesEdit.behavior.test.jsx`
+  (11/11 passing — 2 original runtime cases (renders/excludes-primary/saves for an authorized
+  manager; visible-but-read-only when `canManageCategories` is `false`) + 2 RF-1 cases (staged
+  primary excluded, including the exact reproduction sequence) + 2 RF-2 cases (max-10 boundary;
+  pre-existing memberships load/preserve/remove/add correctly) + 3 RF-3 cases (authorized read;
+  unauthorized 403 read even with a stale client-side `canManageCategories=true`; non-403 failure
+  still degrades to the prior empty-list behavior) + 2 source-contract cases); full
+  `packages/web-core/src/features/pos/__tests__/` suite (147 files / 917 tests passing, zero
+  regressions); `npm run build:pos` (succeeded); `npm run check:architecture`;
+  `npm run check:compliance` (declaration:
+  `docs/compliance/impact-declarations/2026-09-04-pos-additional-categories-edit.md`, which also
+  states why no ADR 0080 amendment is needed — a write-side UI addition reusing an unchanged,
+  already-declared write API, not a change to any Decision 1 `[binding]` money-adjacent reader, and
+  documents the fix-round-1 findings and their resolutions in full).
+- Completion date: 2026-09-04.
+- Contracts/files: `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+  (new Additional Categories section, state, fetch/save effect pair, and `listItemFolders`/
+  `replaceItemFolders` imports from `itemService.js`; fix round 1's `pendingPrimaryFolderId`/
+  `excludedPrimaryFolderIds`/`secondaryFoldersUnavailable`),
+  `packages/web-core/src/features/pos/__tests__/additionalCategoriesEdit.behavior.test.jsx` (new),
+  `docs/compliance/impact-declarations/2026-09-04-pos-additional-categories-edit.md` (new), issue
+  #1318.
+- Next eligible phase: 291.
+
+## Phase 291 - Root-cause and dispose of `check_whitespace`/`audit_indexes` advisory failures (#1552)
+
+- Initiative/release: Quality-gate trust epic (#1124), continuing Phase 272's own triage of the
+  advisory-failure backlog / current release process.
+- Objective and scope: root-cause the two remaining un-triaged repeat-advisory-failure steps in
+  `promotion-quality-gate.yml` (`Check changed-file whitespace`, `repository-quality`, 6/13
+  recurrence; `Audit required indexes`, `dgfy-api-quality`, 3/13 recurrence) and give each an
+  explicit disposition — deliberately asymmetric, not forced into symmetry. `check_whitespace`:
+  fixed via a new `.husky/pre-commit` whitespace guard (the CI step was catching genuine violations
+  with nothing upstream stopping them landing first) and flipped blocking, its first recorded
+  disposition, joining `check-pr-quality-workflow.js`'s `BLOCKING_STEP_IDS['repository-quality']`
+  and the reporter's `BLOCKING_STEP_NAMES` set. `audit_indexes`: root-caused to an orphaned
+  `test_tenant_schema-bootstrap-idempotent_*` fixture (survives into this step only when the
+  preceding test-matrix step's process dies before its own `afterEach` cleanup, #1432's already-
+  tracked OOM class) being audited as a real tenant; fixed by turning on
+  `SCHEMA_INDEX_AUDIT_MODE`/`SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS` in the step's `env:` block
+  (config-only, activating an already-existing, already-unit-tested exclusion filter this exact
+  scenario already covers), but deliberately kept tracked-advisory-with-reason pending one post-fix
+  evidence cycle, per this repo's own evidence-gating discipline (#1431 Phase C) — the flake surface
+  a live MySQL container's state carries is not the same class as `check_whitespace`'s pure diff
+  check.
+- Status: in_progress. `audit_indexes`'s blocking-flip criterion (a real `release/*→main` promotion
+  run green post-fix, or a `workflow_dispatch` scratch-branch run confirming both a clean pass and,
+  ideally, a fault-probe) is explicitly not verifiable at merge time — see the amendment below.
+- Dependencies: #1124 (advisory-failure evidence pipeline), #1432 (OOM-orphan corroboration), #1469
+  (`run_test_matrix`'s own still-open, related gating), #1557 (hand-synced `BLOCKING_STEP_IDS`/
+  `BLOCKING_STEP_NAMES` drift risk — not fixed by this phase, only not made worse).
+- Acceptance and validation evidence: `npm run check:pr-quality-workflow && npm run
+  test:pr-quality-workflow` (41/41, fixture updated for `check_whitespace`'s new blocking-step
+  shape); `npm run lint:docs`; manual pre-commit hook smoke test (staged a deliberately
+  trailing-whitespace line, confirmed `git commit` blocked pre-fix / clean post-fix). The
+  `audit_indexes` local repro against a live MySQL test DB (orphaned-tenant fixture reproducing
+  `missing=3` without the new env vars, `missing=0`/`excluded_databases` with them) **did not run**
+  in this phase's implementation environment — no local MySQL/Docker was available — stated here
+  truthfully rather than claimed; the available evidence for the exclusion-filter mechanism itself
+  is `schemaIndexAuditService.test.js`'s existing "excludes test_tenant_* databases in local mode
+  when configured" unit test at the service layer (not re-run in this phase either, since that
+  app's `node_modules` isn't installed in the same environment), which this phase's env-var change
+  wires the CI *workflow* into without altering. `node scripts/check-app-version-bump.js` (no bump
+  expected, CI-tooling/docs-only change, confirmed); the next real promotion run's, or a
+  `workflow_dispatch` scratch-branch run's, `promotion-quality-gate.yml` result remains the pending
+  validation criterion for the open acceptance box above — including first confirming the local
+  repro (or an equivalent CI-side fault probe) against a real database, not assumed from the unit
+  test alone.
+- Completion date: pending (see Status).
+- Contracts/files: `.husky/pre-commit`, `.github/workflows/promotion-quality-gate.yml`,
+  `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issue #1552.
+- Next eligible phase: 292.
+
+## Phase 292 - Reconcile the redundant haversine outside_radius_flag against the road-distance pipeline (#1565, #478 residue)
+
+- Initiative/release: Customer delivery pricing (epic #1321), closing out the #478 residue named in
+  Pat's 2026-09-01 closing comment on that issue.
+- Objective and scope: decide and execute one of #1565's two named options for
+  `pos_transactions.outside_radius_flag` and its legacy haversine helper -- retire, or give it a
+  real consumer. **Decision: retired.** Confirmed write-only with zero consumers anywhere in the
+  backend or any of the three frontend apps (`packages/web-core`, `apps/dgfy-pos`, `apps/dgfy-ims`,
+  `apps/dgfy-storefront` all grepped, zero hits other than an unrelated, differently-scoped
+  `haversineDistanceKm` in `apps/dgfy-storefront`'s own discovery-map math, untouched by this
+  phase) before this phase started. Option 2 (wire it into a real decision path, e.g. a cheap
+  pre-filter ahead of the road-distance call) was rejected: #1565 explicitly puts
+  `resolveStoreDeliveryFee`, the road-distance capture/await pipeline, and ADR 0078 Decision 2's
+  enforcement logic out of scope, and any genuine "real consumer" wiring would have to touch one of
+  those to matter -- so Option 2 was not actually available under this ticket's own boundary, not
+  merely declined. Removed `haversineDistanceKm`/`resolveDeliveryRadiusFlag`
+  (`storeUseCases.js`), the `outside_radius_flag` column (new migration
+  `20260909000001-drop-outside-radius-flag.cjs`, fanning out over the landlord + every active
+  tenant DB, mirroring the `20260902000001` pattern) and `PosTransaction` model field, and every
+  read/write site (the quote-response field, the `PosTransaction` create payload, the
+  order-serialization echo). Fixed the resulting live ordering-dependency gap in
+  `sync-tenant-schemas.js`'s `delivery_distance_meters` self-repair entry (re-anchored off
+  `store_customer_id` instead of the now-retired column). The ticket's second named gap (`false` vs
+  `null`/unknown for the missing-coordinate case) is **moot as a result of the retirement decision**
+  -- stated explicitly per the ticket's own instruction, rather than silently dropped: there is no
+  `resolveDeliveryRadiusFlag` left to return either value.
+- Status: completed.
+- Dependencies: #478 (closed, this phase's own origin).
+- Acceptance and validation evidence: new `storeOutsideRadiusFlagRetirement.unit.test.js` (7
+  tests) -- structural guards that the retired identifiers are gone from
+  `storeUseCases.js`/`posUseCases.js` and from the `PosTransaction` model, and that a checkout with
+  a delivery pin ~85km outside the location's `delivery_radius_km` (exactly the case the old
+  haversine logic would have flagged `true` for) persists no `outside_radius_flag` key anywhere,
+  while the real `delivery_out_of_range` signal (ADR 0078 Decision 2) stays present and unaffected.
+  Full existing store-checkout regression suite (12 files, 157 tests) and
+  `posOrderRejectionAndAddressEdit.usecase.test.js` (8 tests) pass unedited. `node --check` on
+  every changed/new `apps/dgfy-api`/`apps/dgfy-migration-runner` file; `npm run
+  check:architecture` (54 modules, 94 controller files, OK); `npm run lint:docs` (29 docs, 88
+  ADRs, confirms ADR 0078's `status: accepted -> amended` amendment validates); `node
+  scripts/check-tenant-schema-registry-coverage.js --staged` (PASS, 1 migration file); `npm run
+  check:compliance` (confirmed to fail first listing the two sensitive files, then pass once
+  `docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md` was
+  added); `node scripts/check-app-version-bump.js --staged` (PASS, `dgfy-api` 1.2.1->1.2.2,
+  `dgfy-migration-runner` 1.0.1->1.0.2, patch-by-default per ADR 0081's `develop`-PR mode). Not
+  exercised: a real migration `up`/`down` run against a live multi-tenant MySQL instance -- no
+  reachable database was available from this dispatch context; the migration's
+  `information_schema`-guarded fan-out logic is structurally identical to the already-shipped
+  `20260902000001` migration it mirrors.
+- Completion date: 2026-09-04; PR (this phase's own).
+- Contracts/files: `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/models/PosTransaction.js`, `apps/dgfy-api/scripts/sync-tenant-schemas.js`,
+  `apps/dgfy-migration-runner/migrations/20260909000001-drop-outside-radius-flag.cjs`,
+  `apps/dgfy-api/tests/storeOutsideRadiusFlagRetirement.unit.test.js`,
+  `docs/architecture/adr/0078-customer-delivery-fee-modes.md` (Amendment),
+  `docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md`,
+  issues #1565, #478.
+- Next eligible phase: 293.
+
+## Phase 293 - Promotion parity gate resolves candidate source identity per app, not manifest-wide (#1610, epic #1548 Wave 4 residue)
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: found live during candidate `2026-09-05-01`'s first real promotion --
+  `check-image-version-parity.js` FAILed for `dgfy-api`/`dgfy-migration-runner` because ADR 0081
+  Decision 8's original design applied one manifest-wide `current_staging_sha` to every app when
+  stamping PROD, even for an app a staging repair never touched (that app's STAGING image still
+  legitimately carried the earlier identity). Decision 7 (binding tag immutability) and the original
+  Decision 8 (uniform identity) turned out mutually exclusive for exactly that case. **Design
+  decision: candidate source identity is now resolved per app**, not once per candidate -- an app
+  never named in any repair's `apps_touched` keeps the initial revision's SHA for the candidate's
+  entire life. Recorded as a dated `[default]`-tier Amendment on ADR 0081 (no superseding ADR
+  needed, per ADR 0039) rather than the other two candidates the issue named: loosening Decision 7's
+  tag-immutability guard (rejected -- that's the one `[binding]` system invariant this ADR asks to
+  be a hard constraint, and "content-equivalent rebuild" is hard to prove robustly; the actual root
+  cause is stamping precision, not that guard) or special-casing the mismatch as an accepted PASS
+  category (rejected -- that would mask a genuine future stamping regression instead of fixing the
+  label, since the parity gate would stop actually comparing anything for that case).
+- Mechanically: `scripts/check-promotion-candidate.js` gains a required `apps_touched` array on
+  every `staging_repair` manifest revision and a new `resolveCandidateSourceShaByApp()` function
+  (plus a `--resolve-app-shas` CLI mode); `scripts/check-image-version-parity.js --manifest` resolves
+  each app's candidate source identity independently instead of one shared value, and each result
+  entry now reports its own resolved `candidate_source_sha`; `deploy-main.yml`'s single
+  `candidate_source_sha` workflow_dispatch input becomes four inputs matching its existing `build_*`
+  boolean groups (`candidate_source_sha_api` covers both `dgfy-api`/`dgfy-migration-runner`, one
+  each for the three frontends); a new `checkDeployMainCandidateSourceShaWiring` shape check in
+  `scripts/check-deploy-version-stamping-workflow.js` guards that wiring, mirroring the existing
+  `checkOrchestratorCandidateSourceShaWiring`. `deploy.yml`/`deployment-orchestrator.yml`'s STAGING
+  dispatch is unchanged -- it was never the source of this bug (an app skipped there via `build_*
+  =false` simply keeps its previous label untouched, so its one shared `candidate_source_sha` value
+  always already matches whatever IS being rebuilt in that exact dispatch).
+- Status: completed.
+- Dependencies: Phase 279 / ADR 0081 Decision 8 (#1588), which this phase amends rather than
+  supersedes. #1610.
+- Acceptance and validation evidence: `node --test scripts/check-promotion-candidate.test.js` (16/16
+  -- 7 new: `apps_touched` validation x4, `resolveCandidateSourceShaByApp` behavior x4, one of which
+  is shared with the validation group); `node --test scripts/check-image-version-parity.test.js`
+  (33/33 -- 1 new regression test reproducing #1610's exact untouched-app scenario against two real,
+  resolvable SHAs in this repo's own history); `node --test
+  scripts/check-deploy-version-stamping-workflow.test.js` (42/42 -- 5 new, including one asserting
+  the real `deploy-main.yml` passes the new wiring shape); manually reproduced #1610's own reported
+  scenario against a synthetic manifest matching candidate `2026-09-05-01`'s real SHAs and
+  `apps_touched` split (`dgfy-api`/`dgfy-migration-runner` correctly resolve to the pre-repair SHA
+  `d495514e2...`, the three repaired frontends to the post-repair SHA `b1459dad7...` -- exactly the
+  pair the issue reported as a false-positive mismatch). YAML-parsed `deploy-main.yml`;
+  `node scripts/check-deploy-version-stamping-workflow.js` (PASS against the real files);
+  `npm run lint:docs` (29 governed docs, OK), `npm run check:adr` (88 ADRs, OK -- ADR 0081's new
+  Amendment block validates), `npm run check:architecture` (OK), `npm run check:compliance` (no
+  compliance-sensitive changes detected -- no `apps/*` runtime code touched), `node
+  scripts/check-app-version-bump.js` in PR mode (no changed-app version-bump requirements apply --
+  this phase touches only `scripts/`, `.github/workflows/`, `docs/`, and `.agents/skills/`, none of
+  it `apps/*` or a `packages/*` fan-out dependency). No real `to-staging/<candidate_id>` or
+  `release/<candidate_id>-rN` promotion has run against this mechanism yet -- everything above is
+  unit-tested and shape-verified against this repo's real files and #1610's own real reported SHAs,
+  not exercised end to end against a live GHCR push/build. The issue's own third Definition-of-done
+  item ("re-run the parity gate against a future repaired candidate to confirm the fix actually
+  resolves the mismatch class") is explicitly NOT satisfied by this phase -- it needs a real future
+  promotion with a real partial repair, which cannot be manufactured here; left open for the next
+  candidate that repairs only some apps.
+- Completion date: 2026-09-04.
+- Contracts/files: `scripts/check-promotion-candidate.js` + its test file (both extended),
+  `scripts/check-image-version-parity.js` + its test file (both extended),
+  `scripts/check-deploy-version-stamping-workflow.js` + its test file (both extended),
+  `.github/workflows/deploy-main.yml` (single `candidate_source_sha` input split into four),
+  `.agents/skills/promoter/references/promotion-runbook.md` (`apps_touched` recording obligation,
+  per-app PROD dispatch), `docs/architecture/adr/0081-per-app-container-semantic-versioning.md`
+  (2026-09-04 Amendment, `status: amended`), `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/testing/release-go-no-go-checklist.md` (both: per-app resolution noted), issue #1610.
+- Next eligible phase: 294.
+
+## Phase 294 - POS thumbnail render fix + storefront-fallback for #218 (#265 epic, PR 1 of the epic)
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
+- Objective and scope: first PR of the #265 epic (client-side image conversion + thumbnail render
+  fix). Extracts a shared `ResponsiveImage` presentational shell
+  (`packages/web-core/src/components/media/ResponsiveImage.jsx`) and a generic
+  `buildImageVariantSources` utility (`packages/web-core/src/utils/imageVariantSources.js`) from
+  three near-duplicate implementations, migrates `POSCheckoutTerminalView.jsx` onto the shared
+  shell, and thin-wraps `StorefrontResponsiveImage.jsx` over it. Fixes every POS/IMS render site
+  that was loading a flat 1920px `large` image (or a bare string URL with no variant awareness) into
+  a small slot -- worst cases: `ItemsPage.jsx`'s `h-16 w-20` POS-menu cell and
+  `SelectedItemImageCarousel`'s thumbnail strip -- across `ItemsPage.jsx`,
+  `StorefrontImageCarousel.jsx`, `SelectedItemImageCarousel.jsx`, `ItemFormModal.jsx`,
+  `POSSetupStep.jsx`, `apps/dgfy-ims/Pages/Settings.jsx`, `TerminalOperationsWorkspace.jsx`,
+  `SkupervisorPOSCheckoutTerminal.jsx`, and `POSDiscountWorkspace.jsx`. This enforces ADR 0014's
+  existing "POS catalog cards request the thumbnail variant" clause (Hosted POS Image Delivery And
+  Navigation Addendum, 2026-07-23) rather than changing it -- no ADR amendment. Also fixes #218: two
+  `posRepository.js` sites (`listCatalogOverrides`, `resolveCatalogScan`) computed `pos_image_url`
+  inline from the POS override alone instead of calling the already-existing
+  `resolvePosDisplayImage`/`loadStorefrontCatalogImageMap` helpers (already correctly wired into
+  `applyCatalogOverrides`/`listCatalog` since #871) -- so a POS item with only a storefront image
+  (no POS-specific override) rendered blank on the Items page and on barcode-scan lookup.
+  `resolvePosDisplayImage` gains an additive `.source` field (`'override' | 'storefront' | null`).
+  Adds `storeOptimizedImageAsset` CPU/wall-time instrumentation (`imageAssetStorage.js`, 8-field
+  structured log on the success path only) as a pre-change baseline ahead of Phase 295's AVIF-drop
+  measurement. Out of scope for this phase: Phase 295 (AVIF drop), Phase 296 (client-side encoder),
+  Phase 297 (upload contract), any new npm dependency, and extracting the now four-times-duplicated
+  gallery-normalizer helper.
+- Status: planned.
+- Dependencies: none blocking (Phase 293 is unrelated). Precedes Phases 295-297 of the #265 epic.
+- Acceptance and validation evidence: see the PR's own `## Testing Evidence` section (Tier 0:
+  `build:pos`/`build:store`/`build:skupervisor`, `node --check` on the two changed `apps/dgfy-api`
+  files, lockfile sync for the three bumped apps, `check-app-version-bump.js`,
+  `check:architecture`/`check:compliance`/`lint:docs`/`check:adr`).
+- Completion date: not yet completed -- status remains `planned` until this PR merges and its
+  evidence is filled in.
+- Contracts/files: `packages/web-core/src/components/media/ResponsiveImage.jsx` (new),
+  `packages/web-core/src/utils/imageVariantSources.js` (new),
+  `packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx`,
+  `apps/dgfy-storefront/src/shared/components/storefront/StorefrontResponsiveImage.jsx`,
+  `packages/web-core/src/features/inventory/pages/ItemsPage.jsx`,
+  `packages/web-core/Components/items/StorefrontImageCarousel.jsx`,
+  `packages/web-core/Components/items/SelectedItemImageCarousel.jsx`,
+  `packages/web-core/Components/items/ItemFormModal.jsx`,
+  `packages/web-core/Components/products/wizard/POSSetupStep.jsx`,
+  `apps/dgfy-ims/Pages/Settings.jsx`,
+  `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`,
+  `packages/web-core/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx`,
+  `packages/web-core/src/features/pos/components/POSDiscountWorkspace.jsx`,
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/src/modules/shared/utils/imageAssetStorage.js`,
+  `docs/compliance/impact-declarations/2026-09-05-pos-thumbnail-render-fix-and-storefront-fallback.md`,
+  `apps/dgfy-ims/package.json` (1.2.3 -> 1.2.4), `apps/dgfy-pos/package.json` (1.2.3 -> 1.2.4),
+  `apps/dgfy-storefront/package.json` (1.3.4 -> 1.3.5), issues #265/#218.
+
+## Phase 295 - deploy-main.yml auto-skips a build whose version tag is already published and content-unchanged, preventing Decision 7 from being unnecessarily tripped (#1610, epic #1548 Wave 4 residue)
+
+Renumbered from this branch's original "Phase 294" -- #265's own Phase 294 entry (below, in this
+same conflict) landed on `develop` first via PR #1635 while this PR was still in flight, so this
+entry moves to the next open slot per `AGENTS.md`'s Continuous Phase Numbering rule rather than
+colliding. No other content changed.
+
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: found live via #1610's own two follow-up comments (07:41, 07:53), a second,
+  distinct symptom of the same root gap Phase 293 above closed half of. `deploy-main.yml` rebuilds
+  every app on every dispatch by default -- its four `build_*` inputs are manual, and the promoter's
+  own documented runbook never sets them (confirmed directly against
+  `.agents/skills/promoter/references/promotion-runbook.md`'s two canonical dispatch commands). A
+  retry after one app's build fails ADR 0081 Decision 7's tag-immutability guard therefore
+  re-rebuilds every app that already succeeded too, tripping the SAME guard for each of them in
+  turn -- not a single-incident fluke but the guaranteed behavior of "always rebuild everything, and
+  Decision 7 always refuses a second publish of an unchanged tag." PRs #1624/#1625/#1630 were
+  hand-rolled workarounds for this same recurring symptom before this mechanism. **Design decision:**
+  compute, per app, whether a build can be safely SKIPPED (tag already published under the current
+  revision, or under a different revision with byte-for-byte-unchanged tracked build inputs) --
+  rejected two other candidates the issue's own investigation named: loosening Decision 7 for a
+  content-equivalent rebuild (rejected -- a `[binding]` clause change needs its own deliberate
+  superseding-ADR process, not a ride-along on an unblock, and turned out unnecessary once the actual
+  fix was "never attempt the doomed build" rather than "make the doomed build succeed") and the
+  parity-gate PASS-category candidate from the issue's earlier scope (shelved, not built, not
+  re-argued -- a different mechanism from what actually blocks real dispatches). Recorded as a dated
+  `[snapshot]`-tier Amendment on ADR 0081 (no superseding ADR needed, per ADR 0039, since Decision 7
+  itself is unmodified and still runs unconditionally in every build that is actually attempted).
+- Mechanically: new `scripts/resolve-build-skip-plan.js` exports a pure `decideBuildSkip()` (plus
+  `resolveBuildSkipPlan()` across all five apps and a CLI printing one JSON blob, mirroring
+  `check-promotion-candidate.js --resolve-app-shas`'s convention) that reuses
+  `check-tag-immutability.js`'s `decideImmutability`/`runInspect` (the latter newly exported, no
+  behavior change) for the registry read, and `check-app-version-bump.js`'s
+  `resolveFileDependencyPackages`/`readVersionAt`/`APPS` for the dependency-fan-out and version-read
+  logic -- no second GHCR inspector or dependency-graph resolver was written. Content-equivalence
+  path scope is `apps/<app>/` + resolved `file:` deps + `infrastructure/docker/<app>/` --
+  deliberately WIDER than `check-app-version-bump.js`'s own `detectChangedApps()` scope, since a
+  Dockerfile-only change genuinely changes the built image without requiring a version bump under
+  Decision 6. `.github/workflows/deploy-main.yml` gains a new `resolve-build-plan` job (`needs:
+  guard-branch`, full checkout with `fetch-depth: 0` since the content diff needs to reach an
+  arbitrary, dynamically-discovered "already published" revision no shallow checkout would contain);
+  each of the five build jobs' `if:` gains `needs.resolve-build-plan.outputs.should_build_<app> ==
+  'true'` alongside its existing `build_*` input check, and each job's `needs:` gains
+  `resolve-build-plan` (referencing a job's outputs in `if:` without listing it in `needs:` is a
+  GitHub Actions parse-time gap, not a runtime failure -- the easy-to-miss mechanical detail this PR
+  had to get right). `dgfy-api`/`dgfy-migration-runner` keep ONE shared `build_api` dispatch
+  checkbox but resolve TWO independent skip verdicts -- genuinely separate images, genuinely
+  separate versions, no deploy-order dependency on their CI build cycles marching in lockstep.
+  `publish`'s `needs:` gains `guard-branch`/`resolve-build-plan` and its `if:` drops the "at least
+  one build succeeded" OR-clause (a real gap found while designing this, not introduced by it -- that
+  clause could never be satisfied by a legitimate "every app is skip-eligible" dispatch, exactly the
+  case this issue's own acceptance criterion names), replaced by gating directly on
+  `needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success'`.
+  `scripts/check-deploy-version-stamping-workflow.js` gains two new shape-check functions
+  (`checkDeployMainBuildSkipPlanJob`, `checkDeployMainPublishGate`) guarding this wiring, mirroring
+  the existing `checkDeployMainCandidateSourceShaWiring`.
+- Fail-closed asymmetry, deliberate and stated in the code's own comments: a per-app indeterminate
+  read (registry unreachable, unreadable/disagreeing label, an undiffable revision) degrades to BUILD
+  for that one app, never to skip -- building unnecessarily costs CI minutes and, at worst, reproduces
+  today's already-loud Decision 7 refusal; skipping unnecessarily would run PROD on stale code with
+  no visible failure. Only a genuine crash of the `resolve-build-plan` job itself (a script bug, not
+  a per-app read -- `resolveBuildSkipPlan()` catches per-app exceptions so one app's freak failure
+  can't crash the plan for every other app) is allowed to halt the whole dispatch, transitively
+  skipping every downstream build the same way a `guard-branch` failure already does today.
+- Status: completed (code), open for deployed verification (see below).
+- Dependencies: Phase 277/279 (#1575/#1588) and Phase 293 above, all of which this phase builds on
+  without modifying. #1610.
+- Acceptance and validation evidence: `node --test scripts/resolve-build-skip-plan.test.js` (17/17 --
+  covers all four outcomes, the fail-closed cases at every layer including an unresolvable-diff
+  case, the dgfy-api/dgfy-migration-runner independence case, and the load-bearing
+  Dockerfile-only-change scope test); `node --test scripts/check-tag-immutability.test.js` (26/26 --
+  confirms the new `runInspect` export didn't disturb anything); `node --test
+  scripts/check-deploy-version-stamping-workflow.test.js` (53/53 -- 11 new: the two new check
+  functions' fixture coverage plus each passing against the real `deploy-main.yml`);
+  `node scripts/check-deploy-version-stamping-workflow.js` (PASS against the real files); YAML-parsed
+  `deploy-main.yml` and inspected its full `needs:` graph directly; `npm run check:adr` (88 ADRs, OK
+  -- ADR 0081's new Amendment validates); `npm run check:compliance` (no compliance-sensitive changes
+  detected -- no `apps/*` runtime code touched, only `.github/workflows/`, `scripts/`, `docs/`); `node
+  scripts/check-app-version-bump.js --staged` (no changed-app version-bump requirements apply -- this
+  phase touches zero `apps/*` directories and zero `file:` dependency packages). **No real
+  `deploy-main.yml` dispatch has run against this mechanism yet** -- there is no YAML schema linter
+  or GitHub Actions expression evaluator in this repo, so the regex-based workflow-shape checks above
+  prove the YAML's text shape, not GitHub Actions' runtime expression semantics
+  (`needs.*.outputs.*` propagation, the all-five-skipped `publish` case, real retry convergence
+  against a real GHCR) -- everything above is unit-tested and shape-verified against this repo's real
+  files, not exercised end to end. This is why the PR uses `Refs #1610`, not `Closes` -- a real
+  dispatch that exercises an already-published, content-unchanged app (ideally the retry-convergence
+  shape the issue's own incident showed) is required before this can be considered fully done.
+- Completion date: not yet deployed-verified; code completed 2026-09-05.
+- Contracts/files: `scripts/resolve-build-skip-plan.js` + its test file (both new),
+  `scripts/check-tag-immutability.js` (one-line `runInspect` export addition, no behavior change),
+  `scripts/check-deploy-version-stamping-workflow.js` + its test file (both extended),
+  `.github/workflows/deploy-main.yml` (new `resolve-build-plan` job; five build jobs' `if:`/`needs:`
+  extended; `publish`'s `if:`/`needs:` revised), `docs/architecture/adr/0081-per-app-container-semantic-versioning.md`
+  (2026-09-05 Amendment, `[snapshot]` tier), `.agents/skills/promoter/references/promotion-runbook.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`, issue #1610.
+- Next eligible phase: 296.
+
+## Phase 296 - Server-only AVIF deprecation and v3 responsive-asset versioning (#265 epic, PR 2 of 5)
+
+Filed as this branch's "Phase 295" in the epic plan doc and in the branch name
+(`fix/295-avif-deprecate-server-encode`) -- renumbered to 296 because Phase 295 was independently
+claimed and merged first by #1610/epic #1548 Wave 4 (PR #1634) while this work was still being
+planned. Per `AGENTS.md`'s Continuous Phase Numbering rule, this entry uses the next open slot
+rather than colliding. No other content differs from the epic plan doc's "Phase 295" section.
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
+- Objective and scope: second PR of the #265 epic. Deprecates (does not remove) AVIF encoding from
+  the upload hot path: `getDeliveryFormats` no longer requests an `avif` format. Because
+  `getDeliveryFormats` already deduplicated the fallback `webp` entry against an explicit one via a
+  `Map`, the drop is classification-dependent, not uniform: photos go from 2 delivery-format
+  families (webp + avif, deduped) to 1 (webp only); graphics go from 3 (png + webp + avif) to 2
+  (png + webp). The exact per-class CPU reduction depends on classification -- graphics see a
+  smaller relative drop than photos -- rather than the flat ~55-65% figure this entry previously
+  cited from Phase 294's instrumented baseline. `RESPONSIVE_ASSET_VERSION` bumps to 3; the
+  hardcoded `-v2-` folder-recognition regex in both `deriveImageAssetVariantUrls` (URL derivation)
+  and `removeOptimizedImageAsset` (delete-path folder recognition -- the #1379/#871 incident site)
+  becomes a capturing, version-parsing pattern shared via one module constant, so a v3 folder is
+  still correctly recursed on delete and a v2 folder's URLs still resolve `.avif` unaffected --
+  zero migration for existing assets. `AVIF_QUALITY_STEPS` and the `encoder === 'avif'` branches in
+  `buildVariantOutput` are retained, marked `@deprecated`, not deleted -- kept for potential future
+  reactivation or offline/manual AVIF regeneration. Also hardens `classifyImageAsset` with an
+  optional `sourceMimeHint` and a `sharp.metadata()` alpha heuristic (precedence: hint -> metadata
+  -> reported MIME, unchanged today when both are omitted) and adds a new export
+  `deriveVariantsFromAcceptedLarge` -- neither is wired into any caller in this PR; both exist so
+  Phase 297 (upload contract + fan-out) is a wiring change, not new logic. Out of scope: any
+  frontend/`packages/web-core` change (none needed for this drop -- every consumer already
+  null-guards a missing `avif` key), Phase 296's own client encoder module (a different,
+  unfortunately-same-numbered-in-the-old-scheme phase -- see the epic doc's now-stale "Phase 296"
+  heading, which this ledger entry's number does not correspond to), and Phase 297's upload-contract
+  wiring.
+- Status: completed.
+- Dependencies: Phase 294 (#1635, merged) -- relies on its CPU/wall-time instrumentation in
+  `storeOptimizedImageAsset` as the pre-change baseline. Precedes Phase 297 (upload contract) and
+  Phase 298 (rollout) of the #265 epic, which both consume the `sourceMimeHint`/
+  `deriveVariantsFromAcceptedLarge` surface added here.
+- Acceptance and validation evidence: `node --check` on the changed module (dgfy-api has no build
+  step); `apps/dgfy-api/package-lock.json` unchanged (`git diff --exit-code` clean -- only the
+  `version` field changed, no dependency change); `node scripts/check-app-version-bump.js --staged`
+  (dgfy-api 1.3.0 -> 1.3.1, PASS); `npm run check:compliance` (no compliance-sensitive changes
+  detected); `npm run check:architecture`; `npm run check:adr` (validates the ADR 0017 amendment);
+  `npm run lint:docs`; updated/new unit tests in
+  `apps/dgfy-api/tests/imageAssetStorage.util.test.js` (existing avif/version assertions updated for
+  v3; new coverage for the v2/v3 `deriveImageAssetVariantUrls` gate, the `removeOptimizedImageAsset`
+  v2/v3 folder-recognition regression matrix, the `classifyImageAsset` precedence table, and a
+  `deriveVariantsFromAcceptedLarge` smoke test) -- see the PR's Testing Evidence for exact results.
+- Completion date: 2026-09-06.
+- Contracts/files: `apps/dgfy-api/src/modules/shared/utils/imageAssetStorage.js`,
+  `apps/dgfy-api/tests/imageAssetStorage.util.test.js`,
+  `apps/dgfy-api/package.json` (1.3.0 -> 1.3.1),
+  `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md` (2026-09-06
+  Amendment), issue #265.
+- Next eligible phase: 297.
+
+## Phase 297 - Shared template-schema setup for the backend db test tier (#1015 residue, #925)
+
+Filed as this branch's "Phase 296" while planning started, before `origin/develop` moved --
+renumbered to 297 because 296 was independently claimed and merged first by the #265 epic's
+server-only AVIF deprecation PR (#1636) while this work was in flight. Per `AGENTS.md`'s Continuous
+Phase Numbering rule, this entry uses the next open slot rather than colliding. No other content
+differs from what was originally drafted.
+
+- Initiative/release: Backend test matrix fast/db-tier split (#1015) / current release process.
+  #1015's own checklist had already mostly shipped by PR #1023/#1124/#1452 before this phase started
+  (tier split, `verbose: false`, per-chunk timing, most of the cold-boot reduction) -- the one
+  genuinely open lever left was collapsing the three schema-repair layers the db tier pays on every
+  invocation into one shared setup, which is what this phase does. `run-fnb-readiness-gate.js`
+  consolidation stayed split out to #1025, unchanged by this phase.
+- Objective and scope: `createTestTenant()`'s `tenantSeq.sync({force:true})` -- a full ~139-table
+  DDL creation measured at ~235s during #1432 planning -- ran once per test tenant, ~10x per db-tier
+  run, and was the db tier's dominant remaining cost. `CREATE TABLE...LIKE` was disqualified before
+  implementation started: the tenant model set carries real FK constraints (24 explicit
+  `references:` blocks + 660 belongsTo/hasMany associations, only 3 explicit `constraints:false`
+  opt-outs), and `LIKE` preserves columns/indexes but not foreign keys. Built an FK-preserving
+  `SHOW CREATE TABLE` replay instead -- functionally equivalent to a `mysqldump --no-data` replay,
+  over the existing mysql2/Sequelize connection, no new external CLI dependency (the self-hosted
+  runner's host toolset can't be assumed to include mysql client tools).
+- Mechanically: `scripts/run-backend-test-matrix.js`'s `runDbTier()` gained
+  `provisionTemplateTenantDatabase()`, called once per matrix invocation (never per chunk, never
+  from `runFastTier()` -- unreachable by construction, not by a runtime DB-reachability check) to
+  build a deterministically-named `test_tenant_template_<targetSha>` database via the same
+  `getTenantModels()` + `sync({force:true})` call `createTestTenant()` makes today, in its own child
+  process (same spawnSync pattern `runSchemaPreflight()` already used). The template DB name is
+  exported to every db-tier chunk via `BACKEND_TEST_MATRIX_TEMPLATE_DB`. `runSchemaPreflight()` also
+  now runs `ensureLandlordTenantSchemaReady()` once itself (against the same landlord test database
+  every chunk connects to) and, on success, sets `BACKEND_TEST_MATRIX_LANDLORD_READY=true` on every
+  chunk's env -- an honest signal, not just an assertion, since the matrix's own preflight actually
+  ran those 24 probes first. `testTenantHelper.js`'s `createTestTenant()` clones from the template
+  when `BACKEND_TEST_MATRIX_TEMPLATE_DB` is set (`SHOW CREATE TABLE <template>.<table>` read, replay
+  against the tenant's own connection with `FOREIGN_KEY_CHECKS` disabled for the whole clone, pinned
+  to one physical connection via an explicit transaction since the flag is session-scoped) and falls
+  back to today's `sync({force:true})` when it is absent -- required so a bare `npm test` inside
+  `apps/dgfy-api`, or any single-file `npx jest`, keeps working with zero new env setup.
+  `landlordSchemaReadiness.js`'s `ensureLandlordTenantSchemaReady()` gained a module-scope
+  single-in-flight-promise memoization (concurrent callers in one process await the same run instead
+  of re-probing) plus the `BACKEND_TEST_MATRIX_LANDLORD_READY` short-circuit. Template DB lifecycle
+  ownership: the matrix runner itself drops it in a `try`/`finally` around `runDbTier()` after every
+  chunk completes -- deliberately not `globalTeardown.cjs`, which runs once per chunk's own Jest
+  process and would otherwise race ~5 processes to `DROP` a database other chunks still need; the
+  drop is best-effort (logs a warning, never throws).
+- `--skip-schema-preflight` keeps its exact pre-existing meaning: no template is built either, every
+  chunk falls back to its own per-tenant sync. `partitionByDbManifest()`'s stale-entry throw and the
+  manifest itself are unchanged. The fast tier's `DB_HOST=127.0.0.1`/`DB_PORT=1` guardrail is
+  untouched -- the new functions are only ever called from `runDbTier()`.
+- Status: completed (code), measured against a real CI dispatch -- see below.
+- Dependencies: #1023/#1124/#1452 (already shipped #1015 checklist items, not re-done here); #1025
+  (the `run-fnb-readiness-gate.js` consolidation this phase does not touch); #1432 Phase 249 (fixture
+  rot fix, a #1469 precondition this phase does not re-verify).
+- Acceptance and validation evidence: see the PR's own `## Testing Evidence` section for the full
+  before/after `promotion-quality-gate.yml` dispatch comparison (db-tier total and per-chunk
+  `duration_ms`, identical pass counts, `rtr_verification.test.js` evidence for #925) and links to
+  the closed #925 and the #1469 correction comment.
+- Completion date: see PR merge date; #925 closed independently of this PR's merge, per Pat's
+  explicit call recorded in the campaign plan.
+- Contracts/files: `scripts/run-backend-test-matrix.js`,
+  `apps/dgfy-api/tests/helpers/testTenantHelper.js`,
+  `apps/dgfy-api/tests/helpers/landlordSchemaReadiness.js` (all modified);
+  `apps/dgfy-api/tests/globalTeardown.cjs` deliberately left unmodified (see ownership decision
+  above). Issues #1015, #925, #1469 (comment only, not closed by this phase).
+- Next eligible phase: 298.
+
+## Phase 298 - `scripts/check-release-notes.js` enforcement, wired advisory into `promotion-quality-gate.yml` (ADR 0082 Decision 8, epic #1548, #1278 PR 2 of 2)
+
+Filed as this branch's "Phase 296" in Phase 280's own "Next eligible phase" note and in the plan
+doc, then renumbered once already (to 297) because Phase 296 was independently claimed and merged
+first by the #265 epic's server-only AVIF deprecation PR while this work was still being planned.
+Renumbered a second time, to 298, on pr-reviewer's RF-1 finding (this PR, round 1): while this PR
+sat open, Phase 297 was independently claimed and merged first by the #1015/#925 shared
+template-schema setup PR (unrelated, landed via PR #1638). Per `AGENTS.md`'s Continuous Phase
+Numbering rule, this entry uses the next open slot verified against a freshly-fetched
+`origin/develop` (298 -- confirmed no `## Phase 298` heading existed there) rather than assuming a
+number is safe, mirroring the same collision-handling precedent Phase 295's own entry already set.
+No other content differs from what Phase 280 described as coming next.
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: second and closing PR of #1278 (ADR 0082's own Decision 8 / Follow-up 3
+  forward guidance). Builds the enforcement mechanism ADR 0082 named but deliberately did not build
+  in PR 1 (Phase 280): a `release/<candidate_id>-rN` head must carry a matching
+  `docs/releases/notes/<candidate_id>.md` record. Resolves the candidate id from the head branch
+  (`release/<candidate_id>-rN`, covering both the default flow's final leg and the #1007-gated
+  exception identically -- they share the pattern, per ADR 0082 Decision 8's own "path coverage"
+  paragraph); any other head, including a `main` hotfix's `fix/*` branch, exits 0 ("not
+  applicable") -- that path stays a procedural obligation on
+  `.agents/skills/incident-responder/SKILL.md`, not this script, matching ADR 0082 Decision 8's
+  named, deliberate gap (Follow-up 3). Validates the note's frontmatter (`schema:
+  sku-release-note/v1`, `candidate_id` matching the branch, `production_date`, and
+  `production_commit` accepting **either** `^[0-9a-f]{40}$` **or** the exact literal `pending` --
+  the plan text's original "40-hex required" framing would have failed every normal promotion PR,
+  since the real `main` SHA cannot exist until after that PR merges; PR 1's own review-fix round
+  (RF-1, PR #1637) had already corrected this in ADR 0082 itself, and this PR reads the merged ADR
+  rather than the stale plan text), the per-app version table against
+  `apps/<app>/package.json` at head, and the required `## Included`/`## Operational notes`
+  sections (including the concision rule: one line per change, no fenced code block, no nested
+  list, `No user-visible changes.` accepted verbatim).
+- Mechanically: new `scripts/check-release-notes.js` (pure-function core + thin CLI, matching
+  `check-promotion-candidate.js`/`resolve-build-skip-plan.js` house style) reuses
+  `CANDIDATE_ID_PATTERN`/`PromotionCandidateError` from `check-promotion-candidate.js` and
+  `APPS`/`readVersionAt` from `check-app-version-bump.js` -- no second candidate-id regex or
+  version reader was written. New `npm run check:release-notes` /
+  `npm run test:release-notes` scripts. `.github/workflows/promotion-quality-gate.yml`'s
+  `repository-quality` job gains a `run_release_notes` step (`continue-on-error: true`, advisory
+  per ADR 0082 Decision 8's "advisory first" rollout), traced into that job's existing
+  `record_outcomes`/`real_failures` reporting chain. Registered as gate #17,
+  `release.notes`, in `scripts/gate-release-local.js`'s `GATE_NAMES`/`CI_ENFORCED_GATES` (17
+  entries, up from 16) and `STRUCTURALLY_CANNOT_FAIL` (outside a real `release/*` head it resolves
+  "not applicable," same shape as `compliance.contracts`) -- the first gate added after #1431 Phase
+  C/D closed the original 19-gate mapping; not one of that count, but reuses its exact
+  advisory/blocking tracking apparatus (`check-pr-quality-workflow.js`'s
+  `ADVISORY_CI_ENFORCED_GATES`, now three names) since its CI destination lives inside
+  `promotion-quality-gate.yml` itself, the same surface that apparatus already governs. Updated the
+  drifted "14 blocking + 2 advisory" / "16 entries" counts (now "14 blocking + 3 advisory" / "17
+  entries") everywhere they were quoted: `.agents/skills/promoter/SKILL.md`,
+  `.agents/skills/promoter/references/promotion-runbook.md`'s PR-body template,
+  `docs/testing/release-go-no-go-checklist.md` (including its own gate table, gaining row 17), and
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` (gaining a new "A new gate after the mapping closed"
+  section) -- left every dated, historical count (e.g. `RELEASE_CANDIDATE_POLICY.md`'s "7 -> 16
+  entries" Phase C/D amendment) untouched, since those describe a specific past transition, not the
+  current state.
+- Status: completed.
+- Dependencies: Phase 280 (#1278 PR 1, ADR 0082 + the release-note schema/template, merged). Closes
+  #1278.
+- Acceptance and validation evidence: `node --test scripts/check-release-notes.test.js` (16/16 --
+  happy path with `pending`, happy path with a real 40-hex `production_commit`, missing file,
+  version-table mismatch, missing `## Operational notes`, `No user-visible changes.`,
+  non-promotion head, malformed frontmatter, an invalid `production_commit` neither 40-hex nor
+  `pending`, plus candidate-id-mismatch/missing-app-row/multiline-bullet/fenced-code-block/
+  nested-list edge cases); `node --test scripts/gate-release-local.test.js` (25/25, updated for the
+  17th gate) and `scripts/check-pr-quality-workflow.test.js` (41/41, updated for the third advisory
+  name); `npm run check:pr-quality-workflow` (OK -- the workflow's advisory-shape/reporting-chain
+  contract still holds with the new step); `npm run check:adr` (89 ADRs, OK); `npm run lint:docs`
+  (29 governed docs, OK); `npm run check:architecture` (OK); `npm run check:compliance` (no
+  compliance-sensitive changes detected -- docs/scripts/workflow only, no `apps/*` runtime code
+  touched). A fixture note for the real merged candidate `2026-09-05-01` (`dgfy-api` 1.2.2,
+  `dgfy-migration-runner` 1.1.0, `dgfy-ims` 1.1.2, `dgfy-pos` 1.1.2, `dgfy-storefront` 1.2.1, built
+  in a disposable temp git repo, not committed to this repo) was run through the real CLI end to
+  end: PASS with `production_commit: pending`, PASS with a real 40-hex SHA, FAIL on a mismatched
+  `dgfy-api` table version, FAIL on a deleted note file -- all four transcripts are in the PR's
+  `## Testing Evidence` section. **The live `release/*→main` trigger itself is unverified** -- no
+  real promotion has run this step yet; that's expected for a gate landing advisory on first
+  landing (ADR 0082 Decision 8), not silently assumed proven.
+- Completion date: 2026-09-06.
+- Contracts/files: `scripts/check-release-notes.js` (new), `scripts/check-release-notes.test.js`
+  (new), `package.json` (`check:release-notes`/`test:release-notes`),
+  `.github/workflows/promotion-quality-gate.yml` (`run_release_notes` step,
+  `repository-quality` job), `scripts/gate-release-local.js` (`GATE_NAMES`/`CI_ENFORCED_GATES`/
+  `STRUCTURALLY_CANNOT_FAIL`, gate #17), `scripts/gate-release-local.test.js`,
+  `scripts/check-pr-quality-workflow.js` (`ADVISORY_CI_ENFORCED_GATES`),
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/testing/release-go-no-go-checklist.md`,
+  `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
+  `docs/architecture/adr/0082-production-release-record-and-release-notes.md` (Follow-up 1/3, read
+  not edited), issue #1278.
+
+## Phase 300 - Client-side canvas image encoder module for POS catalog image uploads (#265 epic, PR 3 of 5)
+
+Filed as the epic plan doc's own "Phase 296" section (a doc-internal label, not a ledger number) --
+renumbered here per this file's Continuous Phase Numbering rule. The ledger's own Phase 296 was
+independently claimed by the unrelated AVIF-deprecation PR (#1636, merged first) and Phase 297 by
+an unrelated #1015 backend-test-matrix PR (#1638, merged during this phase's own implementation
+session); this entry was then written as Phase 298. Renumbered a second time, to 300, when this
+branch was rebased onto a `develop` that had, in the meantime, independently merged its own
+unrelated Phase 298 (`scripts/check-release-notes.js` enforcement, #1278 PR 2 of 2, PR #1639) --
+see that entry immediately above. 299 is skipped deliberately, not merely unused: it is currently
+claimed (but not yet merged, and so not yet authoritative) by the sibling, still-open PR #1641
+(#265 epic, "client-derived image upload contract" work) on `feature/265-297-client-derived-upload-
+contract`; claiming 300 here avoids a second collision against that PR once it lands, rather than
+racing it for 299. Re-checked `git show origin/develop:docs/features/IMPLEMENTATION_PHASE_LEDGER.md
+| grep '^## Phase' | tail -5` immediately before writing this entry, per the epic's own Phase 296
+(AVIF) precedent and this task's explicit coordination instruction, rather than trusting a number
+decided at an earlier point in this branch's own history.
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
+- Objective and scope: third PR of the #265 epic. Adds a new, isolated, hand-rolled client-side
+  canvas image encoder module -- `packages/web-core/src/utils/imageEncoding/{index,capabilities,
+  encodeVariants,encodeWorker,variantManifest,rolloutFlag}.js` -- that resizes/re-encodes an
+  uploaded POS catalog image into a `{large, medium, thumbnail}` variant ladder (1920/1024/400px
+  max widths, never upscaling past the source), entirely in the browser. `capabilities.js` probes
+  WebP `canvas.toBlob` support (rejecting WebKit's silent `image/png` downgrade and a null-blob
+  result, not just a non-throw), `OffscreenCanvas`/`Worker` availability, and whether
+  `createImageBitmap(file, { imageOrientation: 'from-image' })` is honored. `encodeVariants.js` is
+  the pure, worker-safe pipeline: EXIF orientation (hand-rolled tag-0x0112 parser as a fallback when
+  the runtime option isn't honored, degrading to the original file untouched -- `degraded:
+  ['orientation_unknown']` -- rather than guessing when both paths fail), a pre-drawImage resize
+  pass via `createImageBitmap`'s own `resizeWidth`/`resizeHeight`/`resizeQuality` options for
+  sources over ~16.7M px (several browsers silently blank/garble a canvas above that area), and a
+  post-encode 4-corner-plus-center pixel sample that flags (not silently ships) an all-transparent
+  or all-black render. Runs inside a dedicated module Worker when `Worker`+`OffscreenCanvas` are
+  available (falling back to the main thread otherwise); cancellation is `worker.terminate()`
+  outright rather than a cloned `AbortSignal`, since `AbortSignal` can't cross `postMessage`. Caps
+  concurrency to one encode at a time (a second concurrent call rejects). Never calls the global
+  `structuredClone()` shim anywhere in the module -- verified both by design and by a static
+  source-scan test -- since that Layer-1 runtime shim (`chrome80Runtime.js`) has no Blob/File/
+  ArrayBuffer/ImageBitmap support and silently produces an empty object for them on Chrome 80-84.
+  `rolloutFlag.js` is a deliberately inert stub (`getImageClientConversionFlag` hardcoded to
+  `'off'`) for Phase 298-in-the-epic-doc's-own-numbering's (not this ledger phase's) future
+  server-authoritative `image_client_conversion` flag -- not wired into any bootstrap/runtime-config
+  plumbing yet, on purpose. `posCatalogService.js`'s `uploadPosCatalogImage` gets a minimal,
+  single-variant-only wiring diff behind that stub (sends only `image` = `variants.large`, falling
+  back to the original file when the flag is off or no large variant survives) --
+  `image_medium`/`image_thumbnail`/`client_image_manifest` multipart fields are Phase 297-in-the-
+  epic-doc's-own-numbering's (the sibling upload-contract phase) job, not this one's. Also adds
+  `worker: { plugins: () => [esCompatGuardPlugin()] } ` to all three `apps/{dgfy-ims,dgfy-pos,
+  dgfy-storefront}/vite.config.js` -- a real, previously-latent gap this phase would otherwise have
+  introduced silently: Vite's `worker.plugins` is a separate config surface from the main `plugins`
+  array for production builds, so without this addition `encodeWorker.js`'s built output would ship
+  completely unscanned by the ADR 0067 Layer 2 guardrail (verified live: a deliberately-injected
+  `Array.fromAsync(` call inside `encodeWorker.js` failed the `dgfy-pos` build with the guard's own
+  error message once this addition was in place, then reverted). Explicitly out of scope, corrected
+  against the epic plan doc's own claim: `MenuPhotoCaptureSheet.jsx` is untouched -- its
+  `scoreCurrentFrame` downscale sampler and `handleShutter` full-res capture are two unrelated
+  functions serving the menu-import/OCR pipeline, not a forked copy of variant-generation logic to
+  "generalize and delete"; touching it would risk exactly the OCR-legibility regression the epic
+  plan itself warns against for Phase 297-in-the-epic-doc's-own-numbering.
+- Status: completed.
+- Dependencies: none on Phase 296 (AVIF deprecation, server-side only) or Phase 297 (unrelated
+  #1015 backend-test-matrix work) -- both are independent server/tooling changes this phase's
+  purely client-side, `packages/web-core`-scoped work does not touch or rely on. Precedes the
+  epic's own Phase 297 (upload-contract fan-out, concurrently implemented in a sibling worktree of
+  this same run) and Phase 298 (rollout, per the epic plan doc's own numbering -- flips
+  `rolloutFlag.js`'s stub to a real bootstrap-driven getter), which both consume this phase's
+  `prepareImageVariants`/`variantManifest.js` surface.
+- Acceptance and validation evidence: `npm test` (`vitest run`) from `apps/dgfy-ims` -- 344 test
+  files / 2199 tests passed, including 7 new imageEncoding test files (18 tests: WebP capability
+  probe correctness including the WebKit-downgrade and null-blob cases; EXIF orientation's 3 paths
+  -- runtime-honored option, hand-rolled fallback with a synthesized EXIF-6 byte fixture, and the
+  both-paths-fail degrade; the never-upscale guarantee; the canvas max-dimension resize pre-pass and
+  blank-output-sample degrade; worker abort/cancellation via a mocked `Worker` (immediate reject on
+  an already-aborted signal, `terminate()` + ignored-late-message on a mid-flight abort); the
+  concurrency cap; and a static source-scan guard against calling the global `structuredClone()`)
+  plus 3 new `posCatalogService.js` wiring tests (flag-off passthrough, flag-on large-variant
+  wiring, flag-on-with-no-large-variant fallback); `npm run build:skupervisor`, `build:pos`, and
+  `build:store` (all three succeed, confirming `esCompatGuardPlugin` scans `encodeWorker.js`'s
+  built-output chunk cleanly -- and, per the live-injected-then-reverted `Array.fromAsync(` check
+  above, actually fails the build when it should); `npm run check:compliance` (no
+  compliance-sensitive changes detected -- every changed path was checked against
+  `COMPLIANCE_SENSITIVE_RULES` and matches none); `node scripts/check-app-version-bump.js --staged`
+  (dgfy-ims 1.2.4->1.2.5, dgfy-pos 1.2.4->1.2.5, dgfy-storefront 1.3.5->1.3.6, all PASS under
+  `any-increase` mode); `npm run check:adr` (89 ADRs validated, no regression).
+- Completion date: 2026-09-06.
+- Contracts/files: `packages/web-core/src/utils/imageEncoding/{index,capabilities,encodeVariants,
+  encodeWorker,variantManifest,rolloutFlag}.js` (new), `packages/web-core/src/utils/imageEncoding/
+  __tests__/**` (new, 7 files + 2 shared test helpers), `packages/web-core/src/services/
+  posCatalogService.js` (modified), `packages/web-core/src/services/__tests__/
+  posCatalogService.imageEncoding.test.js` (new), `apps/{dgfy-ims,dgfy-pos,dgfy-storefront}/
+  vite.config.js` (modified, `worker.plugins` addition), `apps/{dgfy-ims,dgfy-pos,dgfy-storefront}/
+  package.json` (version bumps only), issue #265.
+- Next eligible phase: 301. Phase 299 is tentatively held by unmerged sibling PR #1641
+  (`feature/265-297-client-derived-upload-contract`, #265 epic) -- not yet real/authoritative until
+  that PR merges, and its number could itself still change on merge per this same collision
+  handling; do not treat 299 as free without re-checking that PR's status.
+
+## Phase 301 - Client-derived image upload contract + fan-out to catalog upload services (#265 epic, PR 4 of 5 per the epic plan doc)
+
+Ledger phase number originally claimed as 297 at planning time, when the only other open PR was
+believed to be #1638 (unrelated). That was stale by the time this phase's own ledger commit landed:
+PR #1638 had already merged into `develop` claiming the real Phase 297 (2026-09-05T19:05:58Z,
+"Shared template-schema setup for the backend db test tier"). This entry was corrected to Phase 299
+on that basis (round 1, this PR's own pr-reviewer RF finding). Renumbered a second time, to 301,
+when this branch was rebased onto a `develop` that had, in the meantime, independently merged two
+more PRs ahead of this one: #1639 (Phase 298, `scripts/check-release-notes.js` enforcement, #1278
+PR 2 of 2 -- unrelated) and the sibling #1640 (Phase 300, the epic's own client-encoder module,
+epic plan's own "PR 3" -- see that entry immediately above), which claimed 300 rather than 299
+specifically to avoid colliding with this still-open PR. 301 is the next open slot confirmed by
+re-fetching `origin/develop`'s ledger tip
+(`git show origin/develop:docs/features/IMPLEMENTATION_PHASE_LEDGER.md | grep '^## Phase' | tail
+-6`) immediately before making this fix, per `AGENTS.md`'s Continuous Phase Numbering rule, rather
+than assuming a number is safe. The epic plan doc's own PR-3/PR-4 numbering had already drifted
+from ledger reality by one before this phase started (see Phase 296's own entry) -- this phase was
+originally built with the epic plan's PR 3 (client encoder module) not yet merged; that module has
+since landed as Phase 300 above.
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
+- Objective and scope: fourth PR of the #265 epic. Server-side contract only -- wires
+  `sourceMimeHint`/`deriveVariantsFromAcceptedLarge` (added inert in Phase 296) into
+  `storeOptimizedImageAsset`, and fixes a real ordering bug found while doing so: classification
+  ran on `reportedMime` alone *before* the metadata fetch that was supposed to feed it, so the
+  hardening Phase 296 added was never actually reachable. Adds an optional client-derived-variant
+  contract to the two single-image catalog endpoints (`POST /catalog-overrides/:item_id/image`,
+  `POST /:item_id/storefront-image`, migrated `.single('image')` -> `.fields([image, image_medium,
+  image_thumbnail])`) plus an optional `client_image_manifest` JSON field
+  (`source_mime_hint`, `large_pre_optimized`); every claim is independently validated
+  (`validateClientVariant`, new export in `imageUploadValidation.js`) before being trusted enough to
+  skip re-encoding, and a failed validation silently falls back to full server derivation -- never a
+  request failure. Extends (does not replace) the existing SKU-stem bulk-upload filename convention
+  with an opt-in `<SKU>__large/medium/thumbnail.<ext>` suffix (new shared module
+  `bulkCatalogImageFilename.js`), restructuring both bulk use cases to group by SKU before
+  processing; a bare `<SKU>.<ext>` file is unaffected byte-for-byte. Resolves the epic's
+  original-retention question by keying it off which storage module handles the call:
+  `storefrontCatalogImageStorage.js` now retains the raw original (IMS's managed surface),
+  `posCatalogImageStorage.js` stays capped -- no new client-sent signal. Two new upload patterns
+  found during verification (gallery uploads, the async/queued upload path) are confirmed out of
+  scope and left completely untouched.
+- Status: completed.
+- Dependencies: Phase 296 (#265 epic, merged) -- consumes its `sourceMimeHint`/
+  `deriveVariantsFromAcceptedLarge` surface as this phase's first real caller. Also consumes Phase
+  300 (the epic's client-encoder module, epic plan's own "PR 3", merged ahead of this phase via PR
+  #1640 -- see that entry above): this phase's optional `image_medium`/`image_thumbnail`/
+  `client_image_manifest` fields are the server-side contract that module's client-sent variants are
+  unused capability for until a caller actually sends them. Precedes the epic's rollout phase
+  (epic plan's own "Phase 298", not yet ledgered), which flips the client encoder's inert rollout
+  stub to a real bootstrap-driven getter.
+- Acceptance and validation evidence: `node --check` on all 12 changed/new `.js` files (dgfy-api has
+  no build step); `node scripts/check-app-version-bump.js --staged` (dgfy-api 1.4.0 -> 1.5.0,
+  PASS); `npm run check:compliance` (declaration:
+  `docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md`, classification
+  `major`, surfaces `pos,terminal`); `npm run check:architecture`; `npm run check:adr` (validates the
+  third dated ADR 0017 amendment, disambiguated from Phase 296's same-day heading); full existing +
+  extended Jest suites for every touched module (all pass except one pre-existing, unrelated flake in
+  `storefrontCatalogImagePersistence.integration.test.js`, reproduced identically against an
+  unmodified `origin/develop` checkout -- not introduced by this phase). New/extended tests: a
+  classification-ordering regression test and 5 accepted-large-path tests
+  (`imageAssetStorage.util.test.js`), 5 `validateClientVariant` tests
+  (`imageUploadValidation.util.test.js`), 6 `.fields()` multipart transport tests
+  (`posHandlers.transport.test.js`, `itemHandlers.transport.test.js`), 13 pure filename/grouping unit
+  tests (new `bulkCatalogImageFilename.util.test.js`), and 4 bulk-use-case variant-grouping
+  integration tests (`posUsecases.applicationResult.test.js`, `storefrontCatalogUseCases.test.js`).
+- Completion date: 2026-09-06.
+- Contracts/files: `apps/dgfy-api/src/modules/shared/utils/imageAssetStorage.js`,
+  `apps/dgfy-api/src/modules/shared/utils/imageUploadValidation.js`,
+  `apps/dgfy-api/src/modules/shared/utils/bulkCatalogImageFilename.js` (new),
+  `apps/dgfy-api/src/config/uploadConfig.js`, `apps/dgfy-api/src/routes/pos.js`,
+  `apps/dgfy-api/src/routes/items.js`, `apps/dgfy-api/src/modules/pos/controllers/posHandlers.js`,
+  `apps/dgfy-api/src/modules/inventory/controllers/itemHandlers.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/storefrontCatalogUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/posCatalogImageStorage.js`,
+  `apps/dgfy-api/src/modules/inventory/repositories/storefrontCatalogImageStorage.js`,
+  `apps/dgfy-api/tests/imageAssetStorage.util.test.js`,
+  `apps/dgfy-api/tests/imageUploadValidation.util.test.js`,
+  `apps/dgfy-api/tests/bulkCatalogImageFilename.util.test.js` (new),
+  `apps/dgfy-api/tests/posHandlers.transport.test.js`,
+  `apps/dgfy-api/tests/itemHandlers.transport.test.js`,
+  `apps/dgfy-api/tests/posUsecases.applicationResult.test.js`,
+  `apps/dgfy-api/tests/storefrontCatalogUseCases.test.js`,
+  `apps/dgfy-api/package.json` (1.4.0 -> 1.5.0),
+  `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md` (2026-09-06, client-
+  derived upload contract Amendment),
+  `docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md` (new), issue
+  #265.
+- Next eligible phase: 302.
+
+## Phase 302 - Rollout ladder, server-authoritative kill switch, and fallback-rate measurement for client-side image conversion (#265 epic, PR 5 of 5)
+
+Ledger number re-verified fresh immediately before this commit
+(`git fetch origin && git show origin/develop:docs/features/IMPLEMENTATION_PHASE_LEDGER.md | grep
+'^## Phase' | tail -8`) -- 299 remains a permanent gap (never used, same as 284), 302 is the
+confirmed next free number as of this land, unclaimed by any other concurrent PR this time. This
+epic has already lost three numbers to concurrent unrelated PRs before this phase (295, 297, 298
+were all originally meant for this epic per the epic plan doc's own numbering, taken instead by
+#1610/#1015/#1278 residues -- see Phase 301's own entry above for the full history of that
+renumbering); treated as provisional right up to the moment of this commit rather than trusted from
+planning time.
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release
+  process.
+- Objective and scope: fifth PR of the #265 epic. Ships the two-key `system_settings` rollout
+  flag (`image_client_conversion` tri-state + `image_client_conversion_scopes` JSON array), the
+  server-side gate enforcing it at both single-image catalog upload use cases (forcing the
+  client-derived medium/thumbnail files and manifest to null when the gate is closed -- the
+  literal "server ignores the manifest and extra parts entirely" kill-switch contract), the
+  platform-admin write authorization on the two new keys, the real client-side
+  `rolloutFlag.js` getter (replacing Phase 296's inert stub) plus the missing
+  `storefront_catalog_single` client wiring, and fallback-rate measurement (a client-emitted
+  PostHog `image_client_conversion_degraded` event, plus two new observability fields threaded
+  into the existing Phase 294 structured log so the client-vs-server derivation rate can be
+  sliced by rollout stage). Corrects the epic plan doc's own app-based ladder framing ("IMS
+  staff, lowest risk -> watch iMin POS terminals") -- verified the real code has no
+  POS-terminal-native catalog-image-upload call site at all; both real client-wiring call sites
+  (`uploadPosCatalogImage`, `uploadStorefrontCatalogImage`) run only from `ItemsPage.jsx`,
+  IMS-only. Scope tokens are keyed to endpoint variant, not app/device identity. Does **not**
+  implement bulk (the plan's own "298d" stage) -- verified that needs genuinely new client code
+  (a byte-based batch splitter, real `prepareImageVariants` wiring in the bulk service
+  functions), not a config flip; carved out to a follow-up issue (#1643) instead of being folded
+  in or silently dropped.
+- Status: completed.
+- Dependencies: Phase 294 (#265 epic, merged) -- extends its structured log with two new fields.
+  Phase 296 (#265 epic, merged) -- replaces its inert `rolloutFlag.js` stub with a real getter,
+  preserving its exact synchronous zero-arg contract. Phase 300 (#265 epic, merged) -- this
+  phase is `prepareImageVariants`'s first real caller for the `storefront_catalog_single` scope
+  and the first real *enabled* caller for `pos_catalog_single` (Phase 296/300 shipped the encoder
+  and the stub gate; this phase is what actually flips it on for real traffic, config-only,
+  after merge). Phase 301 (#265 epic, merged) -- gates the client-derived-variant contract that
+  phase shipped server-side but never actually turned on. Precedes #1643 (298d, bulk client
+  wiring, filed and parented under epic #265 as part of this phase) and the epic's own rollout
+  observation period (298b -> c -> e, watched via this phase's own log/trackEvent signals) --
+  epic #265 stays open (`Refs #265`, not `Closes`) until both land/complete.
+- Acceptance and validation evidence: `node --check` on all changed/new `apps/dgfy-api` `.js`
+  files (no build step). `GITHUB_BASE_REF=develop node scripts/check-app-version-bump.js` --
+  PASS for all five apps (`dgfy-api` 1.5.0 -> 1.6.0, `dgfy-ims` 1.3.0 -> 1.4.0, both direct;
+  `dgfy-migration-runner` 1.1.3 -> 1.1.4 direct; `dgfy-pos` 1.3.0 -> 1.3.1 and `dgfy-storefront`
+  1.4.0 -> 1.4.1, both fan-out-only via `packages/web-core`, confirmed neither app's own bundle
+  imports a changed web-core file). `GITHUB_BASE_REF=develop npm run check:compliance`
+  (declaration: `docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md`,
+  classification `major`, surfaces `pos,terminal,settings` -- corrects PR4's own declaration,
+  which only cited the narrower `routes/settings.js` rule; this phase's settings-usecases changes
+  trip the broader `modules/settings/` rule directly). `npm run check:architecture`;
+  `npm run check:adr` (validates the fourth dated ADR 0017 amendment). Full existing + new Jest
+  suites for every touched `apps/dgfy-api` module (new: `imageClientConversionGate.util.test.js`,
+  10 cases; extended: `posUsecases.applicationResult.test.js` +4 gate cases,
+  `storefrontCatalogUseCases.test.js` +4 gate cases, `settingsUsecases.applicationResult.test.js`
+  +4 write-gate cases) -- all pass. `imageAssetStorage.util.test.js` and
+  `storefrontCatalogImagePersistence.integration.test.js` re-run unmodified: the latter's one
+  failure is a pre-existing, unrelated flake, reproduced identically against a clean
+  `origin/develop` worktree with zero modifications from this phase (already flagged in Phase
+  301's own entry; re-confirmed here). New/extended Vitest suites for every touched
+  `packages/web-core` module (new: `rolloutFlag.test.js` 9 cases,
+  `storefrontCatalogService.imageEncoding.test.js` 4 cases; extended:
+  `posCatalogService.imageEncoding.test.js` +1 degradation-metric case) -- all pass, plus the
+  full existing `dgfy-ims` Vitest suite (2217 tests, 347 files) re-run clean.
+- Completion date: 2026-09-09.
+- Contracts/files: `apps/dgfy-api/src/modules/shared/utils/imageClientConversionGate.js` (new),
+  `apps/dgfy-api/src/modules/shared/utils/imageAssetStorage.js`,
+  `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/posCatalogImageStorage.js`,
+  `apps/dgfy-api/src/modules/inventory/index.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/storefrontCatalogUseCases.js`,
+  `apps/dgfy-api/src/modules/inventory/repositories/storefrontCatalogImageStorage.js`,
+  `apps/dgfy-api/src/modules/settings/usecases/updateSettingByKeyUseCase.js`,
+  `apps/dgfy-api/src/modules/settings/usecases/updateSettingsUseCase.js`,
+  `apps/dgfy-migration-runner/migrations/20260909000002-add-image-client-conversion-settings.cjs`
+  (new), `packages/web-core/src/utils/imageEncoding/rolloutFlag.js`,
+  `packages/web-core/src/utils/imageEncoding/reportDegradation.js` (new),
+  `packages/web-core/src/services/posCatalogService.js`,
+  `packages/web-core/src/services/storefrontCatalogService.js`,
+  `packages/web-core/src/features/settings/WorkflowModeContext.jsx`,
+  `apps/dgfy-api/tests/imageClientConversionGate.util.test.js` (new),
+  `apps/dgfy-api/tests/posUsecases.applicationResult.test.js`,
+  `apps/dgfy-api/tests/storefrontCatalogUseCases.test.js`,
+  `apps/dgfy-api/tests/settingsUsecases.applicationResult.test.js`,
+  `packages/web-core/src/utils/imageEncoding/__tests__/rolloutFlag.test.js` (new),
+  `packages/web-core/src/services/__tests__/posCatalogService.imageEncoding.test.js`,
+  `packages/web-core/src/services/__tests__/storefrontCatalogService.imageEncoding.test.js` (new),
+  `apps/dgfy-api/package.json` (1.5.0 -> 1.6.0), `apps/dgfy-ims/package.json` (1.3.0 -> 1.4.0),
+  `apps/dgfy-migration-runner/package.json` (1.1.3 -> 1.1.4), `apps/dgfy-pos/package.json`
+  (1.3.0 -> 1.3.1), `apps/dgfy-storefront/package.json` (1.4.0 -> 1.4.1),
+  `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md` (2026-09-09
+  Amendment, fourth),
+  `docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md` (new), issue
+  #265, follow-up issue #1643 (298d, bulk client wiring, filed and parented under #265).
+- Next eligible phase: 303.

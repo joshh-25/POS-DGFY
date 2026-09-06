@@ -613,6 +613,44 @@ describe('settings use-cases application result contract', () => {
     expect(updateSettingByKey).not.toHaveBeenCalled();
   });
 
+  it('updateSettingByKey rejects a non-platform-admin actor configuring image_client_conversion (Phase 298, #265)', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'image_client_conversion',
+      value: 'on',
+      actorUser: { username: 'tenant_admin', is_platform_admin: false }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(result.error.details?.reason_code).toBe('IMAGE_CLIENT_CONVERSION_PLATFORM_CONTROLLED');
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey allows a platform admin to configure image_client_conversion_scopes', async () => {
+    const updateSettingByKey = jest.fn().mockResolvedValue({
+      setting_key: 'image_client_conversion_scopes',
+      value: ['pos_catalog_single']
+    });
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'image_client_conversion_scopes',
+      value: ['pos_catalog_single'],
+      actorUser: { username: 'platform_admin', is_platform_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettingByKey).toHaveBeenCalledWith('image_client_conversion_scopes', ['pos_catalog_single']);
+  });
+
   it('updateSettingByKey rejects a non-master-admin actor setting ops_enabled_capabilities', async () => {
     const updateSettingByKey = jest.fn();
     const useCase = buildUpdateSettingByKeyUseCase({
@@ -1119,6 +1157,25 @@ describe('settings use-cases application result contract', () => {
       })
     });
     expect(updateSettings.mock.calls[0][0].pos_receipt_metadata_pending_changes.changes).not.toHaveProperty('pos_registered_name');
+  });
+
+  it('updateSettings rejects tenant attempts to configure image_client_conversion via the bulk endpoint (Phase 298, #265)', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        image_client_conversion: 'on'
+      },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('IMAGE_CLIENT_CONVERSION_PLATFORM_CONTROLLED');
+    expect(updateSettings).not.toHaveBeenCalled();
   });
 
   it('updateSettings rejects tenant attempts to configure DGFY POS software identity', async () => {

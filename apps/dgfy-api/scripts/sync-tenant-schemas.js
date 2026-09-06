@@ -268,8 +268,14 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         // server-side road distance at checkout. Kept in lockstep with migration
         // 20260902000001. Neither column feeds delivery-fee math anywhere in this codebase --
         // see docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md.
+        // #1565: anchor changed from `AFTER \`outside_radius_flag\`` to `AFTER \`store_customer_id\``
+        // -- outside_radius_flag was retired (migration 20260909000001); store_customer_id is the
+        // column immediately before it in the original 20260330000006 migration, so any tenant old
+        // enough to have had outside_radius_flag also has store_customer_id, and this self-repair
+        // path keeps working for a straggler tenant that hasn't picked up delivery_distance_meters
+        // yet.
         delivery_distance_meters: Object.freeze({
-            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_meters` INT NULL AFTER `outside_radius_flag`"
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_meters` INT NULL AFTER `store_customer_id`"
         }),
         delivery_distance_source: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_distance_source` ENUM('road','fallback','none') NOT NULL DEFAULT 'none'"

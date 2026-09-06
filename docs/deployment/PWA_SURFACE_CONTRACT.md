@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-07-28
+last_reviewed: 2026-09-04
 applies_to: pwa_installability_and_service_workers
 topic: pwa_surface_contract
 ---
@@ -57,6 +57,38 @@ The admin/SKUpervisor PWA is installable and uses conservative caching:
 5. Navigation requests use network-first behavior with cached fallback when available.
 6. `/api/` and `/uploads/` are bypassed by the service worker to avoid stale authenticated data, stale uploads, and incorrect tenant context.
 7. Service-worker support is optional; registration failure must not block the admin shell.
+
+## Version Observability Surface
+
+Added Phase 278 (#1576, epic #1548 Wave 3), following Phase 277's `APP_VERSION` build-arg
+(#1575). Not itself a PWA-installability concern, but it lives here because #276's PWA
+"new version available" toast (below, "Remaining work" item 2) is the concrete consumer this
+surface exists to feed, alongside #633's Sentry release tagging on the backend.
+
+Per app, three build-time-derived reads of the same value (ADR 0081 Decision 4: `APP_VERSION`,
+falling back to that app's own `package.json` `version` when unset — see
+`packages/web-core/vite/buildStampPlugin.js`, the one shared helper all three frontends call
+rather than three separate implementations):
+
+| Surface | Shape | Where it's generated |
+|---|---|---|
+| `import.meta.env.VITE_APP_VERSION` | bare version string, e.g. `"1.5.2-staging"` or `"1.1.0"` | each app's own `vite.config.js` `define` block, alongside its existing `VITE_APP_SURFACE` (`dgfy-ims`/`dgfy-pos`) or `VITE_BUILD_STAMP` (`dgfy-storefront`) entries |
+| `<meta name="dgfy-version" content="...">` | HTML meta tag, `content` is the same bare version string | injected into the built `index.html` by `buildStampPlugin`'s `transformIndexHtml` hook — not present in `apps/*/index.html` source, only in the built output |
+| `public/version.json` (served at each app's own root, e.g. `/version.json`) | `{"version": "..."}` | emitted into the build output (`dist/version.json`) by `buildStampPlugin`'s `generateBundle` hook via Rollup's `emitFile` — **not** hand-committed under `apps/*/public/`, since it's build-derived and would go stale the moment it stopped being regenerated every build |
+
+The backend equivalent is `apps/dgfy-api`'s `/health` response: `services.observability.version`
+(and sibling `services.observability.version_source`, `"env:APP_VERSION"` or `"package_json"`),
+next to the existing `runtime_sha` field — same shape, not a separate endpoint. See
+`apps/dgfy-api/src/services/healthService.js`'s `resolveAppVersionInfo`.
+
+This issue only produces the surface — it does not wire #633's Sentry release tagging or #276's
+toast-polling logic; both were handed the exact field names/shapes above by comment once this
+phase merged (ADR 0081 Decision 5).
+
+**Consumed by a UI reader as of #1597**: the first row above (`import.meta.env.VITE_APP_VERSION`)
+now has a real reader — `packages/web-core/src/components/common/VersionBadge.jsx`, mounted at the
+root shell of all three frontends, always visible. The other two rows (`<meta name="dgfy-version">`,
+`version.json`) remain unconsumed by any UI; #276/#633 above are still their eventual consumers.
 
 ## POS And Storefront Contract
 

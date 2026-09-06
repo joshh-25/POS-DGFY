@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-04
+last_reviewed: 2026-09-06
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -958,3 +958,413 @@ This is a `[default]`-tier procedure amendment under ADR 0039, matching ADR 0081
 
 PR: (this PR). Refs #1569, #1548, #1560. Does not close #1569's parent epic (#1548) — Wave 2 has
 more phases beyond this one.
+
+### 2026-09-04: `check_whitespace` root-caused and flipped blocking; `audit_indexes` root-caused,
+fixed, stays advisory-with-reason (#1552)
+
+Both of `promotion-quality-gate.yml`'s two remaining un-triaged repeat-advisory-failure steps
+(`Check changed-file whitespace`, `repository-quality`; `Audit required indexes`,
+`dgfy-api-quality` — 6/13 and 3/13 recurrence respectively in #1124's tally) are now root-caused
+with direct log evidence. The two dispositions differ deliberately — this entry states why, rather
+than leaving the asymmetry to look like an inconsistency between two otherwise-similar fixes.
+
+**`check_whitespace` — fixed, and flipped blocking, same PR.** `git diff --check
+"${BASE_SHA}...${HEAD_SHA}"` is a correct, deterministic, git-native whitespace check; it was never
+a diff-range/SHA computation bug (one hypothesis the step's own inline comment floated, ruled out
+by the actual failing-run log, which shows genuine trailing-blank-line violations at two specific
+file:line locations). It recurred only because nothing upstream of CI caught the violation before a
+commit landed — `.husky/pre-commit` ran zero whitespace checks. Fixed by adding a `git diff --cached
+--check` block to the pre-commit hook (same git whitespace-diagnostic machinery, staged-vs-HEAD
+instead of base...head), with the known, accepted gap stated plainly: `git commit --no-verify`
+bypasses it like every other pre-commit check, which is why the CI-side step stays as a backstop
+rather than being deleted. `check_whitespace` joins `check-pr-quality-workflow.js`'s
+`BLOCKING_STEP_IDS['repository-quality']` and the reporter's `BLOCKING_STEP_NAMES` set (the same
+two-list hand-sync #1557 already flags as drift-prone — see below) on the same rationale as the
+2026-09-04 "Four contract-validation steps" entry above: pure, deterministic, zero flake surface,
+no DB/registry/network dependency, over checked-in state a diff either does or doesn't violate.
+
+**`audit_indexes` — root-caused and fixed, kept tracked-advisory-with-reason.** The prior
+investigation's "NOT YET CONFIRMED" framing was based on one run that turned out to be an unrelated
+job-envelope death, not evidence about this step itself. Pulling the actual per-step-failure
+evidence from #1124's automated advisory-failure comments finds 5 genuine `audit_indexes` failures
+in the 08-28–09-03 window; one run's raw log (`missing=3`, `duration_ms=21` — ruling out a
+timeout/resource-contention read) shows the finding is real, fast, and deterministic, but **against
+the wrong database**: `tenantSchemaBootstrap.integration.test.js`'s idempotent case creates a
+`test_tenant_schema-bootstrap-idempotent_*` tenant via Sequelize `sync({ force: true })` — not the
+real migration chain — so any index added via a raw migration rather than a model's own `indexes:
+[]` is genuinely absent from that fixture's schema. `afterEach` reliably drops this tenant on every
+ordinary pass/fail; it only survives into a later step when the test process dies before cleanup
+runs — consistent with #1432's already-tracked hosted-runner OOM class (`run_test_matrix` OOMing
+under a 2-vCPU runner), corroborated directly: `Run dgfy-api test matrix` (the step immediately
+before `audit_indexes`) also failed in all 5 confirmed runs, not a coincidence.
+`resolveAuditDatabases()` queries `tenants WHERE status = 'active'` with no opinion on whether a
+tenant is a real one or an orphaned test fixture, so it audits the orphan's deliberately-partial
+schema as if it were legitimate. The exclusion mechanism for exactly this already exists and is
+already proven — `schemaIndexAuditService.js`'s `TEST_TENANT_DB_PREFIX`/
+`applyAuditDatabaseFilters()`, gated by `SCHEMA_INDEX_AUDIT_MODE`/
+`SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS`, already unit-tested, and already wired into the local
+`audit:indexes:local` command — the CI workflow step was simply the one caller that never set
+either env var. Fixed by adding both to the step's `env:` block (`SCHEMA_INDEX_AUDIT_MODE: test`,
+matching the step's existing `NODE_ENV: test` rather than implying a different runtime mode;
+`SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS: 'true'`) — config-only, zero new script logic, activating
+the exact already-tested code path `audit:indexes:local` uses locally.
+
+**Why the dispositions differ.** `check_whitespace` has no flake surface — a diff either introduces
+trailing whitespace or it doesn't, over checked-in files, matching the "safest class of gate to make
+blocking" rationale the 2026-09-04 "Four contract-validation steps" entry already established.
+`audit_indexes` does not share that property: it depends on a live MySQL container's state, itself
+downstream of whether `run_test_matrix` (still #1469-gated advisory, known OOM-prone) completes
+cleanly in the same job. Fixing the *specific* orphan-leak mechanism found here doesn't rule out a
+different tenant-name prefix or a different orphaned-fixture shape producing the same symptom later.
+This matches this repo's own established evidence-gating discipline (#1431 Phase C: every step
+there was flipped only after both a clean-pass *and* a fault-probe run confirmed it was genuinely
+red-on-fault / green-on-clean — never on a same-PR fix alone). **Explicit unblock criterion:** flip
+`audit_indexes` to blocking in a follow-up once either (a) a real `release/*→main` promotion run
+shows it green post-fix, or (b) a `workflow_dispatch` run against a scratch branch confirms both a
+clean pass and, ideally, a fault-probe reproducing the orphan scenario and showing the exclusion
+filter catches it. `audit_indexes` does **not** join `BLOCKING_STEP_IDS['dgfy-api-quality']` or
+`BLOCKING_STEP_NAMES` in this PR.
+
+**Hand-synced-lists caveat (#1557).** `check_whitespace`'s blocking flip is the *second* step this
+repo has added to both `BLOCKING_STEP_IDS` (id-keyed, `check-pr-quality-workflow.js`) and
+`BLOCKING_STEP_NAMES` (name-keyed, the `report-advisory-failures` job's embedded `github-script`)
+by hand, with no shared source between the two lists — #1557 tracks the underlying drift risk;
+this entry does not fix it, only avoids becoming a new instance of it by editing both lists.
+
+PR: (this PR, `fix/1552-quality-gate-steps`). Refs #1552, #1124, #1557, #1432, #1469.
+
+### 2026-09-04: Promoter pre-cut floor step and promotion parity gate, executable (#1588, epic
+#1548 Wave 4, Phase 279) — closes the loop the 2026-09-04 "Per-app container SemVer" entry above
+left as "not built by this entry"
+
+Decision record this implements: [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md)
+Decisions 6 and 8. Not rewritten in place, same convention as every amendment above.
+
+**The pre-cut floor step is now a real, run-it-every-time procedure**, not a stated obligation:
+`node scripts/check-app-version-bump.js --floor --base origin/staging --head origin/develop` before
+cutting `to-staging/<candidate_id>` (reuses `--floor` mode, already shipped by #1560/PR #1562 — no
+new script for this half), and one ordinary `develop`-base `chore(release): bump <apps> to
+X.(Y+1).0 for candidate <id>` PR per app below floor, merged before the cut. Full sequence:
+`.agents/skills/promoter/references/promotion-runbook.md`'s "Default: `develop` → `staging` →
+`main`" section; obligation restated in `.agents/skills/promoter/SKILL.md`'s "Frozen candidate and
+repair loop" section.
+
+**The promotion parity gate is now `scripts/check-image-version-parity.js` (new)**, comparing each
+app's `X.Y.Z-staging` and bare `X.Y.Z` published images' candidate-source-identity label. **A
+correction the 2026-09-04 "Per-app container SemVer" entry above did not anticipate:** that entry
+assumed Phase 277 would stamp this label as part of its own scope ("the builder changes that
+actually stamp these ... are deferred to epic #1548's later waves (planned Phases 274, 277-279)").
+Phase 277 (#1575/PR #1577, completed 2026-09-04) in fact stamped only
+`org.opencontainers.image.version`, not a candidate-source-identity label — this PR (#1588) adds
+that missing label-stamping step itself, in the same three builder workflows, naming the label
+`org.dgfy-platform.candidate-source-sha` per Decision 8's own "naming and mechanics are that phase's
+job" delegation. See ADR 0081's own 2026-09-04 Amendment for the full correction record, and
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s matching "Promotion-time per-app version gates"
+section for the executable-mechanism summary.
+
+**Candidate manifest, no longer a hand-waved reference.** `scripts/check-promotion-candidate.js`'s
+manifest was already validated by this policy's prior entries but never had a documented on-disk
+location or creation step; this PR fixes that gap too — written locally at
+`.tmp/release-candidates/<candidate_id>.json` (never committed, matching
+`.tmp/release-gates/<sha>/local_readiness.json`'s existing local-artifact convention) right after
+the candidate branch is cut, updated on every staging repair and release cut. Full shape:
+`.agents/skills/promoter/references/promotion-runbook.md`.
+
+**The `IMAGE_TAG` contract #495 must honor**, restated here per #1588's own acceptance criteria (this
+policy records the contract, it does not implement #495's compose split): a version tag of the shape
+`X.Y.Z[-channel]` must exist and be pullable for whatever `IMAGE_TAG`-shaped variable(s) #495
+introduces — the same tags this ADR's builders already publish, unaffected by this PR.
+
+**What was and wasn't exercised.** No real `to-staging`/`release` promotion has run against this
+mechanism yet — everything here is unit-tested (`scripts/check-image-version-parity.test.js`: label
+match, missing-predecessor, mismatch) and shape-verified against this repo's real workflow files
+(`node scripts/check-deploy-version-stamping-workflow.js`, extended by this PR to also assert the
+new label/input wiring), not exercised end to end against a live GHCR push. Say so plainly rather
+than implying otherwise on the next real promotion this mechanism runs against.
+
+This is a `[default]`-tier procedure amendment under ADR 0039, layered on top of ADR 0081's own
+Decisions 6 and 8 (both `[default]`) — no `[binding]` clause of this policy or of ADR 0081 is changed
+by this entry.
+
+PR: (this PR). Refs #1588, #1548, #1559, #1560, #1575. Closes #1588.
+
+### 2026-09-05: `check:app-versions` flipped advisory → blocking (#1592, epic #1548, Phase 283,
+ADR 0081 Decision 9) — the flip the 2026-09-04 "flip-readiness gate built, mechanism shipped not
+armed" entry above deferred
+
+Decision record this implements: [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md)
+Decision 9. This entry is the flip itself — the 2026-09-04 entry above shipped the mechanism only,
+explicitly out of scope for its own PR (#1569).
+
+**Re-confirmed live at implementation time, not reused from #1592's own 2026-09-05 filing-time
+snapshot** (that issue's Context section already carried a live-at-filing count; this PR re-ran the
+same measurement again at PR-open time per the issue's own explicit "Do not... without re-confirming
+the evidence threshold live at implementation time" instruction, since more PRs land between filing
+and implementation):
+
+```
+[check-version-bump-flip-readiness] ADR 0081 Decision 9 evidence threshold, since 5eb17c3 (PR #1562, Refs #1560):
+
+PR-count evidence: 10 of 10 qualifying develop-base PRs.
+Promotion-cycle evidence: none yet
+
+[check-version-bump-flip-readiness] READY -- the ADR 0081 Decision 9 evidence threshold is met.
+```
+
+Of the 10 counted PRs at this re-confirmation: 7 `pass` (#1591, #1583, #1582, #1581, #1580, #1579,
+#1578) and 3 `warn` (#1586, #1567, #1566) — a different composition than #1592's own filing-time
+snapshot (which cited 6 pass / 4 warn) since the qualifying window is a rolling one keyed off
+ancestry from the PR #1562 anchor, not a fixed set; both outcomes count as valid evidence per
+#1569's own design (a `warn` proves the check correctly caught a real violation without crashing,
+which is exactly what needs demonstrating before trusting it to block).
+
+**What changed:** `scripts/lib/version-bump-gate-toggle.js`'s `BLOCKING` constant, `false → true` —
+the single edit both consuming surfaces derive from.
+
+**A real bug was found and fixed alongside the flip, not assumed away.** The 2026-09-04 entry's own
+claim that "both consumers move together; nothing else needs editing" held for
+`.github/workflows/shared-changed-paths.yml` (its `continue-on-error:` expression already read the
+toggle's boolean output directly) but not for `scripts/pr-checks.js`: that surface's `app version
+bump` check hardcoded its `result` field to `'pass'`/`'warn'` regardless of the `blocking` argument
+passed to `addCheck()`, so `computeOverallResult()` — which only escalates `overallResult` to `FAIL`
+on `blocking && result === 'fail'` — could never actually reach `FAIL` for this check; a `'warn'`
+can only degrade `PASS` to `PARTIAL`. Confirmed live before shipping the flip:
+`computeOverallResult([{ result: 'warn', blocking: true }])` returned `'PARTIAL'`, not `'FAIL'`.
+Fixed by deriving the result severity from the same `BLOCKING` toggle
+(`resolveAppVersionsCheckResult()`, exported and unit-tested in `scripts/pr-checks.test.js`) rather
+than a hardcoded string — this is a fix to the consuming surface's own severity mapping, not a
+touch to `scripts/check-app-version-bump.js`'s check logic itself (out of #1592's scope per its own
+"Do not" section).
+
+**Both consuming surfaces confirmed to actually block, not just documented as blocking:**
+
+- `scripts/pr-checks.js` — `scripts/pr-checks.test.js` now asserts, against the real
+  `version-bump-gate-toggle.js` module (not a mock), that a missing/insufficient bump produces
+  `result: 'fail'` and `computeOverallResult(...) === 'FAIL'` — the same test would have failed
+  against the pre-fix code.
+- `.github/workflows/shared-changed-paths.yml` — a throwaway branch/PR combining this flip with a
+  deliberately unbumped `apps/dgfy-api` source change was opened against `develop` to observe the
+  "Enforce per-app version bump on source changes" step actually fail the job (red, not a swallowed
+  warning) under live CI, then closed without merging once confirmed. See #1592's own PR body for
+  the run link.
+
+**Currently open PRs affected by this flip:** stated in #1592's PR body / final report at
+implementation time — a heads-up rather than a silent flip landing mid-flight, per that issue's own
+"Risks / notes" section.
+
+**Consequential update:** `.agents/skills/pr-reviewer/SKILL.md`'s "Version level" audit item
+(#1568/PR #1570) had its severity language updated from "`nit` while advisory,
+`should-fix` once flipped" to reflect blocking is now live — a mismatched version level (the
+narrower case CI's `any-increase` mode does not itself catch — a nonzero-but-too-small bump) is now
+a `blocker`, matching the standing severity CI itself applies to a missing/insufficient bump. See
+that file directly rather than a restated copy here.
+
+This is a `[default]`-tier procedure amendment under ADR 0039, matching ADR 0081 Decision 9's own
+`[default]` tag — no `[binding]` clause of this policy or of ADR 0081 is changed by this entry. See
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "`check:app-versions` flip-readiness" entry for the
+same status, kept in sync with this one.
+
+PR: (this PR). Closes #1592. Refs #1548. Does not close epic #1548 — Wave 2 may have further phases
+beyond this one.
+
+### 2026-09-05: `deploy-main.yml` auto-skips a build whose version tag is already published and content-unchanged (#1610, epic #1548 Wave 4 residue) — closes a second, distinct #1610 symptom alongside Decision 8's per-app resolution above
+
+Decision record this implements: [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md),
+2026-09-05 Amendment (`[snapshot]` tier — Decision 7 itself is unmodified). Not rewritten in place,
+same convention as every entry above.
+
+`deploy-main.yml` rebuilds every app on every dispatch by default — its four `build_*` inputs are
+manual, and this policy's own promotion runbook never set them. A retry after one app's Decision 7
+refusal therefore re-rebuilt every app that already succeeded too, tripping the same guard for each
+in turn. A new `resolve-build-plan` job now resolves, per app, whether a build is safely skippable
+(tag already published under the current revision, or under a different revision with
+content-identical tracked build inputs) — Decision 7's guard itself is untouched and still runs,
+unconditionally, in every build that is actually attempted. Full mechanism and the fail-closed
+reasoning: `scripts/resolve-build-skip-plan.js`'s own header comment; the amendment above for the
+full argument. `.agents/skills/promoter/references/promotion-runbook.md`'s PROD dispatch section
+now notes that neither canonical dispatch command needs any manual `build_*` unchecking as a result.
+
+This is a `[snapshot]`-tier procedure change under ADR 0039 — no `[binding]`/`[default]` clause of
+this policy or of ADR 0081 changes. **Not yet exercised against a real dispatch** — see the ADR
+amendment and `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 295 entry for what is and isn't
+verified.
+
+PR: (this PR). Refs #1610 (not Closes — needs deployed verification). Refs #1548.
+
+### 2026-09-06: Every production promotion carries a release-note record (#1278, ADR 0082)
+
+Decision record this implements: [ADR 0082](../architecture/adr/0082-production-release-record-and-release-notes.md),
+new in this PR. Not rewritten in place, same convention as every entry above. This entry states the
+obligation per promotion leg; it does not restate ADR 0082's own reasoning — read that ADR for why,
+this entry only for when/how within the flow this policy already governs.
+
+**Pre-cut — the release note is authored in the bump PR, not a separate step.** The same
+`chore(release): bump <apps> …` PR that ADR 0081 Decision 6's pre-cut floor step already requires
+(or opens as a note-only PR if every app is already at or above floor — the note PR is not optional
+even when no version bump is otherwise needed) now also adds/commits
+`docs/releases/notes/<candidate_id>.md`, following `docs/releases/notes/TEMPLATE.md`'s shape.
+`production_commit` is written as the literal sentinel `pending` at this point (ADR 0082 Decisions
+4/8) — the real `main` merge-commit SHA does not exist yet — and stays `pending` through every
+subsequent leg until the post-deploy finalization step below. This is the only workable seam for
+authoring at all: a promotion branch (`to-staging/*`/`release/*`) carries no commits of its own, so
+the note has to already be on `develop` at cut time to ride `develop → staging → main` with the code
+it describes — the same constraint ADR 0081 Decision 6 already reasoned through for version bumps
+themselves.
+
+**`fix/staging/*` — each repair amends the candidate's existing note, in the repair PR itself.** A
+repair branch does carry its own commit(s) (unlike a promotion branch), so it edits
+`docs/releases/notes/<candidate_id>.md` directly: one new `## Included` item line for the repair and
+an updated version-table row for whichever app(s) it touched — never a second release-note file for
+the same `candidate_id`. `production_commit` stays `pending` through a repair; nothing about the
+repair leg finalizes it.
+
+**`release/* → main` — `check:release-notes` runs on this PR, advisory in its first landing (Phase
+296, a separate PR from this one), blocking only in the later dedicated phase ADR 0082 Decision 8
+names.** At this point the note's `production_commit` is still the literal `pending` sentinel — the
+check's contract (ADR 0082 Decision 8) must accept that value or a real 40-hex SHA, never require
+the latter here, since the real `main` SHA cannot exist until after this exact PR merges. This entry
+records the obligation the check enforces; the script itself, its `package.json` wiring, and its
+`promotion-quality-gate.yml` step are out of scope for this PR — see
+`docs/features/IMPLEMENTATION_PHASE_LEDGER.md`'s Phase 296 entry once it lands, and ADR 0082's
+Follow-up 3 for the exact contract to build against.
+
+**After `deploy-main.yml` succeeds — the promoter finalizes `production_commit` to the real 40-hex
+SHA, tags `release-<candidate_id>` on the deployed `main` commit, and publishes the GitHub Release
+from the note file**, mirroring the #615 Android precedent: finalize the field on `develop` via its
+own small PR, then `gh release create release-<candidate_id> --title … --notes-file
+docs/releases/notes/<candidate_id>.md --target <main SHA>`. This runs after the promotion parity
+gate (ADR 0081 Decision 8) confirms the deployed image traces back to the candidate — full command
+sequence, including the runbook's own `grep` self-check before publish (no CI gate re-validates the
+finalization yet, ADR 0082 Follow-up 3):
+`.agents/skills/promoter/references/promotion-runbook.md`. Publishing the Release is a post-deploy
+record of a deploy Pat already authorized, not a new deploy mutation — see
+`.agents/skills/promoter/SKILL.md`'s checkpoint table for the explicit unattended classification.
+
+**A `main` hotfix and a #1007 expedited promotion each get their own release-note record**, keyed by
+their own `candidate_id`, per ADR 0082 Decision 6 — neither path is exempt from Decision 3's binding
+obligation just because it skips the staging soak or the ordinary bump-PR seam. **The two paths are
+not symmetric for enforcement purposes, stated here rather than left implicit:** the #1007 path cuts
+`release/<candidate_id>-rN` — the identical branch pattern the default flow uses — so
+`check:release-notes` already covers it once Phase 296 lands, no special-casing needed. A hotfix's
+branch does not match that pattern (`fix/*`, per `implement`'s own naming convention), so its copy of
+Decision 3's binding obligation is enforced procedurally today, via the release-note-authoring step
+added to `.agents/skills/incident-responder/SKILL.md`'s hotfix procedure in this same PR — not by
+any script. ADR 0082 Follow-up 3 tracks closing this mechanically.
+
+This is a `[default]`-tier procedure amendment under ADR 0039, layered on top of ADR 0082's own
+Decisions 1, 2, 4-8 (all `[default]`) — Decision 3 (`[binding]`: no production promotion reaches
+`main` without a release-note record for its candidate) is the substantive obligation this entry
+describes the mechanics of, not a change to its tier. No `[binding]` clause of this policy or of any
+other ADR is changed by this entry.
+
+PR: (this PR). Refs #1278, #1548. Does not close #1278 — Phase 296 (enforcement) is a separate PR.
+
+### 2026-09-06: Mid-soak `develop` update — ship the frozen candidate, don't fold new work in (#1660)
+
+Names, as its own decision, a case the 2026-09-04 "Frozen promotion-candidate repair loop" entry
+above already implied but never stated directly: **new work lands on `develop` while a candidate is
+already soaking in `staging`, still on its way to `main`.** Do you fold the new work into what's
+about to ship, or not?
+
+**Resolved: ship the current candidate as already qualified; the new `develop` work becomes the seed
+of the next ordinary candidate.** Three options were weighed:
+
+1. Hold the current candidate, merge the new `develop` work into it, requalify the combined set
+   under a bumped version before shipping anything.
+2. Keep the current candidate's version number, merge the new work in anyway, and call the result a
+   "hotfix" to that same version.
+3. Ship the current candidate to `main` as already qualified; treat the new `develop` work as the
+   seed of the next ordinary candidate, cut whenever it's ready.
+
+**Option 2 is rejected outright, not just discouraged.** It collides with two separate rules at
+once: ADR 0081 Decision 7 (`[binding]`, tag immutability) forbids changing what a published version
+tag's content is without a real version bump — there is no such thing as silently re-shipping the
+same number with different contents. And it misuses the `fix/staging/<candidate_id>-rN` repair
+mechanism, which exists specifically to fix a defect discovered *in* the candidate already soaking —
+not to admit unrelated new feature work that happened to land on `develop` in the meantime. The word
+"hotfix" doesn't change what the merge structurally is.
+
+**Option 1 is mechanically valid but strictly worse than Option 3, not a cheaper path.** The frozen-
+candidate rule already requires that merging anything new into an active candidate invalidates its
+qualification — so Option 1 pays the exact same full re-soak cost Option 3 does, while additionally
+throwing away a candidate that was otherwise ready to ship. There is no version of "fold it in to
+save a promotion cycle" that is actually cheaper once the re-soak requirement is accounted for.
+
+**Option 3 is simply the frozen-candidate rule working as designed, not a special case.** Cutting a
+new candidate shortly after the previous one shipped is unremarkable — nothing in the per-candidate
+floor-check (ADR 0081 Decision 6) or release-note obligation (ADR 0082 Decision 3) treats back-to-
+back candidates as exceptional. If the new `develop` work is genuinely too urgent to wait for its own
+ordinary `staging` soak, that is what the #1007 expedited `develop → main` override exists for
+(phrase-gated, logged every invocation) — a deliberate, separate lever, not a reason to fold new
+scope into an already-soaking candidate.
+
+This is a `[default]`-tier clarification under ADR 0039 of the existing frozen-candidate principle —
+no `[binding]` clause is changed, including ADR 0081 Decision 7 itself, which this entry only cites
+as the reason Option 2 fails.
+
+PR: (this PR). Closes #1660.
+
+### 2026-09-06: Compliance preflight execute-and-resolve moves to the `develop → staging` leg, not
+just verified before `main` (#1648)
+
+Resolves the gap named in #1648, itself filed right after #1618 — the seventh occurrence of the
+identical `compliance:preflight-handoff` ticket (#1387, #1419, #1430, #1505, #1544, #1574, #1618,
+all closed by a human or credentialed AI session happening to notice the standing issue, not by any
+step in this flow). The continuous sweep (`compliance-preflight-sweep.yml`) reconciles most
+declarations within minutes of landing on `develop`, but its reconciliation PR can't auto-merge
+(org-blocked `github-actions[bot]`, #1295/#1374) — and nothing checked for that stuck handoff until
+`promoter`'s pre-`main` gate ran, which can be days or weeks after `to-staging/<candidate_id>`
+already merged during a full staging soak. Deferring the check to right before `main` deferred the
+fix for just as long.
+
+**What changed.** `promoter` now runs the same check as before — full-scan for outstanding
+`NOT-EXECUTED-*` declarations, plus a check for a stuck `compliance:preflight-handoff` issue — much
+earlier, before `to-staging/<candidate_id>` is even cut, not only before `release/<label>` merges
+into `main`. It also now **goes past verify into resolve** at that point: if either check turns up
+something, `promoter` dispatches `compliance-preflight-sweep.yml` itself and then opens and merges
+the resulting reconciliation PR itself (an ordinary `develop`-base PR, already unattended-mergeable
+per `promoter`'s own merge table — no new merge authority granted by this entry), rather than
+leaving that step for a human to notice a separate GitHub issue after the fact. Full procedure:
+`.agents/skills/promoter/SKILL.md`'s "Frozen candidate and repair loop" section;
+executable commands: `.agents/skills/promoter/references/promotion-runbook.md`'s
+"Default: `develop` → `staging` → `main`" section. This changes ADR 0074 Decision 5's own anchor
+(`[default]` tier) — amended in the same PR, see that ADR's 2026-09-06 #1648 amendment rather than
+restated here.
+
+**The compliance verification ladder table** (2026-08-22 amendment above, updated 2026-08-25,
+2026-09-02) is **not rewritten in place**, same established convention as every amendment on this
+table before it. Read it as follows going forward: its "`develop → staging`" row's "What runs" cell
+now additionally includes the execute-and-resolve compliance-preflight step described above, run
+before the branch is cut — this is new, not previously true of that row. Its "`develop → main`" row
+still lists the compliance preflight check, but per the decision below that check is now largely
+redundant there for the default flow, kept as an explicit defense-in-depth double-check rather than
+the primary gate the ladder table's original wording implied.
+
+**Decision on the existing pre-`main` check: kept, not removed — and why, explicitly, rather than
+silently.** Deleting it outright would have been wrong, not just less thorough: the #1007-gated
+expedited `develop → main` exception (this document's 2026-08-25/2026-09-02 amendments above) skips
+the `develop → staging` leg entirely, so for that specific flow the pre-`main` check is not
+redundant at all — it remains the **only** compliance-preflight gate that flow ever runs. For the
+default three-stage flow, by contrast, it genuinely is defense-in-depth: the frozen-candidate rule
+(no wholesale `develop` merge into an active candidate) and the mid-soak "ship, don't fold" rule
+(this document's own 2026-09-06 #1660 entry above) together guarantee nothing new lands into a
+candidate between the `to-staging/<candidate_id>` cut and the `release/<label>` cut, so the pre-`main`
+check should always find the same clean state the staging-leg check already established. **Not a
+symmetric substitution, though**: the default flow's pre-`main` check scans `origin/staging` (what
+`release/<label>` is actually cut from there), and because the sweep's reconciliation PR is
+hardcoded to `--base develop`, a finding against `origin/staging` cannot go through the same
+dispatch-and-merge resolve path — it's a frozen-candidate anomaly instead, escalated and routed
+through a `fix/staging/*` repair. The `#1007`-gated exception's and the staging-leg's own checks
+(both against `origin/develop`) do share the identical execute-and-resolve behavior. Full split by
+flow: `.agents/skills/promoter/SKILL.md`'s "Compliance preflight sweep" section under "Pre-`main`
+gates".
+
+**What's unchanged:** "No `NOT-EXECUTED-*` declaration may reach `main`" (this document's own
+standing rule), the full-scan discovery method (#1374, not a `develop..main` diff), the supervised
+handoff mechanics themselves (#1295/#1374 — `github-actions[bot]` still cannot open or approve PRs,
+`promoter` doing so on its behalf is the same "ordinary `develop`-base PR, already
+unattended-mergeable" authority it already had, not a new grant), and #1007's expedited override as
+the one case a `NOT-EXECUTED-*` declaration may legitimately still reach `main`, logged and
+authorized, not silent.
+
+PR: (this PR). Closes #1648. Refs #1618.

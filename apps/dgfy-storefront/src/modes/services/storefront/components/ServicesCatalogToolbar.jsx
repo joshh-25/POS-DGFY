@@ -43,6 +43,13 @@ function ServicesCatalogToolbar({
     return () => document.removeEventListener('pointerdown', handleOutsidePointer);
   }, [isCategoryDropdownOpen]);
 
+  // RF-4 (PR #1583 review): adapts `serviceGroups` to the shared `StorefrontCatalogToolbar`'s
+  // `menuSections` shape. `sectionIdentity` (the stable, folder_id-based identity
+  // `servicesStorefrontViewModel.js` computes as `group.categoryIdentity`) MUST be carried
+  // through -- the earlier version of this adapter dropped it, so two distinct-`folder_id`
+  // service categories that happened to share a normalized `categoryKey` display text collapsed
+  // into one selectable tab in the shared toolbar. `sectionKey`/`sectionLabel` stay name-derived,
+  // display only.
   const toolbarViewModel = useMemo(() => {
     const allServices = Array.isArray(servicesViewModel?.allServices) ? servicesViewModel.allServices : [];
     const serviceGroups = Array.isArray(servicesViewModel?.serviceGroups) ? servicesViewModel.serviceGroups : [];
@@ -51,6 +58,7 @@ function ServicesCatalogToolbar({
       menuSections: serviceGroups.map((group) => ({
         sectionKey: group.categoryKey,
         sectionLabel: group.categoryMeta?.label || group.categoryKey || 'Services',
+        sectionIdentity: group.categoryIdentity,
         items: Array.isArray(group.items) ? group.items : [],
         visualMeta: {
           iconToken: group.categoryMeta?.iconToken || 'service',

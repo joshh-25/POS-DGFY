@@ -72,6 +72,42 @@ const parseJsonLoosely = (value) => {
         return null;
     }
 };
+const normalizePaymentType = (value) => String(value || '').trim().toLowerCase();
+const getTransactionPaymentAllocations = (transaction) => {
+    const breakdown = parseJsonLoosely(transaction?.payment_breakdown);
+    if (Array.isArray(breakdown) && breakdown.length > 0) {
+        return breakdown
+            .map((entry) => ({
+                payment_type: normalizePaymentType(entry?.payment_type),
+                amount: round4(entry?.amount)
+            }))
+            .filter((entry) => entry.payment_type && entry.amount > 0);
+    }
+
+    const paymentType = normalizePaymentType(transaction?.payment_type);
+    return paymentType
+        ? [{ payment_type: paymentType, amount: round4(transaction?.total_amount) }]
+        : [];
+};
+const buildTransactionPaymentTypeWhere = (sequelize, paymentType) => {
+    const normalized = normalizePaymentType(paymentType);
+    if (!normalized) return null;
+
+    return {
+        [Op.or]: [
+            { payment_type: normalized },
+            sequelize.where(
+                sequelize.fn(
+                    'JSON_CONTAINS',
+                    sequelize.col('PosTransaction.payment_breakdown'),
+                    JSON.stringify({ payment_type: normalized }),
+                    '$'
+                ),
+                1
+            )
+        ]
+    };
+};
 const stableStringify = (value) => {
     if (Array.isArray(value)) {
         return `[${value.map((item) => stableStringify(item)).join(',')}]`;
@@ -604,6 +640,7 @@ const resolvePosDisplayImage = async ({ override, storefrontImage }) => {
         ? gallery.find((entry) => entry?.is_primary === true)?.variants || gallery[0]?.variants
         : null;
     return {
+        source: hasPosOverrideImage ? 'override' : (url ? 'storefront' : null),
         path,
         url,
         variants: await readPosImageVariantUrls({
@@ -714,6 +751,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
                 pos_image_path: posDisplayImage.path,
                 pos_image_url: posDisplayImage.url,
                 pos_image_variants: posDisplayImage.variants,
+                pos_image_source: posDisplayImage.source,
                 storefront_image_path: storefrontImage?.storefront_image_path || null,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
                 storefront_image_variants: posDisplayImage.storefrontVariants,
@@ -1224,7 +1262,7 @@ const resolveReportDateRange = (filters = {}) => {
     };
 };
 
-const buildPosReportWhere = (filters = {}, { startAt, endAtExclusive } = {}) => {
+const buildPosReportWhere = (filters = {}, { startAt, endAtExclusive, sequelize } = {}) => {
     const baseWhere = {
         created_at: {
             [Op.gte]: startAt,
@@ -1243,16 +1281,17 @@ const buildPosReportWhere = (filters = {}, { startAt, endAtExclusive } = {}) => 
     if (terminalId) {
         baseWhere.terminal_id = terminalId;
     }
-    if (filters.payment_type) {
-        baseWhere.payment_type = filters.payment_type;
-    }
-
     const where = buildFinanciallyRecognizedSalesWhere(baseWhere);
     // Reports must reflect POS voids (unlike Z-reading/financial-recognition
     // callers of this shared where-builder, which intentionally only count
     // 'completed'): relax the status filter so voided transactions surface in
     // refunds_voids/gross_sales instead of being silently excluded.
     where.status = { [Op.in]: ['completed', 'voided'] };
+
+    const paymentTypeWhere = buildTransactionPaymentTypeWhere(sequelize, filters.payment_type);
+    if (paymentTypeWhere) {
+        where[Op.and] = [...(Array.isArray(where[Op.and]) ? where[Op.and] : []), paymentTypeWhere];
+    }
 
     const source = String(filters.source || '').trim().toLowerCase();
     if (source === 'in_store') {
@@ -1589,6 +1628,32 @@ const buildZReadingPaymentBreakdown = (rows = []) => {
     return normalizePosPaymentBreakdown(entries);
 };
 
+const buildSelectedTenderSummary = (transactions = [], paymentType, normalizedLines = []) => {
+    const normalized = normalizePaymentType(paymentType);
+    if (!normalized) return null;
+
+    const reportTransactionIds = new Set((Array.isArray(normalizedLines) ? normalizedLines : [])
+        .map((line) => String(line?.transaction_id || ''))
+        .filter(Boolean));
+    const matching = (Array.isArray(transactions) ? transactions : [])
+        .filter((transaction) => reportTransactionIds.has(String(transaction?.pos_transaction_id)))
+        .filter((transaction) => transaction?.status === 'completed'
+            && !REFUND_PAYMENT_STATUSES.has(normalizePaymentType(transaction?.payment_status)))
+        .map((transaction) => ({
+        transaction_id: transaction?.pos_transaction_id,
+        amount: round4(getTransactionPaymentAllocations(transaction)
+            .filter((entry) => entry.payment_type === normalized)
+            .reduce((sum, entry) => sum + entry.amount, 0))
+        })).filter((entry) => entry.amount > 0);
+
+    return {
+        payment_type: normalized,
+        payment_label: REPORT_PAYMENT_GROUP_LABELS[normalized] || normalized,
+        amount: round4(matching.reduce((sum, entry) => sum + entry.amount, 0)),
+        transaction_count: new Set(matching.map((entry) => String(entry.transaction_id))).size
+    };
+};
+
 const buildOrderMethodBreakdown = (rows = []) => {
     const groups = groupRowsBy(rows, (row) => String(row.order_method || 'dine_in').trim().toLowerCase() || 'dine_in');
     return Array.from(groups.entries()).map(([orderMethod, entries]) => ({
@@ -1748,6 +1813,7 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 operator_session_id: transaction.operator_session_id || null,
                 attribution_type: transaction.operator_session_id ? 'authenticated_operator' : 'legacy_cashier_snapshot',
                 payment_type: transaction.payment_type || null,
+                payment_methods: getTransactionPaymentAllocations(transaction).map((entry) => entry.payment_type),
                 payment_status: transaction.payment_status || null,
                 order_source: transaction.order_source || null,
                 order_method: transaction.order_method || null,
@@ -2403,7 +2469,10 @@ const buildReportPayloadFromTransactions = (
             total_transactions: summary.total_transactions,
             gross_sales: summary.gross_sales,
             net_sales: summary.net_sales,
-            pos_profit_loss: summary.pos_profit_loss
+            pos_profit_loss: summary.pos_profit_loss,
+            ...(filters.payment_type ? {
+                selected_tender: buildSelectedTenderSummary(transactions, filters.payment_type, normalizedLines)
+            } : {})
         },
         daily_report: {
             summary,
@@ -2521,6 +2590,11 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
     rows.push(['Daily Report']);
     rows.push([]);
     pushSummaryRows(payload?.daily_report?.summary || {});
+    if (payload?.summary_cards?.selected_tender) {
+        const selected = payload.summary_cards.selected_tender;
+        rows.push([`${selected.payment_label} Collected`, round4(selected.amount)]);
+        rows.push([`${selected.payment_label} Transactions`, Number(selected.transaction_count || 0)]);
+    }
     rows.push([]);
     rows.push(['Payment Method', 'Transactions', 'Net Sales', 'POS Profit/Loss']);
     (payload?.daily_report?.payment_breakdown || []).forEach((entry) => {
@@ -2575,7 +2649,9 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
             entry.invoice_number || entry.pos_transaction_id,
             entry.created_at || '',
             entry.cashier_name || '',
-            entry.payment_type || '',
+            Array.isArray(entry.payment_methods) && entry.payment_methods.length > 0
+                ? entry.payment_methods.map(toDisplayPaymentGroup).join(' + ')
+                : (entry.payment_type || ''),
             entry.status || '',
             round4(entry.total_amount),
             round4(entry.net_sales)
@@ -3512,7 +3588,8 @@ export const posRepository = {
                 ]
             });
         }
-        if (filters.payment_type) where.payment_type = filters.payment_type;
+        const paymentTypeWhere = buildTransactionPaymentTypeWhere(PosTransaction.sequelize, filters.payment_type);
+        if (paymentTypeWhere) whereAnd.push(paymentTypeWhere);
         if (filters.payment_status) where.payment_status = filters.payment_status;
         if (filters.order_method) where.order_method = filters.order_method;
         if (filters.order_source) where.order_source = filters.order_source;
@@ -3649,7 +3726,11 @@ export const posRepository = {
     async listReportTransactions(filters = {}, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const { startAt, endAtExclusive } = resolveReportDateRange(filters);
-        const where = buildPosReportWhere(filters, { startAt, endAtExclusive });
+        const where = buildPosReportWhere(filters, {
+            startAt,
+            endAtExclusive,
+            sequelize: PosTransaction.sequelize || dbStore.getStore()?.sequelize || dbStore.get('sequelize')
+        });
         const rows = await PosTransaction.findAll({
             where,
             include: buildReportInclude(),
@@ -4560,6 +4641,9 @@ export const posRepository = {
 
         const overrideMap = await loadCatalogOverridesMap([itemPayload.item_id]);
         const override = overrideMap.get(itemPayload.item_id);
+        const storefrontImageMap = await loadStorefrontCatalogImageMap([itemPayload.item_id]);
+        const storefrontImage = storefrontImageMap.get(itemPayload.item_id);
+        const posDisplayImage = resolvePosDisplayImage({ override, storefrontImage });
         const stockMap = await loadItemLocationStockMap([itemPayload.item_id], location_id);
         const [itemWithLocationStock] = Number.isInteger(Number.parseInt(location_id, 10)) && stockMap.locationScopeResolved
             ? applyItemLocationStockMap([itemPayload], stockMap.stockMap)
@@ -4590,11 +4674,14 @@ export const posRepository = {
                 pos_best_seller_mode: ['force', 'never'].includes(override?.pos_best_seller_mode)
                     ? override.pos_best_seller_mode
                     : 'auto',
-                pos_image_path: override?.pos_image_path || null,
-                pos_image_url: override?.pos_image_url || null,
-                pos_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: override?.pos_image_path || null,
-                    storedUrl: override?.pos_image_url || null
+                pos_image_path: posDisplayImage.path,
+                pos_image_url: posDisplayImage.url,
+                pos_image_variants: posDisplayImage.variants,
+                pos_image_source: posDisplayImage.source,
+                storefront_image_url: storefrontImage?.storefront_image_url || null,
+                storefront_image_variants: deriveImageAssetVariantUrls({
+                    storedPath: storefrontImage?.storefront_image_path || null,
+                    storedUrl: storefrontImage?.storefront_image_url || null
                 }),
                 pos_readiness: readiness
             }
@@ -4822,10 +4909,13 @@ export const posRepository = {
         });
 
         const overrideMap = await loadCatalogOverridesMap(items.map((item) => item.item_id));
+        const storefrontImageMap = await loadStorefrontCatalogImageMap(items.map((item) => item.item_id));
         const workflowMode = await getCurrentWorkflowMode();
         return items.map((item) => {
             const payload = toPlain(item);
             const override = overrideMap.get(payload.item_id);
+            const storefrontImage = storefrontImageMap.get(payload.item_id);
+            const posDisplayImage = resolvePosDisplayImage({ override, storefrontImage });
             const readiness = buildPosReadiness({ item: payload, override });
             const recommendation = buildCatalogSetupRecommendation({
                 item: payload,
@@ -4836,11 +4926,14 @@ export const posRepository = {
                 ...payload,
                 pos_visible: resolveCatalogVisibility({ item: payload, override, surface: 'pos' }),
                 pos_always_available: override?.pos_always_available === true,
-                pos_image_url: override?.pos_image_url || null,
-                pos_image_path: override?.pos_image_path || null,
-                pos_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: override?.pos_image_path || null,
-                    storedUrl: override?.pos_image_url || null
+                pos_image_path: posDisplayImage.path,
+                pos_image_url: posDisplayImage.url,
+                pos_image_variants: posDisplayImage.variants,
+                pos_image_source: posDisplayImage.source,
+                storefront_image_url: storefrontImage?.storefront_image_url || null,
+                storefront_image_variants: deriveImageAssetVariantUrls({
+                    storedPath: storefrontImage?.storefront_image_path || null,
+                    storedUrl: storefrontImage?.storefront_image_url || null
                 }),
                 has_override: Boolean(override),
                 pos_readiness: readiness,

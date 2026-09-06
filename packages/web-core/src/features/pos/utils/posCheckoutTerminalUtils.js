@@ -1,6 +1,7 @@
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { matchesPosHistorySearch } from './posHistorySearch.js';
 import { getDiscountLineRef } from './posDiscountSelection.js';
+import { matchesPosTransactionPaymentMethod } from './posPaymentMethods.js';
 
 export const money = (value) => Number(value || 0).toFixed(2);
 export const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
@@ -434,6 +435,7 @@ export const buildOfflineCheckoutHistoryRow = ({
         created_at: queuedTimestamp,
         order_source: 'in_store',
         payment_type: String(payload?.payment_type || '').trim() || 'cash',
+        payment_breakdown: payload?.payment_breakdown || null,
         order_method: String(payload?.order_method || '').trim() || 'takeout',
         total_amount: Number(cartTotal || 0),
         subtotal_amount: Number(cartSubtotal || 0),
@@ -459,7 +461,7 @@ export const rowMatchesHistoryFilters = (row, filters) => {
     if (!matchesPosHistorySearch(row, filters?.historySearch)) return false;
 
     const paymentType = String(filters?.historyPaymentType || 'all').trim();
-    if (paymentType !== 'all' && String(row?.payment_type || '').trim() !== paymentType) {
+    if (!matchesPosTransactionPaymentMethod(row, paymentType)) {
         return false;
     }
 
@@ -515,8 +517,23 @@ export const buildStockExceededMessage = ({ itemName, requestedQty, availableSto
 export const getLineKey = (line = {}) => line.line_key || line.item_id;
 export const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+// POS-specific override takes precedence over the shared Storefront image --
+// the same contract posRepository.js's resolvePosDisplayImage() implements
+// server-side (docs/compliance/impact-declarations/2026-06-15-pos-shared-item-image-gallery.md).
+// `pos_image_url` is the effective-image signal: whenever a POS-specific
+// override exists it is truthy, so its own `pos_image_variants` (which may be
+// a flat override with no derived variant set at all) is used as-is rather
+// than silently widened with unrelated `storefront_image_variants` -- #1635's
+// own regression, since a naive `pos_image_variants || storefront_image_variants`
+// would still leak the Storefront srcSet onto a flat POS override. Only when
+// no POS-specific image exists at all does resolution fall back to the
+// Storefront fields, matching the number-218 fallback case.
 export const resolvePosCatalogImageSources = (item = {}) => {
-    const variants = item?.pos_image_variants || item?.storefront_image_variants || {};
+    const hasPosOverride = Boolean(item?.pos_image_url);
+    const effectiveUrl = item?.pos_image_url || item?.storefront_image_url || '';
+    const variants = hasPosOverride
+        ? (item?.pos_image_variants || {})
+        : (item?.storefront_image_variants || {});
     const resolveVariantSet = (variantSet = {}) => {
         const posThumbnailUrl = resolveAssetUrl(variantSet?.pos_thumbnail_url || '');
         const thumbnailUrl = resolveAssetUrl(variantSet?.thumbnail_url || '');
@@ -550,9 +567,9 @@ export const resolvePosCatalogImageSources = (item = {}) => {
         configuredLargeSrc,
         thumbnailFallbackSrc: fallbackVariants.thumbnailUrl || configuredSrc || '',
         src: fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl || configuredSrc || '',
-        srcSet: undefined,
-        avifSrcSet: undefined,
-        webpSrcSet: undefined,
+        srcSet: fallbackVariants.posThumbnailUrl ? undefined : fallbackVariants.srcSet,
+        avifSrcSet: fallbackVariants.posThumbnailUrl ? undefined : resolveVariantSet(variants?.avif).srcSet,
+        webpSrcSet: fallbackVariants.posThumbnailUrl ? undefined : resolveVariantSet(variants?.webp).srcSet,
         placeholderSrc: resolveAssetUrl(variants?.placeholder_url || '')
     };
 };

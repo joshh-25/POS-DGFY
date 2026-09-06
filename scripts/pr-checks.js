@@ -319,6 +319,21 @@ function buildCheckEnv(options) {
   };
 }
 
+// #1592 (Phase 283): a failing app-version-bump check must map to `'fail'`, not `'warn'`, once
+// BLOCKING is true -- `blocking: true` alone does not change severity, and computeOverallResult()
+// only ever escalates to FAIL on `blocking && result === 'fail'` (a `'warn'` can only degrade PASS
+// to PARTIAL, never FAIL — see that function's own comment). Before this fix, this check's result
+// was hardcoded to `appVersionsResult.ok ? 'pass' : 'warn'` regardless of BLOCKING, so flipping the
+// toggle alone silently left this surface non-blocking in practice — confirmed live via
+// computeOverallResult([{ result: 'warn', blocking: true }]) still returning 'PARTIAL', never
+// 'FAIL'. Extracted as its own pure function, mirroring buildCheckEnv() above, so
+// pr-checks.test.js can assert this mapping directly without spawning the real
+// check-app-version-bump.js child process.
+function resolveAppVersionsCheckResult(ok, blocking) {
+  if (ok) return 'pass';
+  return blocking ? 'fail' : 'warn';
+}
+
 function runChecks(options, changedFiles, components) {
   const checks = [];
   const env = buildCheckEnv(options);
@@ -334,11 +349,18 @@ function runChecks(options, changedFiles, components) {
   const receiptResult = runCommand('node', ['scripts/check-pos-receipt-version-bump.js'], { env });
   addCheck(checks, 'pos-receipt version bump', 'node scripts/check-pos-receipt-version-bump.js', receiptResult.ok ? 'pass' : 'warn', false);
 
-  // #1569: `blocking` now reads scripts/lib/version-bump-gate-toggle.js's BLOCKING constant
-  // instead of a hardcoded `false` -- see that module's header for the flip procedure. Shipped
-  // advisory; flipping the toggle module flips both this and the CI-side step together.
+  // #1569: `blocking` reads scripts/lib/version-bump-gate-toggle.js's BLOCKING constant instead
+  // of a hardcoded literal -- see that module's header for the flip history. #1592 flipped it to
+  // `true` and fixed the result-severity mapping below to actually honor it (see
+  // resolveAppVersionsCheckResult()'s own comment).
   const appVersionsResult = runCommand('node', ['scripts/check-app-version-bump.js'], { env });
-  addCheck(checks, 'app version bump', 'node scripts/check-app-version-bump.js', appVersionsResult.ok ? 'pass' : 'warn', APP_VERSIONS_CHECK_BLOCKING);
+  addCheck(
+    checks,
+    'app version bump',
+    'node scripts/check-app-version-bump.js',
+    resolveAppVersionsCheckResult(appVersionsResult.ok, APP_VERSIONS_CHECK_BLOCKING),
+    APP_VERSIONS_CHECK_BLOCKING,
+  );
 
   const complianceResult = runCommand('npm', ['run', 'check:compliance'], { env });
   addCheck(checks, 'compliance impact declarations (stricter than CI — CI runs this advisory today)', 'npm run check:compliance', complianceResult.ok ? 'pass' : 'fail');
@@ -589,6 +611,7 @@ module.exports = {
   PrChecksError,
   PATH_FILTERS,
   BACKEND_TEST_INVENTORY_FILTER,
+  resolveAppVersionsCheckResult,
   buildCheckEnv,
   parseArgs,
   detectComponents,

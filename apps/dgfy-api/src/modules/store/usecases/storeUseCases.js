@@ -278,20 +278,6 @@ const toStatusLabel = (status) => {
     }
 };
 
-const haversineDistanceKm = ({ lat1, lon1, lat2, lon2 }) => {
-    const toRad = (value) => value * (Math.PI / 180);
-    const earthRadiusKm = 6371;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const lat1Rad = toRad(lat1);
-    const lat2Rad = toRad(lat2);
-
-    const a = Math.sin(dLat / 2) ** 2
-        + (Math.sin(dLon / 2) ** 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return earthRadiusKm * c;
-};
-
 const parseSettingValue = (rawValue, fallback = null) => {
     if (rawValue == null) return fallback;
     if (typeof rawValue !== 'string') return rawValue;
@@ -443,7 +429,6 @@ const serializeOrderBase = (order) => ({
     delivery_fee_waiver_label_snapshot: order?.delivery_fee_waiver_label_snapshot ?? null,
     total_amount: order?.total_amount,
     discount: order?.discount || null,
-    outside_radius_flag: order?.outside_radius_flag,
     scheduled_for: order?.scheduled_for,
     special_instructions: order?.special_instructions,
     created_at: order?.created_at,
@@ -567,23 +552,6 @@ export const resolveStorefrontPaymentSnapshot = ({ paymentType, payload = {}, ca
         payment_provider: isVerifiedOnlinePayment ? 'paymongo' : null,
         payment_session_reference: isVerifiedOnlinePayment ? (payload.payment_session_reference || null) : null
     };
-};
-
-const resolveDeliveryRadiusFlag = ({ orderMethod, location, deliveryLatitude, deliveryLongitude }) => {
-    if (orderMethod !== 'delivery') return false;
-    if (!location) return false;
-    if (!Number.isFinite(Number(location.latitude)) || !Number.isFinite(Number(location.longitude))) return false;
-    if (!Number.isFinite(Number(deliveryLatitude)) || !Number.isFinite(Number(deliveryLongitude))) return false;
-
-    const distanceKm = haversineDistanceKm({
-        lat1: Number(location.latitude),
-        lon1: Number(location.longitude),
-        lat2: Number(deliveryLatitude),
-        lon2: Number(deliveryLongitude)
-    });
-    const radiusKm = Number(location.delivery_radius_km || 0);
-    if (!Number.isFinite(radiusKm) || radiusKm <= 0) return false;
-    return distanceKm > radiusKm;
 };
 
 // Phase 236 (#1328): the parsed flat store_delivery_fee value, extracted to its own helper so
@@ -1954,10 +1922,9 @@ const resolveCheckoutContext = async ({
     // Phase 236 (#1328, epic #1321): observation-only server-side road-distance capture. Fired
     // (not awaited) as soon as location + delivery coordinates are both resolved, so it runs
     // concurrently with the rest of this function's own I/O (voucher/promo resolution, etc.)
-    // rather than adding to this function's serial latency in the common case -- same guard shape
-    // resolveDeliveryRadiusFlag below already uses. Never feeds deliveryFee/totalAmount -- see
-    // resolveStoreDeliveryFee (unchanged) and the mapping applied at this promise's await point
-    // near the end of this function.
+    // rather than adding to this function's serial latency in the common case. Never feeds
+    // deliveryFee/totalAmount -- see resolveStoreDeliveryFee (unchanged) and the mapping applied
+    // at this promise's await point near the end of this function.
     const deliveryOriginLat = Number(location?.latitude);
     const deliveryOriginLng = Number(location?.longitude);
     // Phase 237 (#1329): FIXED a pre-existing correctness gap here -- normalized.delivery_latitude/
@@ -2740,13 +2707,6 @@ const resolveCheckoutContext = async ({
         paymentElection: normalized.payment_election
     });
 
-    const outsideRadiusFlag = resolveDeliveryRadiusFlag({
-        orderMethod,
-        location,
-        deliveryLatitude: normalized.delivery_latitude,
-        deliveryLongitude: normalized.delivery_longitude
-    });
-
     return {
         normalized,
         settings,
@@ -2777,7 +2737,6 @@ const resolveCheckoutContext = async ({
         // configured full_payment", since resolveDownpaymentForTotal fails closed to the same
         // full_payment shape for both. See the payment-session use case's DOWNPAYMENT_POLICY_UNRESOLVED guard.
         downpaymentSettings: downpaymentSettings || null,
-        outsideRadiusFlag,
         deliveryDistanceMeters,
         deliveryDistanceSource,
         scheduledFor,
@@ -3784,7 +3743,6 @@ export const buildStoreCartQuoteUseCase = ({
                 vat_amount: resolved.prepared.vatAmount,
                 vat_exempt_sales: resolved.prepared.vatExemptSales,
                 zero_rated_sales: resolved.prepared.zeroRatedSales,
-                outside_radius_flag: resolved.outsideRadiusFlag,
                 storefront_open: resolved.storefront_open,
                 estimated_wait_minutes: resolved.estimated_wait_minutes,
                 location: resolved.location ? {
@@ -3866,6 +3824,29 @@ export const buildRequestStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) =>
             }
             return ok({ email, idempotency_key: idempotencyKey, delivery_status: deliveryStatus });
         } catch (error) {
+            // #1614: emailOtpService throws a plain Error with .statusCode/.code
+            // (EMAIL_OTP_DELIVERY_FAILED / EMAIL_OTP_DELIVERY_UNAVAILABLE) rather
+            // than a DomainError, so mapStoreUseCaseError below would otherwise
+            // flatten it to a generic INTERNAL_ERROR -- discarding the fact that
+            // this is a well-classified delivery failure and hiding it behind the
+            // same fallback message as an unrelated bug. Route it through the
+            // same SERVICE_UNAVAILABLE contract the delivery_status guard above
+            // already uses, so a real SMTP outage is reported honestly instead of
+            // looking like an unclassified internal error.
+            if (
+                error?.code === 'EMAIL_OTP_DELIVERY_FAILED'
+                || error?.code === 'EMAIL_OTP_DELIVERY_UNAVAILABLE'
+            ) {
+                // observabilityReasonCode, not details -- details is serialized straight
+                // into the public response body (see DomainError's own constructor
+                // comment), and the internal EMAIL_OTP_DELIVERY_* code is not meant to
+                // be client-visible; only the SERVICE_UNAVAILABLE code and message are.
+                return fail(new DomainError(
+                    DomainErrorCode.SERVICE_UNAVAILABLE,
+                    'Email verification code could not be delivered. Please try again later.',
+                    { observabilityReasonCode: error.code, cause: error }
+                ));
+            }
             return fail(mapStoreUseCaseError(error, 'Failed to send guest checkout verification code'));
         }
     };
@@ -4161,7 +4142,6 @@ export const buildStoreCheckoutUseCase = ({
                     special_instructions: normalized.special_instructions || null,
                     delivery_fee: resolved.deliveryFee,
                     store_customer_id: normalizedStoreCustomer?.customer_id || null,
-                    outside_radius_flag: resolved.outsideRadiusFlag,
                     // Phase 236 (#1328, epic #1321): observation-only capture, never fed into
                     // delivery_fee/total_amount above.
                     delivery_distance_meters: resolved.deliveryDistanceMeters,

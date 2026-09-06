@@ -46,6 +46,16 @@ on:
         required: false
         type: string
         default: '["sieitz-runner"]'  # #923: generic, either box
+      candidate_source_sha:
+        description: >-
+          ADR 0081 Decision 8 candidate source identity, threaded straight through to each builder
+          workflow's own input of the same name -- see deploy-api.yml's input description for the
+          full contract. Left empty outside a to-staging promotion (deploy.yml's DEV/STAGING calls
+          this workflow for both; only the STAGING dispatch of an actual promotion should ever set
+          this non-empty).
+        required: false
+        type: string
+        default: ''
     outputs:
       frontend_ims_sha_tag:
         value: ${{ jobs.frontend-ims.outputs.sha_tag }}
@@ -73,15 +83,91 @@ permissions:
   packages: write
 
 jobs:
+  # #1610 follow-up: deploy-main.yml (PROD) has carried this build-skip resolution since ADR 0081
+  # Decision 7 residue was fixed there, but this shared workflow -- used by deploy.yml's DEV/STAGING
+  # dispatch -- never got the same fix. Net effect: every DEV/STAGING dispatch force-rebuilt the
+  # paired dgfy-api/dgfy-migration-runner unit (and every checked frontend) even when an app's own
+  # code hadn't changed at all, tripping ADR 0081 Decision 7's tag-immutability guard on the
+  # untouched app every time a sibling did need a rebuild. Ported verbatim from deploy-main.yml's
+  # own `resolve-build-plan` job (same script, same four-outcome table, same fail-closed reasoning --
+  # see scripts/resolve-build-skip-plan.js's header comment) with one addition: `--environment` is
+  # passed here (deploy-main.yml never does) so the script checks the correctly channel-suffixed tag
+  # (-dev/-staging) instead of PROD's bare X.Y.Z -- see deriveChannelSuffix in that script.
+  resolve-build-plan:
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    timeout-minutes: 10
+    outputs:
+      should_build_dgfy_api: ${{ steps.resolve.outputs.should_build_dgfy_api }}
+      should_build_dgfy_migration_runner: ${{ steps.resolve.outputs.should_build_dgfy_migration_runner }}
+      should_build_dgfy_ims: ${{ steps.resolve.outputs.should_build_dgfy_ims }}
+      should_build_dgfy_pos: ${{ steps.resolve.outputs.should_build_dgfy_pos }}
+      should_build_dgfy_storefront: ${{ steps.resolve.outputs.should_build_dgfy_storefront }}
+    steps:
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Resolve build-skip plan
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/resolve-build-skip-plan.js --revision "${{ github.sha }}" --environment "${{ inputs.environment }}"
+
   dgfy-api:
     # The backend, refactored into apps/dgfy-api -- now the source of truth
     # (backend/ removed). See infrastructure/docker/dgfy-api/Dockerfile.
-    if: inputs.build_api
+    needs: resolve-build-plan
+    if: inputs.build_api && needs.resolve-build-plan.outputs.should_build_dgfy_api == 'true'
     uses: ./.github/workflows/deploy-api.yml
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read
@@ -91,12 +177,18 @@ jobs:
     # One-shot migration image the dgfy-api service depends on at compose-up
     # (applies Sequelize migrations, then exits). Must be published alongside
     # dgfy-api -- see infrastructure/docker/dgfy-migration-runner/Dockerfile.
-    if: inputs.build_api
+    # #1610: build_api stays ONE shared checkbox gating both this job and dgfy-api's eligibility to
+    # run at all, but each job ANDs it with its OWN independently-resolved skip verdict -- an
+    # API-only change correctly skips rebuilding this image (and vice versa), rather than treating
+    # the pair as always-rebuild-together. See resolve-build-plan's own comment above.
+    needs: resolve-build-plan
+    if: inputs.build_api && needs.resolve-build-plan.outputs.should_build_dgfy_migration_runner == 'true'
     uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read
@@ -107,13 +199,15 @@ jobs:
     # infrastructure/docker/dgfy-ims/Dockerfile. One image per app since
     # issue #322 Phase 6 (previously one combined `frontend` image built all
     # 3 SPAs).
-    if: inputs.build_frontend_ims
+    needs: resolve-build-plan
+    if: inputs.build_frontend_ims && needs.resolve-build-plan.outputs.should_build_dgfy_ims == 'true'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-ims
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read
@@ -122,13 +216,15 @@ jobs:
   frontend-pos:
     # Builds/pushes the dgfy-pos image -- see
     # infrastructure/docker/dgfy-pos/Dockerfile.
-    if: inputs.build_frontend_pos
+    needs: resolve-build-plan
+    if: inputs.build_frontend_pos && needs.resolve-build-plan.outputs.should_build_dgfy_pos == 'true'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-pos
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read
@@ -137,36 +233,41 @@ jobs:
   frontend-storefront:
     # Builds/pushes the dgfy-storefront image -- see
     # infrastructure/docker/dgfy-storefront/Dockerfile.
-    if: inputs.build_frontend_storefront
+    needs: resolve-build-plan
+    if: inputs.build_frontend_storefront && needs.resolve-build-plan.outputs.should_build_dgfy_storefront == 'true'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-storefront
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
     secrets: inherit
     permissions:
       contents: read
       packages: write
 
   publish:
-    needs: [ dgfy-api, dgfy-migration-runner, frontend-ims, frontend-pos, frontend-storefront ]
+    needs: [ resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims, frontend-pos, frontend-storefront ]
     # dgfy-api/dgfy-migration-runner/frontend-* are conditionally skipped
-    # (build_api/build_frontend above), and `needs.<job>.result` on a skipped
-    # job is 'skipped', not 'success' -- so this can't require all five to be
-    # 'success' like it used to. `!cancelled()` is required too: without a
-    # status-check function here, a skipped need would skip this job as well.
-    # Publish goes ahead as long as none of the built jobs actually failed and
-    # at least one of them ran.
+    # (build_api/build_frontend above, and now also #1610's resolve-build-plan verdict), and
+    # `needs.<job>.result` on a skipped job is 'skipped', not 'success' -- so this can't require all
+    # five to be 'success' like it used to. `!cancelled()` is required too: without a status-check
+    # function here, a skipped need would skip this job as well. Publish goes ahead as long as
+    # resolve-build-plan itself didn't fail outright (a whole-job crash, not a per-app skip -- see
+    # that job's own comment) and none of the build jobs actually failed.
+    #
+    # #1610: dropped the "at least one build actually succeeded" OR-clause the previous version of
+    # this condition had, mirroring deploy-main.yml's own fix -- every app being legitimately
+    # skip-eligible (a true no-op re-dispatch) must still allow publish to proceed, not block it.
     if: >-
       inputs.publish && !cancelled() &&
+      needs.resolve-build-plan.result == 'success' &&
       needs.dgfy-api.result != 'failure' &&
       needs.dgfy-migration-runner.result != 'failure' &&
       needs.frontend-ims.result != 'failure' &&
       needs.frontend-pos.result != 'failure' &&
-      needs.frontend-storefront.result != 'failure' &&
-      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' ||
-       needs.frontend-ims.result == 'success' || needs.frontend-pos.result == 'success' || needs.frontend-storefront.result == 'success')
+      needs.frontend-storefront.result != 'failure'
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: ${{ inputs.environment }}

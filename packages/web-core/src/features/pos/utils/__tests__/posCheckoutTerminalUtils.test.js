@@ -249,6 +249,17 @@ describe('POS checkout terminal pure utilities', () => {
             historyDateTo: '2026-08-18',
             historyStatus: 'pending_sync'
         })).toBe(true);
+        const splitRow = {
+            ...row,
+            payment_type: 'cash',
+            payment_breakdown: [
+                { payment_type: 'gcash', amount: 365 },
+                { payment_type: 'cash', amount: 100 }
+            ]
+        };
+        expect(rowMatchesHistoryFilters(splitRow, { historyPaymentType: 'gcash' })).toBe(true);
+        expect(rowMatchesHistoryFilters(splitRow, { historyPaymentType: 'cash' })).toBe(true);
+        expect(rowMatchesHistoryFilters(splitRow, { historyPaymentType: 'card' })).toBe(false);
         expect(rowMatchesHistoryFilters(row, { historyStatus: 'completed' })).toBe(false);
         expect(buildOfflineCheckoutHistoryRow({ payload: {} })).toBeNull();
     });
@@ -276,5 +287,60 @@ describe('POS checkout terminal pure utilities', () => {
             label: 'Custom'
         });
         expect(inferReceiptContract({})).toBeNull();
+    });
+
+    it('prefers a POS-specific override image over the Storefront fallback (#1635)', () => {
+        // (a) both POS and Storefront images present -- POS-specific override
+        // must win, matching posRepository.js's resolvePosDisplayImage() contract.
+        const bothPresent = resolvePosCatalogImageSources({
+            pos_image_url: 'https://cdn.example.test/pos/large.jpg',
+            pos_image_variants: {
+                thumbnail_url: 'https://cdn.example.test/pos/thumb.jpg',
+                medium_url: 'https://cdn.example.test/pos/medium.jpg',
+                large_url: 'https://cdn.example.test/pos/large.jpg'
+            },
+            storefront_image_url: 'https://cdn.example.test/storefront/large.jpg',
+            storefront_image_variants: {
+                thumbnail_url: 'https://cdn.example.test/storefront/thumb.jpg',
+                medium_url: 'https://cdn.example.test/storefront/medium.jpg',
+                large_url: 'https://cdn.example.test/storefront/large.jpg'
+            }
+        });
+        expect(bothPresent.src).toBe('https://cdn.example.test/pos/thumb.jpg');
+        expect(bothPresent.configuredLargeSrc).toBe('https://cdn.example.test/pos/large.jpg');
+        expect(bothPresent.srcSet).toContain('pos/thumb.jpg');
+        expect(bothPresent.srcSet).not.toContain('storefront');
+
+        // (b) only the Storefront image exists -- the number-218 case, Storefront wins.
+        const storefrontOnly = resolvePosCatalogImageSources({
+            storefront_image_url: 'https://cdn.example.test/storefront/large.jpg',
+            storefront_image_variants: {
+                thumbnail_url: 'https://cdn.example.test/storefront/thumb.jpg',
+                medium_url: 'https://cdn.example.test/storefront/medium.jpg',
+                large_url: 'https://cdn.example.test/storefront/large.jpg'
+            }
+        });
+        expect(storefrontOnly.src).toBe('https://cdn.example.test/storefront/thumb.jpg');
+        expect(storefrontOnly.configuredLargeSrc).toBe('https://cdn.example.test/storefront/large.jpg');
+
+        // (c) a flat pos_image_url with no derived variants object at all -- still
+        // resolves to a plain src, without leaking the (unrelated) Storefront
+        // srcSet/avif/webp sources. Uses a path that doesn't end in "/large.ext" so
+        // resolveAssetVariantUrl's sibling-file rewrite heuristic is a no-op here,
+        // isolating the "no variants object" behavior from that unrelated rewrite.
+        const flatPosUrlOnly = resolvePosCatalogImageSources({
+            pos_image_url: 'https://cdn.example.test/pos/raw-photo.jpg',
+            storefront_image_url: 'https://cdn.example.test/storefront/large.jpg',
+            storefront_image_variants: {
+                thumbnail_url: 'https://cdn.example.test/storefront/thumb.jpg',
+                medium_url: 'https://cdn.example.test/storefront/medium.jpg',
+                large_url: 'https://cdn.example.test/storefront/large.jpg'
+            }
+        });
+        expect(flatPosUrlOnly.src).toBe('https://cdn.example.test/pos/raw-photo.jpg');
+        expect(flatPosUrlOnly.configuredLargeSrc).toBe('https://cdn.example.test/pos/raw-photo.jpg');
+        expect(flatPosUrlOnly.srcSet).toBeUndefined();
+        expect(flatPosUrlOnly.avifSrcSet).toBeUndefined();
+        expect(flatPosUrlOnly.webpSrcSet).toBeUndefined();
     });
 });

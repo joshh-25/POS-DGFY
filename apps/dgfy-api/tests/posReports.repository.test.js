@@ -11,10 +11,11 @@ const mockOperatorFindAll = jest.fn();
 const mockHandoffFindAll = jest.fn();
 const mockSequelize = {
     fn: jest.fn((...args) => ({ fn: args })),
-    col: jest.fn((name) => ({ col: name }))
+    col: jest.fn((name) => ({ col: name })),
+    where: jest.fn((left, right) => ({ where: [left, right] }))
 };
 
-const PosTransactionModel = { modelName: 'PosTransaction', findAll: mockFindAll };
+const PosTransactionModel = { modelName: 'PosTransaction', findAll: mockFindAll, sequelize: mockSequelize };
 const PosTransactionLineModel = { modelName: 'PosTransactionLine', findAll: mockLineFindAll };
 const ItemModel = { modelName: 'Item' };
 const ItemFolderModel = { modelName: 'ItemFolder', findAll: mockItemFolderFindAll };
@@ -758,7 +759,13 @@ describe('posRepository reports analytics', () => {
         expect(where.status).toEqual({ [Op.in]: ['completed', 'voided'] });
         expect(where.location_id).toBe(9);
         expect(where.terminal_id).toBe('POS-01');
-        expect(where.payment_type).toBe('cash');
+        expect(where.payment_type).toBeUndefined();
+        expect(where[Op.and]).toEqual(expect.arrayContaining([
+            expect.objectContaining({ [Op.or]: expect.arrayContaining([
+                { payment_type: 'cash' },
+                expect.objectContaining({ where: expect.any(Array) })
+            ]) })
+        ]));
         expect(where[Op.or]).toEqual(expect.arrayContaining([
             { order_source: 'in_store' },
             { order_source: null },
@@ -767,5 +774,82 @@ describe('posRepository reports analytics', () => {
         expect(where[Op.and]).toEqual(expect.arrayContaining([
             { order_method: 'pickup' }
         ]));
+    });
+
+    it('reconciles a filtered GCash report with a GCash leg inside a Cash-primary split sale', async () => {
+        const transactions = Array.from({ length: 6 }, (_, index) => {
+            const amount = index === 5 ? 280 : 200;
+            return {
+                pos_transaction_id: index + 1,
+                created_at: '2026-09-05T03:00:00.000Z',
+                status: 'completed',
+                payment_status: 'paid',
+                subtotal_amount: amount,
+                total_amount: amount,
+                discount_amount: 0,
+                service_fee_amount: 0,
+                restaurant_service_charge_amount: 0,
+                vat_amount: 0,
+                payment_type: 'gcash',
+                payment_breakdown: [{ payment_type: 'gcash', count: 1, amount }],
+                cashier_id: 9,
+                cashier: { user_id: 9, username: 'cashier-1' },
+                lines: [{ item_id: index + 1, quantity: 1, cost_snapshot: 0, line_subtotal: amount, item: { item_id: index + 1, name: `Item ${index + 1}`, category: 'product', cost_per_unit: 0 } }]
+            };
+        });
+        transactions.push({
+            pos_transaction_id: 7,
+            created_at: '2026-09-05T04:00:00.000Z',
+            status: 'completed',
+            payment_status: 'paid',
+            subtotal_amount: 465,
+            total_amount: 465,
+            discount_amount: 0,
+            service_fee_amount: 0,
+            restaurant_service_charge_amount: 0,
+            vat_amount: 0,
+            payment_type: 'cash',
+            payment_breakdown: [
+                { payment_type: 'gcash', count: 1, amount: 365 },
+                { payment_type: 'cash', count: 1, amount: 100 }
+            ],
+            cashier_id: 9,
+            cashier: { user_id: 9, username: 'cashier-1' },
+            lines: [{ item_id: 7, quantity: 1, cost_snapshot: 0, line_subtotal: 465, item: { item_id: 7, name: 'Split item', category: 'product', cost_per_unit: 0 } }]
+        });
+        mockFindAll.mockResolvedValue(transactions);
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-09-05',
+            date_to: '2026-09-05',
+            payment_type: 'gcash'
+        });
+
+        expect(result.summary_cards.selected_tender).toEqual({
+            payment_type: 'gcash',
+            payment_label: 'GCash',
+            amount: 1645,
+            transaction_count: 7
+        });
+        expect(result.summary_cards.total_transactions).toBe(7);
+        expect(result.summary_cards.total_sales).toBe(1745);
+        expect(result.daily_report.payment_breakdown).toEqual(expect.arrayContaining([
+            expect.objectContaining({ payment_method: 'GCash', total_transactions: 7, net_sales: 1645 }),
+            expect.objectContaining({ payment_method: 'Cash', total_transactions: 1, net_sales: 100 })
+        ]));
+        expect(result.daily_report.transaction_rows.at(-1)).toEqual(expect.objectContaining({
+            payment_type: 'cash',
+            payment_methods: ['gcash', 'cash']
+        }));
+
+        // A historical snapshot survives a void/refund; it must not inflate collected tender.
+        transactions[6].status = 'voided';
+        const voidedResult = await posRepository.getReportsOverview({ payment_type: 'gcash' });
+        expect(voidedResult.summary_cards.selected_tender.amount).toBe(1280);
+        expect(voidedResult.summary_cards.selected_tender.transaction_count).toBe(6);
+        transactions[6].status = 'completed';
+        transactions[6].payment_status = 'refunded';
+        const refundedResult = await posRepository.getReportsOverview({ payment_type: 'gcash' });
+        expect(refundedResult.summary_cards.selected_tender.amount).toBe(1280);
     });
 });

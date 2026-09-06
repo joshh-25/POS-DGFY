@@ -15,8 +15,8 @@ verification_evidence: apps/dgfy-api/tests/storeRepositorySecondaryCategories.te
 rollback_note: Revert this PR's diff. No migration and no schema change -- item_folder_memberships already exists (Phase 257, #1503) and this PR only reads it via the existing listItemFolderMemberships. Reverting removes the secondary_categories field from the public storefront catalog response and the ItemFolder-name batch lookup in storeRepository.js; no money value, no primary folder_id/folder_name value, and no write path is touched by this PR at all, so rollback is a pure subtraction with zero data-shape risk.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-04T10:57:30.000Z
-preflight_request_ref: NOT-EXECUTED-1318-STOREFRONT-CATALOG-SECONDARY-CATEGORIES
+preflight_run_at: 2026-09-04T16:07:17.508Z
+preflight_request_ref: PREFLIGHT-33893050690-2026-09-04-STOREFRONT-CATALOG-SECONDARY-CATEGORIES
 ---
 
 # Storefront catalog API projection of secondary categories (Phase 285, #1318, Wave C/C1)

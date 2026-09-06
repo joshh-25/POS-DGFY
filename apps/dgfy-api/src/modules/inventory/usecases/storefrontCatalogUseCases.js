@@ -4,6 +4,11 @@ import {
   SAFE_IMAGE_MIME_TYPES,
   validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
+import { parseBulkCatalogFilename, groupBulkCatalogFilesBySku } from '../../shared/utils/bulkCatalogImageFilename.js';
+import {
+  IMAGE_CLIENT_CONVERSION_SCOPE,
+  resolveImageClientConversionGate
+} from '../../shared/utils/imageClientConversionGate.js';
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import logger from '../../../config/logger.js';
@@ -79,12 +84,6 @@ const normalizeBulkItemIds = (itemIds) => {
   return [...new Set(itemIds.map((itemId) => parsePositiveInt(itemId)).filter(Boolean))];
 };
 
-const getSkuStem = (file = {}) => {
-  const originalName = String(file?.originalname || '').trim();
-  const lastDot = originalName.lastIndexOf('.');
-  return (lastDot > 0 ? originalName.slice(0, lastDot) : originalName).trim();
-};
-
 const cleanupTempFile = async (file) => {
   if (!file?.path) return;
   try {
@@ -132,6 +131,11 @@ const createBulkImageSummary = () => ({
   failed: 0,
   unmatched: 0,
   duplicate_filename: 0,
+  // Phase 301 (#265): distinct from duplicate_filename above -- fires only when the collision
+  // involves the new <SKU>__<variant>.<ext> suffix convention (two files claiming the same
+  // variant slot for one SKU), never for two plain <SKU>.<ext> files sharing a stem, which stays
+  // duplicate_filename exactly as before this phase.
+  duplicate_variant_for_sku: 0,
   blocked_readiness: 0
 });
 
@@ -411,23 +415,42 @@ export const buildUpdateBulkStorefrontCatalogOverridesUseCase = ({ itemRepositor
   };
 };
 
-export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, imageStorage }) => {
-  return async ({ itemId, file, user, provenance = null }) => {
+export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, imageStorage, settingsRepository = null }) => {
+  // Phase 301 (#265): accepts either the legacy singular `file` (itemImageWorker.js's
+  // generated-image path still calls this way, unchanged and out of scope for this phase) or the
+  // new `.fields()`-shaped `files` object (`{ image: [...], image_medium?: [...],
+  // image_thumbnail?: [...] }`) itemHandlers.js now sends for the manual-upload route --
+  // `files.image[0]` wins when both are present. `clientImageManifest` is the parsed hint bag from
+  // imageUploadValidation.js's parseClientImageManifest (null when absent/malformed).
+  return async ({ itemId, file = null, files = null, clientImageManifest = null, user, provenance = null }) => {
     const normalizedItemId = parsePositiveInt(itemId);
+    const resolvedFile = files?.image?.[0] || file;
+    const rawMediumFile = files?.image_medium?.[0] || null;
+    const rawThumbnailFile = files?.image_thumbnail?.[0] || null;
     let stored = null;
     let storedCommitted = false;
     if (!normalizedItemId) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'itemId must be a positive integer', { statusCode: 400 });
     }
-    if (!file) {
+    if (!resolvedFile) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'image file is required', { statusCode: 400 });
     }
+
+    // Phase 298 (#265): server-authoritative gate -- mirrors posUseCases.js's
+    // buildUploadPosCatalogImageUseCase exactly. See imageClientConversionGate.js.
+    const gate = await resolveImageClientConversionGate({
+      scope: IMAGE_CLIENT_CONVERSION_SCOPE.STOREFRONT_CATALOG_SINGLE,
+      settingsRepository
+    });
+    const mediumFile = gate.enabled ? rawMediumFile : null;
+    const thumbnailFile = gate.enabled ? rawThumbnailFile : null;
+    const effectiveClientImageManifest = gate.enabled ? clientImageManifest : null;
 
     try {
       assertCanEditItems(user, 'upload images for');
 
       const fileValidation = await validateImageUploadFile({
-        file,
+        file: resolvedFile,
         allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
         maxBytes: STOREFRONT_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES
       });
@@ -436,8 +459,8 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
           event_type: 'security_signal',
           signal_code: 'storefront_catalog_image_upload_rejected',
           reason: fileValidation.reason,
-          reported_mime: String(file?.mimetype || '').trim().toLowerCase() || null,
-          original_name: String(file?.originalname || '').slice(0, 180) || null
+          reported_mime: String(resolvedFile?.mimetype || '').trim().toLowerCase() || null,
+          original_name: String(resolvedFile?.originalname || '').slice(0, 180) || null
         });
         throw new DomainError(
           DomainErrorCode.VALIDATION_FAILED,
@@ -462,9 +485,18 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
 
       stored = await imageStorage.store({
         itemId: normalizedItemId,
-        originalName: file.originalname,
-        reportedMime: file.mimetype,
-        tempPath: file.path
+        originalName: resolvedFile.originalname,
+        reportedMime: resolvedFile.mimetype,
+        tempPath: resolvedFile.path,
+        sourceMimeHint: effectiveClientImageManifest?.sourceMimeHint || null,
+        acceptedAsClientLarge: effectiveClientImageManifest?.largePreOptimized === true,
+        clientVariantFiles: (mediumFile || thumbnailFile) ? {
+          ...(mediumFile ? { medium: { tempPath: mediumFile.path, reportedMime: mediumFile.mimetype } } : {}),
+          ...(thumbnailFile ? { thumbnail: { tempPath: thumbnailFile.path, reportedMime: thumbnailFile.mimetype } } : {})
+        } : null,
+        // Phase 298 (#265): threaded through to the shared Phase 294 structured log.
+        imageClientConversionState: gate.mode,
+        imageClientConversionScope: gate.scope
       });
 
       const data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {
@@ -509,7 +541,7 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
         eventType: 'item_catalog_image_uploaded',
         action: 'CREATE',
         changes: {
-          original_filename: String(file.originalname || '').slice(0, 180) || null,
+          original_filename: String(resolvedFile.originalname || '').slice(0, 180) || null,
           replaced_existing_image: Boolean(existing?.storefront_image_path),
           image_source: provenance?.type || 'manual_upload'
         }
@@ -523,11 +555,23 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
           // Ignore stored upload cleanup errors.
         }
       }
-      if (file?.path) {
+      if (resolvedFile?.path) {
         try {
-          await fs.unlink(file.path);
+          await fs.unlink(resolvedFile.path);
         } catch {
           // Ignore temp cleanup errors.
+        }
+      }
+      // If imageStorage.store() was never reached (or threw before consuming these), the
+      // medium/thumbnail temp files would otherwise leak in TEMP_DIR -- a no-op if store()
+      // already claimed/unlinked them itself.
+      for (const variantFile of [mediumFile, thumbnailFile]) {
+        if (variantFile?.path) {
+          try {
+            await fs.unlink(variantFile.path);
+          } catch {
+            // Ignore temp cleanup errors.
+          }
         }
       }
       throw error;
@@ -692,7 +736,7 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
   };
 };
 
-export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, imageStorage }) => {
+export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, imageStorage, settingsRepository = null }) => {
   return async ({ files = [], user }) => {
     assertCanEditItems(user, 'upload images for');
     const normalizedFiles = Array.isArray(files) ? files : [];
@@ -703,18 +747,25 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `images cannot exceed ${BULK_CATALOG_MAX_IMAGE_FILES} files`, { statusCode: 400 });
     }
 
-    try {
-      const duplicateStems = new Set();
-      const seenStems = new Set();
-      normalizedFiles.forEach((file) => {
-        const stem = getSkuStem(file).toUpperCase();
-        if (!stem) return;
-        if (seenStems.has(stem)) duplicateStems.add(stem);
-        seenStems.add(stem);
-      });
+    // #1643 (298d): server-authoritative gate for the bulk path -- mirrors
+    // buildUploadStorefrontCatalogImageUseCase's single-image gate check, but resolved once per
+    // request (not once per SKU group) since the tenant setting is request-wide, not per-file.
+    // Closes the Finding-3 gap flagged on #1643: before this, a `<SKU>__large/medium/thumbnail`
+    // filename was honored unconditionally by the bulk endpoint regardless of
+    // `image_client_conversion` -- the kill switch never actually governed this path.
+    const gate = await resolveImageClientConversionGate({
+      scope: IMAGE_CLIENT_CONVERSION_SCOPE.STOREFRONT_CATALOG_BULK,
+      settingsRepository
+    });
 
-      const skuCodes = [...seenStems].filter((stem) => !duplicateStems.has(stem));
-      const items = await itemRepository.findItemsBySkuCodes(skuCodes);
+    try {
+      // Phase 301 (#265): groups the batch by SKU before processing -- see
+      // bulkCatalogImageFilename.js's own docs. A bare `<SKU>.<ext>` file behaves identically to
+      // today; `<SKU>__large/medium/thumbnail.<ext>` siblings combine into one
+      // imageStorage.store() call per SKU.
+      const { bySku, duplicateReasonBySku, groupOrder } = groupBulkCatalogFilesBySku(normalizedFiles);
+      const skuCodesToLookup = groupOrder.filter((skuKey) => !duplicateReasonBySku.has(skuKey));
+      const items = await itemRepository.findItemsBySkuCodes(skuCodesToLookup);
       const itemBySku = new Map((items || []).map((item) => {
         const payload = toSerializable(item);
         return [String(payload?.sku_code || '').trim().toUpperCase(), payload];
@@ -722,36 +773,40 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
       const summary = createBulkImageSummary();
       const results = [];
 
-      for (const file of normalizedFiles) {
-        const skuCode = getSkuStem(file);
-        const skuKey = skuCode.toUpperCase();
-        let stored = null;
-        let storedCommitted = false;
+      for (const skuKey of groupOrder) {
+        const group = bySku.get(skuKey);
+        const { large, medium, thumbnail } = group.slots;
+        const groupFiles = [...large, ...medium, ...thumbnail];
+        const duplicateReason = duplicateReasonBySku.get(skuKey);
 
-        try {
-          if (duplicateStems.has(skuKey)) {
-            await cleanupTempFile(file);
-            summary.duplicate_filename += 1;
+        if (duplicateReason) {
+          await Promise.all(groupFiles.map((file) => cleanupTempFile(file)));
+          summary[duplicateReason] += groupFiles.length;
+          for (const file of groupFiles) {
             results.push({
               filename: file.originalname,
-              sku_code: skuCode || null,
+              sku_code: group.skuCode || null,
               item_id: null,
               surface: 'storefront',
-              status: 'duplicate_filename',
+              status: duplicateReason,
               image_url: null,
-              errors: ['Duplicate SKU filename in upload batch'],
+              errors: [duplicateReason === 'duplicate_filename'
+                ? 'Duplicate SKU filename in upload batch'
+                : 'Duplicate image variant for this SKU in upload batch'],
               readiness_snapshot: null
             });
-            continue;
           }
+          continue;
+        }
 
-          const item = itemBySku.get(skuKey);
-          if (!item) {
-            await cleanupTempFile(file);
-            summary.unmatched += 1;
+        const item = itemBySku.get(skuKey);
+        if (!item) {
+          await Promise.all(groupFiles.map((file) => cleanupTempFile(file)));
+          summary.unmatched += groupFiles.length;
+          for (const file of groupFiles) {
             results.push({
               filename: file.originalname,
-              sku_code: skuCode || null,
+              sku_code: group.skuCode || null,
               item_id: null,
               surface: 'storefront',
               status: 'unmatched',
@@ -759,27 +814,53 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
               errors: ['No item matched this SKU filename'],
               readiness_snapshot: null
             });
-            continue;
           }
+          continue;
+        }
 
-          const fileValidation = await validateImageUploadFile({
-            file,
-            allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
-            maxBytes: BULK_CATALOG_IMAGE_MAX_BYTES
-          });
-          if (!fileValidation.ok) {
-            await cleanupTempFile(file);
-            summary.failed += 1;
+        const largeFile = large[0] || null;
+        if (!largeFile) {
+          await Promise.all(groupFiles.map((file) => cleanupTempFile(file)));
+          summary.failed += groupFiles.length;
+          for (const file of groupFiles) {
             results.push({
               filename: file.originalname,
-              sku_code: skuCode,
+              sku_code: group.skuCode || null,
               item_id: item.item_id,
               surface: 'storefront',
               status: 'failed',
               image_url: null,
-              errors: ['Only image files are allowed for storefront catalog uploads.'],
+              errors: ['A large/original image is required in the same batch as a medium or thumbnail variant.'],
               readiness_snapshot: null
             });
+          }
+          continue;
+        }
+
+        let stored = null;
+        let storedCommitted = false;
+
+        try {
+          const fileValidation = await validateImageUploadFile({
+            file: largeFile,
+            allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
+            maxBytes: BULK_CATALOG_IMAGE_MAX_BYTES
+          });
+          if (!fileValidation.ok) {
+            await Promise.all(groupFiles.map((file) => cleanupTempFile(file)));
+            summary.failed += groupFiles.length;
+            for (const file of groupFiles) {
+              results.push({
+                filename: file.originalname,
+                sku_code: group.skuCode,
+                item_id: item.item_id,
+                surface: 'storefront',
+                status: 'failed',
+                image_url: null,
+                errors: ['Only image files are allowed for storefront catalog uploads.'],
+                readiness_snapshot: null
+              });
+            }
             continue;
           }
 
@@ -791,26 +872,50 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
           }) !== false;
           const readinessEnvelope = await itemRepository.getStorefrontCatalogReadinessByItemId(item.item_id);
           if (effectiveVisible && readinessEnvelope?.storefront_readiness?.checks?.has_sale_price !== true) {
-            await cleanupTempFile(file);
-            summary.blocked_readiness += 1;
-            results.push({
-              filename: file.originalname,
-              sku_code: skuCode,
-              item_id: item.item_id,
-              surface: 'storefront',
-              status: 'blocked_readiness',
-              image_url: null,
-              errors: ['Visible Storefront items need a customer sale price before image upload.'],
-              readiness_snapshot: readinessEnvelope?.storefront_readiness || null
-            });
+            await Promise.all(groupFiles.map((file) => cleanupTempFile(file)));
+            summary.blocked_readiness += groupFiles.length;
+            for (const file of groupFiles) {
+              results.push({
+                filename: file.originalname,
+                sku_code: group.skuCode,
+                item_id: item.item_id,
+                surface: 'storefront',
+                status: 'blocked_readiness',
+                image_url: null,
+                errors: ['Visible Storefront items need a customer sale price before image upload.'],
+                readiness_snapshot: readinessEnvelope?.storefront_readiness || null
+              });
+            }
             continue;
           }
 
+          const rawMediumFile = medium[0] || null;
+          const rawThumbnailFile = thumbnail[0] || null;
+          // An explicit `__large` suffix is the bulk endpoint's own opt-in signal for the
+          // client-already-optimized fast path -- there is no manifest transport in bulk
+          // requests, so the filename convention itself carries the signal. A bare filename
+          // (today's format) never sets this, preserving exact legacy behavior. Gated by the
+          // same server-authoritative check the single-image path uses (#1643/Finding 3): when
+          // the gate is closed, the filename's signal is never honored, regardless of what it says.
+          const mediumFile = gate.enabled ? rawMediumFile : null;
+          const thumbnailFile = gate.enabled ? rawThumbnailFile : null;
+          const acceptedAsClientLarge = gate.enabled && parseBulkCatalogFilename(largeFile).variantKey === 'large';
+
           stored = await imageStorage.store({
             itemId: item.item_id,
-            originalName: file.originalname,
-            reportedMime: file.mimetype,
-            tempPath: file.path
+            originalName: largeFile.originalname,
+            reportedMime: largeFile.mimetype,
+            tempPath: largeFile.path,
+            acceptedAsClientLarge,
+            clientVariantFiles: (mediumFile || thumbnailFile) ? {
+              ...(mediumFile ? { medium: { tempPath: mediumFile.path, reportedMime: mediumFile.mimetype } } : {}),
+              ...(thumbnailFile ? { thumbnail: { tempPath: thumbnailFile.path, reportedMime: thumbnailFile.mimetype } } : {})
+            } : null,
+            // #1643 (298d): threaded through to the shared Phase 294 structured log, mirroring the
+            // single-image usecase, so the bulk path's client-vs-server fallback rate is sliceable
+            // by rollout stage too.
+            imageClientConversionState: gate.mode,
+            imageClientConversionScope: gate.scope
           });
           const updated = await itemRepository.updateStorefrontCatalogImage(item.item_id, {
             path: stored.path,
@@ -828,9 +933,10 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
             eventType: 'item_catalog_image_uploaded',
             action: 'CREATE',
             changes: {
-              original_filename: String(file.originalname || '').slice(0, 180) || null,
+              original_filename: String(largeFile.originalname || '').slice(0, 180) || null,
               replaced_existing_image: Boolean(existing?.storefront_image_path),
-              bulk_upload: true
+              bulk_upload: true,
+              variant_file_count: groupFiles.length
             }
           });
 
@@ -843,20 +949,26 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
           }
 
           summary.uploaded += 1;
-          results.push({
-            filename: file.originalname,
-            sku_code: skuCode,
-            item_id: item.item_id,
-            surface: 'storefront',
-            status: 'uploaded',
-            image_url: stored.url,
-            image_variants: stored.image_variants || null,
-            image_original_path: stored.original?.path || null,
-            image_classification: stored.classification || null,
-            errors: [],
-            readiness_snapshot: readinessEnvelope?.storefront_readiness || null,
-            data: toSerializable(updated)
-          });
+          for (const file of groupFiles) {
+            // Labels the physical file's own filename-derived variant slot -- unaffected by
+            // whether the gate honored it, so this always uses the raw (ungated) references.
+            const variantKey = file === largeFile ? 'large' : (file === rawMediumFile ? 'medium' : 'thumbnail');
+            results.push({
+              filename: file.originalname,
+              sku_code: group.skuCode,
+              item_id: item.item_id,
+              surface: 'storefront',
+              status: 'uploaded',
+              variant_key: variantKey,
+              image_url: stored.url,
+              image_variants: stored.image_variants || null,
+              image_original_path: stored.original?.path || null,
+              image_classification: stored.classification || null,
+              errors: [],
+              readiness_snapshot: readinessEnvelope?.storefront_readiness || null,
+              data: toSerializable(updated)
+            });
+          }
         } catch (error) {
           if (stored && !storedCommitted) {
             try {
@@ -865,18 +977,20 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
               // Best-effort cleanup.
             }
           }
-          await cleanupTempFile(file);
-          summary.failed += 1;
-          results.push({
-            filename: file.originalname,
-            sku_code: skuCode || null,
-            item_id: itemBySku.get(skuKey)?.item_id || null,
-            surface: 'storefront',
-            status: 'failed',
-            image_url: null,
-            errors: [error?.message || 'Failed to upload image'],
-            readiness_snapshot: null
-          });
+          await Promise.all(groupFiles.map((file) => cleanupTempFile(file)));
+          summary.failed += groupFiles.length;
+          for (const file of groupFiles) {
+            results.push({
+              filename: file.originalname,
+              sku_code: group.skuCode || null,
+              item_id: item?.item_id || null,
+              surface: 'storefront',
+              status: 'failed',
+              image_url: null,
+              errors: [error?.message || 'Failed to upload image'],
+              readiness_snapshot: null
+            });
+          }
         }
       }
 

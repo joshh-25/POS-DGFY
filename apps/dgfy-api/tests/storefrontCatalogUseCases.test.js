@@ -496,6 +496,174 @@ describe('storefront catalog use cases', () => {
         await fs.rm(tempPath, { force: true });
     });
 
+    it('uploadStorefrontCatalogImage ignores the client manifest and extra parts entirely when image_client_conversion is "off" (Phase 298, #265)', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gate-off' });
+        const mediumPath = await writeTempUpload({ prefix: 'storefront-gate-off-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/gate-off.png',
+            url: '/uploads/storefront-catalog/tenant/gate-off.png'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'off' }
+            })
+        };
+        const useCase = buildUploadStorefrontCatalogImageUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 300, name: 'Gate off item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 300, storefront_visible: true, storefront_image_path: null }),
+                updateStorefrontCatalogImage: jest.fn().mockResolvedValue({ item_id: 300, storefront_visible: true })
+            },
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            itemId: 300,
+            files: {
+                image: [{ path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 }],
+                image_medium: [{ path: mediumPath, mimetype: 'image/png', originalname: 'menu__medium.png', size: 12 }]
+            },
+            clientImageManifest: { sourceMimeHint: 'image/heic', largePreOptimized: true },
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({ item_id: 300 }));
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            sourceMimeHint: null,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'off',
+            imageClientConversionScope: 'storefront_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+        await fs.rm(mediumPath, { force: true });
+    });
+
+    it('uploadStorefrontCatalogImage ignores the manifest and extra parts when "opt_in" excludes storefront_catalog_single', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gate-excluded' });
+        const mediumPath = await writeTempUpload({ prefix: 'storefront-gate-excluded-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/gate-excluded.png',
+            url: '/uploads/storefront-catalog/tenant/gate-excluded.png'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['pos_catalog_single'] }
+            })
+        };
+        const useCase = buildUploadStorefrontCatalogImageUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 301, name: 'Gate excluded item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 301, storefront_visible: true, storefront_image_path: null }),
+                updateStorefrontCatalogImage: jest.fn().mockResolvedValue({ item_id: 301, storefront_visible: true })
+            },
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            itemId: 301,
+            files: {
+                image: [{ path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 }],
+                image_medium: [{ path: mediumPath, mimetype: 'image/png', originalname: 'menu__medium.png', size: 12 }]
+            },
+            clientImageManifest: { sourceMimeHint: 'image/heic', largePreOptimized: true },
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({ item_id: 301 }));
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            sourceMimeHint: null,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'storefront_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+        await fs.rm(mediumPath, { force: true });
+    });
+
+    it('uploadStorefrontCatalogImage accepts the client manifest and extra parts when "opt_in" includes storefront_catalog_single', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gate-included' });
+        const mediumPath = await writeTempUpload({ prefix: 'storefront-gate-included-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/gate-included.png',
+            url: '/uploads/storefront-catalog/tenant/gate-included.png'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['storefront_catalog_single'] }
+            })
+        };
+        const useCase = buildUploadStorefrontCatalogImageUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 302, name: 'Gate included item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 302, storefront_visible: true, storefront_image_path: null }),
+                updateStorefrontCatalogImage: jest.fn().mockResolvedValue({ item_id: 302, storefront_visible: true })
+            },
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            itemId: 302,
+            files: {
+                image: [{ path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 }],
+                image_medium: [{ path: mediumPath, mimetype: 'image/png', originalname: 'menu__medium.png', size: 12 }]
+            },
+            clientImageManifest: { sourceMimeHint: 'image/heic', largePreOptimized: true },
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({ item_id: 302 }));
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            sourceMimeHint: 'image/heic',
+            acceptedAsClientLarge: true,
+            clientVariantFiles: { medium: { tempPath: mediumPath, reportedMime: 'image/png' } },
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'storefront_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+        await fs.rm(mediumPath, { force: true });
+    });
+
+    it('uploadStorefrontCatalogImage gates closed (fail-safe) when no settingsRepository is provided', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gate-no-repo' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/gate-no-repo.png',
+            url: '/uploads/storefront-catalog/tenant/gate-no-repo.png'
+        });
+        const useCase = buildUploadStorefrontCatalogImageUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 303, name: 'No repo item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 303, storefront_visible: true, storefront_image_path: null }),
+                updateStorefrontCatalogImage: jest.fn().mockResolvedValue({ item_id: 303, storefront_visible: true })
+            },
+            imageStorage: { store, remove: jest.fn() }
+            // settingsRepository intentionally omitted -- matches every pre-Phase-298 test above.
+        });
+
+        const result = await useCase({
+            itemId: 303,
+            file: { path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 },
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({ item_id: 303 }));
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            imageClientConversionState: 'off',
+            imageClientConversionScope: 'storefront_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+    });
+
     it('uploadStorefrontCatalogGalleryImages appends new images and keeps the first existing image as primary', async () => {
         const firstTempPath = path.join(os.tmpdir(), `storefront-gallery-a-${Date.now()}.png`);
         const secondTempPath = path.join(os.tmpdir(), `storefront-gallery-b-${Date.now()}.png`);
@@ -1210,6 +1378,210 @@ describe('storefront catalog use cases', () => {
         ]);
         expect(remove).toHaveBeenCalledWith({ path: 'storefront-catalog/tenant/sf-706.png' });
         expect(await pathExists(tempPath)).toBe(false);
+    });
+
+    // Phase 301 (#265): the <SKU>__<variant>.<ext> bulk correlation convention -- section 5 of
+    // the corrected plan. A bare <SKU>.<ext> file is already covered by every test above this
+    // point (unchanged behavior); these cover the new suffix-driven grouping specifically.
+    it('uploadBulkStorefrontCatalogImages combines <SKU>__large/medium/thumbnail siblings into one store() call when the gate is "on"', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-sf-variant-large' });
+        const mediumPath = await writeTempUpload({ prefix: 'bulk-sf-variant-medium' });
+        const thumbnailPath = await writeTempUpload({ prefix: 'bulk-sf-variant-thumb' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/sf-800.webp',
+            url: '/uploads/storefront-catalog/tenant/sf-800.webp'
+        });
+        const itemRepository = createBulkStorefrontRepository({
+            items: [{ item_id: 800, sku_code: 'SF-800', default_sale_price: 100 }]
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'on' }
+            })
+        };
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository,
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            files: [
+                { path: largePath, mimetype: 'image/png', originalname: 'SF-800__large.png', size: PNG_BYTES.length },
+                { path: mediumPath, mimetype: 'image/png', originalname: 'SF-800__medium.png', size: PNG_BYTES.length },
+                { path: thumbnailPath, mimetype: 'image/png', originalname: 'SF-800__thumbnail.png', size: PNG_BYTES.length }
+            ],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({ uploaded: 1, failed: 0, unmatched: 0 });
+        expect(store).toHaveBeenCalledTimes(1);
+        expect(store).toHaveBeenCalledWith({
+            itemId: 800,
+            originalName: 'SF-800__large.png',
+            reportedMime: 'image/png',
+            tempPath: largePath,
+            acceptedAsClientLarge: true,
+            clientVariantFiles: {
+                medium: { tempPath: mediumPath, reportedMime: 'image/png' },
+                thumbnail: { tempPath: thumbnailPath, reportedMime: 'image/png' }
+            },
+            imageClientConversionState: 'on',
+            imageClientConversionScope: 'storefront_catalog_bulk'
+        });
+        expect(result.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ filename: 'SF-800__large.png', variant_key: 'large', status: 'uploaded' }),
+            expect.objectContaining({ filename: 'SF-800__medium.png', variant_key: 'medium', status: 'uploaded' }),
+            expect.objectContaining({ filename: 'SF-800__thumbnail.png', variant_key: 'thumbnail', status: 'uploaded' })
+        ]));
+    });
+
+    // #1643 (298d, Finding 3): the bulk gate-check block below mirrors the four single-image gate
+    // cases above (lines ~499-634) applied to the bulk usecase -- closed, opt_in-excluded,
+    // opt_in-included, and unconditionally-on. Before this, a `<SKU>__large/medium` filename was
+    // honored unconditionally regardless of `image_client_conversion`.
+    it('uploadBulkStorefrontCatalogImages forces acceptedAsClientLarge/clientVariantFiles off when image_client_conversion is "off"', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-sf-gate-off-large' });
+        const mediumPath = await writeTempUpload({ prefix: 'bulk-sf-gate-off-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/sf-810.webp',
+            url: '/uploads/storefront-catalog/tenant/sf-810.webp'
+        });
+        const itemRepository = createBulkStorefrontRepository({
+            items: [{ item_id: 810, sku_code: 'SF-810', default_sale_price: 100 }]
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'off' }
+            })
+        };
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository,
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            files: [
+                { path: largePath, mimetype: 'image/png', originalname: 'SF-810__large.png', size: PNG_BYTES.length },
+                { path: mediumPath, mimetype: 'image/png', originalname: 'SF-810__medium.png', size: PNG_BYTES.length }
+            ],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({ uploaded: 1, failed: 0 });
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            itemId: 810,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'off',
+            imageClientConversionScope: 'storefront_catalog_bulk'
+        }));
+        // The physical variant labeling is unaffected by the gate -- the medium file is still
+        // reported as 'medium' even though its bytes were never sent to imageStorage.store().
+        expect(result.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ filename: 'SF-810__medium.png', variant_key: 'medium', status: 'uploaded' })
+        ]));
+    });
+
+    it('uploadBulkStorefrontCatalogImages forces off when "opt_in" excludes storefront_catalog_bulk', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-sf-gate-excluded-large' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/sf-811.webp',
+            url: '/uploads/storefront-catalog/tenant/sf-811.webp'
+        });
+        const itemRepository = createBulkStorefrontRepository({
+            items: [{ item_id: 811, sku_code: 'SF-811', default_sale_price: 100 }]
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['pos_catalog_bulk'] }
+            })
+        };
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository,
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            files: [{ path: largePath, mimetype: 'image/png', originalname: 'SF-811__large.png', size: PNG_BYTES.length }],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({ uploaded: 1 });
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            itemId: 811,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'storefront_catalog_bulk'
+        }));
+    });
+
+    it('uploadBulkStorefrontCatalogImages honors the filename when "opt_in" includes storefront_catalog_bulk', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-sf-gate-included-large' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/sf-812.webp',
+            url: '/uploads/storefront-catalog/tenant/sf-812.webp'
+        });
+        const itemRepository = createBulkStorefrontRepository({
+            items: [{ item_id: 812, sku_code: 'SF-812', default_sale_price: 100 }]
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['storefront_catalog_bulk'] }
+            })
+        };
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository,
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            files: [{ path: largePath, mimetype: 'image/png', originalname: 'SF-812__large.png', size: PNG_BYTES.length }],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({ uploaded: 1 });
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            itemId: 812,
+            acceptedAsClientLarge: true,
+            clientVariantFiles: null,
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'storefront_catalog_bulk'
+        }));
+    });
+
+    it('uploadBulkStorefrontCatalogImages flags two <SKU>__large files for the same SKU as duplicate_variant_for_sku', async () => {
+        const firstPath = await writeTempUpload({ prefix: 'bulk-sf-dup-variant-a' });
+        const secondPath = await writeTempUpload({ prefix: 'bulk-sf-dup-variant-b' });
+        const store = jest.fn();
+        const itemRepository = createBulkStorefrontRepository({ items: [] });
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository,
+            imageStorage: { store, remove: jest.fn() }
+        });
+
+        const result = await useCase({
+            files: [
+                { path: firstPath, mimetype: 'image/png', originalname: 'SF-801__large.png', size: PNG_BYTES.length },
+                { path: secondPath, mimetype: 'image/png', originalname: 'SF-801__large.jpg', size: PNG_BYTES.length }
+            ],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({ duplicate_variant_for_sku: 2, duplicate_filename: 0, uploaded: 0 });
+        expect(result.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ filename: 'SF-801__large.png', status: 'duplicate_variant_for_sku' }),
+            expect.objectContaining({ filename: 'SF-801__large.jpg', status: 'duplicate_variant_for_sku' })
+        ]));
+        expect(store).not.toHaveBeenCalled();
+        expect(await pathExists(firstPath)).toBe(false);
+        expect(await pathExists(secondPath)).toBe(false);
     });
 
     it('deleteStorefrontCatalogImage removes primary and gallery files before clearing only storefront image fields', async () => {

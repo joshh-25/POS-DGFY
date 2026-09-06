@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
@@ -123,7 +124,7 @@ export default function POSTransactionHistoryPanel({
                                             </span>
                                         </td>
                                         <td className="py-2 text-slate-600">{row.cashier?.username || row.acceptedByUser?.username || '-'}</td>
-                                        <td className="py-2 text-slate-600 capitalize">{row.payment_type}</td>
+                                        <td className="py-2 text-slate-600">{formatPosTransactionPaymentMethods(row)}</td>
                                         <td className="py-2 text-slate-600">
                                             {formatDiscountDisplay(row.discount_amount)}
                                         </td>

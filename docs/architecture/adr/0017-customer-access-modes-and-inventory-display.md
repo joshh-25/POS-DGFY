@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-03
-last_reviewed: 2026-09-05
-review_by: 2026-11-03
+last_reviewed: 2026-09-10
+review_by: 2026-11-10
 applies_to: architecture_decision
 topic: customer_access_modes_and_inventory_display
 ---
@@ -256,3 +256,213 @@ fencing. Retry queues failed files only; completed results are idempotent. Bulk 
 jobs write only POS catalog image fields/assets and cannot change Storefront image,
 gallery, variant, ordering, or visibility state. Scaling from the current single
 API host requires worker-accessible shared durable file/object storage first.
+## Amendments (2026-09-06)
+
+AVIF encoding is deprecated and disabled by default in the image upload pipeline as of Phase 296
+(#265 epic, PR 2 of 5) -- it is not removed. `storeOptimizedImageAsset`'s delivery-format set no
+longer requests an AVIF encode for new uploads (`RESPONSIVE_ASSET_VERSION` is now 3); the AVIF
+encoder path (`AVIF_QUALITY_STEPS`, the `encoder === 'avif'` branches) remains in code, marked
+`@deprecated`, for potential future reactivation or a manual/offline AVIF regeneration tool.
+
+Existing assets written under the prior responsive-asset version (`-v2-<hash>` folders) are
+unaffected and require no migration: their `.avif` files remain on disk and continue to be served,
+and `deriveImageAssetVariantUrls` continues to advertise `avif` URLs for those folders specifically
+by parsing the asset version out of the folder name rather than assuming a single global version.
+New assets (`-v3-<hash>` folders) never advertise an `avif` URL and never had one encoded.
+
+`status: amended` (already the case from prior addenda) is unchanged.
+
+## Amendments (2026-09-06, client-derived upload contract)
+
+Disambiguated from the "## Amendments (2026-09-06)" block immediately above -- both land the same
+day (Phase 296's AVIF-deprecation entry and this one), so this heading is given an explicit
+sub-label rather than repeating the bare date, per this ADR's own precedent of never letting two
+sibling `##` headings share identical text.
+
+Phase 301 (#265 epic, PR 4 of 5) adds a **client-derived image upload contract**: the two
+single-image catalog endpoints (`POST /catalog-overrides/:item_id/image`,
+`POST /:item_id/storefront-image`) now accept two additional, fully optional multipart fields --
+`image_medium` and `image_thumbnail` -- alongside the existing required `image` field, plus an
+optional `client_image_manifest` JSON text field carrying a `source_mime_hint` (the pre-conversion
+MIME of the user's original file, before any client-side re-encoding) and a `large_pre_optimized`
+flag (declaring that `image` itself is already a validated, correctly-sized "large" delivery
+variant, not a raw original).
+
+**Trust model: the manifest is a hint, never a trust boundary.** Every client-supplied claim --
+`source_mime_hint`, `large_pre_optimized`, and each of `image_medium`/`image_thumbnail` themselves
+-- is independently validated server-side (`validateClientVariant`: header-only sharp metadata
+check against the exact format/width/pixel-cap contract the server would otherwise have produced
+itself) before being trusted enough to skip re-encoding. A failed validation never fails the
+request; it silently falls back to the server deriving that specific variant from the original,
+exactly as if the client had never sent the optional field at all. This is a graceful degradation
+ladder, not a hard contract: every caller who predates this phase, and sends only a bare `image`
+field, gets byte-identical behavior to before this amendment.
+
+**The bulk endpoints** (`POST /catalog-overrides/images/bulk`,
+`POST /storefront-images/bulk`) gain the equivalent capability through their existing SKU-stem
+filename convention, extended rather than replaced: a bare `<SKU>.<ext>` file means exactly what it
+means today (the server derives everything); `<SKU>__large.<ext>` / `<SKU>__medium.<ext>` /
+`<SKU>__thumbnail.<ext>` correlate up to three files for one SKU into a single upload, with
+`<SKU>__large.<ext>`'s presence itself serving as the bulk endpoint's opt-in signal (no manifest
+transport exists in a bulk multipart batch, so the filename convention carries the signal there
+instead). Two files claiming the same variant slot for one SKU is a new, distinct failure mode
+(`duplicate_variant_for_sku`), kept separate from the pre-existing `duplicate_filename` status
+(which still fires, unchanged, for two *bare* files sharing a stem).
+
+**Original-retention resolution**, settling the question this ADR's Context/Consequences left open
+for the two catalog-image storage modules: `storefrontCatalogImageStorage.js` now retains the raw
+original (`retainOriginal: true`, previously an unconditional `false`) -- storefront-catalog-image
+uploads are IMS's managed surface. `posCatalogImageStorage.js` keeps `retainOriginal: false` --
+POS terminals stay capped, unchanged. This is keyed off which storage module (and therefore which
+endpoint) handled the call, not a new client-sent signal -- already fully determined by the request
+path today.
+
+`buildBulkCatalogImageUpload`'s permissive `fileFilter` (the "do not make this strict without
+updating ADR 0017" comment at `uploadConfig.js`) is unaffected by this amendment -- the bulk
+endpoints' multer configuration itself does not change; only the use-case layer's filename parsing
+and per-SKU grouping do.
+
+**Explicitly out of scope, left running unaffected**: the gallery endpoints (up to 5 photos per
+item, `/:item_id/storefront-images`) and the async/queued single-image path
+(`/:item_id/storefront-image/async`, `/:item_id/storefront-images/async`,
+`workers/itemImageWorker.js`). Both predate this amendment and are unrelated to it; a future phase
+extending the client-derived contract to either is a materially larger scope (up to 15 files per
+gallery request) and should amend this ADR again in its own right, not be assumed already covered
+by this entry.
+
+No new client asset-encoding module is introduced by this phase -- `packages/web-core`'s image
+encoder remains unbuilt. Every field this amendment adds is server-side contract only; real traffic
+continues to send a bare `image` field until that separate, later phase ships a caller for the new
+optional fields.
+
+`status: amended` remains unchanged; `last_reviewed` refreshed to this entry's own land date
+(already 2026-09-06, unchanged from the amendment immediately above).
+
+## Amendments (2026-09-09)
+
+Phase 302 (#265 epic, PR 5 of 5) adds the **rollout ladder and server-authoritative kill switch**
+for the client-derived contract Phase 301's amendment (immediately above) describes -- until this
+phase, the contract existed but nothing gated it: `packages/web-core`'s image encoder was
+unbuilt and the client never sent the optional fields at all.
+
+**Two new tenant-local `system_settings` keys**, read from the same bootstrap `GET /settings`
+response every other tenant config already flows through: `image_client_conversion`
+(`'off' | 'opt_in' | 'on'`) and `image_client_conversion_scopes` (a JSON array, consulted only
+while the first key is `'opt_in'`). `'off'` is the kill switch -- the server ignores the manifest
+and the medium/thumbnail parts entirely, forcing them to null before they ever reach
+`imageStorage.store()`, regardless of what a request sent. `'on'` is the terminal state, every
+scope enabled unconditionally. `'opt_in'` gates per scope token.
+
+**Scope tokens are keyed to the real client-wiring call sites, not to app/device identity.** The
+epic's original plan framed the ladder as "IMS (staff, lowest risk) -> POS (watch iMin
+terminals)" -- that framing does not match the shipped code and should not be re-derived from the
+epic plan doc by a future reader. Verified: both `uploadPosCatalogImage` and
+`uploadStorefrontCatalogImage` (`packages/web-core/src/services/{posCatalogService,
+storefrontCatalogService}.js`) are called exclusively from `ItemsPage.jsx`, which is lazy-imported
+only by `apps/dgfy-ims/src/main.jsx` -- there is no POS-terminal-native catalog-image-upload call
+site today to "watch" separately from IMS. The four scope tokens --
+`pos_catalog_single`, `storefront_catalog_single`, `pos_catalog_bulk`, `storefront_catalog_bulk` --
+are named after which *endpoint variant* they gate, not which app or device sends the request. If
+a future POS-terminal-native catalog-image-upload UI is built (plausible under the interim
+back-office-to-POS placement policy in `AGENTS.md`), it reads the same `pos_catalog_single` token
+this phase already defines -- the design isn't app-specific, it's just that no such call site
+exists yet.
+
+**Write authority**: both keys are platform-admin-controlled, mirroring the existing
+`isPlatformControlledPosSoftwareKey` pattern exactly (`updateSettingByKeyUseCase.js` and
+`updateSettingsUseCase.js` both reject a non-platform-admin write) -- a rollout lever a tenant
+admin could flip would break the controlled ladder this phase exists to provide.
+
+**298d (bulk client wiring) is explicitly out of scope for this amendment.** `pos_catalog_bulk`
+and `storefront_catalog_bulk` are valid, gate-resolvable scope tokens as of this phase, but no
+client caller populates the fields they would gate -- `uploadBulkPosCatalogImages` and
+`uploadStorefrontCatalogImages` still send raw files unchanged, and no byte-based batch splitter
+exists. That work -- genuinely new code, not a config flip, given the up-to-50-file batch size --
+is tracked in a follow-up issue rather than folded into this phase; mirroring how the amendment
+immediately above already carves out the gallery/async endpoints with the same discipline.
+
+`status: amended` remains unchanged; `last_reviewed` refreshed to this entry's own land date
+(2026-09-09).
+
+## Amendments (2026-09-10, bulk client wiring / 298d)
+
+#1643 (epic #265's "298d" stage) ships the **bulk client wiring** the amendment immediately above
+explicitly deferred. Three genuinely new pieces of client code, none a config flip:
+
+- A byte-based batch splitter (`packages/web-core/src/utils/imageEncoding/bulkBatchSplitter.js`,
+  `splitIntoByteBoundedBatches`) -- greedy, order-preserving packing of same-SKU-stem file groups
+  into as few outgoing multipart requests as possible, targeting `6 * 1024 * 1024` bytes per
+  request (see that file's own doc comment for the nginx-8-MB-ceiling reasoning this target is
+  inferred from -- not a value read from any spec) and never splitting a single stem group across
+  two requests, since the server's own `groupBulkCatalogFilesBySku` duplicate detection
+  (`duplicate_filename`/`duplicate_variant_for_sku`) only sees files within one request.
+- The client-side `<SKU>__large/medium/thumbnail.<ext>` filename construction
+  (`bulkVariantFilename.js`'s `buildBulkVariantFilename`), mirroring the server's own
+  `getSkuStem` "slice at the last dot" rule, plus `parseBulkVariantFilename`/
+  `getBulkFileGroupingKey` for the pre-conversion same-stem grouping pass the splitter's own doc
+  comment requires.
+- `prepareImageVariants` wiring for the two real bulk call sites, orchestrated by
+  `bulkCatalogUpload.js`'s `uploadBulkCatalogImagesWithClientConversion` (sequential per-file
+  conversion, stem-grouped packing, sequential multi-request send, summary/results merge) and
+  invoked from `posCatalogService.js`'s `uploadBulkPosCatalogImages`
+  (`scope: 'pos_catalog_bulk'`) and `storefrontCatalogService.js`'s
+  **`uploadBulkStorefrontCatalogImages`** (`scope: 'storefront_catalog_bulk'`).
+
+**Correcting the amendment immediately above:** that entry's own text names the second function as
+`uploadStorefrontCatalogImages`. That is the wrong function -- `uploadStorefrontCatalogImages`
+(plural) is the **per-item gallery** upload (`POST /items/:item_id/storefront-images`, up to 5
+files, already carved out as out of scope by the 2026-09-06 "client-derived upload contract"
+amendment above), not the cross-SKU bulk function this entry wires. The correct target, and the
+one this entry actually implements, is **`uploadBulkStorefrontCatalogImages`** (singular item,
+plural "Images" only in the sense of "many SKUs," `POST /items/storefront-images/bulk`) -- the
+only storefront function that calls `groupBulkCatalogFilesBySku`/`parseBulkCatalogFilename` and
+mirrors `uploadBulkPosCatalogImages` in shape. The mis-reference originated in this ADR's own
+2026-09-09 entry (not in #1643's issue text, which independently repeated the same error) and is
+corrected here rather than edited in place, per this ADR's own precedent of amending forward
+instead of silently rewriting a prior entry.
+
+**Server-side bulk gate gap closed.** The 2026-09-09 amendment's "server-authoritative kill
+switch" framing was true only for the two single-image usecases
+(`buildUploadStorefrontCatalogImageUseCase`, `buildUploadPosCatalogImageUseCase`) -- neither bulk
+usecase (`buildUploadBulkStorefrontCatalogImagesUseCase`, its POS counterpart) ever consulted
+`resolveImageClientConversionGate` at all. `acceptedAsClientLarge`/`clientVariantFiles` were
+decided purely from the filename convention (a `<SKU>__large.<ext>` file was honored
+unconditionally), meaning a caller sending that filename shape directly to either bulk endpoint --
+bypassing the browser, and therefore bypassing the tenant's `image_client_conversion` setting
+entirely -- got the "already-optimized, skip re-encode" fast path regardless of the kill switch's
+position. This was a pre-existing gap from Phase 301/302 (not introduced by this entry), but this
+entry is the point at which it stops being theoretical, since real client traffic now starts
+sending those filenames. Fixed here: both bulk usecase builders now take an optional
+`settingsRepository` parameter (mirroring the single-image builders' own
+`settingsRepository = null` default) and resolve
+`resolveImageClientConversionGate({ scope: IMAGE_CLIENT_CONVERSION_SCOPE.STOREFRONT_CATALOG_BULK
+/ POS_CATALOG_BULK, settingsRepository })` **once per request** (not once per SKU group, since the
+setting is request-wide) -- when the gate is closed, `acceptedAsClientLarge` and
+`clientVariantFiles` are forced off for every SKU group in the batch regardless of what any
+filename in it claims, the same "force to null before it reaches `imageStorage.store()`" contract
+the single-image path already implements. `parseBulkCatalogFilename`/`groupBulkCatalogFilesBySku`
+themselves are unchanged -- grouping/parsing stays filename-driven either way; only whether the
+parsed variant signal is *honored* is now gate-controlled. Wired through
+`apps/dgfy-api/src/modules/inventory/index.js` and `.../modules/pos/index.js`, mirroring how the
+single-image builders are already wired there.
+
+**Reconfirming, not silently dropping, the 2026-09-06 gallery carve-out**: the gallery endpoints
+(`/:item_id/storefront-images`, both `OnboardingSetupModal.jsx`'s and `ItemsPage.jsx`'s own
+per-item "Add Photos" flows) remain untouched and out of scope for this entry too --
+`OnboardingSetupModal.jsx` in particular calls only the per-item gallery function
+(`uploadItemImages` -> `uploadStorefrontCatalogImages`), never either bulk function, so it needed
+no changes here despite #1643's own issue text listing it as an intended call site. `ItemsPage.jsx`
+remains the only real UI call site for the SKU-stem bulk upload (`uploadBulkCatalogImages(surface)`,
+its "Bulk Upload" section) -- it required no changes beyond a documentation comment, since the gate
+check lives inside the service functions (matching where the single-image gate check already
+lives) and both service functions preserve their existing `{summary, results}` response shape
+exactly.
+
+`pos_catalog_bulk`/`storefront_catalog_bulk` move from "valid, gate-resolvable, unused" (as of the
+2026-09-09 entry) to real client-wiring call sites -- the same status the two `_single` tokens
+already had. No new scope tokens are introduced (matches #1643's own Non-goals). There is no
+separate scopes-doc file; this ADR's own amendment text remains the only documentation surface for
+the token ladder.
+
+`status: amended` remains unchanged; `last_reviewed` refreshed to this entry's own land date
+(2026-09-10).

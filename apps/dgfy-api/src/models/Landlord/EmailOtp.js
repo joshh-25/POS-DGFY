@@ -43,9 +43,16 @@ export default (sequelize) => {
       defaultValue: 5
     },
     delivery_status: {
-      type: DataTypes.ENUM('sent', 'failed', 'recorded', 'bounced'),
+      // #1614: 'pending' added and made the default -- a row must reflect
+      // that nothing has been attempted yet until emailOtpService actually
+      // confirms a send (or a failure). Previously this defaulted to
+      // 'sent', so a row could read 'sent' even when SMTP delivery had
+      // never even been attempted (e.g. the SMTP-not-configured throw path
+      // in emailOtpService.js, which used to throw before any update at
+      // all). Migration: 20260905000001-add-pending-email-otp-delivery-status.cjs.
+      type: DataTypes.ENUM('pending', 'sent', 'failed', 'recorded', 'bounced'),
       allowNull: false,
-      defaultValue: 'sent'
+      defaultValue: 'pending'
     },
     delivery_error: {
       type: DataTypes.STRING(500),

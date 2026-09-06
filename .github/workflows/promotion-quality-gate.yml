@@ -641,6 +641,18 @@ jobs:
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
+      # 2026-09-04 (#1552): root cause confirmed via direct log evidence (run 33540494543, job
+      # 99965311245) -- an orphaned `test_tenant_schema-bootstrap-idempotent_*` fixture (sync()-built,
+      # not migration-built, so genuinely missing indexes) survives into this step only when the
+      # preceding test-matrix step's process dies before its own afterEach cleanup runs (#1432's
+      # already-tracked OOM class), then gets audited as if it were a real tenant.
+      # SCHEMA_INDEX_AUDIT_MODE/SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS below activate the exclusion
+      # filter this exact scenario already exists for and is already unit-tested
+      # (schemaIndexAuditService.test.js) and already used locally (`audit:indexes:local`) -- this
+      # step was simply the one caller that never turned it on. Config-only fix, zero new logic.
+      # Stays advisory (continue-on-error kept) pending one post-fix evidence cycle -- see
+      # docs/ops/RELEASE_CANDIDATE_POLICY.md's matching 2026-09-04 amendment for the explicit
+      # unblock criterion.
       - name: Audit required indexes
         id: audit_indexes
         if: steps.wait_services.outcome == 'success'
@@ -650,6 +662,8 @@ jobs:
         timeout-minutes: 10
         env:
           NODE_ENV: test
+          SCHEMA_INDEX_AUDIT_MODE: test
+          SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS: 'true'
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
           DB_NAME: sku_inventory_manager_test
@@ -1701,6 +1715,21 @@ jobs:
         # blocking on the release/*->main leg since #1431 Phase 1
         timeout-minutes: 5
 
+      # ADR 0082 Decision 8 / #1278 PR 2 (Phase 298): validates a release/<candidate_id>-rN -> main
+      # promotion PR carries a matching docs/releases/notes/<candidate_id>.md (schema, candidate_id,
+      # production_date, production_commit -- either pending or a real 40-hex SHA -- the app version
+      # table, and the required Included/Operational notes sections). Exits 0 ("not applicable") on
+      # any other head, including a main hotfix's fix/* branch -- that path stays a procedural
+      # obligation on incident-responder's own SKILL.md, not this check (Decision 8's own "path
+      # coverage" paragraph). Ships advisory (continue-on-error: true) on first landing, per
+      # Decision 8's "advisory first, flip blocking only once clean-run evidence exists" rollout --
+      # same pattern check:app-versions (ADR 0081 Decision 9) already went through in this repo.
+      - name: Run release-notes check
+        id: run_release_notes
+        run: npm run check:release-notes
+        continue-on-error: true
+        timeout-minutes: 5
+
       - name: Run compatibility-seam contract gate
         id: run_compat_seams
         run: npm run check:compat-seams
@@ -1725,11 +1754,16 @@ jobs:
       # longer called with pull_request context by default -- see the on:
       # block comment above), so skip cleanly there instead of diffing two
       # empty SHAs.
+      # Blocking since 2026-09-04 (#1552): pure, deterministic, zero flake surface, git-native --
+      # same class of check as the `validate_*` steps above -- and the root cause of its 6/13
+      # recurrence (nothing upstream caught the violation before merge) is fixed via a new
+      # `.husky/pre-commit` guard in the same PR; this step stays as the CI-side backstop for
+      # `git commit --no-verify`. See docs/ops/RELEASE_CANDIDATE_POLICY.md's matching 2026-09-04
+      # amendment.
       - name: Check changed-file whitespace
         id: check_whitespace
         if: github.event_name == 'pull_request'
         shell: bash
-        continue-on-error: true
         timeout-minutes: 5
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -1756,6 +1790,7 @@ jobs:
             Validate workspace hygiene contract|${{ steps.validate_workspace_hygiene.outcome }}
             Validate compliance sweep contract|${{ steps.validate_compliance_sweep.outcome }}
             Run governed documentation lint|${{ steps.run_docs_lint.outcome }}
+            Run release-notes check|${{ steps.run_release_notes.outcome }}
             Run compatibility-seam contract gate|${{ steps.run_compat_seams.outcome }}
             Check retired-path resurrection|${{ steps.check_retired_path_resurrection.outcome }}
             Check changed-file whitespace|${{ steps.check_whitespace.outcome }}
@@ -1905,6 +1940,12 @@ jobs:
               'Validate runner routing contract',
               'Validate workspace hygiene contract',
               'Validate compliance sweep contract',
+              // 2026-09-04 (#1552): pure, deterministic, git-native check; root cause of its
+              // recurrence fixed via a new .husky/pre-commit guard in the same PR. 'Audit required
+              // indexes' is deliberately NOT here -- fixed (env-var config only) but kept
+              // advisory-with-reason pending one post-fix evidence cycle; see the step's own
+              // comment above and docs/ops/RELEASE_CANDIDATE_POLICY.md's matching amendment.
+              'Check changed-file whitespace',
             ]);
 
             const lines = [];
@@ -1961,7 +2002,12 @@ jobs:
               `<!-- promotion-quality-gate-advisory-failure ${marker} run=${runId} -->`,
               `### promotion-quality-gate advisory failure(s) -- \`${headSha}\``,
               '',
-              'Since #1431 Phase 1 (PR-A), Phase 2 (P2-1), and Phase C, 15 steps across these jobs are',
+              // Count derived from BLOCKING_STEP_NAMES.size (declared above), not hand-counted, so
+              // a future blocking flip can't stale this summary the way #1552's own flip did (this
+              // read #1431's original "15" verbatim, already one behind by the time this comment
+              // would have posted). check-pr-quality-workflow.js's own BLOCKING_STEP_IDS stays a
+              // second, hand-synced list -- #1557's cross-file drift risk, unchanged by this.
+              `Since #1431 Phase 1 (PR-A), Phase 2 (P2-1), and Phase C, ${BLOCKING_STEP_NAMES.size} steps across these jobs are`,
               'blocking (no step-level `continue-on-error`) on the release/*->main leg and',
               'workflow_dispatch/workflow_call runs -- a failure there already reds out the job and',
               'this workflow\'s check-run',

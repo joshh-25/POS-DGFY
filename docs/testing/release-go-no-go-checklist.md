@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-04
 applies_to: pre_promotion_quality_gate
 topic: pre_promotion_local_gate
 ---
@@ -13,15 +13,17 @@ topic: pre_promotion_local_gate
 
 `npm run gate:release:local` (`scripts/gate-release-local.js`) was the pre-promotion quality gate
 for this repository through 2026-09-02. As of #1431 Phase C/D (2026-09-03), every one of its 16
-remaining gates is delegated to `promotion-quality-gate.yml`'s own quality jobs
-(`CI_ENFORCED_GATES`, 16 entries — `required_gate_count: 0` on a default run). **A promoter no
-longer runs this script before a `develop -> main` (or `staging -> main`) promotion** — the
-workflow's own blocking check-runs (14 of the 16 gates) plus its two deliberately advisory ones
-(`dependencies.audit.full`, permanently; `backend.test_matrix`, temporarily, tracked by #1469) are
-the enforcement mechanism now. `docs/ops/RELEASE_CANDIDATE_POLICY.md` and
+remaining gates is delegated to `promotion-quality-gate.yml`'s own quality jobs. A 17th gate,
+`release.notes` (ADR 0082 Decision 8), was added by #1278 PR 2 / Phase 298 — see the table below.
+`CI_ENFORCED_GATES` now carries **17** entries, `required_gate_count: 0` on a default run. **A
+promoter no longer runs this script before a `develop -> main` (or `staging -> main`) promotion** —
+the workflow's own blocking check-runs (14 of the 17 gates) plus its three deliberately advisory
+ones (`dependencies.audit.full`, permanently; `backend.test_matrix`, temporarily, tracked by #1469;
+`release.notes`, temporarily by deliberate rollout design, tracked by ADR 0082 Follow-up 1) are the
+enforcement mechanism now. `docs/ops/RELEASE_CANDIDATE_POLICY.md` and
 `.agents/skills/promoter/SKILL.md` no longer list this script as a promotion gate.
 
-This document stays as **a runbook for what the 16 gates mean and how to run one manually** — via
+This document stays as **a runbook for what the 17 gates mean and how to run one manually** — via
 `--only <name>`/`--include-ci-enforced` (see "How to run it" below) — for local debugging of a
 specific check, not as a mandatory promotion step. #372 (a testing agent/skill), if built, should
 still prefer invoking a gate's own command over reimplementing it.
@@ -96,7 +98,7 @@ falls back to `git rev-parse HEAD`.
 The only env var the script itself reads is `RELEASE_TARGET_SHA`. Everything else (DB/Redis
 connection, JWT secrets) is read by the child processes it spawns, exactly as in CI.
 
-## The 16 gates
+## The 17 gates
 
 `scripts/gate-release-local.js` runs these in order — a failing gate does not stop the run, and
 every gate's result is recorded. Exit code is `2` if any gate failed, `0` if all passed; the JSON
@@ -109,14 +111,15 @@ Three gates (`release.target_sha`, `observability.evidence.report`, `release.ver
 — formerly #1, #18, #19) were retired 2026-09-02 by #1431 Phase 3. Their closeout records are
 in `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, "Retired gates — closed resolutions."
 
-**Delegation, completed 2026-09-03 (#1431 Phase 1 PR-B through Phase C/D): all 16 gates below no
-longer "run" here by default.** Every one runs an identical command as a step in
-`promotion-quality-gate.yml`; 14 are blocking on the `release/*→main` leg, and 2
-(`dependencies.audit.full`, `backend.test_matrix`) are deliberately advisory (see
-`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "Current state" section for exactly which and why).
+**Delegation, completed 2026-09-03 (#1431 Phase 1 PR-B through Phase C/D) for the original 16, and
+extended 2026-09-06 (#1278 PR 2 / Phase 298) with a 17th: none of the gates below "run" here by
+default.** Every one runs an identical command as a step in `promotion-quality-gate.yml`; 14 are
+blocking on the `release/*→main` leg, and 3 (`dependencies.audit.full`, `backend.test_matrix`,
+`release.notes`) are deliberately advisory (see `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
+"Current state" and "A new gate after the mapping closed" sections for exactly which and why).
 Each is recorded `status: "delegated_to_ci"`, `ok: true`, `duration_ms: 0`, and logged as
 `[CI] <gate> :: enforced by promotion-quality-gate.yml / <job> / <step(s)>`. This does **not** flip
-`run_mode` to `"partial"` — a default run that delegates all 16 is still `"full"`; `run_mode` tracks
+`run_mode` to `"partial"` — a default run that delegates all 17 is still `"full"`; `run_mode` tracks
 whether the caller passed `--only`/`--skip`, not whether a gate ran locally or in CI. Two escape
 hatches: `--include-ci-enforced` runs every gate locally anyway; naming a delegated gate explicitly
 via `--only` also runs it (an explicit `--only` is an explicit request, never silently delegated).
@@ -125,12 +128,13 @@ A delegated gate's `ok: true` must not be over-read as "this ran and passed" —
 specifically so a reader doesn't have to infer delegation from an unusually-fast `duration_ms: 0`.
 `scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` is the compensating
 control that keeps `CI_ENFORCED_GATES` and `promotion-quality-gate.yml`'s actual blocking-step ids
-in sync (via a two-name `ADVISORY_CI_ENFORCED_GATES` allowlist for the 2 deliberately-advisory
+in sync (via a three-name `ADVISORY_CI_ENFORCED_GATES` allowlist for the 3 deliberately-advisory
 gates) — a future edit that silently regains `continue-on-error` on one of the other 14 steps fails
 that check rather than silently reopening a coverage hole on both sides at once. Combined with the
-3 gates retired by Phase 3 above, `gate:release:local`'s own required set is now **0** of the
-original 19 (19 − 3 retired − 16 delegated) — see `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` for
-the full gate-by-gate closeout.
+3 gates retired by Phase 3 above, the **original** 19-gate mapping's own required set is **0**
+(19 − 3 retired − 16 delegated) — see `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` for the full
+gate-by-gate closeout. `release.notes` (gate 17 below) sits outside that original count entirely —
+it was added after the mapping closed, not one of the 19.
 
 | # | Gate name | Command | Notes |
 |---|---|---|---|
@@ -150,21 +154,25 @@ the full gate-by-gate closeout.
 | 14 | `frontend.storefront.contracts` | `npm run test:frontend:contracts:storefront` | The Storefront-workspace equivalent of gate 13 — added alongside the per-app lint fan-out (#322) but never added to this table (RF-3, PR #513); this row closes that gap. **[CI, delegated + blocking 2026-09-03 PR-B]** |
 | 15 | `frontend.budgets` | `npm run check:frontend-budgets -- --report <dir>/frontend-budgets/frontend_budget_report.json` | Defaults to `owned-build` mode — builds all three apps itself (`npm --prefix apps/dgfy-ims run build`, then `apps/dgfy-pos`, then `apps/dgfy-storefront`) and reads `apps/<app>/dist/assets`. This is why the gate is slow even beyond the test matrix. **[CI, delegated + blocking 2026-09-03, Phase C/D — CI runs a different command shape (`--skip-build --built-after`, three separate serial build steps), see `GATE_RELEASE_LOCAL_CI_MAPPING.md`'s documented exceptions]** |
 | 16 | `scroll.contracts` | `npm --prefix apps/dgfy-ims test -- --run <2 POS scroll-contract spec files>` | Narrow, named-file regression pin on `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js` and `packages/web-core/src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js`, invoked from the IMS workspace because `packages/web-core` has no test runner of its own. **[CI, delegated + blocking 2026-09-03, Phase C/D]** |
+| 17 | `release.notes` | `npm run check:release-notes` | ADR 0082 Decision 8 (#1278 PR 2, Phase 298): validates a `release/<candidate_id>-rN` head carries a matching `docs/releases/notes/<candidate_id>.md` (schema, candidate_id, production_date, production_commit — `pending` or a real 40-hex SHA — the app version table, and required `## Included`/`## Operational notes` sections). Resolves "not applicable" (exit 0) on any other head, including a `main` hotfix's `fix/*` branch. Added after the original 19-gate mapping closed — not one of that count. **[CI, delegated, TEMPORARILY advisory 2026-09-06 by deliberate rollout design — flips blocking once a later phase finds clean-run evidence, ADR 0082 Follow-up 1]** |
 
 One gate is structurally incapable of failing on a clean promotion checkout —
 `compliance.contracts` (no compliance-relevant diff to flag) — and the artifact marks it
-`structurally_cannot_fail: true` (#1016) so a green result on it is never cited as evidence. This
-does not prevent it from being genuinely blocking in CI — a real diff (via a real promotion PR)
-*can* fail it, confirmed by PR #1458's fault-probe run. The other two gates that used to carry that
-flag (`observability.evidence.report`, `release.verdict.contract`) were retired outright by #1431
+`structurally_cannot_fail: true` (#1016) so a green result on it is never cited as evidence.
+`release.notes` (gate 17) carries the same flag for a different reason: outside a real
+`release/<candidate_id>-rN` head it resolves "not applicable," so a local run never exercises its
+actual validation logic. Neither flag prevents genuine blocking coverage in CI where it applies —
+`compliance.contracts` is confirmed blocking by PR #1458's fault-probe run; `release.notes` stays
+advisory regardless (see the table row above). The other two gates that used to carry that flag
+(`observability.evidence.report`, `release.verdict.contract`) were retired outright by #1431
 Phase 3 rather than left green and un-citable.
 
 Evidence: `.tmp/release-gates/<sha>/local_readiness.json` — `generated_at`, `target_sha`, `run_mode`
-(`full`/`partial`), `selection` (`{only, skip}`), `verdict` (`pass`/`fail`), `gate_count` (16),
+(`full`/`partial`), `selection` (`{only, skip}`), `verdict` (`pass`/`fail`), `gate_count` (17),
 `failed_gate_count`, `skipped_gate_count`, `required_gate_count` (gates that actually ran locally,
 excluding delegated and skipped — **0** on a default run since 2026-09-03, #1431 Phase C/D),
-`delegated_gate_count` (all 16 gates, recorded `delegated_to_ci` by default), and
-`ci_enforced_gates` (the 16 gate names `CI_ENFORCED_GATES` covers) — plus each gate's
+`delegated_gate_count` (all 17 gates, recorded `delegated_to_ci` by default), and
+`ci_enforced_gates` (the 17 gate names `CI_ENFORCED_GATES` covers) — plus each gate's
 `{name, ok, status, detail, duration_ms, structurally_cannot_fail}` (`status` now also takes the
 value `"delegated_to_ci"`, alongside `"pass"`/`"fail"`/`"skipped"`). Since nothing runs locally by
 default any more, the promotion PR's own `promotion-quality-gate` check-run is the evidence a
@@ -285,6 +293,52 @@ formally marked `status: superseded`) and its associated PowerShell gate wrapper
 Date-specific snapshots are archived under:
 1. `docs/archive/testing/2026-04/` — dated 2026-04-21 checklist snapshot.
 2. `docs/archive/testing/2026-08/` — the pre-2026-08-12 evidence log removed from this document.
+
+## Per-app version gates (ADR 0081, epic #1548 Wave 4, #1588)
+
+Two mechanisms register here that are neither part of the 17-gate `gate:release:local` mapping
+above nor `check:app-versions`'s own PR-time flip-readiness track (`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s
+own "`check:app-versions` flip-readiness" section covers that one) — both are promotion-time-only,
+run by `promoter` directly, not by any CI workflow:
+
+1. **Promoter pre-cut floor step** (ADR 0081 Decision 6). Before cutting
+   `to-staging/<candidate_id>`, `node scripts/check-app-version-bump.js --floor --base
+   origin/staging --head origin/develop` confirms every app whose files changed since `staging` has
+   at least a minor bump over `staging`'s current version for that app. Anything below floor gets
+   one `chore(release): bump <apps> to X.(Y+1).0 for candidate <id>` PR merged into `develop` first
+   — an ordinary `develop`-base PR, not a new gate class. Full procedure:
+   `.agents/skills/promoter/references/promotion-runbook.md`'s "Default: `develop` → `staging` →
+   `main`" section; obligation text: `.agents/skills/promoter/SKILL.md`'s "Frozen candidate and
+   repair loop" section.
+2. **Promotion parity gate** (ADR 0081 Decision 8). After `deploy-main.yml` publishes the PROD
+   image, `node scripts/check-image-version-parity.js --manifest <candidate.json>` (default flow) or
+   `--source-sha <develop SHA>` (the #1007-gated exception, which never produces a candidate
+   manifest — RF-2, PR #1590 review) confirms each app's PROD image traces back to the candidate it
+   should — the frozen candidate's own tracked SHA, resolved **per app** since #1610 (ADR 0081
+   Decision 8 amendment: `scripts/check-promotion-candidate.js`'s `resolveCandidateSourceShaByApp()`
+   — an app never touched by a staging repair keeps its earlier identity rather than being compared
+   against `current_staging_sha`, or the raw develop-cut SHA uniformly in `--source-sha` mode),
+   stamped by `deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml` into the
+   `org.dgfy-platform.candidate-source-sha` OCI label — not `org.opencontainers.image.revision`,
+   which differs across the `to-staging → staging` and `release/* → main` merge commits even for
+   byte-identical candidate content. A PROD image with no matching STAGING predecessor (or, in
+   `--source-sha` mode, no candidate-source-identity label at all) under this identity — a #1007
+   expedited promotion or a main hotfix — is expected evidence, not a defect. An *existing* STAGING
+   image whose label is missing or inconsistent, by contrast, is a real failure (`staging-unreadable`)
+   — the normal promotion path always stamps it, so its absence there signals a label-stamping
+   regression, not a legitimate untracked build. Read-only, runs after `deploy-main.yml`, not
+   before — it cannot run pre-merge, since the PROD image it inspects does not exist until then. Full
+   procedure and timing: `.agents/skills/promoter/references/promotion-runbook.md`'s "Deploy
+   dispatch" section; `.agents/skills/promoter/SKILL.md`'s "Pre-`main` gates" section.
+
+**The `IMAGE_TAG` contract #495 must honor** (ADR 0081's own Non-goals, restated here per #1588's
+own acceptance criteria — this document records the contract, it does not implement #495's per-service
+`IMAGE_TAG` compose split): whatever `IMAGE_TAG`-shaped variable(s) #495 introduces per service must
+resolve to a real, pullable version tag of the shape `X.Y.Z[-channel]` (`1.5.2`, `1.5.2-staging`,
+`1.5.2-dev`) — the tags this ADR's builders already publish alongside the pre-existing moving
+channel tags (`develop`/`staging`/`latest`) and `sha-<7>`, unaffected by this ADR. #495 is free to
+choose which of those tag families a given service pins to; it may not invent a tag shape these
+builders don't actually publish.
 
 ## Known gaps (tracked elsewhere, not fixed by this document)
 

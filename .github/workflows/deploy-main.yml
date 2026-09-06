@@ -45,6 +45,46 @@ on:
         type: string
         # default: '["sieitz-runner"]'
         default: '["ubuntu-latest"]'
+      candidate_source_sha_api:
+        description: >-
+          ADR 0081 Decision 8 candidate source identity, PER APP (#1610 amendment; originally one
+          shared value, #1588, epic #1548 Wave 4, Phase 279) -- covers BOTH dgfy-api and
+          dgfy-migration-runner, since build_api above always rebuilds them as one paired unit (a
+          repair that touches either always lists both in its manifest apps_touched, so they never
+          actually diverge). Set this on the normal three-stage flow's release/<candidate_id>-rN ->
+          main dispatch, or the #1007-gated release/<label> -> main exception, to
+          scripts/check-promotion-candidate.js's `resolveCandidateSourceShaByApp()` result for
+          dgfy-api (NOT the manifest's raw current_staging_sha -- an app a repair never touched must
+          keep its earlier identity, matching what its STAGING image actually carries). Leave empty
+          for a main hotfix outside the ordinary promotion flow -- an empty value omits the
+          org.dgfy-platform.candidate-source-sha OCI label entirely, which
+          scripts/check-image-version-parity.js treats as expected evidence of a hotfix/#1007
+          exception, not a defect. See .agents/skills/promoter/references/promotion-runbook.md.
+        required: false
+        type: string
+        default: ''
+      candidate_source_sha_frontend_ims:
+        description: >-
+          Same contract as candidate_source_sha_api above, resolved for dgfy-ims specifically (its
+          own build_frontend_ims flag rebuilds it independently of the other two frontends).
+        required: false
+        type: string
+        default: ''
+      candidate_source_sha_frontend_pos:
+        description: >-
+          Same contract as candidate_source_sha_api above, resolved for dgfy-pos specifically (its
+          own build_frontend_pos flag rebuilds it independently of the other two frontends).
+        required: false
+        type: string
+        default: ''
+      candidate_source_sha_frontend_storefront:
+        description: >-
+          Same contract as candidate_source_sha_api above, resolved for dgfy-storefront specifically
+          (its own build_frontend_storefront flag rebuilds it independently of the other two
+          frontends).
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: deploy-main-${{ github.ref }}
@@ -210,6 +250,98 @@ jobs:
             exit 1
           }
 
+  # #1610: resolves, per app, whether this dispatch's build can be safely SKIPPED -- the tag is
+  # already published under the current revision (idempotent re-dispatch) or under a different
+  # revision whose tracked build inputs are content-identical to what's being rebuilt now. This is
+  # what stops a retry after a partial failure from re-tripping ADR 0081 Decision 7's tag-
+  # immutability guard for every app that already succeeded (#1610's own reported incident -- every
+  # retry re-rebuilt, and re-refused, apps that had nothing left to do). Decision 7's guard itself
+  # (scripts/check-tag-immutability.js) is completely unmodified and still runs, unconditionally, in
+  # every build job that actually executes below -- this job only decides whether an attempt is made
+  # at all. Full four-outcome table and the fail-closed reasoning: scripts/resolve-build-skip-plan.js's
+  # own header comment.
+  #
+  # Fail-closed asymmetry, deliberate (see the script's header for the full argument): a per-app
+  # indeterminate read (registry unreachable, unreadable/disagreeing label, an undiffable revision)
+  # degrades to BUILD for that one app -- resolve-build-skip-plan.js never throws for that case, it
+  # folds it into the plan as `should_build_<app>=true`. Only a genuine CRASH of this job (a bug in
+  # the script itself, not a per-app read) is allowed to halt the whole dispatch: every downstream
+  # build job below requires `needs.resolve-build-plan.result == 'success'` in its own `if:`, so a
+  # job failure here transitively skips every build, the same way a `guard-branch` failure already
+  # does today.
+  #
+  # fetch-depth: 0 is required, not optional -- the content-equivalence diff below needs to reach an
+  # arbitrary, dynamically-discovered "already published" revision, which the default shallow
+  # (depth-1) checkout every other job in this file uses would not contain locally. Workspace-
+  # hygiene v1 steps are duplicated here byte-for-byte, same as every other job in this file (see
+  # guard-branch's own comment on why this is deliberately inline and duplicated rather than shared).
+  resolve-build-plan:
+    needs: guard-branch
+    if: needs.guard-branch.result == 'success'
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
+    timeout-minutes: 10
+    outputs:
+      should_build_dgfy_api: ${{ steps.resolve.outputs.should_build_dgfy_api }}
+      should_build_dgfy_migration_runner: ${{ steps.resolve.outputs.should_build_dgfy_migration_runner }}
+      should_build_dgfy_ims: ${{ steps.resolve.outputs.should_build_dgfy_ims }}
+      should_build_dgfy_pos: ${{ steps.resolve.outputs.should_build_dgfy_pos }}
+      should_build_dgfy_storefront: ${{ steps.resolve.outputs.should_build_dgfy_storefront }}
+    steps:
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Resolve build-skip plan
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/resolve-build-skip-plan.js --revision "${{ github.sha }}"
+
   # Shared dgfy-api image (environment-agnostic; built once, tagged latest
   # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
   # input below -- see #913 for why this was renamed off beta). The
@@ -218,13 +350,23 @@ jobs:
   # together, never separately -- see deploy.yml's comment on the same
   # coupling (compose's depends_on: service_completed_successfully means a
   # mismatched pair is a schema/code mismatch waiting to happen).
+  #
+  # #1610: build_api stays ONE shared checkbox gating both this job and dgfy-migration-runner's
+  # eligibility to run at all, but each job ANDs it with its OWN independently-resolved skip verdict
+  # -- these are genuinely separate images with genuinely separate package.json versions, and one
+  # can be skip-eligible while the other isn't (e.g. dgfy-api's code changed with no new migration).
+  # Nothing about deploy-order or the server's compose depends_on requires their CI build cycles to
+  # march in lockstep -- only their human-facing dispatch checkbox stays coupled.
   dgfy-api:
-    needs: guard-branch
-    if: needs.guard-branch.result == 'success' && inputs.build_api
+    needs: [ guard-branch, resolve-build-plan ]
+    if: >-
+      needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success' &&
+      inputs.build_api && needs.resolve-build-plan.outputs.should_build_dgfy_api == 'true'
     uses: ./.github/workflows/deploy-api.yml
     with:
       environment: PROD
       image_tags: "latest"
+      candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -237,14 +379,18 @@ jobs:
       contents: read
       packages: write
 
-  # Paired one-shot migration image dgfy-api depends on at compose-up.
+  # Paired one-shot migration image dgfy-api depends on at compose-up. #1610: shares build_api with
+  # dgfy-api above but resolves its OWN skip verdict independently -- see that job's comment.
   dgfy-migration-runner:
-    needs: guard-branch
-    if: needs.guard-branch.result == 'success' && inputs.build_api
+    needs: [ guard-branch, resolve-build-plan ]
+    if: >-
+      needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success' &&
+      inputs.build_api && needs.resolve-build-plan.outputs.should_build_dgfy_migration_runner == 'true'
     uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: PROD
       image_tags: "latest"
+      candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -287,13 +433,16 @@ jobs:
   # fully-serial chain, not a 3x speedup. If a GHCR rate limit does recur,
   # reverting this is a one-line `needs:` re-add per job below.
   frontend-ims-prod:
-    needs: guard-branch
-    if: needs.guard-branch.result == 'success' && inputs.build_frontend_ims
+    needs: [ guard-branch, resolve-build-plan ]
+    if: >-
+      needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success' &&
+      inputs.build_frontend_ims && needs.resolve-build-plan.outputs.should_build_dgfy_ims == 'true'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-ims
       environment: PROD
       image_tags: "latest"
+      candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_ims }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -307,13 +456,16 @@ jobs:
       packages: write
 
   frontend-pos-prod:
-    needs: guard-branch
-    if: needs.guard-branch.result == 'success' && inputs.build_frontend_pos
+    needs: [ guard-branch, resolve-build-plan ]
+    if: >-
+      needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success' &&
+      inputs.build_frontend_pos && needs.resolve-build-plan.outputs.should_build_dgfy_pos == 'true'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-pos
       environment: PROD
       image_tags: "latest"
+      candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_pos }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -327,13 +479,16 @@ jobs:
       packages: write
 
   frontend-storefront-prod:
-    needs: guard-branch
-    if: needs.guard-branch.result == 'success' && inputs.build_frontend_storefront
+    needs: [ guard-branch, resolve-build-plan ]
+    if: >-
+      needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success' &&
+      inputs.build_frontend_storefront && needs.resolve-build-plan.outputs.should_build_dgfy_storefront == 'true'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       app: dgfy-storefront
       environment: PROD
       image_tags: "latest"
+      candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_storefront }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -349,22 +504,33 @@ jobs:
   # Single SSH deploy that refreshes all four images on the server in one
   # `docker compose pull && up -d`. Runs unless any image build actually
   # failed or was cancelled - a `skipped` result (e.g. a build_* dispatch
-  # that only left one box checked, or guard-branch failing and skipping
-  # every job transitively) must still allow publish to proceed with
-  # whichever images did build, matching deployment-orchestrator.yml's
+  # that only left one box checked, guard-branch/resolve-build-plan failing
+  # and skipping every job transitively, or #1610's build-skip plan
+  # legitimately skipping every app) must still allow publish to proceed
+  # with whichever images did build, matching deployment-orchestrator.yml's
   # publish gate.
+  #
+  # #1610: dropped the "at least one build actually succeeded" OR-clause the previous version of
+  # this condition had. That clause could never be satisfied by a genuine "every app is skip-
+  # eligible" dispatch (a true no-op re-dispatch, or an operator re-running purely to force a
+  # compose restart) -- every build job would be 'skipped', none 'success', and publish would never
+  # run at all, despite nothing being wrong. Gating directly on guard-branch's and
+  # resolve-build-plan's own `result == 'success'` (added to `needs:` below) closes the ONLY other
+  # way every build job could legitimately end up 'skipped' (a whole-job crash upstream, which
+  # already transitively skips everything) -- so once both of those explicitly succeeded, the
+  # remaining "every build job is skipped" case is always either an unchecked build_* input or a
+  # verified-safe #1610 skip, never a silent failure.
   publish:
-    needs: [ dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]
+    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]
     if: >-
       inputs.deploy && !cancelled() &&
+      needs.guard-branch.result == 'success' &&
+      needs.resolve-build-plan.result == 'success' &&
       needs.dgfy-api.result != 'failure' &&
       needs.dgfy-migration-runner.result != 'failure' &&
       needs.frontend-ims-prod.result != 'failure' &&
       needs.frontend-pos-prod.result != 'failure' &&
-      needs.frontend-storefront-prod.result != 'failure' &&
-      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' ||
-       needs.frontend-ims-prod.result == 'success' || needs.frontend-pos-prod.result == 'success' ||
-       needs.frontend-storefront-prod.result == 'success')
+      needs.frontend-storefront-prod.result != 'failure'
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: PROD
