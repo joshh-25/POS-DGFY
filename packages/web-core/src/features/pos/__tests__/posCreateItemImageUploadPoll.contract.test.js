@@ -19,8 +19,15 @@ describe('POS create-item image upload no longer races the post-create refetch (
 
     it('reuses useItemImageGenerationPoll (parameterized by readStatus) instead of a second bespoke poller', () => {
         expect(workspace).toContain(
-            "const { pollItemImageGeneration: pollCatalogImageUploadStatus } = useItemImageGenerationPoll(getStorefrontCatalogImageUploadStatus);"
+            "const { pollItemImageGeneration: pollCatalogImageUploadStatus } = useItemImageGenerationPoll(getStorefrontCatalogImageUploadStatus, CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS);"
         );
+    });
+
+    it('RF-2: bounds the create-item poll to its own shorter timeout instead of inheriting the AI-generation path\'s 90s default', () => {
+        expect(workspace).toContain('const CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS = 15 * 1000;');
+        // The other useItemImageGenerationPoll instantiation (handleGenerateEditImage's path)
+        // must keep the hook's own default -- only the create-item call site gets the shorter one.
+        expect(workspace).toContain('const { pollItemImageGeneration, cancel: cancelImageGenerationPoll } = useItemImageGenerationPoll();');
     });
 
     it('runPostCreateStages queues the image, then polls the upload status before returning', () => {

@@ -289,6 +289,16 @@ const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
 
+// RF-2 (PR #1656 review, #1410): the create-item modal disables its own close button while
+// postCreateSaving is true, so a stuck background upload job locks the operator out of the
+// modal for the full poll duration -- unlike handleGenerateEditImage's edit-modal path, which
+// stays dismissible throughout its own poll. Reusing useItemImageGenerationPoll's full
+// ITEM_IMAGE_POLL_TIMEOUT_MS (90s) here would mean a genuinely stuck job locks the modal that
+// long; bound it to a much shorter ceiling instead -- the common/fast case still resolves in a
+// couple of seconds well under this, and a timeout here degrades to today's pre-fix behavior
+// (soft warning, pos.catalog.changed SSE backstop), not a hard failure.
+const CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS = 15 * 1000;
+
 const resolveStoredItemImageUrl = (urlOrPath) => {
   const raw = String(urlOrPath || '').trim();
   if (!raw) return '';
@@ -2174,7 +2184,11 @@ function ItemsWorkspace({
   // catalog-image-upload-status endpoint instead of the AI-generation one --
   // used by runPostCreateStages below to wait out the async image upload
   // worker (catalogImageUploadWorker.js) before the post-create item refetch.
-  const { pollItemImageGeneration: pollCatalogImageUploadStatus } = useItemImageGenerationPoll(getStorefrontCatalogImageUploadStatus);
+  // A shorter timeout than the hook's 90s default (see
+  // CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS above) -- this poll runs while
+  // the create-item modal is locked, unlike the AI-generation path this hook
+  // was originally built for.
+  const { pollItemImageGeneration: pollCatalogImageUploadStatus } = useItemImageGenerationPoll(getStorefrontCatalogImageUploadStatus, CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS);
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
