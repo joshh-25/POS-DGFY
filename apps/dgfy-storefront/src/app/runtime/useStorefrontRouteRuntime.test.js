@@ -35,4 +35,3 @@ describe('useStorefrontRouteRuntime', () => {
     fetchSpy.mockRestore();
   });
 });
-

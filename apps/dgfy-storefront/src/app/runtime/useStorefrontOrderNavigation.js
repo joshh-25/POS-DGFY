@@ -128,4 +128,3 @@ export function useStorefrontOrderNavigation({
 
   return { goStoreOrderForDiscovery, goStoreOrderPage, goStoreTrackPage };
 }
-
