@@ -234,8 +234,6 @@ export function StorefrontServicesCatalog({
   };
   const reviewHighlights = Array.isArray(serviceHeroModel?.reviewHighlights) ? serviceHeroModel.reviewHighlights.filter(Boolean) : [];
   const reviewSummary = serviceHeroModel?.reviewSummary || null;
-  const reviewScore = Number(reviewSummary?.score);
-  const hasReviewSummary = Number.isFinite(reviewScore) && reviewScore > 0;
   const resolvedServicesLayoutMode = String(serviceHeroModel?.servicesLayoutMode || servicesLayoutMode || 'directory').trim().toLowerCase();
   const isLeadGenLayout = resolvedServicesLayoutMode === 'lead_gen';
   const catalogPresentation = serviceHeroModel?.catalogPresentation || {};
@@ -825,7 +823,7 @@ export function StorefrontServicesCatalog({
           gap: 18,
           background: SERVICES_PALETTE.surface,
           borderRadius: 0,
-          padding: isMobileViewport ? '24px 0 44px' : '34px 0 64px',
+          padding: isMobileViewport ? '32px 0 44px' : '34px 0 64px',
           marginLeft: 'calc(50% - 50vw)',
           width: '100vw'
         }}
@@ -974,14 +972,9 @@ export function StorefrontServicesCatalog({
       <SharedStorefrontReviewsSection
         isMobileViewport={isMobileViewport}
         viewportWidth={viewportWidth}
-        title="Customer Reviews"
-        subtitle="See what customers say about this storefront"
         onWriteReview={() => setIsReviewModalOpen(true)}
         reviewSummary={reviewSummary}
         reviewHighlights={reviewHighlights}
-        emptyMessage={hasReviewSummary
-          ? 'Customer review highlights will appear here once detailed review entries are added in SKUpervisor.'
-          : 'Customer reviews will appear here once this storefront adds review data in SKUpervisor.'}
         titleFontFamily={servicesDisplayFont}
         bodyFontFamily={servicesBodyFont}
         writeButtonColor={servicesPrimary}

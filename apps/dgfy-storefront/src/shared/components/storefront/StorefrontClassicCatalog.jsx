@@ -104,7 +104,7 @@ export function StorefrontClassicCatalog({
           borderRadius: showsCatalogToolbar ? 0 : STYLES.radius.card,
           padding: showsCatalogToolbar
             ? (isMobileViewport ? '20px 0 24px' : '32px 0 52px')
-            : (isMobileViewport ? 16 : 32),
+            : (isMobileViewport ? '32px 16px 16px' : 32),
           boxShadow: showsCatalogToolbar ? 'none' : STYLES.shadow.sm,
           marginLeft: showsCatalogToolbar && !isMobileViewport ? 'calc(50% - 50vw)' : undefined,
           width: showsCatalogToolbar ? (isMobileViewport ? '100%' : '100vw') : undefined,
@@ -292,11 +292,8 @@ export function StorefrontClassicCatalog({
             <SharedStorefrontReviewsSection
               isMobileViewport={isMobileViewport}
               viewportWidth={viewportWidth}
-              title="Customer Reviews"
-              subtitle="See what customers say about this storefront"
               onWriteReview={() => setIsReviewModalOpen(true)}
               reviewHighlights={defaultStorefrontModel.reviewHighlights}
-              emptyMessage="Customer reviews will appear here once this storefront adds review data in SKUpervisor."
               titleFontFamily={modeAdapter.heroTheme?.displayFont}
               bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
               titleSize={isMobileViewport ? 28 : 36}

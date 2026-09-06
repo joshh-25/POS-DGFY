@@ -7,12 +7,6 @@ import { StorefrontCatalogToolbar } from './StorefrontCatalogToolbar.jsx';
 import { STYLES } from '../../theme/storefrontStyleTokens.js';
 import { FNB_CATEGORY_ICON_MAP } from '../../../modes/fnb/storefront/model/fnbStorefrontPresentation.js';
 
-// RF-4 (PR #1583 review): the shared F&B/Retail catalog toolbar must select, key, and resolve
-// active state by `sectionIdentity` (the stable, folder_id-based identity `fnbStorefrontViewModel.js`
-// computes), never by `sectionKey` (the normalized display text) -- two distinct folders can share
-// a `sectionKey` but never a `sectionIdentity`. Consumer-level counterpart to the view-model-level
-// regression test in fnbStorefrontViewModel.test.js and to buildFnbCatalogPresentation.test.js's
-// resolution-level test.
 const modeAdapter = {
   catalogEyebrow: 'Menu',
   catalogHeading: 'Order online',
@@ -21,7 +15,21 @@ const modeAdapter = {
   catalogItemNounPlural: 'items',
   catalogSearchPlaceholder: 'Search the menu...',
   catalogMaxWidth: 1320,
-  heroTheme: {}
+  catalogCategoryIconToken: 'menu',
+  heroTheme: {
+    accent: '#1a4e8d',
+    accentDark: '#173f73',
+    accentSoft: '#e7f0fb',
+    bodyFont: 'Inter, sans-serif',
+    catalogPalette: {
+      primary: '#1a4e8d',
+      primaryHover: '#173f73',
+      accentSoft: '#e7f0fb',
+      border: '#c7d8ec',
+      surface: '#ffffff'
+    }
+  },
+  isRetailMode: true
 };
 
 const menuItems = [
@@ -33,7 +41,9 @@ const baseProps = {
   FNB_CATEGORY_ICON_MAP,
   STYLES,
   catalogSearch: '',
+  checkoutVoucherCode: '',
   filteredFnbViewModel: { menuItems, menuSections: [], totalItems: menuItems.length },
+  fnbCategoryDropdownRef: { current: null },
   fnbSortOption: 'name_asc',
   fnbViewMode: 'list',
   isFnbCategoryDropdownOpen: false,
@@ -70,9 +80,6 @@ describe('StorefrontCatalogToolbar', () => {
     };
     const setActiveServiceTab = vi.fn();
     render(
-      // `isFnbCategoryDropdownOpen` is a controlled prop in this component (no internal state) --
-      // pass it open directly rather than simulating a click on a mocked setter that wouldn't
-      // actually re-render the component.
       <StorefrontCatalogToolbar
         {...baseProps}
         filteredFnbViewModel={filteredFnbViewModel}
@@ -88,8 +95,6 @@ describe('StorefrontCatalogToolbar', () => {
   });
 
   it('renders and independently selects two colliding-sectionKey, distinct-sectionIdentity sections', () => {
-    // The reviewer's exact repro: "A B" (folder 10) and "A_B" (folder 11) both normalize to the
-    // same sectionKey text.
     const filteredFnbViewModel = {
       menuItems,
       menuSections: [
@@ -123,8 +128,6 @@ describe('StorefrontCatalogToolbar', () => {
     const sectionOptions = screen.getAllByRole('button', { name: /1 item/ }).filter((button) => (
       button.textContent.includes('A B') || button.textContent.includes('A_B')
     ));
-    // Both distinct-folder sections render as separate options -- neither silently dropped nor
-    // merged into one.
     expect(sectionOptions).toHaveLength(2);
 
     fireEvent.click(sectionOptions[0]);
@@ -160,5 +163,20 @@ describe('StorefrontCatalogToolbar', () => {
 
     fireEvent.click(screen.getByText('Coffee'));
     expect(setActiveServiceTab).toHaveBeenCalledWith('folder:10');
+  });
+
+  it('uses the mobile sliders icon on the desktop product toolbar', () => {
+    render(<StorefrontCatalogToolbar {...baseProps} isMobileViewport={false} />);
+
+    const priceFilter = screen.getByRole('combobox', { name: 'Select' });
+    expect(priceFilter.querySelector('svg.lucide-sliders-horizontal')).toBeTruthy();
+    expect(priceFilter.querySelector('svg.lucide-filter')).toBeNull();
+  });
+
+  it('keeps the same sliders icon on the mobile product toolbar', () => {
+    render(<StorefrontCatalogToolbar {...baseProps} isMobileViewport />);
+
+    const priceFilter = screen.getByRole('combobox', { name: 'Select' });
+    expect(priceFilter.querySelector('svg.lucide-sliders-horizontal')).toBeTruthy();
   });
 });
