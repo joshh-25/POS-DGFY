@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  deriveChannelSuffix,
   buildInputPathsForApp,
   gitDiffChangedFiles,
   decideBuildSkip,
@@ -224,4 +225,63 @@ test('parseArgs: parses --revision, --apps, and --project-root', () => {
   const options = parseArgs(['--revision', 'abc123', '--apps', 'dgfy-api, dgfy-pos', '--project-root', '.']);
   assert.equal(options.revision, 'abc123');
   assert.deepEqual(options.apps, ['dgfy-api', 'dgfy-pos']);
+});
+
+test('parseArgs: parses --environment', () => {
+  const options = parseArgs(['--revision', 'abc123', '--environment', 'STAGING']);
+  assert.equal(options.environment, 'STAGING');
+});
+
+test('parseArgs: --environment defaults to undefined when omitted (deploy-main.yml unchanged)', () => {
+  const options = parseArgs(['--revision', 'abc123']);
+  assert.equal(options.environment, undefined);
+});
+
+// #1610 follow-up: deploy.yml (DEV/STAGING) lacked this script's skip logic entirely, so every
+// dispatch force-rebuilt the paired dgfy-api/dgfy-migration-runner unit even when only one of them
+// changed -- tripping ADR 0081 Decision 7's tag-immutability guard on the untouched one every time.
+// deriveChannelSuffix must match deploy-api.yml/deploy-migration-runner.yml/deploy-frontend.yml's
+// own inline shell `case` exactly (DEV -> -dev, STAGING -> -staging, PROD -> ''), or this script
+// would check a different tag than the one the real build-and-push step publishes.
+test('deriveChannelSuffix: DEV/STAGING/PROD match the per-workflow shell case exactly', () => {
+  assert.equal(deriveChannelSuffix('DEV'), '-dev');
+  assert.equal(deriveChannelSuffix('STAGING'), '-staging');
+  assert.equal(deriveChannelSuffix('PROD'), '');
+});
+
+test('deriveChannelSuffix: omitted/empty/undefined all default to no suffix (deploy-main.yml unchanged)', () => {
+  assert.equal(deriveChannelSuffix(undefined), '');
+  assert.equal(deriveChannelSuffix(null), '');
+  assert.equal(deriveChannelSuffix(''), '');
+});
+
+test('deriveChannelSuffix: an unrecognized environment throws rather than silently defaulting', () => {
+  assert.throws(() => deriveChannelSuffix('QA'), /Unknown environment 'QA'/);
+});
+
+test('resolveBuildSkipPlan: environment STAGING checks the -staging-suffixed tag, not the bare one', () => {
+  const inspectedRefs = [];
+  const plan = resolveBuildSkipPlan({
+    apps: ['dgfy-ims'],
+    currentRevision: 'HEAD',
+    environment: 'STAGING',
+    inspectFn: (imageRef) => { inspectedRefs.push(imageRef); return inspectNotFound(); },
+    diffFn: neverCalled('diffFn'),
+  });
+  assert.equal(plan['dgfy-ims'].code, 'not-published');
+  assert.equal(inspectedRefs.length, 1);
+  assert.match(inspectedRefs[0], /-staging$/);
+  assert.doesNotMatch(inspectedRefs[0], /-staging-staging$/);
+});
+
+test('resolveBuildSkipPlan: environment omitted checks the bare tag (deploy-main.yml/PROD unchanged)', () => {
+  const inspectedRefs = [];
+  resolveBuildSkipPlan({
+    apps: ['dgfy-ims'],
+    currentRevision: 'HEAD',
+    inspectFn: (imageRef) => { inspectedRefs.push(imageRef); return inspectNotFound(); },
+    diffFn: neverCalled('diffFn'),
+  });
+  assert.equal(inspectedRefs.length, 1);
+  assert.doesNotMatch(inspectedRefs[0], /-dev$|-staging$/);
 });
