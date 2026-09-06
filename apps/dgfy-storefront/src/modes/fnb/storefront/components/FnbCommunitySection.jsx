@@ -42,11 +42,8 @@ export function FnbCommunitySection({
       <SharedStorefrontReviewsSection
         isMobileViewport={isMobileViewport}
         viewportWidth={viewportWidth}
-        title="Customer Reviews"
-        subtitle="See what diners are saying about this menu storefront."
         onWriteReview={onWriteReview}
         reviewHighlights={fnbCommunityModel.reviewHighlights}
-        emptyMessage="Customer reviews will appear here once this storefront adds review data in SKUpervisor."
         titleFontFamily={modeAdapter.heroTheme?.displayFont}
         bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
         cardVariant="white"

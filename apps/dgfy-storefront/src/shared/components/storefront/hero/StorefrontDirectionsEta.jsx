@@ -1,5 +1,8 @@
 import { useCallback, useState } from 'react';
 import { useStoreRoute } from '../../../hooks/useStoreRoute.js';
+import { STOREFRONT_BUSINESS_INFORMATION_TYPOGRAPHY } from '../../../theme/storefrontStyleTokens.js';
+
+const ETA_FONT_SIZE = STOREFRONT_BUSINESS_INFORMATION_TYPOGRAPHY.desktop.metadata;
 
 /**
  * Shows an in-app driving distance/ETA to the store, resolved on demand
@@ -51,7 +54,7 @@ export function StorefrontDirectionsEta({ latitude, longitude, bodyFont }) {
       <button
         type="button"
         onClick={handleLocate}
-        style={{ padding: 0, border: 'none', background: 'transparent', color: '#64748b', fontSize: 11, fontWeight: 700, cursor: 'pointer', justifySelf: 'start', fontFamily: bodyFont }}
+        style={{ padding: 0, border: 'none', background: 'transparent', color: '#64748b', fontSize: ETA_FONT_SIZE, fontWeight: 700, cursor: 'pointer', justifySelf: 'start', fontFamily: bodyFont }}
       >
         {locateError || 'How far is this from me?'}
       </button>
@@ -59,7 +62,7 @@ export function StorefrontDirectionsEta({ latitude, longitude, bodyFont }) {
   }
 
   if (locating || routeLoading) {
-    return <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: bodyFont }}>Calculating distance…</div>;
+    return <div style={{ fontSize: ETA_FONT_SIZE, color: '#94a3b8', fontFamily: bodyFont }}>Calculating distance…</div>;
   }
 
   if (routeError || !Number.isFinite(distanceKm)) {
@@ -67,7 +70,7 @@ export function StorefrontDirectionsEta({ latitude, longitude, bodyFont }) {
   }
 
   return (
-    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, fontFamily: bodyFont }}>
+    <div style={{ fontSize: ETA_FONT_SIZE, color: '#64748b', fontWeight: 700, fontFamily: bodyFont }}>
       {distanceKm.toFixed(1)} km · {durationMinutes} min drive
     </div>
   );

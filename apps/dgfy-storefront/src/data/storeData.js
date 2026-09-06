@@ -48,10 +48,11 @@ export const STORE_DATA = {
     ]
   },
   reviews: {
-    title: 'Customer Reviews',
-    subtitle: 'See what customers say about this storefront',
+    title: 'Reviews',
+    subtitle: 'See what customers are saying',
     ctaLabel: 'Write a Review',
-    emptyState: 'Customer reviews will appear here once this storefront adds review data in SKUpervisor.',
+    emptyTitle: 'No reviews yet',
+    emptyMessage: 'Be the first to share your experience with this store.',
     items: []
   },
   footer: {

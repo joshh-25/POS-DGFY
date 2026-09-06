@@ -1,17 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { MapPin, Star } from 'lucide-react';
-import { StorefrontExpandedMapModal } from '../../discovery/components/StorefrontExpandedMapModal.jsx';
 import { buildFnbHeroViewModel } from '../../modes/fnb/storefront/model/buildFnbHeroViewModel.js';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './storefront/hero/StorefrontHeaderNav.jsx';
 import { FnbHeroBranchSelector } from '../../modes/fnb/storefront/components/FnbHeroBranchSelector.jsx';
 import { FnbHeroBrandingSection } from '../../modes/fnb/storefront/components/FnbHeroBrandingSection.jsx';
-import { FnbHeroDesktopAboutGallery } from '../../modes/fnb/storefront/components/FnbHeroDesktopAboutGallery.jsx';
-import { FnbHeroDesktopContactLocation } from '../../modes/fnb/storefront/components/FnbHeroDesktopContactLocation.jsx';
-import { FnbHeroDesktopWhyChooseUs } from '../../modes/fnb/storefront/components/FnbHeroDesktopWhyChooseUs.jsx';
-import { FnbHeroMobileInfoCards } from '../../modes/fnb/storefront/components/FnbHeroMobileInfoCards.jsx';
 import { FnbHeroMobileOverview } from '../../modes/fnb/storefront/components/FnbHeroMobileOverview.jsx';
 import { StorefrontAccountBranchSwitcher } from './storefront/hero/StorefrontAccountBranchSwitcher.jsx';
 import { useStorefrontAccountBranches } from '../hooks/useStorefrontAccountBranches.js';
+import { StorefrontBusinessInformationPanel } from './storefront/StorefrontBusinessInformationPanel.jsx';
 
 // Every non-fnb/services/simple industry (hospitality, healthcare, retail,
 // food_manufacturing, ticketing_transport, logistics_distribution,
@@ -60,12 +56,9 @@ const DefaultStorefrontHero = ({
   shareEnabled,
   followState,
   handleFollowAction,
-  ui,
   heroStyles
 }) => {
-  const { StorefrontExpandableBusinessHours } = ui;
-  const { HERO_CANVAS_MAX_WIDTH, MAX_STOREFRONT_WHY_CHOOSE_US, MOBILE_DROPDOWN_MENU_STYLE, MOBILE_DROPDOWN_OPTION_STYLE, MOBILE_NATIVE_SELECT_STYLE, STOREFRONT_CONTACT_INFO_COLUMNS, STOREFRONT_INFO_ICON_COLUMN, STOREFRONT_INFO_PANEL_MAX_WIDTH, STOREFRONT_INFO_ROW_GAP, STYLES } = heroStyles;
-  const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
+  const { HERO_CANVAS_MAX_WIDTH, MAX_STOREFRONT_WHY_CHOOSE_US, MOBILE_DROPDOWN_MENU_STYLE, MOBILE_DROPDOWN_OPTION_STYLE, MOBILE_NATIVE_SELECT_STYLE, STYLES } = heroStyles;
   const heroTheme = modeAdapter.heroTheme || {};
   const isRetailTheme = Boolean(heroTheme.palette?.retailHighlight);
   const retailPageBackground = heroTheme.palette?.pageBackground || '#F8FAFC';
@@ -92,20 +85,10 @@ const DefaultStorefrontHero = ({
     aboutText,
     addressText,
     deliveryPlatformLinks,
-    desktopColumns,
-    displayHours,
     followersLabel,
     galleryImages,
     galleryImagesFull,
     galleryOverflowCount,
-    hasAboutOrGallerySection,
-    hasAboutSection,
-    hasAboutToggle,
-    hasContactRows,
-    hasGallerySection,
-    hasMapData,
-    hasMobileStoreDetailsSummary,
-    hasWhyChooseUs,
     mapSelectedKey,
     mapStores,
     orderLabel,
@@ -234,30 +217,20 @@ const DefaultStorefrontHero = ({
             mobileHeroMetaItems={mobileHeroMetaItems}
             openStorefrontActionLink={openStorefrontActionLink}
           />
-          <FnbHeroMobileInfoCards
+          <StorefrontBusinessInformationPanel
+            isMobileViewport
             aboutText={aboutText}
             addressText={addressText}
             deliveryPlatformLinks={deliveryPlatformLinks}
-            displayHours={displayHours}
             galleryImages={galleryImages}
             galleryImagesFull={galleryImagesFull}
             galleryOverflowCount={galleryOverflowCount}
-            hasAboutSection={hasAboutSection}
-            hasAboutToggle={hasAboutToggle}
-            hasContactRows={hasContactRows}
-            hasGallerySection={hasGallerySection}
-            hasMapData={hasMapData}
-            hasMobileStoreDetailsSummary={hasMobileStoreDetailsSummary}
-            hasWhyChooseUs={hasWhyChooseUs}
-            heroSectionModel={heroSectionModel}
-            heroTheme={heroTheme}
-            isServicesStorefront={isServicesStorefront}
-            modeAdapter={modeAdapter}
             mapSelectedKey={mapSelectedKey}
             mapStores={mapStores}
             openStorefrontActionLink={openStorefrontActionLink}
+            palette={heroTheme}
             selectedBranchLabel={selectedBranchLabel}
-            setIsExpandedMapOpen={setIsExpandedMapOpen}
+            storeName={heroSectionModel.name || selectedStore?.tenant_name}
             storefrontCityLabel={storefrontCityLabel}
             visibleContactRows={visibleContactRows}
             visibleWhyChooseUs={visibleWhyChooseUs}
@@ -265,70 +238,24 @@ const DefaultStorefrontHero = ({
         </>
       )}
       {!isMobileViewport && (
-        <div style={{
-          maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
-          margin: '64px auto 36px',
-          padding: 24,
-          background: '#ffffff',
-          border: `1px solid ${isRetailTheme ? (heroTheme.palette?.secondary || '#A9DCE8') : '#e8edf3'}`,
-          borderRadius: 24,
-          boxShadow: isRetailTheme ? '0 6px 18px rgba(26,78,141,0.05)' : '0 18px 42px rgba(15, 23, 42, 0.07)',
-          display: 'grid',
-          gridTemplateColumns: desktopColumns,
-          gap: 24
-        }}>
-          {hasAboutOrGallerySection && (
-            <FnbHeroDesktopAboutGallery
-              STYLES={STYLES}
-              aboutText={aboutText}
-              galleryImages={galleryImages}
-              galleryImagesFull={galleryImagesFull}
-              galleryOverflowCount={galleryOverflowCount}
-              hasAboutSection={hasAboutSection}
-              hasAboutToggle={hasAboutToggle}
-              hasGallerySection={hasGallerySection}
-              heroTheme={heroTheme}
-            />
-          )}
-
-          <FnbHeroDesktopContactLocation
-            STYLES={STYLES}
-            STOREFRONT_CONTACT_INFO_COLUMNS={STOREFRONT_CONTACT_INFO_COLUMNS}
-            STOREFRONT_INFO_ICON_COLUMN={STOREFRONT_INFO_ICON_COLUMN}
-            STOREFRONT_INFO_ROW_GAP={STOREFRONT_INFO_ROW_GAP}
-            StorefrontExpandableBusinessHours={StorefrontExpandableBusinessHours}
-            stackedSchedule={isServicesStorefront}
-            deliveryPlatformLinks={deliveryPlatformLinks}
-            hasAboutOrGallerySection={hasAboutOrGallerySection}
-            hasContactRows={hasContactRows}
-            hasMapData={hasMapData}
-            heroTheme={heroTheme}
-            mapSelectedKey={mapSelectedKey}
-            mapStores={mapStores}
-            openStorefrontActionLink={openStorefrontActionLink}
-            setIsExpandedMapOpen={setIsExpandedMapOpen}
-            visibleContactRows={visibleContactRows}
-          />
-
-          {hasWhyChooseUs && (
-            <FnbHeroDesktopWhyChooseUs
-              STYLES={STYLES}
-              heroTheme={heroTheme}
-              visibleWhyChooseUs={visibleWhyChooseUs}
-            />
-          )}
-
-        </div>
+        <StorefrontBusinessInformationPanel
+          aboutText={aboutText}
+          addressText={addressText}
+          deliveryPlatformLinks={deliveryPlatformLinks}
+          galleryImages={galleryImages}
+          galleryImagesFull={galleryImagesFull}
+          galleryOverflowCount={galleryOverflowCount}
+          mapSelectedKey={mapSelectedKey}
+          mapStores={mapStores}
+          openStorefrontActionLink={openStorefrontActionLink}
+          palette={{ ...heroTheme, panelBorder: isRetailTheme ? (heroTheme.palette?.secondary || '#A9DCE8') : undefined, panelShadow: isRetailTheme ? '0 6px 18px rgba(26,78,141,0.05)' : undefined }}
+          selectedBranchLabel={selectedBranchLabel}
+          storeName={heroSectionModel.name || selectedStore?.tenant_name}
+          storefrontCityLabel={storefrontCityLabel}
+          visibleContactRows={visibleContactRows}
+          visibleWhyChooseUs={visibleWhyChooseUs}
+        />
       )}
-
-      <StorefrontExpandedMapModal
-        open={isExpandedMapOpen}
-        onClose={() => setIsExpandedMapOpen(false)}
-        title={`${heroSectionModel.name || selectedStore?.tenant_name || 'Store'} Map`}
-        subtitle="View the store location in a larger map."
-        stores={mapStores}
-        selectedKey={mapSelectedKey}
-      />
     </section>
   );
 };

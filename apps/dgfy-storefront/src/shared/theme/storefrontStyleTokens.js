@@ -30,6 +30,26 @@ export const STOREFRONT_INFO_PANEL_MAX_WIDTH = HERO_CANVAS_MAX_WIDTH - 84;
 export const STOREFRONT_CONTACT_INFO_COLUMNS = 'minmax(0, 0.96fr) minmax(248px, 1.04fr)';
 export const STOREFRONT_INFO_ROW_GAP = 12;
 export const STOREFRONT_INFO_ICON_COLUMN = 20;
+export const STOREFRONT_BUSINESS_INFORMATION_TYPOGRAPHY = Object.freeze({
+  bodyLineHeight: 1.7,
+  contactLineHeight: 1.35,
+  whyLineHeight: 1.4,
+  desktop: Object.freeze({
+    sectionHeading: 13,
+    body: 13,
+    action: 12,
+    metadata: 11,
+    galleryOverlay: 18
+  }),
+  mobile: Object.freeze({
+    sectionHeading: 15,
+    body: 13,
+    action: 12,
+    metadata: 11,
+    galleryOverlay: 18,
+    chevron: 18
+  })
+});
 export const MAX_STOREFRONT_CONTACT_ROWS = 4;
 export const MAX_STOREFRONT_WHY_CHOOSE_US = 4;
 
