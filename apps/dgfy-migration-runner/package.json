@@ -1,6 +1,6 @@
 {
   "name": "@dgfy/dgfy-migration-runner",
-  "version": "1.1.4",
+  "version": "1.2.0",
   "description": "Standalone Sequelize migration runner for dgfy-platform, extracted from backend's migration domain",
   "type": "module",
   "scripts": {
