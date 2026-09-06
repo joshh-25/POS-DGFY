@@ -21501,19 +21501,214 @@ differs from what was originally drafted.
   above). Issues #1015, #925, #1469 (comment only, not closed by this phase).
 - Next eligible phase: 298.
 
-## Phase 299 - Client-derived image upload contract + fan-out to catalog upload services (#265 epic, PR 4 of 5 per the epic plan doc -- built ahead of PR 3's client encoder module, which remains unbuilt; see this phase's own numbering note)
+## Phase 298 - `scripts/check-release-notes.js` enforcement, wired advisory into `promotion-quality-gate.yml` (ADR 0082 Decision 8, epic #1548, #1278 PR 2 of 2)
+
+Filed as this branch's "Phase 296" in Phase 280's own "Next eligible phase" note and in the plan
+doc, then renumbered once already (to 297) because Phase 296 was independently claimed and merged
+first by the #265 epic's server-only AVIF deprecation PR while this work was still being planned.
+Renumbered a second time, to 298, on pr-reviewer's RF-1 finding (this PR, round 1): while this PR
+sat open, Phase 297 was independently claimed and merged first by the #1015/#925 shared
+template-schema setup PR (unrelated, landed via PR #1638). Per `AGENTS.md`'s Continuous Phase
+Numbering rule, this entry uses the next open slot verified against a freshly-fetched
+`origin/develop` (298 -- confirmed no `## Phase 298` heading existed there) rather than assuming a
+number is safe, mirroring the same collision-handling precedent Phase 295's own entry already set.
+No other content differs from what Phase 280 described as coming next.
+
+- Initiative/release: Container semantic versioning epic (#1548) / current release process.
+- Objective and scope: second and closing PR of #1278 (ADR 0082's own Decision 8 / Follow-up 3
+  forward guidance). Builds the enforcement mechanism ADR 0082 named but deliberately did not build
+  in PR 1 (Phase 280): a `release/<candidate_id>-rN` head must carry a matching
+  `docs/releases/notes/<candidate_id>.md` record. Resolves the candidate id from the head branch
+  (`release/<candidate_id>-rN`, covering both the default flow's final leg and the #1007-gated
+  exception identically -- they share the pattern, per ADR 0082 Decision 8's own "path coverage"
+  paragraph); any other head, including a `main` hotfix's `fix/*` branch, exits 0 ("not
+  applicable") -- that path stays a procedural obligation on
+  `.agents/skills/incident-responder/SKILL.md`, not this script, matching ADR 0082 Decision 8's
+  named, deliberate gap (Follow-up 3). Validates the note's frontmatter (`schema:
+  sku-release-note/v1`, `candidate_id` matching the branch, `production_date`, and
+  `production_commit` accepting **either** `^[0-9a-f]{40}$` **or** the exact literal `pending` --
+  the plan text's original "40-hex required" framing would have failed every normal promotion PR,
+  since the real `main` SHA cannot exist until after that PR merges; PR 1's own review-fix round
+  (RF-1, PR #1637) had already corrected this in ADR 0082 itself, and this PR reads the merged ADR
+  rather than the stale plan text), the per-app version table against
+  `apps/<app>/package.json` at head, and the required `## Included`/`## Operational notes`
+  sections (including the concision rule: one line per change, no fenced code block, no nested
+  list, `No user-visible changes.` accepted verbatim).
+- Mechanically: new `scripts/check-release-notes.js` (pure-function core + thin CLI, matching
+  `check-promotion-candidate.js`/`resolve-build-skip-plan.js` house style) reuses
+  `CANDIDATE_ID_PATTERN`/`PromotionCandidateError` from `check-promotion-candidate.js` and
+  `APPS`/`readVersionAt` from `check-app-version-bump.js` -- no second candidate-id regex or
+  version reader was written. New `npm run check:release-notes` /
+  `npm run test:release-notes` scripts. `.github/workflows/promotion-quality-gate.yml`'s
+  `repository-quality` job gains a `run_release_notes` step (`continue-on-error: true`, advisory
+  per ADR 0082 Decision 8's "advisory first" rollout), traced into that job's existing
+  `record_outcomes`/`real_failures` reporting chain. Registered as gate #17,
+  `release.notes`, in `scripts/gate-release-local.js`'s `GATE_NAMES`/`CI_ENFORCED_GATES` (17
+  entries, up from 16) and `STRUCTURALLY_CANNOT_FAIL` (outside a real `release/*` head it resolves
+  "not applicable," same shape as `compliance.contracts`) -- the first gate added after #1431 Phase
+  C/D closed the original 19-gate mapping; not one of that count, but reuses its exact
+  advisory/blocking tracking apparatus (`check-pr-quality-workflow.js`'s
+  `ADVISORY_CI_ENFORCED_GATES`, now three names) since its CI destination lives inside
+  `promotion-quality-gate.yml` itself, the same surface that apparatus already governs. Updated the
+  drifted "14 blocking + 2 advisory" / "16 entries" counts (now "14 blocking + 3 advisory" / "17
+  entries") everywhere they were quoted: `.agents/skills/promoter/SKILL.md`,
+  `.agents/skills/promoter/references/promotion-runbook.md`'s PR-body template,
+  `docs/testing/release-go-no-go-checklist.md` (including its own gate table, gaining row 17), and
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md` (gaining a new "A new gate after the mapping closed"
+  section) -- left every dated, historical count (e.g. `RELEASE_CANDIDATE_POLICY.md`'s "7 -> 16
+  entries" Phase C/D amendment) untouched, since those describe a specific past transition, not the
+  current state.
+- Status: completed.
+- Dependencies: Phase 280 (#1278 PR 1, ADR 0082 + the release-note schema/template, merged). Closes
+  #1278.
+- Acceptance and validation evidence: `node --test scripts/check-release-notes.test.js` (16/16 --
+  happy path with `pending`, happy path with a real 40-hex `production_commit`, missing file,
+  version-table mismatch, missing `## Operational notes`, `No user-visible changes.`,
+  non-promotion head, malformed frontmatter, an invalid `production_commit` neither 40-hex nor
+  `pending`, plus candidate-id-mismatch/missing-app-row/multiline-bullet/fenced-code-block/
+  nested-list edge cases); `node --test scripts/gate-release-local.test.js` (25/25, updated for the
+  17th gate) and `scripts/check-pr-quality-workflow.test.js` (41/41, updated for the third advisory
+  name); `npm run check:pr-quality-workflow` (OK -- the workflow's advisory-shape/reporting-chain
+  contract still holds with the new step); `npm run check:adr` (89 ADRs, OK); `npm run lint:docs`
+  (29 governed docs, OK); `npm run check:architecture` (OK); `npm run check:compliance` (no
+  compliance-sensitive changes detected -- docs/scripts/workflow only, no `apps/*` runtime code
+  touched). A fixture note for the real merged candidate `2026-09-05-01` (`dgfy-api` 1.2.2,
+  `dgfy-migration-runner` 1.1.0, `dgfy-ims` 1.1.2, `dgfy-pos` 1.1.2, `dgfy-storefront` 1.2.1, built
+  in a disposable temp git repo, not committed to this repo) was run through the real CLI end to
+  end: PASS with `production_commit: pending`, PASS with a real 40-hex SHA, FAIL on a mismatched
+  `dgfy-api` table version, FAIL on a deleted note file -- all four transcripts are in the PR's
+  `## Testing Evidence` section. **The live `release/*→main` trigger itself is unverified** -- no
+  real promotion has run this step yet; that's expected for a gate landing advisory on first
+  landing (ADR 0082 Decision 8), not silently assumed proven.
+- Completion date: 2026-09-06.
+- Contracts/files: `scripts/check-release-notes.js` (new), `scripts/check-release-notes.test.js`
+  (new), `package.json` (`check:release-notes`/`test:release-notes`),
+  `.github/workflows/promotion-quality-gate.yml` (`run_release_notes` step,
+  `repository-quality` job), `scripts/gate-release-local.js` (`GATE_NAMES`/`CI_ENFORCED_GATES`/
+  `STRUCTURALLY_CANNOT_FAIL`, gate #17), `scripts/gate-release-local.test.js`,
+  `scripts/check-pr-quality-workflow.js` (`ADVISORY_CI_ENFORCED_GATES`),
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/testing/release-go-no-go-checklist.md`,
+  `.agents/skills/promoter/SKILL.md`, `.agents/skills/promoter/references/promotion-runbook.md`,
+  `docs/architecture/adr/0082-production-release-record-and-release-notes.md` (Follow-up 1/3, read
+  not edited), issue #1278.
+
+## Phase 300 - Client-side canvas image encoder module for POS catalog image uploads (#265 epic, PR 3 of 5)
+
+Filed as the epic plan doc's own "Phase 296" section (a doc-internal label, not a ledger number) --
+renumbered here per this file's Continuous Phase Numbering rule. The ledger's own Phase 296 was
+independently claimed by the unrelated AVIF-deprecation PR (#1636, merged first) and Phase 297 by
+an unrelated #1015 backend-test-matrix PR (#1638, merged during this phase's own implementation
+session); this entry was then written as Phase 298. Renumbered a second time, to 300, when this
+branch was rebased onto a `develop` that had, in the meantime, independently merged its own
+unrelated Phase 298 (`scripts/check-release-notes.js` enforcement, #1278 PR 2 of 2, PR #1639) --
+see that entry immediately above. 299 is skipped deliberately, not merely unused: it is currently
+claimed (but not yet merged, and so not yet authoritative) by the sibling, still-open PR #1641
+(#265 epic, "client-derived image upload contract" work) on `feature/265-297-client-derived-upload-
+contract`; claiming 300 here avoids a second collision against that PR once it lands, rather than
+racing it for 299. Re-checked `git show origin/develop:docs/features/IMPLEMENTATION_PHASE_LEDGER.md
+| grep '^## Phase' | tail -5` immediately before writing this entry, per the epic's own Phase 296
+(AVIF) precedent and this task's explicit coordination instruction, rather than trusting a number
+decided at an earlier point in this branch's own history.
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
+- Objective and scope: third PR of the #265 epic. Adds a new, isolated, hand-rolled client-side
+  canvas image encoder module -- `packages/web-core/src/utils/imageEncoding/{index,capabilities,
+  encodeVariants,encodeWorker,variantManifest,rolloutFlag}.js` -- that resizes/re-encodes an
+  uploaded POS catalog image into a `{large, medium, thumbnail}` variant ladder (1920/1024/400px
+  max widths, never upscaling past the source), entirely in the browser. `capabilities.js` probes
+  WebP `canvas.toBlob` support (rejecting WebKit's silent `image/png` downgrade and a null-blob
+  result, not just a non-throw), `OffscreenCanvas`/`Worker` availability, and whether
+  `createImageBitmap(file, { imageOrientation: 'from-image' })` is honored. `encodeVariants.js` is
+  the pure, worker-safe pipeline: EXIF orientation (hand-rolled tag-0x0112 parser as a fallback when
+  the runtime option isn't honored, degrading to the original file untouched -- `degraded:
+  ['orientation_unknown']` -- rather than guessing when both paths fail), a pre-drawImage resize
+  pass via `createImageBitmap`'s own `resizeWidth`/`resizeHeight`/`resizeQuality` options for
+  sources over ~16.7M px (several browsers silently blank/garble a canvas above that area), and a
+  post-encode 4-corner-plus-center pixel sample that flags (not silently ships) an all-transparent
+  or all-black render. Runs inside a dedicated module Worker when `Worker`+`OffscreenCanvas` are
+  available (falling back to the main thread otherwise); cancellation is `worker.terminate()`
+  outright rather than a cloned `AbortSignal`, since `AbortSignal` can't cross `postMessage`. Caps
+  concurrency to one encode at a time (a second concurrent call rejects). Never calls the global
+  `structuredClone()` shim anywhere in the module -- verified both by design and by a static
+  source-scan test -- since that Layer-1 runtime shim (`chrome80Runtime.js`) has no Blob/File/
+  ArrayBuffer/ImageBitmap support and silently produces an empty object for them on Chrome 80-84.
+  `rolloutFlag.js` is a deliberately inert stub (`getImageClientConversionFlag` hardcoded to
+  `'off'`) for Phase 298-in-the-epic-doc's-own-numbering's (not this ledger phase's) future
+  server-authoritative `image_client_conversion` flag -- not wired into any bootstrap/runtime-config
+  plumbing yet, on purpose. `posCatalogService.js`'s `uploadPosCatalogImage` gets a minimal,
+  single-variant-only wiring diff behind that stub (sends only `image` = `variants.large`, falling
+  back to the original file when the flag is off or no large variant survives) --
+  `image_medium`/`image_thumbnail`/`client_image_manifest` multipart fields are Phase 297-in-the-
+  epic-doc's-own-numbering's (the sibling upload-contract phase) job, not this one's. Also adds
+  `worker: { plugins: () => [esCompatGuardPlugin()] } ` to all three `apps/{dgfy-ims,dgfy-pos,
+  dgfy-storefront}/vite.config.js` -- a real, previously-latent gap this phase would otherwise have
+  introduced silently: Vite's `worker.plugins` is a separate config surface from the main `plugins`
+  array for production builds, so without this addition `encodeWorker.js`'s built output would ship
+  completely unscanned by the ADR 0067 Layer 2 guardrail (verified live: a deliberately-injected
+  `Array.fromAsync(` call inside `encodeWorker.js` failed the `dgfy-pos` build with the guard's own
+  error message once this addition was in place, then reverted). Explicitly out of scope, corrected
+  against the epic plan doc's own claim: `MenuPhotoCaptureSheet.jsx` is untouched -- its
+  `scoreCurrentFrame` downscale sampler and `handleShutter` full-res capture are two unrelated
+  functions serving the menu-import/OCR pipeline, not a forked copy of variant-generation logic to
+  "generalize and delete"; touching it would risk exactly the OCR-legibility regression the epic
+  plan itself warns against for Phase 297-in-the-epic-doc's-own-numbering.
+- Status: completed.
+- Dependencies: none on Phase 296 (AVIF deprecation, server-side only) or Phase 297 (unrelated
+  #1015 backend-test-matrix work) -- both are independent server/tooling changes this phase's
+  purely client-side, `packages/web-core`-scoped work does not touch or rely on. Precedes the
+  epic's own Phase 297 (upload-contract fan-out, concurrently implemented in a sibling worktree of
+  this same run) and Phase 298 (rollout, per the epic plan doc's own numbering -- flips
+  `rolloutFlag.js`'s stub to a real bootstrap-driven getter), which both consume this phase's
+  `prepareImageVariants`/`variantManifest.js` surface.
+- Acceptance and validation evidence: `npm test` (`vitest run`) from `apps/dgfy-ims` -- 344 test
+  files / 2199 tests passed, including 7 new imageEncoding test files (18 tests: WebP capability
+  probe correctness including the WebKit-downgrade and null-blob cases; EXIF orientation's 3 paths
+  -- runtime-honored option, hand-rolled fallback with a synthesized EXIF-6 byte fixture, and the
+  both-paths-fail degrade; the never-upscale guarantee; the canvas max-dimension resize pre-pass and
+  blank-output-sample degrade; worker abort/cancellation via a mocked `Worker` (immediate reject on
+  an already-aborted signal, `terminate()` + ignored-late-message on a mid-flight abort); the
+  concurrency cap; and a static source-scan guard against calling the global `structuredClone()`)
+  plus 3 new `posCatalogService.js` wiring tests (flag-off passthrough, flag-on large-variant
+  wiring, flag-on-with-no-large-variant fallback); `npm run build:skupervisor`, `build:pos`, and
+  `build:store` (all three succeed, confirming `esCompatGuardPlugin` scans `encodeWorker.js`'s
+  built-output chunk cleanly -- and, per the live-injected-then-reverted `Array.fromAsync(` check
+  above, actually fails the build when it should); `npm run check:compliance` (no
+  compliance-sensitive changes detected -- every changed path was checked against
+  `COMPLIANCE_SENSITIVE_RULES` and matches none); `node scripts/check-app-version-bump.js --staged`
+  (dgfy-ims 1.2.4->1.2.5, dgfy-pos 1.2.4->1.2.5, dgfy-storefront 1.3.5->1.3.6, all PASS under
+  `any-increase` mode); `npm run check:adr` (89 ADRs validated, no regression).
+- Completion date: 2026-09-06.
+- Contracts/files: `packages/web-core/src/utils/imageEncoding/{index,capabilities,encodeVariants,
+  encodeWorker,variantManifest,rolloutFlag}.js` (new), `packages/web-core/src/utils/imageEncoding/
+  __tests__/**` (new, 7 files + 2 shared test helpers), `packages/web-core/src/services/
+  posCatalogService.js` (modified), `packages/web-core/src/services/__tests__/
+  posCatalogService.imageEncoding.test.js` (new), `apps/{dgfy-ims,dgfy-pos,dgfy-storefront}/
+  vite.config.js` (modified, `worker.plugins` addition), `apps/{dgfy-ims,dgfy-pos,dgfy-storefront}/
+  package.json` (version bumps only), issue #265.
+- Next eligible phase: 301. Phase 299 is tentatively held by unmerged sibling PR #1641
+  (`feature/265-297-client-derived-upload-contract`, #265 epic) -- not yet real/authoritative until
+  that PR merges, and its number could itself still change on merge per this same collision
+  handling; do not treat 299 as free without re-checking that PR's status.
+
+## Phase 301 - Client-derived image upload contract + fan-out to catalog upload services (#265 epic, PR 4 of 5 per the epic plan doc)
 
 Ledger phase number originally claimed as 297 at planning time, when the only other open PR was
 believed to be #1638 (unrelated). That was stale by the time this phase's own ledger commit landed:
 PR #1638 had already merged into `develop` claiming the real Phase 297 (2026-09-05T19:05:58Z,
-"Shared template-schema setup for the backend db test tier"), and a separate sibling PR (#1640, the
-epic's client-encoder module) separately claimed Phase 298 after re-checking fresh at its own commit
-time. This entry is corrected to Phase 299, the next available slot confirmed by re-fetching
-`origin/develop` immediately before making this fix -- see the fixup commit for detail. The epic
-plan doc's own PR-3/PR-4 numbering had already drifted from ledger reality by one before this phase
-started (see Phase 296's own entry) -- this phase is built with the epic plan's PR 3 (client encoder
-module) skipped/deferred, not merely delayed after it; when that module eventually gets built it
-claims whatever the next open ledger slot is *then*, it does not retroactively become "Phase 296."
+"Shared template-schema setup for the backend db test tier"). This entry was corrected to Phase 299
+on that basis (round 1, this PR's own pr-reviewer RF finding). Renumbered a second time, to 301,
+when this branch was rebased onto a `develop` that had, in the meantime, independently merged two
+more PRs ahead of this one: #1639 (Phase 298, `scripts/check-release-notes.js` enforcement, #1278
+PR 2 of 2 -- unrelated) and the sibling #1640 (Phase 300, the epic's own client-encoder module,
+epic plan's own "PR 3" -- see that entry immediately above), which claimed 300 rather than 299
+specifically to avoid colliding with this still-open PR. 301 is the next open slot confirmed by
+re-fetching `origin/develop`'s ledger tip
+(`git show origin/develop:docs/features/IMPLEMENTATION_PHASE_LEDGER.md | grep '^## Phase' | tail
+-6`) immediately before making this fix, per `AGENTS.md`'s Continuous Phase Numbering rule, rather
+than assuming a number is safe. The epic plan doc's own PR-3/PR-4 numbering had already drifted
+from ledger reality by one before this phase started (see Phase 296's own entry) -- this phase was
+originally built with the epic plan's PR 3 (client encoder module) not yet merged; that module has
+since landed as Phase 300 above.
 
 - Initiative/release: Image uploads / client-side conversion epic (#265) / current release process.
 - Objective and scope: fourth PR of the #265 epic. Server-side contract only -- wires
@@ -21538,10 +21733,13 @@ claims whatever the next open ledger slot is *then*, it does not retroactively b
   scope and left completely untouched.
 - Status: completed.
 - Dependencies: Phase 296 (#265 epic, merged) -- consumes its `sourceMimeHint`/
-  `deriveVariantsFromAcceptedLarge` surface as this phase's first real caller. Precedes Phase 298
-  (rollout) of the #265 epic and the still-unbuilt client-encoder module (epic plan's own "PR 3"),
-  which this phase's optional fields are unused capability for until that module ships a real
-  caller.
+  `deriveVariantsFromAcceptedLarge` surface as this phase's first real caller. Also consumes Phase
+  300 (the epic's client-encoder module, epic plan's own "PR 3", merged ahead of this phase via PR
+  #1640 -- see that entry above): this phase's optional `image_medium`/`image_thumbnail`/
+  `client_image_manifest` fields are the server-side contract that module's client-sent variants are
+  unused capability for until a caller actually sends them. Precedes the epic's rollout phase
+  (epic plan's own "Phase 298", not yet ledgered), which flips the client encoder's inert rollout
+  stub to a real bootstrap-driven getter.
 - Acceptance and validation evidence: `node --check` on all 12 changed/new `.js` files (dgfy-api has
   no build step); `node scripts/check-app-version-bump.js --staged` (dgfy-api 1.4.0 -> 1.5.0,
   PASS); `npm run check:compliance` (declaration:
@@ -21580,4 +21778,4 @@ claims whatever the next open ledger slot is *then*, it does not retroactively b
   derived upload contract Amendment),
   `docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md` (new), issue
   #265.
-- Next eligible phase: 300. (298 is already claimed by sibling PR #1640; 299 is this entry.)
+- Next eligible phase: 302.

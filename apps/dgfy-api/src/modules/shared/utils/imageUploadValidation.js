@@ -12,7 +12,7 @@ export const SAFE_IMAGE_MIME_TYPES = Object.freeze([
 
 // Single source of truth for the sharp `limitInputPixels` cap used both when reading an upload's
 // own metadata (imageAssetStorage.js) and when validating a client-supplied pre-optimized variant
-// (validateClientVariant below) -- moved here from imageAssetStorage.js in Phase 299 (#265) since
+// (validateClientVariant below) -- moved here from imageAssetStorage.js in Phase 301 (#265) since
 // this is the more natural home for a validation constant, and imageAssetStorage.js now imports it
 // from here instead of redeclaring it.
 export const MAX_INPUT_IMAGE_PIXELS = 40 * 1024 * 1024;
@@ -117,7 +117,7 @@ export const validateImageUploadFile = async ({
  *
  * Never throws past the caller and never fails the request -- a rejected variant here means the
  * caller falls back to deriving that variant server-side, exactly as if the client had never sent
- * it (Phase 299, #265: "the upload never hard-fails on client encode failure").
+ * it (Phase 301, #265: "the upload never hard-fails on client encode failure").
  *
  * @param {object} params
  * @param {{path: string}} params.file - the candidate variant file (only `path` is read).

@@ -127,7 +127,7 @@ const createBulkImageSummary = () => ({
   failed: 0,
   unmatched: 0,
   duplicate_filename: 0,
-  // Phase 299 (#265): distinct from duplicate_filename above -- fires only when the collision
+  // Phase 301 (#265): distinct from duplicate_filename above -- fires only when the collision
   // involves the new <SKU>__<variant>.<ext> suffix convention (two files claiming the same
   // variant slot for one SKU), never for two plain <SKU>.<ext> files sharing a stem, which stays
   // duplicate_filename exactly as before this phase.
@@ -412,7 +412,7 @@ export const buildUpdateBulkStorefrontCatalogOverridesUseCase = ({ itemRepositor
 };
 
 export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, imageStorage }) => {
-  // Phase 299 (#265): accepts either the legacy singular `file` (itemImageWorker.js's
+  // Phase 301 (#265): accepts either the legacy singular `file` (itemImageWorker.js's
   // generated-image path still calls this way, unchanged and out of scope for this phase) or the
   // new `.fields()`-shaped `files` object (`{ image: [...], image_medium?: [...],
   // image_thumbnail?: [...] }`) itemHandlers.js now sends for the manual-upload route --
@@ -731,7 +731,7 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
     }
 
     try {
-      // Phase 299 (#265): groups the batch by SKU before processing -- see
+      // Phase 301 (#265): groups the batch by SKU before processing -- see
       // bulkCatalogImageFilename.js's own docs. A bare `<SKU>.<ext>` file behaves identically to
       // today; `<SKU>__large/medium/thumbnail.<ext>` siblings combine into one
       // imageStorage.store() call per SKU.

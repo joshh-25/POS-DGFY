@@ -770,9 +770,9 @@ describe('itemHandlers transport contracts', () => {
     });
   });
 
-  // Phase 299 (#265): uploadStorefrontCatalogImage's route now parses via multer .fields(), so
+  // Phase 301 (#265): uploadStorefrontCatalogImage's route now parses via multer .fields(), so
   // the controller reads req.files (not req.file) and forwards a parsed client_image_manifest.
-  describe('uploadStorefrontCatalogImage -- .fields() multipart transport (#265 Phase 299)', () => {
+  describe('uploadStorefrontCatalogImage -- .fields() multipart transport (#265 Phase 301)', () => {
     it('forwards the required image plus optional client-derived variants and manifest', async () => {
       mockUploadStorefrontCatalogImageUseCase.mockResolvedValue({
         item_id: 55,

@@ -248,9 +248,11 @@ logged and authorized, not silent.
 
 **`gate:release:local` is no longer a step in this procedure (since 2026-09-03, #1431 Phase C/D).**
 Every gate it used to run locally is now delegated to `promotion-quality-gate.yml`
-(`CI_ENFORCED_GATES`, 16 entries — `required_gate_count: 0` on a default run); 14 of the 16 are
-blocking on this leg, and 2 (`dependencies.audit.full`, permanently; `backend.test_matrix`,
-temporarily, tracked by #1469) are deliberately advisory. **Do not run this script as part of a
+(`CI_ENFORCED_GATES`, 17 entries as of #1278 PR 2 / Phase 298 — `required_gate_count: 0` on a
+default run); 14 of the 17 are blocking on this leg, and 3 (`dependencies.audit.full`,
+permanently; `backend.test_matrix`, temporarily, tracked by #1469; `release.notes`, temporarily by
+deliberate ADR 0082 Decision 8 rollout design, tracked by ADR 0082 Follow-up 1) are deliberately
+advisory. **Do not run this script as part of a
 promotion** — there is nothing left in its required set to invoke it for. Read the promotion PR's
 own `promotion-quality-gate` check instead (`gh pr checks <N>`, or per-job conclusions — see the
 run-rollup trap below, never the workflow-run rollup) as the evidence for the release go/no-go

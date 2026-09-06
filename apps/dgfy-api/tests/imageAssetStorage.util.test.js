@@ -305,14 +305,14 @@ describe('imageAssetStorage utility', () => {
         });
     });
 
-    // Phase 299 (#265): regression test for the reordering bug section 1 of the corrected plan
+    // Phase 301 (#265): regression test for the reordering bug section 1 of the corrected plan
     // found -- storeOptimizedImageAsset used to call classifyImageAsset({ reportedMime }) BEFORE
     // fetching metadata(), so the alpha heuristic (and sourceMimeHint) could never actually reach
     // it. This asserts the *effect* of correct wiring end-to-end: an alpha PNG upload with no
     // sourceMimeHint classifies as 'graphic' purely from the now-available metadata, and a
     // photographic JPEG whose sourceMimeHint disagrees with its own reportedMime is reclassified
     // per the hint -- neither would be possible if metadata still arrived after classification.
-    describe('storeOptimizedImageAsset -- classification ordering (Phase 299, #265)', () => {
+    describe('storeOptimizedImageAsset -- classification ordering (Phase 301, #265)', () => {
         it('classifies an alpha PNG as graphic via the metadata heuristic (metadata now available before classify)', async () => {
             const tempPath = path.join(uploadsRoot, 'upload-alpha.png');
             await sharp({
@@ -358,11 +358,11 @@ describe('imageAssetStorage utility', () => {
         });
     });
 
-    // Phase 299 (#265): the accepted-large fast path -- a client-supplied `image` that already
+    // Phase 301 (#265): the accepted-large fast path -- a client-supplied `image` that already
     // matches the large-delivery contract (correct format, width, pixel cap, and delivery byte
     // cap) is copied into place instead of re-encoded; medium/thumbnail are then derived from that
     // accepted large via deriveVariantsFromAcceptedLarge, this function's first real caller.
-    describe('storeOptimizedImageAsset -- accepted-large path (Phase 299, #265)', () => {
+    describe('storeOptimizedImageAsset -- accepted-large path (Phase 301, #265)', () => {
         it('accepts an already-optimized large, derives medium/thumbnail from it, and records provenance', async () => {
             const tempPath = path.join(uploadsRoot, 'upload-accepted-large.webp');
             await sharp({

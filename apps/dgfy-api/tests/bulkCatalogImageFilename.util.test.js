@@ -4,7 +4,7 @@ import {
     groupBulkCatalogFilesBySku
 } from '../src/modules/shared/utils/bulkCatalogImageFilename.js';
 
-// Phase 299 (#265): the corrected plan's own instruction -- extend the existing SKU-stem
+// Phase 301 (#265): the corrected plan's own instruction -- extend the existing SKU-stem
 // convention with a <SKU>__<variant>.<ext> suffix, never replace it with an arbitrary
 // client_ref. A bare <SKU>.<ext> with no suffix must keep working identically to today.
 describe('bulkCatalogImageFilename util', () => {

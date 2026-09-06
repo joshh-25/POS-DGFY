@@ -84,7 +84,7 @@ const getOriginalExtension = ({ originalName, reportedMime }) => {
  * (this last step is today's entire behavior, unchanged when the two new params are omitted).
  *
  * sourceMimeHint and metadata were added in Phase 296 (#265) but left unwired -- storeOptimizedImageAsset
- * still called this with only `reportedMime` at that point. Phase 299 (#265) is the wiring: metadata
+ * still called this with only `reportedMime` at that point. Phase 301 (#265) is the wiring: metadata
  * is now fetched before this call (not after -- see storeOptimizedImageAsset's own history) and
  * `sourceMimeHint` is threaded through from the client's optional manifest.
  *
@@ -93,7 +93,7 @@ const getOriginalExtension = ({ originalName, reportedMime }) => {
  *   encoded (today: always the original upload's own MIME).
  * @param {string|null} [params.sourceMimeHint] - the *pre-conversion* MIME the client claims the
  *   user's original file had, before any client-side re-encoding. Highest precedence: once wired
- *   (Phase 299), this is what keeps a client-converted-to-WebP PNG logo from being misclassified.
+ *   (Phase 301), this is what keeps a client-converted-to-WebP PNG logo from being misclassified.
  *   Untrusted hint, not a security boundary -- an unrecognized value is ignored, never throws.
  * @param {{hasAlpha?: boolean}|null} [params.metadata] - an already-fetched sharp metadata()
  *   result for the file being encoded (not fetched by this function -- keeps it pure/sync and
@@ -211,7 +211,7 @@ const buildPublicUrl = (relativePath) => `/uploads/${toPosixRelative(relativePat
 /**
  * Derives the medium/thumbnail delivery variants for a set of formats from an already-accepted
  * `large` file on disk, instead of re-deriving from the original source image. Wired into
- * storeOptimizedImageAsset as of Phase 299 (#265): called for the primary delivery format's
+ * storeOptimizedImageAsset as of Phase 301 (#265): called for the primary delivery format's
  * medium/thumbnail keys whenever the client's own `image` upload validates as an already-optimized
  * large (see storeOptimizedImageAsset's `acceptedAsClientLarge` param) and the client did not
  * separately supply its own validated medium/thumbnail files for those specific keys.
@@ -367,7 +367,7 @@ export const storeOptimizedImageAsset = async ({
     reportedMime,
     tempPath,
     retainOriginal = true,
-    // -- Phase 299 (#265) additions, all optional and all inert unless a caller explicitly opts
+    // -- Phase 301 (#265) additions, all optional and all inert unless a caller explicitly opts
     // in: an old caller passing none of these gets byte-identical behavior to before this phase.
     sourceMimeHint = null,
     acceptedAsClientLarge = false,
@@ -396,7 +396,7 @@ export const storeOptimizedImageAsset = async ({
     await fsPromises.mkdir(originalAssetDir, { recursive: true });
 
     try {
-        // Reordered as of Phase 299 (#265): the rename + metadata() fetch now happen BEFORE
+        // Reordered as of Phase 301 (#265): the rename + metadata() fetch now happen BEFORE
         // classification, not after -- classifyImageAsset needs `metadata` (its alpha heuristic)
         // and this is the first caller to actually pass it. Before this phase, classification ran
         // on `reportedMime` alone and the metadata fetch below happened afterwards, so `metadata`
@@ -415,7 +415,7 @@ export const storeOptimizedImageAsset = async ({
         const { encoder } = getPublicFormat({ classification });
         const deliveryFormats = getDeliveryFormats({ classification });
 
-        // -- Accepted-large resolution (Phase 299, #265): if the caller flags the just-renamed
+        // -- Accepted-large resolution (Phase 301, #265): if the caller flags the just-renamed
         // original as an already-optimized "large" (the client's own `image` field, when the
         // manifest declares it pre-optimized), validate it against the exact contract the server
         // would otherwise have produced -- correct public format, width within the large target
@@ -604,7 +604,7 @@ export const storeOptimizedImageAsset = async ({
                 width: sourceWidth,
                 height: sourceHeight,
                 size: Number.isFinite(originalStat?.size) ? originalStat.size : null,
-                // Additive (Phase 299, #265): the pre-conversion MIME hint the client's manifest
+                // Additive (Phase 301, #265): the pre-conversion MIME hint the client's manifest
                 // claimed for this original, if any -- null for every upload that predates this
                 // phase or simply omits a manifest, unchanged from today's shape otherwise.
                 source_mime_hint: sourceMimeHint || null
@@ -619,7 +619,7 @@ export const storeOptimizedImageAsset = async ({
                 size: placeholderOutput.size,
                 mime: 'image/webp'
             },
-            // Additive (Phase 299, #265): per-variant provenance for the PRIMARY delivery format
+            // Additive (Phase 301, #265): per-variant provenance for the PRIMARY delivery format
             // only ('client' when this specific variant was accepted from the upload directly
             // rather than server-encoded) -- lets a future UI distinguish "client-optimized" from
             // "server-derived" without changing any existing field. Always all-'server' for a
@@ -669,7 +669,7 @@ export const storeOptimizedImageAsset = async ({
                 source_mime_hint: manifest.original.source_mime_hint
             },
             classification,
-            // Additive (Phase 299, #265): see the matching comment on `manifest.provenance` above.
+            // Additive (Phase 301, #265): see the matching comment on `manifest.provenance` above.
             provenance,
             original_source: acceptedLargeUsed ? 'client_optimized' : 'server_derived'
         };

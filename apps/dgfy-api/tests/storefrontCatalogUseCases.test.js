@@ -1212,7 +1212,7 @@ describe('storefront catalog use cases', () => {
         expect(await pathExists(tempPath)).toBe(false);
     });
 
-    // Phase 299 (#265): the <SKU>__<variant>.<ext> bulk correlation convention -- section 5 of
+    // Phase 301 (#265): the <SKU>__<variant>.<ext> bulk correlation convention -- section 5 of
     // the corrected plan. A bare <SKU>.<ext> file is already covered by every test above this
     // point (unchanged behavior); these cover the new suffix-driven grouping specifically.
     it('uploadBulkStorefrontCatalogImages combines <SKU>__large/medium/thumbnail siblings into one store() call', async () => {

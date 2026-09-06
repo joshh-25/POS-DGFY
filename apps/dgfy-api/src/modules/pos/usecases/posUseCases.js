@@ -6387,7 +6387,7 @@ const createBulkImageSummary = () => ({
     failed: 0,
     unmatched: 0,
     duplicate_filename: 0,
-    // Phase 299 (#265): distinct from duplicate_filename above -- fires only when the collision
+    // Phase 301 (#265): distinct from duplicate_filename above -- fires only when the collision
     // involves the new <SKU>__<variant>.<ext> suffix convention (two files claiming the same
     // variant slot for one SKU), never for two plain <SKU>.<ext> files sharing a stem, which stays
     // duplicate_filename exactly as before this phase.
@@ -6526,7 +6526,7 @@ export const buildUpdateBulkPosCatalogOverridesUseCase = ({ posRepository }) => 
 };
 
 export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage }) => {
-    // Phase 299 (#265): accepts either the legacy singular `file` (kept so no existing caller has
+    // Phase 301 (#265): accepts either the legacy singular `file` (kept so no existing caller has
     // to change) or the new `.fields()`-shaped `files` object (`{ image: [...], image_medium?:
     // [...], image_thumbnail?: [...] }`) posHandlers.js now sends -- `files.image[0]` wins when
     // both are present. `clientImageManifest` is the parsed, already-validated hint bag from

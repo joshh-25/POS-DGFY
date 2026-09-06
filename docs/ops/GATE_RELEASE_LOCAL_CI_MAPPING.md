@@ -18,8 +18,9 @@ required-locally count is 0.**
 
 ## How to read this table
 
-`scripts/gate-release-local.js`'s `GATE_NAMES` array (16 entries, in the order the script runs
-them) is the source of truth for the left column — read it there before trusting a stale copy here.
+`scripts/gate-release-local.js`'s `GATE_NAMES` array (17 entries, in the order the script runs
+them, as of #1278 PR 2 / Phase 298 — see "A new gate after the mapping closed" below) is the source
+of truth for the left column — read it there before trusting a stale copy here.
 This table still lists all 19 original gates, including the 3 retired ones, for historical
 continuity — the retired rows (#1, #18, #19) no longer appear in `GATE_NAMES` or the artifact.
 Each gate maps to exactly one of:
@@ -38,18 +39,19 @@ Each gate maps to exactly one of:
 ## Current state (2026-09-03, #1431 Phase C/D) — the short version
 
 Every "(a) Covered" row is now **delegated** to `promotion-quality-gate.yml` via
-`scripts/gate-release-local.js`'s `CI_ENFORCED_GATES` map (16 entries — every remaining gate),
-cross-checked by `scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` so a
-future edit cannot silently regain `continue-on-error` on a supposedly-blocking step without
-failing that checker. Of those 16:
+`scripts/gate-release-local.js`'s `CI_ENFORCED_GATES` map (17 entries as of #1278 PR 2 / Phase 298
+— 16 from the original 19-gate mapping, plus `release.notes`, the first gate added after this
+umbrella closed; see "A new gate after the mapping closed" below), cross-checked by
+`scripts/check-pr-quality-workflow.js`'s `checkCiEnforcedGatesAreBlocking()` so a future edit cannot
+silently regain `continue-on-error` on a supposedly-blocking step without failing that checker. Of
+those 17:
 
 - **14 are genuinely blocking** on the `release/*→main` leg (and `staging→main`, and any
   `workflow_dispatch`/`workflow_call` run) — a real failure reds out the job's check-run and trips
   `AGENTS.md`'s Merge Safety hard stop, same as any other required check.
-- **2 are deliberately, permanently-or-temporarily advisory**, named in
-  `check-pr-quality-workflow.js`'s `ADVISORY_CI_ENFORCED_GATES` allowlist so
-  `checkCiEnforcedGatesAreBlocking()` doesn't demand blocking coverage that will never exist for
-  them:
+- **3 are deliberately advisory**, named in `check-pr-quality-workflow.js`'s
+  `ADVISORY_CI_ENFORCED_GATES` allowlist so `checkCiEnforcedGatesAreBlocking()` doesn't demand
+  blocking coverage that will never (yet) exist for them:
   - `dependencies.audit.full` (row 3) — **permanently** advisory (Pat's call, settled this phase,
     superseding the "not yet decided" flag the Phase 2 version of this doc carried). Its verdict
     depends on the npm registry, not the repo; a fresh dev-only advisory can flip it red with zero
@@ -57,12 +59,40 @@ failing that checker. Of those 16:
   - `backend.test_matrix` (row 10) — **temporarily** advisory, tracked by #1469, gated on #1015
     (fast/DB tier split) and #925 (hanging `beforeAll`). Confirmed still genuinely failing (not
     just slow) on every #1431 Phase A/C evidence run.
+  - `release.notes` — **temporarily** advisory by deliberate rollout design (ADR 0082 Decision 8),
+    not a prerequisite or flake exception like the two above: it ships advisory on first landing and
+    flips blocking only once a later, dedicated phase finds clean-run evidence (ADR 0082 Follow-up
+    1), mirroring `check:app-versions`' own advisory-to-blocking rollout (ADR 0081 Decision 9). See
+    "A new gate after the mapping closed" below.
 
 `gate:release:local`'s required-locally count is **0** — every gate that isn't one of the 3 retired
 rows below is now delegated. `docs/testing/release-go-no-go-checklist.md` and
 `.agents/skills/promoter/SKILL.md` have been updated to stop citing `gate:release:local` as a
 pre-`main` step; `promotion-quality-gate.yml`'s own quality jobs are the sole remaining enforcement
 mechanism.
+
+## A new gate after the mapping closed (#1278 PR 2, Phase 298)
+
+`release.notes` (ADR 0082 Decision 8, `scripts/check-release-notes.js` / `npm run
+check:release-notes`) is **not** one of the 19 original gates this document otherwise maps — it was
+born directly in CI, advisory, after #1431 Phase C/D already closed that mapping at 16 remaining
+gates. It is registered in `GATE_NAMES`/`CI_ENFORCED_GATES` anyway (unlike `check:app-versions`,
+which uses its own separate `shared-changed-paths.yml`/`pr-checks.js` toggle mechanism — see that
+gate's own section below) because its CI destination lives inside `promotion-quality-gate.yml`
+itself (the `run_release_notes` step, `repository-quality` job), exactly the surface
+`CI_ENFORCED_GATES`/`BLOCKING_STEP_IDS`/`ADVISORY_CI_ENFORCED_GATES` already track — reusing that
+apparatus means a future flip to blocking (ADR 0082 Follow-up 1) is validated by the same
+`checkCiEnforcedGatesAreBlocking()`/`checkStepLevelAdvisory()` machinery every other gate's flip
+already goes through, rather than inventing a second toggle. `STRUCTURALLY_CANNOT_FAIL` also lists
+it: outside a real `release/<candidate_id>-rN` head, the check resolves "not applicable" and exits
+0, so a local `gate:release:local` run never exercises its actual validation logic — same shape as
+`compliance.contracts`' own entry in that set. Validates: `docs/releases/notes/<candidate_id>.md`
+exists, its frontmatter (`schema`, `candidate_id`, `production_date`, `production_commit` — either
+`pending` or a real 40-hex SHA), its per-app version table against `apps/<app>/package.json` at
+head, and its required `## Included`/`## Operational notes` sections. Does not cover a `main`
+hotfix's `fix/*` branch — that path's obligation stays procedural, via
+`.agents/skills/incident-responder/SKILL.md`, per ADR 0082 Decision 8's own "path coverage"
+paragraph.
 
 ## Evidence behind the Phase C flips
 
@@ -114,18 +144,21 @@ root-cause finding that this was never "just slow" (see row 10 below and #1469).
 
 ## Summary by status
 
-- **(a) Covered, all closed**: 16 gates — #2 through #17. All run the same (or, for #15, a
-  superset; for #16, a deliberately different build orchestration — see the documented exception
-  below) command in `promotion-quality-gate.yml`, and every one is delegated out of
-  `gate:release:local`'s required set (`CI_ENFORCED_GATES`, 16 entries — `required_gate_count: 0`
-  on a default run). Of these:
+- **(a) Covered, all closed**: 16 gates — #2 through #17 (this doc's own original-19 numbering).
+  All run the same (or, for #15, a superset; for #16, a deliberately different build orchestration
+  — see the documented exception below) command in `promotion-quality-gate.yml`, and every one is
+  delegated out of `gate:release:local`'s required set. Of these:
   - **14 are blocking**: #2, #4, #5, #6, #7, #8, #9, #11, #12, #13, #14, #15, #16, #17.
   - **2 stay deliberately advisory**, named in `ADVISORY_CI_ENFORCED_GATES`: #3
     (`dependencies.audit.full`, **permanent** — registry-dependent, findings never ship) and #10
     (`backend.test_matrix`, **temporary** — tracked by #1469, gated on #1015/#925).
+  `CI_ENFORCED_GATES` itself now carries **17** entries, `required_gate_count: 0` on a default run
+  — the 16 above, plus `release.notes` (also advisory, not one of the original 19; see "A new gate
+  after the mapping closed" above).
 - **(b) CI job to add**: 0 gates.
 - **(c) Resolved without a CI job, gate row retired**: 3 gates — #1, #18, #19, retired 2026-09-02
-  by #1431 Phase 3 (Phase 250). `GATE_NAMES` is now 16 entries. Closeout records below. Each was
+  by #1431 Phase 3 (Phase 250). `GATE_NAMES` stood at 16 entries at that point (17 now — see "A new
+  gate after the mapping closed" above). Closeout records below. Each was
   structurally incapable of failing on a governed promotion checkout — a tautology, a warn-only
   post-deploy probe, and an auto-skip whose producer belongs to a superseded standard. Two of the
   three (#18, #19) carried `structurally_cannot_fail: true`; #1 did not, which was itself an

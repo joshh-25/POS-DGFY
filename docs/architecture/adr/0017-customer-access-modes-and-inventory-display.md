@@ -234,7 +234,7 @@ day (Phase 296's AVIF-deprecation entry and this one), so this heading is given 
 sub-label rather than repeating the bare date, per this ADR's own precedent of never letting two
 sibling `##` headings share identical text.
 
-Phase 299 (#265 epic, PR 4 of 5) adds a **client-derived image upload contract**: the two
+Phase 301 (#265 epic, PR 4 of 5) adds a **client-derived image upload contract**: the two
 single-image catalog endpoints (`POST /catalog-overrides/:item_id/image`,
 `POST /:item_id/storefront-image`) now accept two additional, fully optional multipart fields --
 `image_medium` and `image_thumbnail` -- alongside the existing required `image` field, plus an
