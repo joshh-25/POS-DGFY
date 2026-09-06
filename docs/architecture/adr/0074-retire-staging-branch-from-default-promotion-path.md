@@ -566,27 +566,31 @@ resolve, not just verify (#1648)
      `develop -> staging` leg entirely — this remains the **only** compliance-preflight checkpoint
      that flow ever runs, so it is not deleted.
 
-  At both checkpoints, the behavior also **goes past verify into resolve**: if the full-scan check
-  (unchanged, still the 2026-09-02 amendment's discovery method — every outstanding declaration on a
-  pinned checkout of the target ref, not a diff) finds an outstanding `NOT-EXECUTED-*` declaration, or
-  a check for an open `compliance:preflight-handoff` issue finds a stuck handoff, `promoter` itself
-  now dispatches `compliance-preflight-sweep.yml` and opens + merges the resulting reconciliation PR —
-  an ordinary `develop`-base PR, already unattended-mergeable per `promoter`'s own merge table —
-  rather than leaving that for a separate human or credentialed AI session to notice the standing
-  issue afterward. This is a refinement of, not a reversal of, the 2026-09-02 amendment's "supervised
-  handoff" finding: the handoff is still supervised (a credentialed session performs it,
-  `github-actions[bot]` still cannot), it is just no longer decoupled in time from the promotion
-  itself — `promoter`'s own procedure is the supervising session, acting inline rather than waiting
-  for someone else to notice later.
+  At the checkpoint(s) that scan `origin/develop` — checkpoint 1 above (the `develop -> staging` leg
+  cut), and the #1007-gated exception's own single checkpoint, which also scans `origin/develop`
+  since that exception skips the staging leg entirely — the behavior also **goes past verify into
+  resolve**: if the full-scan check (unchanged, still the 2026-09-02 amendment's discovery method —
+  every outstanding declaration on a pinned checkout of the target ref, not a diff) finds an
+  outstanding `NOT-EXECUTED-*` declaration, or a check for an open `compliance:preflight-handoff`
+  issue finds a stuck handoff, `promoter` itself now dispatches `compliance-preflight-sweep.yml` and
+  opens + merges the resulting reconciliation PR — an ordinary `develop`-base PR, already
+  unattended-mergeable per `promoter`'s own merge table — rather than leaving that for a separate
+  human or credentialed AI session to notice the standing issue afterward. This is a refinement of,
+  not a reversal of, the 2026-09-02 amendment's "supervised handoff" finding: the handoff is still
+  supervised (a credentialed session performs it, `github-actions[bot]` still cannot), it is just no
+  longer decoupled in time from the promotion itself — `promoter`'s own procedure is the supervising
+  session, acting inline rather than waiting for someone else to notice later.
 
-  One asymmetry, not a symmetric two-checkpoint substitution: the default flow's pre-`main`
-  checkpoint scans `origin/staging` (what `release/<label>` is actually cut from on that leg), not
-  `origin/develop` — scanning `develop` there would risk both false positives from unrelated later
-  `develop` work the frozen candidate never absorbed, and blindness to a `fix/staging/*` repair's own
-  declaration changes. Because `compliance-preflight-sweep.yml`'s reconciliation PR is hardcoded to
-  `--base develop` (its own workflow file), a finding against `origin/staging` cannot be resolved
-  through this same dispatch-and-merge mechanism — it is a frozen-candidate anomaly instead, routed
-  through a `fix/staging/*` repair, not through this Decision's resolve path.
+  Checkpoint 2 in the default flow (pre-`main`, scanning `origin/staging` — what `release/<label>` is
+  actually cut from on that leg, not `origin/develop`) explicitly does **not** get this resolve
+  behavior — not a symmetric two-checkpoint substitution. It stays verify-only, unchanged from before
+  this amendment: scanning `develop` there instead would risk both false positives from unrelated
+  later `develop` work the frozen candidate never absorbed, and blindness to a `fix/staging/*`
+  repair's own declaration changes. And because `compliance-preflight-sweep.yml`'s reconciliation PR
+  is hardcoded to `--base develop` (its own workflow file), a finding against `origin/staging` could
+  not be resolved through this same dispatch-and-merge mechanism even if it were attempted — it is a
+  frozen-candidate anomaly instead, routed through a `fix/staging/*` repair, not through this
+  Decision's resolve path.
 - Scope check against this ADR's `[binding]` clauses, confirmed unaffected: Decision 6 (production
   tenant-schema report) and Decision 8 (`AGENTS.md` Merge Safety, never-`--squash`, the
   `release/<label>` head-cut rule) are untouched — this amendment only changes when and how many
@@ -600,7 +604,7 @@ resolve, not just verify (#1648)
   `.agents/skills/promoter/references/promotion-runbook.md`'s "Compliance preflight — pinned
   target-ref scan" section. Policy-level record: `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
   2026-09-06 #1648 amendment.
-- PR: #1672. Refs #1648, #1618.
+- PR: #1672 (resolve-scoping wording fixed per RF-9, PR #1672 review, round 3). Refs #1648, #1618.
 
 ## Related
 
