@@ -4,6 +4,7 @@ import fsPromises from 'fs/promises';
 import path from 'path';
 import sharp from 'sharp';
 import logger from '../../../config/logger.js';
+import { MAX_INPUT_IMAGE_PIXELS, validateClientVariant } from './imageUploadValidation.js';
 
 export const IMAGE_VARIANT_WIDTHS = Object.freeze({
     thumbnail: 400,
@@ -12,7 +13,6 @@ export const IMAGE_VARIANT_WIDTHS = Object.freeze({
 });
 
 export const MAX_PUBLIC_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_INPUT_IMAGE_PIXELS = 40 * 1024 * 1024;
 const PHOTO_QUALITY_STEPS = Object.freeze([80, 76, 72, 68]);
 /**
  * @deprecated AVIF dropped from the active upload pipeline as of Phase 296 (#265) --
@@ -83,17 +83,17 @@ const getOriginalExtension = ({ originalName, reportedMime }) => {
  * (webp vs png-family). Precedence: sourceMimeHint -> metadata alpha heuristic -> reportedMime
  * (this last step is today's entire behavior, unchanged when the two new params are omitted).
  *
- * sourceMimeHint and metadata are both optional and NOT wired into storeOptimizedImageAsset's own
- * call site in this PR (Phase 296, #265) -- that wiring is Phase 297's job, once the client starts
- * sending its own re-encoded MIME type and a pre-fetched sharp metadata() object. Added now so
- * Phase 297 is a caller-side change, not new classification logic.
+ * sourceMimeHint and metadata were added in Phase 296 (#265) but left unwired -- storeOptimizedImageAsset
+ * still called this with only `reportedMime` at that point. Phase 301 (#265) is the wiring: metadata
+ * is now fetched before this call (not after -- see storeOptimizedImageAsset's own history) and
+ * `sourceMimeHint` is threaded through from the client's optional manifest.
  *
  * @param {object} params
  * @param {string} [params.reportedMime] - the sniffed/reported MIME of the file actually being
  *   encoded (today: always the original upload's own MIME).
  * @param {string|null} [params.sourceMimeHint] - the *pre-conversion* MIME the client claims the
  *   user's original file had, before any client-side re-encoding. Highest precedence: once wired
- *   (Phase 297), this is what keeps a client-converted-to-WebP PNG logo from being misclassified.
+ *   (Phase 301), this is what keeps a client-converted-to-WebP PNG logo from being misclassified.
  *   Untrusted hint, not a security boundary -- an unrecognized value is ignored, never throws.
  * @param {{hasAlpha?: boolean}|null} [params.metadata] - an already-fetched sharp metadata()
  *   result for the file being encoded (not fetched by this function -- keeps it pure/sync and
@@ -210,15 +210,16 @@ const buildPublicUrl = (relativePath) => `/uploads/${toPosixRelative(relativePat
 
 /**
  * Derives the medium/thumbnail delivery variants for a set of formats from an already-accepted
- * `large` file on disk, instead of re-deriving from the original source image. Not wired into
- * storeOptimizedImageAsset in this PR -- Phase 297 (#265) is expected to call this once a
- * client-supplied `large` variant has already passed validation, so the server can skip
- * re-encoding from the original entirely for that request.
+ * `large` file on disk, instead of re-deriving from the original source image. Wired into
+ * storeOptimizedImageAsset as of Phase 301 (#265): called for the primary delivery format's
+ * medium/thumbnail keys whenever the client's own `image` upload validates as an already-optimized
+ * large (see storeOptimizedImageAsset's `acceptedAsClientLarge` param) and the client did not
+ * separately supply its own validated medium/thumbnail files for those specific keys.
  *
- * Mirrors storeOptimizedImageAsset's own per-format/per-variant loop (lines ~268-298) exactly,
- * scoped to non-large variant keys only -- deliberately close to that loop rather than a generic
- * abstraction the two share, since reconciling them into one shared loop is Phase 297's wiring
- * job, not this PR's.
+ * Mirrors storeOptimizedImageAsset's own per-format/per-variant loop exactly, scoped to non-large
+ * variant keys only -- deliberately close to that loop rather than a generic abstraction the two
+ * share, since the two call sites' surrounding bookkeeping (manifest, provenance, placeholder)
+ * differ enough that a shared abstraction would add more indirection than it removes.
  *
  * @param {object} params
  * @param {string} params.acceptedLargePath - absolute path to the already-accepted `large` file.
@@ -365,7 +366,12 @@ export const storeOptimizedImageAsset = async ({
     originalName,
     reportedMime,
     tempPath,
-    retainOriginal = true
+    retainOriginal = true,
+    // -- Phase 301 (#265) additions, all optional and all inert unless a caller explicitly opts
+    // in: an old caller passing none of these gets byte-identical behavior to before this phase.
+    sourceMimeHint = null,
+    acceptedAsClientLarge = false,
+    clientVariantFiles = null
 }) => {
     if (!uploadsRoot || !surfaceFolder || !tempPath) {
         throw new Error('uploadsRoot, surfaceFolder, and tempPath are required');
@@ -374,6 +380,10 @@ export const storeOptimizedImageAsset = async ({
     const wallStart = Date.now();
     const cpuStart = process.cpuUsage();
     let encodeCount = 0;
+    // Tracks validated-but-not-yet-copied client variant temp files so a mid-run failure (e.g. an
+    // unrelated buildVariantOutput throw) doesn't leak them in TEMP_DIR -- entries are removed as
+    // each one is successfully copied into place, and the catch block below sweeps the remainder.
+    const pendingClientVariantTempPaths = new Set();
 
     const normalizedSurface = sanitizeSegment(surfaceFolder, 'assets');
     const normalizedScopeSegments = (Array.isArray(scopeSegments) ? scopeSegments : [])
@@ -386,9 +396,11 @@ export const storeOptimizedImageAsset = async ({
     await fsPromises.mkdir(originalAssetDir, { recursive: true });
 
     try {
-        const classification = classifyImageAsset({ reportedMime });
-        const { encoder } = getPublicFormat({ classification });
-        const deliveryFormats = getDeliveryFormats({ classification });
+        // Reordered as of Phase 301 (#265): the rename + metadata() fetch now happen BEFORE
+        // classification, not after -- classifyImageAsset needs `metadata` (its alpha heuristic)
+        // and this is the first caller to actually pass it. Before this phase, classification ran
+        // on `reportedMime` alone and the metadata fetch below happened afterwards, so `metadata`
+        // was never available to feed back into the classify call it was meant to inform.
         const originalExt = getOriginalExtension({ originalName, reportedMime });
         const originalFilename = `original${originalExt}`;
         const originalAbsolutePath = path.join(originalAssetDir, originalFilename);
@@ -399,9 +411,67 @@ export const storeOptimizedImageAsset = async ({
         const sourceWidth = Number.isFinite(originalMeta?.width) ? originalMeta.width : null;
         const sourceHeight = Number.isFinite(originalMeta?.height) ? originalMeta.height : null;
 
+        const classification = classifyImageAsset({ reportedMime, sourceMimeHint, metadata: originalMeta });
+        const { encoder } = getPublicFormat({ classification });
+        const deliveryFormats = getDeliveryFormats({ classification });
+
+        // -- Accepted-large resolution (Phase 301, #265): if the caller flags the just-renamed
+        // original as an already-optimized "large" (the client's own `image` field, when the
+        // manifest declares it pre-optimized), validate it against the exact contract the server
+        // would otherwise have produced -- correct public format, width within the large target
+        // (+2px slack), pixel cap, AND the same MAX_PUBLIC_IMAGE_BYTES cap every server-derived
+        // large is held to (validateClientVariant itself has no byte-size notion; that check is
+        // done here since it's a delivery-size policy, not a decode-correctness one). A failed
+        // validation is never an error -- it silently falls through to the classic derivation
+        // below, exactly as if the caller had never passed the flag.
+        let acceptedLargeValidation = { ok: false };
+        if (acceptedAsClientLarge) {
+            const candidateValidation = await validateClientVariant({
+                file: { path: originalAbsolutePath },
+                expectedFormat: encoder,
+                targetWidth: IMAGE_VARIANT_WIDTHS.large,
+                maxPixels: MAX_INPUT_IMAGE_PIXELS
+            });
+            const withinDeliveryByteCap = Number.isFinite(originalStat?.size) && originalStat.size <= MAX_PUBLIC_IMAGE_BYTES;
+            acceptedLargeValidation = candidateValidation.ok && withinDeliveryByteCap ? candidateValidation : { ok: false };
+        }
+        const acceptedLargeUsed = acceptedLargeValidation.ok === true;
+
+        // -- Client-supplied medium/thumbnail resolution: independent of the accepted-large
+        // outcome above (a client may send image_medium/image_thumbnail even when `image` itself
+        // is a raw, un-optimized original). Each candidate is validated on its own; a rejected
+        // candidate's temp file is cleaned up immediately rather than left in TEMP_DIR, and the
+        // caller falls back to deriving that specific variant server-side.
+        const acceptedClientVariants = {};
+        if (clientVariantFiles && typeof clientVariantFiles === 'object') {
+            for (const variantKey of ['medium', 'thumbnail']) {
+                const candidate = clientVariantFiles[variantKey];
+                if (!candidate?.tempPath) continue;
+                const validation = await validateClientVariant({
+                    file: { path: candidate.tempPath },
+                    expectedFormat: encoder,
+                    targetWidth: IMAGE_VARIANT_WIDTHS[variantKey],
+                    maxPixels: MAX_INPUT_IMAGE_PIXELS
+                });
+                if (validation.ok) {
+                    acceptedClientVariants[variantKey] = {
+                        tempPath: candidate.tempPath,
+                        width: validation.width,
+                        height: validation.height
+                    };
+                    pendingClientVariantTempPaths.add(candidate.tempPath);
+                } else {
+                    await fsPromises.unlink(candidate.tempPath).catch(() => {});
+                }
+            }
+        }
+
+        const provenance = { large: 'server', medium: 'server', thumbnail: 'server' };
         const generatedByFormat = {};
         for (const format of deliveryFormats) {
             generatedByFormat[format.encoder] = {};
+            const isPrimaryFormat = format.encoder === encoder;
+
             for (const [variantKey, width] of Object.entries(IMAGE_VARIANT_WIDTHS)) {
                 const variantFilename = `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${format.ext}`;
                 const variantRelativePath = path.posix.join(
@@ -411,6 +481,47 @@ export const storeOptimizedImageAsset = async ({
                     variantFilename
                 );
                 const variantAbsolutePath = path.join(publicAssetDir, variantFilename);
+
+                if (isPrimaryFormat && variantKey === 'large' && acceptedLargeUsed) {
+                    await fsPromises.copyFile(originalAbsolutePath, variantAbsolutePath);
+                    const copiedStat = await fsPromises.stat(variantAbsolutePath);
+                    generatedByFormat[format.encoder].large = {
+                        path: variantRelativePath,
+                        url: buildPublicUrl(variantRelativePath),
+                        width: acceptedLargeValidation.width,
+                        height: acceptedLargeValidation.height,
+                        size: Number.isFinite(copiedStat?.size) ? copiedStat.size : null,
+                        mime: `image/${format.encoder}`
+                    };
+                    provenance.large = 'client';
+                    continue;
+                }
+
+                if (isPrimaryFormat && acceptedClientVariants[variantKey]) {
+                    const clientVariant = acceptedClientVariants[variantKey];
+                    await fsPromises.copyFile(clientVariant.tempPath, variantAbsolutePath);
+                    const copiedStat = await fsPromises.stat(variantAbsolutePath);
+                    await fsPromises.unlink(clientVariant.tempPath).catch(() => {});
+                    pendingClientVariantTempPaths.delete(clientVariant.tempPath);
+                    generatedByFormat[format.encoder][variantKey] = {
+                        path: variantRelativePath,
+                        url: buildPublicUrl(variantRelativePath),
+                        width: clientVariant.width,
+                        height: clientVariant.height,
+                        size: Number.isFinite(copiedStat?.size) ? copiedStat.size : null,
+                        mime: `image/${format.encoder}`
+                    };
+                    provenance[variantKey] = 'client';
+                    continue;
+                }
+
+                if (isPrimaryFormat && acceptedLargeUsed && variantKey !== 'large') {
+                    // Deferred to the deriveVariantsFromAcceptedLarge batch below -- no
+                    // client-supplied file for this key, but the accepted large lets us derive it
+                    // more cheaply than re-encoding from the (possibly much larger) original.
+                    continue;
+                }
+
                 const output = await buildVariantOutput({
                     sourcePath: originalAbsolutePath,
                     destinationPath: variantAbsolutePath,
@@ -428,6 +539,28 @@ export const storeOptimizedImageAsset = async ({
                     size: output.size,
                     mime: `image/${format.encoder}`
                 };
+            }
+        }
+
+        if (acceptedLargeUsed) {
+            const remainingKeys = ['medium', 'thumbnail'].filter((key) => !generatedByFormat[encoder]?.[key]);
+            if (remainingKeys.length > 0) {
+                const primaryFormat = deliveryFormats.find((format) => format.encoder === encoder);
+                const derived = await deriveVariantsFromAcceptedLarge({
+                    acceptedLargePath: originalAbsolutePath,
+                    publicAssetDir,
+                    normalizedSurface,
+                    normalizedScopeSegments,
+                    assetId,
+                    deliveryFormats: [primaryFormat],
+                    sourceWidth: acceptedLargeValidation.width ?? sourceWidth,
+                    variantKeys: remainingKeys
+                });
+                for (const variantKey of remainingKeys) {
+                    if (derived[encoder]?.[variantKey]) {
+                        generatedByFormat[encoder][variantKey] = derived[encoder][variantKey];
+                    }
+                }
             }
         }
 
@@ -470,7 +603,11 @@ export const storeOptimizedImageAsset = async ({
                 mime: String(reportedMime || '').trim().toLowerCase() || null,
                 width: sourceWidth,
                 height: sourceHeight,
-                size: Number.isFinite(originalStat?.size) ? originalStat.size : null
+                size: Number.isFinite(originalStat?.size) ? originalStat.size : null,
+                // Additive (Phase 301, #265): the pre-conversion MIME hint the client's manifest
+                // claimed for this original, if any -- null for every upload that predates this
+                // phase or simply omits a manifest, unchanged from today's shape otherwise.
+                source_mime_hint: sourceMimeHint || null
             },
             variants: generatedVariants,
             formats: generatedByFormat,
@@ -481,7 +618,13 @@ export const storeOptimizedImageAsset = async ({
                 height: placeholderOutput.height,
                 size: placeholderOutput.size,
                 mime: 'image/webp'
-            }
+            },
+            // Additive (Phase 301, #265): per-variant provenance for the PRIMARY delivery format
+            // only ('client' when this specific variant was accepted from the upload directly
+            // rather than server-encoded) -- lets a future UI distinguish "client-optimized" from
+            // "server-derived" without changing any existing field. Always all-'server' for a
+            // request that never opts into the accepted-large/client-variant contract.
+            provenance
         };
         const manifestPath = path.join(publicAssetDir, 'asset.json');
         await fsPromises.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
@@ -522,13 +665,20 @@ export const storeOptimizedImageAsset = async ({
                 width: manifest.original.width,
                 height: manifest.original.height,
                 size: manifest.original.size,
-                mime: manifest.original.mime
+                mime: manifest.original.mime,
+                source_mime_hint: manifest.original.source_mime_hint
             },
-            classification
+            classification,
+            // Additive (Phase 301, #265): see the matching comment on `manifest.provenance` above.
+            provenance,
+            original_source: acceptedLargeUsed ? 'client_optimized' : 'server_derived'
         };
     } catch (error) {
         await fsPromises.rm(publicAssetDir, { recursive: true, force: true });
         await fsPromises.rm(originalAssetDir, { recursive: true, force: true });
+        await Promise.all([...pendingClientVariantTempPaths].map((tempFilePath) => (
+            fsPromises.unlink(tempFilePath).catch(() => {})
+        )));
         throw error;
     }
 };

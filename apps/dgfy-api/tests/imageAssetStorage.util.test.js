@@ -305,6 +305,184 @@ describe('imageAssetStorage utility', () => {
         });
     });
 
+    // Phase 301 (#265): regression test for the reordering bug section 1 of the corrected plan
+    // found -- storeOptimizedImageAsset used to call classifyImageAsset({ reportedMime }) BEFORE
+    // fetching metadata(), so the alpha heuristic (and sourceMimeHint) could never actually reach
+    // it. This asserts the *effect* of correct wiring end-to-end: an alpha PNG upload with no
+    // sourceMimeHint classifies as 'graphic' purely from the now-available metadata, and a
+    // photographic JPEG whose sourceMimeHint disagrees with its own reportedMime is reclassified
+    // per the hint -- neither would be possible if metadata still arrived after classification.
+    describe('storeOptimizedImageAsset -- classification ordering (Phase 301, #265)', () => {
+        it('classifies an alpha PNG as graphic via the metadata heuristic (metadata now available before classify)', async () => {
+            const tempPath = path.join(uploadsRoot, 'upload-alpha.png');
+            await sharp({
+                create: { width: 800, height: 600, channels: 4, background: { r: 10, g: 10, b: 10, alpha: 0.5 } }
+            }).png().toFile(tempPath);
+
+            const stored = await storeOptimizedImageAsset({
+                uploadsRoot,
+                surfaceFolder: 'storefront-catalog',
+                scopeSegments: ['tenant-ordering'],
+                assetBaseName: 'item-70',
+                originalName: 'alpha.png',
+                // Deliberately a photo-classified reportedMime -- without the reorder, this alone
+                // would decide classification and this test would see 'photo', not 'graphic'.
+                reportedMime: 'image/webp',
+                tempPath
+            });
+
+            expect(stored.classification).toBe('graphic');
+            expect(stored.path).toMatch(/large\.png$/);
+        });
+
+        it('applies sourceMimeHint over reportedMime end-to-end', async () => {
+            const tempPath = path.join(uploadsRoot, 'upload-hinted.jpg');
+            await sharp({
+                create: { width: 800, height: 600, channels: 3, background: { r: 200, g: 180, b: 160 } }
+            }).jpeg({ quality: 90 }).toFile(tempPath);
+
+            const stored = await storeOptimizedImageAsset({
+                uploadsRoot,
+                surfaceFolder: 'storefront-catalog',
+                scopeSegments: ['tenant-ordering'],
+                assetBaseName: 'item-71',
+                originalName: 'hinted.jpg',
+                reportedMime: 'image/jpeg',
+                tempPath,
+                sourceMimeHint: 'image/png'
+            });
+
+            expect(stored.classification).toBe('graphic');
+            expect(stored.path).toMatch(/large\.png$/);
+            expect(stored.original.source_mime_hint).toBe('image/png');
+        });
+    });
+
+    // Phase 301 (#265): the accepted-large fast path -- a client-supplied `image` that already
+    // matches the large-delivery contract (correct format, width, pixel cap, and delivery byte
+    // cap) is copied into place instead of re-encoded; medium/thumbnail are then derived from that
+    // accepted large via deriveVariantsFromAcceptedLarge, this function's first real caller.
+    describe('storeOptimizedImageAsset -- accepted-large path (Phase 301, #265)', () => {
+        it('accepts an already-optimized large, derives medium/thumbnail from it, and records provenance', async () => {
+            const tempPath = path.join(uploadsRoot, 'upload-accepted-large.webp');
+            await sharp({
+                create: { width: 1920, height: 1080, channels: 3, background: { r: 30, g: 60, b: 90 } }
+            }).webp({ quality: 85 }).toFile(tempPath);
+
+            const stored = await storeOptimizedImageAsset({
+                uploadsRoot,
+                surfaceFolder: 'storefront-catalog',
+                scopeSegments: ['tenant-accepted-large'],
+                assetBaseName: 'item-72',
+                originalName: 'accepted-large.webp',
+                reportedMime: 'image/webp',
+                tempPath,
+                acceptedAsClientLarge: true
+            });
+
+            expect(stored.original_source).toBe('client_optimized');
+            expect(stored.provenance).toEqual({ large: 'client', medium: 'server', thumbnail: 'server' });
+            expect(stored.variants.large.width).toBe(1920);
+            expect(stored.variants.medium.width).toBeLessThanOrEqual(1024);
+            expect(stored.variants.thumbnail.width).toBeLessThanOrEqual(400);
+
+            const manifestRaw = await fs.readFile(path.join(uploadsRoot, path.dirname(stored.path), 'asset.json'), 'utf8');
+            const manifest = JSON.parse(manifestRaw);
+            expect(manifest.provenance).toEqual({ large: 'client', medium: 'server', thumbnail: 'server' });
+        });
+
+        it('falls back to full server derivation when the accepted-large claim fails validation (wrong width)', async () => {
+            const tempPath = path.join(uploadsRoot, 'upload-rejected-large.webp');
+            await sharp({
+                create: { width: 3000, height: 2000, channels: 3, background: { r: 30, g: 60, b: 90 } }
+            }).webp({ quality: 85 }).toFile(tempPath);
+
+            const stored = await storeOptimizedImageAsset({
+                uploadsRoot,
+                surfaceFolder: 'storefront-catalog',
+                scopeSegments: ['tenant-rejected-large'],
+                assetBaseName: 'item-73',
+                originalName: 'rejected-large.webp',
+                reportedMime: 'image/webp',
+                tempPath,
+                acceptedAsClientLarge: true
+            });
+
+            expect(stored.original_source).toBe('server_derived');
+            expect(stored.provenance).toEqual({ large: 'server', medium: 'server', thumbnail: 'server' });
+            expect(stored.variants.large.width).toBeLessThanOrEqual(1920);
+        });
+
+        it('uses a validated client-supplied medium/thumbnail directly instead of re-deriving them', async () => {
+            const tempPath = path.join(uploadsRoot, 'upload-with-variants.jpg');
+            await sharp({
+                create: { width: 2400, height: 1600, channels: 3, background: { r: 90, g: 90, b: 90 } }
+            }).jpeg({ quality: 92 }).toFile(tempPath);
+
+            const mediumTempPath = path.join(uploadsRoot, 'client-medium.webp');
+            await sharp({
+                create: { width: 1024, height: 683, channels: 3, background: { r: 91, g: 91, b: 91 } }
+            }).webp({ quality: 80 }).toFile(mediumTempPath);
+
+            const thumbnailTempPath = path.join(uploadsRoot, 'client-thumb.webp');
+            await sharp({
+                create: { width: 400, height: 267, channels: 3, background: { r: 92, g: 92, b: 92 } }
+            }).webp({ quality: 80 }).toFile(thumbnailTempPath);
+
+            const stored = await storeOptimizedImageAsset({
+                uploadsRoot,
+                surfaceFolder: 'storefront-catalog',
+                scopeSegments: ['tenant-client-variants'],
+                assetBaseName: 'item-74',
+                originalName: 'with-variants.jpg',
+                reportedMime: 'image/jpeg',
+                tempPath,
+                clientVariantFiles: {
+                    medium: { tempPath: mediumTempPath },
+                    thumbnail: { tempPath: thumbnailTempPath }
+                }
+            });
+
+            expect(stored.original_source).toBe('server_derived');
+            expect(stored.provenance).toEqual({ large: 'server', medium: 'client', thumbnail: 'client' });
+            expect(stored.variants.medium.width).toBe(1024);
+            expect(stored.variants.thumbnail.width).toBe(400);
+            // The client-supplied temp files are consumed (copied + unlinked), not left behind.
+            await expect(fs.access(mediumTempPath)).rejects.toThrow();
+            await expect(fs.access(thumbnailTempPath)).rejects.toThrow();
+        });
+
+        it('discards an invalid client-supplied variant and falls back to server derivation for it', async () => {
+            const tempPath = path.join(uploadsRoot, 'upload-bad-variant.jpg');
+            await sharp({
+                create: { width: 2400, height: 1600, channels: 3, background: { r: 90, g: 90, b: 90 } }
+            }).jpeg({ quality: 92 }).toFile(tempPath);
+
+            // Wrong format for a photo-classified upload (server expects webp for `medium`).
+            const badMediumTempPath = path.join(uploadsRoot, 'client-medium-bad.png');
+            await sharp({
+                create: { width: 1024, height: 683, channels: 3, background: { r: 91, g: 91, b: 91 } }
+            }).png().toFile(badMediumTempPath);
+
+            const stored = await storeOptimizedImageAsset({
+                uploadsRoot,
+                surfaceFolder: 'storefront-catalog',
+                scopeSegments: ['tenant-bad-variant'],
+                assetBaseName: 'item-75',
+                originalName: 'bad-variant.jpg',
+                reportedMime: 'image/jpeg',
+                tempPath,
+                clientVariantFiles: {
+                    medium: { tempPath: badMediumTempPath }
+                }
+            });
+
+            expect(stored.provenance.medium).toBe('server');
+            expect(stored.variants.medium.width).toBeLessThanOrEqual(1024);
+            await expect(fs.access(badMediumTempPath)).rejects.toThrow();
+        });
+    });
+
     describe('deriveVariantsFromAcceptedLarge', () => {
         it('derives medium/thumbnail variants in the requested formats from an accepted large file', async () => {
             const assetId = 'item-60-1700000000000-v3-cafebabe';

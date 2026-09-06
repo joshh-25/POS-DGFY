@@ -117,10 +117,12 @@ let importExternalStorefrontCatalogImage;
 let generateItemImage;
 let bulkGenerateItemImages;
 let getItemImageGenerationStatus;
+let uploadStorefrontCatalogImage;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/inventory/controllers/itemHandlers.js');
   getItems = mod.getItems;
+  uploadStorefrontCatalogImage = mod.uploadStorefrontCatalogImage;
   createItem = mod.createItem;
   deleteItem = mod.deleteItem;
   restoreItem = mod.restoreItem;
@@ -765,6 +767,99 @@ describe('itemHandlers transport contracts', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       const [payload] = res.json.mock.calls[0];
       expect(payload.data.status).toBe('unknown');
+    });
+  });
+
+  // Phase 301 (#265): uploadStorefrontCatalogImage's route now parses via multer .fields(), so
+  // the controller reads req.files (not req.file) and forwards a parsed client_image_manifest.
+  describe('uploadStorefrontCatalogImage -- .fields() multipart transport (#265 Phase 301)', () => {
+    it('forwards the required image plus optional client-derived variants and manifest', async () => {
+      mockUploadStorefrontCatalogImageUseCase.mockResolvedValue({
+        item_id: 55,
+        storefront_image_url: '/uploads/storefront.webp'
+      });
+
+      const imageFile = { path: '/tmp/sf-image.jpg', originalname: 'image.jpg', mimetype: 'image/jpeg', size: 1000 };
+      const mediumFile = { path: '/tmp/sf-medium.webp', originalname: 'medium.webp', mimetype: 'image/webp', size: 200 };
+      const thumbnailFile = { path: '/tmp/sf-thumb.webp', originalname: 'thumb.webp', mimetype: 'image/webp', size: 50 };
+      const req = {
+        validatedParams: { item_id: 55 },
+        params: { item_id: '55' },
+        files: { image: [imageFile], image_medium: [mediumFile], image_thumbnail: [thumbnailFile] },
+        body: { client_image_manifest: JSON.stringify({ source_mime_hint: 'image/png', large_pre_optimized: true }) },
+        user: { user_id: 1, is_master_admin: true, permissions: ['items:edit'] }
+      };
+      const res = createRes();
+      const next = jest.fn();
+
+      await uploadStorefrontCatalogImage(req, res, next);
+
+      expect(mockUploadStorefrontCatalogImageUseCase).toHaveBeenCalledWith({
+        itemId: 55,
+        files: { image: [imageFile], image_medium: [mediumFile], image_thumbnail: [thumbnailFile] },
+        clientImageManifest: { sourceMimeHint: 'image/png', largePreOptimized: true },
+        user: req.user
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('still works with only the required image field present (no variants, no manifest)', async () => {
+      mockUploadStorefrontCatalogImageUseCase.mockResolvedValue({
+        item_id: 56,
+        storefront_image_url: '/uploads/storefront.webp'
+      });
+
+      const imageFile = { path: '/tmp/sf-image-only.jpg', originalname: 'image-only.jpg', mimetype: 'image/jpeg', size: 1000 };
+      const req = {
+        validatedParams: { item_id: 56 },
+        params: { item_id: '56' },
+        files: { image: [imageFile] },
+        body: {},
+        user: { user_id: 1, is_master_admin: true, permissions: ['items:edit'] }
+      };
+      const res = createRes();
+      const next = jest.fn();
+
+      await uploadStorefrontCatalogImage(req, res, next);
+
+      expect(mockUploadStorefrontCatalogImageUseCase).toHaveBeenCalledWith({
+        itemId: 56,
+        files: { image: [imageFile] },
+        clientImageManifest: null,
+        user: req.user
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('ignores a malformed client_image_manifest rather than failing the request', async () => {
+      mockUploadStorefrontCatalogImageUseCase.mockResolvedValue({
+        item_id: 57,
+        storefront_image_url: '/uploads/storefront.webp'
+      });
+
+      const imageFile = { path: '/tmp/sf-image-bad-manifest.jpg', originalname: 'image.jpg', mimetype: 'image/jpeg', size: 1000 };
+      const req = {
+        validatedParams: { item_id: 57 },
+        params: { item_id: '57' },
+        files: { image: [imageFile] },
+        body: { client_image_manifest: '{not valid json' },
+        user: { user_id: 1, is_master_admin: true, permissions: ['items:edit'] }
+      };
+      const res = createRes();
+      const next = jest.fn();
+
+      await uploadStorefrontCatalogImage(req, res, next);
+
+      expect(mockUploadStorefrontCatalogImageUseCase).toHaveBeenCalledWith({
+        itemId: 57,
+        files: { image: [imageFile] },
+        clientImageManifest: null,
+        user: req.user
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(next).not.toHaveBeenCalled();
     });
   });
 });
