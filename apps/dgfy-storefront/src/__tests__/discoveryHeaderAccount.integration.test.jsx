@@ -5,6 +5,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { App } from '../main.jsx';
 import { BrowserRouter } from 'react-router-dom';
+import { useStorefrontStore } from '../store/useStorefrontStore.js';
 
 vi.mock('maplibre-gl', () => {
   function PopupApi() {
@@ -194,6 +195,7 @@ describe('discovery header customer account actions', () => {
 
   afterEach(() => {
     cleanup();
+    useStorefrontStore.getState().reset();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();

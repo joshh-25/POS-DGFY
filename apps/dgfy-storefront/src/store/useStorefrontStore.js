@@ -8,13 +8,13 @@
  * conventions, and the store-vs-local decision guide.
  *
  * Composition: each domain slice contributes its nested state (`s.cart`,
- * `s.ui`, …) plus flat `<domain><Verb>` actions. Slices are populated across
- * the migration waves; Wave 0 ships the scaffold + the `ui` reference slice.
+ * `s.ui`, …) plus flat `<domain><Verb>` actions. The shell and migrated runtime
+ * hooks keep their existing public names while slices become the single reactive
+ * authority one boundary at a time.
  *
  * Middleware: `devtools` only for now (dev-guarded, harmless in prod/tests).
- * `persist` is intentionally deferred to Wave 3, when the cart slice is
- * migrated and becomes the single persisted domain (replacing the standalone
- * useStorefrontCartPersistence hook).
+ * `persist` remains intentionally deferred until cart persistence is migrated as
+ * one bounded commerce change (replacing the standalone useStorefrontCartPersistence hook).
  */
 
 import { create } from 'zustand';
@@ -27,6 +27,7 @@ import { createCartSlice } from './slices/cartSlice.js';
 import { createCheckoutSlice } from './slices/checkoutSlice.js';
 import { createServiceBookingSlice } from './slices/serviceBookingSlice.js';
 import { createDiscoverySlice } from './slices/discoverySlice.js';
+import { createReviewSlice } from './slices/reviewSlice.js';
 
 const isDevEnvironment = () => {
   try {
@@ -48,6 +49,7 @@ const composeStorefrontState = (set, get, store) => ({
   ...createCheckoutSlice(set, get, store),
   ...createServiceBookingSlice(set, get, store),
   ...createDiscoverySlice(set, get, store),
+  ...createReviewSlice(set, get, store),
 
   // Official Zustand reset pattern — matches frontend/src/store/useStore.js.
   // `getInitialState()` avoids reset drift as new slices/keys are added.

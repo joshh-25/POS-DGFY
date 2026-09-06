@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import maplibregl from 'maplibre-gl';
 import { App } from '../main.jsx';
 import { BrowserRouter } from 'react-router-dom';
+import { useStorefrontStore } from '../store/useStorefrontStore.js';
 
 vi.mock('maplibre-gl', () => {
   function PopupApi(options = {}) {
@@ -343,6 +344,7 @@ describe('storefront discovery integration flow', () => {
 
   afterEach(() => {
     cleanup();
+    useStorefrontStore.getState().reset();
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       writable: true,

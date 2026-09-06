@@ -1,40 +1,79 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+
+import { useStorefrontStore } from '../../store/useStorefrontStore.js';
+
+const useDiscoveryValue = (field) => useStorefrontStore((state) => state.discovery[field]);
+const useDiscoveryAction = (name) => useStorefrontStore((state) => state[name]);
 
 export function useDiscoveryState({ search = '' } = {}) {
-  const [discoveryResultMode, setDiscoveryResultMode] = useState('union');
-  const [discoveryStockFilter, setDiscoveryStockFilter] = useState('include_out_of_stock');
-  const [discoveryPinScope, setDiscoveryPinScope] = useState('tenant_primary');
-  const [discoveryIncludeMatchMeta, setDiscoveryIncludeMatchMeta] = useState(true);
-  const [discoveryAppliedFilters, setDiscoveryAppliedFilters] = useState(null);
-  const [isDiscoverySearchFocused, setIsDiscoverySearchFocused] = useState(false);
-  const [hasDiscoveryExplorationStarted, setHasDiscoveryExplorationStarted] = useState(false);
-  const [isDiscoveryNoMatchToastActive, setIsDiscoveryNoMatchToastActive] = useState(false);
-
-  const [discoveryResultsPage, setDiscoveryResultsPage] = useState(1);
-  const [discoverySortBy, setDiscoverySortBy] = useState('nearest');
-  const [discoveryCategoryFilter, setDiscoveryCategoryFilter] = useState('all');
-  const [discoveryDistanceFilter, setDiscoveryDistanceFilter] = useState('all');
-  const [discoveryOpenFilter, setDiscoveryOpenFilter] = useState('all');
-  const [discoveryRatingFilter, setDiscoveryRatingFilter] = useState('all');
-  const [discoveryAvailabilityFilter, setDiscoveryAvailabilityFilter] = useState('all');
-  const [activeDiscoveryFilterDropdown, setActiveDiscoveryFilterDropdown] = useState(null);
-  const [renderDiscoveryResetButton, setRenderDiscoveryResetButton] = useState(false);
-  const [showDiscoveryResetButton, setShowDiscoveryResetButton] = useState(false);
-
-  const [discoveryCoords, setDiscoveryCoords] = useState(null);
+  const discoveryResultMode = useDiscoveryValue('resultMode');
+  const discoveryStockFilter = useDiscoveryValue('stockFilter');
+  const discoveryPinScope = useDiscoveryValue('pinScope');
+  const discoveryIncludeMatchMeta = useDiscoveryValue('includeMatchMeta');
+  const discoveryAppliedFilters = useDiscoveryValue('appliedFilters');
+  const isDiscoverySearchFocused = useDiscoveryValue('isSearchFocused');
+  const hasDiscoveryExplorationStarted = useDiscoveryValue('hasExplorationStarted');
+  const isDiscoveryNoMatchToastActive = useDiscoveryValue('isNoMatchToastActive');
+  const discoveryResultsPage = useDiscoveryValue('resultsPage');
+  const discoverySortBy = useDiscoveryValue('sortBy');
+  const discoveryCategoryFilter = useDiscoveryValue('categoryFilter');
+  const discoveryDistanceFilter = useDiscoveryValue('distanceFilter');
+  const discoveryOpenFilter = useDiscoveryValue('openFilter');
+  const discoveryRatingFilter = useDiscoveryValue('ratingFilter');
+  const discoveryAvailabilityFilter = useDiscoveryValue('availabilityFilter');
+  const activeDiscoveryFilterDropdown = useDiscoveryValue('activeFilterDropdown');
+  const renderDiscoveryResetButton = useDiscoveryValue('renderResetButton');
+  const showDiscoveryResetButton = useDiscoveryValue('showResetButton');
+  const discoveryCoords = useDiscoveryValue('coords');
   const discoveryCoordsRef = useRef(discoveryCoords);
-  const [discoveryLocationMap, setDiscoveryLocationMap] = useState({});
-  const [loadingDiscoveryLocations, setLoadingDiscoveryLocations] = useState(false);
-  const [highlightedDiscoveryMarkerKey, setHighlightedDiscoveryMarkerKey] = useState('');
-  const [highlightedStoreSlug, setHighlightedStoreSlug] = useState('');
-  const [selectedMapPin, setSelectedMapPin] = useState(null);
-  const [isStoreListVisible, setIsStoreListVisible] = useState(false);
-  const [isMobileResultsCollapsed, setIsMobileResultsCollapsed] = useState(false);
-  const [viewMode, setViewMode] = useState('list');
+  const discoveryLocationMap = useDiscoveryValue('locationMap');
+  const loadingDiscoveryLocations = useDiscoveryValue('loadingLocations');
+  const highlightedDiscoveryMarkerKey = useDiscoveryValue('highlightedMarkerKey');
+  const highlightedStoreSlug = useDiscoveryValue('highlightedStoreSlug');
+  const selectedMapPin = useDiscoveryValue('selectedMapPin');
+  const isStoreListVisible = useDiscoveryValue('isStoreListVisible');
+  const isMobileResultsCollapsed = useDiscoveryValue('isMobileResultsCollapsed');
+  const viewMode = useDiscoveryValue('viewMode');
+  const openDiscoveryFaqIndex = useDiscoveryValue('openFaqIndex');
+  const isDiscoveryNavMenuOpen = useDiscoveryValue('isNavMenuOpen');
+  const activeDiscoveryNavItem = useDiscoveryValue('activeNavItem');
+  const stores = useDiscoveryValue('stores');
+  const loadingStores = useDiscoveryValue('loadingStores');
+  const storesError = useDiscoveryValue('storesError');
 
-  const [openDiscoveryFaqIndex, setOpenDiscoveryFaqIndex] = useState(0);
-  const [isDiscoveryNavMenuOpen, setIsDiscoveryNavMenuOpen] = useState(false);
-  const [activeDiscoveryNavItem, setActiveDiscoveryNavItem] = useState('Explore');
+  const setDiscoveryResultMode = useDiscoveryAction('discoverySetResultMode');
+  const setDiscoveryStockFilter = useDiscoveryAction('discoverySetStockFilter');
+  const setDiscoveryPinScope = useDiscoveryAction('discoverySetPinScope');
+  const setDiscoveryIncludeMatchMeta = useDiscoveryAction('discoverySetIncludeMatchMeta');
+  const setDiscoveryAppliedFilters = useDiscoveryAction('discoverySetAppliedFilters');
+  const setIsDiscoverySearchFocused = useDiscoveryAction('discoverySetIsSearchFocused');
+  const setHasDiscoveryExplorationStarted = useDiscoveryAction('discoverySetHasExplorationStarted');
+  const setIsDiscoveryNoMatchToastActive = useDiscoveryAction('discoverySetIsNoMatchToastActive');
+  const setDiscoveryResultsPage = useDiscoveryAction('discoverySetResultsPage');
+  const setDiscoverySortBy = useDiscoveryAction('discoverySetSortBy');
+  const setDiscoveryCategoryFilter = useDiscoveryAction('discoverySetCategoryFilter');
+  const setDiscoveryDistanceFilter = useDiscoveryAction('discoverySetDistanceFilter');
+  const setDiscoveryOpenFilter = useDiscoveryAction('discoverySetOpenFilter');
+  const setDiscoveryRatingFilter = useDiscoveryAction('discoverySetRatingFilter');
+  const setDiscoveryAvailabilityFilter = useDiscoveryAction('discoverySetAvailabilityFilter');
+  const setActiveDiscoveryFilterDropdown = useDiscoveryAction('discoverySetActiveFilterDropdown');
+  const setRenderDiscoveryResetButton = useDiscoveryAction('discoverySetRenderResetButton');
+  const setShowDiscoveryResetButton = useDiscoveryAction('discoverySetShowResetButton');
+  const setDiscoveryCoords = useDiscoveryAction('discoverySetCoords');
+  const setDiscoveryLocationMap = useDiscoveryAction('discoverySetLocationMap');
+  const setLoadingDiscoveryLocations = useDiscoveryAction('discoverySetLoadingLocations');
+  const setHighlightedDiscoveryMarkerKey = useDiscoveryAction('discoverySetHighlightedMarkerKey');
+  const setHighlightedStoreSlug = useDiscoveryAction('discoverySetHighlightedStoreSlug');
+  const setSelectedMapPin = useDiscoveryAction('discoverySetSelectedMapPin');
+  const setIsStoreListVisible = useDiscoveryAction('discoverySetIsStoreListVisible');
+  const setIsMobileResultsCollapsed = useDiscoveryAction('discoverySetIsMobileResultsCollapsed');
+  const setViewMode = useDiscoveryAction('discoverySetViewMode');
+  const setOpenDiscoveryFaqIndex = useDiscoveryAction('discoverySetOpenFaqIndex');
+  const setIsDiscoveryNavMenuOpen = useDiscoveryAction('discoverySetIsNavMenuOpen');
+  const setActiveDiscoveryNavItem = useDiscoveryAction('discoverySetActiveNavItem');
+  const setStores = useDiscoveryAction('discoverySetStores');
+  const setLoadingStores = useDiscoveryAction('discoverySetLoadingStores');
+  const setStoresError = useDiscoveryAction('discoverySetStoresError');
   const searchRef = useRef(search);
 
   useEffect(() => {
@@ -107,6 +146,12 @@ export function useDiscoveryState({ search = '' } = {}) {
     setSelectedMapPin,
     setShowDiscoveryResetButton,
     setViewMode,
-    showDiscoveryResetButton
+    showDiscoveryResetButton,
+    stores,
+    loadingStores,
+    storesError,
+    setStores,
+    setLoadingStores,
+    setStoresError
   };
 }

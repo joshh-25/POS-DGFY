@@ -25,6 +25,9 @@ export const uiInitialState = {
     viewportWidth: readInitialViewportWidth(),
     // Overlays / modals
     isOnlinePaymentModalOpen: false,
+    isAccountDrawerOpen: false,
+    isAboutExpanded: false,
+    isServiceGalleryExpanded: false,
     // Order-success overlay — flag lives here, wired in Wave 3 (checkout-coupled)
     showOrderSuccessAnimation: false
   }
@@ -41,6 +44,15 @@ export const createUiSlice = (set) => ({
 
   uiCloseOnlinePaymentModal: () =>
     set((s) => ({ ui: { ...s.ui, isOnlinePaymentModalOpen: false } })),
+
+  uiSetAccountDrawerOpen: (open) =>
+    set((s) => ({ ui: { ...s.ui, isAccountDrawerOpen: Boolean(open) } })),
+
+  uiSetAboutExpanded: (expanded) =>
+    set((s) => ({ ui: { ...s.ui, isAboutExpanded: Boolean(expanded) } })),
+
+  uiSetServiceGalleryExpanded: (expanded) =>
+    set((s) => ({ ui: { ...s.ui, isServiceGalleryExpanded: Boolean(expanded) } })),
 
   uiSetShowOrderSuccessAnimation: (visible) =>
     set((s) => ({ ui: { ...s.ui, showOrderSuccessAnimation: Boolean(visible) } }))

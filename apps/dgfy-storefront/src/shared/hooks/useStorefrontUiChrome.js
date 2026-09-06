@@ -1,4 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+
+import { useStorefrontStore } from '../../store/useStorefrontStore.js';
+import {
+  selectIsAboutExpanded,
+  selectIsServiceGalleryExpanded
+} from '../../store/selectors/uiSelectors.js';
 
 /**
  * Stateful hook that owns storefront UI-chrome state and its self-contained
@@ -20,8 +26,10 @@ export function useStorefrontUiChrome({
   serviceWorkerUrl,
   setViewportWidth
 }) {
-  const [isAboutExpanded, setIsAboutExpanded] = useState(false);
-  const [isServiceGalleryExpanded, setIsServiceGalleryExpanded] = useState(false);
+  const isAboutExpanded = useStorefrontStore(selectIsAboutExpanded);
+  const setIsAboutExpanded = useStorefrontStore((state) => state.uiSetAboutExpanded);
+  const isServiceGalleryExpanded = useStorefrontStore(selectIsServiceGalleryExpanded);
+  const setIsServiceGalleryExpanded = useStorefrontStore((state) => state.uiSetServiceGalleryExpanded);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;

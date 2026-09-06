@@ -17,7 +17,6 @@ import {
   STOREFRONT_INFO_ROW_GAP,
   STYLES
 } from '../../shared/theme/storefrontStyleTokens.js';
-import { ServicesHero } from '../../modes/services/storefront/components/ServicesHeroLazy.jsx';
 import { FnbHero } from '../../modes/fnb/storefront/components/FnbHeroLazy.jsx';
 import { SimpleHero } from '../../modes/simple/storefront/components/SimpleHeroLazy.jsx';
 import HospitalityBookingPanel from '../../modes/hospitality/booking/components/HospitalityBookingPanelLazy.jsx';

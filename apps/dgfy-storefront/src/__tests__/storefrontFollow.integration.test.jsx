@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
+import { useStorefrontStore } from '../store/useStorefrontStore.js';
 import { App } from '../main.jsx';
 
 const renderStorefrontApp = () => render(
@@ -121,6 +122,7 @@ describe('storefront follow integration', () => {
 
   afterEach(() => {
     cleanup();
+    useStorefrontStore.getState().reset();
     vi.unstubAllGlobals();
     window.localStorage.clear();
     window.sessionStorage.clear();
