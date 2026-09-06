@@ -11,8 +11,8 @@ verification_evidence: 39 focused POS checkout Vitest tests; POS production buil
 rollback_note: Revert the shared centavo comparison helper and its two POS checkout consumers. No API, database, receipt, or persisted transaction cleanup is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-06T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-POS-EXACT-CENTAVO-PAYMENT
+preflight_run_at: 2026-09-06T17:09:54.586Z
+preflight_request_ref: PREFLIGHT-34047481447-2026-09-06-POS-EXACT-CENTAVO-PAYMENT
 ---
 
 # POS exact-centavo payment acceptance

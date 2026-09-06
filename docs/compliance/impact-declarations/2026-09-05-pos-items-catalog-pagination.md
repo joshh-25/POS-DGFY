@@ -12,8 +12,8 @@ verification_evidence: 109 focused backend tests,23 focused POS Items UI tests,P
 rollback_note: Revert the opt-in catalog pagination contract and POS Items caller; no stored data, migration, payment, receipt, or production operation is involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T11:20:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-297-LOCAL-ONLY
+preflight_run_at: 2026-09-06T17:09:54.584Z
+preflight_request_ref: PREFLIGHT-34047481447-2026-09-05-POS-ITEMS-CATALOG-PAGINATION
 ---
 
 # POS Items catalog pagination (Phases 297-298)
