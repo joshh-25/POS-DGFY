@@ -3,25 +3,36 @@
 Mechanics only. Rule sources (why, and what gates apply) are in `../SKILL.md` and the docs it
 points at — don't duplicate the reasoning here, just the commands.
 
-## Compliance preflight — pinned target-ref scan, resolve, and refresh (shared by both flows, #1648;
-## pinned-scan fix from PR #1672 review, RF-1/RF-2)
+## Compliance preflight — pinned target-ref scan, resolve, and refresh (shared by both flows, #1648; pinned-scan fix from PR #1672 review, RF-1/RF-2; parameterized RF-4, unique-path fix RF-6)
 
-Both flows below need the identical check before their next branch is cut: the #1007-gated exception
-cuts `release/<label>` directly from `origin/develop`; the default flow cuts
-`to-staging/<candidate_id>` from `origin/develop` too. Either way the scan must reflect exactly
-`origin/develop`'s committed state — not whatever the promoter's own working directory happens to
-have checked out, and not a `develop..main`/`develop..staging` diff (a diff misses a declaration
-already reconciled on both branches via a prior #1007-override promotion — #1374's own finding: 26
-outstanding on a full scan vs. 4 on a diff). Both gaps were found live on PR #1672's own review
-(RF-1: the `#1007-gated exception` section below still used a diff; RF-2: the default flow's scan
-below read from whatever ref happened to be checked out, never pinned or refreshed). Fixed with a
-disposable worktree pinned to the freshly fetched target ref:
+Every call site below needs the identical check before its next branch is cut, but against
+different target refs: the `#1007`-gated exception's direct `release/<label>` cut and the default
+flow's `to-staging/<candidate_id>` cut both scan `origin/develop`; the default flow's own
+`release/<candidate_id>-rN` cut scans `origin/staging` instead — that's what `release/<label>` is
+actually cut from on that leg (see the substitution note where that call site sends you here). Set
+`TARGET_REF` first, then run the rest of this section unmodified — never hard-code the ref inline,
+that's exactly the gap RF-4 (PR #1672 review) found in this section's first version, which offered
+no way to invoke it against anything but `origin/develop`:
 
 ```bash
-git fetch origin develop
-WORKTREE_DIR="$(git rev-parse --show-toplevel)/.tmp/compliance-scan-develop"
-rm -rf "$WORKTREE_DIR"
-git worktree add --detach "$WORKTREE_DIR" origin/develop
+TARGET_REF=origin/develop   # or origin/staging -- set by whichever call site sent you here
+REF_NAME="${TARGET_REF#origin/}"
+git fetch origin "$REF_NAME"
+```
+
+The scan must reflect `$TARGET_REF`'s exact committed state — not whatever the promoter's own
+working directory happens to have checked out, and not a `develop..main`/`develop..staging` diff (a
+diff misses a declaration already reconciled on both branches via a prior #1007-override promotion —
+#1374's own finding: 26 outstanding on a full scan vs. 4 on a diff). Fixed with a disposable
+worktree pinned to the freshly fetched target ref, at a **path unique to this run** — never a fixed
+shared path (RF-6, PR #1672 review: a fixed path's unconditional `rm -rf` could delete a
+concurrent/interrupted promoter session's own active worktree at that same path) — with a cleanup
+trap as the crash/interrupt backstop:
+
+```bash
+WORKTREE_DIR="$(git rev-parse --show-toplevel)/.tmp/compliance-scan-$REF_NAME-$$"
+trap 'git worktree remove --force "$WORKTREE_DIR" 2>/dev/null' EXIT
+git worktree add --detach "$WORKTREE_DIR" "$TARGET_REF"
 ```
 
 Scan that pinned checkout, never the current working directory:
@@ -33,8 +44,12 @@ done 2>/dev/null
 gh issue list --label compliance:preflight-handoff --state open --json number,title,url
 ```
 
-Empty output on both → clear; remove the worktree (`git worktree remove --force "$WORKTREE_DIR"`)
-and proceed to whichever branch cut sent you here. Otherwise resolve — don't just report and wait:
+Empty output on both → clear; tear the worktree down now (`git worktree remove --force
+"$WORKTREE_DIR"` — the trap above is only the crash/interrupt backstop, not a substitute for
+cleaning up on the happy path) and proceed to whichever branch cut sent you here.
+
+**If `$TARGET_REF` is `origin/develop`** and either check finds something, resolve — don't just
+report and wait:
 
 ```bash
 # a stuck handoff issue exists (second command returned one) -- open and merge it now, per
@@ -57,8 +72,8 @@ Either resolve path moves `origin/develop` — **refresh the pinned worktree bef
 don't re-scan the stale copy already on disk:
 
 ```bash
-git fetch origin develop
-git -C "$WORKTREE_DIR" reset --hard origin/develop
+git fetch origin "$REF_NAME"
+git -C "$WORKTREE_DIR" reset --hard "$TARGET_REF"
 ```
 
 Re-run both check commands against the refreshed worktree. Repeat resolve → refresh → re-check until
@@ -67,6 +82,15 @@ both come back clear, then tear it down and proceed:
 ```bash
 git worktree remove --force "$WORKTREE_DIR"
 ```
+
+**If `$TARGET_REF` is `origin/staging` and either check finds something: stop, don't dispatch the
+sweep against it.** `compliance-preflight-sweep.yml`'s reconciliation PR is hardcoded to
+`--base develop` (its own workflow file) — dispatching it with `--ref staging` would check out
+`staging`'s tree but still open a `develop`-based PR from it, bundling every unrelated difference
+between the two branches into that PR, not just the declaration fix. This should not happen in the
+ordinary default flow — see `../SKILL.md`'s "Compliance preflight sweep" section for why a finding
+here is a frozen-candidate anomaly, not a routine case, and where a genuine fix actually goes
+instead (a `fix/staging/*` repair, not this section's `develop`-based flow).
 
 ## #1007-gated exception: direct `develop` → `main`
 
@@ -84,12 +108,17 @@ cheap backstop that catches it regardless of cause.
 Pre-flight, then confirm the compliance sweep is clear against the target SHA — the one real
 precondition here, since no `NOT-EXECUTED-*` declaration may reach `main` (full detail:
 `../SKILL.md`'s "Pre-`main` gates" section, "Ordering" note, #1359). `release/<label>` is cut
-directly from `origin/develop` in this flow, so run the "Compliance preflight — pinned target-ref
-scan" procedure above against `origin/develop` — the same procedure the default flow's staging leg
-uses below, since both flows cut their next branch from the identical ref. **Do not use a
-`develop..main` diff to find outstanding declarations** (the shape this section used before PR #1672
-review, RF-1) — it misses a declaration already reconciled on both branches, exactly the blind spot
-the shared procedure's own explanation names.
+directly from `origin/develop` in this flow:
+
+```bash
+TARGET_REF=origin/develop
+```
+
+— then run the "Compliance preflight — pinned target-ref scan" procedure above, same as the default
+flow's staging-leg cut below, since both cut their next branch from the identical ref. **Do not use
+a `develop..main` diff to find outstanding declarations** (the shape this section used before PR
+#1672 review, RF-1) — it misses a declaration already reconciled on both branches, exactly the blind
+spot the shared procedure's own explanation names.
 
 Once that's clear, cut `release/<label>` and open its PR into `main` right away — **do not wait on
 the production tenant-schema report first.** It has no dependency on the compliance sweep or on the
@@ -264,12 +293,18 @@ git push
 precondition, same reasoning as the "#1007-gated exception" section's own compliance check above but
 now run here too, earlier, since this leg previously ran nothing at all here — see `../SKILL.md`'s
 "Frozen candidate and repair loop" section for the full rationale
-(#1387/#1419/#1430/#1505/#1544/#1574/#1618). Run the "Compliance preflight — pinned target-ref scan"
-procedure at the top of this file against `origin/develop` — the exact ref `to-staging/$CANDIDATE_ID`
-is about to be cut from — not a scan of whatever the current working directory happens to have
-checked out (the gap PR #1672's review, RF-2, found in this section's previous version: an unpinned
-`git ls-files` scan that never refreshed after a reconciliation merge). Only cut
-`to-staging/$CANDIDATE_ID` once that procedure reports both checks clear.
+(#1387/#1419/#1430/#1505/#1544/#1574/#1618):
+
+```bash
+TARGET_REF=origin/develop
+```
+
+— then run the "Compliance preflight — pinned target-ref scan" procedure at the top of this file.
+`origin/develop` is the exact ref `to-staging/$CANDIDATE_ID` is about to be cut from — not a scan of
+whatever the current working directory happens to have checked out (the gap PR #1672's review, RF-2,
+found in this section's previous version: an unpinned `git ls-files` scan that never refreshed after
+a reconciliation merge). Only cut `to-staging/$CANDIDATE_ID` once that procedure reports both checks
+clear.
 
 Only once that reports clean does the candidate branch get cut, from the (possibly just-bumped)
 `origin/develop`:
@@ -329,10 +364,18 @@ gh pr merge <N> --merge   # never --squash — see SKILL.md
 
 Then cut `release/<candidate_id>-rN` from `origin/staging` instead of `origin/develop` in the
 "#1007-gated exception" section above — same commands, `origin/staging` in place of
-`origin/develop`. This includes the compliance-preflight pinned-target-ref scan: pin it to
-`origin/staging` here too, deliberately, not just as a mechanical find-and-replace — `origin/staging`
-is what `release/<label>` is actually cut from on this leg, and the frozen-candidate rule means
-`origin/develop` may have moved on to unrelated work this candidate never absorbed.
+`origin/develop`. This includes the compliance-preflight pinned-target-ref scan:
+
+```bash
+TARGET_REF=origin/staging
+```
+
+— deliberately, not a mechanical find-and-replace of the whole section: `origin/staging` is what
+`release/<label>` is actually cut from on this leg, and the frozen-candidate rule means
+`origin/develop` may have moved on to unrelated work this candidate never absorbed. If the scan
+finds something outstanding here, **stop rather than dispatching the sweep** — see the "Compliance
+preflight — pinned target-ref scan" section's own `origin/staging` case above for why, and
+`../SKILL.md`'s "Compliance preflight sweep" section for what to do instead.
 
 ## Candidate repair after the staging merge
 

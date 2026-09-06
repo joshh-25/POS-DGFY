@@ -259,22 +259,38 @@ it splits by flow:
   immediately before cutting `release/<label>`.
 
 Either way it's the same two-check-then-resolve procedure defined in "Frozen candidate and repair
-loop" above, re-run here rather than trusting a staging-leg pass from days or weeks earlier. **Exact
-commands, pinned to a clean checkout, not whatever's checked out locally (fixed per PR #1672 review,
-RF-2):** `references/promotion-runbook.md`'s "Compliance preflight — pinned target-ref scan"
-section — run it against `origin/staging` for the default flow's `release/<candidate_id>-rN` cut
-(the runbook's own established `origin/staging`-in-place-of-`origin/develop` substitution for this
-leg — `origin/staging` is what `release/<label>` is actually cut from here, and per the
-frozen-candidate rule newer `origin/develop` work was never folded into this candidate, so scanning
-`develop` instead would risk both false positives from unrelated later work and blindness to a
-staging-only repair's own declaration changes) or against `origin/develop` for the #1007-gated
-exception's direct `release/<label>` cut. Empty output on both checks → clear, proceed to cut the
-branch; otherwise resolve exactly as described above before cutting it. The workflow runs against
-its own ephemeral CI-provisioned instance — no `environment:` input, no secrets, nothing to provision
-(superseded #1121's `stage.dgfy.ph` bot-account design; see the ADR 0074 amendment dated 2026-08-31
-for why). **No `NOT-EXECUTED-*` declaration may reach `main`** — unchanged — and #1007's expedited
-override (below) remains the one case a `NOT-EXECUTED-*` declaration may legitimately still reach
-`main`, logged and authorized, not silent.
+loop" above, re-run here rather than trusting a staging-leg pass from days or weeks earlier — same
+`references/promotion-runbook.md`'s "Compliance preflight — pinned target-ref scan" section,
+parameterized by `TARGET_REF` (RF-4, PR #1672 review) rather than hard-coded, and pinned to a
+per-run checkout at a unique path, never a fixed shared one (RF-6, same review): set `TARGET_REF` to
+`origin/staging` for the default flow's `release/<candidate_id>-rN` cut (the runbook's own
+established `origin/staging`-in-place-of-`origin/develop` substitution for this leg — `origin/staging`
+is what `release/<label>` is actually cut from here, and per the frozen-candidate rule newer
+`origin/develop` work was never folded into this candidate, so scanning `develop` instead would risk
+both false positives from unrelated later work and blindness to a staging-only repair's own
+declaration changes), or `origin/develop` for the #1007-gated exception's direct `release/<label>`
+cut. Empty output on both checks → clear, proceed to cut the branch.
+
+**Otherwise, the resolve behavior itself now splits by `$TARGET_REF` too (RF-4, PR #1672 review) —
+this is not a symmetric substitution.** When `TARGET_REF` is `origin/develop`, resolve exactly as
+described above before cutting. When `TARGET_REF` is `origin/staging` and something is found: **stop,
+don't dispatch the sweep against it.** `compliance-preflight-sweep.yml`'s reconciliation PR is
+hardcoded to `--base develop` (its own workflow file), so dispatching it with `--ref staging` would
+still open a `develop`-based PR — but built from `staging`'s tree, which would bundle every unrelated
+difference between the two branches into that PR, not just the declaration fix; it also would not
+actually update `origin/staging` at all, so refreshing and re-checking afterward would show no
+change regardless. A finding here in the default flow is exactly the anomaly named above — treat it
+as such, escalate, and route any genuine fix through `references/promotion-runbook.md`'s "Candidate
+repair after the staging merge" (a `fix/staging/*` branch PR'd directly into `staging`,
+hand-reconciling the declaration via `docs/compliance/request-time-preflight-protocol.md`'s
+local-debugging scripts if a live preflight run is actually needed) — never this section's
+`develop`-based dispatch-and-merge flow.
+
+The workflow runs against its own ephemeral CI-provisioned instance — no `environment:` input, no
+secrets, nothing to provision (superseded #1121's `stage.dgfy.ph` bot-account design; see the ADR
+0074 amendment dated 2026-08-31 for why). **No `NOT-EXECUTED-*` declaration may reach `main`** —
+unchanged — and #1007's expedited override (below) remains the one case a `NOT-EXECUTED-*`
+declaration may legitimately still reach `main`, logged and authorized, not silent.
 
 **`gate:release:local` is no longer a step in this procedure (since 2026-09-03, #1431 Phase C/D).**
 Every gate it used to run locally is now delegated to `promotion-quality-gate.yml`

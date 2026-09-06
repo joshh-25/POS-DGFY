@@ -1327,7 +1327,9 @@ per `promoter`'s own merge table — no new merge authority granted by this entr
 leaving that step for a human to notice a separate GitHub issue after the fact. Full procedure:
 `.agents/skills/promoter/SKILL.md`'s "Frozen candidate and repair loop" section;
 executable commands: `.agents/skills/promoter/references/promotion-runbook.md`'s
-"Default: `develop` → `staging` → `main`" section.
+"Default: `develop` → `staging` → `main`" section. This changes ADR 0074 Decision 5's own anchor
+(`[default]` tier) — amended in the same PR, see that ADR's 2026-09-06 #1648 amendment rather than
+restated here.
 
 **The compliance verification ladder table** (2026-08-22 amendment above, updated 2026-08-25,
 2026-09-02) is **not rewritten in place**, same established convention as every amendment on this
@@ -1347,9 +1349,15 @@ default three-stage flow, by contrast, it genuinely is defense-in-depth: the fro
 (no wholesale `develop` merge into an active candidate) and the mid-soak "ship, don't fold" rule
 (this document's own 2026-09-06 #1660 entry above) together guarantee nothing new lands into a
 candidate between the `to-staging/<candidate_id>` cut and the `release/<label>` cut, so the pre-`main`
-check should always find the same clean state the staging-leg check already established. Both
-checks now share the identical execute-and-resolve behavior (not verify-only) — full split by flow:
-`.agents/skills/promoter/SKILL.md`'s "Compliance preflight sweep" section under "Pre-`main` gates".
+check should always find the same clean state the staging-leg check already established. **Not a
+symmetric substitution, though**: the default flow's pre-`main` check scans `origin/staging` (what
+`release/<label>` is actually cut from there), and because the sweep's reconciliation PR is
+hardcoded to `--base develop`, a finding against `origin/staging` cannot go through the same
+dispatch-and-merge resolve path — it's a frozen-candidate anomaly instead, escalated and routed
+through a `fix/staging/*` repair. The `#1007`-gated exception's and the staging-leg's own checks
+(both against `origin/develop`) do share the identical execute-and-resolve behavior. Full split by
+flow: `.agents/skills/promoter/SKILL.md`'s "Compliance preflight sweep" section under "Pre-`main`
+gates".
 
 **What's unchanged:** "No `NOT-EXECUTED-*` declaration may reach `main`" (this document's own
 standing rule), the full-scan discovery method (#1374, not a `develop..main` diff), the supervised

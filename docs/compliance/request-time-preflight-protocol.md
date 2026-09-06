@@ -150,16 +150,25 @@ seven identical recurring tickets: #1387, #1419, #1430, #1505, #1544, #1574,
 #1618) — and again, kept on purpose as a defense-in-depth double-check, before
 cutting `release/<label>` into `main` (this second checkpoint is also the
 *only* one the #1007-gated expedited exception ever runs, since that path
-skips the staging leg entirely). At either point, `promoter` now goes past
-verify into resolve: if a check turns up something outstanding, it dispatches
+skips the staging leg entirely). At the staging-leg checkpoint, and at the
+pre-`main` checkpoint whenever it's scanning `origin/develop` (the #1007
+exception's own case), `promoter` now goes past verify into resolve: if a
+check turns up something outstanding, it dispatches
 `compliance-preflight-sweep.yml` itself and then opens and merges the
 resulting reconciliation PR itself — an ordinary `develop`-base PR, already
 unattended-mergeable per `promoter`'s own merge table — rather than leaving
 that step for a human or credentialed AI session to notice the standing issue
-afterward. Full procedure and the flow-by-flow split:
-`.agents/skills/promoter/SKILL.md`'s "Frozen candidate and repair loop" and
-"Compliance preflight sweep" sections; `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s
-2026-09-06 #1648 amendment owns the policy-level record of this change.
+afterward. The default flow's own pre-`main` checkpoint instead scans
+`origin/staging` (what `release/<label>` is actually cut from there); since
+the sweep's reconciliation PR is hardcoded to `--base develop`, a finding
+there can't go through this same dispatch-and-merge path — it's treated as a
+frozen-candidate anomaly and escalated instead. Full procedure and the
+flow-by-flow split: `.agents/skills/promoter/SKILL.md`'s "Frozen candidate and
+repair loop" and "Compliance preflight sweep" sections;
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-09-06 #1648 amendment owns the
+policy-level record of this change; `docs/architecture/adr/
+0074-retire-staging-branch-from-default-promotion-path.md`'s 2026-09-06
+amendment owns the architectural decision record.
 
 **Discovery is a full scan, not a `develop..main` diff (#1374, 2026-09-02, ADR
 0074 Decision 5 amendment).** The sweep used to auto-discover its work by
