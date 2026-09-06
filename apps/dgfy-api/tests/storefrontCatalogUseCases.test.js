@@ -1383,7 +1383,7 @@ describe('storefront catalog use cases', () => {
     // Phase 301 (#265): the <SKU>__<variant>.<ext> bulk correlation convention -- section 5 of
     // the corrected plan. A bare <SKU>.<ext> file is already covered by every test above this
     // point (unchanged behavior); these cover the new suffix-driven grouping specifically.
-    it('uploadBulkStorefrontCatalogImages combines <SKU>__large/medium/thumbnail siblings into one store() call', async () => {
+    it('uploadBulkStorefrontCatalogImages combines <SKU>__large/medium/thumbnail siblings into one store() call when the gate is "on"', async () => {
         const largePath = await writeTempUpload({ prefix: 'bulk-sf-variant-large' });
         const mediumPath = await writeTempUpload({ prefix: 'bulk-sf-variant-medium' });
         const thumbnailPath = await writeTempUpload({ prefix: 'bulk-sf-variant-thumb' });
@@ -1394,9 +1394,15 @@ describe('storefront catalog use cases', () => {
         const itemRepository = createBulkStorefrontRepository({
             items: [{ item_id: 800, sku_code: 'SF-800', default_sale_price: 100 }]
         });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'on' }
+            })
+        };
         const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
             itemRepository,
-            imageStorage: { store, remove: jest.fn() }
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
         });
 
         const result = await useCase({
@@ -1419,13 +1425,135 @@ describe('storefront catalog use cases', () => {
             clientVariantFiles: {
                 medium: { tempPath: mediumPath, reportedMime: 'image/png' },
                 thumbnail: { tempPath: thumbnailPath, reportedMime: 'image/png' }
-            }
+            },
+            imageClientConversionState: 'on',
+            imageClientConversionScope: 'storefront_catalog_bulk'
         });
         expect(result.results).toEqual(expect.arrayContaining([
             expect.objectContaining({ filename: 'SF-800__large.png', variant_key: 'large', status: 'uploaded' }),
             expect.objectContaining({ filename: 'SF-800__medium.png', variant_key: 'medium', status: 'uploaded' }),
             expect.objectContaining({ filename: 'SF-800__thumbnail.png', variant_key: 'thumbnail', status: 'uploaded' })
         ]));
+    });
+
+    // #1643 (298d, Finding 3): the bulk gate-check block below mirrors the four single-image gate
+    // cases above (lines ~499-634) applied to the bulk usecase -- closed, opt_in-excluded,
+    // opt_in-included, and unconditionally-on. Before this, a `<SKU>__large/medium` filename was
+    // honored unconditionally regardless of `image_client_conversion`.
+    it('uploadBulkStorefrontCatalogImages forces acceptedAsClientLarge/clientVariantFiles off when image_client_conversion is "off"', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-sf-gate-off-large' });
+        const mediumPath = await writeTempUpload({ prefix: 'bulk-sf-gate-off-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/sf-810.webp',
+            url: '/uploads/storefront-catalog/tenant/sf-810.webp'
+        });
+        const itemRepository = createBulkStorefrontRepository({
+            items: [{ item_id: 810, sku_code: 'SF-810', default_sale_price: 100 }]
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'off' }
+            })
+        };
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository,
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            files: [
+                { path: largePath, mimetype: 'image/png', originalname: 'SF-810__large.png', size: PNG_BYTES.length },
+                { path: mediumPath, mimetype: 'image/png', originalname: 'SF-810__medium.png', size: PNG_BYTES.length }
+            ],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({ uploaded: 1, failed: 0 });
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            itemId: 810,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'off',
+            imageClientConversionScope: 'storefront_catalog_bulk'
+        }));
+        // The physical variant labeling is unaffected by the gate -- the medium file is still
+        // reported as 'medium' even though its bytes were never sent to imageStorage.store().
+        expect(result.results).toEqual(expect.arrayContaining([
+            expect.objectContaining({ filename: 'SF-810__medium.png', variant_key: 'medium', status: 'uploaded' })
+        ]));
+    });
+
+    it('uploadBulkStorefrontCatalogImages forces off when "opt_in" excludes storefront_catalog_bulk', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-sf-gate-excluded-large' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/sf-811.webp',
+            url: '/uploads/storefront-catalog/tenant/sf-811.webp'
+        });
+        const itemRepository = createBulkStorefrontRepository({
+            items: [{ item_id: 811, sku_code: 'SF-811', default_sale_price: 100 }]
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['pos_catalog_bulk'] }
+            })
+        };
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository,
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            files: [{ path: largePath, mimetype: 'image/png', originalname: 'SF-811__large.png', size: PNG_BYTES.length }],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({ uploaded: 1 });
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            itemId: 811,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'storefront_catalog_bulk'
+        }));
+    });
+
+    it('uploadBulkStorefrontCatalogImages honors the filename when "opt_in" includes storefront_catalog_bulk', async () => {
+        const largePath = await writeTempUpload({ prefix: 'bulk-sf-gate-included-large' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/sf-812.webp',
+            url: '/uploads/storefront-catalog/tenant/sf-812.webp'
+        });
+        const itemRepository = createBulkStorefrontRepository({
+            items: [{ item_id: 812, sku_code: 'SF-812', default_sale_price: 100 }]
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['storefront_catalog_bulk'] }
+            })
+        };
+        const useCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+            itemRepository,
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            files: [{ path: largePath, mimetype: 'image/png', originalname: 'SF-812__large.png', size: PNG_BYTES.length }],
+            user: editableUser
+        });
+
+        expect(result.summary).toMatchObject({ uploaded: 1 });
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            itemId: 812,
+            acceptedAsClientLarge: true,
+            clientVariantFiles: null,
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'storefront_catalog_bulk'
+        }));
     });
 
     it('uploadBulkStorefrontCatalogImages flags two <SKU>__large files for the same SKU as duplicate_variant_for_sku', async () => {
