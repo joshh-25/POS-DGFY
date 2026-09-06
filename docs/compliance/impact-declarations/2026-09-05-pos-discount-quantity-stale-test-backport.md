@@ -11,8 +11,8 @@ verification_evidence: packages/web-core/src/features/pos/__tests__/discountQuan
 rollback_note: Revert this file's one-line change. This is a test-only assertion fix (the test's literal-substring check now matches the variable name POSDiscountWorkspace.jsx already uses); no production file is touched by this change, so a revert has zero runtime effect beyond re-breaking the stale assertion.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T05:25:00Z
-preflight_request_ref: NOT-EXECUTED-1611-POS-DISCOUNT-QUANTITY-STALE-TEST
+preflight_run_at: 2026-09-06T06:19:25.426Z
+preflight_request_ref: PREFLIGHT-34016076574-2026-09-05-POS-DISCOUNT-QUANTITY-STALE-TEST-BACKPORT
 ---
 
 # Backport #1603's stale discount-quantity contract test fix to `develop`

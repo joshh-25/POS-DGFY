@@ -12,8 +12,8 @@ verification_evidence: apps/dgfy-api/tests/storeGuestCheckoutOtp.unit.test.js --
 rollback_note: No destructive change, but rollback is NOT code-only -- corrected per pr-reviewer RF-2 (2026-09-05), which caught that the pre-#1614 emailOtpService omits delivery_status on create and so inherits whatever the column default is; once this migration applies, that default is 'pending', not 'sent', so old code paired with the new default would read every successful send back as 'pending' and the guest-checkout use case would wrongly reject it as undelivered. Coordinated rollback order, if ever needed: quiesce OTP traffic (or take the API down briefly), run the migration's down() (which backfills any 'pending' row to 'failed' with an explanatory delivery_error before narrowing the enum back, the same lossy-but-honest approach the prior 20260807000001 migration's down() already established for 'recorded'/'bounced'), only then deploy the previous code, then resume traffic. Never serve old code against the widened/'pending'-defaulted schema, and never serve this PR's code against the narrowed enum. The error-contract change (storeUseCases.js) and the boot-time SMTP verify (server.js) remain independently revertible as pure code with no migration coupling.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T03:48:59.000Z
-preflight_request_ref: NOT-EXECUTED-1614-GUEST-CHECKOUT-OTP-DELIVERY-ERROR-CONTRACT
+preflight_run_at: 2026-09-06T06:19:25.424Z
+preflight_request_ref: PREFLIGHT-34016076574-2026-09-05-GUEST-CHECKOUT-OTP-DELIVERY-ERROR-CONTRACT
 ---
 
 # Guest checkout OTP delivery error contract, boot-time SMTP verify, honest delivery_status (#1614)

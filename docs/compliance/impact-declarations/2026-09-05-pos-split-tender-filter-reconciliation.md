@@ -11,8 +11,8 @@ verification_evidence: Focused POS report and history repository tests; shared f
 rollback_note: Revert the read-side filter and presentation changes; no schema migration or payment-record mutation is introduced.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-ISSUE-1623
+preflight_run_at: 2026-09-06T06:19:25.427Z
+preflight_request_ref: PREFLIGHT-34016076574-2026-09-05-POS-SPLIT-TENDER-FILTER-RECONCILIATION
 ---
 
 # Split-tender report and history filters
