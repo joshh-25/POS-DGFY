@@ -1258,3 +1258,48 @@ describes the mechanics of, not a change to its tier. No `[binding]` clause of t
 other ADR is changed by this entry.
 
 PR: (this PR). Refs #1278, #1548. Does not close #1278 — Phase 296 (enforcement) is a separate PR.
+
+### 2026-09-06: Mid-soak `develop` update — ship the frozen candidate, don't fold new work in (#1660)
+
+Names, as its own decision, a case the 2026-09-04 "Frozen promotion-candidate repair loop" entry
+above already implied but never stated directly: **new work lands on `develop` while a candidate is
+already soaking in `staging`, still on its way to `main`.** Do you fold the new work into what's
+about to ship, or not?
+
+**Resolved: ship the current candidate as already qualified; the new `develop` work becomes the seed
+of the next ordinary candidate.** Three options were weighed:
+
+1. Hold the current candidate, merge the new `develop` work into it, requalify the combined set
+   under a bumped version before shipping anything.
+2. Keep the current candidate's version number, merge the new work in anyway, and call the result a
+   "hotfix" to that same version.
+3. Ship the current candidate to `main` as already qualified; treat the new `develop` work as the
+   seed of the next ordinary candidate, cut whenever it's ready.
+
+**Option 2 is rejected outright, not just discouraged.** It collides with two separate rules at
+once: ADR 0081 Decision 7 (`[binding]`, tag immutability) forbids changing what a published version
+tag's content is without a real version bump — there is no such thing as silently re-shipping the
+same number with different contents. And it misuses the `fix/staging/<candidate_id>-rN` repair
+mechanism, which exists specifically to fix a defect discovered *in* the candidate already soaking —
+not to admit unrelated new feature work that happened to land on `develop` in the meantime. The word
+"hotfix" doesn't change what the merge structurally is.
+
+**Option 1 is mechanically valid but strictly worse than Option 3, not a cheaper path.** The frozen-
+candidate rule already requires that merging anything new into an active candidate invalidates its
+qualification — so Option 1 pays the exact same full re-soak cost Option 3 does, while additionally
+throwing away a candidate that was otherwise ready to ship. There is no version of "fold it in to
+save a promotion cycle" that is actually cheaper once the re-soak requirement is accounted for.
+
+**Option 3 is simply the frozen-candidate rule working as designed, not a special case.** Cutting a
+new candidate shortly after the previous one shipped is unremarkable — nothing in the per-candidate
+floor-check (ADR 0081 Decision 6) or release-note obligation (ADR 0082 Decision 3) treats back-to-
+back candidates as exceptional. If the new `develop` work is genuinely too urgent to wait for its own
+ordinary `staging` soak, that is what the #1007 expedited `develop → main` override exists for
+(phrase-gated, logged every invocation) — a deliberate, separate lever, not a reason to fold new
+scope into an already-soaking candidate.
+
+This is a `[default]`-tier clarification under ADR 0039 of the existing frozen-candidate principle —
+no `[binding]` clause is changed, including ADR 0081 Decision 7 itself, which this entry only cites
+as the reason Option 2 fails.
+
+PR: (this PR). Closes #1660.
