@@ -1,6 +1,6 @@
 {
   "name": "dgfy-ims",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "DGFY SKUpervisor (IMS) frontend workspace (issue #322 split from apps/dgfy-web).",
   "author": "DGFY",
   "type": "module",
