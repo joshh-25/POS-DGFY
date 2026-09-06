@@ -28,7 +28,11 @@ const createLocalPosCatalogImageStorage = () => ({
         // when omitted, so every pre-existing caller is unaffected.
         sourceMimeHint = null,
         acceptedAsClientLarge = false,
-        clientVariantFiles = null
+        clientVariantFiles = null,
+        // Phase 298 (#265): observability-only, threaded straight through -- see
+        // imageAssetStorage.js's own docs.
+        imageClientConversionState = null,
+        imageClientConversionScope = null
     }) {
         if (!tempPath) {
             throw new Error('Temporary file path is required');
@@ -49,7 +53,9 @@ const createLocalPosCatalogImageStorage = () => ({
             retainOriginal: false,
             sourceMimeHint,
             acceptedAsClientLarge,
-            clientVariantFiles
+            clientVariantFiles,
+            imageClientConversionState,
+            imageClientConversionScope
         });
     },
 

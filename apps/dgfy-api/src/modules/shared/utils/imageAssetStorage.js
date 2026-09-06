@@ -371,7 +371,12 @@ export const storeOptimizedImageAsset = async ({
     // in: an old caller passing none of these gets byte-identical behavior to before this phase.
     sourceMimeHint = null,
     acceptedAsClientLarge = false,
-    clientVariantFiles = null
+    clientVariantFiles = null,
+    // Phase 298 (#265) additions, observability-only: the resolved image_client_conversion mode
+    // and scope for this specific request, threaded through purely to be logged below. Optional
+    // and inert -- a caller that omits these (any pre-Phase-298 caller) just logs `null` for both.
+    imageClientConversionState = null,
+    imageClientConversionScope = null
 }) => {
     if (!uploadsRoot || !surfaceFolder || !tempPath) {
         throw new Error('uploadsRoot, surfaceFolder, and tempPath are required');
@@ -642,7 +647,11 @@ export const storeOptimizedImageAsset = async ({
             source_h: sourceHeight,
             encode_count: encodeCount,
             wall_ms: Date.now() - wallStart,
-            cpu_ms: Math.round((cpuDelta.user + cpuDelta.system) / 1000)
+            cpu_ms: Math.round((cpuDelta.user + cpuDelta.system) / 1000),
+            // Phase 298 (#265): lets the client-vs-server fallback rate be sliced by rollout
+            // stage, not just aggregated -- see imageClientConversionGate.js.
+            image_client_conversion_state: imageClientConversionState,
+            image_client_conversion_scope: imageClientConversionScope
         });
 
         return {

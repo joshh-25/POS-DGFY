@@ -25,6 +25,10 @@ import {
     validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
 import { parseBulkCatalogFilename, groupBulkCatalogFilesBySku } from '../../shared/utils/bulkCatalogImageFilename.js';
+import {
+    IMAGE_CLIENT_CONVERSION_SCOPE,
+    resolveImageClientConversionGate
+} from '../../shared/utils/imageClientConversionGate.js';
 import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import { POS_ORDER_METHODS } from '../../shared/constants/orderMethods.js';
 import {
@@ -6525,7 +6529,7 @@ export const buildUpdateBulkPosCatalogOverridesUseCase = ({ posRepository }) => 
     };
 };
 
-export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage }) => {
+export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage, settingsRepository = null }) => {
     // Phase 301 (#265): accepts either the legacy singular `file` (kept so no existing caller has
     // to change) or the new `.fields()`-shaped `files` object (`{ image: [...], image_medium?:
     // [...], image_thumbnail?: [...] }`) posHandlers.js now sends -- `files.image[0]` wins when
@@ -6534,8 +6538,8 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
     return async ({ itemId, file = null, files = null, clientImageManifest = null, user }) => {
         const normalizedItemId = parsePositiveInt(itemId);
         const resolvedFile = files?.image?.[0] || file;
-        const mediumFile = files?.image_medium?.[0] || null;
-        const thumbnailFile = files?.image_thumbnail?.[0] || null;
+        const rawMediumFile = files?.image_medium?.[0] || null;
+        const rawThumbnailFile = files?.image_thumbnail?.[0] || null;
         let stored = null;
         let storedCommitted = false;
         if (!normalizedItemId) {
@@ -6553,6 +6557,19 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
                 { statusCode: 400 }
             ));
         }
+
+        // Phase 298 (#265): server-authoritative gate -- a tenant whose `image_client_conversion`
+        // setting doesn't permit this scope gets the medium/thumbnail variants and the client
+        // manifest silently discarded before they ever reach imageStorage.store(). This is the
+        // literal mechanism for "the server ignores the manifest and extra parts entirely," not a
+        // separate code path -- storeOptimizedImageAsset itself needs no changes.
+        const gate = await resolveImageClientConversionGate({
+            scope: IMAGE_CLIENT_CONVERSION_SCOPE.POS_CATALOG_SINGLE,
+            settingsRepository
+        });
+        const mediumFile = gate.enabled ? rawMediumFile : null;
+        const thumbnailFile = gate.enabled ? rawThumbnailFile : null;
+        const effectiveClientImageManifest = gate.enabled ? clientImageManifest : null;
 
         try {
             if (!hasPermission(user, PERMISSION_EDIT_POS_CATALOG)) {
@@ -6604,12 +6621,16 @@ export const buildUploadPosCatalogImageUseCase = ({ posRepository, imageStorage 
                 originalName: resolvedFile.originalname,
                 reportedMime: resolvedFile.mimetype,
                 tempPath: resolvedFile.path,
-                sourceMimeHint: clientImageManifest?.sourceMimeHint || null,
-                acceptedAsClientLarge: clientImageManifest?.largePreOptimized === true,
+                sourceMimeHint: effectiveClientImageManifest?.sourceMimeHint || null,
+                acceptedAsClientLarge: effectiveClientImageManifest?.largePreOptimized === true,
                 clientVariantFiles: (mediumFile || thumbnailFile) ? {
                     ...(mediumFile ? { medium: { tempPath: mediumFile.path, reportedMime: mediumFile.mimetype } } : {}),
                     ...(thumbnailFile ? { thumbnail: { tempPath: thumbnailFile.path, reportedMime: thumbnailFile.mimetype } } : {})
-                } : null
+                } : null,
+                // Phase 298 (#265): threaded through to the shared Phase 294 structured log so the
+                // client-vs-server fallback rate can be sliced by rollout stage, not just aggregated.
+                imageClientConversionState: gate.mode,
+                imageClientConversionScope: gate.scope
             });
 
             const data = await posRepository.updateCatalogImage(normalizedItemId, {

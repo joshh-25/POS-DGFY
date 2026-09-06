@@ -496,6 +496,174 @@ describe('storefront catalog use cases', () => {
         await fs.rm(tempPath, { force: true });
     });
 
+    it('uploadStorefrontCatalogImage ignores the client manifest and extra parts entirely when image_client_conversion is "off" (Phase 298, #265)', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gate-off' });
+        const mediumPath = await writeTempUpload({ prefix: 'storefront-gate-off-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/gate-off.png',
+            url: '/uploads/storefront-catalog/tenant/gate-off.png'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'off' }
+            })
+        };
+        const useCase = buildUploadStorefrontCatalogImageUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 300, name: 'Gate off item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 300, storefront_visible: true, storefront_image_path: null }),
+                updateStorefrontCatalogImage: jest.fn().mockResolvedValue({ item_id: 300, storefront_visible: true })
+            },
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            itemId: 300,
+            files: {
+                image: [{ path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 }],
+                image_medium: [{ path: mediumPath, mimetype: 'image/png', originalname: 'menu__medium.png', size: 12 }]
+            },
+            clientImageManifest: { sourceMimeHint: 'image/heic', largePreOptimized: true },
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({ item_id: 300 }));
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            sourceMimeHint: null,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'off',
+            imageClientConversionScope: 'storefront_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+        await fs.rm(mediumPath, { force: true });
+    });
+
+    it('uploadStorefrontCatalogImage ignores the manifest and extra parts when "opt_in" excludes storefront_catalog_single', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gate-excluded' });
+        const mediumPath = await writeTempUpload({ prefix: 'storefront-gate-excluded-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/gate-excluded.png',
+            url: '/uploads/storefront-catalog/tenant/gate-excluded.png'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['pos_catalog_single'] }
+            })
+        };
+        const useCase = buildUploadStorefrontCatalogImageUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 301, name: 'Gate excluded item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 301, storefront_visible: true, storefront_image_path: null }),
+                updateStorefrontCatalogImage: jest.fn().mockResolvedValue({ item_id: 301, storefront_visible: true })
+            },
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            itemId: 301,
+            files: {
+                image: [{ path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 }],
+                image_medium: [{ path: mediumPath, mimetype: 'image/png', originalname: 'menu__medium.png', size: 12 }]
+            },
+            clientImageManifest: { sourceMimeHint: 'image/heic', largePreOptimized: true },
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({ item_id: 301 }));
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            sourceMimeHint: null,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'storefront_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+        await fs.rm(mediumPath, { force: true });
+    });
+
+    it('uploadStorefrontCatalogImage accepts the client manifest and extra parts when "opt_in" includes storefront_catalog_single', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gate-included' });
+        const mediumPath = await writeTempUpload({ prefix: 'storefront-gate-included-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/gate-included.png',
+            url: '/uploads/storefront-catalog/tenant/gate-included.png'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['storefront_catalog_single'] }
+            })
+        };
+        const useCase = buildUploadStorefrontCatalogImageUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 302, name: 'Gate included item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 302, storefront_visible: true, storefront_image_path: null }),
+                updateStorefrontCatalogImage: jest.fn().mockResolvedValue({ item_id: 302, storefront_visible: true })
+            },
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            itemId: 302,
+            files: {
+                image: [{ path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 }],
+                image_medium: [{ path: mediumPath, mimetype: 'image/png', originalname: 'menu__medium.png', size: 12 }]
+            },
+            clientImageManifest: { sourceMimeHint: 'image/heic', largePreOptimized: true },
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({ item_id: 302 }));
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            sourceMimeHint: 'image/heic',
+            acceptedAsClientLarge: true,
+            clientVariantFiles: { medium: { tempPath: mediumPath, reportedMime: 'image/png' } },
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'storefront_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+        await fs.rm(mediumPath, { force: true });
+    });
+
+    it('uploadStorefrontCatalogImage gates closed (fail-safe) when no settingsRepository is provided', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gate-no-repo' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'storefront-catalog/tenant/gate-no-repo.png',
+            url: '/uploads/storefront-catalog/tenant/gate-no-repo.png'
+        });
+        const useCase = buildUploadStorefrontCatalogImageUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 303, name: 'No repo item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 303, storefront_visible: true, storefront_image_path: null }),
+                updateStorefrontCatalogImage: jest.fn().mockResolvedValue({ item_id: 303, storefront_visible: true })
+            },
+            imageStorage: { store, remove: jest.fn() }
+            // settingsRepository intentionally omitted -- matches every pre-Phase-298 test above.
+        });
+
+        const result = await useCase({
+            itemId: 303,
+            file: { path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 },
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({ item_id: 303 }));
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            imageClientConversionState: 'off',
+            imageClientConversionScope: 'storefront_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+    });
+
     it('uploadStorefrontCatalogGalleryImages appends new images and keeps the first existing image as primary', async () => {
         const firstTempPath = path.join(os.tmpdir(), `storefront-gallery-a-${Date.now()}.png`);
         const secondTempPath = path.join(os.tmpdir(), `storefront-gallery-b-${Date.now()}.png`);

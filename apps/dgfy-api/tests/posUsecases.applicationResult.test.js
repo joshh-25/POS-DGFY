@@ -1038,6 +1038,180 @@ describe('pos use-cases application result contract', () => {
         await fs.rm(tempPath, { force: true });
     });
 
+    it('uploadPosCatalogImage ignores the client manifest and extra parts entirely when image_client_conversion is "off" (Phase 298, #265)', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'pos-gate-off' });
+        const mediumPath = await writeTempUpload({ prefix: 'pos-gate-off-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'pos-catalog/tenant/gate-off.png',
+            url: '/uploads/pos-catalog/tenant/gate-off.png'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'off' }
+            })
+        };
+        const useCase = buildUploadPosCatalogImageUseCase({
+            posRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 206, category: 'product', product_type: 'finished_goods' }),
+                findCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 206, pos_visible: true, pos_image_path: null }),
+                updateCatalogImage: jest.fn().mockResolvedValue({ item_id: 206, pos_visible: true }),
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            },
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            itemId: 206,
+            files: {
+                image: [{ path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 }],
+                image_medium: [{ path: mediumPath, mimetype: 'image/png', originalname: 'menu__medium.png', size: 12 }]
+            },
+            clientImageManifest: { sourceMimeHint: 'image/heic', largePreOptimized: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        // Byte-identical to a bare image-only request: no client variant fields ever reach
+        // imageStorage.store(), regardless of what the request carried.
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            sourceMimeHint: null,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'off',
+            imageClientConversionScope: 'pos_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+        await fs.rm(mediumPath, { force: true });
+    });
+
+    it('uploadPosCatalogImage ignores the manifest and extra parts when "opt_in" excludes pos_catalog_single', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'pos-gate-excluded' });
+        const mediumPath = await writeTempUpload({ prefix: 'pos-gate-excluded-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'pos-catalog/tenant/gate-excluded.png',
+            url: '/uploads/pos-catalog/tenant/gate-excluded.png'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['storefront_catalog_single'] }
+            })
+        };
+        const useCase = buildUploadPosCatalogImageUseCase({
+            posRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 207, category: 'product', product_type: 'finished_goods' }),
+                findCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 207, pos_visible: true, pos_image_path: null }),
+                updateCatalogImage: jest.fn().mockResolvedValue({ item_id: 207, pos_visible: true }),
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            },
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            itemId: 207,
+            files: {
+                image: [{ path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 }],
+                image_medium: [{ path: mediumPath, mimetype: 'image/png', originalname: 'menu__medium.png', size: 12 }]
+            },
+            clientImageManifest: { sourceMimeHint: 'image/heic', largePreOptimized: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            sourceMimeHint: null,
+            acceptedAsClientLarge: false,
+            clientVariantFiles: null,
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'pos_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+        await fs.rm(mediumPath, { force: true });
+    });
+
+    it('uploadPosCatalogImage accepts the client manifest and extra parts when "opt_in" includes pos_catalog_single', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'pos-gate-included' });
+        const mediumPath = await writeTempUpload({ prefix: 'pos-gate-included-medium' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'pos-catalog/tenant/gate-included.png',
+            url: '/uploads/pos-catalog/tenant/gate-included.png'
+        });
+        const settingsRepository = {
+            getSettingsByKeys: jest.fn().mockResolvedValue({
+                image_client_conversion: { value: 'opt_in' },
+                image_client_conversion_scopes: { value: ['pos_catalog_single'] }
+            })
+        };
+        const useCase = buildUploadPosCatalogImageUseCase({
+            posRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 208, category: 'product', product_type: 'finished_goods' }),
+                findCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 208, pos_visible: true, pos_image_path: null }),
+                updateCatalogImage: jest.fn().mockResolvedValue({ item_id: 208, pos_visible: true }),
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            },
+            imageStorage: { store, remove: jest.fn() },
+            settingsRepository
+        });
+
+        const result = await useCase({
+            itemId: 208,
+            files: {
+                image: [{ path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 }],
+                image_medium: [{ path: mediumPath, mimetype: 'image/png', originalname: 'menu__medium.png', size: 12 }]
+            },
+            clientImageManifest: { sourceMimeHint: 'image/heic', largePreOptimized: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            sourceMimeHint: 'image/heic',
+            acceptedAsClientLarge: true,
+            clientVariantFiles: { medium: { tempPath: mediumPath, reportedMime: 'image/png' } },
+            imageClientConversionState: 'opt_in',
+            imageClientConversionScope: 'pos_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+        await fs.rm(mediumPath, { force: true });
+    });
+
+    it('uploadPosCatalogImage gates closed (fail-safe) when no settingsRepository is provided', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'pos-gate-no-repo' });
+        const store = jest.fn().mockResolvedValue({
+            path: 'pos-catalog/tenant/gate-no-repo.png',
+            url: '/uploads/pos-catalog/tenant/gate-no-repo.png'
+        });
+        const useCase = buildUploadPosCatalogImageUseCase({
+            posRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 209, category: 'product', product_type: 'finished_goods' }),
+                findCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 209, pos_visible: true, pos_image_path: null }),
+                updateCatalogImage: jest.fn().mockResolvedValue({ item_id: 209, pos_visible: true }),
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            },
+            imageStorage: { store, remove: jest.fn() }
+            // settingsRepository intentionally omitted -- matches every pre-Phase-298 test above.
+        });
+
+        const result = await useCase({
+            itemId: 209,
+            file: { path: tempPath, mimetype: 'image/png', originalname: 'menu.png', size: 12 },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(store).toHaveBeenCalledWith(expect.objectContaining({
+            imageClientConversionState: 'off',
+            imageClientConversionScope: 'pos_catalog_single'
+        }));
+
+        await fs.rm(tempPath, { force: true });
+    });
+
     it('uploadBulkPosCatalogImages returns per-file unmatched and duplicate filename statuses', async () => {
         const firstDuplicate = path.join(os.tmpdir(), `bulk-pos-dup-a-${Date.now()}.png`);
         const secondDuplicate = path.join(os.tmpdir(), `bulk-pos-dup-b-${Date.now()}.png`);

@@ -8,6 +8,14 @@ export {
     serializePosTransactionOperatorAttribution
 } from './serializers/posCashierAttendanceSerializers.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
+// Phase 298 (#265): static import, deliberately -- posUseCases.js already statically imports
+// `getAllSettingsUseCase` from '../../settings/index.js' (line 6 of that file) with no reverse
+// cycle (neither `settings/index.js` nor any settings usecase statically imports pos/ or
+// inventory/ -- confirmed by grep; the two dynamic imports in updateSettingsUseCase.js and
+// updateSettingByKeyUseCase.js exist specifically for the opposite direction, settings -> inventory,
+// which stays dynamic). A direct import of the settings repository here carries the same,
+// already-proven-safe direction.
+import { settingsRepository } from '../settings/repositories/settingsRepository.js';
 import { posPaymentProofStorage } from './repositories/posPaymentProofStorage.js';
 import {
     inventoryStockCommandService,
@@ -261,7 +269,8 @@ export const updatePosCatalogOverrideUseCase = buildUpdatePosCatalogOverrideUseC
 export const updateBulkPosCatalogOverridesUseCase = buildUpdateBulkPosCatalogOverridesUseCase({ posRepository });
 export const uploadPosCatalogImageUseCase = buildUploadPosCatalogImageUseCase({
     posRepository,
-    imageStorage: posCatalogImageStorage
+    imageStorage: posCatalogImageStorage,
+    settingsRepository
 });
 export const uploadBulkPosCatalogImagesUseCase = buildUploadBulkPosCatalogImagesUseCase({
     posRepository,
