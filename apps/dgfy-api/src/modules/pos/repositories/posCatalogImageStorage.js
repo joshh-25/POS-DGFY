@@ -18,7 +18,22 @@ const normalizeTenantSegment = (value) => {
 };
 
 const createLocalPosCatalogImageStorage = () => ({
-    async store({ itemId, originalName, reportedMime = null, tempPath }) {
+    async store({
+        itemId,
+        originalName,
+        reportedMime = null,
+        tempPath,
+        // Phase 301 (#265): optional client-derived-variant contract, threaded straight through to
+        // storeOptimizedImageAsset -- see that function's own docs for what each does. All inert
+        // when omitted, so every pre-existing caller is unaffected.
+        sourceMimeHint = null,
+        acceptedAsClientLarge = false,
+        clientVariantFiles = null,
+        // Phase 298 (#265): observability-only, threaded straight through -- see
+        // imageAssetStorage.js's own docs.
+        imageClientConversionState = null,
+        imageClientConversionScope = null
+    }) {
         if (!tempPath) {
             throw new Error('Temporary file path is required');
         }
@@ -33,7 +48,14 @@ const createLocalPosCatalogImageStorage = () => ({
             originalName,
             reportedMime,
             tempPath,
-            retainOriginal: false
+            // POS terminals stay capped -- unchanged (#265 epic, Phase 301 scope decision: keyed
+            // off which storage module handles the call, not a new client-sent signal).
+            retainOriginal: false,
+            sourceMimeHint,
+            acceptedAsClientLarge,
+            clientVariantFiles,
+            imageClientConversionState,
+            imageClientConversionScope
         });
     },
 

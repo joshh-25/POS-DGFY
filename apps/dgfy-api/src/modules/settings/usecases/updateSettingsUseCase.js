@@ -57,6 +57,7 @@ import { STORE_PROFILE_READ_SETTING_KEY, normalizeStoreProfileReadFlag } from '.
 import { applyWorkflowModeAuditLog, resolveWorkflowModeAuditBeforeValues } from './workflowModeAuditLog.js';
 import logger from '../../../config/logger.js';
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
+import { isPlatformControlledImageClientConversionKey } from '../../shared/utils/imageClientConversionGate.js';
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
 import { assertFulfillmentMethodAvailableForAccessModeTransition } from './customerAccessModeFulfillmentPolicy.js';
 import { assertLaundryWorkflowModeRuntimeOwnership } from './laundryWorkflowModeRuntimeGuard.js';
@@ -340,10 +341,20 @@ const extractTenantReviewedPosReceiptChanges = async ({ settingsRepository, sett
     const nextSettingsData = { ...settingsData };
     const reviewedSettingsData = {};
     const blockedSoftwareKeys = [];
+    const blockedImageClientConversionKeys = [];
 
     Object.keys(settingsData).forEach((key) => {
         if (isPlatformControlledPosSoftwareKey(key)) {
             blockedSoftwareKeys.push(key);
+            delete nextSettingsData[key];
+            return;
+        }
+        // Phase 298 (#265): mirrors buildUpdateSettingByKeyUseCase's own gate -- must also be
+        // enforced on this bulk PUT /settings path, or a tenant admin could bypass the single-key
+        // protection entirely by writing image_client_conversion(_scopes) through this endpoint
+        // instead.
+        if (isPlatformControlledImageClientConversionKey(key)) {
+            blockedImageClientConversionKeys.push(key);
             delete nextSettingsData[key];
             return;
         }
@@ -362,6 +373,20 @@ const extractTenantReviewedPosReceiptChanges = async ({ settingsRepository, sett
                 details: {
                     reason_code: 'POS_SOFTWARE_IDENTITY_PLATFORM_CONTROLLED',
                     setting_keys: blockedSoftwareKeys
+                }
+            }
+        );
+    }
+
+    if (blockedImageClientConversionKeys.length > 0) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Client-side image conversion rollout is configured by platform admin.',
+            {
+                statusCode: 403,
+                details: {
+                    reason_code: 'IMAGE_CLIENT_CONVERSION_PLATFORM_CONTROLLED',
+                    setting_keys: blockedImageClientConversionKeys
                 }
             }
         );

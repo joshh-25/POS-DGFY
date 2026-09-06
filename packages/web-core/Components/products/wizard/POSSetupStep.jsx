@@ -47,6 +47,7 @@ export default function POSSetupStep({
       .map((entry, index) => ({
         path: entry?.path || null,
         url: entry?.url || entry?.image_url || entry,
+        variants: entry?.variants || entry?.image_variants || null,
         is_primary: index === 0,
         sort_order: index
       }))
@@ -56,6 +57,7 @@ export default function POSSetupStep({
       gallery.unshift({
         path: storefrontConfig?.storefront_image_path || null,
         url: primaryUrl,
+        variants: storefrontConfig?.storefront_image_variants || null,
         is_primary: true,
         sort_order: 0
       });

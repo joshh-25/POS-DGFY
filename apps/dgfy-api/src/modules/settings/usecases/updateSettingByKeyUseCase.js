@@ -57,6 +57,7 @@ import {
     sanitizeSingleSettingForRead
 } from './posTerminalRegistrySecrets.js';
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
+import { isPlatformControlledImageClientConversionKey } from '../../shared/utils/imageClientConversionGate.js';
 import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
 import { assertFulfillmentMethodAvailableForAccessModeTransition } from './customerAccessModeFulfillmentPolicy.js';
 import { assertLaundryWorkflowModeRuntimeOwnership } from './laundryWorkflowModeRuntimeGuard.js';
@@ -206,6 +207,23 @@ export const buildUpdateSettingByKeyUseCase = ({
                         statusCode: 403,
                         details: {
                             reason_code: 'POS_SOFTWARE_IDENTITY_PLATFORM_CONTROLLED',
+                            setting_keys: [key]
+                        }
+                    }
+                ));
+            }
+            // Phase 298 (#265): image_client_conversion / image_client_conversion_scopes are a
+            // platform-controlled rollout lever, not a self-service tenant setting -- letting a
+            // tenant admin flip it would break the controlled ladder. Same pattern as the POS
+            // software identity keys above.
+            if (actorUser?.is_platform_admin !== true && isPlatformControlledImageClientConversionKey(key)) {
+                return fail(new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Client-side image conversion rollout is configured by platform admin.',
+                    {
+                        statusCode: 403,
+                        details: {
+                            reason_code: 'IMAGE_CLIENT_CONVERSION_PLATFORM_CONTROLLED',
                             setting_keys: [key]
                         }
                     }

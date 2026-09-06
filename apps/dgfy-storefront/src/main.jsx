@@ -17,6 +17,7 @@ import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowP
 import BusinessRegistrationSubmissionPage from './business/pages/BusinessRegistrationSubmissionPage.jsx';
 import { initBrowserSentry, setSentryRoute } from '../../../packages/web-core/src/observability/sentryClient.js';
 import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
+import VersionBadge from '../../../packages/web-core/src/components/common/VersionBadge.jsx';
 import {
   capturePageview,
   getStoredAnalyticsConsent,
@@ -90,6 +91,7 @@ function StoreRoot() {
       }}
     >
       <AnalyticsRouteTracker />
+      <VersionBadge label="Store" />
       <ConsentBanner onConsentChange={handleConsentChange} />
       <Routes>
         <Route

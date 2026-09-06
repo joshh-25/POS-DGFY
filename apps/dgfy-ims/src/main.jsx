@@ -18,6 +18,7 @@ import { shouldRefreshBrowserSessionForPath } from '../../../packages/web-core/s
 import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx' // Fix 10.3
 import NotFoundPage from '../../../packages/web-core/src/components/common/NotFoundPage.jsx'
 import GlobalApiErrorListener from '../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx'
+import VersionBadge from '../../../packages/web-core/src/components/common/VersionBadge.jsx'
 import { Toaster } from '@/components/ui/sonner'
 import { getRuntimeConfig } from '../../../packages/web-core/src/utils/runtimeConfig.js'
 import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from '../../../packages/web-core/src/observability/sentryClient.js'
@@ -386,6 +387,7 @@ const mountApp = () => {
           }}
         >
           <ObservabilityIdentitySync />
+          <VersionBadge label="IMS" />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />

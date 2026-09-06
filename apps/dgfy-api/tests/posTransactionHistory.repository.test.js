@@ -50,7 +50,7 @@ describe('POS transaction history repository query', () => {
         const [options] = findAndCountAll.mock.calls[0];
         const whereClauses = options.where[Op.and];
         const cashierClause = whereClauses.find((clause) => clause[Op.or]?.some((entry) => entry.cashier_id));
-        const searchClause = whereClauses.find((clause) => clause[Op.or]?.some((entry) => entry.payment_type));
+        const searchClause = whereClauses.find((clause) => clause[Op.or]?.some((entry) => entry.payment_type?.[Op.like]));
 
         expect(cashierClause[Op.or]).toEqual(expect.arrayContaining([
             { cashier_id: { [Op.in]: [7] } },
@@ -76,7 +76,20 @@ describe('POS transaction history repository query', () => {
         expect(dateOptions.where[Op.and]).toEqual(expect.arrayContaining([
             expect.objectContaining({ [Op.or]: expect.any(Array) })
         ]));
-        expect(options.where.payment_type).toBe('employee_credit');
+        const paymentClause = options.where[Op.and].find((clause) => (
+            clause[Op.or]?.some((entry) => entry?.payment_type === 'employee_credit')
+        ));
+        expect(paymentClause[Op.or]).toEqual(expect.arrayContaining([
+            { payment_type: 'employee_credit' },
+            expect.objectContaining({ kind: 'where' })
+        ]));
+        expect(sequelize.fn).toHaveBeenCalledWith(
+            'JSON_CONTAINS',
+            expect.objectContaining({ kind: 'column', name: 'PosTransaction.payment_breakdown' }),
+            JSON.stringify({ payment_type: 'employee_credit' }),
+            '$'
+        );
+        expect(options.where.payment_type).toBeUndefined();
         expect(options.limit).toBe(20);
         expect(options.offset).toBe(20);
         expect(options.include).toEqual(expect.arrayContaining([

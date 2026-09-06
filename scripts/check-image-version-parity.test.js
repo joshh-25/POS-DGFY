@@ -124,13 +124,17 @@ test('decideParity: matching candidate-source-sha on both images -> pass/match',
   });
 });
 
-test('decideParity: prod exists, no staging predecessor at all -> pass/no-staging-predecessor (evidence, not a defect)', () => {
+// PR #1612 review RF-2 (supersedes the PR #1590 RF-3-era test of the same name): manifest mode
+// implies a real to-staging/<id> leg that always publishes a labeled staging image, so a missing
+// staging predecessor here is a real gap, not #1007/hotfix evidence -- that case is
+// decideDirectParity's job now, exercised separately below.
+test('decideParity: RF-2 -- prod exists, no staging predecessor at all -> fail/staging-not-found-in-manifest-mode, not a silent pass', () => {
   const prod = { ref: 'x:1.3.0', state: 'ok', value: SHA('a') };
   const staging = { ref: 'x:1.3.0-staging', state: 'not-found', reason: 'tag does not exist' };
   const verdict = decideParity({ prod, staging });
-  assert.equal(verdict.verdict, 'pass');
-  assert.equal(verdict.code, 'no-staging-predecessor');
-  assert.match(verdict.detail, /expected evidence of a #1007 expedited promotion or a main hotfix, not a defect/);
+  assert.equal(verdict.verdict, 'fail');
+  assert.equal(verdict.code, 'staging-not-found-in-manifest-mode');
+  assert.match(verdict.detail, /manifest mode expects one/);
 });
 
 // RF-3 regression test (PR #1590 review): an existing STAGING image whose label is missing was
@@ -179,16 +183,16 @@ test('decideParity: prod image exists but its own label is inconsistent -> fail,
   assert.equal(verdict.code, 'prod-unreadable');
 });
 
-// RF-2 regression test (PR #1590 review): a PROD image built with no candidate_source_sha at all
-// (the #1007/hotfix path) previously fell through to 'prod-unreadable'/fail. It must now pass as the
-// documented expected-evidence case, regardless of whatever staging happens to carry.
-test('decideParity: RF-2 -- prod carries no candidate label at all -> pass/no-candidate-identity, regardless of staging state', () => {
+// PR #1612 review RF-2 (supersedes the PR #1590 RF-2-era test of the same name): the "no tracked
+// candidate identity" evidence-pass is now decideDirectParity's job exclusively (--source-sha mode,
+// exercised separately below) -- manifest mode always expects a real label, so this must fail.
+test('decideParity: RF-2 -- prod carries no candidate label at all -> fail/prod-no-label-in-manifest-mode, not a silent pass', () => {
   const prod = { ref: 'x:1.3.0', state: 'no-label', reason: 'label not present anywhere on x:1.3.0' };
   const staging = { ref: 'x:1.3.0-staging', state: 'ok', value: SHA('a') };
   const verdict = decideParity({ prod, staging });
-  assert.equal(verdict.verdict, 'pass');
-  assert.equal(verdict.code, 'no-candidate-identity');
-  assert.match(verdict.detail, /expected evidence of a #1007 expedited promotion or a main hotfix/);
+  assert.equal(verdict.verdict, 'fail');
+  assert.equal(verdict.code, 'prod-no-label-in-manifest-mode');
+  assert.match(verdict.detail, /manifest mode expects one/);
 });
 
 test('decideParity: an inspect error on either side refuses to guess -> error, not pass', () => {
@@ -312,11 +316,101 @@ test('runParityCheck: validates the manifest and reports one entry per app, all 
   assert.equal(result.results[0].verdict, 'pass');
 });
 
+// PR #1612 review RF-2's explicitly requested end-to-end fixture: an unlabeled PROD image must not
+// pass manifest mode, even though a staging predecessor exists (the exact gap the old prod-side
+// 'no-label' PASS branch left open -- see decideParity's own regression test above for the unit-
+// level case; this proves it through the real CLI entrypoint, inspectFn included).
+test('runParityCheck: an unlabeled PROD image cannot pass, even with a real staging predecessor', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = {
+    schema: 'sku-release-candidate/v1',
+    candidate_id: '2026-09-04-01',
+    status: 'qualified',
+    source_develop_sha: headSha,
+    current_staging_sha: headSha,
+    revisions: [
+      { kind: 'initial', sha: headSha, parent_sha: null, branch: 'to-staging/2026-09-04-01' },
+    ],
+    release_revision: { revision: 1, source_staging_sha: headSha, branch: 'release/2026-09-04-01-r1', pr: 9001 },
+  };
+
+  // Branches on the ref being inspected: the staging tag gets a real, agreeing label; the PROD tag
+  // (no '-staging' suffix) gets no candidate-source label at all -- simulating a normal-dispatch run
+  // with an empty/incorrect candidate_source_sha input.
+  const inspectFn = (ref) => ({
+    status: 0,
+    stdout: ref.includes('-staging')
+      ? agreeingLabelJson(headSha)
+      : JSON.stringify({ Image: { Config: { Labels: { 'org.opencontainers.image.revision': 'x' } } } }),
+    stderr: '',
+  });
+
+  const result = runParityCheck({
+    manifest,
+    repoRoot: __dirname + '/..',
+    apps: ['dgfy-api'],
+    inspectFn,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].verdict, 'fail');
+  assert.equal(result.results[0].code, 'prod-no-label-in-manifest-mode');
+});
+
 test('runParityCheck: an invalid manifest throws PromotionCandidateError, same validation as check-promotion-candidate.js', () => {
   assert.throws(
     () => runParityCheck({ manifest: { schema: 'not-the-right-schema' } }),
     /Candidate manifest schema must be sku-release-candidate\/v1/,
   );
+});
+
+// #1610 regression: a repair that touches only some apps must not make an untouched app's PROD
+// build compare against the candidate's LATEST current_staging_sha -- it must compare against the
+// SHA of the last revision that actually touched that specific app (resolveCandidateSourceShaByApp).
+// Uses this repo's real HEAD~1/HEAD as two resolvable SHAs (like the other runParityCheck tests) so
+// readVersionAt succeeds without a live checkout of a synthetic history.
+test('runParityCheck: an app untouched by a repair is compared against ITS OWN prior identity, not the manifest-wide current_staging_sha', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const initialSha = execSync('git rev-parse HEAD~1', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = {
+    schema: 'sku-release-candidate/v1',
+    candidate_id: '2026-09-05-01',
+    status: 'qualified',
+    source_develop_sha: initialSha,
+    current_staging_sha: headSha,
+    revisions: [
+      { kind: 'initial', sha: initialSha, parent_sha: null, branch: 'to-staging/2026-09-05-01' },
+      // Only dgfy-ims was touched by this repair -- dgfy-api was not.
+      { kind: 'staging_repair', revision: 1, sha: headSha, parent_sha: initialSha, branch: 'fix/staging/2026-09-05-01-r1', pr: 9002, issue: 9003, apps_touched: ['dgfy-ims'] },
+    ],
+    release_revision: { revision: 2, source_staging_sha: headSha, branch: 'release/2026-09-05-01-r2', pr: 9004 },
+  };
+
+  // checkApp() records candidate_source_sha unconditionally regardless of the inspect outcome, so
+  // this fixture only needs to not crash -- the assertions below are on WHICH sha was resolved per
+  // app, not on the pass/fail verdict itself.
+  const result = runParityCheck({
+    manifest,
+    repoRoot: __dirname + '/..',
+    apps: ['dgfy-api', 'dgfy-ims'],
+    inspectFn: inspectFixture({ stdout: agreeingLabelJson(initialSha) }),
+  });
+
+  const apiEntry = result.results.find((entry) => entry.app === 'dgfy-api');
+  const imsEntry = result.results.find((entry) => entry.app === 'dgfy-ims');
+
+  // The bug this regresses: dgfy-api was untouched by the repair, so its resolved candidate source
+  // identity must stay the INITIAL sha, not advance to the repair's (== current_staging_sha) value.
+  assert.equal(apiEntry.candidate_source_sha, initialSha);
+  assert.equal(imsEntry.candidate_source_sha, headSha);
+  // Top-level candidate_source_sha stays the manifest's overall latest identity -- context only, not
+  // what every app was actually compared against (see each entry's own field instead).
+  assert.equal(result.candidate_source_sha, headSha);
 });
 
 // runDirectParityCheck (--source-sha mode, RF-2) -- the #1007/hotfix entrypoint that never needs a

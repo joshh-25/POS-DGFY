@@ -11,7 +11,8 @@ export function OrderSummaryCard({
   displayFont = "'Avenir Next', 'Segoe UI', sans-serif",
   sticky = false,
   top = 8,
-  promoPanel = null
+  promoPanel = null,
+  footnote = null
 }) {
   return (
     <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: sticky ? 'sticky' : 'static', top }}>
@@ -57,6 +58,7 @@ export function OrderSummaryCard({
           ))}
         </div>
       )}
+      {footnote}
     </aside>
   );
 }

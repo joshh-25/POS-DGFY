@@ -44,6 +44,71 @@ promoter (or observer's Sentry sweep) monitors
 loop stops and escalates to Pat — it does not attempt a third fix unattended, and it does not fall
 back to a rollback that doesn't exist (see prerequisite gap below).
 
+**Release-note obligation, applies to both entry points below (#1278, ADR 0082 Decisions 3/6/8).**
+Whenever this loop's hotfix branch bases off — and therefore reaches — `main` (not `staging`),
+`implement`'s hotfix PR also authors `docs/releases/notes/<candidate_id>.md`, in the same commit as
+the fix. Concrete steps — mirrors `docs/releases/notes/TEMPLATE.md` and
+`.agents/skills/promoter/references/promotion-runbook.md`'s own pre-cut heredoc rather than
+inventing a second shape:
+
+```bash
+CANDIDATE_ID=$(date +%Y-%m-%d)-01   # fresh ID assigned at fix time, NOT the incident issue's number
+mkdir -p docs/releases/notes
+cat > docs/releases/notes/$CANDIDATE_ID.md <<NOTE
+---
+schema: sku-release-note/v1
+candidate_id: $CANDIDATE_ID
+production_date: $(date +%Y-%m-%d)
+production_commit: pending
+---
+
+# Release $CANDIDATE_ID — $(date +%Y-%m-%d)
+
+| App | Version |
+|---|---|
+| dgfy-api | <version> |
+| dgfy-migration-runner | <version> |
+| dgfy-ims | <version> |
+| dgfy-pos | <version> |
+| dgfy-storefront | <version> |
+
+## Included
+
+- <one plain-language line for the hotfix itself, citing its own PR/issue>
+
+## Operational notes
+
+This candidate has no staging soak — released as a main hotfix outside the normal promotion flow.
+See docs/ops/RELEASE_CANDIDATE_POLICY.md's "Hotfix and back-port" section for the authorization
+record.
+NOTE
+git add docs/releases/notes/$CANDIDATE_ID.md
+git commit -m "docs(release): add release note for hotfix candidate $CANDIDATE_ID"
+```
+
+Only the app(s) the hotfix actually touched need a real version in the table above — every other app
+keeps its current production version unchanged, same as an ordinary promotion's version table (ADR
+0082 Decision 4). The `## Operational notes` line above is the explicit missing-staging-predecessor
+statement ADR 0082 Decision 6 requires for this path. `production_commit` stays the literal
+`pending` sentinel through this PR and through `deploy-main.yml`'s dispatch — the same two-stage
+lifecycle Decision 8 defines for an ordinary promotion, since the real `main` merge-commit SHA does
+not exist until after this PR merges.
+
+A hotfix branch does not match `check:release-notes`'s `release/<candidate_id>-rN` pattern (Phase
+296), so it exits 0 ("not applicable") for this PR — this procedural step is what actually satisfies
+ADR 0082 Decision 3's binding no-record rule here today, not a script gate, until ADR 0082 Follow-up
+3 closes that mechanical gap. A `staging`-based fix does not need any of this — it rides the next
+ordinary promotion's own release note instead.
+
+**Ordering — this note is finalized as part of step 5's back-port below, not by
+`promotion-runbook.md`'s generic finalizer.** That finalizer assumes the note already exists on
+`origin/develop` (true for an ordinary promotion, authored pre-cut) — false here: this note first
+exists only on the hotfix branch/`main`, and `develop` doesn't get it until step 5's back-port PR
+merges. Running the generic finalizer's `git switch -c docs/release/$CANDIDATE_ID-commit
+origin/develop` / `sed` against `docs/releases/notes/$CANDIDATE_ID.md` before that back-port lands
+fails outright — the file isn't on `develop` yet. Step 5 folds finalization into itself instead: see
+its own worked commands below.
+
 ## Manual entry point — `/hotfix`
 
 Added 2026-08-22 (#861). The loop above starts from an automated monitor signal
@@ -79,7 +144,9 @@ no new capability and no second path to `main`.
      silently.
 3. **Hand off to `implement`** to branch off the chosen base (never off `develop` for a same-day
    prod fix — `develop` doesn't reach `main` on this timeline), fix, commit, and open the PR — same
-   as the monitor path.
+   as the monitor path. If the base is `main`, this PR also carries the release-note obligation
+   stated above ("The loop" section) — not optional, and not something the monitor-triggered path
+   gets to skip either.
 4. **`pr-reviewer` fast-tracks** (as defined above), **`promoter`/this role's own override
    deploys** — unchanged.
 5. **Back-port to `develop` (#861 gap 2) — part of "done," not a follow-up.** If the fix landed on
@@ -97,6 +164,37 @@ no new capability and no second path to `main`.
    explicitly rather than silently skipping it, since `staging` already forward-merges into `main`
    on the next promotion and doesn't need a separate back-port. Only once this PR is open (or the
    explicit no-back-port-needed reason is stated) is the incident considered closeable.
+
+   **If a release note was authored above (base was `main`), finalize `production_commit` in this
+   same back-port branch/commit — not as a separate step, and not via `promotion-runbook.md`'s
+   generic dedicated-branch flow.** The `git merge origin/main` just above already brings
+   `docs/releases/notes/<candidate_id>.md` (still `pending`) onto this branch; before opening the
+   back-port PR, also run:
+
+   ```bash
+   # fetch immediately before capture, and cross-check against deploy-main.yml's own reported SHA --
+   # not a bare git rev-parse against a possibly-stale remote-tracking ref:
+   git fetch origin main
+   MAIN_SHA=$(git rev-parse origin/main)
+   DEPLOY_RUN_SHA=$(gh run list --workflow=deploy-main.yml --branch main -L1 --json headSha --jq '.[0].headSha')
+   [ "$MAIN_SHA" = "$DEPLOY_RUN_SHA" ] \
+     || { echo "ERROR: origin/main ($MAIN_SHA) does not match deploy-main.yml's own deployed SHA ($DEPLOY_RUN_SHA) -- investigate before finalizing" >&2; exit 1; }
+   sed -i.bak "s/^production_commit: pending$/production_commit: $MAIN_SHA/" docs/releases/notes/$CANDIDATE_ID.md
+   rm docs/releases/notes/$CANDIDATE_ID.md.bak
+   grep -qE '^production_commit: [0-9a-f]{40}$' docs/releases/notes/$CANDIDATE_ID.md \
+     || { echo "ERROR: production_commit did not finalize to a real 40-hex SHA" >&2; exit 1; }
+   git add docs/releases/notes/$CANDIDATE_ID.md
+   git commit -m "docs(release): record production commit for candidate $CANDIDATE_ID"
+   ```
+
+   Add this as a second commit on the same back-port branch (never a second, separate branch — the
+   whole point is that this branch is already the first vehicle carrying the note onto `develop`).
+   Once this PR merges, `docs/releases/notes/<candidate_id>.md` on `develop` already carries the real
+   40-hex `production_commit` — only `.agents/skills/promoter/references/promotion-runbook.md`'s
+   "Publish the GitHub Release" section's *tag-and-publish* half still applies (fetch
+   `origin/develop`, tag `release-<candidate_id>`, `gh release create`); its *finalization* half (the
+   dedicated `docs/release/<candidate_id>-commit` branch) does not run for this candidate — it
+   already happened here.
 
 Every guardrail elsewhere in this file — the bounded retry, the three "cannot do yet" prerequisites,
 the phrase-gated `main` override and its every-single-invocation restatement/logging requirement —

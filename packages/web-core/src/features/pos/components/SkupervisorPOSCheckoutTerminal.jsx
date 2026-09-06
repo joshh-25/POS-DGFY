@@ -41,9 +41,10 @@ import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import {
     advanceAssetImageFallback,
     resolveAppAssetUrl,
-    resolveAssetUrl,
-    resolveAssetVariantUrl
+    resolveAssetUrl
 } from '@/src/utils/assetUrl.js';
+import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
+import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
@@ -322,17 +323,18 @@ const inferReceiptContract = (transaction, fallbackContract = null) => {
 
 const CartItemThumbnail = React.memo(({ catalog, line }) => {
     const item = (Array.isArray(catalog) ? catalog.find((i) => i.item_id === line.item_id) : null) || line;
-    const thumbnailSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail') || resolveMappedPosItemImage(item) || null;
+    const sources = resolvePosCatalogImageSources(item);
+    const mappedSrc = resolveMappedPosItemImage(item);
+    const effectiveSources = sources.src ? sources : (mappedSrc ? { src: mappedSrc } : null);
     const [imageFailed, setImageFailed] = useState(false);
 
-    if (thumbnailSrc && !imageFailed) {
+    if (effectiveSources?.src && !imageFailed) {
         return (
             <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200/80 shadow-xs flex items-center justify-center">
-                <img
-                    src={thumbnailSrc}
+                <ResponsiveImage
+                    sources={effectiveSources}
                     alt={line.item_name || 'Item'}
-                    loading="lazy"
-                    decoding="async"
+                    sizes="36px"
                     width={36}
                     height={36}
                     className="h-full w-full object-cover object-center"
@@ -395,7 +397,7 @@ export default function POSCheckoutTerminal({
         if (!item) return;
         const itemId = item.item_id;
         const itemName = item.name || 'Item';
-        const imageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail') || resolveMappedPosItemImage(item) || null;
+        const imageSrc = resolvePosCatalogImageSources(item).src || resolveMappedPosItemImage(item) || null;
 
         setAddToCartToasts((prev) => {
             const existingIndex = prev.findIndex((t) => t.itemId === itemId);
@@ -1958,12 +1960,13 @@ export default function POSCheckoutTerminal({
                             const isServiceItem = isServiceCatalogItem(item);
                             const isAlwaysAvailable = item.pos_always_available === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
-                            const configuredPosImageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail');
-                            const largePosImageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'large');
+                            const configuredPosImageSources = resolvePosCatalogImageSources(item);
                             const mappedPosImageSrc = resolveMappedPosItemImage(item);
                             const fallbackPosImageSrc = resolveCompanyIconFallbackUrl(receiptSettings);
-                            const posImageSrc = configuredPosImageSrc || mappedPosImageSrc || fallbackPosImageSrc;
-                            const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
+                            const posImageSources = configuredPosImageSources.src
+                                ? configuredPosImageSources
+                                : { src: mappedPosImageSrc || fallbackPosImageSrc };
+                            const hasImage = Boolean(posImageSources.src) && !catalogImageErrors.has(item.item_id);
                             return (
                                 <div
                                     key={item.item_id}
@@ -1996,7 +1999,7 @@ export default function POSCheckoutTerminal({
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             setImagePreview({
-                                                src: posImageSrc || '',
+                                                src: posImageSources.src || '',
                                                 alt: `${item.name} menu`,
                                                 hasImage
                                             });
@@ -2005,12 +2008,13 @@ export default function POSCheckoutTerminal({
                                         title={hasImage ? 'Enlarge image' : 'Preview placeholder'}
                                     >
                                         {hasImage ? (
-                                            <img
-                                                src={posImageSrc}
+                                            <ResponsiveImage
+                                                sources={posImageSources}
                                                 alt={`${item.name} menu`}
+                                                sizes="(max-width: 768px) 96px, 80px"
                                                 className="h-full w-full object-cover object-center"
                                                 onError={(event) => {
-                                                    if (advanceAssetImageFallback(event, [largePosImageSrc, fallbackPosImageSrc])) return;
+                                                    if (advanceAssetImageFallback(event, [posImageSources.configuredLargeSrc, fallbackPosImageSrc])) return;
                                                     setCatalogImageErrors((previous) => {
                                                         const next = new Set(previous);
                                                         next.add(item.item_id);
