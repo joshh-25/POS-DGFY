@@ -21779,3 +21779,103 @@ since landed as Phase 300 above.
   `docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md` (new), issue
   #265.
 - Next eligible phase: 302.
+
+## Phase 302 - Rollout ladder, server-authoritative kill switch, and fallback-rate measurement for client-side image conversion (#265 epic, PR 5 of 5)
+
+Ledger number re-verified fresh immediately before this commit
+(`git fetch origin && git show origin/develop:docs/features/IMPLEMENTATION_PHASE_LEDGER.md | grep
+'^## Phase' | tail -8`) -- 299 remains a permanent gap (never used, same as 284), 302 is the
+confirmed next free number as of this land, unclaimed by any other concurrent PR this time. This
+epic has already lost three numbers to concurrent unrelated PRs before this phase (295, 297, 298
+were all originally meant for this epic per the epic plan doc's own numbering, taken instead by
+#1610/#1015/#1278 residues -- see Phase 301's own entry above for the full history of that
+renumbering); treated as provisional right up to the moment of this commit rather than trusted from
+planning time.
+
+- Initiative/release: Image uploads / client-side conversion epic (#265) / current release
+  process.
+- Objective and scope: fifth PR of the #265 epic. Ships the two-key `system_settings` rollout
+  flag (`image_client_conversion` tri-state + `image_client_conversion_scopes` JSON array), the
+  server-side gate enforcing it at both single-image catalog upload use cases (forcing the
+  client-derived medium/thumbnail files and manifest to null when the gate is closed -- the
+  literal "server ignores the manifest and extra parts entirely" kill-switch contract), the
+  platform-admin write authorization on the two new keys, the real client-side
+  `rolloutFlag.js` getter (replacing Phase 296's inert stub) plus the missing
+  `storefront_catalog_single` client wiring, and fallback-rate measurement (a client-emitted
+  PostHog `image_client_conversion_degraded` event, plus two new observability fields threaded
+  into the existing Phase 294 structured log so the client-vs-server derivation rate can be
+  sliced by rollout stage). Corrects the epic plan doc's own app-based ladder framing ("IMS
+  staff, lowest risk -> watch iMin POS terminals") -- verified the real code has no
+  POS-terminal-native catalog-image-upload call site at all; both real client-wiring call sites
+  (`uploadPosCatalogImage`, `uploadStorefrontCatalogImage`) run only from `ItemsPage.jsx`,
+  IMS-only. Scope tokens are keyed to endpoint variant, not app/device identity. Does **not**
+  implement bulk (the plan's own "298d" stage) -- verified that needs genuinely new client code
+  (a byte-based batch splitter, real `prepareImageVariants` wiring in the bulk service
+  functions), not a config flip; carved out to a follow-up issue (#1643) instead of being folded
+  in or silently dropped.
+- Status: completed.
+- Dependencies: Phase 294 (#265 epic, merged) -- extends its structured log with two new fields.
+  Phase 296 (#265 epic, merged) -- replaces its inert `rolloutFlag.js` stub with a real getter,
+  preserving its exact synchronous zero-arg contract. Phase 300 (#265 epic, merged) -- this
+  phase is `prepareImageVariants`'s first real caller for the `storefront_catalog_single` scope
+  and the first real *enabled* caller for `pos_catalog_single` (Phase 296/300 shipped the encoder
+  and the stub gate; this phase is what actually flips it on for real traffic, config-only,
+  after merge). Phase 301 (#265 epic, merged) -- gates the client-derived-variant contract that
+  phase shipped server-side but never actually turned on. Precedes #1643 (298d, bulk client
+  wiring, filed and parented under epic #265 as part of this phase) and the epic's own rollout
+  observation period (298b -> c -> e, watched via this phase's own log/trackEvent signals) --
+  epic #265 stays open (`Refs #265`, not `Closes`) until both land/complete.
+- Acceptance and validation evidence: `node --check` on all changed/new `apps/dgfy-api` `.js`
+  files (no build step). `GITHUB_BASE_REF=develop node scripts/check-app-version-bump.js` --
+  PASS for all five apps (`dgfy-api` 1.5.0 -> 1.6.0, `dgfy-ims` 1.3.0 -> 1.4.0, both direct;
+  `dgfy-migration-runner` 1.1.3 -> 1.1.4 direct; `dgfy-pos` 1.3.0 -> 1.3.1 and `dgfy-storefront`
+  1.4.0 -> 1.4.1, both fan-out-only via `packages/web-core`, confirmed neither app's own bundle
+  imports a changed web-core file). `GITHUB_BASE_REF=develop npm run check:compliance`
+  (declaration: `docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md`,
+  classification `major`, surfaces `pos,terminal,settings` -- corrects PR4's own declaration,
+  which only cited the narrower `routes/settings.js` rule; this phase's settings-usecases changes
+  trip the broader `modules/settings/` rule directly). `npm run check:architecture`;
+  `npm run check:adr` (validates the fourth dated ADR 0017 amendment). Full existing + new Jest
+  suites for every touched `apps/dgfy-api` module (new: `imageClientConversionGate.util.test.js`,
+  10 cases; extended: `posUsecases.applicationResult.test.js` +4 gate cases,
+  `storefrontCatalogUseCases.test.js` +4 gate cases, `settingsUsecases.applicationResult.test.js`
+  +4 write-gate cases) -- all pass. `imageAssetStorage.util.test.js` and
+  `storefrontCatalogImagePersistence.integration.test.js` re-run unmodified: the latter's one
+  failure is a pre-existing, unrelated flake, reproduced identically against a clean
+  `origin/develop` worktree with zero modifications from this phase (already flagged in Phase
+  301's own entry; re-confirmed here). New/extended Vitest suites for every touched
+  `packages/web-core` module (new: `rolloutFlag.test.js` 9 cases,
+  `storefrontCatalogService.imageEncoding.test.js` 4 cases; extended:
+  `posCatalogService.imageEncoding.test.js` +1 degradation-metric case) -- all pass, plus the
+  full existing `dgfy-ims` Vitest suite (2217 tests, 347 files) re-run clean.
+- Completion date: 2026-09-09.
+- Contracts/files: `apps/dgfy-api/src/modules/shared/utils/imageClientConversionGate.js` (new),
+  `apps/dgfy-api/src/modules/shared/utils/imageAssetStorage.js`,
+  `apps/dgfy-api/src/modules/pos/index.js`, `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/posCatalogImageStorage.js`,
+  `apps/dgfy-api/src/modules/inventory/index.js`,
+  `apps/dgfy-api/src/modules/inventory/usecases/storefrontCatalogUseCases.js`,
+  `apps/dgfy-api/src/modules/inventory/repositories/storefrontCatalogImageStorage.js`,
+  `apps/dgfy-api/src/modules/settings/usecases/updateSettingByKeyUseCase.js`,
+  `apps/dgfy-api/src/modules/settings/usecases/updateSettingsUseCase.js`,
+  `apps/dgfy-migration-runner/migrations/20260909000002-add-image-client-conversion-settings.cjs`
+  (new), `packages/web-core/src/utils/imageEncoding/rolloutFlag.js`,
+  `packages/web-core/src/utils/imageEncoding/reportDegradation.js` (new),
+  `packages/web-core/src/services/posCatalogService.js`,
+  `packages/web-core/src/services/storefrontCatalogService.js`,
+  `packages/web-core/src/features/settings/WorkflowModeContext.jsx`,
+  `apps/dgfy-api/tests/imageClientConversionGate.util.test.js` (new),
+  `apps/dgfy-api/tests/posUsecases.applicationResult.test.js`,
+  `apps/dgfy-api/tests/storefrontCatalogUseCases.test.js`,
+  `apps/dgfy-api/tests/settingsUsecases.applicationResult.test.js`,
+  `packages/web-core/src/utils/imageEncoding/__tests__/rolloutFlag.test.js` (new),
+  `packages/web-core/src/services/__tests__/posCatalogService.imageEncoding.test.js`,
+  `packages/web-core/src/services/__tests__/storefrontCatalogService.imageEncoding.test.js` (new),
+  `apps/dgfy-api/package.json` (1.5.0 -> 1.6.0), `apps/dgfy-ims/package.json` (1.3.0 -> 1.4.0),
+  `apps/dgfy-migration-runner/package.json` (1.1.3 -> 1.1.4), `apps/dgfy-pos/package.json`
+  (1.3.0 -> 1.3.1), `apps/dgfy-storefront/package.json` (1.4.0 -> 1.4.1),
+  `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md` (2026-09-09
+  Amendment, fourth),
+  `docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md` (new), issue
+  #265, follow-up issue #1643 (298d, bulk client wiring, filed and parented under #265).
+- Next eligible phase: 303.

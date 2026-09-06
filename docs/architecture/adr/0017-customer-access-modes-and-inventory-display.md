@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-03
-last_reviewed: 2026-09-06
+last_reviewed: 2026-09-09
 review_by: 2026-11-03
 applies_to: architecture_decision
 topic: customer_access_modes_and_inventory_display
@@ -292,3 +292,49 @@ optional fields.
 
 `status: amended` remains unchanged; `last_reviewed` refreshed to this entry's own land date
 (already 2026-09-06, unchanged from the amendment immediately above).
+
+## Amendments (2026-09-09)
+
+Phase 302 (#265 epic, PR 5 of 5) adds the **rollout ladder and server-authoritative kill switch**
+for the client-derived contract Phase 301's amendment (immediately above) describes -- until this
+phase, the contract existed but nothing gated it: `packages/web-core`'s image encoder was
+unbuilt and the client never sent the optional fields at all.
+
+**Two new tenant-local `system_settings` keys**, read from the same bootstrap `GET /settings`
+response every other tenant config already flows through: `image_client_conversion`
+(`'off' | 'opt_in' | 'on'`) and `image_client_conversion_scopes` (a JSON array, consulted only
+while the first key is `'opt_in'`). `'off'` is the kill switch -- the server ignores the manifest
+and the medium/thumbnail parts entirely, forcing them to null before they ever reach
+`imageStorage.store()`, regardless of what a request sent. `'on'` is the terminal state, every
+scope enabled unconditionally. `'opt_in'` gates per scope token.
+
+**Scope tokens are keyed to the real client-wiring call sites, not to app/device identity.** The
+epic's original plan framed the ladder as "IMS (staff, lowest risk) -> POS (watch iMin
+terminals)" -- that framing does not match the shipped code and should not be re-derived from the
+epic plan doc by a future reader. Verified: both `uploadPosCatalogImage` and
+`uploadStorefrontCatalogImage` (`packages/web-core/src/services/{posCatalogService,
+storefrontCatalogService}.js`) are called exclusively from `ItemsPage.jsx`, which is lazy-imported
+only by `apps/dgfy-ims/src/main.jsx` -- there is no POS-terminal-native catalog-image-upload call
+site today to "watch" separately from IMS. The four scope tokens --
+`pos_catalog_single`, `storefront_catalog_single`, `pos_catalog_bulk`, `storefront_catalog_bulk` --
+are named after which *endpoint variant* they gate, not which app or device sends the request. If
+a future POS-terminal-native catalog-image-upload UI is built (plausible under the interim
+back-office-to-POS placement policy in `AGENTS.md`), it reads the same `pos_catalog_single` token
+this phase already defines -- the design isn't app-specific, it's just that no such call site
+exists yet.
+
+**Write authority**: both keys are platform-admin-controlled, mirroring the existing
+`isPlatformControlledPosSoftwareKey` pattern exactly (`updateSettingByKeyUseCase.js` and
+`updateSettingsUseCase.js` both reject a non-platform-admin write) -- a rollout lever a tenant
+admin could flip would break the controlled ladder this phase exists to provide.
+
+**298d (bulk client wiring) is explicitly out of scope for this amendment.** `pos_catalog_bulk`
+and `storefront_catalog_bulk` are valid, gate-resolvable scope tokens as of this phase, but no
+client caller populates the fields they would gate -- `uploadBulkPosCatalogImages` and
+`uploadStorefrontCatalogImages` still send raw files unchanged, and no byte-based batch splitter
+exists. That work -- genuinely new code, not a config flip, given the up-to-50-file batch size --
+is tracked in a follow-up issue rather than folded into this phase; mirroring how the amendment
+immediately above already carves out the gallery/async endpoints with the same discipline.
+
+`status: amended` remains unchanged; `last_reviewed` refreshed to this entry's own land date
+(2026-09-09).

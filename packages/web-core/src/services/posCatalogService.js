@@ -47,15 +47,16 @@ export const updateBulkPosCatalogOverrides = async ({ itemIds, posVisible }) => 
 export const uploadPosCatalogImage = async (itemId, file) => {
   const formData = new FormData();
 
-  // Client-side encode is behind rolloutFlag.js's `image_client_conversion` stub (epic #265,
-  // Phase 296) -- inert until Phase 298 wires a real flag, so this branch is dead code today
-  // but still exercised by tests to prove the plumbing compiles and works. Single-variant only:
-  // `image_medium`/`image_thumbnail`/`client_image_manifest` multipart fields are Phase 297's
-  // server-contract job, not this phase's.
-  const { getImageClientConversionFlag } = await import('../utils/imageEncoding/rolloutFlag.js');
-  if (getImageClientConversionFlag() !== 'off') {
+  // Client-side encode is gated by rolloutFlag.js's server-authoritative `image_client_conversion`
+  // flag (epic #265, Phase 298), scoped to 'pos_catalog_single'. Single-variant only:
+  // `image_medium`/`image_thumbnail`/`client_image_manifest` multipart fields are a follow-up
+  // job (#298d bulk excluded), not this phase's.
+  const { isImageClientConversionEnabledForScope } = await import('../utils/imageEncoding/rolloutFlag.js');
+  if (isImageClientConversionEnabledForScope('pos_catalog_single')) {
     const { prepareImageVariants } = await import('../utils/imageEncoding/index.js');
-    const { variants } = await prepareImageVariants(file);
+    const { reportImageClientConversionDegradation } = await import('../utils/imageEncoding/reportDegradation.js');
+    const { variants, manifest, degraded } = await prepareImageVariants(file);
+    reportImageClientConversionDegradation({ scope: 'pos_catalog_single', degraded, manifest });
     formData.append('image', variants.large || file);
   } else {
     formData.append('image', file);

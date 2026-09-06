@@ -18,6 +18,7 @@ import {
 } from '@sieitzz/shared-constants/storeProfile';
 import { getAccessToken, refreshBrowserSession } from '@/services/browserSession.js';
 import { shouldRefreshBrowserSessionForPath } from '@/services/publicRoutePolicy.js';
+import { setImageClientConversionFromSettings } from '../../utils/imageEncoding/rolloutFlag.js';
 
 const WorkflowModeContext = createContext(null);
 
@@ -106,6 +107,9 @@ export function WorkflowModeProvider({ children }) {
       setResolved(true);
       setError(null);
       setLoading(false);
+      // Phase 298 (#265): no settings fetch happened on this path -- fail-safe default (every
+      // scope disabled) is what setImageClientConversionFromSettings(null) already means.
+      setImageClientConversionFromSettings(null);
       return DEFAULT_WORKFLOW_MODE;
     }
 
@@ -118,6 +122,7 @@ export function WorkflowModeProvider({ children }) {
       setResolved(true);
       setError(null);
       setLoading(false);
+      setImageClientConversionFromSettings(null);
       return DEFAULT_WORKFLOW_MODE;
     }
 
@@ -139,6 +144,10 @@ export function WorkflowModeProvider({ children }) {
         disabledCapabilities: nextDisabledCapabilities
       }));
       setResolved(true);
+      // Phase 298 (#265): populates rolloutFlag.js's module-level cache from the same bootstrap
+      // /settings response this Provider already fetches -- the identity-sync idiom
+      // identifySentryUser/setAnalyticsContext already use, applied to this rollout flag too.
+      setImageClientConversionFromSettings(settings);
       return nextMode;
     } catch (refreshError) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
@@ -147,6 +156,9 @@ export function WorkflowModeProvider({ children }) {
       setProfile(DEFAULT_PROFILE);
       setResolved(false);
       setError(refreshError);
+      // Fetch failed -- fail-safe default, matching this catch block's own reset-to-default
+      // pattern for every other piece of settings-derived state.
+      setImageClientConversionFromSettings(null);
       return DEFAULT_WORKFLOW_MODE;
     } finally {
       setLoading(false);
@@ -178,6 +190,8 @@ export function WorkflowModeProvider({ children }) {
       setError(null);
       setModeChangeNotice(null);
       setLoading(false);
+      // Phase 298 (#265): a signed-out session has no settings of its own -- fail-safe default.
+      setImageClientConversionFromSettings(null);
     };
     const handleModeChanged = (event) => {
       const nextMode = normalizeWorkflowMode(event?.detail?.mode);

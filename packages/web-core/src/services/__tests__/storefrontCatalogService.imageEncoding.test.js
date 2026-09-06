@@ -1,13 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const apiMock = { post: vi.fn() };
+const apiMock = { get: vi.fn(), patch: vi.fn(), post: vi.fn(), delete: vi.fn() };
 vi.mock('../api.js', () => ({ default: apiMock }));
 
-// Phase 298 (#265): posCatalogService.js now checks the per-scope getter, not the bare global
-// flag -- see rolloutFlag.js's own Open Item 1 resolution (kept `getImageClientConversionFlag()`
-// argument-free for index.js's global fail-fast check; added this scoped export for the two real
-// client-wiring call sites). This mock intentionally drops `getImageClientConversionFlag` since
-// posCatalogService.js no longer imports it.
+// New client wiring for this phase (epic #265, Phase 298) -- mirrors
+// posCatalogService.imageEncoding.test.js's mock shape exactly.
 const scopeEnabledMock = vi.fn(() => false);
 vi.mock('../../utils/imageEncoding/rolloutFlag.js', () => ({
   isImageClientConversionEnabledForScope: (...args) => scopeEnabledMock(...args),
@@ -23,9 +20,9 @@ vi.mock('../../observability/analyticsClient.js', () => ({
   trackEvent: (...args) => trackEventMock(...args),
 }));
 
-const loadService = async () => import('../posCatalogService.js');
+const loadService = async () => import('../storefrontCatalogService.js');
 
-describe('posCatalogService.uploadPosCatalogImage x client image encoder wiring', () => {
+describe('storefrontCatalogService.uploadStorefrontCatalogImage x client image encoder wiring', () => {
   beforeEach(() => {
     apiMock.post.mockReset();
     prepareImageVariantsMock.mockReset();
@@ -35,23 +32,23 @@ describe('posCatalogService.uploadPosCatalogImage x client image encoder wiring'
   });
 
   it('sends the original file untouched while the scope is disabled (fail-safe default)', async () => {
-    const { uploadPosCatalogImage } = await loadService();
+    const { uploadStorefrontCatalogImage } = await loadService();
     apiMock.post.mockResolvedValue({ data: { data: { id: 'item-1' } } });
     const file = new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' });
 
-    await uploadPosCatalogImage('item-1', file);
+    await uploadStorefrontCatalogImage('item-1', file);
 
-    expect(scopeEnabledMock).toHaveBeenCalledWith('pos_catalog_single');
+    expect(scopeEnabledMock).toHaveBeenCalledWith('storefront_catalog_single');
     expect(prepareImageVariantsMock).not.toHaveBeenCalled();
     expect(apiMock.post).toHaveBeenCalledTimes(1);
     const [path, formData] = apiMock.post.mock.calls[0];
-    expect(path).toBe('/pos/catalog-overrides/item-1/image');
+    expect(path).toBe('/items/item-1/storefront-image');
     expect(formData.get('image')).toBe(file);
   });
 
   it('sends only the "large" variant when the scope is enabled', async () => {
     scopeEnabledMock.mockReturnValue(true);
-    const { uploadPosCatalogImage } = await loadService();
+    const { uploadStorefrontCatalogImage } = await loadService();
     apiMock.post.mockResolvedValue({ data: { data: { id: 'item-1' } } });
 
     const file = new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' });
@@ -62,22 +59,19 @@ describe('posCatalogService.uploadPosCatalogImage x client image encoder wiring'
       degraded: [],
     });
 
-    await uploadPosCatalogImage('item-1', file);
+    await uploadStorefrontCatalogImage('item-1', file);
 
     expect(prepareImageVariantsMock).toHaveBeenCalledWith(file);
     const [, formData] = apiMock.post.mock.calls[0];
     expect(formData.get('image')).toBe(largeVariant);
-    // Single-variant only -- image_medium/image_thumbnail/client_image_manifest are a
-    // separate, already-shipped phase's job (unaffected by this one).
     expect(formData.get('image_medium')).toBeNull();
     expect(formData.get('client_image_manifest')).toBeNull();
-    // Clean encode, no degradation -- no metric fired.
     expect(trackEventMock).not.toHaveBeenCalled();
   });
 
   it('falls back to the original file if the enabled branch produces no large variant', async () => {
     scopeEnabledMock.mockReturnValue(true);
-    const { uploadPosCatalogImage } = await loadService();
+    const { uploadStorefrontCatalogImage } = await loadService();
     apiMock.post.mockResolvedValue({ data: { data: { id: 'item-1' } } });
     const file = new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' });
     prepareImageVariantsMock.mockResolvedValue({
@@ -86,7 +80,7 @@ describe('posCatalogService.uploadPosCatalogImage x client image encoder wiring'
       degraded: ['orientation_unknown'],
     });
 
-    await uploadPosCatalogImage('item-1', file);
+    await uploadStorefrontCatalogImage('item-1', file);
 
     const [, formData] = apiMock.post.mock.calls[0];
     expect(formData.get('image')).toBe(file);
@@ -94,7 +88,7 @@ describe('posCatalogService.uploadPosCatalogImage x client image encoder wiring'
 
   it('reports a degradation metric for a non-flag_off degraded code', async () => {
     scopeEnabledMock.mockReturnValue(true);
-    const { uploadPosCatalogImage } = await loadService();
+    const { uploadStorefrontCatalogImage } = await loadService();
     apiMock.post.mockResolvedValue({ data: { data: { id: 'item-1' } } });
     const file = new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' });
     prepareImageVariantsMock.mockResolvedValue({
@@ -103,11 +97,11 @@ describe('posCatalogService.uploadPosCatalogImage x client image encoder wiring'
       degraded: ['probe_failed'],
     });
 
-    await uploadPosCatalogImage('item-1', file);
+    await uploadStorefrontCatalogImage('item-1', file);
 
     expect(trackEventMock).toHaveBeenCalledTimes(1);
     expect(trackEventMock).toHaveBeenCalledWith('image_client_conversion_degraded', expect.objectContaining({
-      scope: 'pos_catalog_single',
+      scope: 'storefront_catalog_single',
       reason: 'probe_failed',
       degraded_codes: ['probe_failed'],
     }));
