@@ -1,16 +1,17 @@
 /** @vitest-environment jsdom */
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TerminalOperationsWorkspace from '../components/TerminalOperationsWorkspace.jsx';
-import { fetchPosCatalog } from '../services/posService.js';
+import { fetchPosCatalogPage } from '../services/posService.js';
 
 vi.mock('../services/posService.js', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    fetchPosCatalog: vi.fn().mockResolvedValue([])
+    fetchPosCatalog: vi.fn().mockResolvedValue([]),
+    fetchPosCatalogPage: vi.fn().mockResolvedValue({ items: [], pagination: { page: 1, page_size: 15, total: 0, total_pages: 1 } })
   };
 });
 
@@ -49,6 +50,27 @@ afterEach(() => {
 });
 
 describe('Items category placement', () => {
+  it('queries the complete server catalog with search, filters, location, and page size', async () => {
+    fetchPosCatalogPage.mockResolvedValue({
+      items: [{ item_id: 601, name: 'Tomato Meatballs', current_stock: 10 }],
+      pagination: { page: 1, page_size: 15, total: 1, total_pages: 1 }
+    });
+    render(<TerminalOperationsWorkspace {...buildProps({ operatingLocationId: 9, canEditItems: true })} />);
+
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'meat' } });
+
+    await waitFor(() => expect(fetchPosCatalogPage).toHaveBeenLastCalledWith({
+      search: 'meat',
+      page: 1,
+      page_size: 15,
+      category_filter: 'all',
+      stock_filter: 'all',
+      location_id: 9
+    }));
+    expect(await screen.findByTitle('Edit Tomato Meatballs')).toBeTruthy();
+    expect(screen.getByText('Showing 1–1 of 1 items')).toBeTruthy();
+  });
+
   it('shows Items and Categories as tabs for an authorized catalog administrator', () => {
     render(<TerminalOperationsWorkspace {...buildProps()} />);
 
@@ -105,7 +127,7 @@ describe('Items category placement', () => {
   });
 
   it('places edit-item barcode fields directly under the Food Category section', async () => {
-    fetchPosCatalog.mockResolvedValueOnce([{
+    fetchPosCatalogPage.mockResolvedValueOnce({ items: [{
       item_id: 24,
       name: 'Aloo Paratha',
       category: 'product',
@@ -113,7 +135,7 @@ describe('Items category placement', () => {
       default_sale_price: 90,
       cost_per_unit: 67,
       pos_category: 'main-course'
-    }]);
+    }], pagination: { page: 1, page_size: 15, total: 1, total_pages: 1 } });
 
     render(<TerminalOperationsWorkspace {...buildProps({ canEditItems: true })} />);
     fireEvent.click(await screen.findByTitle('Edit Aloo Paratha'));
@@ -197,7 +219,7 @@ describe('Items category placement', () => {
   });
 
   it('uses Services catalog permission for canonical service edits', async () => {
-    fetchPosCatalog.mockResolvedValueOnce([{
+    fetchPosCatalogPage.mockResolvedValueOnce({ items: [{
       item_id: 18,
       name: 'Wash and Fold',
       category: 'service',
@@ -205,7 +227,7 @@ describe('Items category placement', () => {
       current_stock: 0,
       default_sale_price: 250,
       cost_per_unit: null
-    }]);
+    }], pagination: { page: 1, page_size: 15, total: 1, total_pages: 1 } });
 
     render(<TerminalOperationsWorkspace {...buildProps({
       workflowMode: 'services',
