@@ -109,6 +109,7 @@ import {
   importExternalStorefrontCatalogImage,
   queueStorefrontCatalogImage,
   queueStorefrontCatalogImages,
+  getStorefrontCatalogImageUploadStatus,
   updateStorefrontCatalogGallery,
   deleteStorefrontCatalogImage,
   generateStorefrontCatalogImage
@@ -287,6 +288,16 @@ const money = (value) => Number(value || 0).toFixed(2);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
+
+// RF-2 (PR #1656 review, #1410): the create-item modal disables its own close button while
+// postCreateSaving is true, so a stuck background upload job locks the operator out of the
+// modal for the full poll duration -- unlike handleGenerateEditImage's edit-modal path, which
+// stays dismissible throughout its own poll. Reusing useItemImageGenerationPoll's full
+// ITEM_IMAGE_POLL_TIMEOUT_MS (90s) here would mean a genuinely stuck job locks the modal that
+// long; bound it to a much shorter ceiling instead -- the common/fast case still resolves in a
+// couple of seconds well under this, and a timeout here degrades to today's pre-fix behavior
+// (soft warning, pos.catalog.changed SSE backstop), not a hard failure.
+const CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS = 15 * 1000;
 
 const resolveStoredItemImageUrl = (urlOrPath) => {
   const raw = String(urlOrPath || '').trim();
@@ -2169,6 +2180,15 @@ function ItemsWorkspace({
   const [generatingEditImage, setGeneratingEditImage] = useState(false);
   const [pollingEditImage, setPollingEditImage] = useState(false);
   const { pollItemImageGeneration, cancel: cancelImageGenerationPoll } = useItemImageGenerationPoll();
+  // Same generic poll-until-terminal-status hook as above, just pointed at the
+  // catalog-image-upload-status endpoint instead of the AI-generation one --
+  // used by runPostCreateStages below to wait out the async image upload
+  // worker (catalogImageUploadWorker.js) before the post-create item refetch.
+  // A shorter timeout than the hook's 90s default (see
+  // CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS above) -- this poll runs while
+  // the create-item modal is locked, unlike the AI-generation path this hook
+  // was originally built for.
+  const { pollItemImageGeneration: pollCatalogImageUploadStatus } = useItemImageGenerationPoll(getStorefrontCatalogImageUploadStatus, CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS);
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
@@ -3161,13 +3181,35 @@ function ItemsWorkspace({
     };
 
     if (Array.isArray(imageFiles) && imageFiles.length > 0) {
-      await runStage(
+      const queuedImageUpload = await runStage(
         'storefront_images',
         imageFiles.length === 1 ? 'Item image upload' : 'Item image gallery upload',
         () => (imageFiles.length === 1
           ? queueStorefrontCatalogImage(itemId, imageFiles[0])
           : queueStorefrontCatalogImages(itemId, imageFiles))
       );
+
+      // The queue call above only confirms the upload was accepted (HTTP 202,
+      // {job_id, queued: true}) -- the backend worker
+      // (catalogImageUploadWorker.js) still resizes/attaches the image in the
+      // background afterwards. Without waiting here, finalizeCreatedItem's
+      // loadItems() below fires immediately after this function returns and
+      // commonly beats the worker, so the new item renders with no image
+      // until a manual refresh or a pos.catalog.changed SSE event happens to
+      // land. Mirrors handleGenerateEditImage's own
+      // `await pollItemImageGeneration(itemId)` above, just against the
+      // upload-status endpoint instead of the generation-status one -- same
+      // hook, different readStatus.
+      if (queuedImageUpload) {
+        const uploadStatus = await pollCatalogImageUploadStatus(itemId);
+        if (uploadStatus.status === 'failed') {
+          toast.warning(`Item #${itemId} was created, but its image failed to process${uploadStatus.error_message ? `: ${uploadStatus.error_message}` : '.'} Try re-uploading it from Edit Item.`);
+        } else if (uploadStatus.status === 'timeout') {
+          toast.warning(`Item #${itemId} was created — its image is still processing and will appear shortly.`);
+        }
+        // 'completed': loadItems() below will already return the image, no
+        // toast needed. 'cancelled': the workspace unmounted mid-poll.
+      }
     } else if (externalProductCode) {
       await runStage(
         'external_product_image',
