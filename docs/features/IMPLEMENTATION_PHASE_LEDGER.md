@@ -20768,10 +20768,10 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 
 - Initiative/release: POS Items catalog-search consistency; local development.
 - Objective and scope: Verify complete results, isolation, browser behavior and repository gates.
-- Status: planned.
+- Status: in_progress.
 - Dependencies: Phase 297 acceptance.
-- Acceptance and validation evidence: Pending; no physical iMin requirement.
+- Acceptance and validation evidence: Six focused backend suites pass (96 tests) and three focused POS Items UI suites pass (23 tests), including the paginated search request/result contract and existing category/modal behavior. The POS production build, architecture guards, governed-document lint, and ADR checks pass. The unauthenticated Playwright access test passes. Authenticated browser scenarios remain pending because no `.env.e2e` or saved auth state is configured and the fallback test account returns HTTP 401 before Items loads; screenshot, video, and trace evidence were retained. Regression coverage commit: `a5224dd5f`. No physical iMin requirement.
 - Completion date: pending.
 - Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `scripts/reproduce-pos-items-search-gap.cjs`.
 
-- Current catalog-search phase: 297 completed. Next eligible phase: 298, pending approval.
+- Current catalog-search phase: 298 in progress. No later phase is eligible until authenticated browser acceptance passes or the governing plan is explicitly amended.

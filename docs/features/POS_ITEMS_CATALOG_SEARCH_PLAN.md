@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: pos
-last_reviewed: 2026-09-05
+last_reviewed: 2026-09-06
 applies_to: pos_items_catalog_search
 topic: pos_items_catalog_search
 ---
@@ -15,7 +15,7 @@ Fix eligible items appearing in Sell search but missing from Items management.
 Use only `C:/xampp/htdocs/POS-DGFY` on `POS-Development`. No PR, push, deployment,
 new worktree, or production data changes. Physical iMin validation is excluded
 by user instruction on 2026-09-05. Browser verification remains required.
-Phases 296-297 are completed; Phase 298 remains planned.
+Phases 296-297 are completed; Phase 298 verification is in progress.
 
 ## Confirmed evidence and limits
 
@@ -83,7 +83,7 @@ Focused backend tests (67 assertions across five suites) and the POS build pass.
 
 ## Phase 298 - Verify and close
 
-Status: planned. Depends on Phase 297 acceptance.
+Status: in progress. Depends on Phase 297 acceptance.
 
 - Test >500 rows, duplicate names, hidden/inactive/deleted rows, barcode/category
   search, secondary membership, stock thresholds, services/always-available,
@@ -95,6 +95,15 @@ Status: planned. Depends on Phase 297 acceptance.
   client-filtering behavior; no architecture exception or migration is assumed.
 - Record commands, results, changed files, limitations, and local commit IDs.
   Mark completed only after acceptance passes. Physical APK evidence is not required.
+
+Automated local evidence on 2026-09-06: six focused backend suites pass with
+96 tests; three focused POS Items UI suites pass with 23 tests; the POS production
+build, architecture guards, governed-document checks, and ADR checks pass. The
+unauthenticated Playwright access test passes. Authenticated browser scenarios remain
+pending because `.env.e2e` and saved authentication state are absent and the fallback
+test account returns HTTP 401 before Items loads. The failed attempt retained its
+screenshot, video, and trace under `apps/dgfy-pos/test-results/`.
+Phase 298 regression coverage is committed locally as `a5224dd5f`.
 
 ## Implementation files
 
@@ -117,5 +126,6 @@ ADR 0080 `0080-item-multi-category-membership.md` under `docs/architecture/adr/`
 These keep stock ownership unchanged, refresh authoritative and tenant scoped,
 and category membership behavior intact. No new exception/allowlist is planned.
 
-Current phase: 297 completed. Next eligible phase: 298, pending approval.
+Current phase: 298 in progress. No later phase is eligible until its authenticated
+browser acceptance scenarios pass or the plan is explicitly amended.
 The authoritative sequence is [the phase ledger](IMPLEMENTATION_PHASE_LEDGER.md).
