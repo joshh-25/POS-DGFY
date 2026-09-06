@@ -278,7 +278,8 @@ jobs:
   resolve-build-plan:
     needs: guard-branch
     if: needs.guard-branch.result == 'success'
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     timeout-minutes: 10
     outputs:
       should_build_dgfy_api: ${{ steps.resolve.outputs.should_build_dgfy_api }}
