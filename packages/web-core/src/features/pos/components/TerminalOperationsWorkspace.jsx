@@ -109,6 +109,7 @@ import {
   importExternalStorefrontCatalogImage,
   queueStorefrontCatalogImage,
   queueStorefrontCatalogImages,
+  getStorefrontCatalogImageUploadStatus,
   updateStorefrontCatalogGallery,
   deleteStorefrontCatalogImage,
   generateStorefrontCatalogImage
@@ -2169,6 +2170,11 @@ function ItemsWorkspace({
   const [generatingEditImage, setGeneratingEditImage] = useState(false);
   const [pollingEditImage, setPollingEditImage] = useState(false);
   const { pollItemImageGeneration, cancel: cancelImageGenerationPoll } = useItemImageGenerationPoll();
+  // Same generic poll-until-terminal-status hook as above, just pointed at the
+  // catalog-image-upload-status endpoint instead of the AI-generation one --
+  // used by runPostCreateStages below to wait out the async image upload
+  // worker (catalogImageUploadWorker.js) before the post-create item refetch.
+  const { pollItemImageGeneration: pollCatalogImageUploadStatus } = useItemImageGenerationPoll(getStorefrontCatalogImageUploadStatus);
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
@@ -3161,13 +3167,35 @@ function ItemsWorkspace({
     };
 
     if (Array.isArray(imageFiles) && imageFiles.length > 0) {
-      await runStage(
+      const queuedImageUpload = await runStage(
         'storefront_images',
         imageFiles.length === 1 ? 'Item image upload' : 'Item image gallery upload',
         () => (imageFiles.length === 1
           ? queueStorefrontCatalogImage(itemId, imageFiles[0])
           : queueStorefrontCatalogImages(itemId, imageFiles))
       );
+
+      // The queue call above only confirms the upload was accepted (HTTP 202,
+      // {job_id, queued: true}) -- the backend worker
+      // (catalogImageUploadWorker.js) still resizes/attaches the image in the
+      // background afterwards. Without waiting here, finalizeCreatedItem's
+      // loadItems() below fires immediately after this function returns and
+      // commonly beats the worker, so the new item renders with no image
+      // until a manual refresh or a pos.catalog.changed SSE event happens to
+      // land. Mirrors handleGenerateEditImage's own
+      // `await pollItemImageGeneration(itemId)` above, just against the
+      // upload-status endpoint instead of the generation-status one -- same
+      // hook, different readStatus.
+      if (queuedImageUpload) {
+        const uploadStatus = await pollCatalogImageUploadStatus(itemId);
+        if (uploadStatus.status === 'failed') {
+          toast.warning(`Item #${itemId} was created, but its image failed to process${uploadStatus.error_message ? `: ${uploadStatus.error_message}` : '.'} Try re-uploading it from Edit Item.`);
+        } else if (uploadStatus.status === 'timeout') {
+          toast.warning(`Item #${itemId} was created — its image is still processing and will appear shortly.`);
+        }
+        // 'completed': loadItems() below will already return the image, no
+        // toast needed. 'cancelled': the workspace unmounted mid-poll.
+      }
     } else if (externalProductCode) {
       await runStage(
         'external_product_image',
