@@ -229,6 +229,32 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         });
     });
 
+    it.each(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'])(
+        'enables %s confirmation for the exact displayed total despite hidden sub-cent precision',
+        async (paymentType) => {
+            const handleCheckout = vi.fn();
+            render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+                cartSubtotal: 51.0101,
+                cartTotal: 51.0101,
+                customerPaymentAmountAutoFilled: false,
+                customerPaymentAmountInput: '51.01',
+                handleCheckout,
+                isCashPayment: paymentType === 'cash',
+                paymentType
+            })} />);
+
+            const confirmButton = await screen.findByRole('button', { name: 'Confirm' });
+            expect(confirmButton.disabled).toBe(false);
+
+            fireEvent.click(confirmButton);
+            expect(handleCheckout).toHaveBeenCalledWith({
+                customerPaymentAmount: 51.01,
+                customerPaymentChange: 0,
+                isCustomerPaymentSufficient: true
+            });
+        }
+    );
+
     it('uses readable inactive labels and highlights only the selected payment method', () => {
         const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
 

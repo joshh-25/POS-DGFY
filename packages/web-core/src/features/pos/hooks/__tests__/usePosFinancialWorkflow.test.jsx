@@ -153,4 +153,20 @@ describe('usePosFinancialWorkflow', () => {
         rerender();
         expect(result.current.customerPaymentAmountState.customerPaymentAmountInput).toBe('274.00');
     });
+
+    it('accepts the exact displayed centavo amount when the calculated total has hidden precision', () => {
+        const { result } = renderFinancials({
+            cart: [{ item_id: 1, quantity: 1, sale_price: 51.0101, vat_type: 'vatable' }],
+            customerPaymentAmountInput: '51.01'
+        });
+
+        expect(result.current.cartTotal).toBe(51.0101);
+        expect(result.current.isCustomerPaymentSufficient).toBe(true);
+
+        const { result: shortPaymentResult } = renderFinancials({
+            cart: [{ item_id: 1, quantity: 1, sale_price: 51.0101, vat_type: 'vatable' }],
+            customerPaymentAmountInput: '51.00'
+        });
+        expect(shortPaymentResult.current.isCustomerPaymentSufficient).toBe(false);
+    });
 });
