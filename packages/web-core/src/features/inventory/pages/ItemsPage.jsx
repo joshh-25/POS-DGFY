@@ -914,6 +914,14 @@ export default function Items() {
     );
   };
 
+  // #1643 (298d): uploadBulkStorefrontCatalogImages/uploadBulkPosCatalogImages now client-convert
+  // and byte-split the selection before sending (see bulkCatalogUpload.js) -- no change needed
+  // here, since both service functions still resolve to the same {summary, results} shape this
+  // handler already consumes, and the gate check lives inside the service functions, not here
+  // (matching where the single-image gate check already lives). One known follow-up, not built in
+  // this pass: converting up to 50 files sequentially can take noticeably longer than today's
+  // instant raw-file POST -- bulkImageUploadLoading already disables the button below, but a
+  // per-file progress count is a nice-to-have left for later, not a blocker.
   const uploadBulkCatalogImages = async (surface) => {
     const files = surface === 'storefront' ? bulkStorefrontImageFiles : bulkPosImageFiles;
     if (!files.length) {
