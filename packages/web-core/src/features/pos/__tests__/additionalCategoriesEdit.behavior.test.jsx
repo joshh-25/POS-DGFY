@@ -30,7 +30,7 @@ vi.mock('../services/posService.js', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    fetchPosCatalog: vi.fn().mockResolvedValue([{
+    fetchPosCatalogPage: vi.fn().mockResolvedValue({ items: [{
       item_id: 24,
       name: 'Aloo Paratha',
       category: 'product',
@@ -40,7 +40,7 @@ vi.mock('../services/posService.js', async (importOriginal) => {
       pos_category: 'main-course',
       folder_id: 10,
       folder: { name: 'Main Course' }
-    }])
+    }], pagination: { page: 1, page_size: 15, total: 1, total_pages: 1 } })
   };
 });
 

@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-09-03
-last_reviewed: 2026-09-04
+last_reviewed: 2026-09-05
 review_by: 2027-03-03
 applies_to: inventory, pos, storefront, vouchers, fnb, dgfy
 topic: item_multi_category_membership
@@ -224,6 +224,16 @@ merchants use to browse the catalog in POS and IMS — not the storefront groupi
 - **Degrades safely.** On a tenant where `item_folder_memberships` isn't available yet, every one
   of these call sites falls back to exactly the pre-amendment primary-only behavior — no new
   failure mode, matching Decision 4's existing per-surface opt-in default.
+
+### 2026-09-05: POS Items filter execution moves to the catalog API (Phase 297)
+
+The POS Items management surface now sends its selected folder filter to an opt-in paginated
+catalog query instead of filtering a bounded client preload. The repository still attaches
+`secondary_folder_ids`, and matching remains the same primary-plus-secondary union defined by the
+2026-09-04 amendment. The API returns each matching item once, with stable name/item-ID ordering.
+Legacy catalog callers retain their array response and existing per-folder behavior. This changes
+where the already-approved `[default]` filter rule executes; it does not widen any money-adjacent
+resolver in Decision 1 and introduces no new category ownership or membership rule.
 
 ## References
 
