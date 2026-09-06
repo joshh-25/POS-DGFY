@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 import { buildFnbCheckoutPayload } from '../model/buildFnbCheckoutPayload.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
@@ -72,6 +72,8 @@ export function useFnbCheckoutQuote({
   buildStockExceededMessage,
   extractStockViolation,
 }) {
+  const quoteRequestIdRef = useRef(0);
+
   // #672: voucherCode is a second, independent override alongside promoCode -- the two checkout
   // discounts are separate fields (see buildFnbCheckoutPayload.js), so each needs its own override
   // rather than reusing promoCode's single positional slot.
@@ -127,6 +129,8 @@ export function useFnbCheckoutQuote({
     // after the response would attribute the quote to whatever the cart looks like when the network
     // finally returns -- which is exactly the cart edit that should have invalidated it.
     const signatureAtRequest = cartSignature;
+    const requestId = quoteRequestIdRef.current + 1;
+    quoteRequestIdRef.current = requestId;
 
     const data = await requestJson('/api/v1/store/cart/quote', {
       method: 'POST',
@@ -134,6 +138,10 @@ export function useFnbCheckoutQuote({
       authToken: isDgfyCustomerSignedIn ? (readDgfyAuthToken() || readStoreAuthToken()) : readStoreAuthToken(),
       body: buildPayload({ promoCode: promoCodeOverride, voucherCode: voucherCodeOverride }),
     });
+    // A fast remove/re-apply sequence can leave more than one quote request in flight. Only the
+    // latest mutation may publish a result; otherwise an older discounted response can resurrect
+    // the voucher after the shopper has already removed it.
+    if (requestId !== quoteRequestIdRef.current) return null;
     setQuoteResult(data);
     setQuotedCartSignature(signatureAtRequest);
     setQuoteNeedsRefresh(false);
@@ -305,10 +313,58 @@ export function useFnbCheckoutQuote({
     toast,
   ]);
 
+  // Removing a voucher is a quote-affecting mutation too. Clearing only the input state leaves
+  // the last discounted quote in `quoteResult`, so every storefront summary keeps rendering the
+  // old voucher discount until the browser is refreshed. Invalidate that snapshot immediately,
+  // then re-quote with an explicit empty voucher override so the server recalculates the same cart
+  // and fulfillment state without the removed code.
+  const handleVoucherCardRemove = useCallback(async () => {
+    setCheckoutVoucherCode('');
+    setQuoteError('');
+    setQuoteResult(null);
+    setQuotedCartSignature(null);
+    setQuoteNeedsRefresh(true);
+
+    if (!selectedStore || !Array.isArray(cart) || cart.length === 0) return null;
+    if (storefrontClosedByHours || !checkoutPermitted || accessCapabilities.quote === false) return null;
+
+    try {
+      return await requestQuote({ voucherCodeOverride: '', silent: true });
+    } catch (error) {
+      const violation = extractStockViolation(error);
+      if (violation) {
+        setQuoteError(buildStockExceededMessage(violation));
+      } else if (isDeferredCustomerValidation(error)) {
+        // The cart drawer can be visible before customer details exist. The code is still removed;
+        // leave the quote invalidated and let the completed checkout details trigger validation.
+        setQuoteNeedsRefresh(true);
+      } else {
+        setQuoteError(normalizeErrorMessage(error, 'Unable to update order totals.'));
+      }
+      return null;
+    }
+  }, [
+    accessCapabilities.quote,
+    buildStockExceededMessage,
+    cart,
+    checkoutPermitted,
+    extractStockViolation,
+    normalizeErrorMessage,
+    requestQuote,
+    selectedStore,
+    setCheckoutVoucherCode,
+    setQuoteError,
+    setQuotedCartSignature,
+    setQuoteNeedsRefresh,
+    setQuoteResult,
+    storefrontClosedByHours,
+  ]);
+
   return {
     buildPayload,
     handlePromoCardApply,
     handleVoucherCardApply,
+    handleVoucherCardRemove,
     requestQuote,
   };
 }

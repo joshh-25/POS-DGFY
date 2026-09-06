@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { hasCustomerName, hasDeliveryAddress, hasPrimaryContact } from '../../../../checkout/checkoutValidation.js';
+import { resolveCheckoutScheduleLabel } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 const FNB_ORDER_STEP_META = {
   3: { number: 1, title: 'Customer Details', subtitle: 'Add contact details so the store can complete your order.' },
@@ -75,9 +76,7 @@ export function useFnbCheckoutPresentation({
     fnbOrderMobileOptionIconBox: isFnbOrderResponsiveFlow ? 34 : 40,
     fnbOrderMobileOptionTextSize: isFnbOrderResponsiveFlow ? 14 : 15,
     fnbOrderStepRenderKey,
-    fnbScheduleSummaryLabel: fnbScheduleMode === 'schedule' && fnbScheduledFor
-      ? new Date(fnbScheduledFor).toLocaleString()
-      : 'NOW',
+    fnbScheduleSummaryLabel: resolveCheckoutScheduleLabel(fnbScheduleMode, fnbScheduledFor),
     isFnbOrderHandset: viewportWidth < 768,
     isFnbOrderResponsiveFlow,
     setShowFnbMobileOrderSummary,

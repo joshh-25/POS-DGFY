@@ -124,16 +124,18 @@ describe('Food & Beverage storefront contract', () => {
     expect(productCard).not.toContain('openCart: true');
   });
 
-  it('hides the redundant floating cart on retail product-details and order routes', () => {
+  it('keeps the retail cart surface on product details while hiding it on order routes', () => {
     const cartShell = cartDrawerShellContainerSource();
 
-    expect(cartShell).toContain('isRetailMode && (isResolvedOrderSubpage || isFnbDetailsSubpage)');
+    expect(cartShell).toContain('&& !(isRetailMode && isResolvedOrderSubpage);');
+    expect(cartShell).not.toContain('isRetailMode && (isResolvedOrderSubpage || isFnbDetailsSubpage)');
   });
 
-  it('hides the Simple cart surface on product-details routes', () => {
+  it('keeps the Simple cart surface on product-details routes', () => {
     const cartShell = cartDrawerShellContainerSource();
 
-    expect(cartShell).toContain('isSimpleCartSurfaceMode && !isFnbDetailsSubpage');
+    expect(cartShell).toContain('!isAccountDrawerOpen && isSimpleCartSurfaceMode && (');
+    expect(cartShell).not.toContain('isSimpleCartSurfaceMode && !isFnbDetailsSubpage');
   });
 
   it('gates required add-ons behind customization and supports cart editing', () => {

@@ -10,6 +10,7 @@ import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/chec
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
 import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { resolveCheckoutScheduleLabel } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 import {
   getStorefrontOnlinePaymentLabel,
   isStorefrontOnlinePaymentType
@@ -116,9 +117,7 @@ export function SimpleCheckoutRoutePage({
     gap: 14,
     alignItems: 'start'
   };
-  const scheduleLabel = fnbScheduleMode === 'schedule' && fnbScheduledFor
-    ? new Date(fnbScheduledFor).toLocaleString()
-    : 'NOW';
+  const scheduleLabel = resolveCheckoutScheduleLabel(fnbScheduleMode, fnbScheduledFor);
   const isOnlinePayment = isStorefrontOnlinePaymentType(fnbPaymentType);
   const onlinePaymentPending = Boolean(qrphPaymentSession?.payment_session_id);
   // Phase 142 (#823): quote-sourced (this page renders before a payment session exists).
@@ -196,6 +195,8 @@ export function SimpleCheckoutRoutePage({
               voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
+              specialInstructions={fnbSpecialInstructions}
+              showFulfillmentSummary={false}
               totals={totals}
               withAssetOrigin={withAssetOrigin}
             />
@@ -264,6 +265,8 @@ export function SimpleCheckoutRoutePage({
               voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
+              specialInstructions={fnbSpecialInstructions}
+              showFulfillmentSummary
               totals={totals}
               withAssetOrigin={withAssetOrigin}
             />
@@ -349,6 +352,8 @@ export function SimpleCheckoutRoutePage({
               voucherDiscountSummaryRow={voucherDiscountSummaryRow}
               promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
+              specialInstructions={fnbSpecialInstructions}
+              showFulfillmentSummary
               totals={totals}
               withAssetOrigin={withAssetOrigin}
             />
@@ -395,6 +400,8 @@ export function SimpleCheckoutRoutePage({
           voucherDiscountSummaryRow={voucherDiscountSummaryRow}
           promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont, isMobile: true })}
           scheduleLabel={scheduleLabel}
+          specialInstructions={fnbSpecialInstructions}
+          showFulfillmentSummary={simpleOrderStep !== 1}
           setSummaryOpen={setShowSimpleMobileOrderSummary}
           showSummary={showSimpleMobileOrderSummary}
           submitLabel={paymentSubmitLabel}

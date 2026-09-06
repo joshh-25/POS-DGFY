@@ -11,7 +11,7 @@ import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/chec
 import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
 import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import { isStorefrontOnlinePaymentType } from '../../../../shared/services/storefrontOnlinePaymentSession.js';
-import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
+import { resolveCheckoutScheduleLabel, resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
@@ -174,9 +174,7 @@ export function RetailOrderPage({
     selectedStore?.payment_capabilities,
     { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) }
   );
-  const scheduleLabel = scheduleMode === 'schedule' && scheduledFor
-    ? new Date(scheduledFor).toLocaleString()
-    : 'NOW';
+  const scheduleLabel = resolveCheckoutScheduleLabel(scheduleMode, scheduledFor);
   // useSignedInCheckoutAddresses (shared with F&B) always folds in its own branch-location
   // fallback when the customer has no real saved addresses yet, regardless of mode. That
   // fallback is F&B-specific and meaningless for a retail tenant, so it's filtered out here
@@ -266,6 +264,8 @@ export function RetailOrderPage({
                 voucherDiscountSummaryRow={voucherDiscountSummaryRow}
                 promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
+                specialInstructions={specialInstructions}
+                showFulfillmentSummary={false}
                 totals={totals}
                 withAssetOrigin={withAssetOrigin}
               />
@@ -337,6 +337,8 @@ export function RetailOrderPage({
                 voucherDiscountSummaryRow={voucherDiscountSummaryRow}
                 promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
+                specialInstructions={specialInstructions}
+                showFulfillmentSummary
                 totals={totals}
                 withAssetOrigin={withAssetOrigin}
               />
@@ -411,6 +413,8 @@ export function RetailOrderPage({
                 voucherDiscountSummaryRow={voucherDiscountSummaryRow}
                 promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
+                specialInstructions={specialInstructions}
+                showFulfillmentSummary
                 totals={totals}
                 withAssetOrigin={withAssetOrigin}
               />
@@ -437,6 +441,8 @@ export function RetailOrderPage({
             onStepChange={setStep}
             orderStep={step}
             scheduleLabel={scheduleLabel}
+            specialInstructions={specialInstructions}
+            showFulfillmentSummary={step !== 1}
             setSummaryOpen={setShowMobileSummary}
             showSummary={showMobileSummary}
             totals={totals}
