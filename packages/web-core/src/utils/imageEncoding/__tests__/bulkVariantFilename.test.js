@@ -26,15 +26,52 @@ describe('bulkVariantFilename.js (#1643, epic #265 298d)', () => {
       expect(buildBulkVariantFilename('SKU-1', 'large')).toBe('SKU-1__large');
     });
 
-    // Known, shared limitation (matches the server's own documented caveat, pr-reviewer RF-3,
-    // PR #1641, bulkCatalogImageFilename.js) -- not fixed here, noted so client and server share
-    // one understood limitation rather than diverging on it.
-    it('collides (does not "fix") a SKU that already legitimately ends in a variant suffix', () => {
-      // A source file already named `WIDGET__large.jpg` gets re-suffixed into
-      // `WIDGET__large__large.jpg`, which the server's own parser would misread as SKU `WIDGET__large`
-      // with variant `large` rather than SKU `WIDGET` -- same collision the server-side utility
-      // documents, deliberately left unresolved on both sides.
-      expect(buildBulkVariantFilename('WIDGET__large.jpg', 'large')).toBe('WIDGET__large__large.jpg');
+    // Regression coverage for pr-reviewer RF-2 (PR #1676): a source filename that already carries
+    // a known variant suffix must NOT get a second suffix appended -- the output is built off the
+    // already-stripped skuStem, so it always normalizes to the same <SKU>__<variantKey><ext>
+    // shape a bare <SKU><ext> source would produce, regardless of which (if any) suffix the
+    // source filename started with.
+    describe('does not double-suffix a source filename that already carries a known variant suffix (RF-2)', () => {
+      it('__large source, requesting the large variant -- round-trips, never SKU__large__large', () => {
+        expect(buildBulkVariantFilename('SKU__large.jpg', 'large')).toBe('SKU__large.jpg');
+      });
+
+      it('__large source, requesting a different variant -- strips the stale suffix first', () => {
+        expect(buildBulkVariantFilename('SKU__large.jpg', 'medium')).toBe('SKU__medium.jpg');
+        expect(buildBulkVariantFilename('SKU__large.jpg', 'thumbnail')).toBe('SKU__thumbnail.jpg');
+      });
+
+      it('__medium source -- strips the stale suffix for every requested variant', () => {
+        expect(buildBulkVariantFilename('SKU__medium.jpg', 'large')).toBe('SKU__large.jpg');
+        expect(buildBulkVariantFilename('SKU__medium.jpg', 'medium')).toBe('SKU__medium.jpg');
+        expect(buildBulkVariantFilename('SKU__medium.jpg', 'thumbnail')).toBe('SKU__thumbnail.jpg');
+      });
+
+      it('__thumbnail source -- strips the stale suffix for every requested variant', () => {
+        expect(buildBulkVariantFilename('SKU__thumbnail.jpg', 'large')).toBe('SKU__large.jpg');
+        expect(buildBulkVariantFilename('SKU__thumbnail.jpg', 'medium')).toBe('SKU__medium.jpg');
+        expect(buildBulkVariantFilename('SKU__thumbnail.jpg', 'thumbnail')).toBe('SKU__thumbnail.jpg');
+      });
+
+      it('a bare source and an already-__large-suffixed source for the same SKU normalize identically', () => {
+        // Mirrors the real duplicate-group scenario the splitter's grouping-unit correctness
+        // requirement guards: whichever of these two filenames a caller happened to select, the
+        // client must derive the exact same <SKU>__large.<ext> output -- never two different
+        // filenames that would parse to two different server-side SKU stems.
+        expect(buildBulkVariantFilename('SKU.jpg', 'large')).toBe(buildBulkVariantFilename('SKU__large.jpg', 'large'));
+        expect(buildBulkVariantFilename('SKU.jpg', 'large')).toBe('SKU__large.jpg');
+      });
+    });
+
+    // Remaining, narrower known limitation (matches the server's own documented caveat,
+    // pr-reviewer RF-3, PR #1641, bulkCatalogImageFilename.js) -- not fixed here, noted so client
+    // and server share one understood limitation rather than diverging on it. This differs from
+    // the RF-2 case above: here the SKU code *itself* legitimately contains "__large" as part of
+    // its own name (not a variant suffix the client added), so stripping it is indistinguishable
+    // from the variant-suffix case on the client side too -- the same ambiguity the server's own
+    // parser already has for this exact filename, not a new one this function introduces.
+    it('still cannot distinguish a SKU that legitimately ends in "__large" from a variant-suffixed upload', () => {
+      expect(buildBulkVariantFilename('WIDGET__large.jpg', 'medium')).toBe('WIDGET__medium.jpg');
     });
   });
 

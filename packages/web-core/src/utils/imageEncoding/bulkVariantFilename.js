@@ -24,20 +24,31 @@ const getFilenameExtension = (originalFilename = '') => {
 /**
  * Builds the `<SKU>__<variantKey><ext>` filename the server's bulk convention expects.
  *
- * Known, shared limitation (matches the server's own documented caveat, pr-reviewer RF-3,
- * PR #1641): a SKU that legitimately ends in `__large`/`__medium`/`__thumbnail` (e.g.
- * `WIDGET__large.jpg`) collides with this convention and will be misparsed server-side as a
- * variant-suffixed upload for a shorter SKU. Not fixed here -- client and server intentionally
- * share one understood limitation rather than diverging on it.
+ * Fixed (pr-reviewer RF-2, PR #1676): builds off `parseBulkVariantFilename`'s already-stripped
+ * `skuStem`, not the raw filename stem -- an originally-selected file that already carries a
+ * known variant suffix (e.g. `SKU__large.jpg`, a valid opt-in-signal filename under today's
+ * ungated bulk convention) previously got a *second* suffix appended
+ * (`SKU__large__large.jpg`), which the server's own `parseBulkCatalogFilename` would then
+ * misparse as SKU stem `SKU__large` instead of `SKU` -- turning a valid optimized upload into an
+ * unmatched/wrong-SKU one. Stripping first means `SKU__large.jpg` correctly produces
+ * `SKU__large.jpg`/`SKU__medium.jpg`/`SKU__thumbnail.jpg`, matching what a bare `SKU.jpg` source
+ * would produce.
+ *
+ * Known, shared limitation that remains (matches the server's own documented caveat,
+ * pr-reviewer RF-3, PR #1641): a SKU that *legitimately* ends in `__large`/`__medium`/
+ * `__thumbnail` as part of its own code (e.g. a SKU literally named `WIDGET__large`) is still
+ * indistinguishable from a variant-suffixed upload for the shorter SKU `WIDGET` -- this fix
+ * cannot and does not resolve that ambiguity, it only stops this function from *creating* a new,
+ * avoidable instance of it out of an already-unambiguous source filename.
  *
  * @param {string} originalFilename
  * @param {'large'|'medium'|'thumbnail'} variantKey
  * @returns {string}
  */
 export function buildBulkVariantFilename(originalFilename, variantKey) {
-  const stem = getFilenameStem(originalFilename);
+  const { skuStem } = parseBulkVariantFilename(originalFilename);
   const ext = getFilenameExtension(originalFilename);
-  return `${stem}__${variantKey}${ext}`;
+  return `${skuStem}__${variantKey}${ext}`;
 }
 
 const BULK_VARIANT_KEYS = new Set(['large', 'medium', 'thumbnail']);
