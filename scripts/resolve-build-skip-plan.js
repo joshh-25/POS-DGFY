@@ -82,6 +82,34 @@ const { IMAGE_NAME_BY_APP } = require('./check-image-version-parity');
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 /**
+ * ADR 0081 Decision 1's channel derivation, reused here rather than reimplemented -- must match
+ * deploy-api.yml/deploy-migration-runner.yml/deploy-frontend.yml's own inline shell `case`
+ * (each workflow's "Compute image metadata" step) exactly, or this script's skip verdict would
+ * check a different tag than the one the actual build-and-push step publishes.
+ *
+ * `environment` is optional and defaults to '' (no suffix) -- this is what keeps deploy-main.yml's
+ * existing `--revision`-only invocation (PROD, bare X.Y.Z tags) working unchanged; only a caller
+ * that explicitly passes `--environment` (deployment-orchestrator.yml, for DEV/STAGING) gets a
+ * suffixed tag.
+ */
+function deriveChannelSuffix(environment) {
+  switch (environment) {
+    case undefined:
+    case null:
+    case '':
+      return '';
+    case 'DEV':
+      return '-dev';
+    case 'STAGING':
+      return '-staging';
+    case 'PROD':
+      return '';
+    default:
+      throw new Error(`Unknown environment '${environment}' -- expected DEV, STAGING, or PROD (ADR 0081 Decision 1's channel derivation), or omit --environment entirely for PROD's unsuffixed default`);
+  }
+}
+
+/**
  * Content-equivalence path scope for one app, resolved AT `ref` (the current build's revision --
  * the `file:` dependency fan-out is read from that app's package.json as it exists right now, same
  * convention `check-app-version-bump.js`'s own `detectChangedApps()` uses). See the file header for
@@ -214,13 +242,14 @@ function decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot = R
  * exception escaping resolveBuildSkipPlan() itself (e.g. a bug in this loop, not in one app's
  * resolution) is still allowed to propagate out of the CLI and fail the calling CI job, per §2/§7.
  */
-function resolveBuildSkipPlan({ apps = APPS, currentRevision, repoRoot = REPO_ROOT, inspectFn = runInspect, diffFn = gitDiffChangedFiles } = {}) {
+function resolveBuildSkipPlan({ apps = APPS, currentRevision, environment, repoRoot = REPO_ROOT, inspectFn = runInspect, diffFn = gitDiffChangedFiles } = {}) {
+  const channelSuffix = deriveChannelSuffix(environment);
   const plan = {};
   for (const app of apps) {
     try {
       const image = IMAGE_NAME_BY_APP(app);
-      const versionTag = readVersionAt(repoRoot, currentRevision, `apps/${app}`);
-      if (!versionTag) {
+      const rawVersion = readVersionAt(repoRoot, currentRevision, `apps/${app}`);
+      if (!rawVersion) {
         plan[app] = {
           skip: false,
           code: 'version-unreadable-fail-closed',
@@ -228,6 +257,7 @@ function resolveBuildSkipPlan({ apps = APPS, currentRevision, repoRoot = REPO_RO
         };
         continue;
       }
+      const versionTag = `${rawVersion}${channelSuffix}`;
       plan[app] = decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot, inspectFn, diffFn });
     } catch (error) {
       plan[app] = {
@@ -243,7 +273,7 @@ function resolveBuildSkipPlan({ apps = APPS, currentRevision, repoRoot = REPO_RO
 // --- CLI ---------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const options = { revision: '', apps: null, projectRoot: REPO_ROOT };
+  const options = { revision: '', apps: null, projectRoot: REPO_ROOT, environment: undefined };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--revision') {
@@ -253,6 +283,11 @@ function parseArgs(argv) {
       options.apps = raw.split(',').map((s) => s.trim()).filter(Boolean);
     } else if (arg === '--project-root') {
       options.projectRoot = path.resolve(argv[++index] || '');
+    } else if (arg === '--environment') {
+      // Optional. Omit entirely for PROD's unsuffixed bare X.Y.Z tag (deploy-main.yml's existing
+      // invocation, unchanged). Pass DEV/STAGING/PROD explicitly for a channel-suffixed tag
+      // (deployment-orchestrator.yml's DEV/STAGING dispatch) -- see deriveChannelSuffix above.
+      options.environment = argv[++index] || '';
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -287,6 +322,7 @@ function main() {
   const plan = resolveBuildSkipPlan({
     apps: options.apps || undefined,
     currentRevision: options.revision,
+    environment: options.environment,
     repoRoot: options.projectRoot,
   });
   printPlan(plan);
@@ -298,6 +334,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  deriveChannelSuffix,
   buildInputPathsForApp,
   gitDiffChangedFiles,
   decideBuildSkip,
