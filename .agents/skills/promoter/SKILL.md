@@ -109,47 +109,26 @@ pre-`main` gate ran, which can be days or weeks after `to-staging/<candidate_id>
 full staging soak — the actual bottleneck behind seven identical recurring tickets
 (#1387/#1419/#1430/#1505/#1544/#1574/#1618). Running the same check-and-resolve procedure here,
 before the branch is even cut, catches it at the earliest point instead of relying on someone
-noticing a standing issue later:
+noticing a standing issue later.
 
-```bash
-git ls-files -- docs/compliance/impact-declarations | grep '\.md$' \
-  | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
-gh issue list --label compliance:preflight-handoff --state open --json number,title,url
-```
+**Go past verify into resolve — don't leave either case for a human to notice separately:** a
+full-scan check for outstanding `NOT-EXECUTED-*` declarations, plus a check for a stuck
+`compliance:preflight-handoff` issue (`gh pr create` from `github-actions[bot]` is blocked by org
+policy #1295, so a sweep whose preflight passed can leave a reconciliation branch pushed with no PR
+ever opened for it — invisible to the first check alone). If either finds something: dispatch the
+sweep and/or open and merge the resulting reconciliation PR — an ordinary `develop`-base PR,
+unattended-mergeable per this role's own merge table below (no destructive action, no `main`, and
+every bundled declaration already passed a real preflight evaluation before the branch was ever
+pushed) — rather than leaving it for a human to notice separately. A `breach`/`review_required`
+result on the live endpoint means stop and escalate like any other compliance failure; do not
+proceed to cut `to-staging/<candidate_id>`.
 
-The first command is a **full scan of the checked-out ref**, not a `develop..main` diff — a diff has
-a permanent blind spot (a declaration that reached `main` via a #1007-override promotion sits on
-both branches and never appears in a diff between them; #1374's own research found 26 outstanding on
-a full scan where a diff-based check found only 4). Empty output means zero outstanding. The second
-command is the fast signal for a stuck handoff: `gh pr create` from `github-actions[bot]` is blocked
-by org policy (#1295), so a sweep whose preflight passed can leave a reconciliation branch pushed
-with no PR ever opened for it — invisible to the first command alone.
-
-**Go past verify into resolve — don't leave either case for a human to notice separately:**
-
-- **A stuck handoff issue exists** (second command returns one): open and merge it now, following
-  `docs/compliance/request-time-preflight-protocol.md`'s "Operator handoff procedure" (find the
-  branch/commands from the issue or the run's `compliance-preflight-sweep-handoff` artifact,
-  `gh pr create --base develop --head compliance-sweep/<run_id> ...`, then the Merge Safety poll, then
-  `gh pr merge <N> --merge --delete-branch`) — an ordinary `develop`-base PR, unattended-mergeable
-  per this role's own merge table below: no destructive action, no `main`, and every bundled
-  declaration already passed a real preflight evaluation before the branch was ever pushed. Its
-  merge re-triggers one more sweep that finds zero outstanding and closes the issue on its own.
-- **A declaration is outstanding with no handoff issue yet** (first command lists a file, second
-  returns nothing): the continuous trigger hasn't caught up — dispatch it manually and wait:
-  ```bash
-  gh workflow run compliance-preflight-sweep.yml
-  gh run list --workflow=compliance-preflight-sweep.yml -L1 --json databaseId,status
-  gh run view <id> --json conclusion
-  ```
-  then re-run the second command above — a passing run almost always produces a fresh stuck-handoff
-  issue (the same org-policy block applies), so open and merge it the same way as the first case.
-  A `conclusion: failure` here means a real `breach`/`review_required` result on the live endpoint —
-  stop and escalate like any other compliance failure; do not proceed to cut
-  `to-staging/<candidate_id>`.
-
-Re-run both commands once more after any resolve action — only cut `to-staging/<candidate_id>` once
-both come back clear (no outstanding file, no open handoff issue).
+**Exact commands, pinned to a clean checkout of `origin/develop`, not whatever's checked out
+locally (fixed per PR #1672 review, RF-2 — an earlier version of this step read `git ls-files` from
+the current working directory, never pinned or refreshed):**
+`references/promotion-runbook.md`'s "Compliance preflight — pinned target-ref scan" section, run
+against `origin/develop`. Only cut `to-staging/<candidate_id>` once that procedure reports both
+checks clear.
 
 **Candidate manifest, written locally at cut time (ADR 0081 Decision 8, #1588).** The manifest
 `scripts/check-promotion-candidate.js` validates is also this candidate's own tracked source
@@ -280,22 +259,22 @@ it splits by flow:
   immediately before cutting `release/<label>`.
 
 Either way it's the same two-check-then-resolve procedure defined in "Frozen candidate and repair
-loop" above, re-run here rather than trusting a staging-leg pass from days or weeks earlier:
-
-```bash
-git ls-files -- docs/compliance/impact-declarations | grep '\.md$' \
-  | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
-gh issue list --label compliance:preflight-handoff --state open --json number,title,url
-```
-
-Empty output on both → clear, proceed to cut `release/<label>`. Otherwise resolve exactly as
-described above — open and merge a stuck handoff PR, or dispatch-and-wait-then-resolve for a freshly
-outstanding declaration — before cutting the branch. The workflow runs against its own ephemeral
-CI-provisioned instance — no `environment:` input, no secrets, nothing to provision (superseded
-#1121's `stage.dgfy.ph` bot-account design; see the ADR 0074 amendment dated 2026-08-31 for why).
-**No `NOT-EXECUTED-*` declaration may reach `main`** — unchanged — and #1007's expedited override
-(below) remains the one case a `NOT-EXECUTED-*` declaration may legitimately still reach `main`,
-logged and authorized, not silent.
+loop" above, re-run here rather than trusting a staging-leg pass from days or weeks earlier. **Exact
+commands, pinned to a clean checkout, not whatever's checked out locally (fixed per PR #1672 review,
+RF-2):** `references/promotion-runbook.md`'s "Compliance preflight — pinned target-ref scan"
+section — run it against `origin/staging` for the default flow's `release/<candidate_id>-rN` cut
+(the runbook's own established `origin/staging`-in-place-of-`origin/develop` substitution for this
+leg — `origin/staging` is what `release/<label>` is actually cut from here, and per the
+frozen-candidate rule newer `origin/develop` work was never folded into this candidate, so scanning
+`develop` instead would risk both false positives from unrelated later work and blindness to a
+staging-only repair's own declaration changes) or against `origin/develop` for the #1007-gated
+exception's direct `release/<label>` cut. Empty output on both checks → clear, proceed to cut the
+branch; otherwise resolve exactly as described above before cutting it. The workflow runs against
+its own ephemeral CI-provisioned instance — no `environment:` input, no secrets, nothing to provision
+(superseded #1121's `stage.dgfy.ph` bot-account design; see the ADR 0074 amendment dated 2026-08-31
+for why). **No `NOT-EXECUTED-*` declaration may reach `main`** — unchanged — and #1007's expedited
+override (below) remains the one case a `NOT-EXECUTED-*` declaration may legitimately still reach
+`main`, logged and authorized, not silent.
 
 **`gate:release:local` is no longer a step in this procedure (since 2026-09-03, #1431 Phase C/D).**
 Every gate it used to run locally is now delegated to `promotion-quality-gate.yml`

@@ -3,6 +3,71 @@
 Mechanics only. Rule sources (why, and what gates apply) are in `../SKILL.md` and the docs it
 points at — don't duplicate the reasoning here, just the commands.
 
+## Compliance preflight — pinned target-ref scan, resolve, and refresh (shared by both flows, #1648;
+## pinned-scan fix from PR #1672 review, RF-1/RF-2)
+
+Both flows below need the identical check before their next branch is cut: the #1007-gated exception
+cuts `release/<label>` directly from `origin/develop`; the default flow cuts
+`to-staging/<candidate_id>` from `origin/develop` too. Either way the scan must reflect exactly
+`origin/develop`'s committed state — not whatever the promoter's own working directory happens to
+have checked out, and not a `develop..main`/`develop..staging` diff (a diff misses a declaration
+already reconciled on both branches via a prior #1007-override promotion — #1374's own finding: 26
+outstanding on a full scan vs. 4 on a diff). Both gaps were found live on PR #1672's own review
+(RF-1: the `#1007-gated exception` section below still used a diff; RF-2: the default flow's scan
+below read from whatever ref happened to be checked out, never pinned or refreshed). Fixed with a
+disposable worktree pinned to the freshly fetched target ref:
+
+```bash
+git fetch origin develop
+WORKTREE_DIR="$(git rev-parse --show-toplevel)/.tmp/compliance-scan-develop"
+rm -rf "$WORKTREE_DIR"
+git worktree add --detach "$WORKTREE_DIR" origin/develop
+```
+
+Scan that pinned checkout, never the current working directory:
+
+```bash
+for f in $(git -C "$WORKTREE_DIR" ls-files -- docs/compliance/impact-declarations | grep '\.md$'); do
+  node scripts/is-preflight-outstanding.js "$WORKTREE_DIR/$f" && echo "$f"
+done 2>/dev/null
+gh issue list --label compliance:preflight-handoff --state open --json number,title,url
+```
+
+Empty output on both → clear; remove the worktree (`git worktree remove --force "$WORKTREE_DIR"`)
+and proceed to whichever branch cut sent you here. Otherwise resolve — don't just report and wait:
+
+```bash
+# a stuck handoff issue exists (second command returned one) -- open and merge it now, per
+# docs/compliance/request-time-preflight-protocol.md's "Operator handoff procedure":
+gh pr create --base develop --head compliance-sweep/<run_id> \
+  --title "docs(compliance): reconcile preflight sweep results (<date>)" --body-file <pr_body>
+gh pr checks <N> --watch   # Merge Safety poll -- AGENTS.md
+gh pr merge <N> --merge --delete-branch
+
+# OR: a declaration is outstanding with no handoff issue yet (first command listed a file, second
+# returned nothing) -- the continuous trigger hasn't caught up, dispatch it manually and wait:
+gh workflow run compliance-preflight-sweep.yml
+gh run list --workflow=compliance-preflight-sweep.yml -L1 --json databaseId,status
+gh run view <id> --json conclusion
+# then re-run the two check commands above -- a passing run almost always produces a fresh
+# stuck-handoff issue (same org-policy block), so open and merge it the same way as above.
+```
+
+Either resolve path moves `origin/develop` — **refresh the pinned worktree before re-checking**,
+don't re-scan the stale copy already on disk:
+
+```bash
+git fetch origin develop
+git -C "$WORKTREE_DIR" reset --hard origin/develop
+```
+
+Re-run both check commands against the refreshed worktree. Repeat resolve → refresh → re-check until
+both come back clear, then tear it down and proceed:
+
+```bash
+git worktree remove --force "$WORKTREE_DIR"
+```
+
 ## #1007-gated exception: direct `develop` → `main`
 
 **Ran `gate:release:local` locally at any point earlier in this session? `git status` before
@@ -18,15 +83,13 @@ cheap backstop that catches it regardless of cause.
 
 Pre-flight, then confirm the compliance sweep is clear against the target SHA — the one real
 precondition here, since no `NOT-EXECUTED-*` declaration may reach `main` (full detail:
-`../SKILL.md`'s "Pre-`main` gates" section, "Ordering" note, #1359):
-
-```bash
-git fetch origin main develop
-git diff --name-only origin/main origin/develop -- docs/compliance/impact-declarations/ \
-  | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
-# empty output → clear, proceed. Any line printed → the continuous sweep hasn't caught up yet —
-# dispatch it manually (`gh workflow run compliance-preflight-sweep.yml`) and wait, per ../SKILL.md.
-```
+`../SKILL.md`'s "Pre-`main` gates" section, "Ordering" note, #1359). `release/<label>` is cut
+directly from `origin/develop` in this flow, so run the "Compliance preflight — pinned target-ref
+scan" procedure above against `origin/develop` — the same procedure the default flow's staging leg
+uses below, since both flows cut their next branch from the identical ref. **Do not use a
+`develop..main` diff to find outstanding declarations** (the shape this section used before PR #1672
+review, RF-1) — it misses a declaration already reconciled on both branches, exactly the blind spot
+the shared procedure's own explanation names.
 
 Once that's clear, cut `release/<label>` and open its PR into `main` right away — **do not wait on
 the production tenant-schema report first.** It has no dependency on the compliance sweep or on the
@@ -201,36 +264,12 @@ git push
 precondition, same reasoning as the "#1007-gated exception" section's own compliance check above but
 now run here too, earlier, since this leg previously ran nothing at all here — see `../SKILL.md`'s
 "Frozen candidate and repair loop" section for the full rationale
-(#1387/#1419/#1430/#1505/#1544/#1574/#1618):
-
-```bash
-git ls-files -- docs/compliance/impact-declarations | grep '\.md$' \
-  | xargs -I{} sh -c 'node scripts/is-preflight-outstanding.js "{}" && echo "{}"' 2>/dev/null
-gh issue list --label compliance:preflight-handoff --state open --json number,title,url
-```
-
-Empty output on both → clear, proceed to the branch cut below. Otherwise, resolve — don't just
-report and wait:
-
-```bash
-# a stuck handoff issue exists (second command returned one) -- open and merge it now, per
-# docs/compliance/request-time-preflight-protocol.md's "Operator handoff procedure":
-gh pr create --base develop --head compliance-sweep/<run_id> \
-  --title "docs(compliance): reconcile preflight sweep results (<date>)" --body-file <pr_body>
-gh pr checks <N> --watch   # Merge Safety poll -- AGENTS.md
-gh pr merge <N> --merge --delete-branch
-
-# OR: a declaration is outstanding with no handoff issue yet (first command listed a file, second
-# returned nothing) -- the continuous trigger hasn't caught up, dispatch it manually and wait:
-gh workflow run compliance-preflight-sweep.yml
-gh run list --workflow=compliance-preflight-sweep.yml -L1 --json databaseId,status
-gh run view <id> --json conclusion
-# then re-run the two check commands above -- a passing run almost always produces a fresh
-# stuck-handoff issue (same org-policy block), so open and merge it the same way as above.
-```
-
-Re-run both check commands once more after any resolve action — only cut `to-staging/$CANDIDATE_ID`
-once both come back clear.
+(#1387/#1419/#1430/#1505/#1544/#1574/#1618). Run the "Compliance preflight — pinned target-ref scan"
+procedure at the top of this file against `origin/develop` — the exact ref `to-staging/$CANDIDATE_ID`
+is about to be cut from — not a scan of whatever the current working directory happens to have
+checked out (the gap PR #1672's review, RF-2, found in this section's previous version: an unpinned
+`git ls-files` scan that never refreshed after a reconciliation merge). Only cut
+`to-staging/$CANDIDATE_ID` once that procedure reports both checks clear.
 
 Only once that reports clean does the candidate branch get cut, from the (possibly just-bumped)
 `origin/develop`:
@@ -290,7 +329,10 @@ gh pr merge <N> --merge   # never --squash — see SKILL.md
 
 Then cut `release/<candidate_id>-rN` from `origin/staging` instead of `origin/develop` in the
 "#1007-gated exception" section above — same commands, `origin/staging` in place of
-`origin/develop`.
+`origin/develop`. This includes the compliance-preflight pinned-target-ref scan: pin it to
+`origin/staging` here too, deliberately, not just as a mechanical find-and-replace — `origin/staging`
+is what `release/<label>` is actually cut from on this leg, and the frozen-candidate rule means
+`origin/develop` may have moved on to unrelated work this candidate never absorbed.
 
 ## Candidate repair after the staging merge
 
