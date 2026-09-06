@@ -3,7 +3,7 @@
 Mechanics only. Rule sources (why, and what gates apply) are in `../SKILL.md` and the docs it
 points at — don't duplicate the reasoning here, just the commands.
 
-## Compliance preflight — pinned target-ref scan, resolve, and refresh (shared by both flows, #1648; pinned-scan fix from PR #1672 review, RF-1/RF-2; parameterized RF-4, unique-path fix RF-6; fail-loud guard + pinned-SHA cut fix RF-8/RF-10)
+## Compliance preflight — pinned target-ref scan, resolve, and refresh (shared by both flows, #1648; pinned-scan fix from PR #1672 review, RF-1/RF-2; parameterized RF-4, unique-path fix RF-6; fail-loud guard + pinned-SHA cut fix RF-8/RF-10; fail-closed strict-mode fix RF-12)
 
 Every call site below needs the identical check before its next branch is cut, but against
 different target refs: the `#1007`-gated exception's direct `release/<label>` cut and the default
@@ -16,9 +16,15 @@ which offered no way to invoke it against anything but `origin/develop`. This bl
 assigns a default value: RF-8 (PR #1672 review) found that the block's own `TARGET_REF=origin/develop`
 fallback silently clobbered a call site's `origin/staging` choice whenever both were pasted in
 sequence — exactly what "run unmodified" tells the reader to do — so a missing assignment now fails
-loudly instead of silently defaulting:
+loudly instead of silently defaulting. Every block in this section also runs under strict mode from
+here on — set once, it persists for the rest of this shell session, no need to restate it in the
+blocks below. RF-12 (PR #1672 review, round 4) found the real gap without it: an unchecked failure
+in `git fetch`, `git rev-parse`, `git worktree add`, or the declaration-listing step could produce
+empty output that gets misread as "both checks clear," letting the caller cut from `$TARGET_SHA`
+without ever actually evaluating it:
 
 ```bash
+set -euo pipefail
 : "${TARGET_REF:?set TARGET_REF before running this procedure}"
 REF_NAME="${TARGET_REF#origin/}"
 git fetch origin "$REF_NAME"
@@ -40,7 +46,10 @@ diff misses a declaration already reconciled on both branches via a prior #1007-
 worktree pinned to the freshly fetched target ref, at a **path unique to this run** — never a fixed
 shared path (RF-6, PR #1672 review: a fixed path's unconditional `rm -rf` could delete a
 concurrent/interrupted promoter session's own active worktree at that same path) — with a cleanup
-trap as the crash/interrupt backstop:
+trap as the crash/interrupt backstop. `git worktree add` failing here already aborts the whole
+session under the strict mode set above (RF-12) — no separate check needed on this line, only the
+trap's own `2>/dev/null` stays deliberately suppressed, since a best-effort cleanup failing on exit
+is not itself a finding worth surfacing:
 
 ```bash
 WORKTREE_DIR="$(git rev-parse --show-toplevel)/.tmp/compliance-scan-$REF_NAME-$$"
@@ -48,12 +57,42 @@ trap 'git worktree remove --force "$WORKTREE_DIR" 2>/dev/null' EXIT
 git worktree add --detach "$WORKTREE_DIR" "$TARGET_SHA"
 ```
 
-Scan that pinned checkout, never the current working directory:
+Scan that pinned checkout, never the current working directory. RF-12 (PR #1672 review, round 4)
+found three fail-open traps in this block's previous version, all fixed below:
+
+- Listing files as its own checked statement (`DECLARATION_FILES=$(...)`), not inline inside the
+  `for` loop's own `$(...)` — strict mode's `set -e` does **not** catch a command substitution's
+  failure when it sits inside a `for ... in $(...)` word list, only when it's a plain assignment.
+  `for f in $(git ls-files ...); do ...` failing silently and iterating zero times is exactly how a
+  broken worktree/scan produced "empty output" that got misread as "clear."
+- Filtering by extension with a `case` match instead of piping through `grep '\.md$'` — under
+  `pipefail`, that pipe would fail the whole assignment the moment zero `.md` files exist, which is
+  a normal, expected outcome (no compliance-sensitive declarations at all), not an error. Don't
+  reintroduce that pipe here even under strict mode; it trades one fail-open trap for a fail-closed
+  false positive on a perfectly clean repo.
+- Checking `is-preflight-outstanding.js`'s actual output, not just `&&`-gating on its exit code —
+  the script exits 1 for two different reasons (a reconciled declaration, expected, or a read/parse
+  failure, a real error — see its own header comment) and only its stdout ("reconciled" vs. nothing)
+  tells them apart. Blindly treating every non-zero exit as "not outstanding" is the same fail-open
+  shape as the other two, just at the per-file level instead of the per-scan level. No blanket
+  `2>/dev/null` either — a real failure here has to be visible, not silently discarded:
 
 ```bash
-for f in $(git -C "$WORKTREE_DIR" ls-files -- docs/compliance/impact-declarations | grep '\.md$'); do
-  node scripts/is-preflight-outstanding.js "$WORKTREE_DIR/$f" && echo "$f"
-done 2>/dev/null
+DECLARATION_FILES=$(git -C "$WORKTREE_DIR" ls-files -- docs/compliance/impact-declarations)
+for f in $DECLARATION_FILES; do
+  case "$f" in
+    *.md) ;;
+    *) continue ;;
+  esac
+  status=0
+  output=$(node scripts/is-preflight-outstanding.js "$WORKTREE_DIR/$f") || status=$?
+  if [ "$status" -eq 0 ]; then
+    echo "$f"   # outstanding
+  elif [ "$status" -ne 1 ] || [ "$output" != "reconciled" ]; then
+    echo "ERROR: is-preflight-outstanding.js failed on $f (exit $status): $output" >&2
+    exit 1
+  fi
+done
 gh issue list --label compliance:preflight-handoff --state open --json number,title,url
 ```
 

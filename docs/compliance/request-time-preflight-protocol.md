@@ -138,8 +138,10 @@ promotion is cut — the continuous trigger is not the only place the sweep
 executes, and (as of #1648, 2026-09-06) it's no longer true that a promoter
 only ever *verifies* this at one late point either.
 
-**Two promotion-time checkpoints now, not one, and both resolve rather than
-merely verify (#1648, 2026-09-06).** `promoter` runs the same check (full scan
+**Two promotion-time checkpoints now, not one — but only the `origin/develop`-scanning ones resolve
+rather than merely verify (#1648, 2026-09-06; scoping corrected RF-11, PR #1672 review, round 4 —
+the prior wording claimed both checkpoints resolve, contradicting this same section's own correct
+explanation below).** `promoter` runs the same check (full scan
 for outstanding `NOT-EXECUTED-*` declarations, plus a check for a stuck
 `compliance:preflight-handoff` issue) at two points: primarily *before cutting
 `to-staging/<candidate_id>`* — the `develop → staging` leg, the earliest point
@@ -364,8 +366,16 @@ well before a promotion is cut, so this is now rarely something a promoter
 has to actively wait on; `promoter`'s own procedure checks zero outstanding
 declarations before cutting `to-staging/<candidate_id>` **and** before cutting
 `release/<label>` (#1648, 2026-09-06 — see "Where live preflight actually
-runs" above), and resolves rather than just waiting if either check finds
-something. #1007's phrase-gated expedited override remains the one case a
+runs" above). The `to-staging/<candidate_id>` checkpoint, and the
+`release/<label>` checkpoint whenever it's scanning `origin/develop` (the
+#1007 exception's own case), resolve rather than just wait if a check finds
+something (RF-11, PR #1672 review, round 4 — this used to read "if either
+check finds something," overclaiming resolve for the default flow's own
+`release/<label>` checkpoint too). That checkpoint instead scans
+`origin/staging` in the default flow and stays verify-only: a finding there
+escalates as a frozen-candidate anomaly, routed through a `fix/staging/*`
+repair, never through this dispatch-and-merge resolve path. #1007's
+phrase-gated expedited override remains the one case a
 `NOT-EXECUTED-*` declaration may legitimately still reach `main`, logged and
 authorized, not silent (`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s 2026-08-25
 amendment).
