@@ -99,8 +99,7 @@ const buildTransactionPaymentTypeWhere = (sequelize, paymentType) => {
                 sequelize.fn(
                     'JSON_CONTAINS',
                     sequelize.col('PosTransaction.payment_breakdown'),
-                    JSON.stringify({ payment_type: normalized }),
-                    '$'
+                    JSON.stringify({ payment_type: normalized })
                 ),
                 1
             )
