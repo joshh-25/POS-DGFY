@@ -239,6 +239,47 @@ describe('inventory itemRepository', () => {
     }));
   });
 
+  it('does not append a fourth image when persisting an already-optimized three-image gallery', async () => {
+    const gallery = [1, 2, 3].map((number) => ({
+      path: `storefront/item-901/image-${number}/large.webp`,
+      url: `/uploads/storefront/item-901/image-${number}/large.webp`,
+      variants: { thumbnail_url: `/uploads/storefront/item-901/image-${number}/thumb.webp` },
+      is_primary: number === 1,
+      sort_order: number - 1
+    }));
+    const update = jest.fn().mockResolvedValue();
+    const existing = {
+      storefront_catalog_override_id: 77,
+      item_id: 901,
+      storefront_visible: true,
+      storefront_image_path: gallery[0].path,
+      storefront_image_url: gallery[0].url,
+      storefront_image_gallery: [],
+      update
+    };
+    const StorefrontCatalogOverride = {
+      findOne: jest.fn().mockResolvedValue(existing)
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'StorefrontCatalogOverride') return StorefrontCatalogOverride;
+      return {};
+    });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'gallery-count-test' });
+
+    await itemRepository.updateStorefrontCatalogImage(901, {
+      path: gallery[0].path,
+      url: gallery[0].url,
+      gallery
+    });
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0][0].storefront_image_gallery).toHaveLength(3);
+    expect(update.mock.calls[0][0].storefront_image_gallery.map((entry) => entry.path)).toEqual(
+      gallery.map((entry) => entry.path)
+    );
+  });
+
   it('retries Storefront override updates without gallery when tenant schema is missing the gallery column', async () => {
     const missingGalleryColumnError = {
       name: 'SequelizeDatabaseError',
