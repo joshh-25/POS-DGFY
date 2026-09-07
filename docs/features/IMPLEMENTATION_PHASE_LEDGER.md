@@ -21926,26 +21926,127 @@ the confirmed next free number as of this land.
   `scripts/gate-release-local.js`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
   `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-09-07 dated Amendments entry), this ledger entry,
   issue #1690.
-- Next eligible phase: 304.
 
-## Phase 304 - Split-payment inventory preflight before tender acceptance
+## Phase 304 - Import-graph-aware fan-out reachability oracle, SHADOW MODE ONLY (#1695)
+
+Filed as this branch's own "Phase 303" while planning/implementing, then renumbered here on rebase
+(this PR, round 1): while this branch was in flight, Phase 303 was independently claimed and
+merged first by #1690's `repository-quality` job-split PR (directly above). Per `AGENTS.md`'s
+Continuous Phase Numbering rule, this entry uses the next open slot verified against a
+freshly-fetched `origin/develop` (304 -- confirmed no `## Phase 304` heading existed there),
+mirroring the same collision-handling precedent Phase 295/298's own entries already set. No other
+content differs from what was implemented and tested under the "303" label.
+
+- Initiative/release: CI-tooling correctness (standalone issue, not part of an existing epic) /
+  current release process.
+- Objective and scope: closes the gap named in #1695 -- `check-app-version-bump.js`'s
+  `detectChangedApps()` marks an app "changed" via directory containment alone (any changed file
+  under a `file:`-dependency package directory), with no check of whether the app's own module
+  graph actually reaches that file. Confirmed real false positive: PR #1689 flagged (and bumped)
+  `dgfy-storefront` because `packages/web-core/src/utils/imageEncoding/bulk*` changed, even though
+  `dgfy-storefront`'s own bundle never imports that code -- it's reached only through
+  `storefrontCatalogService.js`, itself imported only by admin/catalog-authoring code reachable
+  from `dgfy-ims`/`dgfy-pos`. This phase builds and wires in a real per-app static reachability
+  oracle, but in **shadow mode only**: it computes and prints the new reachability verdict
+  alongside the existing directory-level one, plus whether a fail-closed safety-net audit passed,
+  but keeps gating on the OLD verdict only. Zero behavior change to CI outcomes -- see the plan doc
+  cited below for the full design and the two-phase (this phase shadow / a later enforce-after-
+  evidence phase) rollout this deliberately follows (the same advisory-then-blocking shape
+  `check:app-versions` itself already used, per ADR 0081 Decision 9). `resolve-build-skip-plan.js`'s
+  own, deliberately wider content-equivalence use of `resolveFileDependencyPackages` is untouched.
+- Mechanically: new `scripts/resolve-web-core-reachability.js` (`computeAppReachableModules`,
+  `auditReachabilitySafety`), built on `madge` (new devDependency -- no dependency-graph tool
+  existed in this repo before). One real `madge()` parse per process, across the union of the three
+  frontend apps' Vite entry points (`apps/{dgfy-ims,dgfy-pos,dgfy-storefront}/src/main.jsx` --
+  `dgfy-api`/`dgfy-migration-runner` are backend, Node module resolution rather than a bundler
+  graph, explicitly out of scope), cached per repoRoot so `check-app-version-bump.js`'s up-to-3
+  calls per invocation never trigger three separate parses. The one `new Worker(new URL('<literal>',
+  import.meta.url))` edge madge's own static analysis does not follow (confirmed live: madge's
+  parse of `imageEncoding/index.js` omits `encodeWorker.js` from its dependency list) is folded in
+  as a synthetic edge, with the worker target also fed into `madge()` as a real additional entry
+  point so ITS OWN transitive dependencies are correctly captured too, not just the one edge.
+  `auditReachabilitySafety()` is the fail-closed precondition check: a regex sweep (same method as
+  the original investigation's own audit) for computed/templated dynamic `import()`/`require()`
+  specifiers, `import.meta.glob(...)`, and any Worker/SharedWorker construction not matching the
+  one known-safe literal-URL shape -- ANY violation anywhere in `packages/web-core` or
+  `packages/shared-constants` (not just the current diff) falls the narrowing back to the old
+  conservative verdict. `check-app-version-bump.js`'s `detectChangedApps()` itself is **completely
+  unchanged** (still pure, synchronous, zero new fields) -- the shadow computation lives in new,
+  separately-exported async functions (`computeReachabilityShadowVerdict`,
+  `runReachabilityShadowAudit`) invoked from `main()` only, wrapped so nothing it does (including a
+  bug in the reachability walk itself) can affect `process.exitCode`; `runCheck()`'s return object
+  gains two purely additive fields (`repoRoot`, `changedFiles`) so the shadow step can read them,
+  verified not to break any pre-existing field-level assertion in the test suite. A changed file
+  deleted between base and head (§3.4 of the plan) is conservatively counted as "changed" (its own
+  distinguishable `deleted-file-fail-closed` code) rather than silently read as unreachable, since a
+  deleted file can never appear in a graph built from HEAD's working tree.
+- Status: completed.
+- Dependencies: none (standalone issue). Sets up #1695's own follow-on phase (flip to enforcing,
+  gated on a stated shadow-mode evidence bar -- not started here; the next eligible phase number
+  for it is 305, per this entry's own tail line below).
+- Acceptance and validation evidence: `node --check` on every changed/new `.js` file (4 files, all
+  OK -- no build step for scripts/-only backend tooling). `node --test
+  scripts/resolve-web-core-reachability.test.js` (11/11 -- the PR #1689 scenario reconstructed as a
+  fixture confirming `dgfy-storefront` correctly excludes `storefrontCatalogService.js`/
+  `bulkCatalogUpload.js` while `dgfy-ims`/`dgfy-pos` correctly include them, the scope-restriction
+  guard, a missing-entry-file throw, the one `new Worker(new URL(...))` pattern's synthetic edge
+  including its own further imports, a clean safety-net pass, three distinct synthetic safety-net
+  trips -- non-literal dynamic import, `import.meta.glob`, an unrecognized Worker construct -- a
+  `__tests__`-exclusion check, and a literal-import non-trip). `node --test
+  scripts/check-app-version-bump.test.js` (23/23 -- all 16 pre-existing tests pass byte-for-byte
+  unchanged, plus 7 new shadow-wiring tests for this phase: a real reachability-hit agreement, a
+  `dgfy-storefront` disagreement reproducing the PR #1689 shape, the deleted-file conservative
+  fallback, a synthetic safety-net trip overriding a would-be disagreement, a direct-change
+  not-applicable case, a backend-app not-applicable case, and an explicit regression guard that
+  `runCheck()`'s own `ok`/`changed` result and return shape are unaffected). `node --test
+  scripts/resolve-build-skip-plan.test.js` (24/24, unmodified -- confirms its own,
+  deliberately-wider reuse of `resolveFileDependencyPackages`/`readVersionAt`/`APPS` is unaffected,
+  per the plan's explicit "do not touch" scope). `GITHUB_BASE_REF=develop node
+  scripts/check-app-version-bump.js --staged` against this PR's own diff -- PASS, "no apps/* or
+  fan-out package changes" (this PR touches only `scripts/`/root `package.json`, no app or
+  `file:`-dependency package). `npm run check:architecture` (OK, 54 modules/563 files + 94
+  controllers). `npm run check:adr` (OK, 89 ADRs -- no amendment needed, per the plan's §6: this
+  phase makes no behavior change to ADR 0081 Decision 6's enforced meaning). `npm run check:compliance`
+  (no compliance-sensitive changes detected -- `scripts/` is not a classified compliance surface).
+  `package-lock.json` confirmed in sync: a second `npm install` after adding `madge` produced an
+  identical lockfile hash. Live smoke test against the real repo at HEAD (not just fixtures):
+  `computeAppReachableModules` reproduces the PR #1689 finding exactly (`dgfy-storefront`: 601
+  web-core/shared-constants-scoped modules reachable, neither `storefrontCatalogService.js` nor
+  `bulkCatalogUpload.js` among them; `dgfy-ims`/`dgfy-pos`: both reachable, plus `encodeWorker.js`
+  via the synthetic Worker edge), and `auditReachabilitySafety` reports `safe: true` with zero
+  violations against the real `packages/web-core`/`packages/shared-constants` trees -- matching the
+  #1695 plan's own §2 audit finding of zero disqualifying patterns in the live codebase (one
+  regex false-positive from a code-span inside a comment, `` `import()` `` with an empty argument,
+  was found and corrected during this phase -- an empty `import()` argument is not valid JS for a
+  real dynamic import and is now excluded from the scan, matching the plan's own grep method, which
+  already required a real character immediately after `import(`).
+- Completion date: 2026-09-07.
+- Contracts/files: `scripts/resolve-web-core-reachability.js` (new),
+  `scripts/resolve-web-core-reachability.test.js` (new), `scripts/check-app-version-bump.js`
+  (`detectChangedApps()` itself unchanged; new shadow-mode functions and additive `runCheck()`
+  fields), `scripts/check-app-version-bump.test.js` (7 new tests), `package.json` (`madge`
+  devDependency, `test:web-core-reachability`, `test:development-to-production` chain entry),
+  `package-lock.json`, issue #1695. No ADR amendment (plan §6: not needed until the follow-on phase
+  actually flips enforcement). That follow-on phase (flip to enforcing, gated on a stated
+  shadow-mode evidence bar) is the named follow-up, not started here.
+- Next eligible phase: 305.
+
+## Phase 305 - Split-payment inventory preflight before tender acceptance
 
 - Initiative/release: POS split payment and Inventory consistency / current release.
 - Objective and scope: validate every stock-bearing direct item, recipe ingredient, and linked
   modifier SKU before a split-payment session is created and again before its first allocation.
-  FIFO ledger drift and insufficient stock now prevent tender acceptance, with a cashier-facing
+  FIFO ledger drift and insufficient stock prevent tender acceptance, with a cashier-facing
   message confirming that no payment was accepted. Final checkout retains its locked inventory
   validation and stock issue.
 - Status: completed.
 - Dependencies: ADR 0029 Inventory ownership; ADR 0040 FIFO valuation; ADR 0063 split tender;
   `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
 - Acceptance and validation evidence: `node --check` passed for all changed API source files;
-  `posSplitPayment.usecases.test.js` passed 31/31, including no session or allocation on preflight
-  failure; targeted migrated-database FIFO preflight test passed and confirmed no transaction,
-  stock movement, or stock mutation; existing final-checkout FIFO reconciliation test passed.
+  `posSplitPayment.usecases.test.js` passed 31/31; targeted migrated-database FIFO preflight and
+  final-checkout reconciliation tests passed with no transaction, movement, or stock mutation on
+  the preflight failure.
 - Completion date: 2026-09-07.
-- Contracts/files: `apps/dgfy-api/src/services/stockMovementService.js`, Inventory stock command
-  service and contract, POS checkout and split-payment use cases, their focused tests,
-  `docs/compliance/impact-declarations/2026-09-07-pos-split-inventory-preflight.md`, and
-  `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
-- Next eligible phase: 305.
+- Contracts/files: Inventory stock command service and contract, POS checkout and split-payment
+  use cases, focused tests, compliance declaration, and the split-payment contract.
+- Next eligible phase: 306.
