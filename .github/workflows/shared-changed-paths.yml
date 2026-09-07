@@ -301,6 +301,18 @@ jobs:
         run: |
           echo "continue_on_error=$(node -e "console.log(require('./scripts/lib/version-bump-gate-toggle').BLOCKING ? 'false' : 'true')")" >> "$GITHUB_OUTPUT"
 
+      # #1695 (Phase 303): check-app-version-bump.js now transitively requires the root
+      # devDependency `madge` (via scripts/resolve-web-core-reachability.js's shadow-mode
+      # reachability audit) -- unlike every other script folded into this job (see the workflow
+      # header's "dependency-free plain node... no npm install" note), that one require() fails
+      # outright ("Cannot find module 'madge'") without root node_modules present. Installing here,
+      # immediately before the one step that actually needs it, keeps that dependency-free property
+      # true for every other step in this job. --ignore-scripts: nothing here needs postinstall side
+      # effects, only madge's own module resolution at require() time. RF-1, PR #1708 review.
+      - name: Install root dependencies (for check-app-version-bump.js's madge import)
+        if: inputs.validate_pr_metadata
+        run: npm ci --ignore-scripts
+
       # #1560 (#1548 Wave 1): per-app container SemVer bump check -- generalizes the
       # pos-receipt check above to all five deployable apps, with a real semver-increase
       # requirement and a (base, head) mode switch (see the script's own header). #1569:
