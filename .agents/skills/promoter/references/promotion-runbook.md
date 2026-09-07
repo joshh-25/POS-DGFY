@@ -269,6 +269,27 @@ git ls-remote --exit-code --heads origin staging || echo "MISSING — restore be
 CANDIDATE_ID=$(date +%Y-%m-%d)-01
 ```
 
+**Pre-cut divergence check (#1696)** — run before anything else in this leg, including the floor
+step below:
+
+```bash
+node scripts/check-promotion-divergence.js --base origin/staging --head origin/develop
+```
+
+`pass`/`warn` → proceed. `fail` (a real conflict) is a hard stop — resolve it (finish an
+outstanding backport, or hand-resolve on the promotion branch itself) before cutting
+`to-staging/$CANDIDATE_ID`. After the candidate merges into `staging` (whether Check A above was
+clean or a conflict had to be hand-resolved first), run the pre-existing merge-hygiene checker as
+the post-resolution safety net:
+
+```bash
+npm run check:merge-hygiene -- \
+  --base <merge-base of origin/develop and origin/staging before the cut> \
+  --head <the to-staging/$CANDIDATE_ID merge commit SHA, once merged> \
+  --target origin/staging \
+  --report .tmp/release-gates/$CANDIDATE_ID/merge_hygiene_report.json
+```
+
 **Pre-cut floor step (ADR 0081 Decision 6, #1588)** — run before cutting the branch, not after.
 Shipping to staging is, by definition, at least a minor change per app that actually changed:
 

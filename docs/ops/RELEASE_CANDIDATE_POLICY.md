@@ -1429,3 +1429,49 @@ this split lands, `repository-ci-contracts-quality` starts out red for that alre
 unrelated reason, not a regression this split introduced.
 
 PR: (this PR). Closes #1690.
+
+### 2026-09-07: Promotion-time divergence check before the `to-staging` cut (#1696)
+
+Extends #1611's backport mechanism rather than replacing it. #1611 established a mandatory
+`fix/staging/*` → `develop` backport, discovered live when a staging-only fix was never ported
+back and `develop` kept shipping the bug it fixed. This entry closes the adjacent gap: even when
+every staging-side change *is* eventually reconciled, nothing checked whether `develop` would
+still merge cleanly into `staging` *before* the next `to-staging/<candidate_id>` cut — the
+conflict surfaced only as `mergeable_state: dirty` on an already-opened PR (confirmed live,
+candidate `2026-09-07-01`, PR #1688).
+
+**What changed.** `promoter` now runs `scripts/check-promotion-divergence.js` (new) before
+cutting `to-staging/<candidate_id>` — a `git merge-tree`-based, read-only mergeability check plus
+a provenance audit of every staging-only commit against the four tracked branch patterns
+(`to-staging/*`, `fix/staging/*`, `docs/release/*`, `compliance-sweep/*`). A real conflict is a
+hard stop, resolved before the cut rather than discovered during it;
+`scripts/check-merge-hygiene.js` (pre-existing, previously unwired — see
+`docs/ops/MERGE_ADOPTION_GATE.md`) is now the documented post-resolution verification step,
+replacing an ad hoc manual `git diff` check with a repeatable one.
+
+**Explicitly rejected: a periodic/scheduled divergence scan.** `staging` only changes through
+promoter-driven, PR-based branches (the four patterns above) — there is no organic between-
+promotions drift the way `develop` accumulates feature work continuously. A nightly or
+on-push scan would report clean on nearly every run and only ever surface something actionable
+right when a promotion is about to happen anyway, which is exactly when the new pre-cut check
+already runs — matching this document's own established preference for promotion-time gates
+over standalone periodic ones (see the 2026-09-06 #1648 entry moving the compliance-preflight
+check earlier in the flow for the identical reason).
+
+**Explicitly rejected: a blanket reconciliation requirement for every staging-side change.**
+Investigated live: every staging-only commit in this repo's actual history already traces to one
+of the four tracked branch patterns above; nothing has ever landed on `staging` outside a named,
+reviewable PR. The gap was in this document's own wording (naming only `fix/staging/*`), not in
+the underlying mechanism — fixed by generalizing the stated scope
+(`.agents/skills/promoter/SKILL.md`'s backport paragraph), not by adding a new mandatory step for
+content that already reconciles correctly today.
+
+**Q3, resolved (not just believed).** `git diff origin/develop origin/staging --
+.agents/skills/promoter/SKILL.md` is empty as of this entry — `develop`'s content (which won PR
+#1688's manual resolution) is exactly what's live on `staging` too. No further backport needed for
+that specific resolution.
+
+This is a `[default]`-tier procedure amendment under ADR 0039 — no `[binding]` clause of any ADR
+is changed by this entry.
+
+PR: (this PR). Closes #1696. Refs #1611.
