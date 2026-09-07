@@ -335,6 +335,22 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # #1716: this job went straight from checkout to running resolve-build-skip-plan.js with no
+      # install step at all -- that script requires check-app-version-bump.js, which in turn
+      # requires resolve-web-core-reachability.js's `madge` (#1704/#1708), a devDependency never
+      # installed here. Full `npm ci` (not --omit=dev) since madge is itself a devDependency this
+      # step needs at runtime. Mirrors promotion-quality-gate.yml's own root-level
+      # "Setup Node.js"/"Install repository dependencies" pattern.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install repository dependencies
+        run: npm ci
+
       - name: Resolve build-skip plan
         id: resolve
         shell: bash
