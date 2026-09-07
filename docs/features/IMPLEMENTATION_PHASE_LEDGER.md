@@ -21879,3 +21879,23 @@ planning time.
   `docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md` (new), issue
   #265, follow-up issue #1643 (298d, bulk client wiring, filed and parented under #265).
 - Next eligible phase: 303.
+
+## Phase 303 - Split-payment inventory preflight before tender acceptance
+
+- Initiative/release: POS split payment and Inventory consistency / current release.
+- Objective and scope: validate every stock-bearing direct item, recipe ingredient, and linked
+  modifier SKU before a split-payment session is created. FIFO ledger drift and insufficient stock
+  now prevent the session and all tender allocations, with a cashier-facing message confirming that
+  no payment was accepted. Final checkout retains its locked inventory validation and stock issue.
+- Status: completed.
+- Dependencies: ADR 0029 Inventory ownership; ADR 0040 FIFO valuation; ADR 0063 split tender;
+  `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+- Acceptance and validation evidence: `node --check` passed for all changed API source files;
+  `posSplitPayment.usecases.test.js` passed 31/31, including no session or allocation on preflight
+  failure; targeted migrated-database FIFO preflight test passed and confirmed no transaction,
+  stock movement, or stock mutation; existing final-checkout FIFO reconciliation test passed.
+- Completion date: 2026-09-07.
+- Contracts/files: `apps/dgfy-api/src/services/stockMovementService.js`, Inventory stock command
+  service and contract, POS checkout and split-payment use cases, their focused tests, and
+  `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+- Next eligible phase: 304.
