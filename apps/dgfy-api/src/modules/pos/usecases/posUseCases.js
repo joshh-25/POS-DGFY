@@ -2089,6 +2089,61 @@ const executeInventoryStockCommand = async ({
     return commandFn(movementData, userId, transaction);
 };
 
+const validatePosInventoryIssues = async ({
+    inventoryCommandService,
+    preparedLines,
+    recipeMovementPlanByPreparedLine,
+    locationId,
+    userId,
+    transaction
+}) => {
+    const validate = inventoryCommandService?.validateStockIssueAvailability;
+    if (typeof validate !== 'function') {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Inventory stock availability validation is unavailable',
+            { statusCode: 409 }
+        );
+    }
+
+    const quantitiesByScope = new Map();
+    const add = (itemId, quantity, movementLocationId = locationId) => {
+        const normalizedItemId = parsePositiveInt(itemId);
+        const normalizedQuantity = Number(quantity);
+        const normalizedLocationId = parsePositiveInt(movementLocationId) || parsePositiveInt(locationId);
+        if (!normalizedItemId || !Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) return;
+        const key = `${normalizedLocationId || 0}:${normalizedItemId}`;
+        const current = quantitiesByScope.get(key) || { item_id: normalizedItemId, location_id: normalizedLocationId, quantity: 0 };
+        current.quantity = round4(current.quantity + normalizedQuantity);
+        quantitiesByScope.set(key, current);
+    };
+
+    preparedLines.forEach((line, lineIndex) => {
+        const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
+        if (recipeMovements.length > 0) {
+            recipeMovements.forEach((movement) => add(movement.ingredient_item_id, movement.quantity));
+        } else if (line.stock_effect_type !== 'stock_exempt') {
+            add(line.item_id, line.quantity);
+        }
+        (line.fnb_modifiers_snapshot || []).forEach((modifier) => {
+            const linkedItemId = parsePositiveInt(modifier?.sku_item_id);
+            if (!linkedItemId) return;
+            add(
+                linkedItemId,
+                Number(line.quantity) * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
+                modifier?.location_id
+            );
+        });
+    });
+
+    const issues = [...quantitiesByScope.values()].sort((left, right) => (
+        (Number(left.location_id) - Number(right.location_id)) || (left.item_id - right.item_id)
+    ));
+    for (const movementData of issues) {
+        await validate(movementData, userId, transaction);
+    }
+};
+
 const getPosSettings = async () => unwrapApplicationResultOrThrow(
     await getAllSettingsUseCase(),
     'Failed to retrieve POS setup settings'
@@ -2820,6 +2875,7 @@ export const buildCheckoutPosUseCase = ({
         transaction: providedTransaction = null,
         beforeCommit = null,
         quoteOnly = false,
+        validateInventoryAvailability = false,
         discountApproval = null,
         trustedDiscountApproval = null,
         trustedOfflineStatutoryPolicy = null,
@@ -3954,6 +4010,16 @@ export const buildCheckoutPosUseCase = ({
             const totalAmount = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
 
             if (quoteOnly) {
+                if (validateInventoryAvailability) {
+                    await validatePosInventoryIssues({
+                        inventoryCommandService: stockCommands,
+                        preparedLines,
+                        recipeMovementPlanByPreparedLine,
+                        locationId: enforcedCheckoutLocationId,
+                        userId: normalizedUserId,
+                        transaction
+                    });
+                }
                 if (ownsTransaction) await transaction.commit();
                 return ok({
                     quote: {
