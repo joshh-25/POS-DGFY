@@ -977,6 +977,16 @@ export default function StorefrontApp() {
   useEffect(() => {
     if (isTrackSubpage && checkoutTab !== 'track') setCheckoutTab('track');
   }, [isTrackSubpage, checkoutTab]);
+  // #1732: isFnbMode resolves asynchronously (store-info fetch); a cart-drawer open before it
+  // resolves can leave checkoutTab on StorefrontCartFab's non-F&B branch ('checkout'), which has
+  // no valid UI in F&B mode while off the order subpage (mirrors the isActive gate this state
+  // coexists with, see useFnbCartDrawerRouteProps.js). Re-sync once mode resolves instead of only
+  // self-healing on the next cart mutation (useCartMutations.js).
+  useEffect(() => {
+    if (isCheckoutOpen && isFnbMode && !isFnbOrderSubpage && checkoutTab === 'checkout') {
+      setCheckoutTab('cart');
+    }
+  }, [isCheckoutOpen, isFnbMode, isFnbOrderSubpage, checkoutTab, setCheckoutTab]);
   useStorefrontCartPersistence({
     cart,
     // Keep each product storefront's unfinished cart, voucher, and promotion
@@ -2927,7 +2937,6 @@ export default function StorefrontApp() {
     isQuoteStale,
     promoDiscountAmount: totalsForDisplay.discount_amount,
     promoDiscountLabel: totalsForDisplay.discount_label,
-    checkoutTab,
     fnbOrderBrand,
     getLineTotal,
     goStoreCatalogPage,
