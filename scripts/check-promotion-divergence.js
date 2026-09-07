@@ -10,11 +10,15 @@
  * mode named in #1696 -- a conflict discovered only when a promotion PR reports
  * `mergeable_state: dirty`, post-hoc. Run pre-cut instead, for free.
  *
- * Check B (informational, non-fatal): every merge commit unique to `--base` (i.e. every
- * staging-only commit, for the primary invocation) is attributed to one of the four
- * tracked branch patterns this repo's promotion mechanism actually uses. An unattributed
- * or non-PR merge is a visibility aid for the promoter's judgment, not a new
- * reconciliation mandate -- see docs/ops/RELEASE_CANDIDATE_POLICY.md's 2026-09-07 entry.
+ * Check B (informational, non-fatal): every commit unique to `--base` (i.e. every
+ * staging-only commit, for the primary invocation) is walked in first-parent order --
+ * both merge commits AND direct single-parent commits made straight on the base branch.
+ * A merge commit is attributed to one of the four tracked branch patterns this repo's
+ * promotion mechanism actually uses; a direct single-parent commit has no branch to
+ * attribute and is flagged on its own as a `direct_staging_commit` finding. An
+ * unattributed merge, a non-PR merge, or a direct staging commit is a visibility aid for
+ * the promoter's judgment, not a new reconciliation mandate -- see
+ * docs/ops/RELEASE_CANDIDATE_POLICY.md's 2026-09-07 entry.
  *
  * CLI:
  *   node scripts/check-promotion-divergence.js --base <ref> --head <ref> [--report <path>]
@@ -125,27 +129,43 @@ function describeConflicts(projectRoot, baseRef, headRef, conflictedPaths) {
 }
 
 /**
- * Check B: walk merge commits unique to `baseSha` (i.e. `headSha..baseSha`, first-parent
- * order) and classify each against GitHub's own standard merge-commit subject format.
+ * Check B: walk every commit unique to `baseSha` (i.e. `headSha..baseSha`, first-parent
+ * order) -- merge commits AND direct single-parent commits alike -- and classify each.
+ * `--first-parent` alone (no `--merges`) is deliberate: `--merges` silently drops any
+ * commit made straight on the base branch with no merge at all, which is exactly the gap
+ * a direct `staging`-only commit falls into (found live, pr-reviewer, PR #1704 RF-1).
+ * Parent count (`%P`, space-separated) decides the branch: 2+ parents is a merge commit,
+ * classified against GitHub's own standard merge-commit subject format as before; exactly
+ * one parent is a direct commit with no branch to attribute, flagged on its own.
  */
 function auditProvenance(projectRoot, baseSha, headSha) {
     const result = runGit(projectRoot, [
-        'log', '--first-parent', '--merges', '--format=%H%x09%s', `${headSha}..${baseSha}`,
+        'log', '--first-parent', '--format=%H%x09%P%x09%s', `${headSha}..${baseSha}`,
     ]);
     if (!result.ok) {
         throw new PromotionDivergenceError(
-            `Could not walk merge commits for ${headSha}..${baseSha}`,
+            `Could not walk commits for ${headSha}..${baseSha}`,
             { code: 'LOG_FAILED' },
         ).withStderr(result.stderr);
     }
 
     const unattributedMerges = [];
     const nonPrMerges = [];
+    const directStagingCommits = [];
 
     const lines = result.stdout.split(/\r?\n/).filter(Boolean);
     for (const line of lines) {
-        const [sha, ...subjectParts] = line.split('\t');
+        const [sha, parents, ...subjectParts] = line.split('\t');
         const subject = subjectParts.join('\t');
+        const parentShas = parents.split(' ').filter(Boolean);
+
+        if (parentShas.length < 2) {
+            // A direct, single-parent commit made straight on the base branch -- no
+            // merge, no branch name to attribute against the four tracked patterns.
+            directStagingCommits.push({ sha, subject });
+            continue;
+        }
+
         const match = MERGE_SUBJECT_RE.exec(subject);
 
         if (!match) {
@@ -161,7 +181,7 @@ function auditProvenance(projectRoot, baseSha, headSha) {
         }
     }
 
-    return { unattributedMerges, nonPrMerges };
+    return { unattributedMerges, nonPrMerges, directStagingCommits };
 }
 
 function checkPromotionDivergence(options, logger = console) {
@@ -174,11 +194,13 @@ function checkPromotionDivergence(options, logger = console) {
         ? []
         : describeConflicts(projectRoot, options.base, options.head, conflictedPaths);
 
-    const { unattributedMerges, nonPrMerges } = auditProvenance(projectRoot, baseSha, headSha);
+    const { unattributedMerges, nonPrMerges, directStagingCommits } = auditProvenance(projectRoot, baseSha, headSha);
 
     const status = conflictedFiles.length > 0
         ? 'fail'
-        : (unattributedMerges.length > 0 || nonPrMerges.length > 0 ? 'warn' : 'pass');
+        : (unattributedMerges.length > 0 || nonPrMerges.length > 0 || directStagingCommits.length > 0
+            ? 'warn'
+            : 'pass');
 
     const report = {
         version: 1,
@@ -192,6 +214,7 @@ function checkPromotionDivergence(options, logger = console) {
         conflicted_files: conflictedFiles,
         unattributed_merges: unattributedMerges,
         non_pr_merges: nonPrMerges,
+        direct_staging_commits: directStagingCommits,
     };
 
     if (options.reportPath) {
@@ -212,6 +235,9 @@ function checkPromotionDivergence(options, logger = console) {
     }
     for (const entry of nonPrMerges) {
         logger.warn(`[promotion-divergence] WARN non_pr_merge ${entry.sha}: ${entry.subject}`);
+    }
+    for (const entry of directStagingCommits) {
+        logger.warn(`[promotion-divergence] WARN direct_staging_commit ${entry.sha}: ${entry.subject}`);
     }
 
     return report;

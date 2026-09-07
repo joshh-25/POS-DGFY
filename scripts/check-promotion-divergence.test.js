@@ -92,6 +92,7 @@ test('clean merge, no unique-to-base commits -> pass, empty everything', () => {
     assert.deepEqual(report.conflicted_files, []);
     assert.deepEqual(report.unattributed_merges, []);
     assert.deepEqual(report.non_pr_merges, []);
+    assert.deepEqual(report.direct_staging_commits, []);
   } finally {
     fs.rmSync(projectRoot, { recursive: true, force: true });
   }
@@ -120,6 +121,7 @@ test('clean merge, one unique-to-base commit on an allowed-pattern merge -> pass
     assert.equal(report.mergeable, true);
     assert.deepEqual(report.unattributed_merges, []);
     assert.deepEqual(report.non_pr_merges, []);
+    assert.deepEqual(report.direct_staging_commits, []);
   } finally {
     fs.rmSync(projectRoot, { recursive: true, force: true });
   }
@@ -159,6 +161,39 @@ test('clean merge, one unique-to-base commit on a disallowed/non-PR merge -> war
     assert.equal(report.unattributed_merges[0].pr_number, 1701);
     assert.equal(report.non_pr_merges.length, 1);
     assert.equal(report.non_pr_merges[0].subject, 'Manually resolved conflict merge');
+    assert.deepEqual(report.direct_staging_commits, []);
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('clean merge, one direct single-parent commit made straight on staging -> warn (RF-1)', () => {
+  const projectRoot = makeTempProject();
+  try {
+    initBase(projectRoot);
+    git(projectRoot, ['switch', '-c', 'staging']);
+
+    // A direct commit made straight on staging -- no merge, no branch to attribute.
+    // This is exactly the case `--first-parent --merges` silently drops (pr-reviewer,
+    // PR #1704 RF-1): reproduced live as `status: pass` with no warning before the fix.
+    writeFile(projectRoot, 'hotfix.txt', 'direct staging edit\n');
+    commitAll(projectRoot, 'direct edit straight on staging');
+
+    git(projectRoot, ['switch', 'develop']);
+
+    const report = checkPromotionDivergence({
+      projectRoot,
+      base: 'staging',
+      head: 'develop',
+    }, silentLogger);
+
+    assert.equal(report.status, 'warn');
+    assert.equal(report.mergeable, true);
+    assert.deepEqual(report.unattributed_merges, []);
+    assert.deepEqual(report.non_pr_merges, []);
+    assert.equal(report.direct_staging_commits.length, 1);
+    assert.equal(report.direct_staging_commits[0].subject, 'direct edit straight on staging');
+    assert.ok(report.direct_staging_commits[0].sha);
   } finally {
     fs.rmSync(projectRoot, { recursive: true, force: true });
   }
