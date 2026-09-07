@@ -76,6 +76,12 @@
       "expected_authority_level": "authoritative"
     },
     {
+      "path": "docs/ops/PROMOTION_PROCESS_EXPLAINER.md",
+      "topic": "promotion_process_team_explainer",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
       "path": "docs/ops/QA_ISOLATION_PROFILE.md",
       "topic": "qa_release_isolation",
       "expected_status": "authoritative",
