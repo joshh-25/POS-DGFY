@@ -23,7 +23,9 @@ graph LR
     B --> C["main<br/>(production — what customers use)"]
 ```
 
-- **`develop`** — every feature and fix merges here first. It moves fast and changes constantly.
+- **`develop`** — ordinary feature and fix work merges here first. It moves fast and changes
+  constantly. (There's one narrow exception, a direct-to-`main` hotfix for a live production
+  outage — see below.)
 - **`staging`** — a snapshot of `develop`, taken at a specific point in time, that we test before it goes live. Once taken, it does **not** get new features added — only bug fixes if something's wrong with it.
 - **`main`** — production. Whatever's here is what real customers are using right now.
 
@@ -31,11 +33,11 @@ We call each snapshot moving through this pipeline a **candidate** (e.g. `2026-0
 
 ---
 
-## What "promoting" actually decides: the version number
+## What "promoting" actually checks: the version number
 
 Each app (POS, IMS, storefront, backend, etc.) has its own version number, bumped independently — a change to POS doesn't force a version bump on the storefront.
 
-When we promote `develop → staging`, that's the moment we decide how big this candidate's changes are:
+**The bump happens where the change happens** — whoever's PR touches an app bumps that app's version, right there in the same PR, by whatever size actually fits the change:
 
 | Kind of change | Version bump | Example |
 |---|---|---|
@@ -43,7 +45,11 @@ When we promote `develop → staging`, that's the moment we decide how big this 
 | New feature, backward-compatible | **Minor** | `1.1.5 → 1.2.0` |
 | Breaking change | **Major** | `1.1.5 → 2.0.0` |
 
-So: *"develop gets promoted to staging"* basically means *"we're freezing today's `develop` as candidate X, and here's what version bump it earns."*
+Promotion doesn't hand out the number — it **checks** it. When we promote `develop → staging`, that's
+the moment we enforce a floor: every app that changed since the last promotion needs at least a
+minor bump by then. If a contributing PR only bumped patch (or forgot to bump at all), the candidate
+doesn't get cut as-is — a top-up bump PR lands on `develop` first to bring that app up to the
+required minor floor, and only then does the candidate get cut.
 
 ---
 
@@ -93,19 +99,24 @@ same thing, even though both feel urgent:
 - The fix branches directly off **`main`** — not `develop`, not `staging`. Why: `develop` might have
   other half-finished, untested changes sitting on it right now, and pulling those in along with the
   fix would risk shipping more than just the fix during an actual outage.
-- It's tested and merged straight into `main`, then deployed immediately — there's no time to wait
-  for a full promotion cycle.
-- Afterward — **always, never skipped** — that same fix is copied back into `develop` (and
-  `staging`, if a candidate is currently in flight there too). If this step were skipped, the next
-  normal promotion could silently undo the fix, since `develop` would still have the old, broken
-  code.
+- It's tested and merged straight into `main` — with explicit sign-off, same as always for a
+  `main` merge. **Merging alone doesn't put it in front of customers, though** — that only happens
+  once someone manually dispatches the `deploy-main.yml` deploy, which we do immediately right
+  after the merge since this is an active outage. No separate approval step exists for that
+  dispatch beyond having access to run it.
+- Afterward — **always, never skipped** — that same fix is copied back into `develop`. If this step
+  were skipped, the next normal promotion could silently undo the fix, since `develop` would still
+  have the old, broken code. `staging` doesn't need a separate copy-back: it automatically picks up
+  the fix the next time `develop` gets promoted there, since the fix is already on `develop` by then.
 
 ```mermaid
 flowchart TD
     P["main<br/>(something breaks in production)"] --> H["hotfix branch<br/>cut directly from main"]
-    H --> F["fix tested, then merged straight into main"]
-    F --> D["deployed immediately"]
+    H --> F["fix tested, then merged straight into main<br/>(authorized)"]
+    F --> DM["someone manually dispatches deploy-main.yml<br/>immediately afterward"]
+    DM --> D["now it's live"]
     F -.->|"copied back afterward — never skipped"| DEV["develop<br/>(so the fix isn't lost or undone later)"]
+    DEV -.->|"picked up automatically on the next promotion"| STG["staging<br/>(no separate copy-back needed)"]
 ```
 
 This path is deliberately rare and needs explicit sign-off every time — it exists for real outages,
@@ -151,10 +162,10 @@ No wasted work, no re-testing from scratch, and `develop` didn't stay broken. Th
 
 | Question | Answer |
 |---|---|
-| Where does new work land? | `develop`, always |
-| When do I get a version number for my change? | When your app's code is promoted `develop → staging` |
+| Where does new work land? | `develop`, for ordinary features and fixes (the direct-`main` hotfix below is the one exception) |
+| When do I bump my app's version? | In your own PR, right when you make the change — promotion doesn't assign it, it just enforces a minor-bump floor per changed app before cutting the candidate |
 | New feature merges to `develop` while staging is being tested — does it get bundled in? | No — it waits for the *next* candidate |
 | Bug found on staging — start over? | No — patch the candidate in place, then copy the fix back to `develop` |
 | Can candidates ship back-to-back? | Yes, that's normal |
 | Can we skip staging for something urgent but not broken? | Yes, rarely, explicitly authorized — still starts from `develop` |
-| Production is actually broken right now — what do we do? | A **hotfix**: branch straight from `main`, fix, merge, deploy immediately, then always copy the fix back to `develop` |
+| Production is actually broken right now — what do we do? | A **hotfix**: branch straight from `main`, fix, merge (authorized), then manually dispatch `deploy-main.yml` immediately — merging alone doesn't deploy it. Always copy the fix back to `develop` afterward; `staging` picks it up automatically on the next promotion, no separate copy-back needed |
