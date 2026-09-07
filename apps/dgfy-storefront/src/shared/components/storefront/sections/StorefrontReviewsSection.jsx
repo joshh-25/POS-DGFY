@@ -3,14 +3,15 @@ import React from 'react';
 export function StorefrontReviewsSection({
   isMobileViewport,
   viewportWidth,
-  title = 'Customer Reviews',
-  subtitle,
+  title = 'Reviews',
+  subtitle = 'See what customers are saying',
   onWriteReview,
   writeReviewLabel = 'Write a Review',
   writeButton,
   reviewSummary = null,
   reviewHighlights = [],
-  emptyMessage,
+  emptyTitle = 'No reviews yet',
+  emptyMessage = 'Be the first to share your experience with this store.',
   titleFontFamily,
   bodyFontFamily,
   writeButtonColor = '#1a4e8d',
@@ -195,7 +196,12 @@ export function StorefrontReviewsSection({
               fontFamily: bodyFontFamily
             }}
           >
-            {emptyMessage}
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a', lineHeight: 1.25, fontFamily: titleFontFamily || bodyFontFamily }}>
+              {emptyTitle}
+            </h3>
+            <p style={{ margin: '6px 0 0', fontSize: 14, color: '#64748b', lineHeight: 1.45, fontFamily: bodyFontFamily }}>
+              {emptyMessage}
+            </p>
           </div>
         )}
       </div>

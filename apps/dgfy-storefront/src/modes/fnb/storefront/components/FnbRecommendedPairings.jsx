@@ -72,12 +72,12 @@ export const FnbRecommendedPairings = ({
   return (
     <div style={{ borderTop: '1px solid rgba(226, 232, 240, 0.6)', paddingTop: 24, marginTop: 24, display: 'grid', gap: 16 }}>
       <h3 style={{ margin: 0, fontSize: 16, fontWeight: compactTypography ? 700 : 800, color: '#0f172a', fontFamily: displayFont }}>Recommended Pairings</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16, minWidth: 0, width: '100%' }}>
         {relatedItems.slice(0, 3).map((recommended) => {
           const imageSources = resolveStorefrontImageSources(recommended, { preferred: 'thumbnail' });
           const imageUrl = imageSources.src;
           return (
-            <div key={`recommended-desk-${recommended.item_id}`} onClick={() => onSelectRelatedItem?.(recommended)} style={{ display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer', background: '#fff', border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: 18, padding: 12 }}>
+            <div key={`recommended-desk-${recommended.item_id}`} onClick={() => onSelectRelatedItem?.(recommended)} style={{ display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer', background: '#fff', border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: 18, padding: 12, minWidth: 0, width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
               <div style={{ width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', background: '#f8fafc', flexShrink: 0 }}>
                 {imageUrl ? <StorefrontResponsiveImage imageSources={imageSources} sizes="110px" alt={recommended.name} loading="lazy" decoding="async" width={110} height={110} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#64748b' }}><ChefHat size={20} /></div>}
               </div>

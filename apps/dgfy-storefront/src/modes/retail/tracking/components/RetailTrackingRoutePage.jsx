@@ -117,7 +117,6 @@ export function RetailTrackingRoutePage({
       presentation: {
         backLabel: presentation?.backLabel || 'Back to Items',
         returnToCatalog: presentation?.returnToCatalog === true,
-        showTrustStrip: presentation?.showTrustStrip === true,
       },
       isPickup,
       orderTypeLabel: isPickup ? 'Pickup' : 'Delivery',

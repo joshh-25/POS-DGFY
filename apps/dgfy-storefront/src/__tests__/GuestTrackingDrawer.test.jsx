@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GuestTrackingDrawer } from '../tracking/components/GuestTrackingDrawer.jsx';
 
 const buildOrder = (overrides = {}) => ({
@@ -17,40 +17,61 @@ const buildOrder = (overrides = {}) => ({
 });
 
 describe('GuestTrackingDrawer', () => {
-  it('expands and collapses tracked orders through the array-based expanded state contract', async () => {
-    const Wrapper = () => {
-      const [expandedPins, setExpandedPins] = React.useState([]);
-      return (
-        <GuestTrackingDrawer
-          isOpen
-          isMobileViewport
-          trackingPinInput=""
-          onTrackingPinInputChange={() => {}}
-          onTrack={() => {}}
-          selectedStore={null}
-          guestTrackedOrders={[buildOrder()]}
-          trackingError=""
-          expandedGuestDrawerPins={expandedPins}
-          onExpandedGuestDrawerPinsChange={setExpandedPins}
-          onClose={() => {}}
-          openFullTrackingForPin={() => {}}
-          withAssetOrigin={(value) => value}
-          money={(value) => `PHP ${Number(value).toFixed(2)}`}
-          formatTicketDate={() => 'Today'}
-          getTrackingFlowForOrderMethod={() => 'pickup'}
-          isAccountTracking
-        />
-      );
-    };
+  afterEach(() => cleanup());
 
-    render(<Wrapper />);
+  const renderDrawer = (overrides = {}) => render(
+    <GuestTrackingDrawer
+      isOpen
+      isMobileViewport
+      selectedStore={null}
+      guestTrackedOrders={[buildOrder()]}
+      onClose={() => {}}
+      openFullTrackingForPin={() => {}}
+      withAssetOrigin={(value) => value}
+      money={(value) => `PHP ${Number(value).toFixed(2)}`}
+      isAccountTracking
+      {...overrides}
+    />
+  );
+
+  it('renders compact, single-action order cards without expansion controls', () => {
+    const openFullTrackingForPin = vi.fn();
+    renderDrawer({ openFullTrackingForPin });
 
     expect(screen.queryByText(/Products/i)).toBeNull();
+    expect(screen.queryByText(/Total Amount/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /view order details/i })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /space bar/i }));
-    expect(screen.getByText(/Products/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /open space bar order sk-123456/i }));
+    expect(openFullTrackingForPin).toHaveBeenCalledWith('SK-123456');
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: /space bar/i }));
-    expect(screen.queryByText(/Products/i)).toBeNull();
+  it('closes from the visible close control', () => {
+    const onClose = vi.fn();
+    renderDrawer({ onClose });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close', exact: true }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('filters saved orders by store name and tracks an unsaved PIN on submit', () => {
+    const openFullTrackingForPin = vi.fn();
+    renderDrawer({
+      openFullTrackingForPin,
+      guestTrackedOrders: [
+        buildOrder(),
+        buildOrder({ tracking_pin: 'SK-654321', store_name: 'Digi Store' })
+      ]
+    });
+
+    const search = screen.getByRole('textbox', { name: /search orders by order pin or store name/i });
+    fireEvent.change(search, { target: { value: 'Digi Store' } });
+    expect(screen.queryByRole('button', { name: /open space bar order sk-123456/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /open digi store order sk-654321/i })).toBeTruthy();
+
+    fireEvent.change(search, { target: { value: 'SK-999999' } });
+    fireEvent.submit(search.closest('form'));
+    expect(openFullTrackingForPin).toHaveBeenCalledWith('SK-999999');
+    expect(screen.getByRole('status').textContent).toMatch(/no matching active orders/i);
   });
 });

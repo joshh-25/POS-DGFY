@@ -12,8 +12,7 @@ describe('retail tracking presentation', () => {
 
     expect(props.page.presentation).toEqual({
       backLabel: 'Back to Menu',
-      returnToCatalog: false,
-      showTrustStrip: true,
+      returnToCatalog: true,
     });
   });
 
@@ -22,9 +21,10 @@ describe('retail tracking presentation', () => {
     const retailRoute = source('modes/retail/tracking/pages/RetailTrackingRouteContainer.jsx');
     const activeView = source('modes/retail/tracking/components/RetailTrackingActiveView.jsx');
 
-    expect(props.page.presentation).toEqual({ backLabel: 'Back to Items', returnToCatalog: true, showTrustStrip: false });
+    expect(props.page.presentation).toEqual({ backLabel: 'Back to Items', returnToCatalog: true });
     expect(retailRoute).not.toContain('FnbTrackingRouteContainer');
-    expect(activeView).toContain('presentation.showTrustStrip');
+    expect(activeView).not.toContain('presentation.showTrustStrip');
+    expect(activeView).not.toContain('Live tracking');
   });
 
   it('returns to the current storefront catalog and focuses its items section', () => {
@@ -33,5 +33,6 @@ describe('retail tracking presentation', () => {
     expect(activeView).toContain('goStoreCatalogPage();');
     expect(activeView).toContain("getElementById('storefront-catalog-section')");
     expect(activeView).toContain("scrollIntoView({ behavior: 'smooth', block: 'start' })");
+    expect(activeView).toContain('onClick={handleBackToCatalog}');
   });
 });

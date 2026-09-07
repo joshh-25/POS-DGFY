@@ -72,6 +72,7 @@ export function toRetailTrackingViewState(trackingPayload) {
     // Phase 210 (#1179). Passthrough so the payload-shaped path carries the reason too.
     rejection_reason: String(source.rejectionReason || root?.rejection_reason || raw?.rejection_reason || order?.rejection_reason || '').trim() || null,
     order_method: String(source.orderMethod || root?.order_method || raw?.order_method || order?.order_method || 'delivery').trim(),
+    specialInstructions: String(source.specialInstructions || order?.special_instructions || root?.special_instructions || raw?.special_instructions || orderDisplay?.special_instructions || payloadDisplay?.special_instructions || '').trim(),
     createdAt: String(source.createdAt || order?.created_at || root?.created_at || raw?.created_at || '').trim(),
     updatedAt: String(source.updatedAt || order?.updated_at || root?.updated_at || raw?.updated_at || '').trim(),
     subtotalAmount: numberOrNull(source.subtotalAmount ?? root?.subtotal_amount ?? raw?.subtotal_amount ?? order?.subtotal_amount),
@@ -129,6 +130,7 @@ export function buildRetailTrackedOrderEntry({ fallbackPin = '', normalizedEntit
     total_amount: view.totalAmount,
     delivery_fee: view.deliveryFee,
     service_fee: view.serviceFeeAmount,
+    special_instructions: String(view.specialInstructions || '').trim(),
     branch_name: String(view.branchName || location?.name || '').trim(),
     eta_minutes: numberOrNull(normalizedEntity?.etaMinutes ?? root?.estimated_wait_minutes ?? raw?.estimated_wait_minutes),
     delivery_address: String(view.deliveryAddress || '').trim(),

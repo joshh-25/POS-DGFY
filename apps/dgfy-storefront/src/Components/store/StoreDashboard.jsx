@@ -27,10 +27,11 @@ const buildTemplateModel = (pageModel = {}) => {
       cards: Array.isArray(pageModel.promo?.cards) ? pageModel.promo.cards.filter(Boolean) : []
     },
     reviews: {
-      title: pageModel.reviews?.title || 'Customer Reviews',
-      subtitle: pageModel.reviews?.subtitle || 'See what customers say about this storefront',
+      title: pageModel.reviews?.title || 'Reviews',
+      subtitle: pageModel.reviews?.subtitle || 'See what customers are saying',
       ctaLabel: pageModel.reviews?.ctaLabel || 'Write a Review',
-      emptyState: pageModel.reviews?.emptyState || 'Customer reviews will appear here once this storefront adds review data in SKUpervisor.',
+      emptyTitle: pageModel.reviews?.emptyTitle || 'No reviews yet',
+      emptyMessage: pageModel.reviews?.emptyMessage || pageModel.reviews?.emptyState || 'Be the first to share your experience with this store.',
       items: Array.isArray(pageModel.reviews?.items) ? pageModel.reviews.items.filter(Boolean) : []
     },
     footer: pageModel.footer || {},
@@ -253,7 +254,10 @@ export function StoreDashboard({ pageModel = {}, onNavigate }) {
               ))}
             </div>
           ) : (
-            <div className="store-template__reviewEmpty">{model.reviews.emptyState}</div>
+            <div className="store-template__reviewEmpty">
+              <strong className="store-template__reviewEmptyTitle">{model.reviews.emptyTitle}</strong>
+              <p className="store-template__reviewEmptyMessage">{model.reviews.emptyMessage}</p>
+            </div>
           )}
         </div>
       </section>

@@ -5,7 +5,6 @@ import {
 } from '../../../../shared/utils/storefrontContactPresentation.js';
 import { formatStorefrontAddress } from '../../../../shared/model/storefrontCatalogModel.js';
 import { buildPublicStorefrontUrl, withAssetOrigin } from '../../../../app/runtime/storefrontRuntime.js';
-import { buildFnbFallbackReasons } from './fnbStorefrontPresentation.js';
 import { buildFnbHeroDeliveryPartners } from './fnbHeroDeliveryPartners.js';
 import { buildSelectedStorefrontMapStores } from '../../../../shared/model/storefrontMapModel.js';
 
@@ -57,12 +56,12 @@ export function buildFnbHeroViewModel({
     : galleryImages;
   const aboutText = String(safeHeroSectionModel.aboutText || '').trim();
   const deliveryPlatformLinks = buildFnbHeroDeliveryPartners(safeHeroSectionModel.deliveryPartners);
-  const whyChooseUs = Array.isArray(safeHeroSectionModel.whyChooseUs) && safeHeroSectionModel.whyChooseUs.length > 0
-    ? safeHeroSectionModel.whyChooseUs
-    : buildFnbFallbackReasons({
-      fnbViewModel,
-      categories: [safeHeroSectionModel.primaryCategoryLabel, safeHeroSectionModel.locationSummary]
-    });
+  // Why content is authored in POS > Settings > Storefront. An empty
+  // configuration stays empty so the public storefront never invents claims
+  // from catalog categories or menu data.
+  const whyChooseUs = Array.isArray(safeHeroSectionModel.whyChooseUs)
+    ? safeHeroSectionModel.whyChooseUs.filter(Boolean)
+    : [];
   const visibleWhyChooseUs = whyChooseUs.slice(0, maxWhyChooseUs);
   const hasAboutSection = aboutText.length > 0;
   const hasGallerySection = galleryImages.length > 0;

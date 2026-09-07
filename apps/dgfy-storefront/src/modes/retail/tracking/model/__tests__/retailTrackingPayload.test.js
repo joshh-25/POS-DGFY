@@ -18,4 +18,11 @@ describe('retailTrackingPayload totalAmount precedence (#747)', () => {
     const view = toRetailTrackingViewState({ raw: { total_amount: 4000 } });
     expect(view.totalAmount).toBe(4000);
   });
+
+  it('preserves persisted special instructions for the tracking order summary', () => {
+    const view = toRetailTrackingViewState({
+      raw: { data: { order: { special_instructions: 'Call when you arrive.' } } }
+    });
+    expect(view.specialInstructions).toBe('Call when you arrive.');
+  });
 });

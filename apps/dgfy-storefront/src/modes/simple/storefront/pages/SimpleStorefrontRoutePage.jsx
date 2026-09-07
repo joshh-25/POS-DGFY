@@ -48,12 +48,9 @@ export function SimpleStorefrontRoutePage({
       <StorefrontReviewsSection
         isMobileViewport={isMobileViewport}
         viewportWidth={viewportWidth}
-        title="Customer Reviews"
-        subtitle="See what customers say about this storefront"
         onWriteReview={() => setIsReviewModalOpen(true)}
         writeButtonColor={modeAdapter.heroTheme?.catalogPalette?.primary || modeAdapter.heroTheme?.accent}
         reviewHighlights={simpleStorefrontModel.reviewHighlights}
-        emptyMessage="Customer reviews will appear here once this storefront adds review data in SKUpervisor."
         titleFontFamily={modeAdapter.heroTheme?.displayFont}
         bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
         titleSize={isMobileViewport ? 28 : 36}

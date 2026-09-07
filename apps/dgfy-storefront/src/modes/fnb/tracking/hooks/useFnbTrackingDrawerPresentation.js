@@ -7,7 +7,6 @@ export function useFnbTrackingDrawerPresentation({
   selectedStoreSlug
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [expandedPins, setExpandedPins] = useState([]);
 
   const canOpen = useMemo(() => (
     !isStandaloneTrackingPage
@@ -17,9 +16,7 @@ export function useFnbTrackingDrawerPresentation({
 
   return {
     canOpen,
-    expandedPins,
     isOpen: isOpen && isEligible,
-    setExpandedPins,
     setIsOpen
   };
 }

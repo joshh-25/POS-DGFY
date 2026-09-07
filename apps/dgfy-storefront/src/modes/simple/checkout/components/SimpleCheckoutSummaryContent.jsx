@@ -36,12 +36,16 @@ export function SimpleCheckoutSummaryContent({
   voucherDiscountSummaryRow = null,
   promoPanel = null,
   scheduleLabel = 'NOW',
+  specialInstructions = '',
+  showFulfillmentSummary = true,
   totals = {},
   withAssetOrigin
 }) {
   const statusRows = [
-    { label: 'Fulfillment', value: isDeliveryOrder ? 'Delivery' : 'Pickup' },
-    { label: 'Schedule', value: scheduleLabel },
+    ...(showFulfillmentSummary ? [
+      { label: 'Fulfillment', value: isDeliveryOrder ? 'Delivery' : 'Pickup' },
+      { label: 'Schedule', value: scheduleLabel },
+    ] : []),
     { label: 'Items', value: `${cartCount} item${cartCount === 1 ? '' : 's'}` }
   ];
   const lineItems = cart.map((line) => ({
@@ -89,6 +93,7 @@ export function SimpleCheckoutSummaryContent({
         totalsRows={totalsRows}
         bodyFont={bodyFont}
         displayFont={displayFont}
+        specialInstructions={specialInstructions}
         footnote={<VatDisclosureNote />}
       />
       <SimpleCheckoutTrustCard displayFont={displayFont} />

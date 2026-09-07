@@ -1676,6 +1676,12 @@
   textarea {
     font-size: max(16px, 1rem) !important;
   }
+
+  /* Keep the control at 16px to prevent iOS zoom while giving the catalog
+     placeholder a quieter size on narrow screens. */
+  .storefront-mobile-catalog-search::placeholder {
+    font-size: 12px;
+  }
 }
 
 @keyframes storefrontGalleryLightboxFade {
@@ -1695,4 +1701,11 @@
 
 .storefront-gallery-lightbox-image {
   animation: storefrontGalleryLightboxFade 180ms ease;
+}
+
+.tracking-drawer-close:focus-visible,
+.tracking-drawer-card-action:focus-visible,
+.tracking-drawer-search-input:focus-visible {
+  outline: 3px solid rgba(29, 78, 216, 0.45);
+  outline-offset: 2px;
 }

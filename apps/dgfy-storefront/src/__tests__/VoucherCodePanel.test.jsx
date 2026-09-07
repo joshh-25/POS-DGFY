@@ -122,9 +122,11 @@ describe('VoucherCodePanel', () => {
   });
 
   it('renders backend-driven feedback and applied discount copy', () => {
+    const onClear = vi.fn();
     render(
       <VoucherCodePanel
         code="SAVE20"
+        onClear={onClear}
         statusMessage="Voucher applied successfully."
         statusTone="success"
         appliedDiscountText="PHP 20.00 off"
@@ -133,9 +135,10 @@ describe('VoucherCodePanel', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /save20 remove/i }));
-
     expect(screen.getByText('Voucher applied successfully.')).toBeTruthy();
     expect(screen.getByText(/Discount applied: PHP 20.00 off/i)).toBeTruthy();
+    fireEvent.click(screen.getByText('Remove'));
+    expect(onClear).toHaveBeenCalledTimes(1);
   });
 
   it('defaults to an empty listing when availableOffers is omitted (catalog-toolbar call sites)', () => {

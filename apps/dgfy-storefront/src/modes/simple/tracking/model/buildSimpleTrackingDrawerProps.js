@@ -5,14 +5,12 @@
  */
 export function buildSimpleTrackingDrawerProps({
   canOpenTrackingDrawer,
-  expandedPins,
   isAccountTracking,
   isMobileViewport,
   isOpen,
   isStandaloneTrackingPage,
   money,
   onClose,
-  onExpandedPinsChange,
   openFullTrackingForPin,
   trackingDrawerOrders,
   selectedStore,
@@ -20,13 +18,11 @@ export function buildSimpleTrackingDrawerProps({
 }) {
   return {
     canOpen: canOpenTrackingDrawer && !isStandaloneTrackingPage,
-    expandedPins,
     isAccountTracking,
     isMobileViewport,
     isOpen,
     money,
     onClose,
-    onExpandedPinsChange,
     openFullTrackingForPin,
     orders: trackingDrawerOrders,
     selectedStore,

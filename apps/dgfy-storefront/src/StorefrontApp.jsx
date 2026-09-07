@@ -48,6 +48,9 @@ import { useStorefrontCartPersistence } from './shared/hooks/useStorefrontCartPe
 import { useStorefrontCatalog } from './shared/hooks/useStorefrontCatalog.js';
 import { useStoreCatalogLoader } from './shared/hooks/useStoreCatalogLoader.js';
 import { useStorefrontSession } from './shared/hooks/useStorefrontSession.js';
+import { useStorefrontCheckoutState } from './shared/hooks/useStorefrontCheckoutState.js';
+import { useStorefrontReviewState } from './shared/hooks/useStorefrontReviewState.js';
+import { useServiceBookingState } from './modes/services/booking/hooks/useServiceBookingState.js';
 import { useStorefrontNavigation } from './shared/hooks/useStorefrontNavigation.js';
 import { useGuestCustomerIdentity } from './shared/hooks/useGuestCustomerIdentity.js';
 import { useStorefrontUiChrome } from './shared/hooks/useStorefrontUiChrome.js';
@@ -82,9 +85,7 @@ import { formatStorefrontHoursLabel } from './shared/model/storefrontHoursModel.
 import { buildCartSignature } from './shared/model/cartSignature.js';
 import { parseBooleanFlag } from './shared/model/storefrontJsonModel.js';
 import {
-  canUseCheckout,
   getInventoryDisplayLabel,
-  getStorefrontAccessBlockMessage,
   isGuestCheckoutAllowed
 } from './shared/model/customerAccess.js';
 import { buildStorefrontCheckoutPaymentOptions } from './shared/model/storefrontCheckoutPaymentOptions.js';
@@ -99,11 +100,13 @@ import { StorefrontCatalogRouteContainer } from './app/pages/StorefrontCatalogRo
 import { useStorefrontCatalogRouteProps } from './app/hooks/useStorefrontCatalogRouteProps.js';
 import { StorefrontHeroBandContainer } from './app/pages/StorefrontHeroBandContainer.jsx';
 import { useStorefrontHeroBandProps } from './app/hooks/useStorefrontHeroBandProps.js';
+import { StorefrontDiscoveryRouteContainer } from './app/pages/StorefrontDiscoveryRouteContainer.jsx';
+import { useStorefrontDiscoveryRouteProps } from './app/hooks/useStorefrontDiscoveryRouteProps.js';
 import { StorefrontCartDrawerShellContainer } from './app/pages/StorefrontCartDrawerShellContainer.jsx';
 import { useStorefrontCartDrawerShellProps } from './app/hooks/useStorefrontCartDrawerShellProps.js';
 import { StorefrontLoadBoundary } from './shared/components/storefront/StorefrontLoadBoundary.jsx';
 import { StorefrontBranchSwitchFeedback } from './shared/components/storefront/StorefrontBranchSwitchFeedback.jsx';
-import { openStorefrontActionLink, sanitizeExternalLink } from './shared/utils/externalLinks.js';
+import { openStorefrontActionLink } from './shared/utils/externalLinks.js';
 import { money as defaultMoney, toSlug } from './shared/utils/storefrontFormatters.js';
 import { formatServiceMoney } from './modes/services/servicesFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
@@ -123,14 +126,9 @@ import {
   buildKnownStoreRouteCandidates
 } from './app/routing/defaultStorefrontRoute.js';
 import { createStoreMarkerPreviewNode } from './discovery/model/storefrontMarkerPreview.js';
-import { buildFnbMobileLayout } from './modes/fnb/storefront/model/fnbMobileLayout.js';
-import { FNB_RECOMMENDED_LOCATION } from './modes/fnb/checkout/model/fnbCheckoutAddressLocations.js';
 import { useCheckoutTotalsAndGating } from './modes/fnb/checkout/hooks/useCheckoutTotalsAndGating.js';
 import { useSignedInCheckoutAddresses } from './modes/fnb/checkout/hooks/useSignedInCheckoutAddresses.js';
 import { useFnbTrackingDrawerPresentation } from './modes/fnb/tracking/hooks/useFnbTrackingDrawerPresentation.js';
-import { useFnbTrackingRuntime } from './modes/fnb/tracking/hooks/useFnbTrackingRuntime.js';
-import { useSimpleTrackingRuntime } from './modes/simple/tracking/hooks/useSimpleTrackingRuntime.js';
-import { useRetailTrackingRuntime } from './modes/retail/tracking/hooks/useRetailTrackingRuntime.js';
 import { useFnbCheckoutPresentation } from './modes/fnb/checkout/hooks/useFnbCheckoutPresentation.js';
 import { useFnbCheckoutQuote } from './modes/fnb/checkout/hooks/useFnbCheckoutQuote.js';
 import { useFnbCheckoutRouteState } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteState.js';
@@ -147,15 +145,8 @@ import { useCustomerDashboardStorefrontBridge } from './customer-dashboard/pages
 import { useCustomerDashboardRouteFlags } from './customer-dashboard/pages/useCustomerDashboardRouteFlags.js';
 import { useCustomerDashboardRouteOutlet } from './customer-dashboard/pages/useCustomerDashboardRouteOutlet.jsx';
 import {
-  readRouteSlug,
-  readStoreItemId,
-  readStoreLocationId,
-  readStoreReviewToken,
-  readStoreServiceItemId,
   readStoreSubpage,
-  readStoreVoucherCode,
   readTrackingPinFromQuery,
-  setCustomStorefrontRouteContext,
   STORE_BOOKING_SUBPAGE,
   STORE_ITEM_SUBPAGE,
   STORE_ORDER_SUBPAGE,
@@ -166,9 +157,7 @@ import {
 import {
   buildCatalogTarget,
   buildItemDetailTarget,
-  buildOrderTarget,
   buildStorefrontHistoryState,
-  buildTrackTarget,
   isCurrentStorefrontTarget
 } from './app/routing/storefrontNavigation.js';
 import {
@@ -203,11 +192,9 @@ import {
   maskReviewerName
 } from './features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { StorefrontExpandedMapModal } from './discovery/components/StorefrontExpandedMapModal.jsx';
-import { DiscoveryHomePage } from './discovery/pages/DiscoveryHomePage.jsx';
 import {
   STYLES
 } from './shared/theme/storefrontStyleTokens.js';
-import { ServicesDiscoveryDetailModal } from './modes/services/storefront/components/ServicesDiscoveryDetailModal.jsx';
 import {
   buildServiceBookingFieldPlan,
   buildServicePaymentOptions,
@@ -230,19 +217,14 @@ import {
   DISCOVERY_CATEGORY_MATCHERS,
   POPULAR_DISCOVERY_CATEGORIES
 } from './discovery/model/discoveryFilterOptions.js';
-import { useDiscoveryCategoryRail } from './discovery/hooks/useDiscoveryCategoryRail.js';
 import { useDiscoveryExplorationOutsideClick } from './discovery/hooks/useDiscoveryExplorationOutsideClick.js';
-import { useDiscoveryFilterDropdown } from './discovery/hooks/useDiscoveryFilterDropdown.js';
 import { useDiscoveryFilterOptions } from './discovery/hooks/useDiscoveryFilterOptions.js';
-import { useDiscoveryFeaturedMerchants } from './discovery/hooks/useDiscoveryFeaturedMerchants.jsx';
+import { useDiscoveryCategoryRail } from './discovery/hooks/useDiscoveryCategoryRail.js';
 import { useDiscoveryDerivedResults } from './discovery/hooks/useDiscoveryDerivedResults.js';
 import { useDiscoveryHighlightSync } from './discovery/hooks/useDiscoveryHighlightSync.js';
 import { useDiscoveryNavActions } from './discovery/hooks/useDiscoveryNavActions.js';
 import { useDiscoveryResultsRoute } from './discovery/hooks/useDiscoveryResultsRoute.js';
-import { useDiscoverySearchActions } from './discovery/hooks/useDiscoverySearchActions.js';
-import { useDiscoveryState } from './discovery/hooks/useDiscoveryState.js';
-import { useDiscoveryStoreLoader } from './discovery/hooks/useDiscoveryStoreLoader.js';
-import { useDiscoveryViewport } from './discovery/hooks/useDiscoveryViewport.js';
+import { useStorefrontDiscoveryRuntime } from './app/runtime/useStorefrontDiscoveryRuntime.js';
 import { useFnbCatalogRuntime } from './modes/fnb/storefront/hooks/useFnbCatalogRuntime.js';
 import { useFnbProductDetailsRoute } from './modes/fnb/storefront/hooks/useFnbProductDetailsRoute.js';
 import { useFnbProductDetailsRouteProps } from './modes/fnb/storefront/hooks/useFnbProductDetailsRouteProps.js';
@@ -251,21 +233,17 @@ import { useFnbProductDetailActions } from './modes/fnb/storefront/hooks/useFnbP
 import { useFnbProductDetailsReviewProps } from './modes/fnb/storefront/hooks/useFnbProductDetailsReviewProps.js';
 import { useFnbItemReviewRuntime } from './modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js';
 import { useFnbProductModifiers } from './modes/fnb/storefront/hooks/useFnbProductModifiers.js';
-import { createTrackingAdapterRegistry } from './tracking/core.js';
 import {
   createCompletionTrackingScheduler,
   resolveTrackingRetryDelayMs
 } from './tracking/customerTrackingRefresh.js';
 import {
-  fnbTrackingAdapter,
   getCompletedTrackingLabel,
   getTrackingFlowForOrderMethod
 } from './modes/fnb/tracking/model/fnbTrackingAdapter.js';
-import { serviceTrackingAdapter } from './modes/services/tracking/model/serviceTrackingAdapter.js';
 import { buildServicesTrackingRouteProps } from './modes/services/tracking/model/buildServicesTrackingRouteProps.js';
 import { ServicesTrackingRouteContainer } from './modes/services/tracking/pages/ServicesTrackingRouteContainer.jsx';
 import {
-  advanceServicesLocalSimulation as advanceLocalServicesSimulation,
   createServicesLocalSimulation
 } from './modes/services/tracking/model/servicesLocalSimulation.js';
 import {
@@ -273,12 +251,10 @@ import {
   SERVICES_LOCAL_SIMULATION_ENABLED
 } from './modes/services/booking/model/servicesLocalFlow.js';
 import {
-  simpleTrackingAdapter,
   getSimpleCompletedTrackingLabel,
   getSimpleTrackingFlowForOrderMethod
 } from './modes/simple/tracking/model/simpleTrackingAdapter.js';
 import {
-  RetailTrackingAdapter,
   getCompletedTrackingLabel as getRetailCompletedTrackingLabel,
   getTrackingFlowForOrderMethod as getRetailTrackingFlowForOrderMethod
 } from './modes/retail/tracking/model/retailTrackingAdapter.js';
@@ -290,7 +266,6 @@ import {
   readTrackedOrdersForStore,
   TERMINAL_TRACKING_STATUSES,
   writeLastTrackingPinForStore,
-  writeServiceHandoffForBooking
 } from './tracking/storage.js';
 import {
   deriveAccountActivityCollections,
@@ -333,12 +308,12 @@ import {
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
-import { isKnownDgfyPlatformHost } from './shared/utils/storefrontPlatformHost.js';
 import {
   PAYMENT_ELECTION_DOWNPAYMENT,
   PAYMENT_ELECTION_FULL,
   resolvePaymentElection
 } from './shared/model/storefrontPaymentElection.js';
+import { useStorefrontRouteRuntime } from './app/runtime/useStorefrontRouteRuntime.js';
 import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
 import { buildSimpleTrackingRouteProps } from './modes/simple/tracking/model/buildSimpleTrackingRouteProps.js';
@@ -349,9 +324,12 @@ import {
   resolveServicesBookingSubmitContract
 } from './services/servicesBookingContract.js';
 import { useStorefrontStore } from './store/useStorefrontStore.js';
+import { useStorefrontModeRuntime } from './app/runtime/useStorefrontModeRuntime.js';
+import { useStorefrontOrderNavigation } from './app/runtime/useStorefrontOrderNavigation.js';
 import {
+  selectIsAccountDrawerOpen,
   selectIsOnlinePaymentModalOpen,
-  selectViewportWidth
+  selectShowOrderSuccessAnimation
 } from './store/selectors/uiSelectors.js';
 // Issue #282, Phase E: no longer imported here -- it shipped maplibre-gl's
 // CSS on every storefront page load regardless of whether any map ever
@@ -396,7 +374,6 @@ const dgfySymbolLogo = '/dgfy-symbologo.png';
 const dgfyBusinessOwnerPhoto = '/man.webp';
 const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
-const DISCOVERY_LOCATION_PERMISSION_KEY = 'dgfy_storefront_discovery_location_permission_v1';
 const QRPH_PAYMENT_POLL_INTERVAL_MS = 4000;
 // #1093: the ecommerce fulfillment axis's candidate set -- delivery/pickup only, never
 // dine_in/takeout. Availability (which of these a resolved location actually supports) is
@@ -406,11 +383,18 @@ const STOREFRONT_FULFILLMENT_CANDIDATE_OPTIONS = ORDER_METHOD_OPTIONS.filter(
 );
 
 export default function StorefrontApp() {
-  const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
-  const [routeSubpage, setRouteSubpage] = useState(() => readStoreSubpage());
-  const [routeServiceItemId, setRouteServiceItemId] = useState(() => readStoreServiceItemId());
-  const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
-  const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
+  const {
+    routeSlug,
+    routeSubpage,
+    routeServiceItemId,
+    routeItemId,
+    routeReviewToken,
+    setRouteSlug,
+    setRouteSubpage,
+    setRouteServiceItemId,
+    setRouteItemId,
+    setRouteReviewToken
+  } = useStorefrontRouteRuntime();
   const previousRouteSlugRef = useRef(routeSlug);
 
   useAffiliateAttributionCapture({
@@ -422,118 +406,58 @@ export default function StorefrontApp() {
     onShareRouteResolved: setRouteSlug
   });
 
-  useEffect(() => {
-    if (routeSlug || typeof window === 'undefined') return undefined;
-    // This probe only ever resolves a context on an actual customer custom
-    // domain -- the backend's own hostname policy guarantees a 404 on
-    // dgfy.ph and its subdomains (see hostnamePolicy.js), which the frontend
-    // then discards anyway (see the `.then` chain below). Skipping it here
-    // avoids a false-positive 404 in the console/error dashboards on every
-    // anonymous root landing on the platform's own domain.
-    if (isKnownDgfyPlatformHost(window.location.hostname)) return undefined;
-    let cancelled = false;
-
-    fetch('/api/v1/store/domain-context', { credentials: 'include', cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const payload = await response.json().catch(() => null);
-        return payload?.data || null;
-      })
-      .then((context) => {
-        if (cancelled || !context?.slug) return;
-
-        if (context.routing_mode === 'custom_domain_alias' && context.redirect_to) {
-          const target = new URL(context.redirect_to);
-          target.pathname = window.location.pathname;
-          target.search = window.location.search;
-          target.hash = window.location.hash;
-          window.location.replace(target.toString());
-          return;
-        }
-
-        if (context.routing_mode !== 'custom_domain') return;
-        setCustomStorefrontRouteContext(context);
-        setRouteSlug(toSlug(context.slug));
-        setRouteSubpage(readStoreSubpage());
-        setRouteServiceItemId(readStoreServiceItemId());
-        setRouteItemId(readStoreItemId());
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [routeSlug]);
-
-  const viewportWidth = useStorefrontStore(selectViewportWidth);
-  const setViewportWidth = useStorefrontStore((s) => s.uiSetViewportWidth);
-  const isMobileViewport = viewportWidth < 840;
-  const isDesktopViewport = viewportWidth >= 1024;
-  const isCompactPaginationViewport = viewportWidth < 768;
-  const isTabletPaginationViewport = viewportWidth >= 768 && viewportWidth < 1024;
-  const fnbMobileLayout = useMemo(() => buildFnbMobileLayout(isMobileViewport), [isMobileViewport]);
-  const fnbMobileSectionTrailingInset = fnbMobileLayout.sectionTrailingInset;
-  const fnbMobileCatalogInlinePadding = fnbMobileLayout.catalogInlinePadding;
-  const fnbMobileMenuInnerWidth = fnbMobileLayout.menuInnerWidth;
   const {
+    viewportWidth,
+    isMobileViewport,
+    isDesktopViewport,
+    isCompactPaginationViewport,
+    isTabletPaginationViewport,
+    fnbMobileCatalogInlinePadding,
+    fnbMobileMenuInnerWidth,
     discoveryLayout,
     discoveryViewportMode,
     isDiscoveryMobileViewport,
-    isDiscoveryTabletViewport
-  } = useDiscoveryViewport(viewportWidth);
-
-  const [stores, setStores] = useState([]);
-  const [loadingStores, setLoadingStores] = useState(true);
-  const [storesError, setStoresError] = useState('');
-  const [search, setSearch] = useState('');
-  const [debouncedDiscoverySearch, setDebouncedDiscoverySearch] = useState('');
-  const {
+    isDiscoveryTabletViewport,
+    search,
+    setSearch,
+    debouncedDiscoverySearch,
+    setDebouncedDiscoverySearch,
     activeDiscoveryFilterDropdown,
     activeDiscoveryNavItem,
-    discoveryAppliedFilters,
     discoveryAvailabilityFilter,
     discoveryCategoryFilter,
     discoveryCoords,
-    discoveryCoordsRef,
     discoveryDistanceFilter,
-    discoveryIncludeMatchMeta,
     discoveryLocationMap,
     discoveryOpenFilter,
     discoveryPinScope,
     discoveryRatingFilter,
-    discoveryResultMode,
     discoveryResultsPage,
     discoverySortBy,
-    discoveryStockFilter,
     hasDiscoveryExplorationStarted,
     highlightedDiscoveryMarkerKey,
     highlightedStoreSlug,
-    isMobileResultsCollapsed,
     isDiscoveryNavMenuOpen,
     isDiscoveryNoMatchToastActive,
     isDiscoverySearchFocused,
     isStoreListVisible,
-    loadingDiscoveryLocations,
+    loadingStores,
     openDiscoveryFaqIndex,
     renderDiscoveryResetButton,
     searchRef,
+    stores,
+    storesError,
     viewMode,
     setActiveDiscoveryFilterDropdown,
     setActiveDiscoveryNavItem,
     setDiscoveryAppliedFilters,
     setDiscoveryAvailabilityFilter,
     setDiscoveryCategoryFilter,
-    setDiscoveryCoords,
     setDiscoveryDistanceFilter,
-    setDiscoveryIncludeMatchMeta,
-    setDiscoveryLocationMap,
     setDiscoveryOpenFilter,
-    setDiscoveryPinScope,
     setDiscoveryRatingFilter,
-    setDiscoveryResultMode,
     setDiscoveryResultsPage,
     setDiscoverySortBy,
-    setDiscoveryStockFilter,
     setHasDiscoveryExplorationStarted,
     setHighlightedDiscoveryMarkerKey,
     setHighlightedStoreSlug,
@@ -542,94 +466,20 @@ export default function StorefrontApp() {
     setIsDiscoveryNoMatchToastActive,
     setIsDiscoverySearchFocused,
     setIsStoreListVisible,
-    setLoadingDiscoveryLocations,
     setOpenDiscoveryFaqIndex,
     setRenderDiscoveryResetButton,
     setSelectedMapPin,
     setShowDiscoveryResetButton,
     setViewMode,
-    showDiscoveryResetButton
-  } = useDiscoveryState({ search });
-  const { discoveryFilterToolbarRef } = useDiscoveryFilterDropdown({
-    setActiveDiscoveryFilterDropdown
-  });
-  const { loadStores, retryLoadStores } = useDiscoveryStoreLoader({
-    debouncedDiscoverySearch,
-    discoveryCoordsRef,
-    discoveryIncludeMatchMeta,
-    discoveryPinScope,
-    discoveryResultMode,
-    discoveryStockFilter,
-    requestJson,
-    searchRef,
-    setDiscoveryAppliedFilters,
-    setDiscoveryCoords,
-    setDiscoveryLocationMap,
-    setLoadingDiscoveryLocations,
-    setLoadingStores,
-    setStores,
-    setStoresError,
-    stores,
-    toSlug
-  });
-  const hasRestoredDiscoveryLocationRef = useRef(false);
-  useEffect(() => {
-    if (routeSlug || hasRestoredDiscoveryLocationRef.current) return;
-    hasRestoredDiscoveryLocationRef.current = true;
-
-    const geolocation = window.navigator?.geolocation;
-    if (!geolocation?.getCurrentPosition) return;
-
-    let cancelled = false;
-    const restoreLocation = () => {
-      geolocation.getCurrentPosition(
-        (position) => {
-          if (cancelled) return;
-          window.localStorage?.setItem(DISCOVERY_LOCATION_PERMISSION_KEY, 'granted');
-          loadStores({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          }, { pinScope: 'tenant_primary' });
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-    };
-
-    const permissions = window.navigator?.permissions;
-    if (permissions?.query) {
-      permissions.query({ name: 'geolocation' })
-        .then((status) => {
-          if (!cancelled && status?.state === 'granted') restoreLocation();
-        })
-        .catch(() => {});
-    } else if (window.localStorage?.getItem(DISCOVERY_LOCATION_PERMISSION_KEY) === 'granted') {
-      restoreLocation();
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loadStores, routeSlug]);
-  const {
+    showDiscoveryResetButton,
+    discoveryFilterToolbarRef,
+    loadStores,
+    retryLoadStores,
     handleDiscoverySearch,
     handleNearMe,
-    handlePopularDiscoveryCategory
-  } = useDiscoverySearchActions({
-    loadStores,
-    search,
-    searchRef,
-    setDebouncedDiscoverySearch,
-    setDiscoveryCategoryFilter,
-    setDiscoveryPinScope,
-    setHasDiscoveryExplorationStarted,
-    setIsMobileResultsCollapsed,
-    setIsStoreListVisible,
-    setSearch,
-    setSelectedMapPin
-  });
-  const [catalogSearch, setCatalogSearch] = useState('');
-  const {
+    handlePopularDiscoveryCategory,
+    catalogSearch,
+    setCatalogSearch,
     featuredCarouselRef,
     featuredCategoryFilter,
     featuredCategoryOptions,
@@ -638,9 +488,60 @@ export default function StorefrontApp() {
     featuredVisibleStores,
     handleFeaturedCategoryFilter,
     setFeaturedBaseStores
-  } = useDiscoveryFeaturedMerchants({ normalizeStorefrontCategories });
-  const [selectedStore, setSelectedStore] = useState(null);
+  } = useStorefrontDiscoveryRuntime({
+    routeSlug,
+    normalizeStorefrontCategories,
+    requestJson,
+    toSlug
+  });
+  const setViewportWidth = useStorefrontStore((s) => s.uiSetViewportWidth);
+  const selectedStore = useStorefrontStore((s) => s.catalog.selectedStore);
+  const setSelectedStore = useStorefrontStore((s) => s.catalogSetSelectedStore);
+  const {
+    selectedServiceDetail,
+    setSelectedServiceDetail,
+    selectedServiceCartLineId,
+    setSelectedServiceCartLineId,
+    serviceDraftQuantity,
+    setServiceDraftQuantity,
+    serviceDraftNotes,
+    setServiceDraftNotes,
+    activeServiceTab,
+    setActiveServiceTab,
+    serviceSortOption,
+    setServiceSortOption,
+    isServiceFilterOpen,
+    setIsServiceFilterOpen,
+    serviceAvailabilityFilter,
+    setServiceAvailabilityFilter,
+    serviceAreaFilter,
+    setServiceAreaFilter,
+    serviceDurationFilter,
+    setServiceDurationFilter,
+    serviceBookingStep,
+    setServiceBookingStep,
+    serviceOrderMethod,
+    setServiceOrderMethod,
+    serviceScheduleMode,
+    setServiceScheduleMode,
+    serviceSpecialInstructions,
+    setServiceSpecialInstructions,
+    servicePage,
+    setServicePage,
+    servicePageSize,
+    setServicePageSize
+  } = useServiceBookingState();
   const isStorePage = Boolean(routeSlug);
+  // Order/tracking navigation is composed later, after the mode navigation
+  // hook has been initialized. These stable proxies let earlier mode hooks
+  // receive the callbacks without creating a second routing implementation.
+  const orderNavigationHandlersRef = useRef({});
+  const goStoreOrderPage = useCallback((...args) => (
+    orderNavigationHandlersRef.current.goStoreOrderPage?.(...args)
+  ), []);
+  const goStoreTrackPage = useCallback((...args) => (
+    orderNavigationHandlersRef.current.goStoreTrackPage?.(...args)
+  ), []);
   // AnalyticsRouteTracker (apps/store/src/main.jsx) already fires a
   // $pageview for every route, including the discovery home -- this named
   // event exists separately so "landed on discovery" reads as a funnel
@@ -661,24 +562,25 @@ export default function StorefrontApp() {
   const isFnbDetailsSubpage = routeSubpage === STORE_ITEM_SUBPAGE;
   const isResolvedOrderSubpage = isOrderSubpage || isTrackSubpage || currentPathSubpage === STORE_ORDER_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
 
-  const [selectedServiceDetail, setSelectedServiceDetail] = useState(null);
-  const [selectedServiceCartLineId, setSelectedServiceCartLineId] = useState('');
   const [editingFnbCartLine, setEditingFnbCartLine] = useState(null);
-  const [serviceDraftQuantity, setServiceDraftQuantity] = useState(1);
-  const [serviceDraftNotes, setServiceDraftNotes] = useState('');
-  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
-  const [reviewSubmitLoading, setReviewSubmitLoading] = useState(false);
-  const [reviewDraft, setReviewDraft] = useState({
-    name: '',
-    anonymous: false,
-    rating: 0,
-    message: ''
-  });
-  const [itemReviewSummary, setItemReviewSummary] = useState(null);
-  const [itemReviewCards, setItemReviewCards] = useState([]);
-  const [itemReviewsLoading, setItemReviewsLoading] = useState(false);
-  const [itemReviewInviteContext, setItemReviewInviteContext] = useState(null);
-  const [itemReviewSectionHighlighted, setItemReviewSectionHighlighted] = useState(false);
+  const {
+    isReviewModalOpen,
+    setIsReviewModalOpen,
+    reviewSubmitLoading,
+    setReviewSubmitLoading,
+    reviewDraft,
+    setReviewDraft,
+    itemReviewSummary,
+    setItemReviewSummary,
+    itemReviewCards,
+    setItemReviewCards,
+    itemReviewsLoading,
+    setItemReviewsLoading,
+    itemReviewInviteContext,
+    setItemReviewInviteContext,
+    itemReviewSectionHighlighted,
+    setItemReviewSectionHighlighted
+  } = useStorefrontReviewState();
   const serviceCartFabRef = useRef(null);
   const {
     discoveryBusinessModeOptions,
@@ -688,24 +590,12 @@ export default function StorefrontApp() {
     workflowModeLabels: WORKFLOW_MODE_LABELS,
     workflowModeSelectValues: WORKFLOW_MODE_SELECT_VALUES
   });
-  const [activeServiceTab, setActiveServiceTab] = useState(null);
-  const [serviceSortOption, setServiceSortOption] = useState('recommended');
-  const [isServiceFilterOpen, setIsServiceFilterOpen] = useState(false);
-  const [serviceAvailabilityFilter, setServiceAvailabilityFilter] = useState('all');
-  const [serviceAreaFilter, setServiceAreaFilter] = useState('all');
-  const [serviceDurationFilter, setServiceDurationFilter] = useState('all');
-  const [serviceBookingStep, setServiceBookingStep] = useState(1);
-  const [serviceOrderMethod, setServiceOrderMethod] = useState('');
-  const [serviceScheduleMode, setServiceScheduleMode] = useState('');
-  const [serviceSpecialInstructions, setServiceSpecialInstructions] = useState('');
   const {
     bookingPreferredDateInputRef,
     jumpToBookingField,
     openPreferredBookingDatePicker,
     registerBookingFieldRef
   } = useServiceBookingFieldFocus({ serviceBookingStep, setServiceBookingStep });
-  const [servicePage, setServicePage] = useState(1);
-  const [servicePageSize, setServicePageSize] = useState(8);
 
   const {
     fnbOrderStep,
@@ -727,11 +617,8 @@ export default function StorefrontApp() {
     setShowMobileAddressModal,
     showMobileAddressModal,
   } = useFnbCheckoutRouteState();
-  const [simpleOrderStep, setSimpleOrderStep] = useState(1);
   const paymentReturnSessionRef = useRef('');
   const qrphPaymentRefreshRef = useRef(null);
-  const [showSimpleMobileOrderSummary, setShowSimpleMobileOrderSummary] = useState(false);
-  const [showSimpleMobileAddressModal, setShowSimpleMobileAddressModal] = useState(false);
   const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
   const uiOpenOnlinePaymentModal = useStorefrontStore((s) => s.uiOpenOnlinePaymentModal);
   const uiCloseOnlinePaymentModal = useStorefrontStore((s) => s.uiCloseOnlinePaymentModal);
@@ -741,12 +628,96 @@ export default function StorefrontApp() {
     setQrphIdempotencyKey(globalThis.crypto?.randomUUID?.() || `store-qrph-${Date.now()}`);
   }, [setQrphIdempotencyKey, setQrphPaymentSession]);
 
+  const {
+    elected,
+    setElected,
+    checkoutPromoCode,
+    setCheckoutPromoCode,
+    checkoutVoucherCode,
+    setCheckoutVoucherCode,
+    preferredStoreLocationSelection,
+    setPreferredStoreLocationSelection,
+    orderMethod,
+    setOrderMethod,
+    guestCheckoutUnlocked,
+    setGuestCheckoutUnlocked,
+    rememberCustomerDetails,
+    setRememberCustomerDetails,
+    guestDetailsEditMode,
+    setGuestDetailsEditMode,
+    isUsingDifferentGuestDetails,
+    setIsUsingDifferentGuestDetails,
+    customerAddress,
+    setCustomerAddress,
+    serviceLocationLandmarkNote,
+    setServiceLocationLandmarkNote,
+    serviceUnitType,
+    setServiceUnitType,
+    customerPin,
+    setCustomerPin,
+    resolvedDeliveryAddress,
+    setResolvedDeliveryAddress,
+    resolvingPinnedDeliveryAddress,
+    setResolvingPinnedDeliveryAddress,
+    deliveryLocationAction,
+    setDeliveryLocationAction,
+    showExpandedDeliveryMap,
+    setShowExpandedDeliveryMap,
+    savedPinnedLocations,
+    setSavedPinnedLocations,
+    selectedSavedLocationId,
+    setSelectedSavedLocationId,
+    serviceAppointmentAt,
+    setServiceAppointmentAt,
+    servicePaymentTiming,
+    setServicePaymentTiming,
+    servicePaymentPreviewMethod,
+    setServicePaymentPreviewMethod,
+    servicePaymentPreviewCard,
+    setServicePaymentPreviewCard,
+    servicePaymentPreviewReceiptName,
+    setServicePaymentPreviewReceiptName,
+    serviceIntakeResponses,
+    setServiceIntakeResponses,
+    pinLocationLoading,
+    setPinLocationLoading,
+    pinLocationError,
+    setPinLocationError,
+    quoteResult,
+    setQuoteResult,
+    quoteNeedsRefresh,
+    setQuoteNeedsRefresh,
+    quoteError,
+    setQuoteError,
+    quotedCartSignature,
+    setQuotedCartSignature,
+    checkoutResult,
+    setCheckoutResult,
+    checkoutError,
+    setCheckoutError,
+    checkoutLoading,
+    setCheckoutLoading,
+    isCheckoutOpen,
+    setIsCheckoutOpen,
+    checkoutTab,
+    setCheckoutTab,
+    pendingOrderInitialTab,
+    setPendingOrderInitialTab,
+    hasAppliedCheckoutAuthResume,
+    setHasAppliedCheckoutAuthResume,
+    simpleOrderStep,
+    setSimpleOrderStep,
+    showSimpleMobileOrderSummary,
+    setShowSimpleMobileOrderSummary,
+    showSimpleMobileAddressModal,
+    setShowSimpleMobileAddressModal
+  } = useStorefrontCheckoutState();
+
   // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election at a
   // payment_mode='customer_choice' store. `elected` is the raw local selection (defaults 'full',
   // the safe/unambiguous choice); `paymentElection` is the resolved value the rest of the app
   // reads -- resolvePaymentElection forces the answer for the two non-choice modes rather than
   // trusting a stale `elected` left over from a previous store/session.
-  const [elected, setElected] = useState(PAYMENT_ELECTION_FULL);
   const paymentElection = resolvePaymentElection(selectedStore, elected);
   // Self-heals `elected` back to the default the instant the store stops being customer_choice --
   // otherwise a customer who elected "downpayment" at one store, then navigates to a plain
@@ -794,19 +765,10 @@ export default function StorefrontApp() {
     if (!expectsDownpaymentCapture || fnbPaymentType !== 'cash') return;
     setFnbPaymentType(resolveDefaultDownpaymentRail());
   }, [expectsDownpaymentCapture, selectedStore?.payment_capabilities, fnbPaymentType, resolveDefaultDownpaymentRail, setFnbPaymentType]);
-  const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
   // #672/#768: seeded from a shareable `?voucher=` link on first load, then persisted per
   // store+mode alongside the cart lines (useStorefrontCartPersistence, below) -- promo code rides
   // the same snapshot. Retail/F&B/services only; see that hook's `enabled` condition.
-  const [checkoutVoucherCode, setCheckoutVoucherCode] = useState(() => readStoreVoucherCode());
 
-  const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(() => {
-    if (!routeSlug || typeof window === 'undefined') return null;
-    const locationId = readStoreLocationId();
-    return locationId != null
-      ? { slug: routeSlug, locationId }
-      : null;
-  });
   const {
     catalog,
     setCatalog,
@@ -842,57 +804,24 @@ export default function StorefrontApp() {
     voucherCode: checkoutVoucherCode
   });
 
-  const [orderMethod, setOrderMethod] = useState('delivery');
   const cart = useStorefrontStore((s) => s.cart.items);
   const setCart = useStorefrontStore((s) => s.cartSet);
-  const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
-  const [guestCheckoutUnlocked, setGuestCheckoutUnlocked] = useState(false);
-  const [rememberCustomerDetails, setRememberCustomerDetails] = useState(() => Boolean(readStoreAuthToken()));
-  const [guestDetailsEditMode, setGuestDetailsEditMode] = useState(false);
-  const [isUsingDifferentGuestDetails, setIsUsingDifferentGuestDetails] = useState(false);
-  const [customerAddress, setCustomerAddress] = useState('');
-  const [serviceLocationLandmarkNote, setServiceLocationLandmarkNote] = useState('');
-  const [serviceUnitType, setServiceUnitType] = useState('');
-  const [customerPin, setCustomerPin] = useState(null);
-  const [resolvedDeliveryAddress, setResolvedDeliveryAddress] = useState('');
-  const [resolvingPinnedDeliveryAddress, setResolvingPinnedDeliveryAddress] = useState(false);
-  const [deliveryLocationAction, setDeliveryLocationAction] = useState('saved');
-  const [showExpandedDeliveryMap, setShowExpandedDeliveryMap] = useState(false);
-  const [savedPinnedLocations, setSavedPinnedLocations] = useState([]);
-  const [selectedSavedLocationId, setSelectedSavedLocationId] = useState(FNB_RECOMMENDED_LOCATION.id);
-  const [serviceAppointmentAt, setServiceAppointmentAt] = useState('');
-  const [servicePaymentTiming, setServicePaymentTiming] = useState('postpaid');
-  const [servicePaymentPreviewMethod, setServicePaymentPreviewMethod] = useState('qr');
-  const [servicePaymentPreviewCard, setServicePaymentPreviewCard] = useState({
-    cardholder: '',
-    cardNumber: '',
-    expiry: '',
-    cvv: ''
-  });
-  const [servicePaymentPreviewReceiptName, setServicePaymentPreviewReceiptName] = useState('');
-  const [serviceIntakeResponses, setServiceIntakeResponses] = useState({});
-  const [pinLocationLoading, setPinLocationLoading] = useState(false);
-  const [pinLocationError, setPinLocationError] = useState('');
-  const [quoteResult, setQuoteResult] = useState(null);
-  const [quoteNeedsRefresh, setQuoteNeedsRefresh] = useState(true);
-  const [quoteError, setQuoteError] = useState('');
+  const cartImageErrors = useStorefrontStore((s) => s.cart.imageErrors);
+  const setCartImageErrors = useStorefrontStore((s) => s.cartSetImageErrors);
   // #746: the cart the last successful quote was computed against. Compared with the live cart to
   // decide whether that quote's discounts still describe what the shopper sees -- see
   // shared/model/cartSignature.js for why this replaces the old `!quoteNeedsRefresh` gate.
-  const [quotedCartSignature, setQuotedCartSignature] = useState(null);
   const cartSignature = useMemo(() => buildCartSignature(cart), [cart]);
   // True when the last quote no longer describes the current cart -- the display-validity signal for
   // every voucher/promo discount surface.
   const isQuoteStale = quotedCartSignature === null || quotedCartSignature !== cartSignature;
   const fnbAutoQuoteSyncKeyRef = useRef('');
-  const [checkoutResult, setCheckoutResult] = useState(null);
-
-  const [checkoutError, setCheckoutError] = useState('');
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [showOrderSuccessAnimation, setShowOrderSuccessAnimation] = useState(false);
+  const showOrderSuccessAnimation = useStorefrontStore(selectShowOrderSuccessAnimation);
+  const setShowOrderSuccessAnimation = useStorefrontStore((s) => s.uiSetShowOrderSuccessAnimation);
   const orderSuccessAnimationTimerRef = useRef(null);
 
-  const [isAccountDrawerOpen, setIsAccountDrawerOpen] = useState(false);
+  const isAccountDrawerOpen = useStorefrontStore(selectIsAccountDrawerOpen);
+  const setIsAccountDrawerOpen = useStorefrontStore((s) => s.uiSetAccountDrawerOpen);
   const {
     setDgfyAuthTokenState,
     dgfySessionAccount,
@@ -904,7 +833,6 @@ export default function StorefrontApp() {
     isDgfySessionResolved,
     closeAccountDrawer
   } = useStorefrontSession({ setIsAccountDrawerOpen });
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   // isCheckoutOpen has many true-setting call sites (cart-add auto-open, hero
   // CTAs, tracking-intent resume, guest-checkout-auth resume) with no single
   // "start checkout" function to instrument -- watching its state origin
@@ -915,9 +843,6 @@ export default function StorefrontApp() {
     trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_STARTED, { store_slug: selectedStore?.slug });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCheckoutOpen]);
-  const [checkoutTab, setCheckoutTab] = useState('checkout');
-  const [pendingOrderInitialTab, setPendingOrderInitialTab] = useState('');
-  const [hasAppliedCheckoutAuthResume, setHasAppliedCheckoutAuthResume] = useState(false);
   const {
     handleDiscoveryExploreClick,
     handleDiscoveryMenuToggle,
@@ -940,8 +865,8 @@ export default function StorefrontApp() {
   } = useDiscoveryCategoryRail({ isDiscoveryMobileViewport });
 
   const {
-    isServicesMode,
     isFnbMode,
+    isServicesMode,
     isSimpleMode,
     isHospitalityMode,
     isRetailMode,
@@ -1077,9 +1002,7 @@ export default function StorefrontApp() {
   const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const {
     canOpen: canOpenTrackingDrawer,
-    expandedPins: expandedGuestDrawerPins,
     isOpen: isGuestTrackingDrawerOpen,
-    setExpandedPins: setExpandedGuestDrawerPins,
     setIsOpen: setIsGuestTrackingDrawerOpen
   } = useFnbTrackingDrawerPresentation({
     isGuestStorefrontUser,
@@ -1087,73 +1010,31 @@ export default function StorefrontApp() {
     isStandaloneTrackingPage,
     selectedStoreSlug: selectedStore?.slug
   });
-  // The F&B runtime is kept F&B-only. Services uses the dedicated runtime
-  // immediately below, even though both hooks must be instantiated here to
-  // preserve React hook ordering across storefront modes.
-  const fnbTrackingMode = 'fnb';
-  const fnbTrackingAdapterRegistry = useMemo(
-    () => createTrackingAdapterRegistry([fnbTrackingAdapter]),
-    []
-  );
-  const fnbTrackingRuntime = useFnbTrackingRuntime({
+  // Tracking contract anchors: useFnbTrackingRuntime remains the F&B runtime
+  // selected inside useStorefrontModeRuntime; Services keeps trackingMode: 'services'.
+  const {
+    activeTrackingRuntime,
+    advanceServicesLocalTracking,
+    fnbTrackingRuntime,
+    servicesTrackingRuntime,
+    simpleTrackingRuntime,
+    retailTrackingRuntime
+  } = useStorefrontModeRuntime({
     checkoutTab,
+    isFnbMode,
     isFnbOrderSubpage,
-    normalizeErrorMessage: normalizeStorefrontErrorMessage,
-    requestJson,
-    routeSlug,
-    selectedStore,
-    toSlug,
-    trackingAdapterRegistry: fnbTrackingAdapterRegistry,
-    trackingMode: fnbTrackingMode
-  });
-  const servicesTrackingAdapterRegistry = useMemo(
-    () => createTrackingAdapterRegistry([serviceTrackingAdapter]),
-    []
-  );
-  const servicesTrackingRuntime = useFnbTrackingRuntime({
-    checkoutTab,
-    isFnbOrderSubpage: isServicesTrackingPage,
-    normalizeErrorMessage: normalizeStorefrontErrorMessage,
-    requestJson,
-    routeSlug,
-    selectedStore,
-    toSlug,
-    trackingAdapterRegistry: servicesTrackingAdapterRegistry,
-    trackingMode: 'services'
-  });
-  const simpleTrackingAdapterRegistry = useMemo(
-    () => createTrackingAdapterRegistry([simpleTrackingAdapter]),
-    []
-  );
-  const simpleTrackingRuntime = useSimpleTrackingRuntime({
-    checkoutTab,
-    enabled: isSimpleMode,
+    isRetailMode,
+    isServicesMode,
+    isSimpleMode,
     isSimpleOrderSubpage,
+    isServicesTrackingPage,
+    isStandaloneTrackingPage,
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
     requestJson,
     routeSlug,
     selectedStore,
-    toSlug,
-    trackingAdapterRegistry: simpleTrackingAdapterRegistry
+    toSlug
   });
-  const retailTrackingAdapterRegistry = useMemo(
-    () => createTrackingAdapterRegistry([RetailTrackingAdapter]),
-    []
-  );
-  const retailTrackingRuntime = useRetailTrackingRuntime({
-    checkoutTab,
-    isRetailOrderSubpage: isRetailMode && isStandaloneTrackingPage,
-    normalizeErrorMessage: normalizeStorefrontErrorMessage,
-    requestJson,
-    routeSlug,
-    selectedStore,
-    toSlug,
-    trackingAdapterRegistry: retailTrackingAdapterRegistry,
-    trackingMode: 'retail'
-  });
-  const activeTrackingRuntime = isServicesMode
-    ? servicesTrackingRuntime
-    : (isSimpleMode ? simpleTrackingRuntime : (isRetailMode ? retailTrackingRuntime : fnbTrackingRuntime));
   const {
     buildTrackedOrderEntryFromTrackingPayload,
     fetchTrackingPayload,
@@ -1171,14 +1052,6 @@ export default function StorefrontApp() {
     trackingPinInput,
     trackingResult
   } = activeTrackingRuntime;
-  const advanceServicesLocalTracking = useCallback((reference) => {
-    const storeSlug = selectedStore?.slug || routeSlug;
-    const updated = advanceLocalServicesSimulation(storeSlug, reference);
-    if (!updated) return;
-    setTrackingPinInput(updated.tracking_pin);
-    setSelectedTrackingPin(updated.tracking_pin);
-    void handleTrack();
-  }, [handleTrack, routeSlug, selectedStore?.slug, setSelectedTrackingPin, setTrackingPinInput]);
   // Services owns its checkout palette. A composed services capability must
   // use the same tokens as a Services storefront instead of inheriting the
   // legacy teal accent from the tenant's primary mode.
@@ -1619,91 +1492,6 @@ export default function StorefrontApp() {
     writeSavedCustomerDetails(profileFromAccount);
   }, [accountPanel.me, setSavedCustomerDetails]);
 
-  const goStoreOrderForDiscovery = (slug, locationId = null, storeContext = null) => {
-    const normalized = toSlug(slug);
-    if (!normalized || typeof window === 'undefined') return;
-    // An external listing (entity_type: 'external_listing') transacts on a different
-    // platform — it has no DGFY storefront/checkout to open. Redirect off-platform via
-    // the sanitized opener instead of routing into this app's storefront shell, which
-    // would otherwise present the off-platform store as if it were a DGFY tenant.
-    if (storeContext?.entity_type === 'external_listing') {
-      openStorefrontActionLink(sanitizeExternalLink(storeContext.storefront_url || storeContext.external_storefront_url));
-      return;
-    }
-    // Always land discovery's "Order Now" on the storefront's catalog section —
-    // never jump straight into checkout, which would otherwise present an empty
-    // cart to a visitor who hasn't picked anything yet. F&B previously was the
-    // only mode routed here; every mode now behaves the same way regardless of
-    // whether the store supports checkout.
-    goStore(normalized, locationId);
-    if (!canUseCheckout(storeContext)) {
-      const message = getStorefrontAccessBlockMessage(storeContext);
-      if (message) toast.error(message);
-    }
-    window.requestAnimationFrame(() => {
-      document.getElementById('storefront-catalog-section')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    });
-  };
-  const goStoreOrderPage = ({ initialTab } = {}) => {
-    const normalized = toSlug(selectedStore?.slug || routeSlug);
-    if (!normalized || typeof window === 'undefined') return;
-    const persistedTrackedOrders = readTrackedOrdersForStore(normalized).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
-    const resolvedInitialTab = initialTab || 'checkout';
-    const target = buildOrderTarget(normalized, { locationId: selectedLocationId });
-    if (!isCurrentStorefrontTarget(target)) {
-      window.history.pushState(buildStorefrontHistoryState({
-        storeSlug: normalized,
-        storeSubpage: STORE_ORDER_SUBPAGE,
-        locationId: selectedLocationId
-      }), '', target);
-    }
-    setRouteSlug(normalized);
-    setRouteSubpage(STORE_ORDER_SUBPAGE);
-    setRouteServiceItemId(null);
-    setRouteItemId(null);
-    setPendingOrderInitialTab(resolvedInitialTab);
-    if (!trackingPinInput) {
-      const preferredPin = String(persistedTrackedOrders[0]?.tracking_pin || readLastTrackingPinForStore(normalized) || '').trim().toUpperCase();
-      if (preferredPin) {
-        setTrackingPinInput(preferredPin);
-        if (!selectedTrackingPin) setSelectedTrackingPin(preferredPin);
-      }
-    }
-    setFnbOrderStep(checkoutResult ? 4 : 3);
-    setSimpleOrderStep(checkoutResult ? 4 : 1);
-    setCheckoutTab(resolvedInitialTab);
-    setIsCheckoutOpen(false);
-  };
-  const goStoreTrackPage = ({ pin = '', storeSlug = '', serviceHandoff = '' } = {}) => {
-    const normalized = toSlug(storeSlug || selectedStore?.slug || routeSlug);
-    if (!normalized || typeof window === 'undefined') return;
-    const normalizedPin = String(pin || selectedTrackingPin || trackingPinInput || readLastTrackingPinForStore(normalized) || '').trim().toUpperCase();
-    const target = buildTrackTarget(normalized, normalizedPin, { locationId: selectedLocationId });
-    if (!isCurrentStorefrontTarget(target)) {
-      window.history.pushState(buildStorefrontHistoryState({
-        storeSlug: normalized,
-        storeSubpage: STORE_TRACK_SUBPAGE,
-        locationId: selectedLocationId
-      }), '', target);
-    }
-    setRouteSlug(normalized);
-    setRouteSubpage(STORE_TRACK_SUBPAGE);
-    setRouteServiceItemId(null);
-    setRouteItemId(null);
-    setPendingOrderInitialTab('track');
-    if (normalizedPin) {
-      setSelectedTrackingPin(normalizedPin);
-      setTrackingPinInput(normalizedPin);
-      writeLastTrackingPinForStore(normalized, normalizedPin);
-      if (isServicesMode) {
-        writeServiceHandoffForBooking(normalized, normalizedPin, serviceHandoff);
-      }
-    }
-    setFnbOrderStep(checkoutResult ? 4 : 3);
-    setSimpleOrderStep(checkoutResult ? 4 : 1);
-    setCheckoutTab('track');
-    setIsCheckoutOpen(false);
-  };
   const {
     addToCart,
     cartAddOnsTotal,
@@ -2468,6 +2256,7 @@ export default function StorefrontApp() {
     buildPayload: checkoutPayload,
     handlePromoCardApply,
     handleVoucherCardApply,
+    handleVoucherCardRemove,
     requestQuote,
   } = useFnbCheckoutQuote({
     accessCapabilities,
@@ -2810,6 +2599,7 @@ export default function StorefrontApp() {
     checkoutVoucherCode,
     handlePromoCardApply,
     handleVoucherCardApply,
+    handleVoucherCardRemove,
     promoSectionModel,
     promoStatusMessage,
     promoStatusTone,
@@ -3084,6 +2874,35 @@ export default function StorefrontApp() {
     setDiscoveryAppliedFilters,
     setActiveDiscoveryNavItem
   });
+  const {
+    goStoreOrderForDiscovery,
+    goStoreOrderPage: composedGoStoreOrderPage,
+    goStoreTrackPage: composedGoStoreTrackPage
+  } = useStorefrontOrderNavigation({
+    checkoutResult,
+    goStore,
+    isServicesMode,
+    routeSlug,
+    selectedLocationId,
+    selectedStore,
+    selectedTrackingPin,
+    setCheckoutTab,
+    setFnbOrderStep,
+    setIsCheckoutOpen,
+    setPendingOrderInitialTab,
+    setRouteItemId,
+    setRouteServiceItemId,
+    setRouteSlug,
+    setRouteSubpage,
+    setSelectedTrackingPin,
+    setSimpleOrderStep,
+    setTrackingPinInput,
+    trackingPinInput
+  });
+  orderNavigationHandlersRef.current = {
+    goStoreOrderPage: composedGoStoreOrderPage,
+    goStoreTrackPage: composedGoStoreTrackPage
+  };
   // #889: a customer forcing/reloading a direct link into checkout (any mode -- Simple, Retail,
   // and F&B's checkout drawer all key off the same `isOrderSubpage`/`checkoutTab` state) while the
   // store is outside its configured business hours must be kicked back to the storefront instead
@@ -3821,7 +3640,6 @@ export default function StorefrontApp() {
     canOpenTrackingDrawer,
     checkoutTab,
     copyTextToClipboard,
-    expandedPins: expandedGuestDrawerPins,
     formatTicketDate,
     getCompletedTrackingLabel,
     getTrackingFlowForOrderMethod,
@@ -3833,7 +3651,6 @@ export default function StorefrontApp() {
     isStandaloneTrackingPage,
     money,
     onClose: () => setIsGuestTrackingDrawerOpen(false),
-    onExpandedPinsChange: setExpandedGuestDrawerPins,
     openFnbItemReviewFromInvite,
     openFullTrackingForPin,
     primaryLocationId,
@@ -3886,14 +3703,12 @@ export default function StorefrontApp() {
   });
   const simpleTrackingDrawerProps = buildSimpleTrackingDrawerProps({
     canOpenTrackingDrawer,
-    expandedPins: expandedGuestDrawerPins,
     isAccountTracking: isDgfyCustomerSignedIn,
     isMobileViewport,
     isOpen: isGuestTrackingDrawerOpen,
     isStandaloneTrackingPage,
     money,
     onClose: () => setIsGuestTrackingDrawerOpen(false),
-    onExpandedPinsChange: setExpandedGuestDrawerPins,
     openFullTrackingForPin,
     selectedStore,
     trackingDrawerOrders,
@@ -3903,7 +3718,6 @@ export default function StorefrontApp() {
     canOpenTrackingDrawer,
     checkoutTab,
     copyTextToClipboard,
-    expandedPins: expandedGuestDrawerPins,
     formatTicketDate,
     getCompletedTrackingLabel: getRetailCompletedTrackingLabel,
     getTrackingFlowForOrderMethod: getRetailTrackingFlowForOrderMethod,
@@ -3915,7 +3729,6 @@ export default function StorefrontApp() {
     isStandaloneTrackingPage,
     money,
     onClose: () => setIsGuestTrackingDrawerOpen(false),
-    onExpandedPinsChange: setExpandedGuestDrawerPins,
     openRetailItemReviewFromInvite: openFnbItemReviewFromInvite,
     openFullTrackingForPin,
     primaryLocationId,
@@ -4078,6 +3891,7 @@ export default function StorefrontApp() {
     checkoutVoucherCode,
     setCheckoutVoucherCode,
     handleVoucherCardApply,
+    handleVoucherCardRemove,
     checkoutResult,
     customerEmail,
     customerName,
@@ -4359,6 +4173,110 @@ export default function StorefrontApp() {
     simpleTrackingDrawerProps,
     showOrderSuccessAnimation
   });
+  const storefrontDiscoveryRouteProps = useStorefrontDiscoveryRouteProps({
+    accountIdentityContact,
+    accountIdentityInitials,
+    accountIdentityName,
+    accountIdentityRawEmail,
+    activeDiscoveryNavItem,
+    desktopCategoryRailRef,
+    dgfyBusinessOwnerPhoto,
+    dgfyHeaderLogo,
+    dgfySymbolLogo,
+    discoveryCoords,
+    discoveryInteractiveAreaRef,
+    discoveryLayout,
+    discoveryPinsBySlug,
+    discoveryResultsRendererProps,
+    discoveryViewportMode,
+    featuredCarouselRef,
+    featuredCategoryFilter,
+    featuredCategoryOptions,
+    featuredCategoryRailRef,
+    featuredSectionRef,
+    featuredVisibleStores,
+    formatStorefrontHoursLabel,
+    getDiscoveryMarkerKey,
+    getPreferredDiscoveryLocationId,
+    goDiscovery,
+    goStore,
+    handleDiscoveryExploreClick,
+    handleDiscoveryMenuToggle,
+    handleDiscoveryNavItemClick,
+    handleDiscoverySearch,
+    handleFeaturedCategoryFilter,
+    handleNearMe,
+    handlePopularDiscoveryCategory,
+    hasDesktopCategoryOverflow,
+    hasDiscoveryExplorationStarted,
+    hasDiscoverySearch,
+    highlightedDiscoveryMarkerKey,
+    isBrandingImageBlocked,
+    isCategoryRowExpanded,
+    isClusterResultsActive,
+    isDgfyCustomerSignedIn,
+    isDiscoveryMobileViewport,
+    isDiscoveryNavMenuOpen,
+    isDiscoverySearchFocused,
+    isDiscoveryTabletViewport,
+    isMobileViewport,
+    loadStores,
+    markBrandingImageError,
+    mobileCategoryGroupIndex,
+    mobileCategoryRailRef,
+    normalizeStorefrontCategories,
+    normalizeStorefrontReviewSummary,
+    openBusinessRegistrationFlow,
+    openCanonicalDgfyAuth,
+    openCustomerDashboard,
+    openDiscoveryFaqIndex,
+    search,
+    searchRef,
+    setDebouncedDiscoverySearch,
+    setHasDiscoveryExplorationStarted,
+    setHighlightedDiscoveryMarkerKey,
+    setHighlightedStoreSlug,
+    setIsCategoryRowExpanded,
+    setIsDiscoveryNavMenuOpen,
+    setIsDiscoverySearchFocused,
+    setMobileCategoryGroupIndex,
+    setOpenDiscoveryFaqIndex,
+    setSearch,
+    showDesktopCategoryOverflowCue,
+    stableHeroDiscoveryMapPins,
+    storesWithNearestBranch,
+    toSlug,
+    withAssetOrigin,
+    Badge,
+    GhostButton,
+    PrimaryButton,
+    STYLES,
+    servicesPrimary,
+    servicesPrimaryDark,
+    servicesPrimaryShadow,
+    checkoutError,
+    closeServiceDetail,
+    isBookingSubpage,
+    isServiceDetailsSubpage,
+    missingRequiredSelectedServiceIntake,
+    money,
+    renderStorefrontClosedNotice,
+    saveServiceBookingDraft,
+    selectedServiceDetail,
+    selectedServiceIntakeFields,
+    selectedServicePaymentOptions,
+    serviceAppointmentAt,
+    serviceDraftNotes,
+    serviceDraftQuantity,
+    serviceIntakeResponses,
+    servicePaymentTiming,
+    setServiceAppointmentAt,
+    setServiceDraftNotes,
+    setServiceDraftQuantity,
+    setServiceIntakeResponses,
+    setServicePaymentTiming,
+    storefrontClosedByHours
+  });
   if (isStandaloneAccountPage) return customerDashboardStandaloneRouteNode;
 
   return (
@@ -4386,122 +4304,7 @@ export default function StorefrontApp() {
         paddingBottom: isStorePage ? ((isServicesMode || isFnbMode || isSimpleMode || !hasDiscoverySearch) ? 0 : (isMobileViewport ? 96 : 120)) : 0
       }}>
         {!isStorePage && (
-          <>
-            <DiscoveryHomePage
-              accountIdentityContact={accountIdentityContact}
-              accountIdentityInitials={accountIdentityInitials}
-              accountIdentityName={accountIdentityName}
-              accountIdentityRawEmail={accountIdentityRawEmail}
-              activeDiscoveryNavItem={activeDiscoveryNavItem}
-              desktopCategoryRailRef={desktopCategoryRailRef}
-              dgfyBusinessOwnerPhoto={dgfyBusinessOwnerPhoto}
-              dgfyHeaderLogo={dgfyHeaderLogo}
-              dgfySymbolLogo={dgfySymbolLogo}
-              discoveryCoords={discoveryCoords}
-              discoveryInteractiveAreaRef={discoveryInteractiveAreaRef}
-              discoveryLayout={discoveryLayout}
-              discoveryPinsBySlug={discoveryPinsBySlug}
-              discoveryResultsRendererProps={discoveryResultsRendererProps}
-              discoveryViewportMode={discoveryViewportMode}
-              featuredCarouselRef={featuredCarouselRef}
-              featuredCategoryFilter={featuredCategoryFilter}
-              featuredCategoryOptions={featuredCategoryOptions}
-              featuredCategoryRailRef={featuredCategoryRailRef}
-              featuredSectionRef={featuredSectionRef}
-              featuredVisibleStores={featuredVisibleStores}
-              formatStorefrontHoursLabel={formatStorefrontHoursLabel}
-              getDiscoveryMarkerKey={getDiscoveryMarkerKey}
-              getPreferredDiscoveryLocationId={getPreferredDiscoveryLocationId}
-              goDiscovery={goDiscovery}
-              goStore={goStore}
-              handleDiscoveryExploreClick={handleDiscoveryExploreClick}
-              handleDiscoveryMenuToggle={handleDiscoveryMenuToggle}
-              handleDiscoveryNavItemClick={handleDiscoveryNavItemClick}
-              handleDiscoverySearch={handleDiscoverySearch}
-              handleFeaturedCategoryFilter={handleFeaturedCategoryFilter}
-              handleNearMe={handleNearMe}
-              handlePopularDiscoveryCategory={handlePopularDiscoveryCategory}
-              hasDesktopCategoryOverflow={hasDesktopCategoryOverflow}
-              hasDiscoveryExplorationStarted={hasDiscoveryExplorationStarted}
-              hasDiscoverySearch={hasDiscoverySearch}
-              highlightedDiscoveryMarkerKey={highlightedDiscoveryMarkerKey}
-              isBrandingImageBlocked={isBrandingImageBlocked}
-              isCategoryRowExpanded={isCategoryRowExpanded}
-              isClusterResultsActive={isClusterResultsActive}
-              isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
-              isDiscoveryMobileViewport={isDiscoveryMobileViewport}
-              isDiscoveryNavMenuOpen={isDiscoveryNavMenuOpen}
-              isDiscoverySearchFocused={isDiscoverySearchFocused}
-              isDiscoveryTabletViewport={isDiscoveryTabletViewport}
-              isMobileViewport={isMobileViewport}
-              loadStores={loadStores}
-              markBrandingImageError={markBrandingImageError}
-              mobileCategoryGroupIndex={mobileCategoryGroupIndex}
-              mobileCategoryRailRef={mobileCategoryRailRef}
-              normalizeStorefrontCategories={normalizeStorefrontCategories}
-              normalizeStorefrontReviewSummary={normalizeStorefrontReviewSummary}
-              openBusinessRegistrationFlow={openBusinessRegistrationFlow}
-              openCanonicalDgfyAuth={openCanonicalDgfyAuth}
-              openCustomerDashboard={openCustomerDashboard}
-              openDiscoveryFaqIndex={openDiscoveryFaqIndex}
-              search={search}
-              searchRef={searchRef}
-              setDebouncedDiscoverySearch={setDebouncedDiscoverySearch}
-              setHasDiscoveryExplorationStarted={setHasDiscoveryExplorationStarted}
-              setHighlightedDiscoveryMarkerKey={setHighlightedDiscoveryMarkerKey}
-              setHighlightedStoreSlug={setHighlightedStoreSlug}
-              setIsCategoryRowExpanded={setIsCategoryRowExpanded}
-              setIsDiscoveryNavMenuOpen={setIsDiscoveryNavMenuOpen}
-              setIsDiscoverySearchFocused={setIsDiscoverySearchFocused}
-              setMobileCategoryGroupIndex={setMobileCategoryGroupIndex}
-              setOpenDiscoveryFaqIndex={setOpenDiscoveryFaqIndex}
-              setSearch={setSearch}
-              showDesktopCategoryOverflowCue={showDesktopCategoryOverflowCue}
-              stableHeroDiscoveryMapPins={stableHeroDiscoveryMapPins}
-              storesWithNearestBranch={storesWithNearestBranch}
-              toSlug={toSlug}
-              withAssetOrigin={withAssetOrigin}
-            />
-
-
-
-
-
-                  <ServicesDiscoveryDetailModal
-                    Badge={Badge}
-                    GhostButton={GhostButton}
-                    PrimaryButton={PrimaryButton}
-                    STYLES={STYLES}
-                    servicesPrimary={servicesPrimary}
-                    servicesPrimaryDark={servicesPrimaryDark}
-                    servicesPrimaryShadow={servicesPrimaryShadow}
-                    checkoutError={checkoutError}
-                    closeServiceDetail={closeServiceDetail}
-                    isBookingSubpage={isBookingSubpage}
-                    isMobileViewport={isMobileViewport}
-                    isServiceDetailsSubpage={isServiceDetailsSubpage}
-                    missingRequiredSelectedServiceIntake={missingRequiredSelectedServiceIntake}
-                    money={money}
-                    renderStorefrontClosedNotice={renderStorefrontClosedNotice}
-                    saveServiceBookingDraft={saveServiceBookingDraft}
-                    selectedServiceDetail={selectedServiceDetail}
-                    selectedServiceIntakeFields={selectedServiceIntakeFields}
-                    selectedServicePaymentOptions={selectedServicePaymentOptions}
-                    serviceAppointmentAt={serviceAppointmentAt}
-                    serviceDraftNotes={serviceDraftNotes}
-                    serviceDraftQuantity={serviceDraftQuantity}
-                    serviceIntakeResponses={serviceIntakeResponses}
-                    servicePaymentTiming={servicePaymentTiming}
-                    setServiceAppointmentAt={setServiceAppointmentAt}
-                    setServiceDraftNotes={setServiceDraftNotes}
-                    setServiceDraftQuantity={setServiceDraftQuantity}
-                    setServiceIntakeResponses={setServiceIntakeResponses}
-                    setServicePaymentTiming={setServicePaymentTiming}
-                    storefrontClosedByHours={storefrontClosedByHours}
-                    withAssetOrigin={withAssetOrigin}
-                  />
-
-          </>
+          <StorefrontDiscoveryRouteContainer {...storefrontDiscoveryRouteProps} />
         )}
 
         {isStorePage && (

@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { useStorefrontStore } from '../useStorefrontStore.js';
 import {
   selectIsDesktopViewport,
+  selectIsAboutExpanded,
   selectIsMobileViewport,
   selectIsOnlinePaymentModalOpen,
+  selectIsServiceGalleryExpanded,
   selectShowOrderSuccessAnimation,
   selectViewportWidth
 } from '../selectors/uiSelectors.js';
@@ -61,6 +63,44 @@ describe('uiSlice reference actions', () => {
     expect(useStorefrontStore.getState().ui.isOnlinePaymentModalOpen).toBe(false);
   });
 
+  it('stores shared about and gallery expansion state', () => {
+    useStorefrontStore.getState().uiSetAboutExpanded(true);
+    useStorefrontStore.getState().uiSetServiceGalleryExpanded(true);
+
+    const state = useStorefrontStore.getState();
+    expect(selectIsAboutExpanded(state)).toBe(true);
+    expect(selectIsServiceGalleryExpanded(state)).toBe(true);
+
+    useStorefrontStore.getState().uiSetAboutExpanded(false);
+    useStorefrontStore.getState().uiSetServiceGalleryExpanded(false);
+    expect(selectIsAboutExpanded(useStorefrontStore.getState())).toBe(false);
+    expect(selectIsServiceGalleryExpanded(useStorefrontStore.getState())).toBe(false);
+  });
+
+  it('supports functional updates for boolean UI state', () => {
+    useStorefrontStore.getState().uiSetAccountDrawerOpen((previous) => !previous);
+    useStorefrontStore.getState().uiSetAboutExpanded((previous) => !previous);
+    useStorefrontStore.getState().uiSetServiceGalleryExpanded((previous) => !previous);
+    useStorefrontStore.getState().uiSetShowOrderSuccessAnimation((previous) => !previous);
+
+    let state = useStorefrontStore.getState();
+    expect(state.ui.isAccountDrawerOpen).toBe(true);
+    expect(selectIsAboutExpanded(state)).toBe(true);
+    expect(selectIsServiceGalleryExpanded(state)).toBe(true);
+    expect(selectShowOrderSuccessAnimation(state)).toBe(true);
+
+    useStorefrontStore.getState().uiSetAccountDrawerOpen((previous) => !previous);
+    useStorefrontStore.getState().uiSetAboutExpanded((previous) => !previous);
+    useStorefrontStore.getState().uiSetServiceGalleryExpanded((previous) => !previous);
+    useStorefrontStore.getState().uiSetShowOrderSuccessAnimation((previous) => !previous);
+
+    state = useStorefrontStore.getState();
+    expect(state.ui.isAccountDrawerOpen).toBe(false);
+    expect(selectIsAboutExpanded(state)).toBe(false);
+    expect(selectIsServiceGalleryExpanded(state)).toBe(false);
+    expect(selectShowOrderSuccessAnimation(state)).toBe(false);
+  });
+
   it('coerces truthiness for the order-success flag setter', () => {
     useStorefrontStore.getState().uiSetShowOrderSuccessAnimation('yes');
     expect(selectShowOrderSuccessAnimation(useStorefrontStore.getState())).toBe(true);
@@ -69,14 +109,75 @@ describe('uiSlice reference actions', () => {
   it('does not bleed one slice into another', () => {
     useStorefrontStore.getState().uiSetViewportWidth(700);
     // Touching ui must leave every other domain namespace untouched.
-    expect(useStorefrontStore.getState().session).toEqual({});
-    expect(useStorefrontStore.getState().cart).toEqual({ items: [] });
+    expect(useStorefrontStore.getState().session.dgfySessionAccount).toBeNull();
+    expect(useStorefrontStore.getState().cart.items).toEqual([]);
+  });
+});
+
+describe('low-risk catalog and discovery state', () => {
+  it('updates catalog read state without touching the cart', () => {
+    const selectedStore = { slug: 'tinda-han' };
+    const items = [{ item_id: 1 }];
+
+    useStorefrontStore.getState().catalogSetSelectedStore(selectedStore);
+    useStorefrontStore.getState().catalogSetItems(items);
+    useStorefrontStore.getState().catalogSetSearch('rice');
+    useStorefrontStore.getState().catalogSetSelectedLocationId(4);
+
+    const state = useStorefrontStore.getState();
+    expect(state.catalog.selectedStore).toBe(selectedStore);
+    expect(state.catalog.items).toBe(items);
+    expect(state.catalog.search).toBe('rice');
+    expect(state.catalog.selectedLocationId).toBe(4);
+    expect(state.cart.items).toEqual([]);
+  });
+
+  it('updates discovery filters and store results immutably', () => {
+    const stores = [{ slug: 'tinda-han' }];
+    const before = useStorefrontStore.getState().discovery;
+
+    useStorefrontStore.getState().discoverySetCategoryFilter('food');
+    useStorefrontStore.getState().discoverySetStores(stores);
+    useStorefrontStore.getState().discoverySetLoadingStores(false);
+
+    const state = useStorefrontStore.getState();
+    expect(state.discovery.categoryFilter).toBe('food');
+    expect(state.discovery.stores).toBe(stores);
+    expect(state.discovery.loadingStores).toBe(false);
+    expect(state.discovery).not.toBe(before);
+  });
+});
+
+describe('checkout and service booking state bridges', () => {
+  it('keeps checkout setters useState-compatible and isolated', () => {
+    const stateBefore = useStorefrontStore.getState().checkout;
+    useStorefrontStore.getState().checkoutSetOrderMethod('pickup');
+    useStorefrontStore.getState().checkoutSetQuoteNeedsRefresh(false);
+    useStorefrontStore.getState().checkoutSetServiceIntakeResponses((previous) => ({ ...previous, pets: 'none' }));
+
+    const state = useStorefrontStore.getState();
+    expect(state.checkout.orderMethod).toBe('pickup');
+    expect(state.checkout.quoteNeedsRefresh).toBe(false);
+    expect(state.checkout.serviceIntakeResponses).toEqual({ pets: 'none' });
+    expect(state.checkout).not.toBe(stateBefore);
+    expect(state.cart.items).toEqual([]);
+  });
+
+  it('keeps services booking state separate from checkout state', () => {
+    useStorefrontStore.getState().serviceBookingSetBookingStep(2);
+    useStorefrontStore.getState().serviceBookingSetDraftQuantity((value) => value + 1);
+
+    const state = useStorefrontStore.getState();
+    expect(state.serviceBooking.bookingStep).toBe(2);
+    expect(state.serviceBooking.draftQuantity).toBe(2);
+    expect(state.checkout.orderMethod).toBe('delivery');
   });
 });
 
 describe('cartSlice (useState-compatible cartSet)', () => {
   it('starts with an empty items array', () => {
     expect(useStorefrontStore.getState().cart.items).toEqual([]);
+    expect(useStorefrontStore.getState().cart.imageErrors).toBeInstanceOf(Set);
   });
 
   it('accepts a direct value (setCart([...]))', () => {
