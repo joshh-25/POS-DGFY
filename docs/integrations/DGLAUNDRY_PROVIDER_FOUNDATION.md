@@ -10,6 +10,12 @@ topic: dglaundry_provider_foundation
 
 # DGLaundry provider foundation
 
+> **Surebizcorp target (2026-09-07):** This earlier foundation record contains
+> the former `laundry.dgfy.ph` staff origin. For the Surebizcorp deployment, use
+> [`DGLAUNDRY_SUREBIZCORP_PROVIDER_HANDOFF.md`](DGLAUNDRY_SUREBIZCORP_PROVIDER_HANDOFF.md)
+> and register only `https://laundry.surebizcorp.com` with its exact callback.
+> Do not copy the former hostname into provider or deployment configuration.
+
 This change adds the DGFY-owned provider foundation for the independent
 DGLaundry runtime. It is the first sequential PR and must be merged before
 storefront projections or payment/hosting work is rebased.
