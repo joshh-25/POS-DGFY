@@ -4,6 +4,34 @@ import { posRepository } from '../src/modules/pos/repositories/posRepository.js'
 afterEach(() => jest.restoreAllMocks());
 
 describe('POS Items management catalog pagination', () => {
+    it('excludes POS-hidden items from page results and totals', async () => {
+        const listCatalog = jest.spyOn(posRepository, 'listCatalog').mockResolvedValueOnce({
+            data: [
+                {
+                    item_id: 1,
+                    name: 'Visible Product',
+                    current_stock: 10,
+                    pos_visible: true,
+                    secondary_folder_ids: []
+                },
+                {
+                    item_id: 2,
+                    name: 'Hidden Product',
+                    current_stock: 10,
+                    pos_visible: false,
+                    secondary_folder_ids: []
+                }
+            ],
+            scanned_count: 2
+        });
+
+        const result = await posRepository.listCatalogPage({ page: 1, page_size: 1 });
+
+        expect(result.items.map((item) => item.item_id)).toEqual([1]);
+        expect(result.pagination).toEqual({ page: 1, page_size: 1, total: 1, total_pages: 1 });
+        expect(listCatalog).toHaveBeenCalledTimes(1);
+    });
+
     it('searches enriched rows beyond 500 and returns a stable page total', async () => {
         const firstBatch = Array.from({ length: 500 }, (_, index) => ({
             item_id: index + 1,

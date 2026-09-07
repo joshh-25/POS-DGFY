@@ -8,12 +8,12 @@ classification: major
 surfaces: pos,terminal,catalog-api
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.05
-verification_evidence: 96 focused backend tests,23 focused POS Items UI tests,POS production build,npm run check:architecture,npm run lint:docs,git diff --check
+verification_evidence: 109 focused backend tests,23 focused POS Items UI tests,POS production build,npm run check:architecture,npm run lint:docs,git diff --check
 rollback_note: Revert the opt-in catalog pagination contract and POS Items caller; no stored data, migration, payment, receipt, or production operation is involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T11:20:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-297-LOCAL-ONLY
+preflight_run_at: 2026-09-06T17:09:54.584Z
+preflight_request_ref: PREFLIGHT-34047481447-2026-09-05-POS-ITEMS-CATALOG-PAGINATION
 ---
 
 # POS Items catalog pagination (Phases 297-298)
@@ -39,7 +39,7 @@ prices, discounts, tax, payments, receipts, fiscal records, and reports are unch
 
 ## Verification Evidence
 
-- Six focused backend suites pass with 96 tests, including >500-row search,
+- Six focused backend suites pass with 109 tests, including >500-row search,
   category, stock, location forwarding, pagination, and legacy response compatibility.
 - Three focused POS Items UI suites pass with 23 tests. Coverage verifies the
   paginated search request and result count plus existing category and modal behavior.
@@ -49,5 +49,9 @@ Authenticated browser coverage remains pending because no local E2E credentials 
 saved authentication state are configured, and the test fallback login returned 401.
 The unauthenticated access browser test passes and confirms the route guard.
 
-The request-time compliance preflight was not executed because this is authorized
-local-only implementation with no PR, push, deployment, or production operation.
+The request-time compliance preflight has not been executed. Its explicit
+NOT-EXECUTED reference is the accepted develop PR-open state under the governed
+preflight protocol; the sweep must reconcile it before production promotion.
+
+The replacement PR was prepared after local develop integration commit 3fcd9e36b.
+Additional-category editor and pagination tests now use the paginated contract.

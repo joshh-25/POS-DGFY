@@ -113,6 +113,7 @@ export const simpleTrackingAdapter = Object.freeze({
       rejectionReason: String(payload?.rejection_reason || order?.rejection_reason || '').trim() || null,
       isTerminal: TERMINAL_STATUSES.has(statusCode),
       orderMethod,
+      specialInstructions: String(order?.special_instructions || payload?.special_instructions || orderDisplay?.special_instructions || payloadDisplay?.special_instructions || '').trim() || null,
       updatedAt: String(order?.updated_at || payload?.updated_at || '').trim() || null,
       createdAt: String(order?.created_at || payload?.created_at || '').trim() || null,
       etaMinutes: numberOrNull(order?.estimated_wait_minutes ?? payload?.estimated_wait_minutes),

@@ -19,10 +19,9 @@ describe('Simple tracking route boundary', () => {
     expect(trackingPage).toContain("dgfyPrimary: '#176B3A'");
     expect(trackingPage).toContain("dgfyBg: '#FFF8E7'");
     expect(trackingPage).not.toContain("dgfyPrimary: '#1a4e8d'");
-    expect(trackingPage).toContain('gridTemplateColumns: `repeat(${viewModel.steps.length}, minmax(0, 1fr))`');
-    expect(trackingPage).toContain("overflow: 'visible'");
-    expect(trackingPage).toContain('{!isMobileViewport ? (');
-    expect(trackingPage).toContain('<TrackingStatusIcon status={viewModel.status} color={dgfyPrimary} />');
+    expect(trackingPage).toContain('StorefrontTrackingTimeline');
+    expect(trackingPage).toContain('StorefrontTrackingStatusCard');
+    expect(trackingPage).toContain('icon={<TrackingStatusIcon status={viewModel.status} color="#fff" size={24} />}');
     expect(trackingPage).toContain('viewModel.completed && showCompletedTrackingCard');
     expect(trackingPage).toContain('SimpleTrackingCompletedView');
     expect(readSource('modes/simple/tracking/components/SimpleTrackingCompletedView.jsx')).toContain('data-testid="simple-tracking-completed"');
@@ -86,7 +85,7 @@ describe('Retail tracking route boundary', () => {
     expect(route).toContain('RetailTrackingRoutePage');
     expect(route).not.toContain('FnbTrackingRouteContainer');
     expect(routeProps).toContain("backLabel: 'Back to Items'");
-    expect(routeProps).toContain('showTrustStrip: false');
+    expect(routeProps).toContain('returnToCatalog: true');
   });
 
   // Phase 142 (#823) carried the split into the payload model. Phase 151 (#826) consolidated both

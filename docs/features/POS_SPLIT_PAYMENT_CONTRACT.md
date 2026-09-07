@@ -410,7 +410,7 @@ Category filtering selects transactions containing matching items; this card use
 their whole-transaction tender amounts. Compare readings only with aligned date,
 location, terminal, cashier, shift, and void/refund scope.
 
-## Phase 303 inventory preflight
+## Phase 304 inventory preflight
 
 Creating a split-payment session performs a read-only Inventory availability
 preflight before the session is persisted and before any Cash, GCash, or other

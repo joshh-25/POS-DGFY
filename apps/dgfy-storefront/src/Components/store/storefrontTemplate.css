@@ -588,6 +588,22 @@
   color: #64748b;
 }
 
+.store-template__reviewEmpty {
+  display: grid;
+  gap: 6px;
+}
+
+.store-template__reviewEmptyTitle {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.store-template__reviewEmptyMessage {
+  margin: 0;
+  line-height: 1.45;
+}
+
 .store-template__reviewGrid {
   margin-top: 18px;
   display: grid;

@@ -1,0 +1,10 @@
+.storefront-tracking-map-frame {
+  width: 100%;
+  height: 288px;
+  height: clamp(288px, 30vw, 320px);
+}
+
+.storefront-tracking-map-shell {
+  min-height: 288px;
+  min-height: clamp(288px, 30vw, 320px);
+}

@@ -1,3 +1,5 @@
+import { StorefrontOrderInstructions } from '../storefront/StorefrontOrderInstructions.jsx';
+
 export function OrderSummaryCard({
   accentColor = '#0f766e',
   totalLabel = 'Order Summary',
@@ -7,6 +9,7 @@ export function OrderSummaryCard({
   lineItems = [],
   totalsRows = [],
   itemsTitle = 'Your Items',
+  specialInstructions = '',
   bodyFont = "'Avenir Next', 'Segoe UI', sans-serif",
   displayFont = "'Avenir Next', 'Segoe UI', sans-serif",
   sticky = false,
@@ -28,6 +31,7 @@ export function OrderSummaryCard({
           ))}
         </div>
       )}
+      <StorefrontOrderInstructions value={specialInstructions} accentColor={accentColor} bodyFont={bodyFont} compact />
       {lineItems.length > 0 && (
         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'grid', gap: 12 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', fontFamily: displayFont }}>{itemsTitle}</div>

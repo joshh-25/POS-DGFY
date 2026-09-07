@@ -36,10 +36,10 @@ export const ModePresentationRegistry = Object.freeze({
         emptyLabel: 'No active promos yet'
       }),
       reviews: Object.freeze({
-        eyebrow: 'Customer reviews',
-        title: 'Trust signals should keep the same structure across storefront modes.',
-        description: 'Ratings, summary text, and review cards should be data-driven from each storefront.',
-        emptyLabel: 'Add review data when this storefront is connected.'
+        eyebrow: 'Reviews',
+        title: 'Reviews',
+        description: 'See what customers are saying',
+        emptyLabel: 'No reviews yet'
       }),
       footer: Object.freeze({
         description: 'Use the same footer structure across storefront modes while keeping link groups and copy editable.',
@@ -96,10 +96,10 @@ export const ModePresentationRegistry = Object.freeze({
         emptyLabel: 'No active service promos today'
       }),
       reviews: Object.freeze({
-        eyebrow: 'Proof and confidence',
-        title: 'Customer reviews should reinforce trust before booking.',
-        description: 'Use a summary card plus review cards so this section scales from one mode to another.',
-        emptyLabel: 'No service reviews published yet'
+        eyebrow: 'Reviews',
+        title: 'Reviews',
+        description: 'See what customers are saying',
+        emptyLabel: 'No reviews yet'
       }),
       footer: Object.freeze({
         description: 'Services mode is the best baseline because it balances trust, clarity, and action-heavy flows.',
@@ -156,10 +156,10 @@ export const ModePresentationRegistry = Object.freeze({
         emptyLabel: 'No active product promos'
       }),
       reviews: Object.freeze({
-        eyebrow: 'Customer feedback',
-        title: 'Simple storefront reviews should keep the same layout but lighter copy.',
-        description: 'Review content stays data-driven so each store can show different proof without changing the template.',
-        emptyLabel: 'No product reviews yet'
+        eyebrow: 'Reviews',
+        title: 'Reviews',
+        description: 'See what customers are saying',
+        emptyLabel: 'No reviews yet'
       }),
       footer: Object.freeze({
         description: 'Use the shared footer shell for ordering, support, and policy links.',
@@ -240,10 +240,10 @@ export const ModePresentationRegistry = Object.freeze({
         emptyLabel: 'No active promos'
       }),
       reviews: Object.freeze({
-        eyebrow: 'Customer feedback',
-        title: 'Retail storefront reviews keep the same layout as other modes.',
-        description: 'Review content stays data-driven so each store can show different proof without changing the template.',
-        emptyLabel: 'No product reviews yet'
+        eyebrow: 'Reviews',
+        title: 'Reviews',
+        description: 'See what customers are saying',
+        emptyLabel: 'No reviews yet'
       }),
       footer: Object.freeze({
         description: 'Use the shared footer shell for ordering, support, and policy links.',
@@ -324,10 +324,10 @@ export const ModePresentationRegistry = Object.freeze({
         emptyLabel: 'No featured specials right now'
       }),
       reviews: Object.freeze({
-        eyebrow: 'What diners say',
-        title: 'F&B storefront reviews can share the same structure with stronger visual flair.',
-        description: 'The shell stays shared while each mode controls its own copy, summary, and review cards.',
-        emptyLabel: 'No menu reviews published yet'
+        eyebrow: 'Reviews',
+        title: 'Reviews',
+        description: 'See what customers are saying',
+        emptyLabel: 'No reviews yet'
       }),
       footer: Object.freeze({
         description: 'Use the same footer rhythm across menu storefronts while keeping the content fully editable.',

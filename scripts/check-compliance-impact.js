@@ -27,6 +27,7 @@ const SURFACE_MIN_CLASSIFICATION = Object.freeze({
   terminal: 'major',
   settings: 'major',
   payments: 'major',
+  inventory: 'major',
   compliance: 'regulatory'
 });
 
@@ -39,6 +40,15 @@ const COMPLIANCE_SENSITIVE_RULES = [
   {
     pattern: /^apps\/dgfy-api\/src\/modules\/vouchers\//,
     surfaces: ['pos', 'terminal'],
+    minimumClassification: 'major'
+  },
+  {
+    // #1642: modules/inventory/ was uncovered despite modules/pos/ and routes/pos.js both being
+    // covered -- an inventory/catalog-only diff (e.g. an image-retention or data-exposure
+    // behavior change) could pass check:compliance with no declaration required at all. Same
+    // major floor as its pos/terminal neighbors above, not a new tier.
+    pattern: /^apps\/dgfy-api\/src\/modules\/inventory\//,
+    surfaces: ['inventory'],
     minimumClassification: 'major'
   },
   {
@@ -99,6 +109,14 @@ const COMPLIANCE_SENSITIVE_RULES = [
   {
     pattern: /^apps\/dgfy-api\/src\/routes\/pos\.js$/,
     surfaces: ['pos', 'terminal'],
+    minimumClassification: 'major'
+  },
+  {
+    // #1642: companion route file for modules/inventory/ -- lives outside modules/, so the
+    // directory rule above does not cover it on its own (same reasoning already used for
+    // routes/payments.js and routes/commercePayments.js next to their module-dir siblings).
+    pattern: /^apps\/dgfy-api\/src\/routes\/items\.js$/,
+    surfaces: ['inventory'],
     minimumClassification: 'major'
   },
   {

@@ -57,14 +57,17 @@ const STRUCTURALLY_CANNOT_FAIL = new Set([
 // must have real blocking coverage or that check fails loudly. See
 // docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md for the Phase A run-ID evidence behind each one.
 const CI_ENFORCED_GATES = new Map([
-  ['dependencies.audit.prod',        { job: 'repository-quality',          steps: ['run_dependency_audit_prod'] }],
+  // #1690: 'repository-quality' split into 3 concern-based jobs -- the 6 entries below that used
+  // to name it now name whichever of the 3 new jobs actually carries that step. See
+  // docs/ops/RELEASE_CANDIDATE_POLICY.md's matching 2026-09-07 amendment.
+  ['dependencies.audit.prod',        { job: 'repository-dependency-quality', steps: ['run_dependency_audit_prod'] }],
   // Permanently advisory in CI (registry-dependent, findings never ship) -- see the
   // ADVISORY_CI_ENFORCED_GATES comment in check-pr-quality-workflow.js.
-  ['dependencies.audit.full',        { job: 'repository-quality',          steps: ['run_dependency_audit_full'] }],
-  ['docs.lint',                      { job: 'repository-quality',          steps: ['run_docs_lint'] }],
+  ['dependencies.audit.full',        { job: 'repository-dependency-quality', steps: ['run_dependency_audit_full'] }],
+  ['docs.lint',                      { job: 'repository-docs-quality',       steps: ['run_docs_lint'] }],
   ['architecture.guardrails',        { job: 'dgfy-api-quality',            steps: ['enforce_arch_guardrails', 'enforce_controller_boundaries'] }],
-  ['compliance.contracts',           { job: 'repository-quality',          steps: ['run_compliance_contracts'] }],
-  ['production.env.fixtures',        { job: 'repository-quality',          steps: ['run_production_env_fixtures'] }],
+  ['compliance.contracts',           { job: 'repository-dependency-quality', steps: ['run_compliance_contracts'] }],
+  ['production.env.fixtures',        { job: 'repository-dependency-quality', steps: ['run_production_env_fixtures'] }],
   ['runtime.doctor',                 { job: 'dgfy-api-quality',            steps: ['run_runtime_doctor'] }],
   ['backend.lint',                   { job: 'dgfy-api-quality',            steps: ['run_api_lint'] }],
   // Temporarily advisory in CI, pending #1015/#925/fixture-rot fixes (tracked: #1469) -- see the
@@ -82,7 +85,7 @@ const CI_ENFORCED_GATES = new Map([
   // not a prerequisite/flake exception like the two entries above -- see the
   // ADVISORY_CI_ENFORCED_GATES comment in check-pr-quality-workflow.js. Flips blocking only in a
   // dedicated later phase, once clean-run evidence exists (ADR 0082 Follow-up 1).
-  ['release.notes',                  { job: 'repository-quality',          steps: ['run_release_notes'] }],
+  ['release.notes',                  { job: 'repository-docs-quality',       steps: ['run_release_notes'] }],
 ]);
 
 class GateSelectionError extends Error {

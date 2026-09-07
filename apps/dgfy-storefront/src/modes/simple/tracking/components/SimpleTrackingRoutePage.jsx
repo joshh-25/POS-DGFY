@@ -1,22 +1,24 @@
 import React, { useMemo } from 'react';
 import {
-  Check,
   CheckCircle2,
   ChevronRight,
-  ClipboardCopy,
   Clock3,
   HelpCircle,
   MapPin,
   MessageSquare,
   PackageCheck,
-  ShoppingBag,
   Store,
   Truck
 } from 'lucide-react';
 import TrackingRouteMap from '../../../../tracking/TrackingRouteMapLazy.jsx';
 import { extractTrackingMapCoordinates } from '../../../../tracking/extractTrackingMapCoordinates.js';
+import { StorefrontOrderInstructions } from '../../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
 import { SimpleTrackingCompletedView } from './SimpleTrackingCompletedView.jsx';
 import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';
+import { getTrackingFlowOrder, StorefrontTrackingLayout } from '../../../../shared/components/tracking/StorefrontTrackingLayout.jsx';
+import { StorefrontTrackingStatusCard } from '../../../../shared/components/tracking/StorefrontTrackingStatusCard.jsx';
+import { StorefrontTrackingTimeline } from '../../../../shared/components/tracking/StorefrontTrackingTimeline.jsx';
+import { TRACKING_MAP_HEIGHT } from '../../../../tracking/trackingMapSizing.js';
 
 function SimpleTrackingLoadingState({ selectedTrackingPin }) {
   return (
@@ -170,68 +172,45 @@ export function SimpleTrackingRoutePage({
         </div>
       ) : null}
 
-      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 360px', gap: 24, alignItems: 'start' }}>
-        <div style={{ display: 'grid', gap: 20, minWidth: 0 }}>
-          <section style={{ background: dgfyBg, border: `1px solid ${dgfyBorder}`, borderRadius: 18, padding: isMobileViewport ? 18 : 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', minWidth: 0, flex: '1 1 300px' }}>
-              <div style={{ width: 52, height: 52, borderRadius: '50%', background: dgfyPrimary, color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                {viewModel.completed ? <Check size={28} strokeWidth={3} /> : <PackageCheck size={28} strokeWidth={2.2} />}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: isMobileViewport ? 22 : 26, fontWeight: 700, color: '#0f172a', fontFamily: servicesDisplayFont, lineHeight: 1.2 }}>
-                  {viewModel.completed ? 'Order Completed' : viewModel.statusLabel}
-                </div>
-                <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5, marginTop: 6, maxWidth: 520 }}>{viewModel.guidance}</div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 14, fontSize: 14, fontWeight: 600, fontFamily: servicesBodyFont }}>
-                  <span style={{ color: dgfySoftText }}>Order PIN</span>
-                  <span style={{ color: '#0f172a', background: '#fff', border: '1px solid #dbe5ee', borderRadius: 6, padding: '4px 10px' }}>{pin}</span>
-                  <button type="button" onClick={() => copyTextToClipboard(pin, 'Order PIN copied.')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dgfyPrimary, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: servicesBodyFont }}>
-                    <ClipboardCopy size={14} /> Copy
-                  </button>
-                </div>
-              </div>
-            </div>
-            {!isMobileViewport ? (
-              <div style={{ width: 96, height: 76, borderRadius: 16, background: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                <TrackingStatusIcon status={viewModel.status} color={dgfyPrimary} />
-              </div>
-            ) : null}
-          </section>
-
-          <section aria-label="Order progress" style={{ position: 'relative', padding: '8px 0 2px', display: 'grid', gridTemplateColumns: `repeat(${viewModel.steps.length}, minmax(0, 1fr))`, gap: isMobileViewport ? 4 : 12, width: '100%', overflow: 'visible' }}>
-            <div style={{ position: 'absolute', top: 21, left: '8%', right: '8%', height: 4, background: '#e2e8f0', zIndex: 0 }} />
-            <div style={{ position: 'absolute', top: 21, left: '8%', width: `${Math.max(0, (viewModel.activeStepIndex / Math.max(1, viewModel.steps.length - 1)) * 84)}%`, height: 4, background: dgfyPrimary, zIndex: 0, borderRadius: 999, transition: 'width .3s ease' }} />
-            {viewModel.steps.map((step, index) => {
-              const done = index < viewModel.activeStepIndex;
-              const active = index === viewModel.activeStepIndex || (viewModel.completed && index === viewModel.steps.length - 1);
-              return (
-                <div key={step.id} style={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, position: 'relative', zIndex: 1 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: done || active ? dgfyPrimary : '#fff', border: `2px solid ${done || active ? dgfyPrimary : '#cbd5e1'}`, color: done || active ? '#fff' : '#94a3b8', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}>
-                    {done ? <Check size={16} strokeWidth={4} /> : index + 1}
-                  </div>
-                  <div style={{ textAlign: 'center', fontSize: isMobileViewport ? 10 : 11, lineHeight: 1.2, fontWeight: active ? 700 : 600, color: active ? dgfyPrimary : (done ? '#334155' : '#94a3b8'), fontFamily: servicesBodyFont, maxWidth: isMobileViewport ? 64 : 96 }}>{step.label}</div>
-                </div>
-              );
-            })}
-          </section>
-
-          <div style={{ background: '#FFFBF0', border: `1px solid ${dgfyBorder}`, borderRadius: 16, padding: 18, display: 'flex', gap: 12, alignItems: 'center' }}>
-            <ShoppingBag size={24} color={dgfyPrimary} style={{ flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', fontFamily: servicesDisplayFont }}>{viewModel.completed ? 'Your order is complete.' : 'We are processing your order.'}</div>
-              <div style={{ fontSize: 13, color: '#475569', marginTop: 3 }}>We will keep this page updated as the store changes the order status.</div>
-            </div>
+      <StorefrontTrackingLayout isMobileViewport={isMobileViewport} sidebarWidth={360}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
+          <div data-tracking-slot="status" style={{ order: getTrackingFlowOrder('status') }}>
+          <StorefrontTrackingStatusCard
+            title={viewModel.completed ? 'Order Completed' : viewModel.statusLabel}
+            description={viewModel.guidance}
+            icon={<TrackingStatusIcon status={viewModel.status} color="#fff" size={24} />}
+            accentColor={dgfyPrimary}
+            background={dgfyBg}
+            borderColor={dgfyBorder}
+            bodyFont={servicesBodyFont}
+            displayFont={servicesDisplayFont}
+            isMobileViewport={isMobileViewport}
+          />
           </div>
 
+          <div data-tracking-slot="timeline" style={{ order: getTrackingFlowOrder('timeline') }}>
+            <StorefrontTrackingTimeline
+              ariaLabel="Order progress"
+              steps={viewModel.steps}
+              activeStepIndex={viewModel.activeStepIndex}
+              isCompleted={viewModel.completed}
+              isMobileViewport={isMobileViewport}
+              accentColor={dgfyPrimary}
+              bodyFont={servicesBodyFont}
+            />
+          </div>
+
+          <div data-tracking-slot="map" style={{ order: getTrackingFlowOrder('map') }}>
           <TrackingRouteMap
             storePin={viewModel.mapCoordinates?.storePin}
             customerPin={viewModel.isPickup ? null : viewModel.mapCoordinates?.customerPin}
             styleUrl={TILING_SERVER}
             transformRequest={tileTransformRequest}
-            mapHeight={280}
+            mapHeight={TRACKING_MAP_HEIGHT}
           />
+          </div>
 
-          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 2 }}>
+          <div data-tracking-slot="actions" style={{ order: 4, display: 'flex', justifyContent: 'center', paddingTop: 2 }}>
             <button type="button" onClick={presentation?.returnToCatalog ? handleBackToItems : () => actions.setCheckoutTab('checkout')} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, padding: '11px 28px', fontSize: 14, fontWeight: 700, color: '#334155', cursor: 'pointer', fontFamily: servicesBodyFont }}>
               {presentation?.backLabel || 'Back to Items'}
             </button>
@@ -246,10 +225,11 @@ export function SimpleTrackingRoutePage({
                 <div><div style={{ fontSize: 12, color: dgfySoftText }}>Order PIN</div><div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{pin}</div></div>
                 <button type="button" onClick={() => copyTextToClipboard(pin, 'Order PIN copied.')} style={{ color: dgfyPrimary, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13 }}>Copy</button>
               </div>
-              <div style={{ borderBottom: '1px dashed #cbd5e1', paddingBottom: 14 }}>
+              <div style={{ paddingBottom: 4 }}>
                 <div style={{ fontSize: 12, color: dgfySoftText }}>Order time</div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{viewModel.trackingResult.createdAt ? formatTicketDate(viewModel.trackingResult.createdAt) : (viewModel.trackingResult.updatedAt ? formatTicketDate(viewModel.trackingResult.updatedAt) : 'Today')}</div>
               </div>
+              <StorefrontOrderInstructions value={viewModel.trackingResult.specialInstructions} accentColor={dgfyPrimary} bodyFont={servicesBodyFont} compact />
               <div style={{ display: 'grid', gap: 10 }}>
                 {items.map((item, index) => (
                   <div key={item.id || index} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 14 }}>
@@ -289,7 +269,7 @@ export function SimpleTrackingRoutePage({
             </div>
           </section>
         </aside>
-      </div>
+      </StorefrontTrackingLayout>
     </div>
   );
 }

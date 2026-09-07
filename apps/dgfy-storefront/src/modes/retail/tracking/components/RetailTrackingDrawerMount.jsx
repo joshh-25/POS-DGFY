@@ -9,13 +9,11 @@ import { RetailTrackingDrawer } from './RetailTrackingDrawer.jsx';
  */
 export function RetailTrackingDrawerMount({
   canOpen,
-  expandedPins,
   isAccountTracking,
   isMobileViewport,
   isOpen,
   money,
   onClose,
-  onExpandedPinsChange,
   openFullTrackingForPin,
   orders,
   selectedStore,
@@ -29,8 +27,6 @@ export function RetailTrackingDrawerMount({
       isMobileViewport={isMobileViewport}
       selectedStore={selectedStore}
       guestTrackedOrders={orders}
-      expandedGuestDrawerPins={expandedPins}
-      onExpandedGuestDrawerPinsChange={onExpandedPinsChange}
       onClose={onClose}
       openFullTrackingForPin={openFullTrackingForPin}
       withAssetOrigin={withAssetOrigin}

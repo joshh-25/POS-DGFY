@@ -5,6 +5,7 @@ import { resolveStorefrontImageSources } from '../../../../shared/utils/storefro
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import { buildFeeAndVatSummaryRows } from '../../../../shared/model/storefrontFeesAndTaxesPresentation.js';
 import { VatDisclosureNote } from '../../../../shared/components/checkout/VatDisclosureNote.jsx';
+import { StorefrontOrderInstructions } from '../../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
 
 function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont, headingWeight }) {
   return (
@@ -22,12 +23,14 @@ function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont
 export function FnbCheckoutSummaryContent({
   accentColor, accentSoft, accentTint, bodyFont, cart, cartImageErrors, cartCount,
   checkoutAllowed, displayFont, isDeliveryOrder, money, onImageError,
-  paymentStep = false, promoDiscountSummaryRow, voucherDiscountSummaryRow, promoPanel, scheduleLabel, totals,
+  paymentStep = false, promoDiscountSummaryRow, specialInstructions = '', voucherDiscountSummaryRow, promoPanel, scheduleLabel, showFulfillmentSummary = true, totals,
   variant = 'detailed'
 }) {
   const statusRows = [
-    { label: 'Fulfillment', value: isDeliveryOrder ? 'Delivery' : 'Pickup' },
-    { label: 'Schedule', value: scheduleLabel },
+    ...(showFulfillmentSummary ? [
+      { label: 'Fulfillment', value: isDeliveryOrder ? 'Delivery' : 'Pickup' },
+      { label: 'Schedule', value: scheduleLabel },
+    ] : []),
     { label: paymentStep ? 'Status' : 'Items', value: paymentStep ? (checkoutAllowed ? 'Ready to submit' : 'Complete required fields') : `${cartCount} item${cartCount === 1 ? '' : 's'}` }
   ];
   const lineItems = cart.map((line) => ({
@@ -65,6 +68,7 @@ export function FnbCheckoutSummaryContent({
       <div style={{ display: 'grid', gap: 10, fontSize: 13, color: '#334155' }}>
         {statusRows.map((row) => <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{row.label}</span><strong>{row.value}</strong></div>)}
       </div>
+      <StorefrontOrderInstructions value={specialInstructions} accentColor={accentColor} bodyFont={bodyFont} compact />
       <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'grid', gap: 12 }}>
         <div style={{ fontSize: 14, fontWeight: variant === 'customer' ? 800 : 700, color: '#1e293b' }}>Your Items</div>
         <div style={{ display: 'grid', gap: 10 }}>
@@ -87,7 +91,7 @@ export function FnbCheckoutSummaryContent({
 
   return (
     <>
-      {variant === 'compact' ? <OrderSummaryCard accentColor={accentColor} totalLabel="Order Summary" totalAmount={totals.total_amount} money={money} promoPanel={promoPanel} statusRows={statusRows} lineItems={lineItems} totalsRows={totalsRows} bodyFont={bodyFont} displayFont={displayFont} footnote={<VatDisclosureNote />} /> : detailedCard}
+      {variant === 'compact' ? <OrderSummaryCard accentColor={accentColor} totalLabel="Order Summary" totalAmount={totals.total_amount} money={money} promoPanel={promoPanel} statusRows={statusRows} lineItems={lineItems} totalsRows={totalsRows} bodyFont={bodyFont} displayFont={displayFont} specialInstructions={specialInstructions} footnote={<VatDisclosureNote />} /> : detailedCard}
       <FnbCheckoutTrustCard accentColor={accentColor} accentSoft={accentSoft} accentTint={accentTint} displayFont={displayFont} headingWeight={variant === 'customer' ? 800 : 700} />
     </>
   );

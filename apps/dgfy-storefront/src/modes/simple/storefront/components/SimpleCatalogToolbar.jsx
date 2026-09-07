@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Box, ChevronDown, Filter, LayoutGrid, List, Search, Sparkles, X } from 'lucide-react';
+import React from 'react';
+import { Box, ChevronDown, Filter, LayoutGrid, List, Search, Sparkles } from 'lucide-react';
 
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { VoucherCodePanel } from '../../../../shared/components/storefront/VoucherCodePanel.jsx';
@@ -34,6 +34,7 @@ export function SimpleCatalogToolbar({
   checkoutVoucherCode,
   setCheckoutVoucherCode,
   handleVoucherCardApply,
+  handleVoucherCardRemove,
   categoryDropdownRef,
   filteredCatalogViewModel,
   isCategoryDropdownOpen,
@@ -48,7 +49,6 @@ export function SimpleCatalogToolbar({
   onSortChange,
   onViewModeChange,
 }) {
-  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const theme = modeAdapter.heroTheme || {};
   const palette = theme.catalogPalette || theme.palette || {};
   const typography = theme.typography || {};
@@ -74,7 +74,7 @@ export function SimpleCatalogToolbar({
     <VoucherCodePanel
       code={checkoutVoucherCode}
       onChange={setCheckoutVoucherCode}
-      onClear={() => setCheckoutVoucherCode?.('')}
+      onClear={handleVoucherCardRemove || (() => setCheckoutVoucherCode?.(''))}
       onApplyVoucher={handleVoucherCardApply}
       compact
       accentColor={accent}
@@ -86,34 +86,30 @@ export function SimpleCatalogToolbar({
 
   if (isMobileViewport) {
     return (
-      <div style={{ display: 'grid', gap: 16 }}>
-        <div style={{ display: 'grid', gap: 10, width: 'calc(100% - 32px)', margin: '0 auto', minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            {isMobileSearchOpen ? (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${border}`, borderRadius: 999, background: '#fff', padding: '0 8px 0 14px', height: 36, width: '100%', boxSizing: 'border-box' }}>
-                <Search size={15} color={accent} />
-                <input
-                  autoFocus
-                  aria-label="Search simple catalog products"
-                  value={catalogSearch}
-                  onChange={(event) => onSearchChange(event.target.value)}
-                  placeholder={modeAdapter.catalogSearchPlaceholder}
-                  style={{ border: 0, outline: 0, background: 'transparent', width: '100%', minWidth: 0, fontSize: 13, color: textPrimary, fontFamily: bodyFont }}
-                />
-                <button type="button" aria-label="Close search" onClick={() => { setIsMobileSearchOpen(false); onSearchChange(''); }} style={{ width: 24, height: 24, borderRadius: '50%', border: 0, background: '#f1f5f9', color: '#64748b', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
-                  <X size={14} />
-                </button>
-              </label>
-            ) : (
-              <>
-                <div style={{ fontSize: typography.catalogTitle?.mobile || 16, fontWeight: typography.catalogTitle?.weight || 700, color: textPrimary, fontFamily: displayFont }}>Browse by Category</div>
-                <button type="button" aria-label="Search" onClick={() => setIsMobileSearchOpen(true)} style={{ width: 36, height: 36, borderRadius: '50%', border: 0, background: accent, color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(23,107,58,0.10)' }}>
-                  <Search size={16} />
-                </button>
-              </>
-            )}
+      <div style={{ display: 'grid', gap: 20 }}>
+        <div data-mobile-catalog-group="intro-search" style={{ display: 'grid', gap: 10, width: 'calc(100% - 32px)', margin: '0 auto', minWidth: 0 }}>
+          <div style={{ display: 'grid', gap: 4 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: accentDark, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', lineHeight: 1.2, fontFamily: bodyFont }}>
+              <span style={{ width: 22, height: 1, background: accent }} />
+              {modeAdapter.catalogEyebrow || 'Product Catalog'}
+            </div>
+            {modeAdapter.catalogHeading ? <h2 style={{ margin: 0, color: textPrimary, fontSize: typography.catalogTitle?.mobile || 24, fontWeight: typography.catalogTitle?.weight || 800, lineHeight: typography.catalogTitle?.lineHeight || 1.15, letterSpacing: '-0.02em', fontFamily: displayFont }}>{modeAdapter.catalogHeading}</h2> : null}
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, border: `2px solid ${border}`, borderRadius: 10, background: surface, padding: '0 14px', minHeight: 42, width: '100%', boxSizing: 'border-box', boxShadow: '0 2px 8px rgba(23,107,58,0.05)' }}>
+            <Search size={16} color={accent} aria-hidden="true" />
+            <input
+              type="search"
+              aria-label="Search simple catalog products"
+              value={catalogSearch}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder={modeAdapter.catalogSearchPlaceholder}
+              className="storefront-mobile-catalog-search"
+              style={{ border: 0, outline: 0, background: 'transparent', width: '100%', minWidth: 0, color: textPrimary, fontFamily: bodyFont }}
+            />
+          </label>
+        </div>
 
+        <div data-mobile-catalog-group="categories" style={{ width: 'calc(100% - 32px)', margin: '0 auto', minWidth: 0 }}>
           <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '0 4px 2px 0', scrollSnapType: 'x mandatory' }}>
             {categories.map((option) => {
               const active = option.key === (resolvedSection || '');
@@ -128,7 +124,7 @@ export function SimpleCatalogToolbar({
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: 'calc(100% - 32px)', margin: '0 auto', gap: 10 }}>
+        <div data-mobile-catalog-group="filters" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: 'calc(100% - 32px)', margin: '0 auto', gap: 10 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: textPrimary, fontFamily: bodyFont }}>{activeCount} items available</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <StorefrontDropdown
@@ -154,7 +150,7 @@ export function SimpleCatalogToolbar({
         </div>
 
         {voucherEntry && (
-          <div style={{ width: 'calc(100% - 32px)', margin: '0 auto' }}>
+          <div data-mobile-catalog-group="voucher" style={{ width: 'calc(100% - 32px)', margin: '0 auto' }}>
             {voucherEntry}
           </div>
         )}

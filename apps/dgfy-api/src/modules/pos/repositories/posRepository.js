@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
@@ -14,7 +13,7 @@ import {
     buildCatalogSetupRecommendation,
     buildPosReadiness
 } from '../../shared/utils/catalogSetupPolicy.js';
-import { deriveImageAssetVariantUrls, readPosImageVariantUrls } from '../../shared/utils/imageAssetStorage.js';
+import { deriveImageAssetVariantUrls } from '../../shared/utils/imageAssetStorage.js';
 import {
     detectBarcodeSymbology,
     isBarcodeScopeAllowedForSurface,
@@ -624,40 +623,15 @@ const loadStorefrontCatalogImageMap = async (itemIds = [], options = {}) => {
 // used the Storefront image unconditionally, silently dropping a working
 // POS-specific image whenever both existed (#871) -- fixed by routing both
 // through this single helper instead of re-deriving the precedence inline.
-const resolvePosDisplayImage = async ({ override, storefrontImage }) => {
-    const hasPosOverrideImage = Boolean(override?.pos_image_path || override?.pos_image_url);
-    const path = hasPosOverrideImage ? override?.pos_image_path : storefrontImage?.storefront_image_path || null;
-    const url = hasPosOverrideImage ? override?.pos_image_url : storefrontImage?.storefront_image_url || null;
-    const gallery = typeof storefrontImage?.storefront_image_gallery === 'string'
-        ? (() => {
-            try { return JSON.parse(storefrontImage.storefront_image_gallery); } catch { return []; }
-        })()
-        : storefrontImage?.storefront_image_gallery;
-    const storedVariants = !hasPosOverrideImage && Array.isArray(gallery)
-        ? gallery.find((entry) => entry?.is_primary === true)?.variants || gallery[0]?.variants
-        : null;
-    const storefrontVariants = Array.isArray(gallery)
-        ? gallery.find((entry) => entry?.is_primary === true)?.variants || gallery[0]?.variants
-        : null;
+const resolvePosDisplayImage = ({ override, storefrontImage }) => {
+    const path = override?.pos_image_path || storefrontImage?.storefront_image_path || null;
+    const url = override?.pos_image_url || storefrontImage?.storefront_image_url || null;
+    const source = override?.pos_image_url ? 'override' : (storefrontImage?.storefront_image_url ? 'storefront' : null);
     return {
-        source: hasPosOverrideImage ? 'override' : (url ? 'storefront' : null),
         path,
         url,
-        variants: await readPosImageVariantUrls({
-            uploadsRoot: fileURLToPath(new URL('../../../../uploads/', import.meta.url)),
-            storedPath: path, storedUrl: url, variants: storedVariants
-        }),
-        storefrontVariants: storefrontVariants || deriveImageAssetVariantUrls({
-            storedPath: storefrontImage?.storefront_image_path || null,
-            storedUrl: storefrontImage?.storefront_image_url || null
-        }),
-        gallery: await Promise.all((Array.isArray(gallery) ? gallery : []).map(async (entry) => ({
-            ...entry,
-            variants: await readPosImageVariantUrls({
-                uploadsRoot: fileURLToPath(new URL('../../../../uploads/', import.meta.url)),
-                storedPath: entry.path, storedUrl: entry.url, variants: entry.variants
-            })
-        })))
+        variants: deriveImageAssetVariantUrls({ storedPath: path, storedUrl: url }),
+        source
     };
 };
 
@@ -732,15 +706,15 @@ const applyCatalogOverrides = async (items, options = {}) => {
         ? await loadPrimaryBarcodeMap(itemIds, options)
         : new Map();
 
-    return (await Promise.all(normalizedItems
-        .map(async (item) => {
+    return normalizedItems
+        .map((item) => {
             const override = overrideMap.get(item.item_id);
             const storefrontImage = storefrontImageMap.get(item.item_id);
             const posVisible = resolveCatalogVisibility({ item, override, surface: 'pos' });
             const bestSellerMode = ['force', 'never'].includes(override?.pos_best_seller_mode)
                 ? override.pos_best_seller_mode
                 : 'auto';
-            const posDisplayImage = await resolvePosDisplayImage({ override, storefrontImage });
+            const posDisplayImage = resolvePosDisplayImage({ override, storefrontImage });
             return {
                 ...item,
                 pos_visible: posVisible,
@@ -754,13 +728,16 @@ const applyCatalogOverrides = async (items, options = {}) => {
                 pos_image_source: posDisplayImage.source,
                 storefront_image_path: storefrontImage?.storefront_image_path || null,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
-                storefront_image_variants: posDisplayImage.storefrontVariants,
-                storefront_image_gallery: posDisplayImage.gallery,
+                storefront_image_variants: deriveImageAssetVariantUrls({
+                    storedPath: storefrontImage?.storefront_image_path || null,
+                    storedUrl: storefrontImage?.storefront_image_url || null
+                }),
+                storefront_image_gallery: storefrontImage?.storefront_image_gallery || null,
                 ...(options.includePrimaryBarcode === true
                     ? { primary_barcode: primaryBarcodeMap.get(Number(item.item_id)) || null }
                     : {})
             };
-        })))
+        })
         .filter((item) => item.pos_visible !== false);
 };
 
@@ -4849,7 +4826,8 @@ export const posRepository = {
                     || (normalizedStock === 'in_stock' && (service || alwaysAvailable || quantity > lowThreshold))
                     || (['low_stock', 'almost_out'].includes(normalizedStock) && !service && quantity > 0 && quantity <= lowThreshold)
                     || (normalizedStock === 'out_of_stock' && !service && !alwaysAvailable && quantity <= 0);
-                if ((!normalizedSearch || haystack.includes(normalizedSearch)) && matchesCategory && matchesStock) {
+                const matchesVisibility = item?.pos_visible !== false;
+                if (matchesVisibility && (!normalizedSearch || haystack.includes(normalizedSearch)) && matchesCategory && matchesStock) {
                     if (matchedCount >= matchStart && pageItems.length < safePageSize) pageItems.push(item);
                     matchedCount += 1;
                 }
@@ -4992,7 +4970,7 @@ export const posRepository = {
         });
         const storefrontImageMap = await loadStorefrontCatalogImageMap([normalizedItemId]);
         const storefrontImage = storefrontImageMap.get(normalizedItemId);
-        const posDisplayImage = await resolvePosDisplayImage({ override: effectiveOverride, storefrontImage });
+        const posDisplayImage = resolvePosDisplayImage({ override: effectiveOverride, storefrontImage });
 
         return {
             item_id: payload.item_id,

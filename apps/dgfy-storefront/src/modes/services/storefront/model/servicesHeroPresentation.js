@@ -170,30 +170,9 @@ function deriveServicesHeroContent({
   };
 }
 
-function buildServiceFallbackReasons({ serviceGroups = [], servicesViewModel = null, categories = [] } = {}) {
-  const reasons = [];
-  if (Array.isArray(categories) && categories.length > 0) {
-    reasons.push(...categories.slice(0, 2));
-  }
-  if (Array.isArray(serviceGroups) && serviceGroups.length > 0) {
-    serviceGroups.slice(0, 2).forEach((group) => {
-      const count = Number(group?.items?.length || 0);
-      if (count > 0) {
-        reasons.push(`${group.categoryMeta?.label || 'Service'} options (${formatServiceNumber(count)})`);
-      }
-    });
-  }
-  const totalServices = Number(servicesViewModel?.totalServices || 0);
-  if (totalServices > 0) {
-    reasons.push(`${formatServiceNumber(totalServices)} services currently listed`);
-  }
-  return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
-}
-
 export {
   buildServicesCatalogPresentation,
   buildServicesRetailHeroSectionModel,
-  buildServiceFallbackReasons,
   deriveServicesHeroContent,
   deriveServicesHeroTheme,
   formatServicesRatingSummary

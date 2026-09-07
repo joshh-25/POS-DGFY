@@ -23,8 +23,8 @@ rollback_note: Plain revert removes the new poll-before-refetch step and the sec
   reachable under the same permission gate.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-06T09:36:41.000Z
-preflight_request_ref: NOT-EXECUTED-1410-R5-POS-CREATE-ITEM-IMAGE-UPLOAD-RACE
+preflight_run_at: 2026-09-06T13:58:44.688Z
+preflight_request_ref: PREFLIGHT-34037535202-2026-09-06-POS-CREATE-ITEM-IMAGE-UPLOAD-RACE
 ---
 
 # POS create-item image upload race (frozen-candidate 2026-09-06-01, repair r5)

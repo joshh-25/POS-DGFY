@@ -22,6 +22,7 @@ import { buildWorkflowCapabilityStorePatch } from '../model/workflowCapabilities
 import { buildPaymentModeStorePatch } from '../model/storefrontDownpaymentPresentation.js';
 import { classifyStoreCatalogError } from '../model/storefrontErrorMessages.js';
 import { buildStorefrontLoadFailureState } from '../model/storefrontLoadState.js';
+import { useStorefrontStore } from '../../store/useStorefrontStore.js';
 
 export const buildCatalogRequestUrl = ({ isServicesMode = false, locationId = null } = {}) => {
   const basePath = isServicesMode ? '/api/v1/store/services/catalog' : '/api/v1/store/catalog';
@@ -61,14 +62,22 @@ export function useStoreCatalogLoader({
   preferredStoreLocationSelection,
   voucherCode
 }) {
-  const [storeLocations, setStoreLocations] = useState([]);
-  const [primaryLocationId, setPrimaryLocationId] = useState(null);
-  const [selectedLocationId, setSelectedLocationId] = useState(null);
-  const [hasSelectedBranchFromMenu, setHasSelectedBranchFromMenu] = useState(false);
-  const [catalog, setCatalog] = useState([]);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [branchSwitchFeedback, setBranchSwitchFeedback] = useState(null);
-  const [catalogError, setCatalogError] = useState('');
+  const catalog = useStorefrontStore((state) => state.catalog.items);
+  const setCatalog = useStorefrontStore((state) => state.catalogSetItems);
+  const loadingCatalog = useStorefrontStore((state) => state.catalog.loading);
+  const setLoadingCatalog = useStorefrontStore((state) => state.catalogSetLoading);
+  const catalogError = useStorefrontStore((state) => state.catalog.error);
+  const setCatalogError = useStorefrontStore((state) => state.catalogSetError);
+  const storeLocations = useStorefrontStore((state) => state.catalog.storeLocations);
+  const setStoreLocations = useStorefrontStore((state) => state.catalogSetStoreLocations);
+  const selectedLocationId = useStorefrontStore((state) => state.catalog.selectedLocationId);
+  const setSelectedLocationId = useStorefrontStore((state) => state.catalogSetSelectedLocationId);
+  const primaryLocationId = useStorefrontStore((state) => state.catalog.primaryLocationId);
+  const setPrimaryLocationId = useStorefrontStore((state) => state.catalogSetPrimaryLocationId);
+  const hasSelectedBranchFromMenu = useStorefrontStore((state) => state.catalog.hasSelectedBranchFromMenu);
+  const setHasSelectedBranchFromMenu = useStorefrontStore((state) => state.catalogSetHasSelectedBranchFromMenu);
+  const branchSwitchFeedback = useStorefrontStore((state) => state.catalog.branchSwitchFeedback);
+  const setBranchSwitchFeedback = useStorefrontStore((state) => state.catalogSetBranchSwitchFeedback);
   const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
 
   const storeLoadRequestSequenceRef = useRef(0);
@@ -128,7 +137,7 @@ export function useStoreCatalogLoader({
         ? catalogData.items
         : (Array.isArray(catalogData?.services) ? catalogData.services : [])
     );
-  }, [setSelectedStore]);
+  }, [setCatalog, setSelectedStore]);
 
   const markBrandingImageError = useCallback((key) => {
     const normalizedKey = String(key || '').trim();
@@ -168,7 +177,7 @@ export function useStoreCatalogLoader({
     } else {
       finish();
     }
-  }, []);
+  }, [setBranchSwitchFeedback]);
 
   const openStoreBySlug = useCallback(async (slug) => {
     const normalized = toSlug(slug);
@@ -388,7 +397,7 @@ export function useStoreCatalogLoader({
       }
     }
   // voucherCode is deliberately NOT a dependency here -- see voucherCodeRef's own comment above.
-  }, [applyCatalogResponse, preferredStoreLocationSelection, routeItemId, routeServiceItemId, routeSubpage, setRouteSlug, setSelectedStore]);
+  }, [applyCatalogResponse, preferredStoreLocationSelection, routeItemId, routeServiceItemId, routeSubpage, setCatalog, setCatalogError, setLoadingCatalog, setPrimaryLocationId, setRouteSlug, setSelectedLocationId, setSelectedStore, setStoreLocations]);
 
   const refreshStorePageForTenantSetup = useCallback(() => {
     if (!routeSlug) return;
@@ -459,7 +468,7 @@ export function useStoreCatalogLoader({
       // Superseded requests must also release any overlay for this effect's location.
       completeBranchSwitchFeedback(selectedLocationId);
     };
-    }, [applyCatalogResponse, completeBranchSwitchFeedback, isStorePage, selectedStore?.slug, selectedLocationId, voucherCode]);
+    }, [applyCatalogResponse, completeBranchSwitchFeedback, isStorePage, selectedStore?.ops_workflow_mode, selectedStore?.slug, selectedStore?.workflow_mode, selectedLocationId, setCatalog, setCatalogError, setLoadingCatalog, voucherCode]);
 
   const handleBranchMenuSelection = useCallback((nextValue) => {
     const requestedLocationId = nextValue ? Number(nextValue) : null;
@@ -498,7 +507,7 @@ export function useStoreCatalogLoader({
     }
     setSelectedLocationId(nextLocationId);
     setHasSelectedBranchFromMenu(true);
-  }, [routeItemId, routeServiceItemId, routeSubpage, selectedLocationId, selectedStore?.slug, setSelectedLocationId, setHasSelectedBranchFromMenu, storeLocations]);
+  }, [routeItemId, routeServiceItemId, routeSubpage, selectedLocationId, selectedStore?.slug, setBranchSwitchFeedback, setSelectedLocationId, setHasSelectedBranchFromMenu, storeLocations]);
 
   useEffect(() => () => {
     if (branchSwitchFeedbackTimerRef.current) clearTimeout(branchSwitchFeedbackTimerRef.current);

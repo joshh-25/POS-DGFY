@@ -158,13 +158,31 @@ describe('ServicesCatalogToolbar', () => {
     expect(setActiveServiceTab).toHaveBeenNthCalledWith(2, 'folder:11');
   });
 
-  it('keeps the mobile category strip with the search interaction', () => {
-    render(<ServicesCatalogToolbar {...baseProps} isMobileViewport />);
+  it('keeps the mobile category strip with an always-visible search field', () => {
+    const { container } = render(
+      <ServicesCatalogToolbar
+        {...baseProps}
+        isMobileViewport
+        catalogPresentation={{ ...baseProps.catalogPresentation, subtitle: 'Find reliable care for everyday needs.' }}
+      />
+    );
 
-    expect(screen.getByText('Browse by Category')).toBeTruthy();
+    expect(screen.getByText('Services')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Choose the service you need' })).toBeTruthy();
     expect(screen.getByText('2 services available')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Search' })).toBeTruthy();
-    expect(screen.queryByPlaceholderText('Search services...')).toBeNull();
+    const search = screen.getByRole('searchbox', { name: 'Search catalog products' });
+    expect(search).toBeTruthy();
+    expect(screen.getByPlaceholderText('Search services...')).toBeTruthy();
+    expect(screen.queryByText('Find reliable care for everyday needs.')).toBeNull();
+    expect(search.className).toContain('storefront-mobile-catalog-search');
+    expect(search.parentElement.style.borderWidth).toBe('2px');
+    expect(search.parentElement.style.borderColor).toBe('rgb(203, 213, 225)');
+    expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
+
+    const mobileGroups = [...container.querySelectorAll('[data-mobile-catalog-group]')];
+    expect(mobileGroups.map((group) => group.dataset.mobileCatalogGroup)).toEqual(['intro-search', 'categories', 'filters']);
+    expect(container.firstElementChild.style.gap).toBe('20px');
+    expect(mobileGroups[0].style.gap).toBe('10px');
   });
 
   it('enables the mobile list and grid view choices for Services', () => {

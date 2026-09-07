@@ -11,6 +11,7 @@ import {
   Store,
 } from 'lucide-react';
 import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';
+import { StorefrontOrderInstructions } from '../../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
 
 export function FnbTrackingCompletedView({ actions, formatters, isMobileViewport, viewModel }) {
   const {
@@ -99,6 +100,8 @@ export function FnbTrackingCompletedView({ actions, formatters, isMobileViewport
                             </div>
                           ))}
                         </div>
+
+                        <StorefrontOrderInstructions value={trackingResult.specialInstructions} accentColor={dgfyPrimary} compact />
 
                         {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Ordered items ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
                         {receiptItems.length > 0 && (

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-06
+last_reviewed: 2026-09-07
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1368,3 +1368,64 @@ the one case a `NOT-EXECUTED-*` declaration may legitimately still reach `main`,
 authorized, not silent.
 
 PR: (this PR). Closes #1648. Refs #1618.
+
+### 2026-09-07: `repository-quality` split into 3 concern-based jobs (#1690)
+
+`promotion-quality-gate.yml`'s `repository-quality` job bundled 13 steps across dependency audits,
+compliance/env posture, CI-self-test contracts, and docs/release hygiene into a single job — every
+other job in this workflow already follows a one-job-per-concern pattern
+(`dgfy-api-quality`, the three `frontend-*-quality` jobs, `frontend-budgets-quality`), so a red
+`repository-quality` check-run in a PR's Checks tab named only "1 of 13 steps failed," with no clue
+which of 3 unrelated domains it was without opening the run and reading the step list.
+
+**What changed.** `repository-quality` is replaced by 3 jobs, each keeping its steps' exact ids,
+commands, and blocking/advisory status unchanged — only the job grouping changed:
+
+- **`repository-dependency-quality`** — dependency/compliance/env posture: `run_dependency_audit_prod`
+  (blocking), `run_dependency_audit_full` (advisory), `run_compliance_contracts` (blocking),
+  `run_production_env_fixtures` (blocking), `run_compat_seams` (advisory).
+- **`repository-ci-contracts-quality`** — CI/workflow self-validation (validates this repo's own CI
+  configuration, not product code): `validate_pr_quality_workflow`, `validate_runner_routing`,
+  `validate_workspace_hygiene`, `validate_compliance_sweep` — all blocking.
+- **`repository-docs-quality`** — docs/release/repo hygiene: `run_docs_lint` (blocking),
+  `run_release_notes` (advisory), `check_retired_path_resurrection` (advisory), `check_whitespace`
+  (blocking, PR-context only).
+
+Each new job duplicates the standard 5-step bootstrap (sparse-checkout clear/assert, checkout,
+setup-node, `npm ci`) this workflow already repeats per job by established convention, not a new
+pattern. `report-advisory-failures`'s `needs:` list and its `github-script` body are updated to read
+3 separate `*_FAILURES` outputs (`REPOSITORY_DEPENDENCY_FAILURES`, `REPOSITORY_CI_CONTRACTS_FAILURES`,
+`REPOSITORY_DOCS_FAILURES`) in place of the single `REPOSITORY_FAILURES`. Each new job's own
+"Record real per-step outcomes" step now also writes its `STEP_OUTCOMES` table to
+`$GITHUB_STEP_SUMMARY`, so a red job's own run summary shows the failing step immediately without
+scrolling logs — new, cheap (reuses data already computed for the advisory-failure reporter), not
+previously true of `repository-quality`.
+
+`scripts/check-pr-quality-workflow.js`'s `QUALITY_JOB_NAMES` and `BLOCKING_STEP_IDS` are updated as
+a data change, not a logic rewrite — the advisory-shape and reporter-shape validators
+(`checkStepLevelAdvisory`, `checkAdvisoryFailureReportingShape`, `checkStagingLegSkipShape`) already
+loop generically over `QUALITY_JOB_NAMES`. `scripts/gate-release-local.js`'s 6
+`CI_ENFORCED_GATES` entries that named `job: 'repository-quality'`
+(`dependencies.audit.prod`, `dependencies.audit.full`, `docs.lint`, `compliance.contracts`,
+`production.env.fixtures`, `release.notes`) now name the correct one of the 3 new jobs.
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s row references are updated to match (documentation
+accuracy only, not functional).
+
+**Not changed by this entry:** no `[binding]` clause of ADR 0074/0081/0082 is touched, no promotion
+leg's own gating changes (`repository-quality`'s three replacement jobs are skipped/advisory on
+exactly the same legs the original job was), and no architecture boundary is crossed (no `apps/*`
+runtime code touched). This is a `[default]`-tier clarification under ADR 0039, hence a dated
+amendment here rather than a new or superseding ADR.
+
+**Explicitly out of scope, left for a follow-up under epic #1124 (not decided or built here):**
+moving any of these checks to run earlier (PR-open against `develop`, or a `promoter` pre-cut step
+— #1690's own Q1), and true step-level incremental re-run (a `strategy: matrix` restructuring —
+#1690's own Q3, rejected for this ticket since it would require rewriting
+`check-pr-quality-workflow.js`'s `(job, step-id)` data model, not just its data). GitHub's native
+"re-run failed jobs" already benefits proportionately from the 3-job split with zero extra
+engineering, since it operates at job granularity. Fixing #1551 (`validate_compliance_sweep`'s own
+failure, currently tracked separately) is not this entry's job either — if unresolved by the time
+this split lands, `repository-ci-contracts-quality` starts out red for that already-tracked,
+unrelated reason, not a regression this split introduced.
+
+PR: (this PR). Closes #1690.

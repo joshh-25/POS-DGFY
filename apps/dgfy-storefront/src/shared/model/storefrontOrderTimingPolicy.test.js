@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   LEAD_TIME_UNCONFIGURED_NOTICE,
   buildLeadTimeExpectationMessage,
+  resolveCheckoutScheduleLabel,
   formatLeadTimeRangePhrase,
   resolveOrderTimingPolicy,
   resolveTimingStepScheduleMode
@@ -36,5 +37,13 @@ describe('storefront order timing policy', () => {
     expect(resolveTimingStepScheduleMode(scheduleOnly, 'asap')).toBe('schedule');
     expect(resolveTimingStepScheduleMode(immediateOnly, 'schedule')).toBe('asap');
     expect(resolveTimingStepScheduleMode(neither, 'schedule')).toBe('asap');
+  });
+
+  it('keeps the summary aligned with the selected timing mode before a date is entered', () => {
+    expect(resolveCheckoutScheduleLabel('asap', '')).toBe('NOW');
+    expect(resolveCheckoutScheduleLabel('asap', '2026-08-01T10:30')).toBe('NOW');
+    expect(resolveCheckoutScheduleLabel('schedule', '')).toBe('SCHEDULE');
+    expect(resolveCheckoutScheduleLabel('schedule', 'not-a-date')).toBe('SCHEDULE');
+    expect(resolveCheckoutScheduleLabel('schedule', '2026-08-01T10:30')).not.toBe('NOW');
   });
 });

@@ -1,3 +1,4 @@
+import { StorefrontAboutDescription } from '../../../../features/shared-storefront/components/StorefrontAboutDescription.jsx';
 import React, { useState } from 'react';
 import { StorefrontGalleryLightbox } from '../../../../shared/components/storefront/StorefrontGalleryLightbox.jsx';
 
@@ -8,7 +9,6 @@ const FnbHeroDesktopAboutGallery = ({
   galleryImagesFull,
   galleryOverflowCount = 0,
   hasAboutSection,
-  hasAboutToggle,
   hasGallerySection,
   heroTheme
 }) => {
@@ -39,19 +39,7 @@ const FnbHeroDesktopAboutGallery = ({
       {hasAboutSection && (
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>About Us</div>
-          <p style={{
-            fontSize: 13,
-            lineHeight: 1.7,
-            color: '#475569',
-            margin: 0,
-            display: '-webkit-box',
-            WebkitLineClamp: hasAboutToggle ? 3 : 'unset',
-            WebkitBoxOrient: 'vertical',
-            overflow: hasAboutToggle ? 'hidden' : 'visible',
-            fontFamily: heroTheme.bodyFont
-          }}>
-            {aboutText}
-          </p>
+          <StorefrontAboutDescription text={aboutText} accentColor={heroTheme.accent || heroTheme.palette?.primary || STYLES.colors.brand} fontFamily={heroTheme.bodyFont} />
         </div>
       )}
 

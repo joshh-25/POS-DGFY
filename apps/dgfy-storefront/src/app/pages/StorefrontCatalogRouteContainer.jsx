@@ -58,6 +58,7 @@ export function StorefrontCatalogRouteContainer(props) {
     checkoutVoucherCode,
     setCheckoutVoucherCode,
     handleVoucherCardApply,
+    handleVoucherCardRemove,
     checkoutResult,
     customerEmail,
     customerName,
@@ -486,6 +487,7 @@ export function StorefrontCatalogRouteContainer(props) {
           checkoutVoucherCode,
           setCheckoutVoucherCode,
           handleVoucherCardApply,
+          handleVoucherCardRemove,
           filteredCatalog,
           filteredCatalogViewModel: filteredFnbViewModel,
           getCartFlySourceRect,
@@ -551,6 +553,7 @@ export function StorefrontCatalogRouteContainer(props) {
           checkoutVoucherCode={checkoutVoucherCode}
           setCheckoutVoucherCode={setCheckoutVoucherCode}
           handleVoucherCardApply={handleVoucherCardApply}
+          handleVoucherCardRemove={handleVoucherCardRemove}
           filteredCatalog={filteredCatalog}
           filteredCatalogViewModel={filteredFnbViewModel}
           getCartFlySourceRect={getCartFlySourceRect}
@@ -620,6 +623,7 @@ export function StorefrontCatalogRouteContainer(props) {
           checkoutVoucherCode={checkoutVoucherCode}
           setCheckoutVoucherCode={setCheckoutVoucherCode}
           handleVoucherCardApply={handleVoucherCardApply}
+          handleVoucherCardRemove={handleVoucherCardRemove}
           filteredCatalog={filteredCatalog}
           filteredCatalogViewModel={filteredFnbViewModel}
           getCartFlySourceRect={getCartFlySourceRect}

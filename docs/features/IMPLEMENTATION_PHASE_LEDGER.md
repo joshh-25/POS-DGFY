@@ -20790,142 +20790,6 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
 - Governance note: `within-existing-boundary` with a default-contract amendment; no architecture allowlist exception is introduced.
 - Next eligible phase: 289.
 
-## Local POS phase records retained during develop integration
-
-Numbering reconciliation (2026-09-06): the local POS initiatives below and the
-independently merged develop initiatives reused phase numbers. Both historical
-records are preserved without renumbering. References to these existing phases
-must include the initiative title; new phases continue above the highest number
-in this combined ledger, never from the local POS sequence.
-
-## Phase 289 - POS Immediate Image Preview and Worker Swap
-
-- Initiative/release: POS item-image responsiveness / current POS back-office workflow.
-- Objective and scope: show one shared POS-local 144x144 preview promptly across the Add Item, Edit Item, Items-list, and Sell-catalog surfaces; retain the correct image while asynchronous processing runs; replace it only after the matching persisted thumbnail loads successfully; bound decoding, retries, and catalog refreshes. Storefront rendering, image selection, and responsive variants must remain unchanged.
-- Status: in_progress (reopened for corrective work on 2026-09-05; existing partial implementation remains).
-- Dependencies: Phase 288; `docs/architecture/ARCHITECTURE_BOUNDARIES.md`; `docs/architecture/ARCHITECTURE_GOVERNANCE.md`; ADR 0071's POS back-office placement amendment.
-- Historical claim (2026-09-04, not current acceptance evidence): this entry previously reported POS image contracts passing (11/11), a successful POS build and whitespace check, and a completed preview/worker handoff. The later audit reproduced an old-job/new-preview race and identified unverified thumbnail handoff, tenant/session cleanup, and retry gaps. Those earlier checks did not establish the claimed behavior.
-- Acceptance and validation evidence: pending. Complete work packages 289-A through 289-E in the [POS Image Upload Implementation Plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md#phase-289---correct-single-item-image-reliability-and-responsiveness), including executable race/failure regressions, real 144px delivery in Items and Sell, bounded resource use, Storefront isolation, and rendered browser/APK evidence. Architecture baseline passed on 2026-09-05; this is not functional or performance closure.
-- Completion date: pending; the prior 2026-09-04 completion claim is withdrawn, not renumbered or erased from history.
-- Contracts/files: `packages/web-core/src/features/pos/services/posPendingItemImagePreviewStore.js`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx`; `packages/web-core/src/features/pos/__tests__/posItemsGalleryAndCsvImport.contract.test.js`; `packages/web-core/src/features/pos/__tests__/posCatalogPerformance.contract.test.js`.
-- Governance note: target `within-existing-boundary`; follow ADR 0017's interactive acknowledgement and ADR 0055's authoritative catalog-refresh contracts. No architecture allowlist exception is planned; no database migration is introduced by this documentation correction.
-- Local implementation handoff (2026-09-05): corrective preview/thumbnail code and partial-create recovery tracking are implemented; 39 focused frontend tests and 14 backend tests pass, along with the POS build and architecture checks. See the implementation plan's dated handoff for commands, limitations, and remaining user-owned browser/APK checks. ADR 0017's dated amendment records POS-only 144px delivery and event/read-driven job reconciliation. This is not rendered or device performance acceptance.
-- Next execution: user acceptance testing in 289-E (browser automation explicitly declined). Phase 290 below depends on this phase's acceptance for integrated delivery; next unallocated phase remains 291.
-
-## Phase 290 - POS Recoverable 500-Image ZIP and CSV Upload
-
-- Initiative/release: POS image-upload responsiveness and bulk catalog setup / follow-up to Phase 289.
-- Objective and scope: accept up to 500 images through a bounded ZIP + CSV transfer mapped to existing item SKUs; validate archive/image/mapping inputs; process through a persistent, recoverable, bounded queue; expose authenticated per-file progress/results and failed-only retries; render completed 144px thumbnails in Items and Sell without disrupting normal POS interaction. Storefront behavior and item/stock/financial ownership remain unchanged.
-- Status: in_progress (approved 2026-09-05; no deployment).
-- Dependencies: Phase 289 acceptance for delivery; work package 290-A's verified Redis persistence, durable worker-accessible storage, ingress/transfer limits, retention and idempotency contracts; ADR 0017 amendment for bulk behavior; ADR 0029 ownership; ADR 0055 catalog reads; ADR 0071 POS placement.
-- Acceptance and validation evidence: pending. Complete work packages 290-A through 290-E in the [POS Image Upload Implementation Plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md#phase-290---recoverable-500-image-zip--csv-upload): safe 500-file transfer, restart/replay recovery, tenant/permission isolation, per-file reconciled results, bounded concurrency/memory/retries, complete paginated catalog reach, Storefront regression proof, and actual APK timing evidence. Source-text assertions and mocked queue tests alone cannot close the phase.
-- Completion date: pending.
-- Contracts/files: [POS Image Upload Implementation Plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md); `packages/web-core/src/services/posCatalogService.js`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx`; `apps/dgfy-api/src/modules/pos/repositories/posBulkImageImportStorage.js`; `apps/dgfy-api/src/modules/pos/repositories/posBulkImageImportJobRepository.js`; `apps/dgfy-api/src/modules/pos/usecases/posBulkImageImportUseCases.js`; `apps/dgfy-api/src/workers/posBulkImageImportWorker.js`; `apps/dgfy-api/tests/posBulkImageImportManifest.test.js`; `apps/dgfy-api/tests/posBulkImageImportStorage.test.js`; `apps/dgfy-api/tests/posBulkImageImportWorker.test.js`; `apps/dgfy-api/tests/posRepository.catalogImages.test.js`.
-- Governance note: preserve existing ownership boundaries; amend default upload contracts before implementing changed behavior. No new allowlist exception, destructive migration, broad asset backfill, or production operation is authorized by this plan recording.
-- Current execution phase: 290-E; automated closure is complete and actual APK evidence remains open.
-- Approval/execution update (2026-09-05): the user approved Phase 290. Work package 290-A is `in_progress`; the plan and ADR 0017 now freeze the ZIP+CSV mapping, resumable chunk, Redis metadata, persistent uploads-volume, validation, retention, lease, retry, fencing, and concurrency contracts. The user reported Phase 289's visible test as successful, but did not provide the browser/APK surface, device details, or timing evidence, so Phase 289's device-evidence gate remains open rather than being claimed complete.
-- 290-A completion (2026-09-05): the ZIP/CSV mapping, numerical limits, idempotency, retention, lease/fencing, safe-disable, persistent-storage, and Redis fail-closed contracts are frozen in the plan and ADR 0017. Local Redis is available with append-only persistence and real repository probes passed; production's required shared durable Redis and worker-accessible persistent storage are explicitly documented. Work package 290-A is completed without a database migration.
-- 290-B completion (2026-09-05): private persistent staging, path containment, exclusive/durable chunk writes, archive bounds, hostile flat-entry rejection, failed-extraction cleanup, and authenticated create/replay/chunk/complete/status routes are implemented. The manifest/storage suites pass 19 focused tests; a real local Redis probe passed create through enqueue/status, the live unauthenticated route returned 401, API health returned 200, and architecture checks passed (54 modules, 566 files, 95 controllers). Phase 290 remains `in_progress`; current work moves to 290-C's recoverable worker.
-- 290-C progress (2026-09-05): reliable processing-list dequeue/ack, abandoned-task recovery, global concurrency slots, per-item leases shared with interactive upload/delete, version supersession, bounded attempts, atomic failed-only retry, and terminal private-source cleanup are implemented. Real Redis probes passed recovery/fencing/item exclusion/global cap/ack and accepted exactly one of two concurrent retries; the live worker failure path passed attempts 1-3 retention and final cleanup. The focused backend suites pass 30 tests and architecture checks remain green. Successful tenant-DB image commit proof remains pending, so 290-C is `in_progress`, not completed.
-- 290-C completion (2026-09-05): an isolated worker suite additionally proves successful tenant-context commit, fenced acknowledgement, catalog publication, terminal staging cleanup, and stale-version supersession without merchant data mutation. Work package 290-C is completed.
-- 290-D completion (2026-09-05): POS Items provides ZIP+CSV selection, sequential 6 MiB chunk transport, non-blocking progress, paginated per-file results, failure detail, failed-only retry, bounded browser memory, and existing catalog refresh integration under `items:edit`; Storefront is unchanged. Nine focused frontend files pass 39 tests, the POS production build passes with its existing large-chunk warning, and live POS/API health return 200. Work package 290-D is completed; current execution advances to 290-E.
-- 290-E automated closure (2026-09-05): safe feature disabling preserves accepted jobs and result access; identical package reselection reuses a bounded deterministic resume identity; polling listeners are released; duplicate-case and high-expansion ZIP abuse tests are added. Six focused API suites pass 35 tests and nine focused shared POS files pass 40 tests. POS, IMS, and Storefront builds, architecture checks (54 modules / 566 files / 95 controllers), documentation/ADR lint, compliance declaration validation, and whitespace checks pass. Real Redis transport/recovery/concurrency/fencing probes remain recorded in the implementation plan. Browser automation was explicitly declined. Phase 290 remains `in_progress` solely for named-device APK p95 interaction, memory-trend, and image-request evidence; no completion date is recorded.
-- Next eligible phase: 291.
-
-## Phase 291 - POS Items Modal Runtime and Device Baseline
-
-- Initiative/release: POS Items modal reachability and Android WebView responsiveness / pre-implementation discovery for Phases 292-295.
-- Objective and scope: identify the runtime that renders the Items modals; inventory Add/Edit Item, Create/Edit Service, QR scanner, CSV import, PDF import, and ZIP/CSV batch import modal layout/scroll ownership; reproduce clipping, overflow, keyboard, nested-scroll, and performance behavior on the affected APK before changing UI contracts.
-- Status: completed (source/runtime inventory scope amended by the user on 2026-09-05 to remove physical-device validation).
-- Dependencies: Phase 290 remains open for APK evidence but does not block this phase's independent modal inventory; ADR 0025 temporary wrapper topology; ADR 0043 native-versus-WebView ownership; ADR 0067 Chrome 80 floor; ADR 0071 shared frontend ownership; `docs/architecture/ARCHITECTURE_BOUNDARIES.md`; `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
-- Acceptance and validation evidence: [POS Items Modal Hardening Plan](POS_ITEMS_MODAL_HARDENING_PLAN.md) records the wrapper application/flavor IDs, source version, hosted origins, eight-modal inventory, local service availability, and exact source-level viewport/scroll/performance risks. `adb devices -l` returned no device, so APK/WebView identity, keyboard-open portrait/landscape reachability, p95 interaction latency, dropped frames, and repeated-cycle memory evidence remain pending. The user removed these physical-device acceptance requirements on 2026-09-05; no device pass is claimed.
-- Completion date: 2026-09-05 (amended source-inventory scope).
-- Contracts/files: [POS Items Modal Hardening Plan](POS_ITEMS_MODAL_HARDENING_PLAN.md); `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/Components/ui/dialog.jsx`; `packages/web-core/Components/items/CSVImportModal.jsx`; `packages/web-core/Components/items/PdfMenuImportModal.jsx`; `packages/web-core/Components/items/MenuImportBatchModal.jsx`; `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogCreateModal.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogEditModal.jsx`; `apps/dgfy-android-bridge/imin-wrapper/app/src/main/AndroidManifest.xml`; `apps/dgfy-android-bridge/imin-wrapper/app/build.gradle.kts`.
-- Governance note: `within-existing-boundary`; no ADR amendment, allowlist exception, database migration, API behavior, or production operation is introduced by this discovery phase. Phase 292 implementation is not authorized by this approval.
-- Current phase: 291. Next eligible phase: 292 after Phase 291 acceptance; Phase 292 is not yet approved.
-
-## Phase 292 - POS Items Modal Viewport Hardening
-
-- Initiative/release: POS Items modal reachability and Android WebView responsiveness.
-- Objective and scope: constrain Add/Edit Item, Create/Edit Service, and Product Scanner panels to the visible viewport with one scrollable body and reachable safe-area-aware actions on Chrome 80-class WebViews.
-- Status: completed.
-- Dependencies: Phase 291 source/runtime inventory; ADR 0067 Chrome 80 floor; ADR 0071 shared frontend ownership.
-- Acceptance and validation evidence: six focused viewport contract tests passed; POS, IMS, and Storefront builds, architecture, compliance, and docs gates passed; rendered browser checks passed at 1440x900, 390x844, and 390x360 without page overflow, runtime errors, request failures, or unreachable final actions. Physical APK validation removed by user scope amendment on 2026-09-05.
-- Completion date: 2026-09-05.
-- Contracts/files: `packages/web-core/src/index.css`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogCreateModal.jsx`; `packages/web-core/src/features/pos/components/PosServiceCatalogEditModal.jsx`; `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`; `packages/web-core/src/features/pos/__tests__/posItemsModalViewport.contract.test.js`.
-- Governance note: `within-existing-boundary`; no ADR amendment, allowlist exception, database migration, API behavior, or production operation is introduced.
-- Next eligible phase: 293.
-
-## Phase 293 - POS Items Modal Scroll and Focus Ownership
-
-- Initiative/release: POS Items modal reachability and Android WebView responsiveness.
-- Objective and scope: keep background scrolling locked until the final nested modal closes; contain keyboard focus in the top modal; restore focus to each opener; and release all global listeners and locks on close or unmount.
-- Status: completed.
-- Dependencies: Phase 292; shared Dialog portal and Product Scanner custom portal inventory from Phase 291.
-- Acceptance and validation evidence: shared Dialog and Product Scanner jsdom suites cover nested reference-counted locks, preservation of pre-existing body overflow, top-modal Tab wrapping, exact focus restoration, and close/unmount cleanup. Focused Phase 292 viewport contracts remain green. Physical APK validation removed by user scope amendment on 2026-09-05.
-- Completion date: 2026-09-05.
-- Contracts/files: `packages/web-core/Components/ui/dialog.jsx`; `packages/web-core/Components/ui/__tests__/dialog.test.jsx`; `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`; `packages/web-core/src/features/inventory/__tests__/ProductQrScannerModal.rearm.test.jsx`.
-- Governance note: `within-existing-boundary`; no architecture exception, backend/API change, database migration, or production operation is introduced.
-- Next eligible phase: 294.
-
-## Phase 294 - POS Items SKU Suggestion Performance
-
-- Initiative/release: POS Items modal reachability and Android WebView responsiveness.
-- Objective and scope: remove repeated full-catalog scans from Add Item SKU generation while retaining the complete authorized seed and existing SKU formats, sequence rules, and backend uniqueness enforcement.
-- Status: completed.
-- Dependencies: Phase 293; Phase 291's confirmed source-level 10,000-row repeated-scan risk; existing inventory SKU suggestion contract.
-- Acceptance and validation evidence: a reusable SKU maximum index is built once per seed change and used for constant-time suggestions on each name change. Fourteen focused utility and viewport tests pass. A local Node benchmark over 10,000 seed rows and 1,000 suggestions measured 3,600.38 ms for repeated scans and 4.31 ms for indexed lookup (835.8x computation speedup). POS, IMS, and Storefront builds and repository governance checks pass. Physical-device performance validation removed by user scope amendment on 2026-09-05.
-- Completion date: 2026-09-05.
-- Contracts/files: `packages/web-core/src/features/inventory/utils/skuSuggestion.js`; `packages/web-core/src/features/inventory/__tests__/skuSuggestion.test.js`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`.
-- Governance note: `within-existing-boundary`; no API, database, authorization, SKU format, or architecture exception is introduced.
-- Next eligible phase: 295.
-
-## Phase 295 - POS Items Browser Validation Closure
-
-- Initiative/release: POS Items modal reachability and Android WebView responsiveness.
-- Objective and scope: close component, responsive-browser, keyboard, overflow, nested-modal, image-flow, build, architecture, compatibility, and compliance acceptance for Phases 289-294.
-- Status: in_progress.
-- Dependencies: Phases 289-294 implementation; representative local catalog/import data. Physical iMin validation removed by the user on 2026-09-05.
-- Acceptance and validation evidence: 23 focused modal/SKU tests and all three frontend builds passed before browser validation. Authenticated Chrome exercised Add Item at 1440x900, 390x844, and 390x360 with no viewport clipping, horizontal document overflow, console errors, page errors, failed requests, or HTTP 5xx responses; final actions were reachable. The run found and then verified a corrective background-scroll lock and Escape-close fix for the custom Add/Edit Item portal. Physical iMin validation is no longer required (user scope amendment 2026-09-05), and no device pass is claimed. Remaining browser coverage for other modals, nested imports/image flows, and applicable closure gates is not established by the recorded Add Item checks; status remains in_progress.
-- Completion date: pending.
-- Contracts/files: `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; `packages/web-core/src/features/pos/__tests__/posItemsModalViewport.contract.test.js`; [POS Items Modal Hardening Plan](POS_ITEMS_MODAL_HARDENING_PLAN.md).
-- Governance note: `within-existing-boundary`; no API, database, or architecture exception is introduced by the browser-discovered correction.
-- Phase 295 remains open for browser closure only. Independent catalog-search Phase 296 is authorized and does not depend on physical-device evidence.
-
-## Phase 296 - POS Items Search Reproduction and Contract
-
-- Initiative/release: POS Items catalog-search consistency; local development.
-- Objective and scope: Reproduce Sell/Items mismatch and freeze complete query behavior.
-- Status: completed.
-- Dependencies: Independent of remaining Phase 295 browser closure.
-- Acceptance and validation evidence: `node scripts/reproduce-pos-items-search-gap.cjs` executes the current Items predicate and reproduces missing item 601 from the 200-row preload. Two focused Jest diagnostics execute `buildListPosCatalogUseCase` with 601 controlled rows and prove both the Sell/Items query mismatch and post-limit POS-visibility gap. The running authenticated HTTP endpoint correctly rejected an unauthenticated request with 401; no tenant or production data was read or changed. Production screenshot causation is not claimed.
-- Completion date: 2026-09-05.
-- Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `scripts/reproduce-pos-items-search-gap.cjs`; `apps/dgfy-api/tests/posCatalogSearchGap.phase296.test.js`.
-
-## Phase 297 - POS Items Complete Server Querying
-
-- Initiative/release: POS Items catalog-search consistency; local development.
-- Objective and scope: Implement backward-compatible pagination, pre-pagination filters/counts, and Items query state.
-- Status: completed.
-- Dependencies: Phase 296 acceptance.
-- Acceptance and validation evidence: Opt-in paginated API preserves the legacy array response; stable batched repository reads apply POS visibility, barcode/name/SKU/category search, primary-plus-secondary category membership, location stock and stock-status filters before page totals. Items requests 15-row pages, resets on filters, ignores stale reads, and retains an editor snapshot. Five focused backend suites pass (67 tests), including >500-row enriched search and legacy use-case compatibility; `npm run build:pos` passes.
-- Completion date: 2026-09-05.
-- Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `apps/dgfy-api/src/validators/posValidator.js`; `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`; `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`; `packages/web-core/src/features/pos/services/posService.js`; `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`; focused catalog tests.
-
-## Phase 298 - POS Items Catalog Search Verification
-
-- Initiative/release: POS Items catalog-search consistency; local development.
-- Objective and scope: Verify complete results, isolation, browser behavior and repository gates.
-- Status: in_progress.
-- Dependencies: Phase 297 acceptance.
-- Acceptance and validation evidence: Six focused backend suites pass (96 tests) and three focused POS Items UI suites pass (23 tests), including the paginated search request/result contract and existing category/modal behavior. The POS production build, architecture guards, governed-document lint, and ADR checks pass. The unauthenticated Playwright access test passes. Authenticated browser scenarios remain pending because no `.env.e2e` or saved auth state is configured and the fallback test account returns HTTP 401 before Items loads; screenshot, video, and trace evidence were retained. Regression coverage commit: `a5224dd5f`. No physical iMin requirement.
-- Completion date: pending.
-- Contracts/files: [POS Items Catalog Search Plan](POS_ITEMS_CATALOG_SEARCH_PLAN.md); ADRs 0029 (catalog ownership), 0055, 0080; `scripts/reproduce-pos-items-search-gap.cjs`.
-
-- Current catalog-search phase: 298 in progress. No later phase is eligible until authenticated browser acceptance passes or the governing plan is explicitly amended.
-
-## Develop phase records
-
 ## Phase 289 - Wave C/C2: storefront grouping fan-out for secondary categories (#1318)
 
 - **Numbering note:** this entry was dispatched against a pre-assigned Phase 288, drafted when the
@@ -22016,13 +21880,62 @@ planning time.
   #265, follow-up issue #1643 (298d, bulk client wiring, filed and parented under #265).
 - Next eligible phase: 303.
 
-## Phase 303 - Split-payment inventory preflight before tender acceptance
+## Phase 303 - Split `repository-quality` into 3 concern-based jobs in `promotion-quality-gate.yml` (#1690)
+
+Ledger number re-verified fresh immediately before this commit (`git fetch origin && git show
+origin/develop:docs/features/IMPLEMENTATION_PHASE_LEDGER.md | grep '^## Phase' | tail -8`) -- 303 is
+the confirmed next free number as of this land.
+
+- Initiative/release: CI/quality-gate attribution clarity (epic #1124) / current release process.
+- Objective and scope: `promotion-quality-gate.yml`'s single `repository-quality` job (13 steps
+  spanning dependency audits, compliance/env posture, CI-self-test contracts, and docs/release
+  hygiene) is split into 3 concern-based jobs, following this workflow's own existing
+  one-job-per-concern convention (`dgfy-api-quality`, the three `frontend-*-quality` jobs,
+  `frontend-budgets-quality`) -- a red check-run in a PR's Checks tab now names which of 3 domains
+  failed instead of "1 of 13, unnamed." New jobs: `repository-dependency-quality` (dependency/
+  compliance/env posture), `repository-ci-contracts-quality` (CI/workflow self-validation),
+  `repository-docs-quality` (docs/release/repo hygiene). Every step's own id, command, and
+  blocking/advisory status is unchanged -- only the job grouping and job name(s) changed. Also adds
+  a `$GITHUB_STEP_SUMMARY` write of each new job's existing `STEP_OUTCOMES` table (cheap,
+  complementary -- reuses data already computed for the advisory-failure reporter, no new script).
+  `report-advisory-failures`'s `needs:` list and its `github-script` body are updated to read 3
+  separate `*_FAILURES` outputs in place of the single `REPOSITORY_FAILURES`.
+  `scripts/check-pr-quality-workflow.js`'s `QUALITY_JOB_NAMES`/`BLOCKING_STEP_IDS` and
+  `scripts/gate-release-local.js`'s 6 `CI_ENFORCED_GATES` entries naming the old job are updated to
+  match (data changes, not logic rewrites -- the shape validators already loop generically over
+  `QUALITY_JOB_NAMES`). Does **not** address #1690's Q1 (shift-left timing) or Q3 (true step-level
+  incremental re-run) -- both named explicitly out of scope in the issue and left as follow-ups
+  under epic #1124.
+- Status: completed.
+- Dependencies: none. Independent of every in-flight phase above; touches only
+  `.github/workflows/promotion-quality-gate.yml`, `scripts/check-pr-quality-workflow.js`,
+  `scripts/gate-release-local.js`, and their own test/doc surfaces -- no `apps/*` runtime code, no
+  architecture boundary crossed.
+- Acceptance and validation evidence: `node --check` on all changed `.js` files (no build step for
+  CI/scripts changes). `node scripts/check-pr-quality-workflow.js` -- OK. `npm run
+  test:pr-quality-workflow` -- 41/41 pass (fixtures updated for the 3-job split). `node --test
+  scripts/gate-release-local.test.js` -- 25/25 pass. `npm run lint:docs` -- OK, 29 governed docs
+  validated (includes this ledger's own doc plus `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching
+  2026-09-07 amendment and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s updated row references).
+  `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/promotion-quality-gate.yml'))"`
+  -- parses clean, lists the 3 new job names in place of `repository-quality`. No `package.json`
+  touched, so no lockfile check; no `apps/*` touched, so no app version bump needed.
+- Completion date: 2026-09-07.
+- Contracts/files: `.github/workflows/promotion-quality-gate.yml`,
+  `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
+  `scripts/gate-release-local.js`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-09-07 dated Amendments entry), this ledger entry,
+  issue #1690.
+- Next eligible phase: 304.
+
+## Phase 304 - Split-payment inventory preflight before tender acceptance
 
 - Initiative/release: POS split payment and Inventory consistency / current release.
 - Objective and scope: validate every stock-bearing direct item, recipe ingredient, and linked
-  modifier SKU before a split-payment session is created. FIFO ledger drift and insufficient stock
-  now prevent the session and all tender allocations, with a cashier-facing message confirming that
-  no payment was accepted. Final checkout retains its locked inventory validation and stock issue.
+  modifier SKU before a split-payment session is created and again before its first allocation.
+  FIFO ledger drift and insufficient stock now prevent tender acceptance, with a cashier-facing
+  message confirming that no payment was accepted. Final checkout retains its locked inventory
+  validation and stock issue.
 - Status: completed.
 - Dependencies: ADR 0029 Inventory ownership; ADR 0040 FIFO valuation; ADR 0063 split tender;
   `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
@@ -22032,6 +21945,7 @@ planning time.
   stock movement, or stock mutation; existing final-checkout FIFO reconciliation test passed.
 - Completion date: 2026-09-07.
 - Contracts/files: `apps/dgfy-api/src/services/stockMovementService.js`, Inventory stock command
-  service and contract, POS checkout and split-payment use cases, their focused tests, and
+  service and contract, POS checkout and split-payment use cases, their focused tests,
+  `docs/compliance/impact-declarations/2026-09-07-pos-split-inventory-preflight.md`, and
   `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
-- Next eligible phase: 304.
+- Next eligible phase: 305.

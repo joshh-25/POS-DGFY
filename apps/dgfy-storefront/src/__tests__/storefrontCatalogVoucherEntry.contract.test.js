@@ -70,6 +70,7 @@ describe('Storefront catalog voucher-entry contract (#694)', () => {
       const source = sourceFn();
       expect(source).toContain('VoucherCodePanel');
       expect(source).toContain('handleVoucherCardApply');
+      expect(source).toContain('handleVoucherCardRemove');
       expect(source).toContain('checkoutVoucherCode');
       // Rendered conditionally, not unconditionally -- a caller that doesn't wire the handler
       // (there are none today, but the contract should hold) must not crash on a missing prop.
@@ -92,7 +93,7 @@ describe('Storefront catalog voucher-entry contract (#694)', () => {
 
   it('the location-aware catalog effect still refetches on a voucherCode change', () => {
     const source = catalogLoaderSource();
-    const effectDeps = source.match(/\[applyCatalogResponse, [^\]]*selectedLocationId, voucherCode\]/);
+    const effectDeps = source.match(/\}, \[[^\]]*selectedLocationId[^\]]*voucherCode\]\);/);
     expect(effectDeps).not.toBeNull();
     expect(effectDeps[0]).toContain('completeBranchSwitchFeedback');
   });
@@ -102,6 +103,7 @@ describe('Storefront catalog voucher-entry contract (#694)', () => {
       expect(source).toContain('checkoutVoucherCode');
       expect(source).toContain('setCheckoutVoucherCode');
       expect(source).toContain('handleVoucherCardApply');
+      expect(source).toContain('handleVoucherCardRemove');
     }
   });
 
@@ -109,6 +111,7 @@ describe('Storefront catalog voucher-entry contract (#694)', () => {
     for (const source of [retailCatalogRoutePageSource(), fnbCatalogRoutePageSource(), simpleCatalogRoutePageSource()]) {
       expect(source).toContain('checkoutVoucherCode');
       expect(source).toContain('handleVoucherCardApply');
+      expect(source).toContain('handleVoucherCardRemove');
     }
   });
 });
