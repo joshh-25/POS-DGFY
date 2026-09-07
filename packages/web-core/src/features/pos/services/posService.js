@@ -9,6 +9,7 @@ import {
     listServiceOptionGroups,
     updateServiceOptionGroup
 } from '../../services/api/servicesApi.js';
+import { getBrowserSessionSnapshot } from '../../../services/browserSession.js';
 
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
 export const POS_ATTENDANCE_CONFIG_CHANGED_EVENT = 'dgfy:pos-attendance-config-changed';
@@ -29,12 +30,12 @@ export const fetchPosCatalog = async (params = {}) => {
 export const fetchPosCatalogPage = async (params = {}) => {
     const session = getBrowserSessionSnapshot();
     const pagedParams = { ...params, paginate: true };
-    const key = JSON.stringify([session.companyToken, session.generation, Object.entries(pagedParams).sort()]);
-    const response = await coordinateCatalogRead(key, () => api.get('/pos/catalog', { params: pagedParams }));
+    const response = await api.get('/pos/catalog', { params: pagedParams });
+    // Guard against a company switch landing mid-flight: a page of the previous
+    // tenant's catalog must never be rendered against the newly selected one.
     if (getBrowserSessionSnapshot().generation !== session.generation) throw new Error('Catalog session changed.');
     const payload = response.data?.data || {};
     const items = Array.isArray(payload.items) ? payload.items : [];
-    void reconcilePosImageUploads(items);
     return {
         items,
         pagination: payload.pagination || { page: 1, page_size: 15, total: 0, total_pages: 1 }
