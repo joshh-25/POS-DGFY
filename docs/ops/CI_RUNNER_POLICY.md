@@ -73,7 +73,7 @@ Per #1363's epic table, the default policy going forward:
 | `develop` → `staging` promotion, staging deploy | Self-hosted | Normal release cadence; preserve current cost model |
 | `develop`/`staging` → production promotion, production deploy | GitHub-hosted (`ubuntu-latest`) | Infrequent; predictable clean environment; faster pacing |
 | **Hotfix to `main`** (`incident-responder`'s monitor loop or `/hotfix` manual entry), post-merge deploy dispatch | **GitHub-hosted** | Same `deploy-main.yml`/production-deploy path as an ordinary promotion — a hotfix is still "anything that deploys to prod," so it gets the same isolation/predictability rationale, if anything more so given it's already running under incident pressure. No separate routing decision needed: it rides the same job, the same runner class, because it dispatches the same workflow |
-| **`pr-checks.yml` build-check jobs, PR-time**, when the PR's head is `release/*` or `hotfix/*` **and** its base is `main` | **GitHub-hosted** (`route-build-checks` job, #1529) | Same promotion/hotfix-to-`main` rationale as the row above, applied one step earlier in the PR's lifecycle — not a blanket "any PR targeting `main`" rule, and not job-class-scoped (#1365's original shape, which #1529 corrects). Every other PR (develop/staging targets, or any other PR that happens to target `main` without one of these two head shapes) stays self-hosted |
+| **`pr-checks.yml` build-check jobs, PR-time**, when the PR's head is `release/*`, `hotfix/*`, or `fix/*` **and** its base is `main` | **GitHub-hosted** (`route-build-checks` job, #1529, #1701) | Same promotion/hotfix-to-`main` rationale as the row above, applied one step earlier in the PR's lifecycle — not a blanket "any PR targeting `main`" rule, and not job-class-scoped (#1365's original shape, which #1529 corrects). Every other PR (develop/staging targets, or any other PR that happens to target `main` without one of these three head shapes) stays self-hosted |
 | Emergency/fallback | Explicit alternate strategy per the switch below | Never a silent, undocumented flip |
 
 **Why prod specifically, stated once:** blast radius (a self-hosted-box failure competes with the
@@ -87,7 +87,7 @@ which is exactly why that stays self-hosted).
 
 | Job / workflow | Current runner | Capabilities needed | Notes |
 |---|---|---|---|
-| `pr-*-build-checks.yml` (api/frontend/migration-runner) | `sieitz-runner`/`sieitz-lg` (per `RUNNER_LIGHT_JSON`/`RUNNER_HEAVY_JSON`); **`ubuntu-latest`** when the PR's head is `release/*`/`hotfix/*` and base is `main` (`pr-checks.yml`'s `route-build-checks` job, #1529) | Docker buildx (present on `ubuntu-latest` by default — no setup gap on the hosted path); `frontend-build-check` is the one self-hosted-path job with a measured size signal (OOM risk on the small box) | #923 measured split governs the self-hosted default; #1529 adds the promotion/hotfix-to-`main` exception. `BUILD_CACHE_FROM` stays disabled (empty) even on the hosted path for now — #726's cache-backend flip isn't yet wired to this narrower condition, a follow-up, not a defect |
+| `pr-*-build-checks.yml` (api/frontend/migration-runner) | `sieitz-runner`/`sieitz-lg` (per `RUNNER_LIGHT_JSON`/`RUNNER_HEAVY_JSON`); **`ubuntu-latest`** when the PR's head is `release/*`/`hotfix/*`/`fix/*` and base is `main` (`pr-checks.yml`'s `route-build-checks` job, #1529, #1701) | Docker buildx (present on `ubuntu-latest` by default — no setup gap on the hosted path); `frontend-build-check` is the one self-hosted-path job with a measured size signal (OOM risk on the small box) | #923 measured split governs the self-hosted default; #1529 adds the promotion/hotfix-to-`main` exception, #1701 extends its head-shape match to `fix/*`. `BUILD_CACHE_FROM` stays disabled (empty) even on the hosted path for now — #726's cache-backend flip isn't yet wired to this narrower condition, a follow-up, not a defect |
 | `pr-android-build-checks.yml` / `build-android-manual.yml` | `ubuntu-latest` (hardcoded, not via the label indirection) | Android SDK + Gradle | Stays hosted regardless of policy — neither self-hosted box has the Android SDK installed (explicit comment in the workflow file) |
 | `pr-migration-runner-build-checks.yml` | `sieitz-runner`/`sieitz-lg` | `docker/setup-qemu-action` for `linux/amd64,linux/arm64` — needs privileged Docker to register binfmt handlers | Flagged "not yet verified" in the migration handoff doc; re-confirm before relying on it |
 | `promotion-quality-gate.yml` (`dgfy-api-quality`, `frontend-quality` ×3, `repository-quality`) | `sieitz-lg` (pinned) | 2 service containers (MySQL/Redis), `--max-old-space-size=4096`, `playwright install chromium`; known AVX gap on this box (`@napi-rs/canvas` → SIGILL, gated behind a real capability probe since #1035) | Heaviest jobs in the repo; competes with the live DEV+STAGING stacks on the same box (already flagged in #1018) |
@@ -204,6 +204,22 @@ Fixed in `pr-checks.yml` (new `route-build-checks` job, mirroring `promotion-qua
 and job-by-job inventory above. Not a blanket "any PR targeting `main`" rule, and not job-class-
 scoped either (#1365's original, narrower shape, which #1529 corrects) -- the split is specifically
 head-shape (`release/*`/`hotfix/*`) **and** base (`main`), together.
+
+### 2026-09-07: `pr-checks.yml` build-check routing extended to `fix/*` heads into `main` (#1701)
+
+The `route-build-checks` job's `hotfix/*` arm above had silently never matched a real hotfix-to-
+`main` PR since this repo's actual hotfix naming convention drifted to `fix/*`
+(`.agents/skills/incident-responder/SKILL.md`) -- 8 older hotfix-to-`main` PRs used `hotfix/*`,
+every recent one (including #1699, the PR that surfaced this) used `fix/*` instead, and none of
+those ever hit this routing.
+
+Fixed by adding `fix/*` alongside `release/*`/`hotfix/*` in `pr-checks.yml`'s `route-build-checks`
+case arm, scoped identically to the arms it extends -- still nested only under
+`case "$BASE_REF" in main)`, so an ordinary `fix/*` PR into `develop` is a different case arm
+entirely and is unaffected. The matrix row and job-by-job inventory row above are updated to the
+three-shape (`release/*`/`hotfix/*`/`fix/*`) form. `promotion-quality-gate.yml`'s own `gate` job
+stays unaffected -- its `case "$HEAD_REF" in` under `main)` deliberately excludes `hotfix/*`/`fix/*`
+entirely (#1527), a separate, already-settled question from which runner class build-checks use.
 
 ## Related
 

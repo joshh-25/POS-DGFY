@@ -108,17 +108,25 @@ jobs:
       validate_pr_metadata: true
       enforce_compliance_declarations: false
 
-  # #1529: a release/*|hotfix/* head into a main base is a promotion or hotfix PR -- its
+  # #1529: a release/*|hotfix/*|fix/* head into a main base is a promotion or hotfix PR -- its
   # build-check jobs get the same GitHub-hosted isolation/predictability rationale
   # docs/ops/CI_RUNNER_POLICY.md already gives the deploy path itself, one step earlier in the PR
   # lifecycle. Every other PR (develop/staging targets, or any other PR that happens to target main
-  # without one of these two head shapes) stays self-hosted, unchanged. Mirrors
-  # promotion-quality-gate.yml's own `gate` job `case "$HEAD_REF" in` pattern, with an added
-  # hotfix/* arm -- promotion-quality-gate.yml's own gate-activation deliberately excludes
-  # hotfix/* (per #1527: whether the *quality gate* runs at all is a different, already-settled
+  # without one of these three head shapes) stays self-hosted, unchanged. Mirrors
+  # promotion-quality-gate.yml's own `gate` job `case "$HEAD_REF" in` pattern, with added
+  # hotfix/*/fix/* arms -- promotion-quality-gate.yml's own gate-activation deliberately excludes
+  # hotfix/*/fix/* (per #1527: whether the *quality gate* runs at all is a different, already-settled
   # question from this one). Always self-hosted itself, same reasoning as that `gate` job's own
   # Phase 233 anchor exception: a ~1-2 minute control-plane job that must run even when everything
   # downstream is conditionally routed, so it can't depend on the routing decision it's making.
+  #
+  # #1701: fix/* added to the HEAD_REF arm -- confirmed the hotfix/* arm above had silently never
+  # matched a real hotfix-to-main PR since this repo's actual hotfix naming convention drifted to
+  # fix/* (.agents/skills/incident-responder/SKILL.md; 8 older hotfix-to-main PRs used hotfix/*,
+  # every recent one -- including #1699, the PR that surfaced this -- used fix/* instead, and none
+  # of those ever hit this routing). Scoped identically to the arm it extends: still nested only
+  # under `case "$BASE_REF" in main)`, so an ordinary fix/* PR into develop is a different case arm
+  # entirely and is unaffected.
   route-build-checks:
     if: github.event.pull_request.draft == false
     runs-on: ['sieitz-runner']
@@ -142,10 +150,10 @@ jobs:
           case "$BASE_REF" in
             main)
               case "$HEAD_REF" in
-                release/*|hotfix/*)
+                release/*|hotfix/*|fix/*)
                   echo "light=$HOSTED_JSON" >> "$GITHUB_OUTPUT"
                   echo "heavy=$HOSTED_JSON" >> "$GITHUB_OUTPUT"
-                  echo "base=$BASE_REF head=$HEAD_REF matches release/*|hotfix/*-into-main -- routing build-checks to GitHub-hosted runners"
+                  echo "base=$BASE_REF head=$HEAD_REF matches release/*|hotfix/*|fix/*-into-main -- routing build-checks to GitHub-hosted runners"
                   exit 0
                   ;;
               esac
@@ -153,7 +161,7 @@ jobs:
           esac
           echo "light=$RUNNER_LIGHT_JSON" >> "$GITHUB_OUTPUT"
           echo "heavy=$RUNNER_HEAVY_JSON" >> "$GITHUB_OUTPUT"
-          echo "base=$BASE_REF head=$HEAD_REF does not match release/*|hotfix/*-into-main -- staying self-hosted"
+          echo "base=$BASE_REF head=$HEAD_REF does not match release/*|hotfix/*|fix/*-into-main -- staying self-hosted"
 
   dgfy-api-build-check:
     needs: [changes, route-build-checks]
@@ -168,7 +176,7 @@ jobs:
     with:
       # Measured (#923): npm ci --omit=dev + COPY, no compile step -- median
       # 2.8m on the small box vs 3.4m on the large. Faster on either-box.
-      # #1529: hosted for a release/*|hotfix/* PR into main (route-build-checks above); the
+      # #1529/#1701: hosted for a release/*|hotfix/*|fix/* PR into main (route-build-checks above); the
       # `!= '' && ... ||` guard falls back to self-hosted if that job's own step ever failed
       # before producing an output, rather than passing '' into fromJSON() downstream.
       runner_labels_json: ${{ needs.route-build-checks.outputs.light != '' && needs.route-build-checks.outputs.light || '["sieitz-runner"]' }}
@@ -203,7 +211,7 @@ jobs:
       # what was measured, but this hasn't been re-measured post-split. Keep
       # all three on the large box until it is -- the conservative default,
       # not a re-confirmed one.
-      # #1529: hosted for a release/*|hotfix/* PR into main (route-build-checks above); same
+      # #1529/#1701: hosted for a release/*|hotfix/*|fix/* PR into main (route-build-checks above); same
       # empty-output fallback reasoning as the two jobs above.
       app: dgfy-ims
       runner_labels_json: ${{ needs.route-build-checks.outputs.heavy != '' && needs.route-build-checks.outputs.heavy || '["sieitz-lg"]' }}
