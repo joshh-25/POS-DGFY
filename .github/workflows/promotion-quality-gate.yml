@@ -1524,8 +1524,20 @@ jobs:
             echo "GHA_EOF_1066"
           } >> "$GITHUB_OUTPUT"
 
-  repository-quality:
+  # 2026-09-07 (#1690): the former single `repository-quality` job (13 steps across dependency
+  # audits, compliance/env checks, CI-self-test contracts, and docs/release hygiene) is split into
+  # 3 concern-based jobs below, following this workflow's own existing one-job-per-concern
+  # convention (see `dgfy-api-quality` etc. above) -- so a red check-run in the Checks tab names
+  # which of 3 domains failed instead of leaving the reader to open the run and scroll 13 steps to
+  # find out. Every step's own id, command, and blocking/advisory status is unchanged; only the
+  # job grouping and job name(s) changed. See docs/ops/RELEASE_CANDIDATE_POLICY.md's matching
+  # 2026-09-07 amendment for the rationale and before/after job names.
+  repository-dependency-quality:
     needs: gate
+    # Split from the former `repository-quality` job (#1690): dependency/compliance/env posture --
+    # "is this repo's declared and installed state trustworthy" -- grouped separately from the
+    # CI-self-test contracts (`repository-ci-contracts-quality`) and docs/release hygiene
+    # (`repository-docs-quality`) below.
     # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
     # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
     # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
@@ -1656,6 +1668,130 @@ jobs:
         run: npm run check:production-env
         timeout-minutes: 5
 
+      - name: Run compatibility-seam contract gate
+        id: run_compat_seams
+        run: npm run check:compat-seams
+        continue-on-error: true
+        timeout-minutes: 5
+
+      - name: Record real per-step outcomes for advisory-failure reporting
+        id: record_outcomes
+        if: always()
+        continue-on-error: true
+        env:
+          STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
+            Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install repository dependencies|${{ steps.install_repo_deps.outcome }}
+            Run production dependency audit|${{ steps.run_dependency_audit_prod.outcome }}
+            Run full dependency audit|${{ steps.run_dependency_audit_full.outcome }}
+            Run compliance contract checks|${{ steps.run_compliance_contracts.outcome }}
+            Run production env fixture checks|${{ steps.run_production_env_fixtures.outcome }}
+            Run compatibility-seam contract gate|${{ steps.run_compat_seams.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### repository-dependency-quality step outcomes"
+            echo ""
+            echo "| Step | Outcome |"
+            echo "|---|---|"
+            printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '{print "| " $1 " | " $2 " |"}'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  repository-ci-contracts-quality:
+    needs: gate
+    # Split from the former `repository-quality` job (#1690): CI/workflow self-validation --
+    # contracts that validate this repo's own CI configuration, not product code -- grouped
+    # separately from the dependency/compliance/env group above and the docs/release hygiene group
+    # below.
+    # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
+    # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
+    # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
+    # job-level alone wasn't enough).
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. See gate/
+    # dgfy-api-quality's comments above for the release/* -> main-leg-only
+    # reasoning (F-3) -- same logic applies here.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
+    timeout-minutes: 15
+    outputs:
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
+    steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - id: checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 5
+        with:
+          fetch-depth: 0
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Setup Node.js
+        id: setup_node
+        uses: actions/setup-node@v4
+        continue-on-error: true
+        timeout-minutes: 5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install repository dependencies
+        id: install_repo_deps
+        run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
+
       # Name corrected 2026-08-26 (#1066 follow-up): this workflow's own quality checks stopped
       # being blocking under #1063, so "blocking" in this step's name was stale -- the contract it
       # validates (the sanctioned #1063 if:/continue-on-error: shape) isn't about blocking either.
@@ -1709,6 +1845,122 @@ jobs:
         run: npm run test:preflight-sweep
         timeout-minutes: 5
 
+      - name: Record real per-step outcomes for advisory-failure reporting
+        id: record_outcomes
+        if: always()
+        continue-on-error: true
+        env:
+          STEP_OUTCOMES: |
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
+            Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install repository dependencies|${{ steps.install_repo_deps.outcome }}
+            Validate PR quality workflow contract|${{ steps.validate_pr_quality_workflow.outcome }}
+            Validate runner routing contract|${{ steps.validate_runner_routing.outcome }}
+            Validate workspace hygiene contract|${{ steps.validate_workspace_hygiene.outcome }}
+            Validate compliance sweep contract|${{ steps.validate_compliance_sweep.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### repository-ci-contracts-quality step outcomes"
+            echo ""
+            echo "| Step | Outcome |"
+            echo "|---|---|"
+            printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '{print "| " $1 " | " $2 " |"}'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  repository-docs-quality:
+    needs: gate
+    # Split from the former `repository-quality` job (#1690): docs/release/repo hygiene -- grouped
+    # separately from the dependency/compliance/env group and the CI-self-test contracts group
+    # above.
+    # #1063: skipped entirely on the develop->staging soak leg; runs everywhere else with every
+    # step advisory (`continue-on-error: true` on each step below, not just this job-level line --
+    # 2026-08-26 #1066 correction, see the workflow-level comment at the top of this file for why
+    # job-level alone wasn't enough).
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. See gate/
+    # dgfy-api-quality's comments above for the release/* -> main-leg-only
+    # reasoning (F-3) -- same logic applies here.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
+    timeout-minutes: 15
+    outputs:
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
+    steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - id: checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 5
+        with:
+          fetch-depth: 0
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Setup Node.js
+        id: setup_node
+        uses: actions/setup-node@v4
+        continue-on-error: true
+        timeout-minutes: 5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install repository dependencies
+        id: install_repo_deps
+        run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
+
       - name: Run governed documentation lint
         id: run_docs_lint
         run: npm run lint:docs
@@ -1727,12 +1979,6 @@ jobs:
       - name: Run release-notes check
         id: run_release_notes
         run: npm run check:release-notes
-        continue-on-error: true
-        timeout-minutes: 5
-
-      - name: Run compatibility-seam contract gate
-        id: run_compat_seams
-        run: npm run check:compat-seams
         continue-on-error: true
         timeout-minutes: 5
 
@@ -1781,17 +2027,8 @@ jobs:
             Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
             Setup Node.js|${{ steps.setup_node.outcome }}
             Install repository dependencies|${{ steps.install_repo_deps.outcome }}
-            Run production dependency audit|${{ steps.run_dependency_audit_prod.outcome }}
-            Run full dependency audit|${{ steps.run_dependency_audit_full.outcome }}
-            Run compliance contract checks|${{ steps.run_compliance_contracts.outcome }}
-            Run production env fixture checks|${{ steps.run_production_env_fixtures.outcome }}
-            Validate PR quality workflow contract|${{ steps.validate_pr_quality_workflow.outcome }}
-            Validate runner routing contract|${{ steps.validate_runner_routing.outcome }}
-            Validate workspace hygiene contract|${{ steps.validate_workspace_hygiene.outcome }}
-            Validate compliance sweep contract|${{ steps.validate_compliance_sweep.outcome }}
             Run governed documentation lint|${{ steps.run_docs_lint.outcome }}
             Run release-notes check|${{ steps.run_release_notes.outcome }}
-            Run compatibility-seam contract gate|${{ steps.run_compat_seams.outcome }}
             Check retired-path resurrection|${{ steps.check_retired_path_resurrection.outcome }}
             Check changed-file whitespace|${{ steps.check_whitespace.outcome }}
         run: |
@@ -1801,6 +2038,13 @@ jobs:
             echo "$FAILED"
             echo "GHA_EOF_1066"
           } >> "$GITHUB_OUTPUT"
+          {
+            echo "### repository-docs-quality step outcomes"
+            echo ""
+            echo "| Step | Outcome |"
+            echo "|---|---|"
+            printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '{print "| " $1 " | " $2 " |"}'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # 2026-08-26 (#1066 follow-up), added alongside the step-level continue-on-error fix above: since
   # every quality job's own `conclusion` now always reads success (that's the whole point of the fix
@@ -1846,7 +2090,9 @@ jobs:
       - frontend-ims-quality
       - frontend-pos-quality
       - frontend-storefront-quality
-      - repository-quality
+      - repository-dependency-quality
+      - repository-ci-contracts-quality
+      - repository-docs-quality
       - frontend-budgets-quality
     # 2026-08-31 (#1253): restores the is_staging_leg exclusion #1124/#1165 item 4 dropped -- this
     # job has nothing to report when every job it depends on was itself skipped on the staging leg,
@@ -1891,7 +2137,9 @@ jobs:
           IMS_FAILURES: ${{ needs.frontend-ims-quality.outputs.real_failures }}
           POS_FAILURES: ${{ needs.frontend-pos-quality.outputs.real_failures }}
           STOREFRONT_FAILURES: ${{ needs.frontend-storefront-quality.outputs.real_failures }}
-          REPOSITORY_FAILURES: ${{ needs.repository-quality.outputs.real_failures }}
+          REPOSITORY_DEPENDENCY_FAILURES: ${{ needs.repository-dependency-quality.outputs.real_failures }}
+          REPOSITORY_CI_CONTRACTS_FAILURES: ${{ needs.repository-ci-contracts-quality.outputs.real_failures }}
+          REPOSITORY_DOCS_FAILURES: ${{ needs.repository-docs-quality.outputs.real_failures }}
           FRONTEND_BUDGETS_FAILURES: ${{ needs.frontend-budgets-quality.outputs.real_failures }}
         with:
           github-token: ${{ github.token }}
@@ -1979,7 +2227,9 @@ jobs:
             addIfPresent('frontend-ims-quality', process.env.IMS_FAILURES);
             addIfPresent('frontend-pos-quality', process.env.POS_FAILURES);
             addIfPresent('frontend-storefront-quality', process.env.STOREFRONT_FAILURES);
-            addIfPresent('repository-quality', process.env.REPOSITORY_FAILURES);
+            addIfPresent('repository-dependency-quality', process.env.REPOSITORY_DEPENDENCY_FAILURES);
+            addIfPresent('repository-ci-contracts-quality', process.env.REPOSITORY_CI_CONTRACTS_FAILURES);
+            addIfPresent('repository-docs-quality', process.env.REPOSITORY_DOCS_FAILURES);
             addIfPresent('frontend-budgets-quality', process.env.FRONTEND_BUDGETS_FAILURES);
 
             if (lines.length === 0) {
