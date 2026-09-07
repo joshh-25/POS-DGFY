@@ -147,6 +147,17 @@ ordinary default flow — see `../SKILL.md`'s "Compliance preflight sweep" secti
 here is a frozen-candidate anomaly, not a routine case, and where a genuine fix actually goes
 instead (a `fix/staging/*` repair, not this section's `develop`-based flow).
 
+**If the finding belongs to a fix a Worker is actively authoring right now for this leg** (as
+opposed to a stray pre-existing `NOT-EXECUTED-*` this scan just happened to surface), the
+recommended fix is `npm run compliance:reconcile-local -- <file>` as part of that fix's own commit
+— see `docs/compliance/request-time-preflight-protocol.md`'s "Reconciling one declaration locally,
+without a CI round trip" (#1694). It reconciles the declaration synchronously against a local
+ephemeral fixture, with no branch/commit/PR of its own, so the reconciled front matter lands in the
+same PR as the fix rather than needing a second sweep-handoff PR at all. This is the sanctioned
+alternative to the `fix/staging/*` repair route above whenever a Worker is already touching the
+declaration — the `fix/staging/*` path is still correct for a pre-existing finding with no in-flight
+fix behind it.
+
 ## #1007-gated exception: direct `develop` → `main`
 
 **Ran `gate:release:local` locally at any point earlier in this session? `git status` before
@@ -256,6 +267,27 @@ git fetch origin
 git ls-remote --exit-code --heads origin staging || echo "MISSING — restore before proceeding"
 
 CANDIDATE_ID=$(date +%Y-%m-%d)-01
+```
+
+**Pre-cut divergence check (#1696)** — run before anything else in this leg, including the floor
+step below:
+
+```bash
+node scripts/check-promotion-divergence.js --base origin/staging --head origin/develop
+```
+
+`pass`/`warn` → proceed. `fail` (a real conflict) is a hard stop — resolve it (finish an
+outstanding backport, or hand-resolve on the promotion branch itself) before cutting
+`to-staging/$CANDIDATE_ID`. After the candidate merges into `staging` (whether Check A above was
+clean or a conflict had to be hand-resolved first), run the pre-existing merge-hygiene checker as
+the post-resolution safety net:
+
+```bash
+npm run check:merge-hygiene -- \
+  --base <merge-base of origin/develop and origin/staging before the cut> \
+  --head <the to-staging/$CANDIDATE_ID merge commit SHA, once merged> \
+  --target origin/staging \
+  --report .tmp/release-gates/$CANDIDATE_ID/merge_hygiene_report.json
 ```
 
 **Pre-cut floor step (ADR 0081 Decision 6, #1588)** — run before cutting the branch, not after.

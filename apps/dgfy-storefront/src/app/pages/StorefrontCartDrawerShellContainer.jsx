@@ -85,11 +85,11 @@ export function StorefrontCartDrawerShellContainer(props) {
   const isDefaultCartSurfaceMode = !isFnbMode && !isServicesMode && !isSimpleMode;
   // Retail's own /order page already shows cart contents/totals in its own summary panels
   // (RetailOrderSummaryContent/RetailOrderMobileSummaryPanel), so the floating cart
-  // button+drawer are redundant there — hidden the same way isSimpleCartSurfaceMode already
-  // hides MSME's equivalent on its own order subpage. Scoped to retail only: the other
-  // default-like modes' DefaultOrderPage has no such summary of its own yet.
+  // button+drawer are redundant there. Product details keep the drawer mounted so Add to Cart
+  // can open it directly, while hiding the redundant floating trigger across product modes.
   const shouldRenderDefaultCartSurface = isDefaultCartSurfaceMode
-    && !(isRetailMode && (isResolvedOrderSubpage || isFnbDetailsSubpage));
+    && !(isRetailMode && isResolvedOrderSubpage);
+  const shouldShowProductCartFab = !isFnbDetailsSubpage;
   // Each mode's own cart-fly-animation color/icon — F&B's orange is reproduced explicitly
   // (previously hardcoded inside StorefrontCartFlyAnimations itself); Retail gets its own blue
   // (matching DefaultProductCartFab.jsx); Simple uses its green/cream presentation palette.
@@ -111,16 +111,20 @@ export function StorefrontCartDrawerShellContainer(props) {
       {(isServicesMode || isFnbMode || isRetailMode || isSimpleMode) && (
         <StorefrontCartFlyAnimations animations={serviceCartFlyAnimations} {...cartFlyAnimationProps} />
       )}
-      {!isAccountDrawerOpen && isSimpleCartSurfaceMode && !isFnbDetailsSubpage && (
+      {!isAccountDrawerOpen && isSimpleCartSurfaceMode && (
         <>
-          <SimpleCartFloatingButton {...simpleCartDrawerProps.floatingButtonProps} />
+          {shouldShowProductCartFab && (
+            <SimpleCartFloatingButton {...simpleCartDrawerProps.floatingButtonProps} />
+          )}
 
           <SimpleCartDrawerSurface {...simpleCartDrawerProps.drawerSurfaceProps} />
         </>
       )}
       {!isAccountDrawerOpen && shouldRenderDefaultCartSurface && (
         <>
-          <DefaultProductCartFab {...defaultProductCartDrawerProps.floatingButtonProps} />
+          {shouldShowProductCartFab && (
+            <DefaultProductCartFab {...defaultProductCartDrawerProps.floatingButtonProps} />
+          )}
 
           <DefaultProductCartDrawer {...defaultProductCartDrawerProps.drawerSurfaceProps} />
         </>

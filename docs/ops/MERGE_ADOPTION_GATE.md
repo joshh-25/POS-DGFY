@@ -18,6 +18,8 @@ Use this gate when a release adopts work from another branch, PR, or reference h
 
 Every PR and staging/master promotion runs lightweight merge hygiene before the full merge-adoption-required check:
 
+(#1696, 2026-09-07: this now has a real call site — `.agents/skills/promoter/SKILL.md`'s frozen-candidate/repair loop invokes it as the post-resolution verification step after a `to-staging/<candidate_id>` merge into `staging` lands, rather than only the "every PR" framing this doc describes below.)
+
 ```bash
 npm run check:merge-hygiene -- --base <base-ref> --head <head-ref> --target <target-ref> --report .tmp/release-gates/<sha>/merge_hygiene_report.json
 ```

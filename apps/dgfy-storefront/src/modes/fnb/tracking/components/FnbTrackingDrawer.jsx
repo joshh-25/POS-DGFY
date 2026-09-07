@@ -1,52 +1,59 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Info, Trash2, X } from 'lucide-react';
 import { FnbTrackingDrawerCard } from './FnbTrackingDrawerCard.jsx';
 import { FnbTrackingDrawerEmptyState } from './FnbTrackingDrawerEmptyState.jsx';
+import { filterTrackingDrawerOrders, isLikelyTrackingPin, normalizeTrackingPinInput, TrackingDrawerSearch } from '../../../../tracking/components/TrackingDrawerSearch.jsx';
 
 export function FnbTrackingDrawer({
   isOpen,
   isMobileViewport,
   selectedStore,
   guestTrackedOrders,
-  expandedGuestDrawerPins,
-  onExpandedGuestDrawerPinsChange,
   onClose,
   openFullTrackingForPin,
+  onSearchOrderByPin,
   withAssetOrigin,
   money,
   isAccountTracking = false,
   onClearAllOrders
 }) {
-  if (!isOpen) return null;
+  const orders = useMemo(() => (Array.isArray(guestTrackedOrders) ? guestTrackedOrders : []), [guestTrackedOrders]);
+  const drawerWidth = isMobileViewport ? '100vw' : 500;
+  const searchOrderByPin = onSearchOrderByPin || openFullTrackingForPin;
+  const [searchQuery, setSearchQuery] = useState('');
+  const visibleOrders = useMemo(() => filterTrackingDrawerOrders(orders, searchQuery), [orders, searchQuery]);
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    if (!isLikelyTrackingPin(searchQuery) || !searchOrderByPin) return;
+    const normalizedPin = normalizeTrackingPinInput(searchQuery);
+    const hasLocalMatch = orders.some((entry) => normalizeTrackingPinInput(entry?.tracking_pin) === normalizedPin);
+    if (!hasLocalMatch) searchOrderByPin(normalizedPin);
+  };
 
-  const orders = Array.isArray(guestTrackedOrders) ? guestTrackedOrders : [];
-  const expandedPins = Array.isArray(expandedGuestDrawerPins) ? expandedGuestDrawerPins : [];
-  const drawerWidth = isMobileViewport ? 'min(96vw, 480px)' : 500;
+  if (!isOpen) return null;
 
   return (
     <>
       <button type="button" aria-label="Close tracking drawer" onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 2498, border: 'none', background: 'rgba(15,23,42,0.30)', cursor: 'pointer' }} />
-      <aside style={{ position: 'fixed', top: 0, right: 0, zIndex: 2499, width: drawerWidth, maxWidth: '100vw', height: '100dvh', background: '#f0f4f8', borderLeft: '1px solid #dbe5ee', boxShadow: '-20px 0 56px rgba(15,23,42,0.18)', display: 'flex', flexDirection: 'column', overflow: 'hidden', overscrollBehavior: 'contain', fontFamily: 'inherit' }}>
+      <aside aria-label="In progress orders" style={{ position: 'fixed', top: 0, right: 0, zIndex: 2499, width: drawerWidth, maxWidth: '100vw', height: '100dvh', background: '#f0f4f8', borderLeft: '1px solid #dbe5ee', boxShadow: '-20px 0 56px rgba(15,23,42,0.18)', display: 'flex', flexDirection: 'column', overflow: 'hidden', overscrollBehavior: 'contain', fontFamily: 'inherit' }}>
         <header style={{ background: '#fff', borderBottom: '1px solid #e8f0f8', padding: isMobileViewport ? '16px 16px' : '20px 22px', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.2 }}>In Progress Orders</div>
+              <h2 style={{ fontSize: 20, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.2 }}>In Progress Orders</h2>
               <div style={{ marginTop: 4, fontSize: 13, color: '#64748b', fontWeight: 600 }}>{isAccountTracking ? 'Active orders linked to your DGFY account.' : 'Active guest orders saved on this device.'}</div>
             </div>
-            <button type="button" onClick={onClose} aria-label="Close" style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><X size={18} /></button>
+            <button type="button" onClick={onClose} aria-label="Close" className="tracking-drawer-close" style={{ width: 44, height: 44, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><X size={20} /></button>
           </div>
         </header>
         <main style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain', padding: isMobileViewport ? '16px 14px' : '20px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {orders.length === 0 ? <FnbTrackingDrawerEmptyState isAccountTracking={isAccountTracking} /> : orders.map((entry) => {
+          <TrackingDrawerSearch isMobileViewport={isMobileViewport} onSearchOrderByPin={searchOrderByPin} onSubmit={handleSearchSubmit} query={searchQuery} setQuery={setSearchQuery} showNoResults={Boolean(searchQuery.trim()) && visibleOrders.length === 0} />
+          {orders.length === 0 && !searchQuery.trim() ? <FnbTrackingDrawerEmptyState isAccountTracking={isAccountTracking} /> : visibleOrders.map((entry) => {
             const entryPin = String(entry.tracking_pin || '').trim().toUpperCase();
-            const expanded = expandedPins.includes(entryPin);
             return (
               <FnbTrackingDrawerCard
                 key={`fnb-track-drawer-${entryPin}`}
                 entry={entry}
                 entryPin={entryPin}
-                expanded={expanded}
-                onToggle={() => onExpandedGuestDrawerPinsChange(expanded ? expandedPins.filter((pin) => pin !== entryPin) : [...expandedPins, entryPin])}
                 onViewOrder={() => openFullTrackingForPin(entryPin)}
                 selectedStore={selectedStore}
                 withAssetOrigin={withAssetOrigin}

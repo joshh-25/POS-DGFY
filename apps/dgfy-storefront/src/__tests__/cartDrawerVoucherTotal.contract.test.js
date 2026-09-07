@@ -75,6 +75,17 @@ describe('cart drawer voucher/promo total', () => {
     expect(arm).toMatch(/hasAppliedDiscountCode/);
   });
 
+  it('the shared voucher removal path clears the quote and re-quotes without a code', () => {
+    const quoteSource = read('modes/fnb/checkout/hooks/useFnbCheckoutQuote.js');
+    const rendererSource = read('modes/fnb/checkout/hooks/useFnbCheckoutPromoRenderers.jsx');
+
+    expect(quoteSource).toMatch(/const handleVoucherCardRemove = useCallback/);
+    expect(quoteSource).toMatch(/setCheckoutVoucherCode\(''\)/);
+    expect(quoteSource).toMatch(/setQuoteResult\(null\)/);
+    expect(quoteSource).toMatch(/requestQuote\(\{ voucherCodeOverride: '', silent: true \}\)/);
+    expect(rendererSource).toMatch(/onClear=\{handleVoucherCardRemove\}/);
+  });
+
   // #746: live-verified 2026-08-20 -- a signed-in DGFY customer applied a voucher and it still
   // never appeared, even with all guest identity fields satisfied. requestQuote sent
   // `readStoreAuthToken()` unconditionally (the guest/store-scoped token), never checking sign-in

@@ -17,7 +17,7 @@
  */
 
 export const cartInitialState = {
-  cart: { items: [] }
+  cart: { items: [], imageErrors: new Set() }
 };
 
 export const createCartSlice = (set) => ({
@@ -28,6 +28,14 @@ export const createCartSlice = (set) => ({
       cart: {
         ...s.cart,
         items: typeof next === 'function' ? next(s.cart.items) : next
+      }
+    })),
+
+  cartSetImageErrors: (next) =>
+    set((s) => ({
+      cart: {
+        ...s.cart,
+        imageErrors: typeof next === 'function' ? next(s.cart.imageErrors) : next
       }
     }))
 });

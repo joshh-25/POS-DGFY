@@ -146,10 +146,10 @@ test('checkStagingLegSkipShape: an `if:` missing the staging-leg exclusion (the 
 });
 
 test('checkStagingLegSkipShape: a job missing `if:` entirely is caught', () => {
-  const text = buildWorkflowWithJobLines((name) => (name === 'repository-quality' ? { ifLine: null } : {}));
+  const text = buildWorkflowWithJobLines((name) => (name === 'repository-dependency-quality' ? { ifLine: null } : {}));
   const problems = checkStagingLegSkipShape(text);
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /"repository-quality"'s `if:` must be exactly/);
+  assert.match(problems[0], /"repository-dependency-quality"'s `if:` must be exactly/);
   assert.match(problems[0], /found: none/);
 });
 
@@ -279,21 +279,28 @@ const CORRECT_BLOCKING_JOB_BUILDERS = {
     ['checkout', 'run_storefront_lint', 'run_storefront_vitest'],
     { coeAt: ['checkout'] }
   ),
-  // #1431 Phase 2 (2026-09-02), P2-1: run_production_env_fixtures (gate 7) joins run_docs_lint as
-  // blocking. #1431 Phase C (2026-09-03): run_dependency_audit_prod/run_compliance_contracts join
-  // too; run_dependency_audit_full stays advisory (settled permanently), so it's not listed here.
-  // 2026-09-04 (#1550/#1551 triage): validate_pr_quality_workflow/validate_runner_routing/
-  // validate_workspace_hygiene/validate_compliance_sweep join too.
-  // 2026-09-04 (#1552): check_whitespace joins too.
-  'repository-quality': () => buildJobWithNamedSteps(
-    'repository-quality',
-    [
-      'checkout', 'run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod',
-      'run_compliance_contracts', 'run_dependency_audit_full', 'validate_pr_quality_workflow',
-      'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep',
-      'check_whitespace'
-    ],
+  // #1690: the former single 'repository-quality' builder below is split into 3, one per new job,
+  // matching BLOCKING_STEP_IDS' own split.
+  // #1431 Phase 2 (2026-09-02), P2-1: run_production_env_fixtures (gate 7) joins as blocking.
+  // #1431 Phase C (2026-09-03): run_dependency_audit_prod/run_compliance_contracts join too;
+  // run_dependency_audit_full stays advisory (settled permanently), so it's not listed here.
+  'repository-dependency-quality': () => buildJobWithNamedSteps(
+    'repository-dependency-quality',
+    ['checkout', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts', 'run_dependency_audit_full'],
     { coeAt: ['checkout', 'run_dependency_audit_full'] }
+  ),
+  // 2026-09-04 (#1550/#1551 triage): validate_pr_quality_workflow/validate_runner_routing/
+  // validate_workspace_hygiene/validate_compliance_sweep -- all blocking.
+  'repository-ci-contracts-quality': () => buildJobWithNamedSteps(
+    'repository-ci-contracts-quality',
+    ['checkout', 'validate_pr_quality_workflow', 'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep'],
+    { coeAt: ['checkout'] }
+  ),
+  // run_docs_lint blocking since #1431 Phase 1. 2026-09-04 (#1552): check_whitespace joins too.
+  'repository-docs-quality': () => buildJobWithNamedSteps(
+    'repository-docs-quality',
+    ['checkout', 'run_docs_lint', 'check_whitespace'],
+    { coeAt: ['checkout'] }
   ),
   // #1431 Phase C (2026-09-03): frontend-budgets-quality's first BLOCKING_STEP_IDS entry.
   'frontend-budgets-quality': () => buildJobWithNamedSteps(
@@ -339,19 +346,15 @@ test('checkStepLevelAdvisory: an unlisted step silently missing continue-on-erro
 test('checkStepLevelAdvisory: a blocking step id that is missing entirely (renamed/removed) is caught', () => {
   const text = buildAdvisoryWorkflow({
     ...CORRECT_BLOCKING_JOB_BUILDERS,
-    'repository-quality': () => buildJobWithNamedSteps(
-      'repository-quality',
-      [
-        'checkout', 'run_docs_lint_renamed', 'run_production_env_fixtures', 'run_dependency_audit_prod',
-        'run_compliance_contracts', 'validate_pr_quality_workflow', 'validate_runner_routing',
-        'validate_workspace_hygiene', 'validate_compliance_sweep', 'check_whitespace'
-      ],
+    'repository-docs-quality': () => buildJobWithNamedSteps(
+      'repository-docs-quality',
+      ['checkout', 'run_docs_lint_renamed', 'check_whitespace'],
       { coeAt: ['checkout', 'run_docs_lint_renamed'] }
     )
   });
   const problems = checkStepLevelAdvisory(text);
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /"repository-quality" is expected to have a blocking step with id "run_docs_lint" \(BLOCKING_STEP_IDS\) but no step with that id was found/);
+  assert.match(problems[0], /"repository-docs-quality" is expected to have a blocking step with id "run_docs_lint" \(BLOCKING_STEP_IDS\) but no step with that id was found/);
 });
 
 // #1066 RF-4 (2026-08-26, pr-reviewer should-fix on PR #1068): checkStepLevelAdvisory above only
@@ -607,11 +610,11 @@ test('checkCiEnforcedGatesAreBlocking: the real CI_ENFORCED_GATES map (default a
 
 test('checkCiEnforcedGatesAreBlocking: a step id missing from BLOCKING_STEP_IDS for its job is caught', () => {
   const problems = checkCiEnforcedGatesAreBlocking(new Map([
-    ['docs.lint', { job: 'repository-quality', steps: ['run_docs_lint', 'some_new_step_not_yet_blocking'] }]
+    ['docs.lint', { job: 'repository-docs-quality', steps: ['run_docs_lint', 'some_new_step_not_yet_blocking'] }]
   ]));
   assert.equal(problems.length, 1);
   assert.match(problems[0], /"some_new_step_not_yet_blocking"/);
-  assert.match(problems[0], /"repository-quality"/);
+  assert.match(problems[0], /"repository-docs-quality"/);
 });
 
 test('checkCiEnforcedGatesAreBlocking: a job with no BLOCKING_STEP_IDS entry at all is caught', () => {
@@ -638,7 +641,7 @@ test('checkCiEnforcedGatesAreBlocking: every entry present and blocking reports 
 test('checkCiEnforcedGatesAreBlocking: an ADVISORY_CI_ENFORCED_GATES-listed gate is exempt from the blocking check', () => {
   const problems = checkCiEnforcedGatesAreBlocking(new Map([
     ['backend.test_matrix', { job: 'dgfy-api-quality', steps: ['run_test_matrix'] }],
-    ['dependencies.audit.full', { job: 'repository-quality', steps: ['run_dependency_audit_full'] }]
+    ['dependencies.audit.full', { job: 'repository-dependency-quality', steps: ['run_dependency_audit_full'] }]
   ]));
   assert.deepEqual(problems, []);
 });
@@ -646,7 +649,7 @@ test('checkCiEnforcedGatesAreBlocking: an ADVISORY_CI_ENFORCED_GATES-listed gate
 test('checkCiEnforcedGatesAreBlocking: a non-exempt gate lacking blocking coverage still fails even when an exempt gate is present', () => {
   const problems = checkCiEnforcedGatesAreBlocking(new Map([
     ['backend.test_matrix', { job: 'dgfy-api-quality', steps: ['run_test_matrix'] }],
-    ['docs.lint', { job: 'repository-quality', steps: ['some_not_yet_blocking_step'] }]
+    ['docs.lint', { job: 'repository-docs-quality', steps: ['some_not_yet_blocking_step'] }]
   ]));
   assert.equal(problems.length, 1);
   assert.match(problems[0], /"some_not_yet_blocking_step"/);

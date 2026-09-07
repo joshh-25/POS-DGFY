@@ -11,7 +11,7 @@ import { Edit2, MapPin, MoreHorizontal, Star, Trash2 } from 'lucide-react';
  *
  * Props:
  *   address     {id, addressId, label, fullAddress, isDefault, source}
- *   isSelected  bool  — applies blue glow + tinted background
+ *   isSelected  bool  — applies the industry-colored border + tinted background
  *   isBusy      bool  — dims the card and disables action buttons during API calls
  *   onSelect    fn(address) — called when the card body is clicked
  *   onSetDefault fn(address) — called when "Set default" is tapped (explicit action)
@@ -35,7 +35,6 @@ export function SavedAddressCard({
   themeBg = '#eff6ff',
   themeHoverBorder = '#93c5fd',
   themeHoverBg = '#f8fafc',
-  themeShadowColor = 'rgba(26,78,141,0.12)',
   themeShadowColorSoft = 'rgba(26,78,141,0.08)',
   compact = false,
 }) {
@@ -97,7 +96,7 @@ export function SavedAddressCard({
         ? `1.5px solid ${themeHoverBorder}`
         : '1.5px solid #dbe5ee',
     background: isSelected ? themeBg : isHoverActive ? themeHoverBg : '#ffffff',
-    boxShadow: isSelected ? `0 0 0 3px ${themeShadowColor}, 0 12px 28px ${themeShadowColorSoft}` : '0 1px 2px rgba(15,23,42,0.03)',
+    boxShadow: isSelected ? '0 1px 3px rgba(15,23,42,0.05)' : '0 1px 2px rgba(15,23,42,0.03)',
     padding: compact ? '10px 12px' : '14px 16px',
     display: 'flex',
     flexDirection: 'column',
@@ -105,7 +104,7 @@ export function SavedAddressCard({
     transition: 'border-color 180ms ease, box-shadow 180ms ease, background 180ms ease, transform 180ms ease',
     opacity: 1,
     cursor: isBusy ? 'wait' : 'default',
-    transform: isSelected ? 'translateY(-1px)' : 'translateY(0)',
+    transform: 'translateY(0)',
   };
 
   const iconCircleStyle = {

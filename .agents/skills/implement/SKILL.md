@@ -49,7 +49,13 @@ of these triggers actually firing (or correctly not firing) in practice.
    this is no longer a gap to route around.)
 3. **Commit** using Conventional Commits, batched by domain, per `docs/ai/PR.md` — read that file
    for the exact format rather than relying on this summary; it's short and it's the source of
-   truth, not this skill.
+   truth, not this skill. If this task's own branch isn't off `develop` (e.g. a `staging`/`release/*`
+   fix per this skill's own base-branch exception above) and it touches a compliance declaration
+   still carrying a `NOT-EXECUTED-*` `preflight_request_ref`, reconcile it locally as part of this
+   same commit with `npm run compliance:reconcile-local -- <file>` rather than relying on the
+   continuous `develop`-push sweep, which doesn't run against this branch — see
+   `docs/compliance/request-time-preflight-protocol.md`'s "Reconciling one declaration locally,
+   without a CI round trip" (#1694).
 4. **Self-verify in tiers.** Tier 0 is required, every time. Tiers 1-2 are opportunistic — run them
    when it's cheap to, skip them to save tokens/time otherwise, but never silently pretend a skip
    didn't happen.

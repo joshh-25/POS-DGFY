@@ -1,4 +1,6 @@
 export const LEAD_TIME_UNCONFIGURED_NOTICE = 'The store will confirm your fulfillment schedule after you place your order.';
+export const CHECKOUT_NOW_LABEL = 'NOW';
+export const CHECKOUT_SCHEDULE_LABEL = 'SCHEDULE';
 const dayCount = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
@@ -25,4 +27,17 @@ export function resolveTimingStepScheduleMode(policy, currentScheduleMode) {
   if (!policy?.showImmediate && policy?.showSchedule) return 'schedule';
   if (!policy?.showSchedule) return 'asap';
   return currentScheduleMode;
+}
+
+/**
+ * Keeps checkout summaries aligned with the timing choice. A schedule mode is
+ * meaningful before its date/time field is filled, so do not fall back to NOW
+ * while the customer is still completing that choice.
+ */
+export function resolveCheckoutScheduleLabel(scheduleMode = 'asap', scheduledFor = '') {
+  if (String(scheduleMode || '').trim().toLowerCase() !== 'schedule') return CHECKOUT_NOW_LABEL;
+  const normalizedScheduledFor = String(scheduledFor || '').trim();
+  if (!normalizedScheduledFor) return CHECKOUT_SCHEDULE_LABEL;
+  const parsedDate = new Date(normalizedScheduledFor);
+  return Number.isNaN(parsedDate.getTime()) ? CHECKOUT_SCHEDULE_LABEL : parsedDate.toLocaleString();
 }

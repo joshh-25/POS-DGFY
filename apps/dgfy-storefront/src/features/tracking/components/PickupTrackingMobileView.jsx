@@ -1,15 +1,18 @@
 import React from 'react';
 import {
   Check,
-  CheckCircle2,
+  Copy,
   Store,
   ChefHat,
   ShoppingBag,
-  Copy,
-  Clock3,
   FileText,
   RotateCcw
 } from 'lucide-react';
+import { StorefrontOrderInstructions } from '../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
+import { getTrackingFlowOrder, StorefrontTrackingLayout } from '../../../shared/components/tracking/StorefrontTrackingLayout.jsx';
+import { StorefrontTrackingStatusCard } from '../../../shared/components/tracking/StorefrontTrackingStatusCard.jsx';
+import { StorefrontTrackingTimeline } from '../../../shared/components/tracking/StorefrontTrackingTimeline.jsx';
+import { TRACKING_MAP_HEIGHT } from '../../../tracking/trackingMapSizing.js';
 
 export const PickupTrackingMobileView = ({
   trackingResult,
@@ -17,7 +20,6 @@ export const PickupTrackingMobileView = ({
   activeStepIndex,
   activeStatus,
   statusGuidance,
-  etaHeadline,
   theme,
   actions,
   formatters,
@@ -33,108 +35,59 @@ export const PickupTrackingMobileView = ({
   const discountLabel = String(trackingResult?.discountLabel || 'Promo / Discount').trim();
 
   // Extract theme colors
-  const { primary, secondary, bg, secondaryBg, border, softText } = theme;
-  const { copyTextToClipboard, setCheckoutTab, goStoreCatalogPage } = actions;
+  const { primary, bg, border, softText } = theme;
+  const { copyTextToClipboard, goStoreCatalogPage } = actions;
   const { money, formatTicketDate } = formatters;
   const isCompleted = activeStatus === 'completed';
-
-  // Helper for responsive font sizes on mobile
-  const textStyles = {
-    h2: { fontSize: 22, fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' },
-    h3: { fontSize: 18, fontWeight: 800, color: '#0f172a', margin: 0 },
-    body: { fontSize: 14, color: '#334155', lineHeight: 1.4 },
-    caption: { fontSize: 12, color: softText }
+  const handleBackToMenu = () => {
+    goStoreCatalogPage();
+    window.setTimeout(() => {
+      document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
   };
 
+  const statusIcon = activeStatus === 'confirmed'
+    ? <Store size={24} strokeWidth={2.5} />
+    : activeStatus === 'preparing'
+      ? <ChefHat size={24} strokeWidth={2.5} />
+      : <ShoppingBag size={24} strokeWidth={2.5} />;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 32 }}>
+    <StorefrontTrackingLayout isMobileViewport sidebarWidth={360} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 16, paddingBottom: 32 }}>
 
       {/* 1. Main Status Card (Compact) */}
-      <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 20, padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          <div style={{ width: 48, height: 48, borderRadius: '50%', background: primary, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {(activeStatus === 'placed' || activeStatus === 'ready_for_pickup' || activeStatus === 'completed') && <ShoppingBag size={24} strokeWidth={2.5} />}
-            {activeStatus === 'confirmed' && <Store size={24} strokeWidth={2.5} />}
-            {activeStatus === 'preparing' && <ChefHat size={24} strokeWidth={2.5} />}
-          </div>
-          <div>
-            <h2 style={textStyles.h2}>
-              {activeStatus === 'placed' ? 'Order Confirmed!' :
-               activeStatus === 'confirmed' ? 'Confirmed by Store!' :
-               activeStatus === 'preparing' ? 'Preparing Order \u2728' :
-               activeStatus === 'ready_for_pickup' ? 'Ready for Pickup! \uD83C\uDF89' : 'Pickup Completed!'}
-            </h2>
-          </div>
-        </div>
-
-        <div style={textStyles.body}>{statusGuidance}</div>
-
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
-          <span style={{ color: softText }}>Order PIN</span>
-          <span style={{ color: '#0f172a', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 12px' }}>{activeTrackingPin}</span>
-          <button type="button" onClick={() => copyTextToClipboard(activeTrackingPin, 'Order PIN copied.')} style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 6, color: primary, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            <Copy size={16} /> Copy
-          </button>
-        </div>
+      <div data-tracking-slot="status" style={{ order: getTrackingFlowOrder('status') }}>
+      <StorefrontTrackingStatusCard
+        title={activeStatus === 'placed' ? 'Order Confirmed!' : activeStatus === 'confirmed' ? 'Confirmed by Store!' : activeStatus === 'preparing' ? 'Preparing Order ✨' : activeStatus === 'ready_for_pickup' ? 'Ready for Pickup! 🎉' : 'Pickup Completed!'}
+        description={statusGuidance}
+        icon={statusIcon}
+        accentColor={primary}
+        background={bg}
+        borderColor={border}
+        isMobileViewport
+      />
       </div>
 
-      {/* 2. Timeline (Mobile Optimized) */}
-      <div style={{ position: 'relative', padding: '12px 0', display: 'flex', justifyContent: 'space-between', zIndex: 1, overflowX: 'hidden' }}>
-        <div style={{ position: 'absolute', top: 26, left: '10%', right: '10%', height: 3, background: '#e2e8f0', zIndex: -1 }}></div>
-        <div
-          style={{
-            position: 'absolute',
-            top: 26,
-            left: '10%',
-            width: `${Math.max(0, (activeStepIndex / (Math.max(1, trackingSteps.length - 1))) * 80)}%`,
-            height: 3,
-            background: isCompleted ? primary : '#94a3b8',
-            zIndex: -1,
-            transition: 'width 0.5s ease-in-out',
-            borderRadius: 999
-          }}
+      <div data-tracking-slot="timeline" style={{ order: getTrackingFlowOrder('timeline') }}>
+        <StorefrontTrackingTimeline
+          ariaLabel="Order progress"
+          steps={trackingSteps}
+          activeStepIndex={activeStepIndex}
+          isCompleted={isCompleted}
+          isMobileViewport
+          accentColor={primary}
+          renderStepIcon={({ done, index, size }) => (
+            done ? <Check size={size + 2} strokeWidth={4} /> :
+              index === 0 ? <FileText size={size} strokeWidth={2.5} /> :
+                index === 1 ? <Store size={size} strokeWidth={2.5} /> :
+                  index === 2 ? <ChefHat size={size} strokeWidth={2.5} /> :
+                    <ShoppingBag size={size} strokeWidth={2.5} />
+          )}
         />
-
-        {trackingSteps.map((step, index) => {
-          const done = index < activeStepIndex;
-          const active = index === activeStepIndex || (isCompleted && index === trackingSteps.length - 1);
-          const pending = !done && !active;
-          return (
-            <div key={`mobile-step-${step.id}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, gap: 6, minWidth: 0 }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: pending ? '#fff' : primary, border: `2px solid ${pending ? '#cbd5e1' : primary}`, color: pending ? '#cbd5e1' : '#fff', fontSize: 12, fontWeight: 900, display: 'grid', placeItems: 'center', transition: 'all 0.3s', zIndex: 2 }}>
-                {done ? <Check size={16} strokeWidth={4} /> :
-                 index === 0 ? <FileText size={14} strokeWidth={2.5} /> :
-                 index === 1 ? <Store size={14} strokeWidth={2.5} /> :
-                 index === 2 ? <ChefHat size={14} strokeWidth={2.5} /> :
-                 <ShoppingBag size={14} strokeWidth={2.5} />
-                }
-              </div>
-              <div style={{ textAlign: 'center', width: '100%' }}>
-                <div style={{ fontSize: 11, fontWeight: active ? 700 : 600, color: active ? primary : (pending ? '#94a3b8' : '#334155'), lineHeight: 1.2, wordWrap: 'break-word' }}>
-                  {step.label}
-                </div>
-              </div>
-            </div>
-          );
-        })}
       </div>
 
-      {/* 3. Preparation Info Card */}
-      <div style={{ background: secondaryBg, border: 'none', borderRadius: 16, padding: 16, display: 'flex', gap: 14, alignItems: 'center' }}>
-        <div style={{ color: secondary, display: 'flex', placeItems: 'center', flexShrink: 0 }}>
-          <ShoppingBag size={24} strokeWidth={2.5} />
-        </div>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: secondary }}>
-            {activeStatus === 'ready_for_pickup' || isCompleted ? 'Please pick up your order as soon as possible.' : 'We are preparing your order.'}
-          </div>
-          <div style={{ fontSize: 13, color: '#334155', marginTop: 4 }}>
-            {activeStatus === 'ready_for_pickup' || isCompleted ? 'For the best quality, we recommend picking up your order right away.' : 'We will notify you when it is ready for pickup.'}
-          </div>
-        </div>
-      </div>
-
-      {/* 4. Map / Diagram (Compact for Mobile) */}
+      {/* 3. Map / Diagram (shared responsive frame) */}
+      <div data-tracking-slot="map" style={{ order: getTrackingFlowOrder('map') }}>
       {TrackingRouteMap && mapProps && (
         <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
           <TrackingRouteMap
@@ -142,18 +95,30 @@ export const PickupTrackingMobileView = ({
             customerPin={null} // Pickup has no customer pin
             styleUrl={mapProps.styleUrl}
             transformRequest={mapProps.transformRequest}
-            mapHeight={140} // Significantly reduced height for mobile pickup
+            mapHeight={TRACKING_MAP_HEIGHT}
           />
         </div>
       )}
+      </div>
 
-      {/* 5. Order Details Outline */}
+      {/* 4. Order Details Outline */}
+      <div data-tracking-slot="details" style={{ order: 4 }}>
       <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 20, background: '#fff', boxShadow: '0 2px 8px rgba(15,23,42,.02)' }}>
         <h4 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 800 }}>Order Details</h4>
-        <div style={{ borderBottom: '1px dashed #cbd5e1', paddingBottom: 16, marginBottom: 16 }}>
+        <div style={{ borderBottom: '1px dashed #cbd5e1', paddingBottom: 4, marginBottom: 16 }}>
           <div style={{ fontSize: 12, color: softText }}>Order time</div>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{trackingResult.createdAt ? formatTicketDate(trackingResult.createdAt) : (trackingResult.updatedAt ? formatTicketDate(trackingResult.updatedAt) : 'Today')}</div>
         </div>
+        <div style={{ paddingBottom: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: softText }}>Order PIN</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', overflowWrap: 'anywhere' }}>{activeTrackingPin}</div>
+            <button type="button" onClick={() => copyTextToClipboard(activeTrackingPin, 'Order PIN copied.')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: primary, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              <Copy size={14} /> Copy
+            </button>
+          </div>
+        </div>
+        <StorefrontOrderInstructions value={trackingResult.specialInstructions} accentColor={primary} compact />
         <div style={{ display: 'grid', gap: 12 }}>
           {trackingResult.items && trackingResult.items.map((item, idx) => (
             <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
@@ -193,9 +158,10 @@ export const PickupTrackingMobileView = ({
           <span style={{ fontSize: 18, fontWeight: 900, color: primary }}>{money(trackingResult.totalAmount || 0)}</span>
         </div>
       </div>
+      </div>
 
-      {/* 6. Footer Actions */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
+      {/* 5. Footer Actions */}
+      <div data-tracking-slot="actions" style={{ order: 5, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
         {isCompleted && (
           <button
             type="button"
@@ -205,11 +171,11 @@ export const PickupTrackingMobileView = ({
             <RotateCcw size={18} /> Order Again
           </button>
         )}
-        <button type="button" onClick={() => setCheckoutTab('menu')} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 14, padding: '14px', fontSize: 15, fontWeight: 700, color: '#334155', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <button type="button" onClick={handleBackToMenu} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 14, padding: '14px', fontSize: 15, fontWeight: 700, color: '#334155', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           Back to Menu
         </button>
       </div>
 
-    </div>
+    </StorefrontTrackingLayout>
   );
 };

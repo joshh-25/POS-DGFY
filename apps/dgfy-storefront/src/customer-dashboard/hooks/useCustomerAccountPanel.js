@@ -72,8 +72,7 @@ export function useCustomerAccountPanel({
           ? addressesData.addresses
           : (Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : []);
         const account = meData?.account || dashboardData?.account || meData || null;
-        setDgfySessionAccount(account || dgfySessionAccount || null);
-        setAccountPanel({
+        const nextAccountPanel = {
           loading: false,
           error: '',
           me: account,
@@ -93,7 +92,16 @@ export function useCustomerAccountPanel({
           affiliateEarningsByStore: Array.isArray(affiliateEarningsData?.by_store) ? affiliateEarningsData.by_store : [],
           affiliatePayoutMethods: Array.isArray(affiliatePayoutMethodsData?.payout_methods) ? affiliatePayoutMethodsData.payout_methods : [],
           affiliateCashouts: Array.isArray(affiliateCashoutsData?.cashouts) ? affiliateCashoutsData.cashouts : []
-        });
+        };
+        setAccountPanel(nextAccountPanel);
+        // Avoid publishing an equivalent account object on every dashboard
+        // refresh. The session store is an external subscription and can
+        // flush synchronously; replacing an equal object here would rerender
+        // the shell before the panel's loaded marker is committed, causing
+        // its bootstrap effect to start the same request again.
+        if (String(dgfySessionAccount?.id || '') !== String(account?.id || '')) {
+          setDgfySessionAccount(account || dgfySessionAccount || null);
+        }
         return;
       }
 

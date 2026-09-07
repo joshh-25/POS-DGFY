@@ -36,7 +36,15 @@
  */
 
 const { execSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
+
+const {
+    REACHABILITY_SCOPE_DIRS,
+    ENTRY_FILE_BY_APP,
+    computeAppReachableModules,
+    auditReachabilitySafety,
+} = require('./resolve-web-core-reachability');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -233,6 +241,125 @@ function detectChangedApps(repoRoot, headGitRef, changedFiles) {
     });
 }
 
+// --- Phase 303 (#1695): import-graph-aware reachability, SHADOW MODE ONLY --------------------
+//
+// detectChangedApps() above is UNCHANGED by this section -- it stays the sole source of the real,
+// gating "changed" verdict (directory containment, not reachability). Everything below is an
+// additive, log-only companion: for every app whose "changed: true" verdict came from a fan-out
+// package (never a direct apps/<app>/ change -- that verdict is unconditional and has nothing to
+// narrow), compute what the #1695 plan's reachability oracle WOULD have said, and print it
+// alongside the old verdict. This never feeds back into detectChangedApps()/runCheck()'s own `ok`/
+// `changed` results -- see runReachabilityShadowAudit()'s call site in main() for the isolation.
+//
+// A changed file that no longer exists at headGitRef (deleted between base and head) can never
+// appear in a reachability graph built from the working tree -- §3.4's conservative default
+// applies: treat it as an automatic "changed" rather than silently reading its absence from the
+// graph as "not reachable".
+function fileExistsAtRef(repoRoot, ref, relativePath) {
+    try {
+        execSync(`git cat-file -e ${ref}:${relativePath}`, { cwd: repoRoot, stdio: 'ignore' });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// Pure-ish (one git call for deletion checks) per-app shadow verdict. `entry` is one of
+// detectChangedApps()'s own returned objects (already filtered to `changed: true` by the caller);
+// `changedFiles` is the same list runCheck() already computed. Never throws -- any unexpected
+// failure degrades to the same conservative "changed" the old verdict already reached, logged as
+// its own code so a shadow-mode disagreement is never silently swallowed as agreement.
+async function computeReachabilityShadowVerdict(repoRoot, headGitRef, entry, changedFiles) {
+    if (!entry.reason.startsWith('fan-out:')) {
+        return { applicable: false, reason: 'not-fan-out-triggered (direct app change -- nothing to narrow)' };
+    }
+
+    const fanOutPackage = entry.reason.slice('fan-out:'.length);
+    const entryFile = ENTRY_FILE_BY_APP[entry.app];
+    if (!entryFile) {
+        return { applicable: false, reason: `no known bundler entry for ${entry.app} (backend app -- Node module resolution, out of scope per the #1695 plan's §3.5)` };
+    }
+
+    try {
+        const scopeDirs = REACHABILITY_SCOPE_DIRS.filter((dir) => fs.existsSync(path.join(repoRoot, dir)));
+        // RF-2 (PR #1708 review): the safety-net audit must also cover this app's own source tree
+        // and packages/pos-receipt, not just packages/web-core/packages/shared-constants -- a
+        // self-referential `@/...`/`@sieitzz/...` alias this module can't resolve can appear in
+        // either. See resolve-web-core-reachability.js's ALIAS_EDGE_SCAN_DIRS header comment.
+        const aliasScanDirs = [...scopeDirs, 'packages/pos-receipt', `apps/${entry.app}`]
+            .filter((dir) => fs.existsSync(path.join(repoRoot, dir)));
+        const audit = auditReachabilitySafety(repoRoot, scopeDirs, aliasScanDirs);
+        if (!audit.safe) {
+            return {
+                applicable: true,
+                changed: true,
+                code: 'safety-net-tripped',
+                safetyNetPassed: false,
+                violations: audit.violations,
+                detail: `safety net found ${audit.violations.length} disqualifying pattern(s) in ${aliasScanDirs.join(', ')} -- falling back to conservative "changed" (matches the old verdict)`,
+            };
+        }
+
+        const reachable = await computeAppReachableModules(repoRoot, entryFile);
+        const relevantChangedFiles = changedFiles.filter((file) => file.startsWith(`${fanOutPackage}/`));
+        const reachableHits = relevantChangedFiles.filter((file) => reachable.has(file));
+        // §3.4: a file deleted between base and head can never appear in a graph built from HEAD's
+        // working tree -- its absence there must not be silently read as "not reachable, therefore
+        // not obligating a bump". Tracked separately from reachableHits so the two are
+        // distinguishable in the printed code/detail, not folded into one ambiguous "reachable".
+        const deletedHits = relevantChangedFiles.filter((file) => !reachable.has(file) && !fileExistsAtRef(repoRoot, headGitRef, file));
+        const changed = reachableHits.length > 0 || deletedHits.length > 0;
+        const code = reachableHits.length > 0 ? 'reachable' : (deletedHits.length > 0 ? 'deleted-file-fail-closed' : 'not-reachable');
+
+        return {
+            applicable: true,
+            changed,
+            code,
+            safetyNetPassed: true,
+            reachableCount: reachable.size,
+            hitFiles: [...reachableHits, ...deletedHits],
+            detail: changed
+                ? `${reachableHits.length > 0 ? `reachability hit: ${reachableHits.slice(0, 3).join(', ')}${reachableHits.length > 3 ? ', ...' : ''}` : ''}`
+                  + `${reachableHits.length > 0 && deletedHits.length > 0 ? '; ' : ''}`
+                  + `${deletedHits.length > 0 ? `${deletedHits.length} deleted file(s) can't be checked for reachability, conservatively counted as changed: ${deletedHits.slice(0, 3).join(', ')}${deletedHits.length > 3 ? ', ...' : ''}` : ''}`
+                : `none of ${relevantChangedFiles.length} changed file(s) under ${fanOutPackage} are reachable from ${entryFile} (${reachable.size} web-core/shared-constants modules reachable in total)`,
+        };
+    } catch (error) {
+        return {
+            applicable: true,
+            changed: true,
+            code: 'shadow-error-fail-closed',
+            safetyNetPassed: false,
+            detail: `reachability shadow computation threw unexpectedly (${error.message}) -- falling back to conservative "changed" (matches the old verdict)`,
+        };
+    }
+}
+
+// LOG-ONLY: prints the old directory-level verdict and the new reachability verdict side by side
+// for every fan-out-triggered changed app, plus whether the safety-net audit passed. Never mutates
+// `result`, never throws past its own boundary (see main()'s try/catch around this call), and has
+// zero influence on process.exitCode -- CI still gates on the OLD verdict only.
+async function runReachabilityShadowAudit(result) {
+    if (result.skipped || result.appResults.length === 0) return;
+
+    for (const entry of result.appResults) {
+        if (!entry.reason.startsWith('fan-out:')) continue;
+
+        const shadow = await computeReachabilityShadowVerdict(result.repoRoot, result.headGitRef, entry, result.changedFiles);
+        if (!shadow.applicable) {
+            console.log(`[check:app-versions] [SHADOW] ${entry.app}: old=changed (${entry.reason}) new=n/a -- ${shadow.reason}`);
+            continue;
+        }
+
+        const agreement = shadow.changed === entry.changed ? 'AGREE' : 'DISAGREE';
+        console.log(
+            `[check:app-versions] [SHADOW] ${entry.app}: old=changed (${entry.reason}) `
+            + `new=${shadow.changed ? 'changed' : 'unchanged'} (${shadow.code}) `
+            + `safety-net=${shadow.safetyNetPassed ? 'PASS' : 'FAIL'} agreement=${agreement} -- ${shadow.detail}`,
+        );
+    }
+}
+
 /**
  * PR-check mode: for every changed app, require the bump level the (base, head)
  * mode demands. options:
@@ -257,7 +384,7 @@ function runCheck(options = {}) {
     }
 
     if (!baseGitRef) {
-        return { ok: true, skipped: true, reason: 'no-base-ref', mode: null, baseGitRef: null, headGitRef, appResults: [] };
+        return { ok: true, skipped: true, reason: 'no-base-ref', mode: null, baseGitRef: null, headGitRef, repoRoot, changedFiles: [], appResults: [] };
     }
 
     const changedFiles = options.changedFiles !== undefined
@@ -271,7 +398,7 @@ function runCheck(options = {}) {
     const changedApps = detectChangedApps(repoRoot, headGitRef, changedFiles).filter((entry) => entry.changed);
 
     if (changedApps.length === 0) {
-        return { ok: true, skipped: true, reason: 'no-app-changed', mode, baseGitRef, headGitRef, appResults: [] };
+        return { ok: true, skipped: true, reason: 'no-app-changed', mode, baseGitRef, headGitRef, repoRoot, changedFiles, appResults: [] };
     }
 
     const appResults = changedApps.map((entry) => {
@@ -288,6 +415,8 @@ function runCheck(options = {}) {
         mode,
         baseGitRef,
         headGitRef,
+        repoRoot,
+        changedFiles,
         appResults,
     };
 }
@@ -382,7 +511,7 @@ function printFloorResult(result) {
     }
 }
 
-function main() {
+async function main() {
     const argv = process.argv.slice(2);
 
     if (argv.includes('--floor')) {
@@ -404,11 +533,27 @@ function main() {
     }
 
     const result = runCheck({ repoRoot: REPO_ROOT, staged: argv.includes('--staged') });
+
+    // Phase 303 (#1695), LOG-ONLY: computed and printed BEFORE the old verdict below so both
+    // appear together in the run's own output, but wrapped so nothing it does -- including a bug
+    // in the reachability walk itself -- can ever change process.exitCode. CI still gates on
+    // `result.ok` alone, exactly as it did before this shadow step existed.
+    try {
+        await runReachabilityShadowAudit(result);
+    } catch (error) {
+        console.error(`[check:app-versions] [SHADOW] audit threw unexpectedly (log-only, does not affect the gating verdict): ${error.message}`);
+    }
+
     printCheckResult(result);
     process.exitCode = result.ok ? 0 : 1;
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+    main().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+    });
+}
 
 module.exports = {
     APPS,
@@ -422,4 +567,10 @@ module.exports = {
     detectChangedApps,
     runCheck,
     runFloor,
+    // Phase 303 (#1695) shadow-mode exports -- kept separate from the functions above (which stay
+    // untouched, sync, zero-behavior-change) so tests can exercise the reachability shadow step in
+    // isolation without going through the CLI.
+    fileExistsAtRef,
+    computeReachabilityShadowVerdict,
+    runReachabilityShadowAudit,
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   MapPin,
   MessageSquare,
@@ -8,16 +8,12 @@ import {
 } from 'lucide-react';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { formatFollowersLabel } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
-import { StorefrontExpandedMapModal } from '../../../../discovery/components/StorefrontExpandedMapModal.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../shared/components/storefront/hero/StorefrontHeaderNav.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../shared/components/storefront/hero/StorefrontShareQr.jsx';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { buildStorefrontQrUrl } from '../../../../shared/utils/storefrontQrUrl.js';
-import { SimpleHeroAbout } from './SimpleHeroAbout.jsx';
-import { SimpleHeroContactLocation } from './SimpleHeroContactLocation.jsx';
-import { SimpleHeroMobileInfoCards } from './SimpleHeroMobileInfoCards.jsx';
-import { SimpleHeroWhyShopHere } from './SimpleHeroWhyShopHere.jsx';
+import { StorefrontBusinessInformationPanel } from '../../../../shared/components/storefront/StorefrontBusinessInformationPanel.jsx';
 import { StorefrontAccountBranchSwitcher } from '../../../../shared/components/storefront/hero/StorefrontAccountBranchSwitcher.jsx';
 import { useStorefrontAccountBranches } from '../../../../shared/hooks/useStorefrontAccountBranches.js';
 
@@ -30,8 +26,6 @@ const SimpleHero = ({
   selectedLocationId,
   handleBranchMenuSelection,
   storeLocations,
-  catalogSearch,
-  setCatalogSearch,
   goDiscovery,
   goStore,
   cartCount,
@@ -58,7 +52,7 @@ const SimpleHero = ({
   heroStyles,
   helperFns
 }) => {
-  const { Badge, GhostButton, PrimaryButton, StorefrontExpandableBusinessHours, StorefrontHeroShell } = ui;
+  const { Badge, GhostButton, PrimaryButton, StorefrontHeroShell } = ui;
   const { buildVisibleStorefrontContactRows } = helperFns;
   const { accountBranches, hasMultipleAccountBranches } = useStorefrontAccountBranches({
     isStorefrontAccountAuthenticated,
@@ -70,13 +64,8 @@ const SimpleHero = ({
     MOBILE_DROPDOWN_MENU_STYLE,
     MOBILE_DROPDOWN_OPTION_STYLE,
     MOBILE_NATIVE_SELECT_STYLE,
-    STOREFRONT_CONTACT_INFO_COLUMNS,
-    STOREFRONT_INFO_ICON_COLUMN,
-    STOREFRONT_INFO_PANEL_MAX_WIDTH,
-    STOREFRONT_INFO_ROW_GAP,
     STYLES
   } = heroStyles;
-  const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const heroTheme = modeAdapter.heroTheme || {};
   const typography = heroTheme.typography || {};
   const heroTitleTypography = typography.heroTitle || {};
@@ -118,8 +107,6 @@ const SimpleHero = ({
   const storefrontCityLabel = String(selectedLocation?.city || selectedStore?.city || '').trim();
   const addressText = String(simpleHeroModel.addressLine || simpleHeroModel.locationLabel || '').trim();
   const aboutText = String(simpleHeroModel.aboutText || '').trim();
-  const hasAboutSection = aboutText.length > 0;
-  const hasAboutToggle = aboutText.length > 180;
   const galleryImages = Array.isArray(simpleHeroModel.galleryImages) ? simpleHeroModel.galleryImages : [];
   const galleryImagesFull = Array.isArray(simpleHeroModel.galleryImagesFull)
     ? simpleHeroModel.galleryImagesFull
@@ -127,10 +114,6 @@ const SimpleHero = ({
   const galleryOverflowCount = Number.isFinite(Number(simpleHeroModel.galleryOverflowCount))
     ? Number(simpleHeroModel.galleryOverflowCount)
     : Math.max(0, galleryImagesFull.length - galleryImages.length);
-  const hasGallerySection = galleryImages.length > 0;
-  const hasAboutOrGallerySection = hasAboutSection || hasGallerySection;
-  const hasAddress = Boolean(addressText);
-  const hasMapData = Array.isArray(simpleHeroModel.mapStores) && simpleHeroModel.mapStores.length > 0;
   const visibleWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) ? simpleHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
   const visibleContactRows = buildVisibleStorefrontContactRows({
     contactRows: simpleHeroModel.contactRows,
@@ -138,11 +121,6 @@ const SimpleHero = ({
     addressText,
     directionsUrl: simpleHeroModel.directionsUrl
   });
-  const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
-  const hasContactRows = visibleContactRows.length > 0;
-  const desktopColumns = hasAboutOrGallerySection
-    ? (hasWhyChooseUs ? '1fr 1.6fr 0.92fr' : '1fr 1.6fr')
-    : (hasWhyChooseUs ? '1.6fr 0.92fr' : '1fr');
   const storefrontShareUrl = selectedStore?.slug
     ? buildStorefrontQrUrl({
       slug: selectedStore.slug,
@@ -421,93 +399,43 @@ const SimpleHero = ({
           </div>
         </div>
       {!isMobileViewport && (
-        <div style={{ display: 'block' }}>
-          <div style={{
-            maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
-            margin: '70px auto 40px',
-            padding: 26,
-            background: '#ffffff',
-            border: '1px solid #e8edf3',
-            borderRadius: 24,
-            boxShadow: simpleContainerShadow,
-            display: 'grid',
-            gridTemplateColumns: desktopColumns,
-            gap: 26
-          }}>
-            {hasAboutOrGallerySection && (
-              <SimpleHeroAbout
-                STYLES={STYLES}
-                aboutText={aboutText}
-                hasAboutToggle={hasAboutToggle}
-                galleryImages={galleryImages}
-                galleryImagesFull={galleryImagesFull}
-                galleryOverflowCount={galleryOverflowCount}
-                hasGallerySection={hasGallerySection}
-                isMobileViewport={isMobileViewport}
-                heroTheme={heroTheme}
-              />
-            )}
-
-            <SimpleHeroContactLocation
-              STYLES={STYLES}
-              STOREFRONT_CONTACT_INFO_COLUMNS={STOREFRONT_CONTACT_INFO_COLUMNS}
-              STOREFRONT_INFO_ICON_COLUMN={STOREFRONT_INFO_ICON_COLUMN}
-              STOREFRONT_INFO_ROW_GAP={STOREFRONT_INFO_ROW_GAP}
-              StorefrontExpandableBusinessHours={StorefrontExpandableBusinessHours}
-              hasAboutSection={hasAboutSection}
-              hasContactRows={hasContactRows}
-              hasMapData={hasMapData}
-              heroTheme={heroTheme}
-              isMobileViewport={isMobileViewport}
-              openStorefrontActionLink={openStorefrontActionLink}
-              setIsExpandedMapOpen={setIsExpandedMapOpen}
-              simpleHeroModel={simpleHeroModel}
-              visibleContactRows={visibleContactRows}
-            />
-
-            {hasWhyChooseUs && (
-              <SimpleHeroWhyShopHere
-                STYLES={STYLES}
-                heroTheme={heroTheme}
-                isMobileViewport={isMobileViewport}
-                visibleWhyChooseUs={visibleWhyChooseUs}
-              />
-            )}
-          </div>
-        </div>
-      )}
-
-      {isMobileViewport && (
-        <SimpleHeroMobileInfoCards
-          STYLES={STYLES}
+        <StorefrontBusinessInformationPanel
           aboutText={aboutText}
           addressText={addressText}
-          hasAboutSection={hasAboutSection}
-          hasAboutToggle={hasAboutToggle}
-          hasGallerySection={hasGallerySection}
           galleryImages={galleryImages}
           galleryImagesFull={galleryImagesFull}
           galleryOverflowCount={galleryOverflowCount}
-          hasContactRows={hasContactRows}
-          hasMapData={hasMapData}
-          hasWhyChooseUs={hasWhyChooseUs}
-          heroTheme={heroTheme}
+          mapSelectedKey={simpleHeroModel.mapSelectedKey}
+          mapStores={simpleHeroModel.mapStores}
           openStorefrontActionLink={openStorefrontActionLink}
+          palette={{ ...heroTheme, panelShadow: simpleContainerShadow }}
           selectedBranchLabel={selectedBranchLabel}
-          setIsExpandedMapOpen={setIsExpandedMapOpen}
-          simpleHeroModel={simpleHeroModel}
+          storeName={simpleHeroModel.name || selectedStore?.tenant_name}
           storefrontCityLabel={storefrontCityLabel}
           visibleContactRows={visibleContactRows}
           visibleWhyChooseUs={visibleWhyChooseUs}
         />
-      )}      <StorefrontExpandedMapModal
-        open={isExpandedMapOpen}
-        onClose={() => setIsExpandedMapOpen(false)}
-        title={`${simpleHeroModel.name || selectedStore?.tenant_name || 'Store'} Map`}
-        subtitle="View the store location in a larger map."
-        stores={simpleHeroModel.mapStores}
-        selectedKey={simpleHeroModel.mapSelectedKey}
-      />
+      )}
+
+      {isMobileViewport && (
+        <StorefrontBusinessInformationPanel
+          isMobileViewport
+          aboutText={aboutText}
+          addressText={addressText}
+          galleryImages={galleryImages}
+          galleryImagesFull={galleryImagesFull}
+          galleryOverflowCount={galleryOverflowCount}
+          mapSelectedKey={simpleHeroModel.mapSelectedKey}
+          mapStores={simpleHeroModel.mapStores}
+          openStorefrontActionLink={openStorefrontActionLink}
+          palette={heroTheme}
+          selectedBranchLabel={selectedBranchLabel}
+          storeName={simpleHeroModel.name || selectedStore?.tenant_name}
+          storefrontCityLabel={storefrontCityLabel}
+          visibleContactRows={visibleContactRows}
+          visibleWhyChooseUs={visibleWhyChooseUs}
+        />
+      )}
     </section>
   );
 };

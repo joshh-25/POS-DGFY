@@ -68,6 +68,18 @@ describe('TrackingRouteMap (rebuilt real map)', () => {
     expect(getByText('Store map unavailable')).toBeTruthy();
   });
 
+  it('uses the shared responsive frame when no map height override is provided', () => {
+    const { container } = render(
+      <TrackingRouteMap
+        storePin={{ latitude: 10.7, longitude: 122.56 }}
+        customerPin={null}
+        styleUrl="/openfreemap/styles/positron"
+      />
+    );
+
+    expect(container.firstElementChild.className).toContain('storefront-tracking-map-frame');
+  });
+
   it('still exports the coordinate-extraction helper unchanged', () => {
     const pins = extractTrackingMapCoordinates(
       { raw: { order: { delivery_latitude: '10.72', delivery_longitude: '122.57' } } },

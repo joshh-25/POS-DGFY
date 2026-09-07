@@ -3,9 +3,10 @@ import { useCallback } from 'react';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
 /**
- * Owns F&B item-detail navigation while the app shell continues to provide the
- * existing route primitives. This preserves the current browser-history
- * contract without teaching the root shell F&B detail behavior.
+ * Owns shared storefront item-detail navigation for F&B, Retail, and
+ * Simple/MSME routes while the app shell continues to provide the existing
+ * route primitives. The fnb-prefixed module path is retained for compatibility
+ * with the current route boundary; behavior must stay mode-agnostic here.
  */
 export function useFnbProductDetailNavigation({
   buildCatalogTarget,
@@ -104,6 +105,21 @@ export function useFnbProductDetailNavigation({
     setIsCheckoutOpen(false);
     setFnbOrderStep(3);
     setSimpleOrderStep(1);
+
+    // Opening an item intentionally moves the viewport to the top of the
+    // detail page. Restore the catalog section after the route state has
+    // rendered so the back control returns the customer to the menu they were
+    // browsing instead of leaving them at the storefront hero.
+    const scrollToCatalog = () => {
+      document.getElementById('storefront-catalog-section')?.scrollIntoView?.({ behavior: 'auto', block: 'start' });
+    };
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => {
+        scrollToCatalog();
+      });
+    } else {
+      window.setTimeout(scrollToCatalog, 0);
+    }
   }, [
     buildCatalogTarget,
     buildHistoryState,

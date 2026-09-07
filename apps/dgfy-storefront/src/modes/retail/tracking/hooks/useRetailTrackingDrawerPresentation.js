@@ -7,7 +7,6 @@ export function useRetailTrackingDrawerPresentation({
   selectedStoreSlug
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [expandedPins, setExpandedPins] = useState([]);
 
   const canOpen = useMemo(() => (
     !isStandaloneTrackingPage
@@ -17,9 +16,7 @@ export function useRetailTrackingDrawerPresentation({
 
   return {
     canOpen,
-    expandedPins,
     isOpen: isOpen && isEligible,
-    setExpandedPins,
     setIsOpen
   };
 }

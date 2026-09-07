@@ -40,7 +40,7 @@ describe('ServicesTrackingRoutePage', () => {
     expect(statusHeading).toBeTruthy();
     expect(statusHeading.style.fontFamily).toContain('Outfit');
     expect(statusHeading.style.fontFamily).toContain('Segoe UI');
-    expect(screen.getAllByText('SV-ABC123').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('SV-ABC123')).toHaveLength(1);
     expect(screen.getByText(/Wash, Dry & Fold/)).toBeTruthy();
     expect(screen.getByText(/laundry/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Pickup at' })).toBeTruthy();
@@ -75,7 +75,7 @@ describe('ServicesTrackingRoutePage', () => {
     expect(screen.getByRole('img', { name: 'Custom repair assessment' }).getAttribute('src')).toBe('/uploads/storefront-assets/comforter-care.webp');
     const timeline = screen.getByRole('region', { name: 'Service status timeline' });
     expect(timeline.style.display).toBe('grid');
-    expect(timeline.style.gridTemplateColumns).toBe('repeat(7, minmax(0, 1fr))');
+    expect(timeline.style.gridTemplateColumns).toBe('1fr');
     expect(timeline.style.overflowX).toBe('hidden');
     expect(timeline.querySelector('[aria-current="step"]')).toBeTruthy();
     expect(screen.queryByText('Updated')).toBeNull();

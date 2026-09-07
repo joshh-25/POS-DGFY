@@ -20,33 +20,25 @@ describe('Simple storefront route boundary', () => {
 
   it('binds configured About Us and gallery content to Simple-owned hero components', () => {
     const simpleHero = readSource('modes/simple/storefront/components/SimpleHero.jsx');
-    const simpleHeroAbout = readSource('modes/simple/storefront/components/SimpleHeroAbout.jsx');
-    const simpleHeroMobile = readSource('modes/simple/storefront/components/SimpleHeroMobileInfoCards.jsx');
-    const simpleHeroGallery = readSource('modes/simple/storefront/components/SimpleHeroGallery.jsx');
+    const sharedBusinessInformationPanel = readSource('shared/components/storefront/StorefrontBusinessInformationPanel.jsx');
     const simpleProductCard = readSource('modes/simple/storefront/components/SimpleProductCard.jsx');
     const simpleCatalogToolbar = readSource('modes/simple/storefront/components/SimpleCatalogToolbar.jsx');
     const storefrontCatalogModel = readSource('shared/hooks/useStorefrontCatalog.js');
 
     expect(storefrontCatalogModel).toContain('galleryImagesFull: galleryImages');
     expect(simpleHero).toContain('simpleHeroModel.aboutText');
-    expect(simpleHero).toContain('hasGallerySection');
-    expect(simpleHeroAbout).toContain('SimpleHeroGallery');
-    expect(simpleHeroMobile).toContain('SimpleHeroGallery');
-    expect(simpleHeroMobile).toContain('compactMobile');
-    expect(simpleHeroMobile).toContain('hasAboutToggle');
-    expect(simpleHeroMobile).toContain('mobileSectionBackground');
-    expect(simpleHeroMobile).toContain('infoCardShadow');
-    expect(simpleHeroMobile).toContain('infoCardBorder');
-    expect(simpleHeroMobile).toContain('border: `1.5px solid ${infoCardBorder}`');
+    expect(simpleHero).toContain('StorefrontBusinessInformationPanel');
+    expect(sharedBusinessInformationPanel).toContain('StorefrontAboutDescription');
+    expect(sharedBusinessInformationPanel).toContain('StorefrontGalleryLightbox');
+    expect(sharedBusinessInformationPanel).toContain('StorefrontExpandedMapModal');
+    expect(sharedBusinessInformationPanel).toContain('data-testid="storefront-business-information-panel"');
     expect(simpleHero).toContain("background: '#fff'");
     expect(simpleHero).toContain('marginBottom: isMobileViewport ? 0 : 40');
     expect(simpleHero).toContain('simpleActionShadow');
     expect(simpleHero).toContain('simpleContainerShadow');
     expect(simpleProductCard).toContain('rgba(23,107,58,0.05)');
     expect(simpleCatalogToolbar).toContain('rgba(23,107,58,0.10)');
-    expect(simpleHeroGallery).toContain('View all photos');
-    expect(simpleHeroGallery).toContain('aria-label="View store photos"');
-    expect(simpleHeroGallery).toContain('aria-label="Storefront gallery"');
+    expect(sharedBusinessInformationPanel).toContain('aria-label="View store photos"');
   });
 
   it('keeps the Simple catalog controls and card palette mode-owned', () => {

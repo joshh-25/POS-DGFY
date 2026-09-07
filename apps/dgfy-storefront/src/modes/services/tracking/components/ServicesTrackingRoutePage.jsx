@@ -19,6 +19,10 @@ import {
   XCircle
 } from 'lucide-react';
 import TrackingRouteMap from '../../../../tracking/TrackingRouteMapLazy.jsx';
+import { TRACKING_MAP_HEIGHT } from '../../../../tracking/trackingMapSizing.js';
+import { getTrackingFlowOrder, StorefrontTrackingLayout } from '../../../../shared/components/tracking/StorefrontTrackingLayout.jsx';
+import { StorefrontTrackingStatusCard } from '../../../../shared/components/tracking/StorefrontTrackingStatusCard.jsx';
+import { StorefrontTrackingTimeline } from '../../../../shared/components/tracking/StorefrontTrackingTimeline.jsx';
 import { extractTrackingMapCoordinates } from '../../../../tracking/extractTrackingMapCoordinates.js';
 import {
   buildServiceTrackingTimeline,
@@ -121,7 +125,7 @@ export function ServicesTrackingRoutePage({
     soft: servicesPrimarySoft || DEFAULT_THEME.soft,
     cardBorder: servicesPrimaryBorder || DEFAULT_THEME.cardBorder
   };
-  const { cardBorder, primary, primaryDark, soft, secondarySoft, text, muted } = theme;
+  const { cardBorder, primary, primaryDark, soft, text, muted } = theme;
   const view = useMemo(() => {
     const booking = trackingResult?.booking && typeof trackingResult.booking === 'object' ? trackingResult.booking : {};
     const status = normalizeServiceTrackingStatus(trackingResult?.status);
@@ -216,7 +220,6 @@ export function ServicesTrackingRoutePage({
   }
 
   const bookingDate = view.booking.created_at || trackingResult.createdAt || view.appointmentStart;
-  const progressWidth = view.activeStepIndex < 0 ? 0 : (view.activeStepIndex / Math.max(1, view.timeline.length - 1)) * 80;
   const isException = view.status === 'cancelled' || view.status === 'no_show';
   const isLocalQuote = view.serviceProfileKey === 'quote_request';
   const isLocalDropoff = view.serviceProfileKey === 'item_dropoff_collection';
@@ -224,49 +227,45 @@ export function ServicesTrackingRoutePage({
   const isPickup = !isLocalQuote && !isLocalDropoff && view.handoff === 'pickup';
   const flowPresentation = getServicesFlowPresentation(view.serviceProfileKey || (isPickup ? 'pickup' : 'delivery'));
   const handoffLabel = flowPresentation.label;
-  const handoffTitle = flowPresentation.trackingTitle;
-  const handoffDescription = view.localSimulation
-    ? flowPresentation.trackingDescription
-    : view.statusCopy.guidance;
   const locationTitle = flowPresentation.locationTitle;
-  const timelineIconSize = isMobileViewport ? 28 : 32;
-  const timelineTrackTop = 10 + (timelineIconSize / 2) - 1.5;
 
   return (
     <>
       {isException ? <div role="alert" style={{ marginTop: 18, border: '1px solid #f2b8b5', borderRadius: 16, padding: '14px 16px', background: '#fff5f5', color: '#9f1c1c', fontWeight: 700 }}>{view.statusCopy.guidance}</div> : null}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) 370px', gap: 24, marginTop: 28, alignItems: 'start' }}>
-        <div style={{ display: 'grid', gap: 24, minWidth: 0 }}>
-          <section style={{ background: soft, border: `1px solid ${cardBorder}`, borderRadius: 20, padding: isMobileViewport ? 20 : 30, display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'hidden', position: 'relative', flexWrap: 'wrap', gap: 20, boxSizing: 'border-box', minWidth: 0 }}>
-            <div style={{ zIndex: 2, display: 'flex', gap: 16, alignItems: 'flex-start', flex: '1 1 auto', minWidth: isMobileViewport ? 0 : 280, width: isMobileViewport ? '100%' : undefined }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: primary, color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}><StatusIcon status={view.status} size={31} /></div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <h1 style={{ fontSize: isMobileViewport ? 26 : 36, fontWeight: 800, color: text, margin: '0 0 8px', letterSpacing: '-.02em', fontFamily: displayFont }}>{view.statusCopy.label}</h1>
-                <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5, maxWidth: 500 }}>{view.statusCopy.guidance}</div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: isMobileViewport ? 'wrap' : 'nowrap', marginTop: 16, fontSize: 14, fontWeight: 600, minWidth: 0 }}>
-                  <span style={{ color: muted }}>Booking reference</span><span style={{ color: text, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 10px', overflowWrap: 'anywhere', minWidth: 0 }}>{view.reference}</span>
-                  <button type="button" onClick={() => actions.copyTextToClipboard(view.reference, 'Booking reference copied.')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4, color: primary, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: bodyFont }}><Copy size={14} /> Copy</button>
-                </div>
-              </div>
-            </div>
-            <div aria-hidden="true" style={{ zIndex: 1, display: isMobileViewport ? 'none' : 'grid', placeItems: 'center', minWidth: 100, opacity: 0.85, color: primary }}>{isLocalQuote ? <FileText size={94} strokeWidth={1.4} /> : (isLocalDropoff ? <Package size={94} strokeWidth={1.4} /> : (isCustomerAddressService ? <MapPin size={94} strokeWidth={1.4} /> : (isPickup ? <ShoppingBag size={94} strokeWidth={1.4} /> : <Truck size={94} strokeWidth={1.4} />)))}</div>
-          </section>
+      <StorefrontTrackingLayout isMobileViewport={isMobileViewport} sidebarWidth={370} style={{ marginTop: 28 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24, minWidth: 0 }}>
+          <div data-tracking-slot="status" style={{ order: getTrackingFlowOrder('status') }}>
+          <StorefrontTrackingStatusCard
+            title={view.statusCopy.label}
+            description={view.statusCopy.guidance}
+            icon={<StatusIcon status={view.status} size={24} />}
+            accentColor={primary}
+            background={soft}
+            borderColor={cardBorder}
+            bodyFont={bodyFont}
+            displayFont={displayFont}
+            isMobileViewport={isMobileViewport}
+          />
+          </div>
 
-          <section aria-label="Service status timeline" style={{ position: 'relative', padding: isMobileViewport ? '10px 2px 4px' : '10px 0', display: 'grid', gridTemplateColumns: `repeat(${view.timeline.length}, minmax(0, 1fr))`, columnGap: isMobileViewport ? 4 : 10, overflowX: 'hidden', minWidth: 0 }}>
-            <div style={{ position: 'absolute', top: timelineTrackTop, left: '10%', right: '10%', height: 3, background: '#e2e8f0', zIndex: 0 }} />
-            <div style={{ position: 'absolute', top: timelineTrackTop, left: '10%', width: `${Math.max(0, Math.min(80, progressWidth))}%`, height: 3, background: primary, zIndex: 0, transition: 'width .5s ease-in-out', borderRadius: 999 }} />
-            {view.timeline.map((step) => {
-              const done = step.state === 'done';
-              const active = step.state === 'active';
-              return <div key={step.id} aria-current={active ? 'step' : undefined} style={{ display: 'grid', justifyItems: 'center', gridTemplateRows: `${timelineIconSize}px minmax(23px, auto)`, rowGap: isMobileViewport ? 5 : 8, minWidth: 0, zIndex: 1, textAlign: 'center' }}><div style={{ width: timelineIconSize, height: timelineIconSize, borderRadius: '50%', background: done || active ? primary : '#fff', border: `2px solid ${done || active ? primary : '#cbd5e1'}`, color: done || active ? '#fff' : '#cbd5e1', display: 'grid', placeItems: 'center', transition: 'all .3s', flexShrink: 0 }}><StepIcon id={step.id} size={isMobileViewport ? 14 : 16} done={done} /></div><div style={{ fontSize: isMobileViewport ? 9.5 : 12, fontWeight: active ? 800 : 600, color: active ? primary : (done ? text : '#94a3b8'), lineHeight: 1.15, width: '100%', maxWidth: isMobileViewport ? 66 : 120, minHeight: isMobileViewport ? 23 : undefined, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'normal', wordBreak: 'normal' }}>{step.label}</div></div>;
-            })}
-          </section>
+          <div data-tracking-slot="timeline" style={{ order: getTrackingFlowOrder('timeline') }}>
+            <StorefrontTrackingTimeline
+              ariaLabel="Service status timeline"
+              steps={view.timeline}
+              activeStepIndex={view.activeStepIndex}
+              isCompleted={view.status === 'completed'}
+              isMobileViewport={isMobileViewport}
+              accentColor={primary}
+              bodyFont={bodyFont}
+              renderStepIcon={({ step, done, size }) => <StepIcon id={step.id} size={size} done={done} />}
+            />
+          </div>
 
-          <section style={{ background: secondarySoft, borderRadius: 16, padding: isMobileViewport ? 16 : 20, display: 'flex', gap: 16, alignItems: 'center', flexWrap: isMobileViewport ? 'wrap' : 'nowrap', minWidth: 0 }}><div style={{ color: primaryDark, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{isLocalQuote ? <FileText size={28} /> : (isLocalDropoff ? <Package size={28} /> : (isCustomerAddressService ? <MapPin size={28} /> : (isPickup ? <ShoppingBag size={28} /> : <Truck size={28} />)))}</div><div style={{ minWidth: 0, flex: '1 1 220px' }}><div style={{ fontSize: 17, fontWeight: 800, color: primaryDark, fontFamily: displayFont }}>{handoffTitle}</div><div style={{ marginTop: 3, fontSize: 14, color: '#1e516b', lineHeight: 1.45 }}>{handoffDescription}</div></div></section>
-
-          <section style={{ borderRadius: 20, overflow: 'hidden', border: '1px solid #d9e4e8', background: '#d9dee1', minHeight: isMobileViewport ? 240 : 300 }}>
-            {tilingServer && view.trackingMapCoordinates.storePin ? <TrackingRouteMap storePin={view.trackingMapCoordinates.storePin} customerPin={isPickup ? null : view.trackingMapCoordinates.customerPin} styleUrl={tilingServer} transformRequest={tileTransformRequest} mapHeight={isMobileViewport ? 240 : 300} /> : <div style={{ minHeight: isMobileViewport ? 240 : 300, display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center', color: '#64748b', background: '#eef1f2' }}><div><MapPin size={28} color={primary} /><div style={{ marginTop: 8, fontWeight: 700 }}>Location details will be confirmed by the store.</div></div></div>}
+          <div data-tracking-slot="map" style={{ order: getTrackingFlowOrder('map') }}>
+          <section className="storefront-tracking-map-shell" style={{ borderRadius: 20, overflow: 'hidden', border: '1px solid #d9e4e8', background: '#d9dee1' }}>
+            {tilingServer && view.trackingMapCoordinates.storePin ? <TrackingRouteMap storePin={view.trackingMapCoordinates.storePin} customerPin={isPickup ? null : view.trackingMapCoordinates.customerPin} styleUrl={tilingServer} transformRequest={tileTransformRequest} mapHeight={TRACKING_MAP_HEIGHT} /> : <div className="storefront-tracking-map-frame" style={{ display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center', color: '#64748b', background: '#eef1f2' }}><div><MapPin size={28} color={primary} /><div style={{ marginTop: 8, fontWeight: 700 }}>Location details will be confirmed by the store.</div></div></div>}
           </section>
+          </div>
 
         </div>
 
@@ -316,7 +315,7 @@ export function ServicesTrackingRoutePage({
 
           <section style={{ border: `1px solid ${cardBorder}`, borderRadius: 18, padding: 18, background: soft, display: 'flex', gap: 12, alignItems: 'flex-start', minWidth: 0 }}><div style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: '#fff', color: primary, flexShrink: 0 }}><PartyPopper size={19} /></div><div style={{ minWidth: 0, overflowWrap: 'anywhere', fontFamily: bodyFont }}><div style={{ fontSize: 14, fontWeight: 700, color: text }}>Thank you for your booking!</div><div style={{ marginTop: 4, color: muted, fontSize: 14 }}>We&apos;ll update you as your service progresses.</div></div></section>
         </aside>
-      </div>
+      </StorefrontTrackingLayout>
       {view.statusDate ? <div style={{ marginTop: 24, color: muted, fontSize: 13 }}>Last updated {formatTicketDate(view.statusDate)}.</div> : null}
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 38 }}><button type="button" onClick={actions.goStoreCatalogPage} style={{ minHeight: 48, minWidth: 204, borderRadius: 14, border: '1px solid #cbd9e6', background: '#fff', color: text, fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: bodyFont }}>Back to Services</button></div>
     </>

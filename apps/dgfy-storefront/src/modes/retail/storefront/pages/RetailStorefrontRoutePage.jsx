@@ -12,7 +12,7 @@ export function RetailStorefrontRoutePage({ checkoutPromoCode, handlePromoCardAp
   return (
     <>
       <StorefrontPromoSection items={promoSectionModel} isMobileViewport={isMobileViewport} layoutVariant="feature" palette="retail" titleFontFamily={modeAdapter.heroTheme?.displayFont} bodyFontFamily={modeAdapter.heroTheme?.bodyFont} titleSize={isMobileViewport ? 28 : 36} subtitleSize={isMobileViewport ? 14 : 16} activePromoCode={checkoutPromoCode} onApplyPromo={handlePromoCardApply} />
-      <StorefrontReviewsSection isMobileViewport={isMobileViewport} viewportWidth={viewportWidth} title="Customer Reviews" subtitle="See what customers say about this storefront" onWriteReview={() => setIsReviewModalOpen(true)} reviewHighlights={retailStorefrontModel.reviewHighlights} emptyMessage="Customer reviews will appear here once this storefront adds review data in SKUpervisor." titleFontFamily={modeAdapter.heroTheme?.displayFont} bodyFontFamily={modeAdapter.heroTheme?.bodyFont} titleSize={isMobileViewport ? 28 : 36} subtitleSize={isMobileViewport ? 14 : 16} starSymbol="*" />
+      <StorefrontReviewsSection isMobileViewport={isMobileViewport} viewportWidth={viewportWidth} onWriteReview={() => setIsReviewModalOpen(true)} reviewHighlights={retailStorefrontModel.reviewHighlights} titleFontFamily={modeAdapter.heroTheme?.displayFont} bodyFontFamily={modeAdapter.heroTheme?.bodyFont} titleSize={isMobileViewport ? 28 : 36} subtitleSize={isMobileViewport ? 14 : 16} starSymbol="*" />
       <StorefrontFooterSection
         isMobileViewport={isMobileViewport}
         name={retailStorefrontModel.name}

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   MapPin,
   MessageSquare,
@@ -7,19 +7,15 @@ import {
   Star
 } from 'lucide-react';
 import { buildPublicStorefrontUrl } from '../../../../app/runtime/storefrontRuntime.js';
-import { StorefrontExpandedMapModal } from '../../../../discovery/components/StorefrontExpandedMapModal.jsx';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../shared/components/storefront/hero/StorefrontHeaderNav.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../shared/components/storefront/hero/StorefrontShareQr.jsx';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
-import { ServiceImage } from '../../ServiceImage.jsx';
 import { formatServiceNumber } from '../../servicesFormatters.js';
 import { SERVICES_PALETTE } from '../../servicesPalette.js';
 import { getServicesResponsiveLayout } from '../../../../shared/utils/storefrontViewport.js';
-import { ServicesHeroDesktopContactLocation } from './ServicesHeroDesktopContactLocation.jsx';
-import { ServicesHeroDesktopWhyChooseUs } from './ServicesHeroDesktopWhyChooseUs.jsx';
-import { ServicesHeroMobileInfoCards } from './ServicesHeroMobileInfoCards.jsx';
+import { StorefrontBusinessInformationPanel } from '../../../../shared/components/storefront/StorefrontBusinessInformationPanel.jsx';
 import { StorefrontAccountBranchSwitcher } from '../../../../shared/components/storefront/hero/StorefrontAccountBranchSwitcher.jsx';
 import { useStorefrontAccountBranches } from '../../../../shared/hooks/useStorefrontAccountBranches.js';
 import {
@@ -45,10 +41,7 @@ const ServicesHero = ({
   isBrandingImageBlocked,
   markBrandingImageError,
   selectedLocation,
-  isAboutExpanded,
-  setIsAboutExpanded,
   isServiceGalleryExpanded,
-  setIsServiceGalleryExpanded,
   openStorefrontActionLink,
   openTrackPanel,
   openAccountPanel,
@@ -71,7 +64,6 @@ const ServicesHero = ({
     Badge,
     GhostButton,
     PrimaryButton,
-    StorefrontExpandableBusinessHours,
     StorefrontHeroShell
   } = ui;
   const {
@@ -88,27 +80,13 @@ const ServicesHero = ({
     MOBILE_DROPDOWN_MENU_STYLE,
     MOBILE_DROPDOWN_OPTION_STYLE,
     MOBILE_NATIVE_SELECT_STYLE,
-    STOREFRONT_CONTACT_INFO_COLUMNS,
-    STOREFRONT_INFO_ICON_COLUMN,
-    STOREFRONT_INFO_PANEL_MAX_WIDTH,
-    STOREFRONT_INFO_ROW_GAP,
     STYLES
   } = heroStyles;
-  const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const {
     aboutText,
     addressText,
     deliveryPlatformLinks,
-    desktopColumns,
     galleryImages,
-    hasAboutOrGallerySection,
-    hasAboutSection,
-    hasAboutToggle,
-    hasContactRows,
-    hasGallerySection,
-    hasMapData,
-    hasWhyChooseUs,
-    previewImages,
     selectedBranchLabel,
     storefrontCityLabel,
     visibleContactRows,
@@ -133,7 +111,6 @@ const ServicesHero = ({
   const {
     servicesBodyFont,
     servicesDisplayFont,
-    servicesMobileInfoCardWidth,
     servicesPrimary,
     servicesPrimaryDark,
     servicesTaglineColor,
@@ -435,131 +412,44 @@ const ServicesHero = ({
           </div>
         </div>
       <div style={{ display: servicesResponsiveLayout.isMobileViewport ? 'grid' : 'none' }}>
-        <ServicesHeroMobileInfoCards
+        <StorefrontBusinessInformationPanel
+          isMobileViewport
           aboutText={aboutText}
           addressText={addressText}
           deliveryPlatformLinks={deliveryPlatformLinks}
           galleryImages={galleryImages}
-          hasAboutSection={hasAboutSection}
-          hasAboutToggle={hasAboutToggle}
-          hasContactRows={hasContactRows}
-          hasGallerySection={hasGallerySection}
-          hasMapData={hasMapData}
-          hasWhyChooseUs={hasWhyChooseUs}
-          isAboutExpanded={isAboutExpanded}
-          isServiceGalleryExpanded={isServiceGalleryExpanded}
+          galleryImagesFull={galleryImages}
+          galleryOverflowCount={Math.max(0, galleryImages.length - 1)}
+          mapSelectedKey={serviceHeroModel.mapSelectedKey}
+          mapStores={serviceHeroModel.mapStores}
           openStorefrontActionLink={openStorefrontActionLink}
-          previewImages={previewImages}
+          palette={{ accent: servicesPrimary, accentDark: servicesPrimaryDark, accentSoft: servicesPrimarySoft, bodyFont: servicesBodyFont, cardShadow: `0 8px 24px ${servicesPrimaryShadow}` }}
           selectedBranchLabel={selectedBranchLabel}
-          serviceHeroModel={serviceHeroModel}
-          servicesBodyFont={servicesBodyFont}
-          servicesMobileInfoCardWidth={servicesMobileInfoCardWidth}
-          servicesPrimary={servicesPrimary}
-          servicesPrimaryDark={servicesPrimaryDark}
-          servicesPrimaryShadow={servicesPrimaryShadow}
-          servicesPrimarySoft={servicesPrimarySoft}
-          setIsAboutExpanded={setIsAboutExpanded}
-          setIsExpandedMapOpen={setIsExpandedMapOpen}
-          setIsServiceGalleryExpanded={setIsServiceGalleryExpanded}
+          storeName={serviceHeroModel.name || selectedStore?.tenant_name}
           storefrontCityLabel={storefrontCityLabel}
           visibleContactRows={visibleContactRows}
           visibleWhyChooseUs={visibleWhyChooseUs}
         />
       </div>
-        <div style={{
-          display: servicesResponsiveLayout.isMobileViewport ? 'none' : 'grid',
-          maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
-          margin: servicesResponsiveLayout.isTabletViewport ? '56px 24px 36px' : '64px auto 36px',
-          padding: 24,
-          background: '#ffffff',
-          border: '1px solid #e8edf3',
-          borderRadius: 24,
-          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
-          gridTemplateColumns: desktopColumns,
-          gap: 24
-        }}>
-          {hasAboutOrGallerySection && (
-            <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
-              {hasAboutSection && (
-                <div style={{ display: 'grid', gap: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>About Us</div>
-                  <p style={{
-                    fontSize: 13,
-                    lineHeight: 1.7,
-                    color: '#475569',
-                    margin: 0,
-                    display: isAboutExpanded ? 'block' : '-webkit-box',
-                    WebkitLineClamp: isAboutExpanded ? 'unset' : 3,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                    fontFamily: servicesBodyFont
-                  }}>
-                    {aboutText}
-                  </p>
-                  {hasAboutToggle && (
-                    <button type="button" onClick={() => setIsAboutExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
-                      {isAboutExpanded ? 'See less' : 'Read more'}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {hasGallerySection && (
-                <div style={{ display: 'grid', gap: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: servicesBodyFont }}>Gallery</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 2 }}>
-                    {previewImages.map((url, index) => (
-                      <div key={`${url}-${index}`} style={{ width: '100%', height: 72, borderRadius: 10, overflow: 'hidden', background: '#e2e8f0' }}>
-                        <ServiceImage imageSources={{ src: url }} alt="" sizes="120px" width={120} height={72} fallbackLabel="" />
-                      </div>
-                    ))}
-                  </div>
-                  {galleryImages.length > 4 && (
-                    <button type="button" onClick={() => setIsServiceGalleryExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
-                      {isServiceGalleryExpanded ? 'Show fewer photos' : 'View all photos'}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          <ServicesHeroDesktopContactLocation
+        {!servicesResponsiveLayout.isMobileViewport && (
+          <StorefrontBusinessInformationPanel
+            aboutText={aboutText}
+            addressText={addressText}
             deliveryPlatformLinks={deliveryPlatformLinks}
-            hasAboutOrGallerySection={hasAboutOrGallerySection}
-            hasContactRows={hasContactRows}
-            hasMapData={hasMapData}
-            modeAdapter={modeAdapter}
+            galleryImages={galleryImages}
+            galleryImagesFull={galleryImages}
+            galleryOverflowCount={Math.max(0, galleryImages.length - 4)}
+            mapSelectedKey={serviceHeroModel.mapSelectedKey}
+            mapStores={serviceHeroModel.mapStores}
             openStorefrontActionLink={openStorefrontActionLink}
-            serviceHeroModel={serviceHeroModel}
-            servicesBodyFont={servicesBodyFont}
-            servicesPrimary={servicesPrimary}
-            servicesPrimaryDark={servicesPrimaryDark}
-            setIsExpandedMapOpen={setIsExpandedMapOpen}
-            STOREFRONT_CONTACT_INFO_COLUMNS={STOREFRONT_CONTACT_INFO_COLUMNS}
-            STOREFRONT_INFO_ICON_COLUMN={STOREFRONT_INFO_ICON_COLUMN}
-            STOREFRONT_INFO_ROW_GAP={STOREFRONT_INFO_ROW_GAP}
-            StorefrontExpandableBusinessHours={StorefrontExpandableBusinessHours}
+            palette={{ accent: servicesPrimary, accentDark: servicesPrimaryDark, accentSoft: servicesPrimarySoft, bodyFont: servicesBodyFont, panelShadow: '0 18px 42px rgba(15, 23, 42, 0.07)' }}
+            selectedBranchLabel={selectedBranchLabel}
+            storeName={serviceHeroModel.name || selectedStore?.tenant_name}
+            storefrontCityLabel={storefrontCityLabel}
             visibleContactRows={visibleContactRows}
+            visibleWhyChooseUs={visibleWhyChooseUs}
           />
-
-          {hasWhyChooseUs && (
-            <ServicesHeroDesktopWhyChooseUs
-              servicesBodyFont={servicesBodyFont}
-              servicesPrimary={servicesPrimary}
-              servicesPrimarySoft={servicesPrimarySoft}
-              visibleWhyChooseUs={visibleWhyChooseUs}
-            />
-          )}
-        </div>
-      <StorefrontExpandedMapModal
-        open={isExpandedMapOpen}
-        onClose={() => setIsExpandedMapOpen(false)}
-        title={`${serviceHeroModel.name || selectedStore?.tenant_name || 'Store'} Map`}
-        subtitle="View the store location in a larger map."
-        stores={serviceHeroModel.mapStores}
-        selectedKey={serviceHeroModel.mapSelectedKey}
-      />
+        )}
     </section>
   );
 };

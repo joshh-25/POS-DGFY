@@ -18,4 +18,7 @@ export const selectIsMobileViewport = (s) => s.ui.viewportWidth < 840;
 export const selectIsDesktopViewport = (s) => s.ui.viewportWidth >= 1024;
 
 export const selectIsOnlinePaymentModalOpen = (s) => s.ui.isOnlinePaymentModalOpen;
+export const selectIsAccountDrawerOpen = (s) => s.ui.isAccountDrawerOpen;
+export const selectIsAboutExpanded = (s) => s.ui.isAboutExpanded;
+export const selectIsServiceGalleryExpanded = (s) => s.ui.isServiceGalleryExpanded;
 export const selectShowOrderSuccessAnimation = (s) => s.ui.showOrderSuccessAnimation;
