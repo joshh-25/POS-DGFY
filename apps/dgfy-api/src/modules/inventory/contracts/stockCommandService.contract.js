@@ -28,6 +28,7 @@ export const StockCommandServiceCoreContract = Object.freeze([
 ]);
 
 export const StockCommandServiceNamedCommands = Object.freeze([
+    'validateStockIssueAvailability',
     'issueStockForPosSale',
     'issueStockForOnlineFulfillment',
     'issueStockForDispatch',

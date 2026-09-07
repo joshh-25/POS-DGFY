@@ -213,7 +213,10 @@ export const createPosPaymentSessionUseCase = buildCreatePosPaymentSessionUseCas
 });
 export const getPosPaymentSessionUseCase = buildGetPosPaymentSessionUseCase({ posRepository });
 export const getActivePosPaymentSessionUseCase = buildGetActivePosPaymentSessionUseCase({ posRepository });
-export const addPosPaymentAllocationUseCase = buildAddPosPaymentAllocationUseCase({ posRepository });
+export const addPosPaymentAllocationUseCase = buildAddPosPaymentAllocationUseCase({
+    posRepository,
+    quotePosCheckoutUseCase: checkoutPosUseCase
+});
 export const cancelPosPaymentAllocationUseCase = buildCancelPosPaymentAllocationUseCase({ posRepository });
 export const confirmPosPaymentAllocationUseCase = buildConfirmPosPaymentAllocationUseCase({
     posRepository,
