@@ -19,12 +19,18 @@
 const readInitialViewportWidth = () =>
   (typeof window === 'undefined' ? 1280 : window.innerWidth);
 
+const resolveBooleanUpdate = (next, current) =>
+  Boolean(typeof next === 'function' ? next(current) : next);
+
 export const uiInitialState = {
   ui: {
     // Viewport (source primitive; mobile/desktop breakpoints are derived selectors)
     viewportWidth: readInitialViewportWidth(),
     // Overlays / modals
     isOnlinePaymentModalOpen: false,
+    isAccountDrawerOpen: false,
+    isAboutExpanded: false,
+    isServiceGalleryExpanded: false,
     // Order-success overlay — flag lives here, wired in Wave 3 (checkout-coupled)
     showOrderSuccessAnimation: false
   }
@@ -42,6 +48,15 @@ export const createUiSlice = (set) => ({
   uiCloseOnlinePaymentModal: () =>
     set((s) => ({ ui: { ...s.ui, isOnlinePaymentModalOpen: false } })),
 
+  uiSetAccountDrawerOpen: (open) =>
+    set((s) => ({ ui: { ...s.ui, isAccountDrawerOpen: resolveBooleanUpdate(open, s.ui.isAccountDrawerOpen) } })),
+
+  uiSetAboutExpanded: (expanded) =>
+    set((s) => ({ ui: { ...s.ui, isAboutExpanded: resolveBooleanUpdate(expanded, s.ui.isAboutExpanded) } })),
+
+  uiSetServiceGalleryExpanded: (expanded) =>
+    set((s) => ({ ui: { ...s.ui, isServiceGalleryExpanded: resolveBooleanUpdate(expanded, s.ui.isServiceGalleryExpanded) } })),
+
   uiSetShowOrderSuccessAnimation: (visible) =>
-    set((s) => ({ ui: { ...s.ui, showOrderSuccessAnimation: Boolean(visible) } }))
+    set((s) => ({ ui: { ...s.ui, showOrderSuccessAnimation: resolveBooleanUpdate(visible, s.ui.showOrderSuccessAnimation) } }))
 });

@@ -9,6 +9,7 @@ export function useFnbCheckoutPromoRenderers({
   checkoutVoucherCode,
   handlePromoCardApply,
   handleVoucherCardApply,
+  handleVoucherCardRemove,
   promoSectionModel,
   promoStatusMessage,
   promoStatusTone,
@@ -46,7 +47,7 @@ export function useFnbCheckoutPromoRenderers({
       <VoucherCodePanel
         code={checkoutVoucherCode}
         onChange={setCheckoutVoucherCode}
-        onClear={() => setCheckoutVoucherCode('')}
+        onClear={handleVoucherCardRemove}
         onApplyVoucher={handleVoucherCardApply}
         statusMessage={voucherStatusMessage}
         statusTone={voucherStatusTone}
@@ -65,6 +66,7 @@ export function useFnbCheckoutPromoRenderers({
     checkoutVoucherCode,
     handlePromoCardApply,
     handleVoucherCardApply,
+    handleVoucherCardRemove,
     promoSectionModel,
     promoStatusMessage,
     promoStatusTone,

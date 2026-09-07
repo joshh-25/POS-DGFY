@@ -18,8 +18,7 @@ import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
 import { getFoodBeverageStorefrontViewModel } from '../../modes/fnb/storefront/model/fnbStorefrontViewModel.js';
 import { buildFnbCommunityModel } from '../../modes/fnb/storefront/model/fnbCommunityModel.js';
 import { buildFnbPromoSectionModel } from '../../modes/fnb/promos/model/fnbPromoModel.js';
-import { buildServiceFallbackReasons, buildServicesCatalogPresentation, formatServicesRatingSummary } from '../../modes/services/storefront/model/servicesHeroPresentation.js';
-import { buildSimpleFallbackReasons } from '../../modes/simple/storefront/model/simpleStorefrontPresentation.js';
+import { buildServicesCatalogPresentation, formatServicesRatingSummary } from '../../modes/services/storefront/model/servicesHeroPresentation.js';
 import {
   deriveStorefrontRegistrationYear,
   formatRatingSummary,
@@ -135,13 +134,12 @@ export function useStorefrontCatalog({
         });
     const mergedGalleryImages = [...new Set(galleryPreview)];
     const mergedGalleryPreview = mergedGalleryImages.slice(0, 4);
-    const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
-      ? overviewSectionModel.whyChooseUs.slice(0, 4)
-      : buildServiceFallbackReasons({
-        serviceGroups,
-        servicesViewModel,
-        categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : []
-      });
+    // Storefront messaging is configured in POS > Settings > Storefront. Keep
+    // the public hero empty when that field is empty; catalog-derived claims
+    // are not a substitute for the business owner's configuration.
+    const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs)
+      ? overviewSectionModel.whyChooseUs.filter(Boolean).slice(0, 4)
+      : [];
     const ratingLabel = isServicesMode
       ? formatServicesRatingSummary(reviewSummary)
       : formatRatingSummary(reviewSummary);
@@ -304,12 +302,12 @@ export function useStorefrontCatalog({
       storeLocations
     });
     const mapLocation = mapStores[0] || null;
-    const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
-      ? overviewSectionModel.whyChooseUs.slice(0, 4)
-      : buildSimpleFallbackReasons({
-          categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : [],
-          catalog
-        });
+    // Storefront messaging is configured in POS > Settings > Storefront. Keep
+    // the public hero empty when that field is empty; catalog-derived claims
+    // are not a substitute for the business owner's configuration.
+    const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs)
+      ? overviewSectionModel.whyChooseUs.filter(Boolean).slice(0, 4)
+      : [];
     const directionsUrl = mapPublicationDisabled || !mapLocation
       ? ''
       : buildGoogleMapsDirectionsUrl({

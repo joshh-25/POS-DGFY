@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-06
+last_reviewed: 2026-09-07
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1368,3 +1368,110 @@ the one case a `NOT-EXECUTED-*` declaration may legitimately still reach `main`,
 authorized, not silent.
 
 PR: (this PR). Closes #1648. Refs #1618.
+
+### 2026-09-07: `repository-quality` split into 3 concern-based jobs (#1690)
+
+`promotion-quality-gate.yml`'s `repository-quality` job bundled 13 steps across dependency audits,
+compliance/env posture, CI-self-test contracts, and docs/release hygiene into a single job — every
+other job in this workflow already follows a one-job-per-concern pattern
+(`dgfy-api-quality`, the three `frontend-*-quality` jobs, `frontend-budgets-quality`), so a red
+`repository-quality` check-run in a PR's Checks tab named only "1 of 13 steps failed," with no clue
+which of 3 unrelated domains it was without opening the run and reading the step list.
+
+**What changed.** `repository-quality` is replaced by 3 jobs, each keeping its steps' exact ids,
+commands, and blocking/advisory status unchanged — only the job grouping changed:
+
+- **`repository-dependency-quality`** — dependency/compliance/env posture: `run_dependency_audit_prod`
+  (blocking), `run_dependency_audit_full` (advisory), `run_compliance_contracts` (blocking),
+  `run_production_env_fixtures` (blocking), `run_compat_seams` (advisory).
+- **`repository-ci-contracts-quality`** — CI/workflow self-validation (validates this repo's own CI
+  configuration, not product code): `validate_pr_quality_workflow`, `validate_runner_routing`,
+  `validate_workspace_hygiene`, `validate_compliance_sweep` — all blocking.
+- **`repository-docs-quality`** — docs/release/repo hygiene: `run_docs_lint` (blocking),
+  `run_release_notes` (advisory), `check_retired_path_resurrection` (advisory), `check_whitespace`
+  (blocking, PR-context only).
+
+Each new job duplicates the standard 5-step bootstrap (sparse-checkout clear/assert, checkout,
+setup-node, `npm ci`) this workflow already repeats per job by established convention, not a new
+pattern. `report-advisory-failures`'s `needs:` list and its `github-script` body are updated to read
+3 separate `*_FAILURES` outputs (`REPOSITORY_DEPENDENCY_FAILURES`, `REPOSITORY_CI_CONTRACTS_FAILURES`,
+`REPOSITORY_DOCS_FAILURES`) in place of the single `REPOSITORY_FAILURES`. Each new job's own
+"Record real per-step outcomes" step now also writes its `STEP_OUTCOMES` table to
+`$GITHUB_STEP_SUMMARY`, so a red job's own run summary shows the failing step immediately without
+scrolling logs — new, cheap (reuses data already computed for the advisory-failure reporter), not
+previously true of `repository-quality`.
+
+`scripts/check-pr-quality-workflow.js`'s `QUALITY_JOB_NAMES` and `BLOCKING_STEP_IDS` are updated as
+a data change, not a logic rewrite — the advisory-shape and reporter-shape validators
+(`checkStepLevelAdvisory`, `checkAdvisoryFailureReportingShape`, `checkStagingLegSkipShape`) already
+loop generically over `QUALITY_JOB_NAMES`. `scripts/gate-release-local.js`'s 6
+`CI_ENFORCED_GATES` entries that named `job: 'repository-quality'`
+(`dependencies.audit.prod`, `dependencies.audit.full`, `docs.lint`, `compliance.contracts`,
+`production.env.fixtures`, `release.notes`) now name the correct one of the 3 new jobs.
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s row references are updated to match (documentation
+accuracy only, not functional).
+
+**Not changed by this entry:** no `[binding]` clause of ADR 0074/0081/0082 is touched, no promotion
+leg's own gating changes (`repository-quality`'s three replacement jobs are skipped/advisory on
+exactly the same legs the original job was), and no architecture boundary is crossed (no `apps/*`
+runtime code touched). This is a `[default]`-tier clarification under ADR 0039, hence a dated
+amendment here rather than a new or superseding ADR.
+
+**Explicitly out of scope, left for a follow-up under epic #1124 (not decided or built here):**
+moving any of these checks to run earlier (PR-open against `develop`, or a `promoter` pre-cut step
+— #1690's own Q1), and true step-level incremental re-run (a `strategy: matrix` restructuring —
+#1690's own Q3, rejected for this ticket since it would require rewriting
+`check-pr-quality-workflow.js`'s `(job, step-id)` data model, not just its data). GitHub's native
+"re-run failed jobs" already benefits proportionately from the 3-job split with zero extra
+engineering, since it operates at job granularity. Fixing #1551 (`validate_compliance_sweep`'s own
+failure, currently tracked separately) is not this entry's job either — if unresolved by the time
+this split lands, `repository-ci-contracts-quality` starts out red for that already-tracked,
+unrelated reason, not a regression this split introduced.
+
+PR: (this PR). Closes #1690.
+
+### 2026-09-07: Promotion-time divergence check before the `to-staging` cut (#1696)
+
+Extends #1611's backport mechanism rather than replacing it. #1611 established a mandatory
+`fix/staging/*` → `develop` backport, discovered live when a staging-only fix was never ported
+back and `develop` kept shipping the bug it fixed. This entry closes the adjacent gap: even when
+every staging-side change *is* eventually reconciled, nothing checked whether `develop` would
+still merge cleanly into `staging` *before* the next `to-staging/<candidate_id>` cut — the
+conflict surfaced only as `mergeable_state: dirty` on an already-opened PR (confirmed live,
+candidate `2026-09-07-01`, PR #1688).
+
+**What changed.** `promoter` now runs `scripts/check-promotion-divergence.js` (new) before
+cutting `to-staging/<candidate_id>` — a `git merge-tree`-based, read-only mergeability check plus
+a provenance audit of every staging-only commit against the four tracked branch patterns
+(`to-staging/*`, `fix/staging/*`, `docs/release/*`, `compliance-sweep/*`). A real conflict is a
+hard stop, resolved before the cut rather than discovered during it;
+`scripts/check-merge-hygiene.js` (pre-existing, previously unwired — see
+`docs/ops/MERGE_ADOPTION_GATE.md`) is now the documented post-resolution verification step,
+replacing an ad hoc manual `git diff` check with a repeatable one.
+
+**Explicitly rejected: a periodic/scheduled divergence scan.** `staging` only changes through
+promoter-driven, PR-based branches (the four patterns above) — there is no organic between-
+promotions drift the way `develop` accumulates feature work continuously. A nightly or
+on-push scan would report clean on nearly every run and only ever surface something actionable
+right when a promotion is about to happen anyway, which is exactly when the new pre-cut check
+already runs — matching this document's own established preference for promotion-time gates
+over standalone periodic ones (see the 2026-09-06 #1648 entry moving the compliance-preflight
+check earlier in the flow for the identical reason).
+
+**Explicitly rejected: a blanket reconciliation requirement for every staging-side change.**
+Investigated live: every staging-only commit in this repo's actual history already traces to one
+of the four tracked branch patterns above; nothing has ever landed on `staging` outside a named,
+reviewable PR. The gap was in this document's own wording (naming only `fix/staging/*`), not in
+the underlying mechanism — fixed by generalizing the stated scope
+(`.agents/skills/promoter/SKILL.md`'s backport paragraph), not by adding a new mandatory step for
+content that already reconciles correctly today.
+
+**Q3, resolved (not just believed).** `git diff origin/develop origin/staging --
+.agents/skills/promoter/SKILL.md` is empty as of this entry — `develop`'s content (which won PR
+#1688's manual resolution) is exactly what's live on `staging` too. No further backport needed for
+that specific resolution.
+
+This is a `[default]`-tier procedure amendment under ADR 0039 — no `[binding]` clause of any ADR
+is changed by this entry.
+
+PR: (this PR). Closes #1696. Refs #1611.

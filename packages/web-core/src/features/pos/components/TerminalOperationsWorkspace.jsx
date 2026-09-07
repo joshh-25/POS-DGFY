@@ -9861,4 +9861,3 @@ export default function TerminalOperationsWorkspace({
     </WorkspaceShell>
   );
 }
-

@@ -86,6 +86,7 @@ export const normalizeTrackedOrderEntry = (entry, fallback = {}) => {
     status,
     status_label: String(entry.status_label || entry.statusLabel || '').trim(),
     order_method: String(entry.order_method || entry.orderMethod || 'delivery').trim().toLowerCase(),
+    special_instructions: String(entry.special_instructions || entry.specialInstructions || '').trim(),
     updated_at: String(entry.updated_at || entry.updatedAt || '').trim(),
     created_at: String(entry.created_at || entry.createdAt || '').trim(),
     item_name: String(entry.item_name || entry.itemName || '').trim(),

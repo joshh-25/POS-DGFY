@@ -1,14 +1,14 @@
 import React from 'react';
-import { CalendarDays, ChevronDown, ChevronUp, Package } from 'lucide-react';
+import { CalendarDays, ChevronRight, Package } from 'lucide-react';
 
-export function TrackingDrawerCardHeader({ dateLabel, entryPin, expanded, logoSource, onToggle, status, storeName, totalAmount, withAssetOrigin }) {
+export function TrackingDrawerCardHeader({ dateLabel, entryPin, logoSource, onViewOrder, status, storeName, totalAmount, withAssetOrigin }) {
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onToggle}
-      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onToggle(); }}
-      style={{ padding: '16px', display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer', background: expanded ? '#f8fbff' : '#fff', userSelect: 'none' }}
+    <button
+      type="button"
+      onClick={onViewOrder}
+      aria-label={`Open ${storeName} order ${entryPin}`}
+      className="tracking-drawer-card-action"
+      style={{ position: 'relative', width: '100%', boxSizing: 'border-box', border: 'none', padding: '16px 46px 16px 16px', display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer', background: '#fff', textAlign: 'left', userSelect: 'none' }}
     >
       <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, border: '1px solid #e2e8f0' }}>
         {logoSource ? <img src={withAssetOrigin(logoSource)} alt={storeName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Package size={20} color="#fff" />}
@@ -23,14 +23,13 @@ export function TrackingDrawerCardHeader({ dateLabel, entryPin, expanded, logoSo
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: status.color, background: status.bg, border: `1px solid ${status.border}`, borderRadius: 999, padding: '4px 8px 4px 10px', whiteSpace: 'nowrap' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: status.dot, flexShrink: 0 }} />
             {status.label}
-            {expanded ? <ChevronUp size={14} style={{ marginLeft: 2, color: status.color }} /> : <ChevronDown size={14} style={{ marginLeft: 2, color: status.color }} />}
           </span>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{totalAmount}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginTop: 2 }}>Total Amount</div>
           </div>
         </div>
       </div>
-    </div>
+      <ChevronRight size={20} color="#64748b" aria-hidden="true" style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+    </button>
   );
 }

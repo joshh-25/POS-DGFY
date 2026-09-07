@@ -1,5 +1,6 @@
 import React from 'react';
 import { Check, Clock3, FileText, RotateCcw, ShoppingBag, Store, Truck } from 'lucide-react';
+import { StorefrontOrderInstructions } from '../../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
 
 /** Simple/MSME completion summary shown after the tracking status reaches completed. */
 export function SimpleTrackingCompletedView({ actions, formatters, isMobileViewport, viewModel }) {
@@ -79,6 +80,8 @@ export function SimpleTrackingCompletedView({ actions, formatters, isMobileViewp
           <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{isPickup ? 'Pickup' : 'Delivery'}</div>
         </div>
       </section>
+
+      <StorefrontOrderInstructions value={trackingResult?.specialInstructions} accentColor={dgfyPrimary} bodyFont={servicesBodyFont} compact />
 
       {items.length > 0 ? (
         <section style={{ display: 'grid', gap: 10, fontFamily: servicesBodyFont }}>

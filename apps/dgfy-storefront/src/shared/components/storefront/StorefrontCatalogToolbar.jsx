@@ -1,12 +1,13 @@
-import React, { useRef, useState } from 'react';
-import { Box, ChevronDown, Filter, LayoutGrid, List, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Box, ChevronDown, Filter, LayoutGrid, List, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { StorefrontDropdown } from '../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { VoucherCodePanel } from './VoucherCodePanel.jsx';
 
 /**
  * Search/sort/category toolbar for the classic catalog section (eyebrow +
  * heading + subtitle + item-count pill, then search/sort/category on
- * desktop, or a category-chip strip + sort/view-toggle row on mobile).
+ * desktop, or an always-visible search field, category-chip strip, and
+ * sort/view-toggle row on mobile).
  * Originally F&B-only; every visual value is sourced from `modeAdapter`
  * (copy) and `modeAdapter.heroTheme` (colors), so any mode using the shared
  * `filteredFnbViewModel`/`fnbCatalogPresentation` data (see
@@ -20,6 +21,7 @@ const StorefrontCatalogToolbar = ({
   checkoutVoucherCode,
   setCheckoutVoucherCode,
   handleVoucherCardApply,
+  handleVoucherCardRemove,
   filteredFnbViewModel,
   fnbCategoryDropdownRef,
   fnbSortOption,
@@ -59,6 +61,7 @@ const StorefrontCatalogToolbar = ({
   const toolbarBorder = isProductMode
     ? (catalogPalette.border || toolbarTheme.borderSoft || '#e2e8f0')
     : '#edd4bc';
+  const mobileSearchBorder = catalogPalette.border || toolbarTheme.borderSoft || toolbarBorder;
   const toolbarAccentShadow = isRetailMode
     ? 'rgba(26,78,141,0.24)'
     : isServicesMode
@@ -92,7 +95,6 @@ const StorefrontCatalogToolbar = ({
       color: toolbarAccent
     }
   } : {};
-  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const catalogSearchInputRef = useRef(null);
 
   // #694: a second, more prominent entry point into #672's already-wired apply pipeline --
@@ -106,7 +108,7 @@ const StorefrontCatalogToolbar = ({
     <VoucherCodePanel
       code={checkoutVoucherCode}
       onChange={setCheckoutVoucherCode}
-      onClear={() => setCheckoutVoucherCode?.('')}
+      onClear={handleVoucherCardRemove || (() => setCheckoutVoucherCode?.(''))}
       onApplyVoucher={handleVoucherCardApply}
       compact
       accentColor={toolbarAccent}
@@ -143,43 +145,30 @@ const StorefrontCatalogToolbar = ({
     ];
 
     return (
-      <div style={{ display: 'grid', gap: 16 }}>
-        <div style={{ display: 'grid', gap: 10, width: mobileToolbarWidth, maxWidth: mobileToolbarWidth, minWidth: 0, boxSizing: 'border-box', margin: '0 auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0, gap: 12, boxSizing: 'border-box' }}>
-            {showSearch && isMobileSearchOpen ? (
-              <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${toolbarBorder}`, borderRadius: 999, background: '#fff', padding: '0 8px 0 14px', height: 36, width: '100%', boxSizing: 'border-box' }}>
-                <Search size={15} color={toolbarAccent} style={{ flexShrink: 0 }} />
-                <input
-                  autoFocus
-                  value={catalogSearch}
-                  onChange={(event) => setCatalogSearch(event.target.value)}
-                  placeholder={modeAdapter.catalogSearchPlaceholder}
-                  aria-label="Search catalog products"
-                  style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 13, color: toolbarTextPrimary, fontFamily: modeAdapter.heroTheme?.bodyFont }}
-                />
-                {showSearch ? <button
-                  type="button"
-                  onClick={() => { setIsMobileSearchOpen(false); setCatalogSearch(''); }}
-                  aria-label="Close search"
-                  style={{ width: 24, height: 24, borderRadius: '50%', border: 'none', background: '#f1f5f9', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-                >
-                  <X size={14} />
-                </button> : null}
-              </label>
-            ) : (
-              <>
-                <div style={{ fontSize: isSimpleMode ? (catalogTitleTypography.mobile || 16) : 16, fontWeight: isSimpleMode ? (catalogTitleTypography.weight || 700) : 700, color: toolbarTextPrimary, fontFamily: toolbarDisplayFont, flexShrink: 0 }}>Browse by Category</div>
-                {showSearch ? <button
-                  type="button"
-                  onClick={() => setIsMobileSearchOpen(true)}
-                  aria-label="Search"
-                  style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: toolbarAccent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 8px 18px ${toolbarAccentShadow}`, cursor: 'pointer', flexShrink: 0 }}
-                >
-                  <Search size={16} strokeWidth={2.2} />
-                </button> : null}
-              </>
-            )}
+      <div style={{ display: 'grid', gap: 20 }}>
+        <div data-mobile-catalog-group="intro-search" style={{ display: 'grid', gap: 10, width: mobileToolbarWidth, maxWidth: mobileToolbarWidth, minWidth: 0, boxSizing: 'border-box', margin: '0 auto' }}>
+          <div style={{ display: 'grid', gap: 4 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: toolbarAccentDark, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', lineHeight: 1.2, fontFamily: toolbarBodyFont }}>
+              <span style={{ width: 22, height: 1, background: toolbarAccent }} />
+              {modeAdapter.catalogEyebrow || 'Curated Catalog'}
+            </div>
+            {modeAdapter.catalogHeading ? <h2 style={{ margin: 0, color: toolbarTextPrimary, fontSize: catalogTitleTypography.mobile || 24, fontWeight: catalogTitleTypography.weight || 800, lineHeight: catalogTitleTypography.lineHeight || 1.15, letterSpacing: '-0.02em', fontFamily: toolbarDisplayFont }}>{modeAdapter.catalogHeading}</h2> : null}
           </div>
+          {showSearch ? <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, border: `2px solid ${mobileSearchBorder}`, borderRadius: 10, background: toolbarSurface, padding: '0 14px', minHeight: 42, width: '100%', boxSizing: 'border-box', boxShadow: '0 2px 8px rgba(15,23,42,0.04)' }}>
+            <Search size={16} color={toolbarAccent} style={{ flexShrink: 0 }} aria-hidden="true" />
+            <input
+              type="search"
+              value={catalogSearch}
+              onChange={(event) => setCatalogSearch(event.target.value)}
+              placeholder={modeAdapter.catalogSearchPlaceholder}
+              aria-label="Search catalog products"
+              className="storefront-mobile-catalog-search"
+              style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, color: toolbarTextPrimary, fontFamily: toolbarBodyFont }}
+            />
+          </label> : null}
+        </div>
+
+        <div data-mobile-catalog-group="categories" style={{ width: mobileToolbarWidth, maxWidth: mobileToolbarWidth, minWidth: 0, boxSizing: 'border-box', margin: '0 auto' }}>
           <div className="no-scrollbar" style={{ display: 'flex', gap: 8, width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', paddingRight: 4, paddingBottom: 2, boxSizing: 'border-box', overscrollBehaviorX: 'contain' }}>
             {categoryOptions.map((option) => {
               const isActive = option.key === (resolvedFnbSection || '');
@@ -203,7 +192,7 @@ const StorefrontCatalogToolbar = ({
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: mobileToolbarWidth, maxWidth: mobileToolbarWidth, minWidth: 0, gap: 10, boxSizing: 'border-box', margin: '0 auto' }}>
+        <div data-mobile-catalog-group="filters" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: mobileToolbarWidth, maxWidth: mobileToolbarWidth, minWidth: 0, gap: 10, boxSizing: 'border-box', margin: '0 auto' }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', flex: '1 1 auto', minWidth: 0, fontFamily: modeAdapter.heroTheme?.bodyFont }}>
             {formatCatalogCount(resolvedFnbSection ? (filteredFnbViewModel.menuSections.find((s) => s.sectionIdentity === resolvedFnbSection)?.items?.length || 0) : filteredFnbViewModel.menuItems.length)} {((resolvedFnbSection ? (filteredFnbViewModel.menuSections.find((s) => s.sectionIdentity === resolvedFnbSection)?.items?.length || 0) : filteredFnbViewModel.menuItems.length) === 1) ? itemNounSingular : itemNounPlural} available
           </div>
@@ -236,7 +225,7 @@ const StorefrontCatalogToolbar = ({
         </div>
 
         {voucherEntry && (
-          <div style={{ width: mobileToolbarWidth, maxWidth: mobileToolbarWidth, minWidth: 0, boxSizing: 'border-box', margin: '0 auto' }}>
+          <div data-mobile-catalog-group="voucher" style={{ width: mobileToolbarWidth, maxWidth: mobileToolbarWidth, minWidth: 0, boxSizing: 'border-box', margin: '0 auto' }}>
             {voucherEntry}
           </div>
         )}
@@ -331,9 +320,7 @@ const StorefrontCatalogToolbar = ({
             ]}
             leading={isServicesMode
               ? <span style={{ display: 'inline-flex', alignItems: 'center', color: toolbarAccent }}><Filter size={16} /></span>
-              : isProductMode
-                ? <span style={{ display: 'inline-flex', alignItems: 'center', color: toolbarAccent }}><Filter size={18} /></span>
-                : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, color: toolbarAccent }}><SlidersHorizontal size={18} /><span style={{ width: 1, height: '60%', minHeight: 24, borderRadius: 999, background: toolbarBorder }} /></span>}
+              : <span style={{ display: 'inline-flex', alignItems: 'center', gap: isProductMode ? 0 : 10, color: toolbarAccent }}><SlidersHorizontal size={18} />{isProductMode ? null : <span style={{ width: 1, height: '60%', minHeight: 24, borderRadius: 999, background: toolbarBorder }} />}</span>}
             {...priceDropdownTheme}
             chevronSize={isCompactToolbar ? 16 : 18}
             containerStyle={{ minWidth: priceControlWidth, flex: `0 0 ${priceControlWidth}px` }}

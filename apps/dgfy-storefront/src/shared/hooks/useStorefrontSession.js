@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { requestJson } from '../../services/requestJson.js';
 import {
@@ -22,6 +22,7 @@ import {
   identifySentryUser,
   resetSentryIdentity
 } from '../../../../../packages/web-core/src/observability/sentryClient.js';
+import { useStorefrontStore } from '../../store/useStorefrontStore.js';
 
 /**
  * Stateful hook that owns the DGFY customer session bootstrap.
@@ -35,10 +36,21 @@ import {
  * from the shell.
  */
 export function useStorefrontSession({ setIsAccountDrawerOpen }) {
-  const [dgfyAuthTokenState, setDgfyAuthTokenState] = useState(() => readDgfyAuthToken());
-  const [dgfySessionAccount, setDgfySessionAccount] = useState(null);
-  const [isDgfySessionResolved, setIsDgfySessionResolved] = useState(false);
-  const storefrontVisitorId = useMemo(() => getOrCreateStorefrontVisitorId(), []);
+  const dgfyAuthTokenState = useStorefrontStore((state) => state.session.dgfyAuthToken);
+  const setDgfyAuthTokenState = useStorefrontStore((state) => state.sessionSetDgfyAuthToken);
+  const dgfySessionAccount = useStorefrontStore((state) => state.session.dgfySessionAccount);
+  const setDgfySessionAccount = useStorefrontStore((state) => state.sessionSetDgfySessionAccount);
+  const isDgfySessionResolved = useStorefrontStore((state) => state.session.isDgfySessionResolved);
+  const setIsDgfySessionResolved = useStorefrontStore((state) => state.sessionSetDgfySessionResolved);
+  const storedVisitorId = useStorefrontStore((state) => state.session.storefrontVisitorId);
+  const setStorefrontVisitorId = useStorefrontStore((state) => state.sessionSetStorefrontVisitorId);
+  const initialVisitorId = useMemo(() => getOrCreateStorefrontVisitorId(), []);
+  const storefrontVisitorId = storedVisitorId || initialVisitorId;
+
+  useEffect(() => {
+    if (storedVisitorId || !initialVisitorId) return;
+    setStorefrontVisitorId(initialVisitorId);
+  }, [initialVisitorId, setStorefrontVisitorId, storedVisitorId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,10 +164,14 @@ export function useStorefrontSession({ setIsAccountDrawerOpen }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setDgfyAuthTokenState, setDgfySessionAccount, setIsDgfySessionResolved]);
 
   const storeAuthToken = readStoreAuthToken();
-  const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
+  // The legacy/global token can be written immediately before the app mounts (for
+  // example after an auth handoff). Keep the render-time behavior of the former
+  // useState initializer while the shared slice catches up through the bootstrap
+  // effect below.
+  const dgfyAuthToken = String(dgfyAuthTokenState || readDgfyAuthToken() || '').trim();
   const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
   const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken || dgfySessionAccount?.id);
 

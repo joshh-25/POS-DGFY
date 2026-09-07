@@ -14,7 +14,7 @@ export function ReviewsSidebar({ reviews = {}, theme = {} }) {
       <div className="sf-template__section sf-review-card sf-stack">
         <div className="sf-section-heading">
           {reviews.eyebrow ? <p className="sf-section-eyebrow" style={{ fontFamily: theme.bodyFont }}>{reviews.eyebrow}</p> : null}
-          <h2 className="sf-section-title" style={{ fontFamily: theme.displayFont }}>{reviews.title || 'Customer Reviews'}</h2>
+          <h2 className="sf-section-title" style={{ fontFamily: theme.displayFont }}>{reviews.title || 'Reviews'}</h2>
           {reviews.description ? (
             <p className="sf-section-description" style={{ fontFamily: theme.bodyFont }}>{reviews.description}</p>
           ) : null}
@@ -51,8 +51,11 @@ export function ReviewsSidebar({ reviews = {}, theme = {} }) {
               </article>
             )) : (
               <article className="sf-mode-card">
+                <h3 className="sf-section-title" style={{ margin: 0, fontFamily: theme.displayFont }}>
+                  {reviews.emptyTitle || 'No reviews yet'}
+                </h3>
                 <p className="sf-section-description" style={{ fontFamily: theme.bodyFont }}>
-                  {reviews.emptyLabel || 'No review cards yet. Connect review data for this storefront later.'}
+                  {reviews.emptyMessage || reviews.emptyLabel || 'Be the first to share your experience with this store.'}
                 </p>
               </article>
             )}

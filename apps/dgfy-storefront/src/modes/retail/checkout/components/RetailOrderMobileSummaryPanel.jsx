@@ -5,6 +5,7 @@ import { buildFeeAndVatSummaryRows } from '../../../../shared/model/storefrontFe
 import { VatDisclosureNote } from '../../../../shared/components/checkout/VatDisclosureNote.jsx';
 import { StorefrontMobileCheckoutFooter } from '../../../../shared/components/StorefrontMobileCheckoutFooter.jsx';
 import { CHECKOUT_FONT_FAMILY } from '../../../../shared/components/checkout/checkoutUiTokens.js';
+import { StorefrontOrderInstructions } from '../../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_DARK = '#1a4586';
@@ -34,6 +35,8 @@ export function RetailOrderMobileSummaryPanel({
   onStepChange,
   orderStep,
   scheduleLabel = 'NOW',
+  specialInstructions = '',
+  showFulfillmentSummary = true,
   setSummaryOpen,
   showSummary,
   totals = {},
@@ -84,10 +87,11 @@ export function RetailOrderMobileSummaryPanel({
             <div style={{ overflowY: 'auto', padding: '16px 16px 20px', display: 'grid', gap: 16 }}>
               <div style={{ fontSize: 34, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>{money(totals.total_amount)}</div>
               <div style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
-                <SummaryRow label="Fulfillment" value={isDeliveryOrder ? 'Delivery' : 'Pickup'} />
-                <SummaryRow label="Schedule" value={scheduleLabel} />
+                {showFulfillmentSummary && <SummaryRow label="Fulfillment" value={isDeliveryOrder ? 'Delivery' : 'Pickup'} />}
+                {showFulfillmentSummary && <SummaryRow label="Schedule" value={scheduleLabel} />}
                 <SummaryRow label="Items" value={`${cartCount} item${cartCount === 1 ? '' : 's'}`} />
               </div>
+              <StorefrontOrderInstructions value={specialInstructions} accentColor={RETAIL_ACCENT} bodyFont={CHECKOUT_FONT_FAMILY} compact />
               <div style={{ display: 'grid', gap: 12 }}>
                 {cart.map((line) => (
                   <div key={`retail-mobile-order-summary-${line.cart_line_id || line.item_id}`} style={{ display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr) auto', gap: 12, alignItems: 'start', border: '1px solid #e2e8f0', borderRadius: 18, padding: 12 }}>

@@ -76,6 +76,20 @@ The initial `develop` SHA is a release candidate, not a moving branch target. Us
 `to-staging/<candidate_id>` is merged, freeze that candidate: do not re-promote a newer `develop`
 wholesale into `staging` while the candidate is being qualified.
 
+**Pre-cut divergence check, before anything else (#1696, 2026-09-07).** Before computing the
+version-bump floor or running the compliance-preflight scan, confirm `origin/develop` actually
+merges cleanly into `origin/staging`:
+```
+node scripts/check-promotion-divergence.js --base origin/staging --head origin/develop
+```
+A `fail` status (real conflict) is a hard stop on cutting `to-staging/<candidate_id>` — resolve it
+first, either by finishing an outstanding backport this section's next paragraph names, or by
+hand-resolving on the promotion branch itself (mirroring PR #1688's own resolution) and then
+running `npm run check:merge-hygiene` (see below) to confirm nothing staging-only was silently
+dropped. A `warn` status (clean merge, but an unattributed staging-only commit) is not a blocker —
+read it, and only escalate to `pm` if the flagged commit is a real drift concern, not on the
+warning's mere presence.
+
 **Pre-cut floor step, before the candidate SHA is even chosen (ADR 0081 Decision 6, #1588, epic
 #1548 Wave 4).** Shipping to staging is, by definition, at least a minor bump per app that actually
 changed between `staging` and the candidate: `node scripts/check-app-version-bump.js --floor --base
@@ -177,6 +191,13 @@ changed file(s)/lines against `origin/develop`'s current content and confirm `de
 carries equivalent content, not merely a later commit that happens to touch the same file — #1611's
 own case resolved this way, by coincidence, which is exactly why "probably already fine" doesn't
 qualify as verification on its own.
+
+**Scope generalized (#1696, 2026-09-07):** this backport obligation applies to any commit that
+lands on `staging` outside a `to-staging/<candidate_id>` promotion merge — in practice today that
+means `fix/staging/*` repairs (above), `docs/release/*` note amendments, and
+`compliance-sweep/*` reconciliation branches (confirmed already treated this way in #1659's own
+backport batch, PRs #1668-1674). `scripts/check-promotion-divergence.js`'s provenance audit
+(see "Pre-cut divergence check" above) checks exactly these four patterns and flags anything else.
 
 Only after staging observation passes may the promoter cut `release/<candidate_id>-rN` from the
 current staging SHA. A pre-main failure returns to the staging repair loop; discard the stale
@@ -282,9 +303,11 @@ actually update `origin/staging` at all, so refreshing and re-checking afterward
 change regardless. A finding here in the default flow is exactly the anomaly named above — treat it
 as such, escalate, and route any genuine fix through `references/promotion-runbook.md`'s "Candidate
 repair after the staging merge" (a `fix/staging/*` branch PR'd directly into `staging`,
-hand-reconciling the declaration via `docs/compliance/request-time-preflight-protocol.md`'s
-local-debugging scripts if a live preflight run is actually needed) — never this section's
-`develop`-based dispatch-and-merge flow.
+hand-reconciling the declaration via `npm run compliance:reconcile-local` — see
+`docs/compliance/request-time-preflight-protocol.md`'s "Reconciling one declaration locally, without
+a CI round trip", #1694 — as part of that repair's own commit, rather than the older raw local-
+debugging scripts, if a live preflight run is actually needed) — never this section's `develop`-based
+dispatch-and-merge flow.
 
 The workflow runs against its own ephemeral CI-provisioned instance — no `environment:` input, no
 secrets, nothing to provision (superseded #1121's `stage.dgfy.ph` bot-account design; see the ADR
@@ -401,6 +424,8 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 |---|---|
 | Pre-flight, branch cut, PR open, merge into `develop`, or into `staging` (the default soak leg) | Unattended — proceed |
 | Running `node scripts/check-app-version-bump.js --floor` before cutting `to-staging/<candidate_id>` (ADR 0081 Decision 6, #1588), and opening/merging the resulting bump PR into `develop` if any app is below floor | Unattended — read-only check; the bump PR is an ordinary `develop`-base PR, already covered by the row above |
+| Running `node scripts/check-promotion-divergence.js` before cutting `to-staging/<candidate_id>` | Unattended — read-only, no git state mutated, same classification as the version-bump floor check and the compliance-preflight scan |
+| A `fail` (real conflict) or `warn` (unattributed commit) result from that check | Not a new ask-Pat checkpoint — resolving a promotion-branch conflict is already inside promoter's existing unattended branch-cut/merge authority (this file's own "Pre-flight, branch cut, PR open, merge into develop, or into staging" row). Use judgment; escalate only if resolution itself is unclear, same bar as any other promoter judgment call |
 | Dispatching `deploy.yml` for environment `STAGING` | Unattended — proceed. Pat's 2026-08-16 call: this leg of "review, merge, and deploy" runs end to end without a per-dispatch ask, matching #543's "Promoter cuts/promotes staging (unattended)" framing |
 | Dispatching `deploy.yml` for environment `DEV` | **Dropped from the default flow entirely (#982) — not a routine step, and not an ask-first fallback either.** DEV is optional and intentionally allowed to go stale; dispatch it only when specifically asked for, never implied by a "review, merge, and deploy" composite instruction |
 | Dispatching `verify-deployment.yml` (any environment) | Unattended — every remote command it runs is read-only |

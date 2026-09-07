@@ -44,6 +44,7 @@ export function deriveTrackingDrawerTotals(entry = {}, money) {
   const hasDiscount = Number.isFinite(discountAmount) && discountAmount > 0;
   return {
     totalAmount: money(entry.total_amount || 0),
+    specialInstructions: String(entry.special_instructions || entry.specialInstructions || '').trim(),
     subtotal: entry.subtotal != null ? money(entry.subtotal) : null,
     discount: hasDiscount ? `- ${money(discountAmount)}` : null,
     discountLabel: String(entry.discount_label || entry.discountLabel || 'Promo / Discount').trim(),

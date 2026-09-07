@@ -56,6 +56,14 @@ function PromoCard({
   const availabilityMessage = cleanPromoText(promoEntry.availabilityMessage) || 'Unavailable outside the scheduled promo window.';
   const isApplied = Boolean(promoCode) && promoCode === cleanPromoText(activePromoCode).toUpperCase();
   const cardMinHeight = isMobileViewport ? 184 : 178;
+  const toggleFlip = () => setIsFlipped((previous) => !previous);
+  const handleFlipKeyDown = (event) => {
+    if (isUnavailable || event.target.closest?.('button')) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleFlip();
+    }
+  };
 
   const copyCode = async (event) => {
     event.stopPropagation();
@@ -103,17 +111,12 @@ function PromoCard({
       >
         <div
           role="button"
-          tabIndex={isUnavailable ? -1 : 0}
-          aria-label={isUnavailable ? `${title} is unavailable` : `Show promo code for ${title}`}
+          tabIndex={!isUnavailable && !isFlipped ? 0 : -1}
+          aria-hidden={isFlipped}
+          aria-label={isUnavailable ? `${title} is unavailable` : `Show or hide promo code for ${title}`}
           aria-pressed={isFlipped}
-          onClick={() => setIsFlipped(true)}
-          onKeyDown={(event) => {
-            if (isUnavailable) return;
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              setIsFlipped(true);
-            }
-          }}
+          onClick={toggleFlip}
+          onKeyDown={handleFlipKeyDown}
           style={{
             ...faceStyle,
             display: 'flex',
@@ -175,6 +178,10 @@ function PromoCard({
 
         <section
           aria-label={`${title} promo code`}
+          tabIndex={!isUnavailable && isFlipped ? 0 : -1}
+          aria-hidden={!isFlipped}
+          onClick={toggleFlip}
+          onKeyDown={handleFlipKeyDown}
           style={{
             ...faceStyle,
             display: 'grid',
@@ -191,12 +198,9 @@ function PromoCard({
           <div style={{ fontFamily: bodyFontFamily, fontSize: 12, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.82 }}>{title}</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px dashed rgba(255,255,255,0.72)', borderRadius: 14, padding: '12px 14px', background: 'rgba(255,255,255,0.1)' }}>
             <code style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: isMobileViewport ? 17 : 21, fontWeight: 900, letterSpacing: '0.08em', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{promoCode || 'NO CODE'}</code>
-            {promoCode ? <button type="button" onClick={copyCode} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 10, padding: '8px 10px', cursor: 'pointer', background: '#ffffff', color: accentDark, fontSize: 12, fontWeight: 800 }}>{didCopy ? <Check size={15} /> : <Copy size={15} />}{didCopy ? 'Copied' : 'Copy'}</button> : null}
+            {promoCode ? <button type="button" tabIndex={isFlipped ? 0 : -1} onClick={copyCode} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 10, padding: '8px 10px', cursor: 'pointer', background: '#ffffff', color: accentDark, fontSize: 12, fontWeight: 800 }}>{didCopy ? <Check size={15} /> : <Copy size={15} />}{didCopy ? 'Copied' : 'Copy'}</button> : null}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => setIsFlipped(false)} style={{ border: '1px solid rgba(255,255,255,0.65)', borderRadius: 999, padding: '7px 12px', background: 'transparent', color: '#ffffff', cursor: 'pointer', fontSize: 12, fontWeight: 800 }}>Back</button>
-            {isApplied ? <span style={{ fontSize: 12, fontWeight: 800 }}>Applied</span> : null}
-          </div>
+          {isApplied ? <span style={{ fontSize: 12, fontWeight: 800 }}>Applied</span> : null}
         </section>
       </div>
     </div>
