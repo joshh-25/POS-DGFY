@@ -74,7 +74,42 @@ flowchart TD
 - If we did mix it in, "what's on staging" would stop reliably matching "what we tested," which is the entire point of having a staging step.
 - Shipping 1.2.0 now and starting 1.3.0 right after is completely normal — candidates can follow each other back-to-back with no cooldown required.
 
-*(The only exception is a genuine business-urgency call — skipping straight from `develop` to `main` for something that truly can't wait for a staging soak. That's a deliberate, rare, explicitly-authorized exception, not a routine option.)*
+*(There's one narrow exception to "always go through staging" — a genuine business-urgency call to
+skip the soak for something that's ready but can't wait. That's still built the normal way, just
+without the staging stop. It's not the same thing as a hotfix — see below.)*
+
+---
+
+## What about hotfixes to `main`?
+
+There are two different "skip the normal flow" situations, worth telling apart — they're not the
+same thing, even though both feel urgent:
+
+1. **"This is ready and needs to ship today, but nothing is actually broken."** That's the exception
+   mentioned just above — it still starts from `develop`, just skips the staging stop.
+2. **"Production is broken right now, for real customers."** That's a genuine **hotfix**, and it
+   works differently on purpose:
+
+- The fix branches directly off **`main`** — not `develop`, not `staging`. Why: `develop` might have
+  other half-finished, untested changes sitting on it right now, and pulling those in along with the
+  fix would risk shipping more than just the fix during an actual outage.
+- It's tested and merged straight into `main`, then deployed immediately — there's no time to wait
+  for a full promotion cycle.
+- Afterward — **always, never skipped** — that same fix is copied back into `develop` (and
+  `staging`, if a candidate is currently in flight there too). If this step were skipped, the next
+  normal promotion could silently undo the fix, since `develop` would still have the old, broken
+  code.
+
+```mermaid
+flowchart TD
+    P["main<br/>(something breaks in production)"] --> H["hotfix branch<br/>cut directly from main"]
+    H --> F["fix tested, then merged straight into main"]
+    F --> D["deployed immediately"]
+    F -.->|"copied back afterward — never skipped"| DEV["develop<br/>(so the fix isn't lost or undone later)"]
+```
+
+This path is deliberately rare and needs explicit sign-off every time — it exists for real outages,
+not as a shortcut for "we don't feel like waiting."
 
 ---
 
@@ -121,4 +156,5 @@ No wasted work, no re-testing from scratch, and `develop` didn't stay broken. Th
 | New feature merges to `develop` while staging is being tested — does it get bundled in? | No — it waits for the *next* candidate |
 | Bug found on staging — start over? | No — patch the candidate in place, then copy the fix back to `develop` |
 | Can candidates ship back-to-back? | Yes, that's normal |
-| Can we skip staging entirely? | Only for a genuine emergency, explicitly authorized — never routine |
+| Can we skip staging for something urgent but not broken? | Yes, rarely, explicitly authorized — still starts from `develop` |
+| Production is actually broken right now — what do we do? | A **hotfix**: branch straight from `main`, fix, merge, deploy immediately, then always copy the fix back to `develop` |
