@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Op } from 'sequelize';
+import { DataTypes, Op, Sequelize } from 'sequelize';
 
 const findAndCountAll = jest.fn();
 const userFindAll = jest.fn();
@@ -86,8 +86,7 @@ describe('POS transaction history repository query', () => {
         expect(sequelize.fn).toHaveBeenCalledWith(
             'JSON_CONTAINS',
             expect.objectContaining({ kind: 'column', name: 'PosTransaction.payment_breakdown' }),
-            JSON.stringify({ payment_type: 'employee_credit' }),
-            '$'
+            JSON.stringify({ payment_type: 'employee_credit' })
         );
         expect(options.where.payment_type).toBeUndefined();
         expect(options.limit).toBe(20);
@@ -99,5 +98,35 @@ describe('POS transaction history repository query', () => {
                 required: false
             })
         ]));
+    });
+
+    it('generates a valid MySQL JSON_CONTAINS expression for split-payment filters', async () => {
+        const realSequelize = new Sequelize('dgfy_sql_generation', 'root', '', {
+            dialect: 'mysql',
+            logging: false
+        });
+        const queryModel = realSequelize.define('PosTransaction', {
+            payment_type: DataTypes.STRING,
+            payment_breakdown: DataTypes.JSON
+        }, {
+            tableName: 'pos_transactions',
+            timestamps: false
+        });
+        models.PosTransaction.sequelize = realSequelize;
+
+        try {
+            await posRepository.listTransactions({ payment_type: 'card' });
+            const [options] = findAndCountAll.mock.calls[0];
+            const sql = realSequelize.dialect.queryGenerator.selectQuery(queryModel.tableName, {
+                where: options.where,
+                model: queryModel
+            });
+
+            expect(sql).toContain("JSON_CONTAINS(`PosTransaction`.`payment_breakdown`, '{\\\"payment_type\\\":\\\"card\\\"}') = 1");
+            expect(sql).not.toContain("'$$'");
+        } finally {
+            models.PosTransaction.sequelize = sequelize;
+            await realSequelize.close();
+        }
     });
 });
