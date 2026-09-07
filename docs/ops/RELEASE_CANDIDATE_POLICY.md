@@ -1475,3 +1475,38 @@ This is a `[default]`-tier procedure amendment under ADR 0039 — no `[binding]`
 is changed by this entry.
 
 PR: (this PR). Closes #1696. Refs #1611.
+
+### 2026-09-07: Pre-cut floor step scoped to changed apps -- it was force-bumping every app regardless (#1740)
+
+Found investigating PR #1738 (candidate `2026-09-08-01`): the pre-cut floor step (2026-09-04 entry
+above, `node scripts/check-app-version-bump.js --floor --base origin/staging --head origin/develop`)
+force-bumped all five apps' versions even though the candidate's only real code change was two files
+in `apps/dgfy-storefront/src/`. Same pattern on candidates `2026-09-07-03` and `2026-09-07-04`.
+
+**Root cause.** `runFloor()` (the `--floor` mode this step invokes) had no change detection at all --
+it iterated the full, hardcoded five-app list unconditionally, unlike `check:app-versions`'s own
+PR-time check (`runCheck()`), which correctly scopes to apps with a direct `apps/<app>/` change or a
+changed `file:`-dependency package. This directly contradicted this document's own 2026-09-04 entry
+and ADR 0081 Decision 6's text ("Apps with no changes keep their version untouched") -- the spec was
+right, the code simply didn't implement it for this entry point.
+
+**Consequence beyond noise.** The 2026-09-05 build-skip entry above (`resolve-build-skip-plan.js`)
+already skips rebuilding an app whose version tag is published and content-unchanged -- a spurious
+bump defeats that outright, since a newly bumped tag is by definition not yet published. Every
+force-bumped-but-unchanged app was rebuilt and republished to GHCR on every promotion for no content
+reason, burning CI minutes and registry storage.
+
+**Resolution.** `runFloor()` now reuses `detectChangedApps()` -- the same function `runCheck()`
+already uses -- and evaluates the floor only for apps that actually changed between the two refs.
+`file:` fan-out (a `packages/web-core` change still bumping every dependent frontend) is unaffected.
+An unchanged app is now reported informationally as skipped, never as below floor. **No change to
+the obligation itself** -- an app that did change still needs the same minor-floor bump it always
+did; only the scoping was wrong.
+
+`[snapshot]`-equivalent procedure fix, no policy text above changed in substance (this document
+already described the scoped behavior correctly; only the script's implementation was fixed to
+match). Full detail: ADR 0081's matching 2026-09-07 Amendment,
+`.agents/skills/promoter/references/promotion-runbook.md`'s floor-step section,
+`scripts/check-app-version-bump.js`'s `runFloor()`, issue #1740.
+
+PR: (this PR). Refs #1740.
