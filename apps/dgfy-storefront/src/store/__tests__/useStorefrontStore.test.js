@@ -77,6 +77,30 @@ describe('uiSlice reference actions', () => {
     expect(selectIsServiceGalleryExpanded(useStorefrontStore.getState())).toBe(false);
   });
 
+  it('supports functional updates for boolean UI state', () => {
+    useStorefrontStore.getState().uiSetAccountDrawerOpen((previous) => !previous);
+    useStorefrontStore.getState().uiSetAboutExpanded((previous) => !previous);
+    useStorefrontStore.getState().uiSetServiceGalleryExpanded((previous) => !previous);
+    useStorefrontStore.getState().uiSetShowOrderSuccessAnimation((previous) => !previous);
+
+    let state = useStorefrontStore.getState();
+    expect(state.ui.isAccountDrawerOpen).toBe(true);
+    expect(selectIsAboutExpanded(state)).toBe(true);
+    expect(selectIsServiceGalleryExpanded(state)).toBe(true);
+    expect(selectShowOrderSuccessAnimation(state)).toBe(true);
+
+    useStorefrontStore.getState().uiSetAccountDrawerOpen((previous) => !previous);
+    useStorefrontStore.getState().uiSetAboutExpanded((previous) => !previous);
+    useStorefrontStore.getState().uiSetServiceGalleryExpanded((previous) => !previous);
+    useStorefrontStore.getState().uiSetShowOrderSuccessAnimation((previous) => !previous);
+
+    state = useStorefrontStore.getState();
+    expect(state.ui.isAccountDrawerOpen).toBe(false);
+    expect(selectIsAboutExpanded(state)).toBe(false);
+    expect(selectIsServiceGalleryExpanded(state)).toBe(false);
+    expect(selectShowOrderSuccessAnimation(state)).toBe(false);
+  });
+
   it('coerces truthiness for the order-success flag setter', () => {
     useStorefrontStore.getState().uiSetShowOrderSuccessAnimation('yes');
     expect(selectShowOrderSuccessAnimation(useStorefrontStore.getState())).toBe(true);
