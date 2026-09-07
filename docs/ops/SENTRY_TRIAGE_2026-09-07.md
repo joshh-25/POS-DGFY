@@ -32,7 +32,7 @@ dedupe-first rule applies to a reopen candidate exactly as it does to a fresh fi
 
 | Environment | Release(s) in window | Notes |
 |---|---|---|
-| PROD (`main`) | `214a56a458d` (still the newest release in every window sample), older: `568bbe5f88b`, `9fa1717cffd`, `025e70df20b`, `fa1b93528`, `052753eb7`, `7a343fcbb41`, `25b34286c`, `cabad60d0`, `11bc5b0e1`, `b5639cd5c` | `origin/main`'s actual current head is `8b1e16d631` (PR #1702, a POS-catalog hotfix, merged 2026-09-07T11:29 +08) — but **no PROD deploy has run since 09-04**; `214a56a458d` is unchanged as the newest release any event carries, so `8b1e16d631` is not yet reflected in any Sentry sample. `214a56a458d` already contains both fix commits confirmed below (`822df4844`, `9886526e4`), both re-confirmed live as ancestors of the current `origin/main`. |
+| PROD (`main`) | `214a56a458d` (newest release across the original 7d sample), plus `8b1e16d631` — confirmed live via a `2026-09-07T05:45:04Z` PROD event, filed as `DGFY-POS-14` (see Buckets) | **Corrected (RF-1):** a PROD deploy *did* run after 09-04 — `deploy-main.yml` run `34079987481` completed successfully at `2026-09-07T03:32:31Z` for `origin/main`'s current head `8b1e16d63130b953f4e05447739c0666bf82b4f8` (PR #1702, a POS-catalog hotfix, merged 2026-09-07T11:29 +08; confirmed via `gh api repos/Sieitzz/dgfy-platform/actions/workflows/deploy-main.yml/runs`), over two hours before this triage task was even created (05:42 UTC). Sample cutoff: this doc was committed at `05:50 UTC` — the original sweep's sampled window evidently closed before `05:45:04Z`, which is why `8b1e16d631` was absent from the first pass's sample, not because the deploy hadn't happened. A live PROD event on this release has since been confirmed (`05:45:04Z`, filed as `DGFY-POS-14`, a distinct issue from `DGFY-POS-13` — see Buckets and re-verification #6). `214a56a458d` already contains both fix commits confirmed below (`822df4844`, `9886526e4`), both re-confirmed live as ancestors of the current `origin/main`. |
 | STAGING | `889bc294064`, `1a0c404ca10`, `3b894a5d26` (`DGFY-BACKEND-6` samples), `61275044ef6` (`DGFY-BACKEND-7`) | `origin/staging`'s current head is `333a0960df1` (PR #1688, merged 2026-09-07T01:34 +08) — later than every sampled STAGING release this window; no new STAGING-side regression evidence. |
 | DEV (backend) | `null` (unstamped) for most events, `d08b01a834d` for one `DGFY-POS-13` sample | Re-verification #1 (carried since 08-29) **FAIL** again — `#633`/`#401` still open, not re-diagnosed this run. |
 | DEV (frontend) | `8a1da7cf9` (`DGFY-POS-C`/`DGFY-POS-D` samples) | Not independently re-verified this pass; carrying forward the standing DEV-deploy-cadence process observation (out of scope here). |
@@ -47,7 +47,7 @@ dedupe-first rule applies to a reopen candidate exactly as it does to a fresh fi
 | `DGFY-POS-C` | PROD 16 (7 on current release `214a56a458d` alone) + DEV noted separately | own 2026-08-22 comment on `#474` set an explicit reopen bar (`timeout of 20000ms` >2×/release) — 7 on the current release clears it by a wide margin; window volume roughly doubled vs. 09-04 (8→16) | genuine defect, dedupe candidate against a **closed** issue | **reopened `#474`**, evidence comment posted, not filed as a new issue |
 | `DGFY-BACKEND-9` | DEV | 2 (unchanged from 09-04) | below floor (2 < 3, `handled:yes`) | none — carried for next-run re-verification |
 | `DGFY-BACKEND-7` | STAGING | 1 (unchanged) | below floor (1 < 3, `handled:yes`) | none |
-| `DGFY-POS-13` | PROD 1 + DEV 1 | 2 (unchanged) | below floor (2 < 3, `handled:yes`) | none — watch alongside `#1476` |
+| `DGFY-POS-13` | PROD 1 + DEV 1 | 2 (unchanged) — **recounted (RF-2)** via direct `search_events(issue:DGFY-POS-13)` on 2026-09-07: still exactly the two 09-04 events, no new occurrences. The `05:45:04Z` PROD `/terminal` 500 on release `8b1e16d631` flagged in review is **not** an occurrence of this issue — `get_sentry_resource` confirms Sentry grouped it as a separate issue, `DGFY-POS-14` (different culprit `/` vs. `/terminal`, different `failed_request.url`, different `tenant_id`), first seen `2026-09-07T05:45:04Z`, 1 occurrence, unresolved, not yet triaged | below floor (2 < 3, `handled:yes`) — floor not cleared by the recount | none — watch alongside `#1476`; `DGFY-POS-14` is a new, separate signal not yet triaged (out of scope for this correction pass) |
 | `DGFY-STORE-1S/1R/1Q/1P/1N` | PROD (release `214a56a458d`) | 1 each, unchanged since filing | already filed — `#1585` (open, no fix PR yet) | none |
 | `DGFY-STORE-1M` | PROD | 6 (up from 5) | dedupe candidate — `#177` (SMTP misconfig, open) | none — continues under `#177`'s existing scope, no new comment needed |
 | `DGFY-POS-Z` | PROD | 10 | transient 502, method-keyed — `#643`/`#987` epic, `#646` merged (fingerprint collapse) | none |
@@ -86,7 +86,7 @@ than filing a duplicate.
 | 3 | Does `DGFY-SKUPERVISOR-1` recur under the current PROD head | **Met (zero new events)** — **resolved in Sentry** |
 | 4 | Does `#1585` get repaired, and does its Sentry fingerprint quintet stop firing | **Not yet** — no fix PR opened; fingerprints unchanged at 1 event each since filing |
 | 5 | Does `DGFY-BACKEND-9` recur or grow past the floor | **Not met** — still 2 events, unchanged |
-| 6 | Does `DGFY-POS-13` recur past the floor | **Not met** — still 2 events, unchanged |
+| 6 | Does `DGFY-POS-13` recur past the floor | **Not met** — direct recount (2026-09-07, `search_events`) confirms still 2 events, unchanged. The `05:45:04Z` `/terminal` 500 on release `8b1e16d631` raised in review is a distinct Sentry issue (`DGFY-POS-14`), not a recurrence of this one |
 
 **New re-verifications for next run:**
 - Does `#474`'s reopen hold — does `DGFY-POS-C`'s `timeout of 20000ms` signature keep recurring on
@@ -99,7 +99,10 @@ than filing a duplicate.
 - Does `#1585`'s tenant-schema gap get a fix PR, and does its fingerprint quintet stop firing once
   merged.
 - Does `DGFY-BACKEND-9` (`Item.is_active`) or `DGFY-POS-13` (`/terminal` 500) grow past the floor
-  (currently 2 events each).
+  (currently 2 events each — `DGFY-POS-13`'s count re-confirmed via direct Sentry recount on
+  2026-09-07, unaffected by the separately-fingerprinted `DGFY-POS-14`).
+- New this pass: does `DGFY-POS-14` (PROD `500`, first seen `2026-09-07T05:45:04Z` on release
+  `8b1e16d631`, 1 event) grow past the floor — not yet triaged, watch next run.
 
 ## Open, not addressed this run
 
