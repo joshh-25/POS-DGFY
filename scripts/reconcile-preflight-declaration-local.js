@@ -261,7 +261,12 @@ const sweepOneDeclaration = async (declarationPath, deps = {}) => {
 
   const requestBody = buildRequest(content, { declarationPath });
   const { httpCode, responseBody } = await postPreflight(requestBody);
-  const verdict = parseResponseVerdict(responseBody);
+  const parsedVerdict = parseResponseVerdict(responseBody);
+  // A parsed body reading no_breach/can_proceed:true is only a real pass on HTTP 200 -- matches
+  // the sweep contract every other caller of this endpoint already enforces (RF-1, PR #1703
+  // review). A non-200 response (e.g. a 500 whose body happens to still parse as passing-looking
+  // JSON) must never be treated as a pass, regardless of what the parsed body says.
+  const verdict = { ...parsedVerdict, pass: String(httpCode) === '200' && parsedVerdict.pass };
 
   return { declaration: declarationPath, http_code: String(httpCode), verdict };
 };

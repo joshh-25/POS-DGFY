@@ -195,6 +195,33 @@ test('sweepOneDeclaration awaits an async postPreflight and parses a failing res
   assert.equal(entry.verdict.result, 'breach');
 });
 
+test('sweepOneDeclaration treats a non-200 HTTP response as pass:false even when the parsed body looks passing (RF-1, PR #1703 review)', async () => {
+  const entry = await sweepOneDeclaration('x.md', {
+    readFileSync: () => FIXTURE_FRONT_MATTER.major,
+    postPreflight: () => ({
+      httpCode: 500,
+      responseBody: JSON.stringify({ success: true, data: { result: 'no_breach', can_proceed: true, reason_code: 'ALLOWED' } })
+    })
+  });
+  assert.equal(entry.http_code, '500');
+  assert.equal(entry.verdict.pass, false);
+  // Other parsed fields are preserved for logging/diagnostics -- only `pass` is overridden.
+  assert.equal(entry.verdict.result, 'no_breach');
+  assert.equal(entry.verdict.reason_code, 'ALLOWED');
+});
+
+test('reconcileOrFailClosed never calls reconcileDeclarationFile for a non-200-sourced entry', () => {
+  let reconcileCallCount = 0;
+  const outcome = reconcileOrFailClosed(
+    [{ declaration: 'x.md', verdict: { pass: false, result: 'no_breach', reason_code: 'ALLOWED' }, http_code: '500' }],
+    { runId: 'local' },
+    { reconcileDeclarationFile: () => { reconcileCallCount += 1; return 'unused'; } }
+  );
+  assert.equal(outcome.ok, false);
+  assert.deepEqual(outcome.failed, ['x.md']);
+  assert.equal(reconcileCallCount, 0);
+});
+
 // ---- reconcileOrFailClosed ----------------------------------------------------------------------
 
 test('reconcileOrFailClosed reconciles every entry when all pass', () => {
