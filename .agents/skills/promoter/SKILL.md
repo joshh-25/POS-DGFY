@@ -282,9 +282,11 @@ actually update `origin/staging` at all, so refreshing and re-checking afterward
 change regardless. A finding here in the default flow is exactly the anomaly named above — treat it
 as such, escalate, and route any genuine fix through `references/promotion-runbook.md`'s "Candidate
 repair after the staging merge" (a `fix/staging/*` branch PR'd directly into `staging`,
-hand-reconciling the declaration via `docs/compliance/request-time-preflight-protocol.md`'s
-local-debugging scripts if a live preflight run is actually needed) — never this section's
-`develop`-based dispatch-and-merge flow.
+hand-reconciling the declaration via `npm run compliance:reconcile-local` — see
+`docs/compliance/request-time-preflight-protocol.md`'s "Reconciling one declaration locally, without
+a CI round trip", #1694 — as part of that repair's own commit, rather than the older raw local-
+debugging scripts, if a live preflight run is actually needed) — never this section's `develop`-based
+dispatch-and-merge flow.
 
 The workflow runs against its own ephemeral CI-provisioned instance — no `environment:` input, no
 secrets, nothing to provision (superseded #1121's `stage.dgfy.ph` bot-account design; see the ADR

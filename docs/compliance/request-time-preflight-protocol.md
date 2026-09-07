@@ -351,9 +351,36 @@ To finish it:
    but don't rely on that path when `Closes` is available; it's simpler and
    immediate.
 
-For local debugging (exercising the mechanism without dispatching the
-workflow — e.g. against a local `dgfy-api` you've stood up yourself), the
-underlying scripts are directly runnable:
+### Reconciling one declaration locally, without a CI round trip (#1694, 2026-09-07)
+
+The handoff procedure above exists for the continuous `develop`-push sweep.
+It has no equivalent for a compliance-sensitive fix authored directly against
+`staging`/`release/*` (or any branch that trigger doesn't cover) — historically
+that meant a `develop`-detour PR plus a sweep-handoff PR just to clear one
+`NOT-EXECUTED-*` placeholder before the actual fix could land where it needed
+to.
+
+`npm run compliance:reconcile-local -- <file>.md [more...]`
+(`scripts/reconcile-preflight-declaration-local.js`) is the recommended path
+instead: it sequences the exact same steps
+`compliance-preflight-sweep.yml` runs — boot an ephemeral mysql+redis, migrate,
+seed a throwaway fixture tenant, boot `dgfy-api`, POST each declaration to the
+live endpoint, reconcile on an all-pass — as one synchronous local command,
+with no GitHub Actions run and no reconciliation PR. Requires Docker and both
+`apps/dgfy-migration-runner`/`apps/dgfy-api` already `npm install`-ed.
+
+**This writes to the given declaration file(s) on disk, in place, and nothing
+else** — it does not create a branch, commit, or open a PR. Committing,
+pushing, and opening the PR is the caller's own responsibility, through
+whichever review path the branch already uses (a `staging`/`release/*` fix
+rides the same review/merge path it would have anyway, just with the
+reconciled front matter already part of the diff instead of a placeholder).
+See `scripts/reconcile-preflight-declaration-local.js`'s own header for the
+full step sequence and port choices.
+
+For lower-level debugging (exercising one piece of the mechanism directly —
+e.g. against a local `dgfy-api` you've already stood up yourself), the
+underlying scripts remain directly runnable:
 
 ```bash
 node apps/dgfy-api/scripts/seed-preflight-fixture.js   # prints PREFLIGHT_* + FIXTURE_TENANT_ID
