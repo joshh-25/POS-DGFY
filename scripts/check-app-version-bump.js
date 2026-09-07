@@ -282,7 +282,13 @@ async function computeReachabilityShadowVerdict(repoRoot, headGitRef, entry, cha
 
     try {
         const scopeDirs = REACHABILITY_SCOPE_DIRS.filter((dir) => fs.existsSync(path.join(repoRoot, dir)));
-        const audit = auditReachabilitySafety(repoRoot, scopeDirs);
+        // RF-2 (PR #1708 review): the safety-net audit must also cover this app's own source tree
+        // and packages/pos-receipt, not just packages/web-core/packages/shared-constants -- a
+        // self-referential `@/...`/`@sieitzz/...` alias this module can't resolve can appear in
+        // either. See resolve-web-core-reachability.js's ALIAS_EDGE_SCAN_DIRS header comment.
+        const aliasScanDirs = [...scopeDirs, 'packages/pos-receipt', `apps/${entry.app}`]
+            .filter((dir) => fs.existsSync(path.join(repoRoot, dir)));
+        const audit = auditReachabilitySafety(repoRoot, scopeDirs, aliasScanDirs);
         if (!audit.safe) {
             return {
                 applicable: true,
@@ -290,7 +296,7 @@ async function computeReachabilityShadowVerdict(repoRoot, headGitRef, entry, cha
                 code: 'safety-net-tripped',
                 safetyNetPassed: false,
                 violations: audit.violations,
-                detail: `safety net found ${audit.violations.length} disqualifying pattern(s) in ${scopeDirs.join(', ')} -- falling back to conservative "changed" (matches the old verdict)`,
+                detail: `safety net found ${audit.violations.length} disqualifying pattern(s) in ${aliasScanDirs.join(', ')} -- falling back to conservative "changed" (matches the old verdict)`,
             };
         }
 

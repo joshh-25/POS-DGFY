@@ -169,6 +169,193 @@ function findWorkerUrlTargets(repoRoot, scopeDirs) {
   return edges;
 }
 
+// --- Self-referential alias resolution (`@/...`, `@sieitzz/...`) -----------------------------
+//
+// Each frontend app's vite.config.js resolves a handful of `@/...` aliases into
+// packages/web-core (and, via packages/web-core/vite/webCoreRuntimeDeps.js's
+// WEB_CORE_SRC_MAPPED_DEPS, `@sieitzz/shared-constants`/`@sieitzz/pos-receipt` into their own
+// packages) at build time -- a rewrite madge's plain static import analysis knows nothing about.
+// Left unhandled, any file that reaches a REACHABILITY_SCOPE_DIRS file ONLY through one of these
+// aliases (never a relative import) is invisible to computeAppReachableModules(), silently
+// UNDER-counting the reachable set (RF-2, PR #1708 review) -- confirmed live against this exact
+// repo: packages/web-core/src/features/settings/modeItemTaxonomy.js reaches
+// packages/shared-constants/src/workflowModes.js ONLY via `@sieitzz/shared-constants/workflowModes`,
+// and apps/dgfy-ims/src itself imports that same family of specifiers directly (not just
+// packages/web-core's own self-referential code). This is the opposite direction of the
+// over-flag-not-under-flag philosophy §2/§3.3 already apply to Worker/dynamic-import risk, and
+// just as dangerous: a real reachable change would misreport as "not-reachable".
+//
+// Fixed the same way the one other resolver gap in this file (Worker-URL construction, above) is
+// already fixed: a static regex scan for the alias specifier shape, resolved through a known,
+// hand-maintained alias map, folded in as synthetic graph edges (§3.2/§3.3) -- rather than handing
+// madge's entire module resolution to a webpack/enhanced-resolve config, which would also have to
+// faithfully reproduce Vite's extension/exports-map/dedupe behavior for every OTHER import in the
+// tree (not just the aliased ones) to avoid silently changing resolution for code that already
+// resolves correctly today. Lower blast radius, same technique already proven in this file.
+//
+// Deliberately an ALLOWLIST, not a denylist: only the exact alias keys confirmed live against all
+// three apps' own vite.config.js `resolve.alias` arrays (dgfy-ims, dgfy-pos, dgfy-storefront) and
+// packages/web-core/vite/webCoreRuntimeDeps.js's WEB_CORE_SRC_MAPPED_DEPS are recognized. A
+// `@sieitzz/...` specifier this table doesn't know how to resolve trips the safety net outright
+// (see resolveSelfAlias()) -- extending this table is the fix, not loosening that check. A
+// `@/...` specifier gets one more chance first: resolveAgainstAnyAppRoot() below, for the
+// app-owned aliases (`@/Pages`, the bare `@` fallback) that deliberately aren't listed here.
+const SELF_REFERENTIAL_ALIASES = Object.freeze({
+  '@/hooks': 'packages/web-core/src/hooks',
+  '@/components': 'packages/web-core/Components',
+  '@/lib': 'packages/web-core/src/lib',
+  '@/services': 'packages/web-core/src/services',
+  '@/src': 'packages/web-core/src',
+  // Both are `file:` deps resolved through a package.json `exports` map via each app's own
+  // node_modules symlink in production (webCoreRuntimeDeps.js's WEB_CORE_SRC_MAPPED_DEPS) --
+  // aliasing straight to the real repo-root package source here is equivalent (every app's
+  // node_modules symlink points at the same file: target) and avoids needing a per-app
+  // node_modules lookup, which this repo-relative-only module doesn't have.
+  '@sieitzz/shared-constants': 'packages/shared-constants/src',
+  '@sieitzz/pos-receipt': 'packages/pos-receipt/src',
+});
+
+// Longest key first, so e.g. `@/services` is checked before any shorter key that happens to share
+// its prefix -- no such collision exists in the table above today, but matching must never depend
+// on Object.keys() insertion order.
+const SELF_REFERENTIAL_ALIAS_KEYS = Object.keys(SELF_REFERENTIAL_ALIASES).sort((a, b) => b.length - a.length);
+
+// Where a self-referential alias specifier can actually appear: packages/web-core and
+// packages/shared-constants (the self-referential convention noted throughout this file and
+// apps/*/vite.config.js's own comments), packages/pos-receipt (imports itself the same way --
+// see ReceiptPrintView.jsx's real `@sieitzz/pos-receipt` import; omitting this dir would make
+// auditReachabilitySafety() permanently unsafe against the real repo, not just theoretically
+// incomplete), and every app with a real bundler entry (RF-2's own example -- an app's OWN
+// source, not just packages/web-core's, uses these aliases directly).
+const ALIAS_EDGE_SCAN_DIRS = Object.freeze([
+  ...REACHABILITY_SCOPE_DIRS,
+  'packages/pos-receipt',
+  ...Object.keys(ENTRY_FILE_BY_APP).map((app) => `apps/${app}`),
+]);
+
+// Matches the specifier string of a static `import ... from '<spec>'`/`export ... from '<spec>'`,
+// a bare side-effect `import '<spec>'`, a dynamic `import('<spec>')`, or a `require('<spec>')` --
+// deliberately loose (a superset of the real grammar) per this file's existing over-flag-rather-
+// than-under-flag scanning philosophy (see scanFileForViolations below).
+const IMPORT_SPECIFIER_RE = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)(['"])((?:(?!\1)[^\\]|\\.)*)\1/g;
+
+// Resolve `absPathNoExt` the way this scope's imports are actually written: an exact file, one of
+// the recognized extensions appended, or (for a bare package-root alias like `@sieitzz/pos-
+// receipt`, which has no subpath) an `index.<ext>` inside it if it's a directory.
+function resolveModuleFile(absPathNoExt) {
+  let stat;
+  try {
+    stat = fs.statSync(absPathNoExt);
+  } catch {
+    stat = null;
+  }
+  if (stat && stat.isFile()) return absPathNoExt;
+  for (const ext of ['.js', '.jsx', '.mjs', '.cjs']) {
+    const candidate = `${absPathNoExt}${ext}`;
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  if (stat && stat.isDirectory()) {
+    for (const ext of ['.js', '.jsx', '.mjs', '.cjs']) {
+      const candidate = path.join(absPathNoExt, `index${ext}`);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+// A `@/...` specifier that doesn't match any SELF_REFERENTIAL_ALIASES key MIGHT still be a
+// legitimate, resolvable reference -- dgfy-ims's own `@/Pages` alias and its bare `@` app-root
+// fallback (`{ find: '@', replacement: __dirname }`, both outside SELF_REFERENTIAL_ALIASES since
+// neither can ever target REACHABILITY_SCOPE_DIRS). NOT a hypothetical: confirmed live, several
+// packages/web-core Components files (e.g. Components/items/ItemCard.jsx) import `@/utils.js`,
+// which only dgfy-ims's bare `@` fallback resolves, to apps/dgfy-ims/utils.js -- and that happens
+// from INSIDE packages/web-core, so "which app's root" can't be inferred from the importing
+// file's own location either (buildUnionGraph() unions all three apps into one parse; a shared
+// web-core file has no single "current app"). Resolved by trying the specifier's `@/`-stripped
+// remainder against every known app's REAL root directory (in whichever apps actually exist on
+// disk) rather than assuming any `@/foo` that isn't a web-core alias is automatically fine --
+// that would just re-introduce RF-2's own bug for a different prefix, silently swallowing a
+// genuinely unresolvable (typo'd, or referencing a future alias this module hasn't been taught
+// about) `@/...` specifier as if it were a harmless app-root reference. Only a specifier that
+// resolves under at least one real app root is treated as such; anything that resolves under NONE
+// of them falls through to "unresolved" like any other unrecognized alias. `@sieitzz/...`
+// specifiers have no app-root-fallback equivalent, so this never applies to them.
+function resolveAgainstAnyAppRoot(repoRoot, specifier) {
+  if (!specifier.startsWith('@/')) return null;
+  const remainder = specifier.slice('@/'.length);
+  for (const app of Object.keys(ENTRY_FILE_BY_APP)) {
+    const appRoot = path.join(repoRoot, 'apps', app);
+    if (!fs.existsSync(appRoot)) continue;
+    const absPathNoExt = remainder ? path.join(appRoot, remainder) : appRoot;
+    if (resolveModuleFile(absPathNoExt)) return true;
+  }
+  return false;
+}
+
+// Resolves one import specifier against SELF_REFERENTIAL_ALIASES.
+//   { kind: 'not-alias' }           -- doesn't start with `@/` or `@sieitzz/` at all, OR is a
+//                                        `@/...` specifier that resolves under a real app's own
+//                                        root instead (see resolveAgainstAnyAppRoot() above)
+//   { kind: 'resolved', absPath }    -- a known alias, and its target file exists on disk
+//   { kind: 'unresolved', reason }   -- alias-shaped, but this module can't prove where it goes
+//                                        (unknown key whose specifier resolves nowhere, or a
+//                                        known key whose target is missing)
+function resolveSelfAlias(repoRoot, specifier) {
+  if (!specifier.startsWith('@/') && !specifier.startsWith('@sieitzz/')) {
+    return { kind: 'not-alias' };
+  }
+  const matchedKey = SELF_REFERENTIAL_ALIAS_KEYS.find((key) => specifier === key || specifier.startsWith(`${key}/`));
+  if (!matchedKey) {
+    if (resolveAgainstAnyAppRoot(repoRoot, specifier)) return { kind: 'not-alias' };
+    return { kind: 'unresolved', reason: `no known alias mapping for "${specifier}", and it does not resolve under any app's own root either` };
+  }
+  const remainder = specifier.slice(matchedKey.length).replace(/^\//, '');
+  const targetDir = path.join(repoRoot, SELF_REFERENTIAL_ALIASES[matchedKey]);
+  const absPathNoExt = remainder ? path.join(targetDir, remainder) : targetDir;
+  const resolved = resolveModuleFile(absPathNoExt);
+  if (!resolved) {
+    return {
+      kind: 'unresolved',
+      reason: `alias "${matchedKey}" resolved "${specifier}" to "${toRepoRelative(repoRoot, absPathNoExt)}", which does not exist on disk`,
+    };
+  }
+  return { kind: 'resolved', absPath: resolved };
+}
+
+// Repo-wide scan (across `scanDirs`) for every self-referential alias import/require -- mirrors
+// findWorkerUrlTargets()'s shape and purpose: `edges` feeds the same synthetic-edge injection
+// buildUnionGraph() already does for Worker-URL targets; `violations` feeds
+// auditReachabilitySafety()'s fail-closed result so an alias this module can't resolve trips the
+// safety net instead of silently under-counting reachability.
+function findSelfAliasEdges(repoRoot, scanDirs) {
+  const edges = [];
+  const violations = [];
+  for (const dir of scanDirs) {
+    const absDir = path.join(repoRoot, dir);
+    if (!fs.existsSync(absDir)) continue;
+    for (const absFile of walkScanFiles(absDir)) {
+      let content;
+      try {
+        content = fs.readFileSync(absFile, 'utf8');
+      } catch {
+        continue; // an unreadable file is already reported by auditReachabilitySafety's own scan
+      }
+      const relativePath = toRepoRelative(repoRoot, absFile);
+      for (const match of content.matchAll(IMPORT_SPECIFIER_RE)) {
+        const specifier = match[2];
+        const resolution = resolveSelfAlias(repoRoot, specifier);
+        if (resolution.kind === 'not-alias') continue;
+        if (resolution.kind === 'unresolved') {
+          violations.push({ file: relativePath, pattern: 'unresolved-internal-alias', snippet: `"${specifier}" -- ${resolution.reason}` });
+          continue;
+        }
+        edges.push({ from: relativePath, toAbs: resolution.absPath });
+      }
+    }
+  }
+  return { edges, violations };
+}
+
 // One real madge() parse per repoRoot per process -- keyed by repoRoot, and rebuilt only if a
 // caller asks about an entry file not already covered by the last build for that repoRoot (a fresh
 // process, i.e. a fresh CI invocation, always starts with an empty cache, so this never serves
@@ -191,7 +378,14 @@ async function buildUnionGraph(repoRoot, requiredEntryFile) {
     .filter((absolutePath) => fs.existsSync(absolutePath));
 
   const workerEdges = findWorkerUrlTargets(repoRoot, REACHABILITY_SCOPE_DIRS);
-  const allEntryAbsPaths = unique([...knownEntryAbsPaths, ...workerEdges.map((edge) => edge.toAbs)]);
+  // RF-2 (PR #1708 review): the same synthetic-edge treatment as workerEdges, but for
+  // `@/...`/`@sieitzz/...` self-referential alias imports -- see the "Self-referential alias
+  // resolution" section above findSelfAliasEdges() for why this is a real, live gap otherwise
+  // (`.violations` is deliberately unused here; it's auditReachabilitySafety()'s job to fail
+  // closed on those, not this function's -- callers are expected to have already checked it).
+  const aliasEdges = findSelfAliasEdges(repoRoot, ALIAS_EDGE_SCAN_DIRS).edges;
+  const syntheticEdges = [...workerEdges, ...aliasEdges];
+  const allEntryAbsPaths = unique([...knownEntryAbsPaths, ...syntheticEdges.map((edge) => edge.toAbs)]);
 
   const promise = (async () => {
     if (allEntryAbsPaths.length === 0) return {};
@@ -206,10 +400,11 @@ async function buildUnionGraph(repoRoot, requiredEntryFile) {
     });
     const graph = result.obj();
 
-    // Inject the synthetic Worker-URL edges madge itself cannot see. The target file was already
-    // included as a real parsed entry point above, so its OWN dependencies are already correctly
-    // present in `graph` -- this only adds the one edge from the referencing file to it.
-    for (const edge of workerEdges) {
+    // Inject the synthetic Worker-URL and self-referential-alias edges madge itself cannot see.
+    // Each target file was already included as a real parsed entry point above, so its OWN
+    // dependencies are already correctly present in `graph` -- this only adds the one edge from
+    // the referencing file to it.
+    for (const edge of syntheticEdges) {
       const toRel = toRepoRelative(repoRoot, edge.toAbs);
       if (!graph[edge.from]) graph[edge.from] = [];
       if (!graph[edge.from].includes(toRel)) graph[edge.from].push(toRel);
@@ -296,7 +491,13 @@ function scanFileForViolations(relativePath, content) {
   return violations;
 }
 
-function auditReachabilitySafety(repoRoot, packageDirs) {
+// `aliasScanDirs` defaults to `packageDirs` (matching every existing caller/test that only ever
+// passed one dirs argument) but is deliberately a separate parameter: RF-2 (PR #1708 review)'s
+// unresolved-internal-alias check has to cover more than just the shared package itself -- an
+// app's own source can (and, confirmed live, does) reference these aliases directly too -- while
+// the risky-pattern checks above stay scoped exactly to `packageDirs`, unchanged, since those are
+// about the shared package's own instability, not its consumers'.
+function auditReachabilitySafety(repoRoot, packageDirs, aliasScanDirs = packageDirs) {
   const violations = [];
   for (const dir of packageDirs) {
     const absDir = path.join(repoRoot, dir);
@@ -314,6 +515,10 @@ function auditReachabilitySafety(repoRoot, packageDirs) {
       violations.push(...scanFileForViolations(toRepoRelative(repoRoot, absFile), content));
     }
   }
+  // RF-2: any `@/...`/`@sieitzz/...` specifier this module can't prove resolves to a real file
+  // trips the safety net exactly like the risky patterns above -- see findSelfAliasEdges()'s own
+  // header for why silently ignoring it would be the same under-counting bug this exists to fix.
+  violations.push(...findSelfAliasEdges(repoRoot, unique(aliasScanDirs)).violations);
   return { safe: violations.length === 0, violations };
 }
 

@@ -262,3 +262,147 @@ test('auditReachabilitySafety: a literal-only dynamic import() call, even one th
     cleanup(root);
   }
 });
+
+// --- RF-2 (PR #1708 review): self-referential alias resolution -----------------------------
+//
+// Before this fix, `@/...`/`@sieitzz/...` alias specifiers were invisible to madge's plain static
+// import analysis -- computeAppReachableModules() silently under-counted (returned 0
+// packages/shared-constants modules for a package the app actually imports directly via an
+// alias) while auditReachabilitySafety() still reported safe:true. Confirmed live against the
+// real repo before this fix: packages/web-core/src/features/settings/modeItemTaxonomy.js reaches
+// packages/shared-constants/src/workflowModes.js ONLY via
+// `@sieitzz/shared-constants/workflowModes` -- dgfy-ims's reachable set went from 302 to 462
+// modules once this was fixed.
+
+test('computeAppReachableModules: a packages/shared-constants file reached ONLY via a `@sieitzz/shared-constants` alias import is reachable', async () => {
+  const root = makeTempRepo('reachability-alias-shared-constants-');
+  try {
+    // RF-2's own example: the APP's own entry imports the alias directly, not just web-core's
+    // self-referential code -- this is the scenario that was silently missed.
+    writeFiles(root, {
+      'apps/dgfy-ims/src/main.jsx': "import '@sieitzz/shared-constants/workflowModes';\n",
+      'packages/shared-constants/src/workflowModes.js': 'export const WORKFLOW_MODES = {};\n',
+    });
+
+    const reachable = await computeAppReachableModules(root, ENTRY_FILE_BY_APP['dgfy-ims']);
+    assert.equal(reachable.has('packages/shared-constants/src/workflowModes.js'), true);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('computeAppReachableModules: a `@/...` alias-only edge inside packages/web-core is followed, including further imports of the alias target', async () => {
+  const root = makeTempRepo('reachability-alias-web-core-');
+  try {
+    writeFiles(root, {
+      'apps/dgfy-pos/src/main.jsx': "import '../../../packages/web-core/src/features/pos/entry.js';\n",
+      'packages/web-core/src/features/pos/entry.js': "import { useThing } from '@/hooks/useThing.js';\nexport { useThing };\n",
+      'packages/web-core/src/hooks/useThing.js':
+        "import { normalizeWorkflowMode } from '@sieitzz/shared-constants/workflowModes';\nexport function useThing() { return normalizeWorkflowMode; }\n",
+      'packages/shared-constants/src/workflowModes.js': 'export function normalizeWorkflowMode() {}\n',
+    });
+
+    const reachable = await computeAppReachableModules(root, ENTRY_FILE_BY_APP['dgfy-pos']);
+    assert.equal(reachable.has('packages/web-core/src/hooks/useThing.js'), true);
+    // Proves the alias target was fed into madge as a real entry point (its OWN further alias
+    // import is followed too), not just a dead-end synthetic edge.
+    assert.equal(reachable.has('packages/shared-constants/src/workflowModes.js'), true);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('auditReachabilitySafety: an unrecognized `@/...` alias (no known mapping) trips the safety net', () => {
+  const root = makeTempRepo('reachability-alias-unknown-audit-');
+  try {
+    pr1689Fixture(root);
+    writeFiles(root, {
+      'packages/web-core/src/utils/badAlias.js': "import '@/nonexistent/thing.js';\n",
+    });
+
+    const audit = auditReachabilitySafety(root, REACHABILITY_SCOPE_DIRS);
+    assert.equal(audit.safe, false);
+    assert.ok(audit.violations.some((v) => v.pattern === 'unresolved-internal-alias' && v.file === 'packages/web-core/src/utils/badAlias.js'));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('auditReachabilitySafety: a known alias whose target file does not exist on disk trips the safety net', () => {
+  const root = makeTempRepo('reachability-alias-missing-target-audit-');
+  try {
+    pr1689Fixture(root);
+    writeFiles(root, {
+      // '@/hooks' IS a known alias -- but useMissing.js was never actually created.
+      'packages/web-core/src/utils/badAlias.js': "import '@/hooks/useMissing.js';\n",
+    });
+
+    const audit = auditReachabilitySafety(root, REACHABILITY_SCOPE_DIRS);
+    assert.equal(audit.safe, false);
+    assert.ok(audit.violations.some((v) => v.pattern === 'unresolved-internal-alias' && v.file === 'packages/web-core/src/utils/badAlias.js'));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('auditReachabilitySafety: a `@sieitzz/shared-constants` subpath alias import is not flagged when its target exists', () => {
+  const root = makeTempRepo('reachability-alias-clean-audit-');
+  try {
+    pr1689Fixture(root);
+    writeFiles(root, {
+      'packages/web-core/src/utils/usesConstants.js': "import { normalizeWorkflowMode } from '@sieitzz/shared-constants/workflowModes';\nexport { normalizeWorkflowMode };\n",
+      'packages/shared-constants/src/workflowModes.js': 'export function normalizeWorkflowMode() {}\n',
+    });
+
+    const audit = auditReachabilitySafety(root, REACHABILITY_SCOPE_DIRS);
+    assert.equal(audit.safe, true);
+    assert.deepEqual(audit.violations, []);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('auditReachabilitySafety: dgfy-ims\'s bare `@` app-root fallback (e.g. `@/utils.js`) is never flagged -- it can never target REACHABILITY_SCOPE_DIRS', () => {
+  const root = makeTempRepo('reachability-alias-app-root-fallback-audit-');
+  try {
+    pr1689Fixture(root);
+    // Reproduces the real, live pattern found in packages/web-core/Components/items/ItemCard.jsx:
+    // a web-core file importing an app-root-relative file only dgfy-ims's own bare `@` fallback
+    // (not part of SELF_REFERENTIAL_ALIASES) can resolve.
+    writeFiles(root, {
+      'packages/web-core/src/utils/usesAppRoot.js': "import { createPageUrl } from '@/utils.js';\nexport { createPageUrl };\n",
+      // The real repo (apps/dgfy-ims/utils.js) has this file for real -- without it existing
+      // under SOME app's root, this specifier would correctly be "unresolved", not ignored.
+      'apps/dgfy-ims/utils.js': 'export function createPageUrl() {}\n',
+    });
+
+    const audit = auditReachabilitySafety(root, REACHABILITY_SCOPE_DIRS);
+    assert.equal(audit.safe, true);
+    assert.deepEqual(audit.violations, []);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('auditReachabilitySafety: aliasScanDirs also covers an unresolved alias in the app\'s own source tree, not just packages/web-core', () => {
+  const root = makeTempRepo('reachability-alias-app-scan-audit-');
+  try {
+    pr1689Fixture(root);
+    writeFiles(root, {
+      // RF-2's own scenario: the unresolved alias lives in the APP's source, not web-core's.
+      'apps/dgfy-ims/src/badAlias.js': "import '@/nonexistent/thing.js';\n",
+    });
+
+    // Omitting aliasScanDirs (defaults to packageDirs) never sees the app's own tree -- safe:true.
+    const auditWithoutAppScan = auditReachabilitySafety(root, REACHABILITY_SCOPE_DIRS);
+    assert.equal(auditWithoutAppScan.safe, true);
+
+    // Passing the app's dir in aliasScanDirs (as check-app-version-bump.js's call site now does)
+    // catches it -- safe:false.
+    const auditWithAppScan = auditReachabilitySafety(root, REACHABILITY_SCOPE_DIRS, [...REACHABILITY_SCOPE_DIRS, 'apps/dgfy-ims']);
+    assert.equal(auditWithAppScan.safe, false);
+    assert.ok(auditWithAppScan.violations.some((v) => v.pattern === 'unresolved-internal-alias' && v.file === 'apps/dgfy-ims/src/badAlias.js'));
+  } finally {
+    cleanup(root);
+  }
+});
