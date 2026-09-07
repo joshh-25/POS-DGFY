@@ -147,6 +147,17 @@ ordinary default flow — see `../SKILL.md`'s "Compliance preflight sweep" secti
 here is a frozen-candidate anomaly, not a routine case, and where a genuine fix actually goes
 instead (a `fix/staging/*` repair, not this section's `develop`-based flow).
 
+**If the finding belongs to a fix a Worker is actively authoring right now for this leg** (as
+opposed to a stray pre-existing `NOT-EXECUTED-*` this scan just happened to surface), the
+recommended fix is `npm run compliance:reconcile-local -- <file>` as part of that fix's own commit
+— see `docs/compliance/request-time-preflight-protocol.md`'s "Reconciling one declaration locally,
+without a CI round trip" (#1694). It reconciles the declaration synchronously against a local
+ephemeral fixture, with no branch/commit/PR of its own, so the reconciled front matter lands in the
+same PR as the fix rather than needing a second sweep-handoff PR at all. This is the sanctioned
+alternative to the `fix/staging/*` repair route above whenever a Worker is already touching the
+declaration — the `fix/staging/*` path is still correct for a pre-existing finding with no in-flight
+fix behind it.
+
 ## #1007-gated exception: direct `develop` → `main`
 
 **Ran `gate:release:local` locally at any point earlier in this session? `git status` before

@@ -52,6 +52,8 @@
     "check:workspace-hygiene": "node scripts/check-workspace-hygiene.js",
     "test:workspace-hygiene": "node --test scripts/check-workspace-hygiene.test.js",
     "test:preflight-sweep": "node --test scripts/is-preflight-outstanding.test.js scripts/build-preflight-request.test.js scripts/parse-preflight-response.test.js scripts/reconcile-preflight-declarations.test.js scripts/report-preflight-sweep-outcome.test.js scripts/check-compliance-sweep-workflow.test.js",
+    "compliance:reconcile-local": "node scripts/reconcile-preflight-declaration-local.js",
+    "test:compliance-reconcile-local": "node --test scripts/reconcile-preflight-declaration-local.test.js",
     "preflight:runner": "node scripts/ci-runner-preflight.js",
     "test:runner-preflight": "node --test scripts/ci-runner-preflight.test.js",
     "test:runner-availability": "node --test scripts/lib/runner-availability.test.js",

@@ -21879,3 +21879,51 @@ planning time.
   `docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md` (new), issue
   #265, follow-up issue #1643 (298d, bulk client wiring, filed and parented under #265).
 - Next eligible phase: 303.
+
+## Phase 303 - Split `repository-quality` into 3 concern-based jobs in `promotion-quality-gate.yml` (#1690)
+
+Ledger number re-verified fresh immediately before this commit (`git fetch origin && git show
+origin/develop:docs/features/IMPLEMENTATION_PHASE_LEDGER.md | grep '^## Phase' | tail -8`) -- 303 is
+the confirmed next free number as of this land.
+
+- Initiative/release: CI/quality-gate attribution clarity (epic #1124) / current release process.
+- Objective and scope: `promotion-quality-gate.yml`'s single `repository-quality` job (13 steps
+  spanning dependency audits, compliance/env posture, CI-self-test contracts, and docs/release
+  hygiene) is split into 3 concern-based jobs, following this workflow's own existing
+  one-job-per-concern convention (`dgfy-api-quality`, the three `frontend-*-quality` jobs,
+  `frontend-budgets-quality`) -- a red check-run in a PR's Checks tab now names which of 3 domains
+  failed instead of "1 of 13, unnamed." New jobs: `repository-dependency-quality` (dependency/
+  compliance/env posture), `repository-ci-contracts-quality` (CI/workflow self-validation),
+  `repository-docs-quality` (docs/release/repo hygiene). Every step's own id, command, and
+  blocking/advisory status is unchanged -- only the job grouping and job name(s) changed. Also adds
+  a `$GITHUB_STEP_SUMMARY` write of each new job's existing `STEP_OUTCOMES` table (cheap,
+  complementary -- reuses data already computed for the advisory-failure reporter, no new script).
+  `report-advisory-failures`'s `needs:` list and its `github-script` body are updated to read 3
+  separate `*_FAILURES` outputs in place of the single `REPOSITORY_FAILURES`.
+  `scripts/check-pr-quality-workflow.js`'s `QUALITY_JOB_NAMES`/`BLOCKING_STEP_IDS` and
+  `scripts/gate-release-local.js`'s 6 `CI_ENFORCED_GATES` entries naming the old job are updated to
+  match (data changes, not logic rewrites -- the shape validators already loop generically over
+  `QUALITY_JOB_NAMES`). Does **not** address #1690's Q1 (shift-left timing) or Q3 (true step-level
+  incremental re-run) -- both named explicitly out of scope in the issue and left as follow-ups
+  under epic #1124.
+- Status: completed.
+- Dependencies: none. Independent of every in-flight phase above; touches only
+  `.github/workflows/promotion-quality-gate.yml`, `scripts/check-pr-quality-workflow.js`,
+  `scripts/gate-release-local.js`, and their own test/doc surfaces -- no `apps/*` runtime code, no
+  architecture boundary crossed.
+- Acceptance and validation evidence: `node --check` on all changed `.js` files (no build step for
+  CI/scripts changes). `node scripts/check-pr-quality-workflow.js` -- OK. `npm run
+  test:pr-quality-workflow` -- 41/41 pass (fixtures updated for the 3-job split). `node --test
+  scripts/gate-release-local.test.js` -- 25/25 pass. `npm run lint:docs` -- OK, 29 governed docs
+  validated (includes this ledger's own doc plus `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching
+  2026-09-07 amendment and `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s updated row references).
+  `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/promotion-quality-gate.yml'))"`
+  -- parses clean, lists the 3 new job names in place of `repository-quality`. No `package.json`
+  touched, so no lockfile check; no `apps/*` touched, so no app version bump needed.
+- Completion date: 2026-09-07.
+- Contracts/files: `.github/workflows/promotion-quality-gate.yml`,
+  `scripts/check-pr-quality-workflow.js`, `scripts/check-pr-quality-workflow.test.js`,
+  `scripts/gate-release-local.js`, `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-09-07 dated Amendments entry), this ledger entry,
+  issue #1690.
+- Next eligible phase: 304.

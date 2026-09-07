@@ -72,11 +72,12 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // above once #1063 closes.
 //
 // 2026-09-02 (#1431 Phase 2, P2-1): the same pattern, for two more of the 8 remaining
-// `gate:release:local`-covered steps -- `run_production_env_fixtures` (repository-quality, gate 7)
-// and `run_scroll_contracts` (frontend-ims-quality, gate 17) join BLOCKING_STEP_IDS as blocking
-// from their first PR (no prerequisite, no flake surface, no external dependency). The other 4
-// gates this PR adds -- `run_dependency_audit_prod`/`run_dependency_audit_full`/
-// `run_compliance_contracts` (repository-quality, gates 2/3/6) and the renamed
+// `gate:release:local`-covered steps -- `run_production_env_fixtures` (repository-dependency-quality
+// as of #1690's split, gate 7) and `run_scroll_contracts` (frontend-ims-quality, gate 17) join
+// BLOCKING_STEP_IDS as blocking from their first PR (no prerequisite, no flake surface, no
+// external dependency). The other 4 gates this PR adds -- `run_dependency_audit_prod`/
+// `run_dependency_audit_full`/`run_compliance_contracts` (repository-dependency-quality as of
+// #1690's split, gates 2/3/6) and the renamed
 // `run_shared_fnb_contract_tests` step now running `npm run test:frontend:contracts` (frontend-ims-
 // quality, gate 14) -- stay advisory pending real-promotion evidence (P2-3), same as every other
 // still-advisory step here.
@@ -108,7 +109,11 @@ const REQUIRED_QUALITY_MARKERS = [
   'frontend-ims-quality:',
   'frontend-pos-quality:',
   'frontend-storefront-quality:',
-  'repository-quality:',
+  // #1690: repository-quality split into 3 concern-based jobs (dependency/compliance/env,
+  // CI-self-test contracts, docs/release hygiene) -- see QUALITY_JOB_NAMES below.
+  'repository-dependency-quality:',
+  'repository-ci-contracts-quality:',
+  'repository-docs-quality:',
   'node scripts/run-backend-test-matrix.js',
   '--detectOpenHandles',
   'npm run audit:indexes',
@@ -123,7 +128,8 @@ const REQUIRED_QUALITY_MARKERS = [
   // one file genuinely outside gate 14's pattern -- see that step's comment in the workflow).
   'npm run test:frontend:contracts',
   'scrollKeyControls.behavior.test.js',
-  // #1431 Phase 2 (2026-09-02), P2-1: gates 2/3/6/7 (repository-quality).
+  // #1431 Phase 2 (2026-09-02), P2-1: gates 2/3/6/7 (repository-dependency-quality as of #1690's
+  // split).
   'npm run audit:dependencies:prod',
   'npm run audit:dependencies',
   'npm run check:compliance',
@@ -267,7 +273,7 @@ function checkRunnerCacheConsistency(prChecksText) {
 const SANCTIONED_SKIP_STAGING_IF = "if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'";
 const SANCTIONED_CONTINUE_ON_ERROR = 'continue-on-error: true';
 
-// The six jobs promotion-quality-gate.yml actually gates -- kept as its own list (rather than
+// The eight jobs promotion-quality-gate.yml actually gates -- kept as its own list (rather than
 // filtering REQUIRED_QUALITY_MARKERS, which also holds non-job-name strings) so this function
 // reads as "here are the jobs" rather than "here's a marker list that happens to include them."
 const QUALITY_JOB_NAMES = [
@@ -276,7 +282,12 @@ const QUALITY_JOB_NAMES = [
   'frontend-ims-quality',
   'frontend-pos-quality',
   'frontend-storefront-quality',
-  'repository-quality',
+  // #1690: the former single `repository-quality` job split into 3 concern-based jobs, following
+  // this workflow's existing one-job-per-concern convention -- see docs/ops/RELEASE_CANDIDATE_POLICY.md's
+  // matching 2026-09-07 amendment for the rationale and the before/after job names.
+  'repository-dependency-quality',
+  'repository-ci-contracts-quality',
+  'repository-docs-quality',
   // #1431 Phase 2 (2026-09-02), P2-2: gate 16 (frontend.budgets) -- see this job's own header
   // comment in promotion-quality-gate.yml for why it needs to be its own job.
   'frontend-budgets-quality'
@@ -348,7 +359,13 @@ const BLOCKING_STEP_IDS = {
   // git-native), root cause fixed via a new .husky/pre-commit guard in the same PR. Its sibling
   // gate, audit_indexes (dgfy-api-quality), deliberately does NOT join this map in the same PR --
   // see that step's own comment in promotion-quality-gate.yml for why the disposition differs.
-  'repository-quality': ['run_docs_lint', 'run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts', 'validate_pr_quality_workflow', 'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep', 'check_whitespace'],
+  // #1690: the former single 'repository-quality' entry above (9 step ids) is split into 3
+  // per-job arrays below, one per new job -- same 9 step ids, same blocking disposition for each,
+  // grouped by which new job the step actually landed in. Data change only, not a disposition
+  // change.
+  'repository-dependency-quality': ['run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts'],
+  'repository-ci-contracts-quality': ['validate_pr_quality_workflow', 'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep'],
+  'repository-docs-quality': ['run_docs_lint', 'check_whitespace'],
   'frontend-budgets-quality': ['check_frontend_budgets']
 };
 
@@ -369,9 +386,10 @@ const BLOCKING_STEP_IDS = {
 // blocking only once a later, dedicated phase finds clean-run evidence (ADR 0082 Follow-up 1),
 // mirroring check:app-versions' own advisory-to-blocking rollout (ADR 0081 Decision 9). Unlike
 // check:app-versions, this gate's CI destination lives inside promotion-quality-gate.yml (the
-// `run_release_notes` step, repository-quality job), which is exactly what this allowlist and
-// CI_ENFORCED_GATES both track -- so it is registered here rather than left to its own separate
-// toggle mechanism the way check:app-versions was.
+// `run_release_notes` step, `repository-docs-quality` job as of #1690's split -- was
+// `repository-quality`), which is exactly what this allowlist and CI_ENFORCED_GATES both track --
+// so it is registered here rather than left to its own separate toggle mechanism the way
+// check:app-versions was.
 //
 // This is a three-name allowlist, not a bypass: every OTHER CI_ENFORCED_GATES entry must still
 // have real BLOCKING_STEP_IDS coverage, and checkCiEnforcedGatesAreBlocking still fails loudly if
