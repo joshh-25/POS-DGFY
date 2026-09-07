@@ -75,6 +75,7 @@
     "check:qa-target-proof": "node scripts/check-qa-target-proof.js",
     "check:deploy-source-contract": "node scripts/check-deploy-source-contract.js",
     "check:merge-hygiene": "node scripts/check-merge-hygiene.js",
+    "check:promotion-divergence": "node scripts/check-promotion-divergence.js",
     "check:merge-adoption": "node scripts/check-merge-adoption.js",
     "check:merge-adoption-required": "node scripts/check-merge-adoption-required.js",
     "report:frontend-split-sync": "node scripts/report-frontend-split-sync.js",
