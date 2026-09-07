@@ -16,8 +16,8 @@ rollback_note: Plain revert restores the broken pre-fix state (a ReferenceError 
   endpoint, permission, schema, or settings surface is touched.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-07T03:20:00.000Z
-preflight_request_ref: NOT-EXECUTED-1698-POS-CATALOG-PAGE-UNDEFINED-REFS
+preflight_run_at: 2026-09-07T04:03:38.532Z
+preflight_request_ref: PREFLIGHT-34081506496-2026-09-07-POS-CATALOG-PAGE-UNDEFINED-REFS
 ---
 
 # Repair `fetchPosCatalogPage`'s three undefined identifiers, restoring the POS Items workspace (#1698)
