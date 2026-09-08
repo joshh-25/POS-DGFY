@@ -33,9 +33,14 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
         height={height}
         loading={loading}
         decoding={decoding}
-        // eslint-disable-next-line react/no-unknown-property -- React 18 forwards the lowercase
-        // HTML attribute, React 19 accepts the camel-cased prop (carried over from
-        // StorefrontResponsiveImage.jsx's own comment, same reasoning applies here).
+        // React 18 forwards the lowercase HTML attribute, React 19 accepts the camel-cased
+        // prop (carried over from StorefrontResponsiveImage.jsx's own comment, same reasoning
+        // applies here). #1712: the directive below must be the comment line immediately
+        // above the JSX attribute -- `eslint-disable-next-line` only suppresses the single
+        // line directly following the comment it's written on, so with two more prose-comment
+        // lines in between (as this block previously had) it silently suppressed nothing and
+        // this file carried a live, uncaught `react/no-unknown-property` error.
+        // eslint-disable-next-line react/no-unknown-property
         fetchpriority={fetchPriority}
         style={{
           backgroundColor: '#F1F5F9',
