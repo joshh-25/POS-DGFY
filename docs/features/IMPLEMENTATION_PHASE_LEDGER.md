@@ -22212,3 +22212,26 @@ content differs from what was implemented and tested under the "303" label.
   `TerminalOperationsWorkspace.jsx`, the focused POS app behavior test, and
   `docs/compliance/impact-declarations/2026-09-08-pos-items-compact-image-viewer.md`.
 - Next eligible phase: 311.
+
+## Phase 311 - POS Items sharp HD source selection
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: distinguish a true POS image override from the backend's
+  Storefront-backed effective POS image using `pos_image_source`, so the viewer
+  selects the Storefront 1920px large variant instead of stretching a 144px POS
+  thumbnail. Preserve legacy payload compatibility when the source marker is
+  absent, and avoid transform compositing at the default 100% zoom. The black
+  viewer backdrop remains a lightweight translucent color with no blur filter.
+- Status: completed.
+- Dependencies: completed Phases 308-310, backend POS catalog image-source
+  marker, existing optimized Storefront variants, ADR 0029 ownership boundaries,
+  and ADR 0067 Chrome 80 browser floor.
+- Acceptance and validation evidence: focused resolver tests cover a backend-
+  shaped Storefront fallback whose POS fields point at a thumbnail and confirm
+  selection of the Storefront large variant; focused viewer tests confirm no
+  transform at 100% and explicit scaling only after zoom; POS build passes.
+- Completion date: 2026-09-08.
+- Contracts/files: POS image resolvers in `posCheckoutTerminalUtils.js`,
+  `PosItemImageViewer.jsx`, their focused tests, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-sharp-hd-source-selection.md`.
+- Next eligible phase: 312.

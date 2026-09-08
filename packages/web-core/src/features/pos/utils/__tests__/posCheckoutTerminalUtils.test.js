@@ -409,4 +409,35 @@ describe('POS checkout terminal pure utilities', () => {
             gallery: []
         });
     });
+
+    it('uses the Storefront HD gallery when POS display fields contain a Storefront fallback', () => {
+        const sources = resolvePosCatalogPreviewGallery({
+            pos_image_source: 'storefront',
+            pos_image_url: '/uploads/items/meal/pos-thumb.webp',
+            pos_image_variants: {
+                pos_thumbnail_url: '/uploads/items/meal/pos-thumb.webp',
+                thumbnail_url: '/uploads/items/meal/pos-thumb.webp',
+                medium_url: '/uploads/items/meal/pos-thumb.webp',
+                large_url: '/uploads/items/meal/pos-thumb.webp'
+            },
+            storefront_image_url: '/uploads/items/meal/large.webp',
+            storefront_image_variants: {
+                thumbnail_url: '/uploads/items/meal/thumbnail.webp',
+                medium_url: '/uploads/items/meal/medium.webp',
+                large_url: '/uploads/items/meal/large.webp'
+            },
+            storefront_image_gallery: [{
+                url: '/uploads/items/meal/large.webp',
+                variants: {
+                    thumbnail_url: '/uploads/items/meal/thumbnail.webp',
+                    medium_url: '/uploads/items/meal/medium.webp',
+                    large_url: '/uploads/items/meal/large.webp'
+                }
+            }]
+        });
+
+        expect(sources.thumbnailSrc).toContain('/uploads/items/meal/thumbnail.webp');
+        expect(sources.previewSrc).toContain('/uploads/items/meal/large.webp');
+        expect(sources.previewSrc).not.toContain('pos-thumb');
+    });
 });

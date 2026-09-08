@@ -107,7 +107,7 @@ export default function PosItemImageViewer({ preview, onClose }) {
               src={activeSrc}
               alt={`${preview.itemName || 'Item'} full-size view`}
               className="max-h-[58vh] max-w-full select-none object-contain transition-transform duration-150"
-              style={{ transform: `scale(${zoom})` }}
+              style={zoom === 1 ? undefined : { transform: `scale(${zoom})` }}
               onError={() => setFallbackIndex((current) => current + 1)}
             />
           ) : (

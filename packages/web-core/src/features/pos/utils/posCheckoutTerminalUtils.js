@@ -529,7 +529,13 @@ export const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Mat
 // no POS-specific image exists at all does resolution fall back to the
 // Storefront fields, matching the number-218 fallback case.
 export const resolvePosCatalogImageSources = (item = {}) => {
-    const hasPosOverride = Boolean(item?.pos_image_url);
+    const imageSource = String(item?.pos_image_source || '').trim().toLowerCase();
+    const hasPosOverride = imageSource
+        ? imageSource === 'override'
+        : Boolean(
+            item?.pos_image_url
+            && item.pos_image_url !== item?.storefront_image_url
+        );
     const effectiveUrl = item?.pos_image_url || item?.storefront_image_url || '';
     const variants = hasPosOverride
         ? (item?.pos_image_variants || {})
@@ -623,7 +629,13 @@ const buildPosCatalogPreviewEntry = ({ url, path, variants } = {}) => {
 // persist an image. The Items list can keep requesting `thumbnailSrc`, while a
 // viewer may request `previewSrc` only after the cashier opens it.
 export const resolvePosCatalogPreviewGallery = (item = {}) => {
-    const hasPosOverride = Boolean(item?.pos_image_url || item?.pos_image_path);
+    const imageSource = String(item?.pos_image_source || '').trim().toLowerCase();
+    const hasPosOverride = imageSource
+        ? imageSource === 'override'
+        : Boolean(
+            (item?.pos_image_url || item?.pos_image_path)
+            && item?.pos_image_url !== item?.storefront_image_url
+        );
     const rawEntries = hasPosOverride
         ? [{
             url: item?.pos_image_url,

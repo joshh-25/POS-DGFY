@@ -29,6 +29,7 @@ describe('POS item image viewer', () => {
     const fullImage = screen.getByAltText('Beef Meal full-size view');
     expect(screen.getByText('PHP 300.00')).toBeTruthy();
     expect(fullImage.getAttribute('src')).toBe('/uploads/one-large.jpg');
+    expect(fullImage.style.transform).toBe('');
     expect(document.querySelector('img[src="/uploads/two-large.jpg"]')).toBeNull();
     fireEvent.error(fullImage);
     expect(screen.getByAltText('Beef Meal full-size view').getAttribute('src')).toBe('/uploads/one-medium.jpg');
@@ -41,6 +42,7 @@ describe('POS item image viewer', () => {
     expect(screen.getByAltText('Beef Meal full-size view').getAttribute('src')).toBe('/uploads/two-large.jpg');
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
     expect(screen.getByText('150%')).toBeTruthy();
+    expect(screen.getByAltText('Beef Meal full-size view').style.transform).toBe('scale(1.5)');
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
