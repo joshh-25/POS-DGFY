@@ -7,7 +7,7 @@ classification: major
 surfaces: api,pos,storefront,database,inventory,payments,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
-verification_evidence: inventory repository tests,storefront category view-model tests,POS and Storefront production builds,architecture check,compliance check,app-version check,migration syntax check
+verification_evidence: inventory repository tests,tenant schema sync regression tests and 15-tenant repair report,storefront category view-model tests,POS and Storefront production builds,architecture check,compliance check,app-version check,migration syntax check
 rollback_note: Revert Phase 313 application changes and leave the additive sort_order column in place; existing category identity and item memberships remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -28,6 +28,8 @@ change item identity, prices, stock, payments, taxes, receipts, or customer data
 - POS category management supports persistent rearrangement.
 - Storefront F&B and services category controls consume the saved order.
 - Existing tenant categories receive deterministic initial positions.
+- Existing tenant databases receive the column through migration fan-out, with
+  the tenant schema synchronizer providing drift detection and repair coverage.
 - Newly created categories append to the saved sequence.
 
 ## Compliance Preconditions

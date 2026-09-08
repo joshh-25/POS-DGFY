@@ -12,6 +12,7 @@ import {
   REQUIRED_TENANT_SCHEMA_INDEXES,
   REQUIRED_TENANT_SCHEMA_TABLES,
   buildTenantSchemaEnumRepairSql,
+  backfillItemFolderSortOrder,
   repairItemFolderCategoryLifecycleSchema,
   repairPosParkedSaleOriginOwnership,
   normalizeTenantSchemaTableRepairSql,
@@ -19,6 +20,33 @@ import {
 } from '../scripts/sync-tenant-schemas.js';
 
 describe('tenant schema sync script contracts', () => {
+  it('registers the persisted category display order for every tenant database', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.item_folders).toHaveProperty('sort_order');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.item_folders.sort_order.sql)
+      .toContain('`sort_order` INTEGER NOT NULL DEFAULT 0');
+  });
+
+  it('backfills existing category order deterministically', async () => {
+    const connection = {
+      query: jest.fn()
+        .mockResolvedValueOnce([[{ folder_id: 8 }, { folder_id: 3 }], {}])
+        .mockResolvedValue([[], {}])
+    };
+
+    await backfillItemFolderSortOrder(connection, 'sku_tenant_test');
+
+    expect(connection.query).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE `sku_tenant_test`.`item_folders` SET `sort_order` = ? WHERE `folder_id` = ?',
+      [0, 8]
+    );
+    expect(connection.query).toHaveBeenNthCalledWith(
+      3,
+      'UPDATE `sku_tenant_test`.`item_folders` SET `sort_order` = ? WHERE `folder_id` = ?',
+      [1, 3]
+    );
+  });
+
   it('publishes a stable checksum for the complete tenant capability registry', () => {
     expect(getTenantSchemaCapabilityChecksum()).toMatch(/^[a-f0-9]{64}$/);
     expect(getTenantSchemaCapabilityChecksum()).toBe(getTenantSchemaCapabilityChecksum());
