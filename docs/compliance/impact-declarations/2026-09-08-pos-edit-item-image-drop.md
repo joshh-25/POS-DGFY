@@ -31,6 +31,9 @@ tax, discount, receipt, identity, or authorization behavior.
 - The Edit Item modal prevents the browser's default file-drop navigation.
 - Pending previews disappear as their matching saved gallery entries arrive, so
   one upload is not rendered twice during catalog refresh.
+- Edit Item routes one-file and multi-file selections through the gallery append
+  endpoint. A one-file edit therefore preserves the existing image instead of
+  replacing it and leaving an identical pending preview behind.
 - The existing file-picker path, gallery preview, five-image limit, automatic
   upload, optimization, and saved-gallery behavior remain authoritative.
 
@@ -38,6 +41,7 @@ tax, discount, receipt, identity, or authorization behavior.
 
 - Dropped files pass through the existing Edit Item image selection and upload
   pipeline.
+- Edit uploads retain the existing gallery and append each accepted image once.
 - Non-image files are rejected and disabled upload states remain enforced.
 - No API, database, migration, fiscal, payment, or inventory behavior changes.
 

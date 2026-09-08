@@ -2608,9 +2608,7 @@ function ItemsWorkspace({
     });
     setEditImageUploadJob({ itemId, jobId: null });
     try {
-      const queued = filesToUpload.length === 1
-        ? await queueStorefrontCatalogImage(itemId, filesToUpload[0])
-        : await queueStorefrontCatalogImages(itemId, filesToUpload);
+      const queued = await queueStorefrontCatalogImages(itemId, filesToUpload);
       setEditImageUploadJob((current) => (
         current?.itemId === itemId
           ? { ...current, jobId: queued?.job_id || null }

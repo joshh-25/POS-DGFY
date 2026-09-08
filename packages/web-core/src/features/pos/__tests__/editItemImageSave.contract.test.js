@@ -24,8 +24,8 @@ describe('POS edit-item image save flow', () => {
     expect(saveHandler).toContain('resolveEditItemSaveError(updateError, editSaveStage).message');
     expect(uploadHandler).toContain('setSelectedEditImageFiles(filesToPreview);');
     expect(uploadHandler).toContain('setDeferredEditImageFiles(filesToPreview);');
-    expect(workspace).toContain('await queueStorefrontCatalogImage(itemId, filesToUpload[0])');
     expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload)');
+    expect(uploadHandler).not.toContain('queueStorefrontCatalogImage(itemId, filesToUpload[0])');
     expect(workspace).toContain('setPendingEditImageRefresh({');
     expect(workspace).toContain('Remove existing images to make room; upload will continue automatically.');
     expect(uploadHandler).not.toContain('pollEditImageUpload');
