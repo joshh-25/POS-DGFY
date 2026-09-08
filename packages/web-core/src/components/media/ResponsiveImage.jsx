@@ -20,10 +20,14 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
   ...imageProps
 }) {
   const placeholder = sources.placeholderSrc || sources.placeholderUrl || '';
+  const [failedResponsiveSourceKey, setFailedResponsiveSourceKey] = React.useState(null);
+  const responsiveSourceKey = `${sources.src || ''}\u0000${sources.srcSet || ''}\u0000${sources.avifSrcSet || ''}\u0000${sources.webpSrcSet || ''}`;
+  const responsiveSourcesFailed = failedResponsiveSourceKey === responsiveSourceKey;
+
   return (
     <picture style={{ display: 'contents' }}>
-      {sources.avifSrcSet ? <source type="image/avif" srcSet={sources.avifSrcSet} sizes={sizes} /> : null}
-      {sources.webpSrcSet ? <source type="image/webp" srcSet={sources.webpSrcSet} sizes={sizes} /> : null}
+      {!responsiveSourcesFailed && sources.avifSrcSet ? <source type="image/avif" srcSet={sources.avifSrcSet} sizes={sizes} /> : null}
+      {!responsiveSourcesFailed && sources.webpSrcSet ? <source type="image/webp" srcSet={sources.webpSrcSet} sizes={sizes} /> : null}
       <img
         {...imageProps}
         src={sources.src}
@@ -33,9 +37,9 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
         height={height}
         loading={loading}
         decoding={decoding}
-        // eslint-disable-next-line react/no-unknown-property -- React 18 forwards the lowercase
-        // HTML attribute, React 19 accepts the camel-cased prop (carried over from
-        // StorefrontResponsiveImage.jsx's own comment, same reasoning applies here).
+        // React 18 forwards the lowercase HTML attribute, while React 19 accepts
+        // the camel-cased prop (carried over from StorefrontResponsiveImage.jsx).
+        // eslint-disable-next-line react/no-unknown-property
         fetchpriority={fetchPriority}
         style={{
           backgroundColor: '#F1F5F9',
@@ -46,7 +50,10 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
           ...style
         }}
         onError={(event) => {
-          event.currentTarget.parentElement?.querySelectorAll('source').forEach((s) => s.remove());
+          // Let React remove its own <source> nodes on the next render. Mutating
+          // the picture DOM here leaves React with stale child references and can
+          // trigger a removeChild NotFoundError during a later unmount/update.
+          setFailedResponsiveSourceKey(responsiveSourceKey);
           onError?.(event);
         }}
       />

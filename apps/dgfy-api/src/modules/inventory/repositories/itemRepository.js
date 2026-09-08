@@ -332,6 +332,7 @@ const normalizeStorefrontImageGallery = (value) => {
             url: String(entry?.url || '').trim() || null,
             variants: entry?.variants && typeof entry.variants === 'object'
                 ? {
+                    pos_thumbnail_url: entry.variants.pos_thumbnail_url || null,
                     thumbnail_url: entry.variants.thumbnail_url || null,
                     medium_url: entry.variants.medium_url || null,
                     large_url: entry.variants.large_url || null
@@ -398,7 +399,7 @@ const buildStorefrontImageGallery = ({ primaryPath = null, primaryUrl = null, ga
     const enrichedPrimary = (primary.path || primary.url)
         ? {
             ...primary,
-            variants: deriveImageAssetVariantUrls({
+            variants: normalized[0]?.variants || deriveImageAssetVariantUrls({
                 storedPath: primary.path || null,
                 storedUrl: primary.url || null
             }),
@@ -3233,8 +3234,15 @@ export const itemRepository = {
         const candidatePath = payload.storefront_image_path ?? (existing?.storefront_image_path ?? null);
         const candidateUrl = payload.storefront_image_url ?? (existing?.storefront_image_url ?? null);
 
+        // A gallery payload comes from the catalog image pipeline after every
+        // file has already been optimized and stored. Running the single-image
+        // lifecycle again here can create a second asset for the gallery's
+        // primary image, then prepend that asset as an extra gallery entry.
+        // Keep lifecycle processing for legacy/single-image writes only.
+        const hasManagedGalleryPayload = hasOwn(payload, 'storefront_image_gallery')
+            && Array.isArray(payload.storefront_image_gallery);
         let imageLifecycleResult = null;
-        if (candidatePath || candidateUrl || payload.image_file) {
+        if (payload.image_file || (!hasManagedGalleryPayload && (candidatePath || candidateUrl))) {
             try {
                 imageLifecycleResult = await ensureOptimizedItemImage({
                     itemId,
