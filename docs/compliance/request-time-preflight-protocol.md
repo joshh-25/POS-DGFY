@@ -355,10 +355,16 @@ To finish it:
 
 The handoff procedure above exists for the continuous `develop`-push sweep.
 It has no equivalent for a compliance-sensitive fix authored directly against
-`staging`/`release/*` (or any branch that trigger doesn't cover) — historically
-that meant a `develop`-detour PR plus a sweep-handoff PR just to clear one
-`NOT-EXECUTED-*` placeholder before the actual fix could land where it needed
-to.
+`staging`/`release/*`, or a `main`-based production hotfix branch
+(`.agents/skills/incident-responder/SKILL.md`), or any other branch that
+trigger doesn't cover — historically that meant a `develop`-detour PR plus a
+sweep-handoff PR just to clear one `NOT-EXECUTED-*` placeholder before the
+actual fix could land where it needed to. Confirmed live for the hotfix case
+specifically (#1700, 2026-09-07): PR #1702's own hotfix for #1698 shipped to
+`main` with a `NOT-EXECUTED-*` ref intact and closed the gap only via that
+exact `develop`-detour (back-port PR #1709, reconciled by the continuous
+sweep there, then present on both branches) — the multi-PR round trip this
+tool exists to collapse into one commit.
 
 `npm run compliance:reconcile-local -- <file>.md [more...]`
 (`scripts/reconcile-preflight-declaration-local.js`) is the recommended path
@@ -377,6 +383,15 @@ rides the same review/merge path it would have anyway, just with the
 reconciled front matter already part of the diff instead of a placeholder).
 See `scripts/reconcile-preflight-declaration-local.js`'s own header for the
 full step sequence and port choices.
+
+**Resolves #1700 (2026-09-08).** This tool never performs a git operation (no
+branch, commit, or PR of its own — confirmed by reading its source), so it
+needs no modification to work against a `main`-based hotfix branch's working
+tree; it is the sanctioned, mandatory reconciliation path for that case, same
+as `staging`/`release/*`. `incident-responder`'s own SKILL.md carries the
+exact procedural requirement (mandatory whenever a hotfix diff carries an
+outstanding `NOT-EXECUTED-*` ref, not optional/best-effort) rather than
+restated here.
 
 For lower-level debugging (exercising one piece of the mechanism directly —
 e.g. against a local `dgfy-api` you've already stood up yourself), the
