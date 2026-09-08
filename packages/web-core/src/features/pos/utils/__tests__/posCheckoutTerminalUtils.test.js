@@ -440,4 +440,25 @@ describe('POS checkout terminal pure utilities', () => {
         expect(sources.previewSrc).toContain('/uploads/items/meal/large.webp');
         expect(sources.previewSrc).not.toContain('pos-thumb');
     });
+
+    it('merges duplicate primary gallery metadata and supports a legacy POS path', () => {
+        const storefront = resolvePosCatalogPreviewGallery({
+            storefront_image_url: '/uploads/items/meal/original.jpg',
+            storefront_image_gallery: [{
+                url: '/uploads/items/meal/original.jpg',
+                variants: {
+                    thumbnail_url: '/uploads/items/meal/thumbnail.webp',
+                    large_url: '/uploads/items/meal/large.webp'
+                }
+            }]
+        });
+        expect(storefront.gallery).toHaveLength(1);
+        expect(storefront.thumbnailSrc).toContain('/uploads/items/meal/thumbnail.webp');
+        expect(storefront.previewSrc).toContain('/uploads/items/meal/large.webp');
+
+        const pathOnly = resolvePosCatalogPreviewGallery({ pos_image_path: 'pos/legacy-photo.jpg' });
+        expect(pathOnly.gallery).toHaveLength(1);
+        expect(pathOnly.previewSrc).toContain('/uploads/pos/legacy-photo.jpg');
+        expect(pathOnly.thumbnailSrc).toBe('');
+    });
 });

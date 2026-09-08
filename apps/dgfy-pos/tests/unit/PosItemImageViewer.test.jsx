@@ -39,11 +39,37 @@ describe('POS item image viewer', () => {
     const onClose = vi.fn();
     render(<PosItemImageViewer preview={preview} onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: 'Next image' }));
-    expect(screen.getByAltText('Beef Meal full-size view').getAttribute('src')).toBe('/uploads/two-large.jpg');
+    const fullImage = screen.getByAltText('Beef Meal full-size view');
+    expect(fullImage.getAttribute('src')).toBe('/uploads/two-large.jpg');
+    Object.defineProperties(fullImage, {
+      naturalWidth: { configurable: true, value: 1600 },
+      naturalHeight: { configurable: true, value: 1200 }
+    });
+    fullImage.getBoundingClientRect = () => ({ width: 800, height: 600 });
+    fireEvent.load(fullImage);
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
     expect(screen.getByText('150%')).toBeTruthy();
-    expect(screen.getByAltText('Beef Meal full-size view').style.transform).toBe('scale(1.5)');
-    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByAltText('Beef Meal full-size view').style.width).toBe('1200px');
+    fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables enlargement for a thumbnail and traps focus inside the dialog', () => {
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+    const { rerender } = render(<PosItemImageViewer preview={{ ...preview, gallery: [preview.gallery[0]] }} onClose={vi.fn()} />);
+    const fullImage = screen.getByAltText('Beef Meal full-size view');
+    Object.defineProperties(fullImage, {
+      naturalWidth: { configurable: true, value: 144 },
+      naturalHeight: { configurable: true, value: 144 }
+    });
+    fullImage.getBoundingClientRect = () => ({ width: 144, height: 144 });
+    fireEvent.load(fullImage);
+    expect(screen.getByRole('button', { name: 'Zoom in' }).disabled).toBe(true);
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+    rerender(<PosItemImageViewer preview={null} onClose={vi.fn()} />);
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
   });
 });

@@ -22235,3 +22235,27 @@ content differs from what was implemented and tested under the "303" label.
   `PosItemImageViewer.jsx`, their focused tests, and
   `docs/compliance/impact-declarations/2026-09-08-pos-items-sharp-hd-source-selection.md`.
 - Next eligible phase: 312.
+
+## Phase 312 - POS Items image-viewer PR-readiness hardening
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: close the final audit gaps from Phases 308-311 by merging
+  duplicate primary gallery metadata instead of discarding HD variants,
+  supporting legacy path-only POS images, limiting zoom to real source pixels,
+  using the shared accessible dialog for focus trapping and restoration, and
+  preventing inactive gallery controls from falling back to full-size images.
+  Apply the required minor version increases to all three web-core consumers.
+- Status: completed.
+- Dependencies: completed Phases 308-311, shared dialog accessibility contract,
+  ADR 0029 ownership boundaries, ADR 0067 Chrome 80 browser floor, and ADR 0081
+  per-app version policy.
+- Acceptance and validation evidence: focused resolver tests cover HD metadata
+  merging and path-only records; focused viewer tests cover pixel-aware zoom,
+  focus containment/restoration, fallback, navigation, and close behavior; POS
+  production build, architecture, compliance, documentation, and app-version
+  checks pass.
+- Completion date: 2026-09-08.
+- Contracts/files: POS image resolvers, `PosItemImageViewer.jsx`, focused POS
+  tests, consuming app package manifests and lockfiles, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-image-viewer-pr-readiness.md`.
+- Next eligible phase: 313.

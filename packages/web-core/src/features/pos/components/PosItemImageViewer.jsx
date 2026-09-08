@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Minus, Plus, X } from 'lucide-react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 const ZOOM_LEVELS = [1, 1.5, 2];
 
@@ -9,17 +9,15 @@ export default function PosItemImageViewer({ preview, onClose }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [fallbackIndex, setFallbackIndex] = useState(0);
   const [zoomIndex, setZoomIndex] = useState(0);
+  const [imageMetrics, setImageMetrics] = useState(null);
 
   useEffect(() => {
     if (!preview) return undefined;
     setActiveIndex(0);
     setFallbackIndex(0);
     setZoomIndex(0);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
+    setImageMetrics(null);
+    return undefined;
   }, [preview]);
 
   const activeEntry = gallery[activeIndex] || null;
@@ -40,12 +38,12 @@ export default function PosItemImageViewer({ preview, onClose }) {
     setActiveIndex((current) => (current + direction + gallery.length) % gallery.length);
     setFallbackIndex(0);
     setZoomIndex(0);
+    setImageMetrics(null);
   };
 
   useEffect(() => {
     if (!preview) return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onClose();
       if (event.key === 'ArrowLeft') move(-1);
       if (event.key === 'ArrowRight') move(1);
     };
@@ -53,25 +51,32 @@ export default function PosItemImageViewer({ preview, onClose }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [gallery.length, onClose, preview]);
 
-  if (!preview || typeof document === 'undefined') return null;
+  const canUseZoomLevel = (level) => {
+    if (level === 1) return true;
+    if (!imageMetrics?.renderedWidth || !imageMetrics?.renderedHeight) return false;
+    return imageMetrics.naturalWidth >= imageMetrics.renderedWidth * level
+      && imageMetrics.naturalHeight >= imageMetrics.renderedHeight * level;
+  };
+  const zoomStyle = zoom === 1 || !imageMetrics
+    ? undefined
+    : {
+        width: `${imageMetrics.renderedWidth * zoom}px`,
+        height: `${imageMetrics.renderedHeight * zoom}px`,
+        maxWidth: 'none',
+        maxHeight: 'none'
+      };
 
-  return createPortal((
-    <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/85 p-2 sm:p-5"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${preview.itemName || 'Item'} image preview`}
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-slate-950 shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
+  return (
+    <Dialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) onClose(); }} overlayClassName="bg-slate-950/85 backdrop-blur-none">
+      <DialogContent
+        aria-label={`${preview?.itemName || 'Item'} image preview`}
+        className="flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-4xl flex-col overflow-hidden rounded-2xl bg-slate-950 p-0 shadow-2xl sm:w-[calc(100vw-2rem)]"
       >
         <div className="flex min-h-14 items-center justify-between gap-3 border-b border-white/10 px-4 py-2 text-white">
           <div className="flex min-w-0 items-center gap-3">
             <div className="min-w-0">
-            <h2 className="truncate text-sm font-bold sm:text-base">{preview.itemName || 'Item image'}</h2>
-            {gallery.length > 1 ? <p className="text-xs text-slate-300">Image {activeIndex + 1} of {gallery.length}</p> : null}
+              <h2 className="truncate text-sm font-bold sm:text-base">{preview?.itemName || 'Item image'}</h2>
+              {gallery.length > 1 ? <p className="text-xs text-slate-300">Image {activeIndex + 1} of {gallery.length}</p> : null}
             </div>
             <div className="shrink-0 rounded-lg bg-white/10 px-2.5 py-1.5 text-right">
               <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Selling price</p>
@@ -90,7 +95,7 @@ export default function PosItemImageViewer({ preview, onClose }) {
             <button
               type="button"
               aria-label="Zoom in"
-              disabled={zoomIndex === ZOOM_LEVELS.length - 1}
+              disabled={zoomIndex === ZOOM_LEVELS.length - 1 || !canUseZoomLevel(ZOOM_LEVELS[zoomIndex + 1])}
               onClick={() => setZoomIndex((current) => Math.min(ZOOM_LEVELS.length - 1, current + 1))}
               className="rounded-lg p-2 hover:bg-white/10 disabled:opacity-40"
             ><Plus className="h-5 w-5" /></button>
@@ -105,10 +110,16 @@ export default function PosItemImageViewer({ preview, onClose }) {
             <img
               key={`${activeIndex}-${fallbackIndex}`}
               src={activeSrc}
-              alt={`${preview.itemName || 'Item'} full-size view`}
-              className="max-h-[58vh] max-w-full select-none object-contain transition-transform duration-150"
-              style={zoom === 1 ? undefined : { transform: `scale(${zoom})` }}
-              onError={() => setFallbackIndex((current) => current + 1)}
+              alt={`${preview?.itemName || 'Item'} full-size view`}
+              className="max-h-[58vh] max-w-full select-none object-contain"
+              style={zoomStyle}
+              onLoad={(event) => {
+                const image = event.currentTarget;
+                const bounds = image.getBoundingClientRect();
+                setImageMetrics({ naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight, renderedWidth: bounds.width, renderedHeight: bounds.height });
+                setZoomIndex(0);
+              }}
+              onError={() => { setImageMetrics(null); setFallbackIndex((current) => current + 1); }}
             />
           ) : (
             <p className="rounded-lg bg-white/10 px-4 py-3 text-sm text-slate-200">Image preview is unavailable.</p>
@@ -133,15 +144,15 @@ export default function PosItemImageViewer({ preview, onClose }) {
                 type="button"
                 aria-label={`View image ${index + 1}`}
                 aria-current={index === activeIndex ? 'true' : undefined}
-                onClick={() => { setActiveIndex(index); setFallbackIndex(0); setZoomIndex(0); }}
+                onClick={() => { setActiveIndex(index); setFallbackIndex(0); setZoomIndex(0); setImageMetrics(null); }}
                 className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 ${index === activeIndex ? 'border-blue-400' : 'border-transparent'}`}
               >
-                <img src={entry.thumbnailSrc} alt="" className="h-full w-full object-cover" />
+                {entry.thumbnailSrc ? <img src={entry.thumbnailSrc} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center bg-white/10 text-xs font-bold text-white">{index + 1}</span>}
               </button>
             ))}
           </div>
         ) : null}
-      </div>
-    </div>
-  ), document.body);
+      </DialogContent>
+    </Dialog>
+  );
 }

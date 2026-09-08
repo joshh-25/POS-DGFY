@@ -618,7 +618,7 @@ const buildPosCatalogPreviewEntry = ({ url, path, variants } = {}) => {
     ]);
 
     return {
-        thumbnailSrc: posThumbnailSrc || thumbnailSrc || mediumSrc || configuredSrc || largeSrc || '',
+        thumbnailSrc: posThumbnailSrc || thumbnailSrc || '',
         previewSrc: previewCandidates[0] || '',
         previewFallbacks: previewCandidates.slice(1)
     };
@@ -630,11 +630,12 @@ const buildPosCatalogPreviewEntry = ({ url, path, variants } = {}) => {
 // viewer may request `previewSrc` only after the cashier opens it.
 export const resolvePosCatalogPreviewGallery = (item = {}) => {
     const imageSource = String(item?.pos_image_source || '').trim().toLowerCase();
+    const hasPosImage = Boolean(item?.pos_image_url || item?.pos_image_path);
     const hasPosOverride = imageSource
         ? imageSource === 'override'
         : Boolean(
-            (item?.pos_image_url || item?.pos_image_path)
-            && item?.pos_image_url !== item?.storefront_image_url
+            hasPosImage
+            && (!item?.pos_image_url || item.pos_image_url !== item?.storefront_image_url)
         );
     const rawEntries = hasPosOverride
         ? [{
@@ -662,14 +663,28 @@ export const resolvePosCatalogPreviewGallery = (item = {}) => {
         entries.unshift(configuredStorefrontEntry);
     }
 
-    const seen = new Set();
+    const identityIndexes = new Map();
     const gallery = entries.reduce((result, entry) => {
+        const identity = resolveStoredCatalogImageUrl(entry?.url || entry?.path);
+        if (!identity) return result;
+        if (identityIndexes.has(identity)) {
+            const index = identityIndexes.get(identity);
+            const previous = result[index];
+            const variants = { ...(previous.variants || {}), ...(entry?.variants || {}) };
+            result[index] = {
+                ...buildPosCatalogPreviewEntry({ url: identity, variants }),
+                configuredSrc: identity,
+                variants,
+                isPrimary: index === 0
+            };
+            return result;
+        }
+        identityIndexes.set(identity, result.length);
         const resolved = buildPosCatalogPreviewEntry(entry);
-        const identity = resolveStoredCatalogImageUrl(entry?.url || entry?.path) || resolved.previewSrc;
-        if (!identity || seen.has(identity)) return result;
-        seen.add(identity);
         result.push({
             ...resolved,
+            configuredSrc: identity,
+            variants: entry?.variants || {},
             isPrimary: result.length === 0
         });
         return result;
