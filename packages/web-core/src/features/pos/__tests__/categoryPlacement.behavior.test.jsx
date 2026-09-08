@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TerminalOperationsWorkspace from '../components/TerminalOperationsWorkspace.jsx';
 import { fetchPosCatalogPage } from '../services/posService.js';
+import { getFolders } from '@/services/itemService.js';
 
 vi.mock('../services/posService.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -50,6 +51,23 @@ afterEach(() => {
 });
 
 describe('Items category placement', () => {
+  it('renders saved category order with drag handles and disables rearranging during search', async () => {
+    getFolders.mockResolvedValue([
+      { folder_id: 2, name: 'Drinks', sort_order: 0, is_active: true },
+      { folder_id: 1, name: 'Mains', sort_order: 1, is_active: true }
+    ]);
+    render(<TerminalOperationsWorkspace {...buildProps()} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
+
+    const drinksHandle = await screen.findByRole('button', { name: 'Move Drinks' });
+    const mainsHandle = screen.getByRole('button', { name: 'Move Mains' });
+    expect(drinksHandle.compareDocumentPosition(mainsHandle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(drinksHandle.disabled).toBe(false);
+
+    fireEvent.change(screen.getByPlaceholderText('Search categories'), { target: { value: 'Drink' } });
+    expect(screen.getByRole('button', { name: 'Move Drinks' }).disabled).toBe(true);
+  });
+
   it('queries the complete server catalog with search, filters, location, and page size', async () => {
     fetchPosCatalogPage.mockResolvedValue({
       items: [{ item_id: 601, name: 'Tomato Meatballs', current_stock: 10 }],

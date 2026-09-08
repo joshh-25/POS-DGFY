@@ -350,7 +350,7 @@ const resolveSecondaryCategoryOccurrences = (item = {}, primaryCategoryIdentity)
     const secondaryIdentity = resolveCategoryIdentity(secondaryCategory?.folder_id, secondaryCategoryKey);
     if (seenIdentities.has(secondaryIdentity)) return;
     seenIdentities.add(secondaryIdentity);
-    occurrences.push({ categoryKey: secondaryCategoryKey, categoryIdentity: secondaryIdentity });
+    occurrences.push({ categoryKey: secondaryCategoryKey, categoryIdentity: secondaryIdentity, sortOrder: Number(secondaryCategory?.sort_order || 0) });
   });
 
   return occurrences;
@@ -368,6 +368,7 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
       return {
         ...item,
         categoryKey,
+        categorySortOrder: Number(item?.folder_sort_order || 0),
         intakeFields,
         requiredIntakeCount,
         hasAvailability,
@@ -395,6 +396,7 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
         ...item,
         categoryKey: occurrence.categoryKey,
         categoryIdentity: occurrence.categoryIdentity,
+        categorySortOrder: occurrence.sortOrder,
         serviceItemKey: `${occurrence.categoryIdentity}:${item.item_id}`
       });
     });
@@ -410,6 +412,7 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
     const existing = grouped.get(item.categoryIdentity) || {
       categoryKey: item.categoryKey,
       categoryIdentity: item.categoryIdentity,
+      sortOrder: item.categorySortOrder,
       items: [],
       firstSeenIndex: grouped.size
     };
@@ -418,7 +421,7 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
   });
 
   const serviceGroups = [...grouped.values()]
-    .sort((left, right) => left.firstSeenIndex - right.firstSeenIndex)
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.firstSeenIndex - right.firstSeenIndex)
     .map((group) => {
       const categoryMeta = getServiceCategoryMeta(group.categoryKey, group.items);
       const sortedItems = group.items

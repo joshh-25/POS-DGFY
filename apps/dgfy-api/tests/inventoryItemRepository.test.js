@@ -2376,7 +2376,8 @@ describe('inventory itemRepository', () => {
           is_active: true,
           parent_id: null,
           item_count: 2,
-          secondary_item_count: 0
+          secondary_item_count: 0,
+          sort_order: 0
         },
         {
           folder_id: 2,
@@ -2386,7 +2387,8 @@ describe('inventory itemRepository', () => {
           is_active: false,
           parent_id: null,
           item_count: 0,
-          secondary_item_count: 0
+          secondary_item_count: 0,
+          sort_order: 0
         }
     ]);
   });
@@ -2465,6 +2467,7 @@ describe('inventory itemRepository', () => {
       parent_id: null,
       show_in_pos_filter: true,
       is_active: true,
+      sort_order: 0,
       message: 'Inventory folder "Dry Goods" created successfully'
     });
 
@@ -2494,9 +2497,35 @@ describe('inventory itemRepository', () => {
 
     await expect(itemRepository.createFolder('Mains')).resolves.toMatchObject({ folder_id: 18, name: 'Mains' });
     expect(ItemFolder.findAll).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ is_active: true, deleted_at: null })
+      where: expect.objectContaining({ deleted_at: null })
     }));
     expect(inactiveFolder.is_active).toBe(false);
+  });
+
+  it('reorders every current category atomically', async () => {
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const ItemFolder = {
+      findAll: jest.fn().mockResolvedValue([{ folder_id: 1 }, { folder_id: 2 }, { folder_id: 3 }]),
+      update: jest.fn().mockResolvedValue([1])
+    };
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => (name === 'ItemFolder' ? ItemFolder : {}));
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize: { transaction: jest.fn().mockResolvedValue(transaction) } });
+
+    await expect(itemRepository.reorderFolders([3, 1, 2])).resolves.toEqual({ success: true, folder_ids: [3, 1, 2] });
+    expect(ItemFolder.update).toHaveBeenNthCalledWith(1, { sort_order: 0 }, { where: { folder_id: 3 }, transaction });
+    expect(ItemFolder.update).toHaveBeenNthCalledWith(3, { sort_order: 2 }, { where: { folder_id: 2 }, transaction });
+    expect(transaction.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a stale category reorder without writing partial positions', async () => {
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const ItemFolder = { findAll: jest.fn().mockResolvedValue([{ folder_id: 1 }, { folder_id: 2 }]), update: jest.fn() };
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => (name === 'ItemFolder' ? ItemFolder : {}));
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize: { transaction: jest.fn().mockResolvedValue(transaction) } });
+
+    await expect(itemRepository.reorderFolders([2])).rejects.toMatchObject({ statusCode: 409, code: 'CATEGORY_ORDER_STALE' });
+    expect(ItemFolder.update).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalledTimes(1);
   });
 
   it('deletes an unassigned folder without altering item records', async () => {

@@ -271,7 +271,7 @@ const resolveSecondarySectionOccurrences = (item = {}, primarySectionIdentity) =
     const secondaryIdentity = resolveSectionIdentity(secondaryCategory?.folder_id, secondarySectionKey);
     if (seenIdentities.has(secondaryIdentity)) return;
     seenIdentities.add(secondaryIdentity);
-    occurrences.push({ sectionKey: secondarySectionKey, sectionLabel: secondaryLabel, sectionIdentity: secondaryIdentity });
+    occurrences.push({ sectionKey: secondarySectionKey, sectionLabel: secondaryLabel, sectionIdentity: secondaryIdentity, sortOrder: Number(secondaryCategory?.sort_order || 0) });
   });
 
   return occurrences;
@@ -290,6 +290,7 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
         sectionKey: normalizeKey(sectionLabel).replace(/\s+/g, '_') || `section_${index}`,
         sectionLabel,
         sectionVisualMeta,
+        categorySortOrder: Number(item?.folder_sort_order || 0),
         productKind,
         availabilityMeta,
         unitLabel: formatUnitLabel(item?.unit_of_measure),
@@ -317,6 +318,7 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
         sectionLabel: occurrence.sectionLabel,
         sectionIdentity: occurrence.sectionIdentity,
         sectionVisualMeta: resolveSectionVisualMeta(occurrence.sectionLabel),
+        categorySortOrder: occurrence.sortOrder,
         menuItemKey: `${occurrence.sectionIdentity}:${item.item_id}`
       });
     });
@@ -333,6 +335,7 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
       sectionKey: item.sectionKey,
       sectionLabel: item.sectionLabel,
       sectionIdentity: item.sectionIdentity,
+      sortOrder: item.categorySortOrder,
       items: [],
       firstSeenIndex: index
     };
@@ -341,7 +344,7 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
   });
 
   const menuSections = [...sectionMap.values()]
-    .sort((left, right) => left.firstSeenIndex - right.firstSeenIndex)
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.firstSeenIndex - right.firstSeenIndex)
     .map((section) => ({
       ...section,
       visualMeta: section.items[0]?.sectionVisualMeta || resolveSectionVisualMeta(section.sectionLabel),

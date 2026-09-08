@@ -22259,3 +22259,28 @@ content differs from what was implemented and tested under the "303" label.
   tests, consuming app package manifests and lockfiles, and
   `docs/compliance/impact-declarations/2026-09-08-pos-items-image-viewer-pr-readiness.md`.
 - Next eligible phase: 313.
+
+## Phase 313 - Shared POS and Storefront category ordering
+
+- Initiative/release: POS catalog category management / current release.
+- Objective and scope: let tenant administrators rearrange category rows from
+  POS Items with pointer, touch, or keyboard input; persist the complete order
+  transactionally in Catalog-owned `item_folders.sort_order`; and render F&B
+  and services Storefront category controls in the same order while keeping the
+  synthetic All category first. Reordering is disabled while search is active,
+  failed saves restore the prior UI order, and newly created categories append.
+- Status: completed.
+- Dependencies: completed Phase 312, ADR 0029 Catalog ownership, ADR 0080
+  primary/secondary category identity rules, existing `categories:manage`
+  authorization, and tenant migration runner coverage.
+- Acceptance and validation evidence: additive migration applied to the local
+  development database; inventory repository/transport suites passed (118
+  tests); POS category interaction/contract suites passed (21 tests);
+  Storefront F&B/services ordering suites passed (20 tests); POS, Storefront,
+  and IMS production builds passed; architecture, compliance, documentation,
+  migration syntax, and per-app version gates passed.
+- Completion date: 2026-09-08.
+- Contracts/files: `item_folders.sort_order`, inventory folder repository/use
+  case/route, shared item service, POS category workspace, Storefront category
+  view models, focused tests, and Phase 313 compliance declaration.
+- Next eligible phase: 314.

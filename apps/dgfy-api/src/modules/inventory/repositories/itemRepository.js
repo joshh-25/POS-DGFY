@@ -3771,6 +3771,7 @@ export const itemRepository = {
         try {
             const folders = await ItemFolder.findAll({
                 where: { deleted_at: null },
+                order: [['sort_order', 'ASC'], ['name', 'ASC'], ['folder_id', 'ASC']],
                 include: [
                     {
                         model: Item,
@@ -3802,6 +3803,7 @@ export const itemRepository = {
                 show_in_pos_filter: folder.show_in_pos_filter !== false,
                 is_active: folder.is_active !== false,
                 parent_id: folder.parent_id,
+                sort_order: Number(folder.sort_order || 0),
                 item_count: folder.items?.length || 0,
                 secondary_item_count: secondaryCountByFolder.get(folder.folder_id) || 0
             }));
@@ -3823,11 +3825,13 @@ export const itemRepository = {
 
         try {
             const existingFolders = await ItemFolder.findAll({
-                where: activeFolderWhere({ parent_id }),
-                attributes: ['folder_id', 'name', 'description', 'show_in_pos_filter', 'is_active', 'parent_id']
+                where: { deleted_at: null, parent_id },
+                attributes: ['folder_id', 'name', 'description', 'show_in_pos_filter', 'is_active', 'parent_id', 'sort_order']
             });
             const normalizedLookup = normalizedName.toLowerCase();
             const existingFolder = existingFolders.find((folder) => (
+                folder?.is_active !== false
+                &&
                 String(folder?.name || '').trim().toLowerCase() === normalizedLookup
                 && Number(folder?.parent_id || 0) === Number(parent_id || 0)
             ));
@@ -3839,12 +3843,14 @@ export const itemRepository = {
                 throw error;
             }
 
+            const maxSortOrder = existingFolders.reduce((max, entry) => Math.max(max, Number(entry.sort_order || 0)), -1);
             const folder = await ItemFolder.create({
                 name: normalizedName,
                 description: normalizedDescription,
                 show_in_pos_filter: true,
                 is_active: true,
-                parent_id
+                parent_id,
+                sort_order: maxSortOrder + 1
             });
 
             return {
@@ -3855,6 +3861,7 @@ export const itemRepository = {
                 parent_id: folder.parent_id,
                 show_in_pos_filter: folder.show_in_pos_filter !== false,
                 is_active: folder.is_active !== false,
+                sort_order: Number(folder.sort_order || 0),
                 message: `Inventory folder "${folder.name}" created successfully`
             };
         } catch (error) {
@@ -3959,6 +3966,36 @@ export const itemRepository = {
                 conflict.code = 'CATEGORY_EXISTS';
                 throw conflict;
             }
+            throw error;
+        }
+    },
+    async reorderFolders(folderIds = []) {
+        const ItemFolder = dbStore.get('ItemFolder');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const normalizedIds = folderIds.map(Number);
+        const transaction = await sequelize.transaction();
+        try {
+            const folders = await ItemFolder.findAll({
+                where: { deleted_at: null },
+                attributes: ['folder_id'],
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            const expected = folders.map((folder) => Number(folder.folder_id)).sort((a, b) => a - b);
+            const received = [...normalizedIds].sort((a, b) => a - b);
+            if (expected.length !== received.length || expected.some((id, index) => id !== received[index])) {
+                const error = new Error('Category order must include every current category exactly once. Refresh and try again.');
+                error.statusCode = 409;
+                error.code = 'CATEGORY_ORDER_STALE';
+                throw error;
+            }
+            for (let index = 0; index < normalizedIds.length; index += 1) {
+                await ItemFolder.update({ sort_order: index }, { where: { folder_id: normalizedIds[index] }, transaction });
+            }
+            await transaction.commit();
+            return { success: true, folder_ids: normalizedIds };
+        } catch (error) {
+            if (!transaction.finished) await transaction.rollback();
             throw error;
         }
     },

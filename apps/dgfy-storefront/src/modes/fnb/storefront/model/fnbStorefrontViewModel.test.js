@@ -23,6 +23,14 @@ const baseItem = (overrides = {}) => ({
 });
 
 describe('getFoodBeverageStorefrontViewModel — secondary-category grouping fan-out', () => {
+  it('orders category sections by the shared catalog sort order', () => {
+    const result = getFoodBeverageStorefrontViewModel([
+      baseItem({ item_id: 1, folder_id: 100, folder_name: 'Mains', folder_sort_order: 8 }),
+      baseItem({ item_id: 2, folder_id: 200, folder_name: 'Drinks', folder_sort_order: 2 })
+    ]);
+    expect(result.menuSections.map((section) => section.sectionLabel)).toEqual(['Drinks', 'Mains']);
+  });
+
   it('renders a primary-only item exactly once, in its primary section', () => {
     const result = getFoodBeverageStorefrontViewModel([
       baseItem({ item_id: 1, folder_id: 100, folder_name: 'Coffee & Tea' })

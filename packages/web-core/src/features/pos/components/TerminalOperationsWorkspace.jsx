@@ -1,6 +1,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { createPortal } from 'react-dom';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import {
   AlertCircle,
   AlertTriangle,
@@ -22,6 +23,7 @@ import {
   Barcode,
   FileText,
   Ghost,
+  GripVertical,
   History,
   ImagePlus,
   Info,
@@ -87,6 +89,7 @@ import {
   listItemFolders,
   lookupExternalProduct,
   replaceItemFolders,
+  reorderFolders,
   updateItemBarcode,
   updateFolder
 } from '@/services/itemService.js';
@@ -5305,6 +5308,21 @@ function ItemsWorkspace({
   );
 }
 
+function DraggableCategoryRow({ folder, disabled, children }) {
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({ id: folder.folder_id, disabled });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: folder.folder_id, disabled });
+  const setNodeRef = useCallback((node) => { setDragRef(node); setDropRef(node); }, [setDragRef, setDropRef]);
+  return (
+    <div
+      ref={setNodeRef}
+      style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined}
+      className={`${isDragging ? 'relative z-10 opacity-70 shadow-lg' : ''} ${isOver && !isDragging ? 'bg-blue-50' : 'bg-white'}`}
+    >
+      {children({ attributes, listeners })}
+    </div>
+  );
+}
+
 function CategoryManagementWorkspace() {
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5314,6 +5332,10 @@ function CategoryManagementWorkspace() {
   const [editor, setEditor] = useState(null);
   const [form, setForm] = useState({ name: '', description: '' });
   const [pendingAction, setPendingAction] = useState(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor)
+  );
 
   const loadFolders = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -5331,7 +5353,8 @@ function CategoryManagementWorkspace() {
             // #1318 follow-up (ADR 0080 Consequences item 4) — items that list this
             // folder only as a secondary category, invisible to item_count above.
             secondary_item_count: Number(folder?.secondary_item_count || 0),
-            is_active: folder?.is_active !== false
+            is_active: folder?.is_active !== false,
+            sort_order: Number(folder?.sort_order || 0)
           }))
           .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
       );
@@ -5351,11 +5374,32 @@ function CategoryManagementWorkspace() {
     const normalizedQuery = String(query || '').trim().toLowerCase();
     return [...folders]
       .filter((folder) => !normalizedQuery || `${folder.name} ${folder.description}`.toLowerCase().includes(normalizedQuery))
-      .sort((left, right) => {
-        if (left.is_active !== right.is_active) return left.is_active ? -1 : 1;
-        return left.name.localeCompare(right.name);
-      });
+      .sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name));
   }, [folders, query]);
+
+  const handleCategoryDragEnd = async ({ active, over }) => {
+    if (!over || active.id === over.id || query.trim() || busy) return;
+    const previous = folders;
+    const fromIndex = folders.findIndex((folder) => folder.folder_id === Number(active.id));
+    const toIndex = folders.findIndex((folder) => folder.folder_id === Number(over.id));
+    if (fromIndex < 0 || toIndex < 0) return;
+    const next = [...folders];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    const normalized = next.map((folder, index) => ({ ...folder, sort_order: index }));
+    setFolders(normalized);
+    setBusy(true);
+    try {
+      await reorderFolders(normalized.map((folder) => folder.folder_id));
+      notifyPosCatalogUpdated({ reason: 'category_order_updated' });
+      toast.success('Category order updated.');
+    } catch (reorderError) {
+      setFolders(previous);
+      toast.error(reorderError?.response?.data?.message || 'Unable to save category order.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const replacementFolders = useMemo(() => folders
     .filter((folder) => folder.is_active && Number(folder.folder_id) !== Number(pendingAction?.folder?.folder_id))
@@ -5460,6 +5504,7 @@ function CategoryManagementWorkspace() {
             Refresh
           </Button>
         </div>
+        <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">Drag the handle to rearrange categories. Clear search before rearranging.</p>
 
         {error ? (
           <div className="m-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
@@ -5472,11 +5517,14 @@ function CategoryManagementWorkspace() {
             <p className="mt-1 text-sm text-slate-500">Create a category before adding POS items.</p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {filteredFolders.map((folder) => (
-              <div key={folder.folder_id} className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
+            <div className="divide-y divide-slate-100">
+              {filteredFolders.map((folder) => (
+                <DraggableCategoryRow key={folder.folder_id} folder={folder} disabled={Boolean(query.trim()) || busy}>
+                  {({ attributes, listeners }) => <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" aria-label={`Move ${folder.name}`} title={query.trim() ? 'Clear search to rearrange categories.' : 'Drag to rearrange'} disabled={Boolean(query.trim()) || busy} className="touch-none rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" {...attributes} {...listeners}><GripVertical className="h-5 w-5" /></button>
                     <p className="font-extrabold text-[#0F172A]">{folder.name}</p>
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${folder.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>{folder.is_active ? 'Active' : 'Inactive'}</span>
                   </div>
@@ -5488,9 +5536,11 @@ function CategoryManagementWorkspace() {
                   <Button type="button" variant="outline" onClick={() => setPendingAction({ type: folder.is_active ? 'deactivate' : 'activate', folder })} disabled={busy} className="h-9 rounded-lg">{folder.is_active ? 'Deactivate' : 'Activate'}</Button>
                   <Button type="button" variant="outline" onClick={() => setPendingAction({ type: 'delete', folder, replacementFolderId: '' })} disabled={busy} title={folder.item_count > 0 ? 'Delete and reassign assigned items.' : 'Delete category'} className="h-9 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed"><Trash2 className="mr-1.5 h-3.5 w-3.5" />Delete</Button>
                 </div>
-              </div>
-            ))}
-          </div>
+                  </div>}
+                </DraggableCategoryRow>
+              ))}
+            </div>
+          </DndContext>
         )}
       </div>
 

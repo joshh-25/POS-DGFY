@@ -91,11 +91,11 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
         const item100 = result.find((row) => row.item_id === 100);
         const item101 = result.find((row) => row.item_id === 101);
         expect(item100.secondary_categories).toEqual([
-            { folder_id: 5, folder_name: 'Seasonal' },
-            { folder_id: 6, folder_name: 'Clearance' }
+            { folder_id: 5, folder_name: 'Seasonal', sort_order: 0 },
+            { folder_id: 6, folder_name: 'Clearance', sort_order: 0 }
         ]);
         expect(item101.secondary_categories).toEqual([
-            { folder_id: 5, folder_name: 'Seasonal' }
+            { folder_id: 5, folder_name: 'Seasonal', sort_order: 0 }
         ]);
         // Primary projection (ADR 0080 Decision 1) stays exactly what it was before this phase.
         expect(item100.folder_id).toBe(1);
@@ -198,7 +198,7 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
         const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
 
         expect(result[0].secondary_categories).toEqual([
-            { folder_id: 20, folder_name: 'Still Active' }
+            { folder_id: 20, folder_name: 'Still Active', sort_order: 0 }
         ]);
     });
 });

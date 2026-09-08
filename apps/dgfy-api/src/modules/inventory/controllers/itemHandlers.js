@@ -39,6 +39,7 @@ import {
   getFoldersUseCase,
   createFolderUseCase,
   updateFolderUseCase,
+  reorderFoldersUseCase,
   deleteFolderUseCase,
   listItemFoldersUseCase,
   replaceItemFoldersUseCase
@@ -1392,6 +1393,23 @@ export const updateFolder = async (req, res, next) => {
   }
 };
 
+export const reorderFolders = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => reorderFoldersUseCase({ folderIds: req.validatedData?.folder_ids || [] }),
+      'Failed to reorder categories'
+    );
+    await publishCatalogInvalidation(req, 'category_order_updated');
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({ success: true, data: result.data, message: 'Category order updated.', timestamp: timestamp() }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Phase 257 (#1318) — secondary category memberships only. Does not read or
 // write items.folder_id (the primary category); see ADR 0080 clause 1/2.
 export const listItemFolders = async (req, res, next) => {
@@ -1501,6 +1519,7 @@ export default {
   getFolders,
   createFolder,
   updateFolder,
+  reorderFolders,
   deleteFolder,
   listItemFolders,
   replaceItemFolders

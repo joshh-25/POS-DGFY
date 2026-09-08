@@ -26,6 +26,14 @@ const baseService = (overrides = {}) => ({
 });
 
 describe('getServicesStorefrontViewModel — secondary-category grouping fan-out', () => {
+  it('orders category groups by the shared catalog sort order', () => {
+    const result = getServicesStorefrontViewModel([
+      baseService({ item_id: 1, folder_id: 100, folder_name: 'Laundry', folder_sort_order: 9 }),
+      baseService({ item_id: 2, folder_id: 200, folder_name: 'Pressing', folder_sort_order: 1 })
+    ]);
+    expect(result.serviceGroups.map((group) => group.categoryIdentity)).toEqual(['folder:200', 'folder:100']);
+  });
+
   it('renders a primary-only service exactly once, in its primary category', () => {
     const result = getServicesStorefrontViewModel([
       baseService({ item_id: 1, folder_id: 100, folder_name: 'Laundry' })

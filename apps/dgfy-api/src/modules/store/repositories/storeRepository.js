@@ -378,7 +378,7 @@ const buildStorefrontCatalogDetailIncludes = () => {
         includes.push({
             model: ItemFolder,
             as: 'folder',
-            attributes: ['folder_id', 'name'],
+            attributes: ['folder_id', 'name', 'sort_order'],
             required: false,
             include: FnbModifierGroup && FnbFolderModifierGroup ? [{
                 model: FnbModifierGroup,
@@ -566,19 +566,21 @@ const attachSecondaryCategories = async (catalogRows, options = {}) => {
                     is_active: true,
                     deleted_at: null
                 },
-                attributes: ['folder_id', 'name'],
+                attributes: ['folder_id', 'name', 'sort_order'],
                 transaction: options.transaction
             })
             : [];
-        const folderNameById = new Map(folders.map((folder) => [folder.folder_id, folder.name]));
+        const folderById = new Map(folders.map((folder) => [folder.folder_id, folder]));
 
         const membershipsByItemId = new Map();
         memberships.forEach((membership) => {
-            if (!folderNameById.has(membership.folder_id)) return;
+            if (!folderById.has(membership.folder_id)) return;
+            const folder = folderById.get(membership.folder_id);
             const list = membershipsByItemId.get(membership.item_id) || [];
             list.push({
                 folder_id: membership.folder_id,
-                folder_name: folderNameById.get(membership.folder_id)
+                folder_name: folder.name,
+                sort_order: Number(folder.sort_order || 0)
             });
             membershipsByItemId.set(membership.item_id, list);
         });
@@ -879,6 +881,7 @@ export const storeRepository = {
                 // since that lookup is async and this mapper is not.
                 folder_name: row.product_folder || row?.folder?.name || null,
                 folder_id: row.folder_id ?? null,
+                folder_sort_order: Number(row?.folder?.sort_order || 0),
                 unit_of_measure: row.unit_of_measure,
                 current_stock: isStockExemptServiceItem(row) ? 0 : row.current_stock,
                 default_sale_price: row.default_sale_price,
