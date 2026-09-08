@@ -511,6 +511,7 @@ export const provisionTenant = async (options) => {
         // 2. Setup Connection for Sync & Seed
         const tenantSequelize = new Sequelize(dbName, process.env.DB_USER || 'root', process.env.DB_PASSWORD || '', {
             host: process.env.DB_HOST || 'localhost',
+            port: Number(process.env.DB_PORT) || 3306,
             dialect: 'mysql',
             logging: false
         });
