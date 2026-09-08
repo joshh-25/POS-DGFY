@@ -264,10 +264,12 @@ const CORRECT_BLOCKING_JOB_BUILDERS = {
   ),
   // #1431 Phase 2 (2026-09-02), P2-1: run_scroll_contracts (gate 17) joins run_ims_lint as blocking.
   // #1431 Phase C (2026-09-03): run_shared_fnb_contract_tests joins too.
+  // #1712: run_web_core_lint joins BLOCKING_STEP_IDS (see check-pr-quality-workflow.js) -- this
+  // fixture must carry zero continue-on-error on it now, matching every other blocking id here.
   'frontend-ims-quality': () => buildJobWithNamedSteps(
     'frontend-ims-quality',
     ['checkout', 'run_ims_lint', 'run_web_core_lint', 'run_shared_fnb_contract_tests', 'run_scroll_contracts'],
-    { coeAt: ['checkout', 'run_web_core_lint'] }
+    { coeAt: ['checkout'] }
   ),
   'frontend-pos-quality': () => buildJobWithNamedSteps(
     'frontend-pos-quality',
