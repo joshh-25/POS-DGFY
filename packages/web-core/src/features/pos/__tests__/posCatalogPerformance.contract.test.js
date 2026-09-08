@@ -38,8 +38,13 @@ describe('hosted POS catalog performance contracts', () => {
     expect(catalogWorkflowSource).toContain('catalogImageErrors\n        ),');
     expect(catalogWorkflowSource).not.toContain('setCatalogImageErrors(new Set());');
     expect(catalogImageFailureStoreSource).toContain('window.sessionStorage');
-    expect(operationsSource).toContain('<PosItemImage');
-    expect(operationsSource).toContain('loading="lazy"');
+    // #1728/#1744 (bd311e37f) replaced the old direct <PosItemImage> render in this file with
+    // the pending-preview job mechanism (stagePendingPosItemImagePreview /
+    // bindPendingPosItemImagePreviewJob) -- the previous assertion here (`toContain('<PosItemImage')`)
+    // was asserting removed implementation detail, not a still-load-bearing contract. Assert the
+    // mechanism that actually replaced it instead of a stale JSX string match.
+    expect(operationsSource).toContain('stagePendingPosItemImagePreview');
+    expect(operationsSource).toContain('bindPendingPosItemImagePreviewJob');
   });
 
   it('keeps the existing catalog rendered during background refreshes', () => {
