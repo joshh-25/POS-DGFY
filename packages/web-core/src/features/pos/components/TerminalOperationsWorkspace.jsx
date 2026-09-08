@@ -140,7 +140,8 @@ import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } fr
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
 import resolveAssetUrl, { advanceAssetImageFallback } from '@/src/utils/assetUrl.js';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
-import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
+import { resolvePosCatalogImageSources, resolvePosCatalogPreviewGallery } from '../utils/posCheckoutTerminalUtils.js';
+import PosItemImageViewer from './PosItemImageViewer.jsx';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
 import PdfMenuImportModal from '@/components/items/PdfMenuImportModal.jsx';
 import MenuImportBatchModal from '@/components/items/MenuImportBatchModal.jsx';
@@ -2197,6 +2198,7 @@ function ItemsWorkspace({
   const [itemSaveInFlight, setItemSaveInFlight] = useState(false);
   const [deletedItemName, setDeletedItemName] = useState('');
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
+  const [itemImagePreview, setItemImagePreview] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
@@ -3818,6 +3820,7 @@ function ItemsWorkspace({
             const isServiceItem = isServiceCatalogItem(item);
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
             const imageSources = resolvePosCatalogImageSources(item);
+            const previewSources = resolvePosCatalogPreviewGallery(item);
             const stockQuantity = Number(item?.current_stock || 0);
             const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
@@ -3849,7 +3852,13 @@ function ItemsWorkspace({
               >
                 <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.18fr)_minmax(18.5rem,0.96fr)] xl:items-center">
                   <div className="flex min-w-0 gap-2.5 xl:border-r xl:border-slate-100 xl:pr-3">
-                    <div className="relative flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner sm:h-[4.5rem] sm:w-[4.5rem]">
+                    <button
+                      type="button"
+                      disabled={previewSources.gallery.length === 0}
+                      aria-label={previewSources.gallery.length > 0 ? `View ${item.name || 'item'} image` : undefined}
+                      onClick={() => setItemImagePreview({ itemName: item.name, gallery: previewSources.gallery })}
+                      className="relative flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 enabled:cursor-zoom-in sm:h-[4.5rem] sm:w-[4.5rem]"
+                    >
                       <ImagePlus className="h-5 w-5 text-slate-300" />
                       {imageSources.src ? (
                         <ResponsiveImage
@@ -3865,7 +3874,7 @@ function ItemsWorkspace({
                           }}
                         />
                       ) : null}
-                    </div>
+                    </button>
                     <div className="min-w-0 flex-1">
                       <div className="flex min-h-full flex-col">
                         <div className="min-h-[2.875rem]">
@@ -4039,6 +4048,8 @@ function ItemsWorkspace({
           </div>
         </div>
       )}
+
+      <PosItemImageViewer preview={itemImagePreview} onClose={() => setItemImagePreview(null)} />
 
       {showCreateModal && typeof document !== 'undefined' && createPortal((
         <div

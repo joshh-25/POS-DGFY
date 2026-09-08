@@ -22170,3 +22170,25 @@ content differs from what was implemented and tested under the "303" label.
   focused utility tests, `apps/dgfy-pos/public/sw.js`, and
   `docs/compliance/impact-declarations/2026-09-08-pos-items-hd-preview-source-contract.md`.
 - Next eligible phase: 309.
+
+## Phase 309 - POS Items on-demand HD image viewer
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: make each POS Items thumbnail keyboard-accessible and
+  open an on-demand full-size viewer backed by Phase 308's existing server URL
+  contract. The responsive viewer supports close, Escape, previous/next image,
+  gallery thumbnail selection, three zoom levels, body-scroll locking, and
+  per-image fallback without eagerly loading inactive HD images.
+- Status: completed.
+- Dependencies: completed Phase 308 preview-source contract, ADR 0029
+  Catalog/Storefront ownership boundaries, ADR 0067 Chrome 80 browser floor,
+  and existing optimized image variants.
+- Acceptance and validation evidence: focused viewer behavior tests verify
+  on-demand active-image loading, ordered source fallback, gallery navigation,
+  zoom, and keyboard close; focused Phase 308 resolver tests and the POS
+  production build pass.
+- Completion date: 2026-09-08.
+- Contracts/files: `PosItemImageViewer.jsx`, its focused POS app behavior test,
+  POS Items integration in `TerminalOperationsWorkspace.jsx`, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-hd-image-viewer.md`.
+- Next eligible phase: 310.
