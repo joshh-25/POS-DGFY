@@ -32,8 +32,9 @@ confirmed as causal without a live repro.
 
 **Disposition: below the noise-policy floor** (1 occurrence, `handled:yes`, floor is 3/7d) — a
 real, reproducible-looking defect, but not yet frequent/impactful enough to file per policy. Not
-resolved in Sentry either — left open as a live watch item, same as DGFY-POS-13/14 were treated
-last run.
+resolved in Sentry either — left open as a live watch item, same below-floor treatment as
+DGFY-POS-13; DGFY-POS-14 was newly identified last run and is being re-verified in this pass, not
+carrying the same prior-run disposition.
 
 **Not a duplicate of #1698** (the `fetchPosCatalogPage` undefined-identifier outage, already fixed)
 — different endpoint (`/pos/terminal/operator/current`, not the catalog path), different failure
