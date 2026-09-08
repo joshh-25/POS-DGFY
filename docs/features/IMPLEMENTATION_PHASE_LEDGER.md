@@ -22192,3 +22192,23 @@ content differs from what was implemented and tested under the "303" label.
   POS Items integration in `TerminalOperationsWorkspace.jsx`, and
   `docs/compliance/impact-declarations/2026-09-08-pos-items-hd-image-viewer.md`.
 - Next eligible phase: 310.
+
+## Phase 310 - POS Items compact image viewer and price context
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: constrain the Phase 309 HD viewer to a smaller desktop
+  and APK-safe viewport, keep its header and controls visible, limit scrolling
+  to the image canvas, and show the selected item's formatted selling price in
+  the viewer header. Image ownership, loading, fallbacks, and persistence remain
+  unchanged.
+- Status: completed.
+- Dependencies: completed Phases 308 and 309, existing POS catalog selling-price
+  field, ADR 0029 ownership boundaries, and ADR 0067 Chrome 80 browser floor.
+- Acceptance and validation evidence: focused viewer behavior tests verify the
+  selling-price context alongside on-demand HD loading, fallbacks, gallery
+  navigation, zoom, and keyboard close; the POS production build passes.
+- Completion date: 2026-09-08.
+- Contracts/files: `PosItemImageViewer.jsx`, POS Items preview invocation in
+  `TerminalOperationsWorkspace.jsx`, the focused POS app behavior test, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-compact-image-viewer.md`.
+- Next eligible phase: 311.

@@ -3856,7 +3856,11 @@ function ItemsWorkspace({
                       type="button"
                       disabled={previewSources.gallery.length === 0}
                       aria-label={previewSources.gallery.length > 0 ? `View ${item.name || 'item'} image` : undefined}
-                      onClick={() => setItemImagePreview({ itemName: item.name, gallery: previewSources.gallery })}
+                      onClick={() => setItemImagePreview({
+                        itemName: item.name,
+                        sellingPrice: item.default_sale_price,
+                        gallery: previewSources.gallery
+                      })}
                       className="relative flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 enabled:cursor-zoom-in sm:h-[4.5rem] sm:w-[4.5rem]"
                     >
                       <ImagePlus className="h-5 w-5 text-slate-300" />

@@ -8,6 +8,7 @@ afterEach(cleanup);
 
 const preview = {
   itemName: 'Beef Meal',
+  sellingPrice: 300,
   gallery: [
     {
       thumbnailSrc: '/uploads/one-thumb.jpg',
@@ -26,6 +27,7 @@ describe('POS item image viewer', () => {
   it('loads only the active HD image and advances through its fallbacks', () => {
     render(<PosItemImageViewer preview={preview} onClose={vi.fn()} />);
     const fullImage = screen.getByAltText('Beef Meal full-size view');
+    expect(screen.getByText('PHP 300.00')).toBeTruthy();
     expect(fullImage.getAttribute('src')).toBe('/uploads/one-large.jpg');
     expect(document.querySelector('img[src="/uploads/two-large.jpg"]')).toBeNull();
     fireEvent.error(fullImage);

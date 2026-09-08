@@ -30,6 +30,10 @@ export default function PosItemImageViewer({ preview, onClose }) {
   ), [activeEntry]);
   const activeSrc = candidates[fallbackIndex] || '';
   const zoom = ZOOM_LEVELS[zoomIndex];
+  const sellingPrice = Number(preview?.sellingPrice);
+  const sellingPriceLabel = Number.isFinite(sellingPrice)
+    ? `PHP ${sellingPrice.toFixed(2)}`
+    : 'Price unavailable';
 
   const move = (direction) => {
     if (gallery.length < 2) return;
@@ -60,13 +64,19 @@ export default function PosItemImageViewer({ preview, onClose }) {
       onClick={onClose}
     >
       <div
-        className="flex max-h-[96vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-slate-950 shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-slate-950 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex min-h-14 items-center justify-between gap-3 border-b border-white/10 px-4 py-2 text-white">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="min-w-0">
             <h2 className="truncate text-sm font-bold sm:text-base">{preview.itemName || 'Item image'}</h2>
             {gallery.length > 1 ? <p className="text-xs text-slate-300">Image {activeIndex + 1} of {gallery.length}</p> : null}
+            </div>
+            <div className="shrink-0 rounded-lg bg-white/10 px-2.5 py-1.5 text-right">
+              <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Selling price</p>
+              <p className="text-sm font-bold text-white">{sellingPriceLabel}</p>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <button
@@ -96,7 +106,7 @@ export default function PosItemImageViewer({ preview, onClose }) {
               key={`${activeIndex}-${fallbackIndex}`}
               src={activeSrc}
               alt={`${preview.itemName || 'Item'} full-size view`}
-              className="max-h-[72vh] max-w-full select-none object-contain transition-transform duration-150"
+              className="max-h-[58vh] max-w-full select-none object-contain transition-transform duration-150"
               style={{ transform: `scale(${zoom})` }}
               onError={() => setFallbackIndex((current) => current + 1)}
             />
