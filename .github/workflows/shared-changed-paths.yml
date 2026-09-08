@@ -199,7 +199,7 @@ jobs:
             DGFY_API=false
             MIGRATION_RUNNER=false
             ANDROID=false
-            matches '^(apps/dgfy-ims/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-ims/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_IMS=true || true
+            matches '^(apps/dgfy-ims/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-ims/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)' && FRONTEND_IMS=true || true
             matches '^(apps/dgfy-pos/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-pos/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_POS=true || true
             matches '^(apps/dgfy-storefront/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-storefront/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_STOREFRONT=true || true
             matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)' && DGFY_API=true || true

@@ -169,12 +169,13 @@ name: Promotion Quality Gate
 # (`frontend-pos-quality`); `run_storefront_lint`, `run_storefront_vitest`
 # (`frontend-storefront-quality`); `run_docs_lint` (`repository-quality`). Mechanism: step-level
 # `continue-on-error: true` removed from exactly those 8 steps (the #1066 finding above -- a job's
-# check-run conclusion follows step outcomes, not the job-level line alone). Two steps in these same
-# jobs stay advisory by design, not by oversight: `run_web_core_lint` (packages/web-core has known
-# lint debt, no local gate covers it yet -- separate issue) and `run_test_matrix`
-# (`backend.test_matrix`, #10 -- confirmed still failing for real on every recent release run, both
-# genuine test/fixture rot and a hosted-runner OOM; #1015 is its hard prerequisite per #1147's
-# mapping doc). Every job-level `continue-on-error: true` and every job's `if:`
+# check-run conclusion follows step outcomes, not the job-level line alone). One step in these same
+# jobs stays advisory by design, not by oversight: `run_test_matrix` (`backend.test_matrix`, #10 --
+# confirmed still failing for real on every recent release run, both genuine test/fixture rot and a
+# hosted-runner OOM; #1015 is its hard prerequisite per #1147's mapping doc). `run_web_core_lint`
+# also stayed advisory as of this Phase 1 paragraph (packages/web-core had known lint debt, no
+# local gate covered it yet) -- corrected by the 2026-09-XX #1712 entry below, which is what
+# actually flips it. Every job-level `continue-on-error: true` and every job's `if:`
 # (`is_staging_leg != 'true'`) above is unchanged -- the `to-staging/*->staging` leg still runs zero
 # quality jobs, exactly as #1253 left it. "Blocking" here means: a red check-run drives
 # `mergeStateStatus` to `UNSTABLE`, which AGENTS.md's existing Merge Safety hard stop already treats
@@ -209,6 +210,20 @@ name: Promotion Quality Gate
 # `run_dependency_audit_full`/`run_test_matrix`'s permanent/temporary advisory exemptions -- is
 # delegated out of local execution (`gate-release-local.js`'s `CI_ENFORCED_GATES`); required-locally
 # is now 0. This workflow's own quality jobs are the sole enforcement mechanism.
+#
+# 2026-09-XX (#1712): `run_web_core_lint` (`frontend-ims-quality`) flips blocking too -- #1433/PR
+# #1437 already fixed every real ESLint error in `packages/web-core` (downgraded to `warn`, not
+# silently disabled), closing the prerequisite the original #1431 Phase 1 exception cited
+# ("packages/web-core has known lint debt"). `run_test_matrix` is now the only step in this file
+# still advisory-by-design. A fresh live run of the exact command this step runs turned up one
+# further real error beyond #1433/#1437's own downgrades (`ResponsiveImage.jsx`'s
+# `eslint-disable-next-line` was three comment lines away from the JSX attribute it meant to
+# suppress and so suppressed nothing) -- fixed in the same PR, confirmed 0 errors / 155 warnings
+# before this flip landed. Also new in this PR: `pr-frontend-lint-checks.yml`, wired into
+# `pr-checks.yml` as `frontend-ims-lint-check`, running the same two lint invocations (blocking)
+# on every ordinary `develop`-base PR that touches `apps/dgfy-ims/`/`packages/web-core/`/
+# `packages/pos-receipt/`/`packages/shared-constants/` -- this is what actually closes ADR 0067's
+# clause 6 gap, not just this file's own promotion-leg flip.
 on:
   pull_request:
     branches:
@@ -1012,11 +1027,18 @@ jobs:
       # [binding] -- it must never get its own node_modules or test runner), so coverage runs from
       # dgfy-ims's already-installed ESLint via --resolve-plugins-relative-to, the same pattern the
       # "Run shared F&B contract tests" step below already uses for web-core's test suite. #918.
+      # Blocking on the release/*->main leg since #1712 -- #1433/PR #1437 already downgraded every
+      # remaining real ESLint error in packages/web-core to `warn` (13 react-hooks React-Compiler
+      # diagnostics + 1 react/no-unescaped-entities), specifically to make this flip safe. Verified
+      # live (not just inherited from #1433/#1437): a fresh `npx eslint ../../packages/web-core
+      # --ext .js,.jsx --resolve-plugins-relative-to .` run turned up one further real error this
+      # PR also fixes (`ResponsiveImage.jsx`'s `eslint-disable-next-line` sat 3 comment lines above
+      # the JSX attribute it meant to suppress, so it silently suppressed nothing) -- see this PR's
+      # own body for the exact command output. 0 errors, 155 warnings after that fix.
       - name: Run web-core lint
         id: run_web_core_lint
         working-directory: apps/dgfy-ims
         run: npx eslint ../../packages/web-core --ext .js,.jsx --resolve-plugins-relative-to .
-        continue-on-error: true
         timeout-minutes: 5
 
       # #1431 Phase 2 (gate 14, frontend.contracts): replaces the old hand-picked 7-file list with
@@ -1337,6 +1359,285 @@ jobs:
             Install Playwright Chromium|${{ steps.install_playwright.outcome }}
             Run deterministic F&B browser contract|${{ steps.run_fnb_browser_contract.outcome }}
             Upload F&B browser evidence|${{ steps.upload_fnb_browser_evidence.outcome }}
+        run: |
+          FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
+          {
+            echo "real_failures<<GHA_EOF_1066"
+            echo "$FAILED"
+            echo "GHA_EOF_1066"
+          } >> "$GITHUB_OUTPUT"
+
+  # #1712: new, advisory-only job -- the second half of this issue's "no functional check runs
+  # pre-staging/main" gap, distinct from Decision 1's lint coverage above. Runs the repaired
+  # apps/dgfy-api/tests/frontend.imsPosSalesJourney.e2e.test.js (its own frontendDir path was stale
+  # since the apps/dgfy-api absorption, 50ec10d9f, 2026-07-20 -- fixed in this same PR) plus one new
+  # assertion (added in this PR) that actually drives TerminalOperationsWorkspace's admin "Items"
+  # tab -- the code path #1698 broke, never exercised by this file's pre-existing checkout/history/
+  # receipt-only scenarios.
+  #
+  # Ships advisory ONLY, same #1063/#1066 mechanism as every other job in this file -- not yet
+  # proven green on a real promotion run. Two honest, verified-live findings from this PR's own
+  # investigation, neither yet fixed here, both reasons this stays advisory:
+  #   1. The suite's own `ensureBrowserE2EUser()` registers a browser E2E user against the
+  #      "Original Legacy Data" tenant (`COMPANY_TOKEN = 'token-original'`) via
+  #      `POST /api/v1/auth/register` -- that tenant does not exist on a freshly migrated DB (no
+  #      seeder creates it), so this job provisions it via the already-documented, already-existing
+  #      `scripts/register_original_tenant.js` (docs/guides/SCRIPTS_GUIDE.md #9) below, run once per
+  #      job before the suite itself.
+  #   2. Even with that tenant provisioned, `ensureBrowserE2EUser()`'s own registration payload
+  #      (username/email/password only) is missing `phone_number`, which
+  #      `apps/dgfy-api/src/validators/authValidator.js` now requires unconditionally -- confirmed
+  #      live, HTTP 422 "Phone number is required". This is a real, pre-existing defect in the test
+  #      file itself, independent of the #1712 path fix, not introduced or fixed by this PR -- named
+  #      here rather than silently discovered later when this job's first real run reds out on it.
+  #      Tracked in this PR's own follow-up issue (flip-to-blocking) as a prerequisite, not treated
+  #      as already resolved.
+  frontend-ims-pos-sales-e2e-quality:
+    needs: gate
+    if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
+    continue-on-error: true
+    # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+    # (ubuntu-latest) is the intended class for this job too. See gate/
+    # dgfy-api-quality's comments above for the release/* -> main-leg-only
+    # reasoning (F-3) -- same logic applies here.
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
+    timeout-minutes: 20
+    outputs:
+      real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
+    steps:
+      # Same start/wait/stop-as-ordinary-steps pattern as dgfy-api-quality above (#1066 RF-2) --
+      # only one runner in this repo carries the sieitz-lg label and a self-hosted runner runs one
+      # job at a time, so this job never contends with dgfy-api-quality/migration-runner-quality
+      # for the fixed 3306/6379 ports.
+      - name: Start service containers
+        id: start_services
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          MYSQL_CONTAINER: dgfy-ci-mysql-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          REDIS_CONTAINER: dgfy-ci-redis-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker ps -aq --filter "label=dgfy-ci-quality-gate=1" | xargs -r docker rm -f
+          docker run -d --name "$MYSQL_CONTAINER" \
+            --label dgfy-ci-quality-gate=1 \
+            -e MYSQL_ROOT_PASSWORD=testpassword \
+            -e MYSQL_DATABASE=sku_inventory_manager \
+            -p 3306:3306 \
+            mysql:8.0
+          docker run -d --name "$REDIS_CONTAINER" \
+            --label dgfy-ci-quality-gate=1 \
+            -p 6379:6379 \
+            redis:7-alpine
+
+      - name: Wait for service containers
+        id: wait_services
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          MYSQL_CONTAINER: dgfy-ci-mysql-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          REDIS_CONTAINER: dgfy-ci-redis-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          for _ in $(seq 1 12); do
+            docker exec "$MYSQL_CONTAINER" mysqladmin ping -h 127.0.0.1 -uroot -ptestpassword && mysql_ready=1 && break
+            sleep 10
+          done
+          for _ in $(seq 1 12); do
+            docker exec "$REDIS_CONTAINER" redis-cli ping && redis_ready=1 && break
+            sleep 10
+          done
+          [ -n "${mysql_ready:-}" ] && [ -n "${redis_ready:-}" ]
+
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        id: workspace_hygiene_clear
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - id: checkout
+        uses: actions/checkout@v4
+        continue-on-error: true
+        timeout-minutes: 5
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        id: workspace_hygiene_assert
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Setup Node.js
+        id: setup_node
+        uses: actions/setup-node@v4
+        continue-on-error: true
+        timeout-minutes: 5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            apps/dgfy-api/package-lock.json
+            apps/dgfy-ims/package-lock.json
+            apps/dgfy-migration-runner/package-lock.json
+
+      - name: Install API dependencies
+        id: install_api_deps
+        working-directory: apps/dgfy-api
+        run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
+
+      - name: Install migration-runner dependencies
+        id: install_migration_runner_deps
+        working-directory: apps/dgfy-migration-runner
+        run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
+
+      - name: Install dgfy-ims dependencies
+        id: install_ims_deps
+        working-directory: apps/dgfy-ims
+        run: npm ci
+        continue-on-error: true
+        timeout-minutes: 10
+
+      - name: Install Playwright Chromium
+        id: install_playwright
+        working-directory: apps/dgfy-api
+        run: npx playwright install --with-deps chromium
+        continue-on-error: true
+        timeout-minutes: 5
+
+      - name: Prepare test schema
+        id: prepare_test_schema
+        if: steps.wait_services.outcome == 'success'
+        working-directory: apps/dgfy-migration-runner
+        run: npx sequelize-cli db:migrate --config src/config/sequelize.config.cjs
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager
+          DB_USER: root
+          DB_PASSWORD: testpassword
+
+      # Verified live during this PR's own investigation (not in the local sandbox that could not
+      # run MySQL/Redis at plan time): `ensureBrowserE2EUser()` registers its browser E2E user
+      # against the "Original Legacy Data" tenant (COMPANY_TOKEN = 'token-original'), which does
+      # not exist on a freshly migrated DB -- no seeder creates it. This script is the already-
+      # documented, already-existing tool for exactly that (docs/guides/SCRIPTS_GUIDE.md #9), not
+      # new tooling invented for this job.
+      - name: Register original legacy tenant fixture
+        id: register_original_tenant
+        if: steps.wait_services.outcome == 'success'
+        working-directory: apps/dgfy-api
+        run: node scripts/register_original_tenant.js --apply
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager
+          DB_USER: root
+          DB_PASSWORD: testpassword
+
+      # See this job's own header comment for known, unfixed reason #2 (`phone_number` required by
+      # authValidator.js, not sent by this suite's own `ensureBrowserE2EUser()`) this step is
+      # expected to still fail on until that's separately fixed -- advisory-only exists precisely
+      # so that doesn't block a promotion.
+      - name: Run frontend IMS/POS sales journey e2e
+        id: run_ims_pos_sales_e2e
+        if: steps.wait_services.outcome == 'success'
+        working-directory: apps/dgfy-api
+        run: npm run test:frontend-ims-pos-sales-e2e
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          NODE_ENV: development
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager
+          DB_NAME_TEST: sku_inventory_manager
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://127.0.0.1:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+      # Mirrors the API test-matrix / F&B browser evidence uploads elsewhere in this file --
+      # if-no-files-found: error (a missing artifact is real signal, not something to swallow),
+      # retention-days: 30 (promotion evidence, not routine per-push scratch).
+      - name: Upload IMS/POS sales e2e evidence
+        id: upload_ims_pos_sales_e2e_evidence
+        if: always() && steps.run_ims_pos_sales_e2e.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: ims-pos-sales-e2e-${{ github.sha }}
+          path: apps/dgfy-api/tests/artifacts/ims-pos-sales-journey/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Stop service containers
+        id: stop_services
+        if: always()
+        continue-on-error: true
+        env:
+          MYSQL_CONTAINER: dgfy-ci-mysql-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          REDIS_CONTAINER: dgfy-ci-redis-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker rm -f "$MYSQL_CONTAINER" 2>/dev/null || true
+          docker rm -f "$REDIS_CONTAINER" 2>/dev/null || true
+
+      - name: Record real per-step outcomes for advisory-failure reporting
+        id: record_outcomes
+        if: always()
+        continue-on-error: true
+        env:
+          STEP_OUTCOMES: |
+            Start service containers|${{ steps.start_services.outcome }}
+            Wait for service containers|${{ steps.wait_services.outcome }}
+            Clear stale sparse-checkout state|${{ steps.workspace_hygiene_clear.outcome }}
+            Checkout|${{ steps.checkout.outcome }}
+            Assert complete working tree|${{ steps.workspace_hygiene_assert.outcome }}
+            Setup Node.js|${{ steps.setup_node.outcome }}
+            Install API dependencies|${{ steps.install_api_deps.outcome }}
+            Install migration-runner dependencies|${{ steps.install_migration_runner_deps.outcome }}
+            Install dgfy-ims dependencies|${{ steps.install_ims_deps.outcome }}
+            Install Playwright Chromium|${{ steps.install_playwright.outcome }}
+            Prepare test schema|${{ steps.prepare_test_schema.outcome }}
+            Register original legacy tenant fixture|${{ steps.register_original_tenant.outcome }}
+            Run frontend IMS/POS sales journey e2e|${{ steps.run_ims_pos_sales_e2e.outcome }}
+            Upload IMS/POS sales e2e evidence|${{ steps.upload_ims_pos_sales_e2e_evidence.outcome }}
         run: |
           FAILED=$(printf '%s\n' "$STEP_OUTCOMES" | awk -F'|' '$2=="failure"{print $1}' | paste -sd, - 2>/dev/null || true)
           {
@@ -2094,6 +2395,7 @@ jobs:
       - repository-ci-contracts-quality
       - repository-docs-quality
       - frontend-budgets-quality
+      - frontend-ims-pos-sales-e2e-quality
     # 2026-08-31 (#1253): restores the is_staging_leg exclusion #1124/#1165 item 4 dropped -- this
     # job has nothing to report when every job it depends on was itself skipped on the staging leg,
     # and skipping it too is what makes the staging leg's "no runner time spent" claim true again.
@@ -2141,6 +2443,7 @@ jobs:
           REPOSITORY_CI_CONTRACTS_FAILURES: ${{ needs.repository-ci-contracts-quality.outputs.real_failures }}
           REPOSITORY_DOCS_FAILURES: ${{ needs.repository-docs-quality.outputs.real_failures }}
           FRONTEND_BUDGETS_FAILURES: ${{ needs.frontend-budgets-quality.outputs.real_failures }}
+          IMS_POS_SALES_E2E_FAILURES: ${{ needs.frontend-ims-pos-sales-e2e-quality.outputs.real_failures }}
         with:
           github-token: ${{ github.token }}
           script: |
@@ -2194,6 +2497,11 @@ jobs:
               // advisory-with-reason pending one post-fix evidence cycle; see the step's own
               // comment above and docs/ops/RELEASE_CANDIDATE_POLICY.md's matching amendment.
               'Check changed-file whitespace',
+              // #1712: flips blocking too -- #1433/PR #1437 already fixed every real ESLint error
+              // in packages/web-core, closing the prerequisite the original #1431 Phase 1
+              // exception cited ("packages/web-core has known lint debt"). 'Run test matrix' is now
+              // the only step in this file still advisory-by-design.
+              'Run web-core lint',
             ]);
 
             const lines = [];
@@ -2231,6 +2539,7 @@ jobs:
             addIfPresent('repository-ci-contracts-quality', process.env.REPOSITORY_CI_CONTRACTS_FAILURES);
             addIfPresent('repository-docs-quality', process.env.REPOSITORY_DOCS_FAILURES);
             addIfPresent('frontend-budgets-quality', process.env.FRONTEND_BUDGETS_FAILURES);
+            addIfPresent('frontend-ims-pos-sales-e2e-quality', process.env.IMS_POS_SALES_E2E_FAILURES);
 
             if (lines.length === 0) {
               console.log('No real step failures or dead job envelopes reported by any quality job this run -- nothing to report.');
