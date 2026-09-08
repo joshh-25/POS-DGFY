@@ -16,6 +16,7 @@ import {
     normalizePromoCode,
     resolveEmployeeDiscountCreditPreference,
     resolvePosCatalogImageSources,
+    resolvePosCatalogPreviewGallery,
     rowMatchesHistoryFilters,
     round4,
     sanitizeQuantityInput,
@@ -342,5 +343,70 @@ describe('POS checkout terminal pure utilities', () => {
         expect(flatPosUrlOnly.srcSet).toBeUndefined();
         expect(flatPosUrlOnly.avifSrcSet).toBeUndefined();
         expect(flatPosUrlOnly.webpSrcSet).toBeUndefined();
+    });
+
+    it('resolves an ordered on-demand POS item preview gallery without duplicate images', () => {
+        const sources = resolvePosCatalogPreviewGallery({
+            storefront_image_url: '/uploads/items/primary/large.jpg',
+            storefront_image_variants: {
+                pos_thumbnail_url: '/uploads/items/primary/pos-thumbnail.jpg',
+                medium_url: '/uploads/items/primary/medium.jpg',
+                large_url: '/uploads/items/primary/large.jpg'
+            },
+            storefront_image_gallery: JSON.stringify([
+                {
+                    url: '/uploads/items/primary/large.jpg',
+                    variants: {
+                        pos_thumbnail_url: '/uploads/items/primary/pos-thumbnail.jpg',
+                        large_url: '/uploads/items/primary/large.jpg'
+                    }
+                },
+                {
+                    path: 'items/second/original.jpg',
+                    variants: {
+                        thumbnail_url: 'items/second/thumbnail.jpg',
+                        medium_url: 'items/second/medium.jpg',
+                        large_url: 'items/second/large.jpg'
+                    }
+                }
+            ])
+        });
+
+        expect(sources.gallery).toHaveLength(2);
+        expect(sources.thumbnailSrc).toContain('/uploads/items/primary/pos-thumbnail.jpg');
+        expect(sources.previewSrc).toContain('/uploads/items/primary/large.jpg');
+        expect(sources.gallery[1]).toMatchObject({
+            isPrimary: false
+        });
+        expect(sources.gallery[1].thumbnailSrc).toContain('/uploads/items/second/thumbnail.jpg');
+        expect(sources.gallery[1].previewSrc).toContain('/uploads/items/second/large.jpg');
+        expect(sources.gallery[1].previewFallbacks[0]).toContain('/uploads/items/second/original.jpg');
+    });
+
+    it('keeps a POS image override isolated and handles missing preview images', () => {
+        const overridden = resolvePosCatalogPreviewGallery({
+            pos_image_url: 'https://cdn.example.test/pos/original.jpg',
+            pos_image_variants: {
+                thumbnail_url: 'https://cdn.example.test/pos/thumb.jpg',
+                medium_url: 'https://cdn.example.test/pos/medium.jpg',
+                large_url: 'https://cdn.example.test/pos/large.jpg'
+            },
+            storefront_image_gallery: [{ url: 'https://cdn.example.test/storefront/image.jpg' }]
+        });
+
+        expect(overridden.gallery).toHaveLength(1);
+        expect(overridden.thumbnailSrc).toBe('https://cdn.example.test/pos/thumb.jpg');
+        expect(overridden.previewSrc).toBe('https://cdn.example.test/pos/large.jpg');
+        expect(overridden.previewFallbacks).toEqual([
+            'https://cdn.example.test/pos/original.jpg',
+            'https://cdn.example.test/pos/medium.jpg',
+            'https://cdn.example.test/pos/thumb.jpg'
+        ]);
+        expect(resolvePosCatalogPreviewGallery({})).toEqual({
+            thumbnailSrc: '',
+            previewSrc: '',
+            previewFallbacks: [],
+            gallery: []
+        });
     });
 });

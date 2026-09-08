@@ -22145,3 +22145,28 @@ content differs from what was implemented and tested under the "303" label.
   `apps/dgfy-api/tests/mobilePosCatalogBootstrap.usecases.test.js`, and
   `docs/api/specification.md`.
 - Next eligible phase: 308.
+
+## Phase 308 - POS Items on-demand HD image source contract
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: define one pure POS catalog resolver that returns the
+  lightweight thumbnail, on-demand optimized large image, ordered deduplicated
+  gallery, and medium/thumbnail fallbacks from existing Catalog and Storefront
+  image fields. POS-specific image overrides retain precedence. This phase does
+  not add the clickable viewer, request the HD asset, upload another image, or
+  persist an image copy in POS.
+- Status: completed.
+- Dependencies: ADR 0029 Catalog/Storefront ownership boundaries, ADR 0067
+  Chrome 80 browser floor, existing optimized image variants, and the POS
+  service-worker `/uploads/` cache bypass.
+- Acceptance and validation evidence: focused POS utility tests cover POS
+  override precedence, Storefront gallery ordering, duplicate suppression,
+  large-to-original-to-medium-to-thumbnail fallback order, and missing images;
+  POS production build, architecture check, compliance check, and diff check
+  pass.
+- Completion date: 2026-09-08.
+- Contracts/files: `resolvePosCatalogPreviewGallery` in
+  `packages/web-core/src/features/pos/utils/posCheckoutTerminalUtils.js`, its
+  focused utility tests, `apps/dgfy-pos/public/sw.js`, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-hd-preview-source-contract.md`.
+- Next eligible phase: 309.

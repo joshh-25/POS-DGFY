@@ -574,6 +574,103 @@ export const resolvePosCatalogImageSources = (item = {}) => {
     };
 };
 
+const parseCatalogImageGallery = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+const resolveStoredCatalogImageUrl = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^(data|blob):/i.test(raw) || /^https?:\/\//i.test(raw) || raw.startsWith('/')) {
+        return resolveAssetUrl(raw);
+    }
+    return resolveAssetUrl(`/uploads/${raw.replace(/^\/+/, '')}`);
+};
+
+const uniqueImageUrls = (values = []) => Array.from(new Set(values.filter(Boolean)));
+
+const buildPosCatalogPreviewEntry = ({ url, path, variants } = {}) => {
+    const configuredSrc = resolveStoredCatalogImageUrl(url || path || '');
+    const resolvedVariants = variants && typeof variants === 'object' ? variants : {};
+    const posThumbnailSrc = resolveStoredCatalogImageUrl(resolvedVariants.pos_thumbnail_url);
+    const thumbnailSrc = resolveStoredCatalogImageUrl(resolvedVariants.thumbnail_url);
+    const mediumSrc = resolveStoredCatalogImageUrl(resolvedVariants.medium_url);
+    const largeSrc = resolveStoredCatalogImageUrl(resolvedVariants.large_url);
+    const previewCandidates = uniqueImageUrls([
+        largeSrc,
+        configuredSrc,
+        mediumSrc,
+        thumbnailSrc,
+        posThumbnailSrc
+    ]);
+
+    return {
+        thumbnailSrc: posThumbnailSrc || thumbnailSrc || mediumSrc || configuredSrc || largeSrc || '',
+        previewSrc: previewCandidates[0] || '',
+        previewFallbacks: previewCandidates.slice(1)
+    };
+};
+
+// Defines the on-demand image contract used by the POS Items viewer. This pure
+// resolver only returns existing server-hosted URLs; it does not fetch, copy, or
+// persist an image. The Items list can keep requesting `thumbnailSrc`, while a
+// viewer may request `previewSrc` only after the cashier opens it.
+export const resolvePosCatalogPreviewGallery = (item = {}) => {
+    const hasPosOverride = Boolean(item?.pos_image_url || item?.pos_image_path);
+    const rawEntries = hasPosOverride
+        ? [{
+            url: item?.pos_image_url,
+            path: item?.pos_image_path,
+            variants: item?.pos_image_variants
+        }]
+        : parseCatalogImageGallery(item?.storefront_image_gallery);
+    const configuredStorefrontEntry = hasPosOverride ? null : {
+        url: item?.storefront_image_url,
+        path: item?.storefront_image_path,
+        variants: item?.storefront_image_variants
+    };
+    const entries = rawEntries.map((entry) => (
+        entry && typeof entry === 'object'
+            ? {
+                url: entry.url || entry.image_url,
+                path: entry.path || entry.original_path,
+                variants: entry.variants || entry.image_variants
+            }
+            : { url: entry }
+    ));
+
+    if (configuredStorefrontEntry?.url || configuredStorefrontEntry?.path) {
+        entries.unshift(configuredStorefrontEntry);
+    }
+
+    const seen = new Set();
+    const gallery = entries.reduce((result, entry) => {
+        const resolved = buildPosCatalogPreviewEntry(entry);
+        const identity = resolveStoredCatalogImageUrl(entry?.url || entry?.path) || resolved.previewSrc;
+        if (!identity || seen.has(identity)) return result;
+        seen.add(identity);
+        result.push({
+            ...resolved,
+            isPrimary: result.length === 0
+        });
+        return result;
+    }, []);
+
+    return {
+        thumbnailSrc: gallery[0]?.thumbnailSrc || '',
+        previewSrc: gallery[0]?.previewSrc || '',
+        previewFallbacks: gallery[0]?.previewFallbacks || [],
+        gallery
+    };
+};
+
 export const inferReceiptContract = (transaction, fallbackContract = null) => {
     if (fallbackContract?.document_type) {
         return fallbackContract;
