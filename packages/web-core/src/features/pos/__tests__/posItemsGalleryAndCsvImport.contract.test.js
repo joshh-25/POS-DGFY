@@ -24,7 +24,7 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
     expect(stages.indexOf('bindPendingItemImagePreviewJob(')).toBeLessThan(stages.indexOf('if (!barcodeCode)'));
     expect(stages).toContain("imageFiles: failedStages.some((stage) => stage.key === 'storefront_images') ? imageFiles : []");
     expect(stages).toContain('markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId })');
-    expect(workspace).toContain('imageAttemptId: recoveryAttemptId');
+    expect(workspace).toContain('imageAttemptId: pendingCreateRecovery.imageAttemptId || null');
     expect(workspace).not.toContain('pendingCreateRecovery.imageFiles || selectedImageFiles');
   });
 

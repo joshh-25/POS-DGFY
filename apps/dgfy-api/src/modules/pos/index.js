@@ -442,7 +442,10 @@ export const revokePosOperatorSessionsForUser = posOperatorAuthorityUseCases.rev
 // Keep the repository-backed revocation adapter available to close/unpair paths and export the
 // policy use case for callers that need the same behavior outside a shift close transaction.
 export { revokePosOperatorSessionsForTerminal };
-export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({ listPosCatalogUseCase });
+export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({
+    listPosCatalogUseCase,
+    serviceOptionRepository: posServiceOptionRepository
+});
 export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();
 export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseCase({ posRepository });
 export const getMobilePosTransactionCheckpointUseCase = buildGetMobilePosTransactionCheckpointUseCase({ listPosTransactionsUseCase });

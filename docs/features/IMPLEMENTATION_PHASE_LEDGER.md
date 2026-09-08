@@ -22047,6 +22047,31 @@ content differs from what was implemented and tested under the "303" label.
   final-checkout reconciliation tests passed with no transaction, movement, or stock mutation on
   the preflight failure.
 - Completion date: 2026-09-07.
-- Contracts/files: Inventory stock command service and contract, POS checkout and split-payment
-  use cases, focused tests, compliance declaration, and the split-payment contract.
+- Contracts/files: `apps/dgfy-api/src/services/stockMovementService.js`, Inventory stock command
+  service and contract, POS checkout and split-payment use cases, their focused tests,
+  `docs/compliance/impact-declarations/2026-09-07-pos-split-inventory-preflight.md`, and
+  `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
 - Next eligible phase: 306.
+
+## Phase 306 - Standalone mobile POS item-option bootstrap parity
+
+- Initiative/release: standalone native cashier offline parity / current release.
+- Objective and scope: enrich `GET /mobile-pos/bootstrap/catalog` with the
+  existing authoritative F&B modifier assignment snapshot and tenant-scoped
+  active Services option groups. Service assignments are loaded in one batch,
+  and add-on groups remain hidden when the service disables add-ons. This is an
+  additive `mobile-pos.v1` response extension; checkout remains authoritative
+  and continues to validate selections, availability, and server-owned prices.
+- Status: completed.
+- Dependencies: existing F&B modifier catalog includes, Services option-group
+  repository, Services quote validation, and mobile POS checkout replay.
+- Acceptance and validation evidence: focused mobile catalog-bootstrap and
+  transport Jest suites pass (11 tests); the native consumer validates the
+  nested snapshot and sends `line_modifiers` plus `selected_option_ids` for
+  server revalidation.
+- Completion date: 2026-09-07.
+- Contracts/files: mobile POS catalog bootstrap use case and composition,
+  Services option repository batch query,
+  `apps/dgfy-api/tests/mobilePosCatalogBootstrap.usecases.test.js`, and
+  `docs/api/specification.md`.
+- Next eligible phase: 307.

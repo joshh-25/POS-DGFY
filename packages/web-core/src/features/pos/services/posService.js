@@ -12,8 +12,6 @@ import {
     listServiceOptionGroups,
     updateServiceOptionGroup
 } from '../../services/api/servicesApi.js';
-import { getBrowserSessionSnapshot } from '../../../services/browserSession.js';
-
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
 export const POS_ATTENDANCE_CONFIG_CHANGED_EVENT = 'dgfy:pos-attendance-config-changed';
 

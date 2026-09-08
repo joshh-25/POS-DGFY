@@ -4919,7 +4919,7 @@ export const posRepository = {
         });
     },
 
-    async getCatalogReadinessByItemId(itemId, { forcedPosVisible = null } = {}) {
+    async getCatalogReadinessByItemId(itemId, { forcedPosVisible = null, locationId = null } = {}) {
         const Item = dbStore.get('Item');
         const ItemFolder = dbStore.get('ItemFolder');
         const normalizedItemId = Number.parseInt(itemId, 10);
@@ -4956,11 +4956,15 @@ export const posRepository = {
         if (!item) return null;
 
         const payload = toPlain(item);
+        const locationStock = await loadItemLocationStockMap([normalizedItemId], locationId);
+        const [readinessItem] = locationStock.locationScopeResolved
+            ? applyItemLocationStockMap([payload], locationStock.stockMap)
+            : [payload];
         const override = toPlain(await this.findCatalogOverrideByItemId(normalizedItemId));
         const effectiveOverride = forcedPosVisible === null
             ? override
             : { ...(override || {}), pos_visible: forcedPosVisible === true };
-        const readiness = buildPosReadiness({ item: payload, override: effectiveOverride });
+        const readiness = buildPosReadiness({ item: readinessItem, override: effectiveOverride });
         const workflowMode = await getCurrentWorkflowMode();
         const recommendation = buildCatalogSetupRecommendation({
             item: payload,

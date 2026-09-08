@@ -6397,7 +6397,8 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
 
             if (payload.pos_visible === true && typeof posRepository.getCatalogReadinessByItemId === 'function') {
                 const readinessEnvelope = await posRepository.getCatalogReadinessByItemId(normalizedItemId, {
-                    forcedPosVisible: true
+                    forcedPosVisible: true,
+                    locationId: payload.location_id
                 });
                 const readiness = readinessEnvelope?.pos_readiness || null;
                 if (readiness?.ready !== true) {

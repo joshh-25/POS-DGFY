@@ -3234,8 +3234,15 @@ export const itemRepository = {
         const candidatePath = payload.storefront_image_path ?? (existing?.storefront_image_path ?? null);
         const candidateUrl = payload.storefront_image_url ?? (existing?.storefront_image_url ?? null);
 
+        // A gallery payload comes from the catalog image pipeline after every
+        // file has already been optimized and stored. Running the single-image
+        // lifecycle again here can create a second asset for the gallery's
+        // primary image, then prepend that asset as an extra gallery entry.
+        // Keep lifecycle processing for legacy/single-image writes only.
+        const hasManagedGalleryPayload = hasOwn(payload, 'storefront_image_gallery')
+            && Array.isArray(payload.storefront_image_gallery);
         let imageLifecycleResult = null;
-        if (candidatePath || candidateUrl || payload.image_file) {
+        if (payload.image_file || (!hasManagedGalleryPayload && (candidatePath || candidateUrl))) {
             try {
                 imageLifecycleResult = await ensureOptimizedItemImage({
                     itemId,

@@ -288,6 +288,15 @@ describe('Item/Product wizard contracts', () => {
 
     expect(itemFormSource).toContain('Add Item Images');
     expect(itemFormSource).toContain('Choose Item Images');
+    expect(itemFormSource).toContain('data-testid="item-image-drop-zone"');
+    expect(itemFormSource).toContain('onDrop={handleStorefrontImageDrop}');
+    expect(itemFormSource).toContain('event.stopPropagation()');
+    expect(itemFormSource).toContain("event.dataTransfer?.getData('text/uri-list')");
+    expect(itemFormSource).toContain('handleSelectStorefrontImageFiles([new File([blob]');
+    expect(itemFormSource).toContain('onDrop={(event) => event.preventDefault()}');
+    expect(itemFormSource).toContain("file.type?.startsWith('image/')");
+    expect(itemFormSource).toContain('handleSelectStorefrontImageFiles(imageFiles)');
+    expect(itemFormSource).toContain('Drag item images here, or choose them from your device.');
     expect(itemFormSource).toContain('SelectedItemImageCarousel');
     expect(itemFormSource).toContain('storefront_image_files: selectedStorefrontImageFiles');
     expect(itemFormSource).toContain('Remove All Item Images');

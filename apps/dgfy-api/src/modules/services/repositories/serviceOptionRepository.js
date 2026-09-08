@@ -166,6 +166,57 @@ export const createServiceOptionRepository = () => ({
     return (rows || []).map((row) => toPlain(row.group)).filter(Boolean);
   },
 
+  async getItemOptionGroupsByItemIds(itemIds = [], tenantId, options = {}) {
+    const ServiceItemOptionGroup = dbStore.get('ServiceItemOptionGroup');
+    const ServiceOptionGroup = dbStore.get('ServiceOptionGroup');
+    const ServiceOption = dbStore.get('ServiceOption');
+    const normalizedItemIds = [...new Set(itemIds.map(Number).filter(Boolean))];
+    const groupsByItemId = new Map(normalizedItemIds.map((itemId) => [itemId, []]));
+    if (normalizedItemIds.length === 0) return groupsByItemId;
+
+    const assignmentWhere = {
+      service_item_id: { [Op.in]: normalizedItemIds }
+    };
+    if (tenantId) assignmentWhere.tenant_id = tenantId;
+
+    const groupWhere = {};
+    if (tenantId) groupWhere.tenant_id = tenantId;
+    if (options.activeOnly) groupWhere.status = 'active';
+
+    const optionWhere = {};
+    if (tenantId) optionWhere.tenant_id = tenantId;
+    if (options.activeOnly) optionWhere.status = 'active';
+
+    const rows = await ServiceItemOptionGroup.findAll({
+      where: assignmentWhere,
+      include: [{
+        model: ServiceOptionGroup,
+        as: 'group',
+        where: groupWhere,
+        include: [{
+          model: ServiceOption,
+          as: 'options',
+          where: optionWhere,
+          required: false
+        }]
+      }],
+      order: [
+        ['display_order', 'ASC'],
+        [{ model: ServiceOptionGroup, as: 'group' }, { model: ServiceOption, as: 'options' }, 'display_order', 'ASC']
+      ],
+      transaction: options.transaction
+    });
+
+    for (const row of rows || []) {
+      const plainRow = toPlain(row);
+      const itemId = Number(plainRow?.service_item_id);
+      const group = toPlain(plainRow?.group);
+      if (!groupsByItemId.has(itemId) || !group) continue;
+      groupsByItemId.get(itemId).push(group);
+    }
+    return groupsByItemId;
+  },
+
   async isOptionReferencedByBookings(optionId, options = {}) {
     const ServiceBookingLineOption = dbStore.get('ServiceBookingLineOption');
     if (!ServiceBookingLineOption?.count) return false;
