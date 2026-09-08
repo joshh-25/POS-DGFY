@@ -534,11 +534,26 @@ const startFrontendServer = async () => {
     return;
   }
 
-  const frontendDir = path.join(__dirname, '..', '..', 'frontend');
+  // apps/dgfy-api/tests -> apps/dgfy-ims directly. Was '..', '..', 'frontend' -- stale since the
+  // apps/dgfy-api absorption (50ec10d9f, 2026-07-20) moved this file one directory deeper without
+  // correcting this depth; broken further by the #322 apps split, which removed <root>/frontend
+  // entirely. #1712.
+  //
+  // Deliberately NOT repo root + `npm run dev:skupervisor` (root package.json's
+  // `cd apps/dgfy-ims && npm run dev` wrapper), even though that script still resolves post-split:
+  // confirmed live that npm's `--`-forwarded args do not survive a nested `cd && npm run` script.
+  // `npm run dev:skupervisor -- --port 5183 --strictPort` silently mis-parses at the inner `npm run
+  // dev` boundary (`Unknown cli config "--port"` et al) and ends up invoking vite as
+  // `vite --host 5183` -- `--host` treats the stray "5183" as its own value (a hostname), which
+  // Node then resolves to the bogus, unbindable address `0.0.20.65`, crashing the dev server before
+  // `waitForHttp` below ever sees it come up. Spawning `apps/dgfy-ims`'s own `dev` script directly
+  // (one level of npm run, no wrapper) forwards `--port`/`--strictPort` to vite correctly --
+  // confirmed live (`vite --host --port <N> --strictPort`, HTTP 200 on the requested port).
+  const frontendDir = path.join(__dirname, '..', '..', '..', 'apps', 'dgfy-ims');
   const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
   const args = process.platform === 'win32'
-    ? ['/c', 'npm', 'run', 'dev:skupervisor', '--', '--port', String(FRONTEND_PORT), '--strictPort']
-    : ['run', 'dev:skupervisor', '--', '--port', String(FRONTEND_PORT), '--strictPort'];
+    ? ['/c', 'npm', 'run', 'dev', '--', '--port', String(FRONTEND_PORT), '--strictPort']
+    : ['run', 'dev', '--', '--port', String(FRONTEND_PORT), '--strictPort'];
 
   frontendProc = spawn(command, args, {
     cwd: frontendDir,
@@ -2427,4 +2442,99 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
       }
     }
   }, 240000);
+
+  // #1712: the smallest test that would have caught #1698 (fetchPosCatalogPage's three
+  // undefined identifiers) specifically -- not an attempt at full TerminalOperationsWorkspace
+  // coverage, see the follow-up issue this PR files for that. Targets the admin "Items" tab
+  // (TerminalOperationsWorkspace.jsx's ItemsWorkspace), never exercised by this file's existing
+  // scenarios -- every one of them drives POSCheckoutTerminal's checkout/history/receipt modes
+  // only (ensureCheckoutWorkspaceVisible), not the operations workspace.
+  //
+  // Correction to this PR's own plan (verified against the actual #1698 fix commit,
+  // 1c4b73790, before writing this test): #1698's ReferenceError was thrown synchronously
+  // inside `fetchPosCatalogPage`'s async body and so WAS caught by ItemsWorkspace's own
+  // `loadItems()` try/catch -- the fix commit's own message confirms the only visible symptom
+  // was the generic "Failed to load POS-visible IMS items." fallback banner, not an uncaught
+  // page error. A `page.on('pageerror')` listener is kept below anyway as cheap, general
+  // hygiene against a *different* class of client-side crash, but the assertion that actually
+  // would have caught #1698 is the absence of that fallback banner (plus a real load outcome --
+  // either rendered items or the distinct "no items" empty state, never the error banner).
+  maybeProfileIt()('renders the POS admin Items tab without the #1698 catalog-load regression', async () => {
+    const context = await createContextForViewportProfile('desktop');
+    const artifactBase = buildArtifactBaseName({
+      scenario: 'pos-items-workspace-catalog-load',
+      viewportProfile: 'desktop'
+    });
+    let tracePersisted = false;
+    let page = null;
+    const pageErrors = [];
+    await context.tracing.start({
+      screenshots: true,
+      snapshots: true,
+      sources: true
+    });
+    try {
+      page = await context.newPage();
+      page.on('pageerror', (error) => {
+        pageErrors.push(error?.message || String(error));
+      });
+
+      await loginViaUi(page);
+      await saveBusinessModeViaSettings(page, 'manufacturing');
+      await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
+      await page.getByRole('heading', { name: /DGFY Terminal Workspace/i }).waitFor({ timeout: 60000 });
+      await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
+
+      // Sidebar nav control (TerminalWorkspaceSidebar.jsx's "Items" NavButton) -- a plain
+      // <button>, not role="tab" (that role belongs to TerminalOperationsWorkspace's own inner
+      // sub-tab strip, a separate control reached only after this one mounts the operations
+      // workspace at all). This is what actually flips `posViewMode` out of
+      // CHECKOUT_WORKSPACE_MODES ('checkout'/'history'/'receipt') into 'items'.
+      const itemsNavButton = page.getByRole('button', { name: /^Items$/ }).first();
+      await itemsNavButton.waitFor({ state: 'visible', timeout: 30000 });
+      await itemsNavButton.click();
+
+      // TerminalOperationsWorkspace's own defaultTab is 'items' whenever canViewPos is true
+      // (confirmed live: a full-permission admin login), so the Items sub-tab is already
+      // selected once the operations workspace mounts -- no second click needed. Wait for its
+      // panel container (role="tabpanel", id="pos-items-items-panel") rather than the sidebar
+      // click alone, since the workspace itself is lazy-loaded (React.lazy + Suspense).
+      const itemsPanel = page.locator('#pos-items-items-panel[role="tabpanel"]');
+      await itemsPanel.waitFor({ state: 'visible', timeout: 30000 });
+
+      // Let the load-or-fail settle: loadItems()'s own loading state renders "Loading
+      // POS-visible IMS items..." while in flight.
+      await page.getByText('Loading POS-visible IMS items...').first().waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {});
+
+      const catalogLoadErrorBanner = page.getByText('Failed to load POS-visible IMS items.').first();
+      expect(await catalogLoadErrorBanner.isVisible().catch(() => false)).toBe(false);
+
+      // A successful load renders exactly one of: at least one item row, or the distinct
+      // "no items" empty state -- both are legitimate outcomes of loadItems() actually
+      // completing, unlike the error banner asserted absent above.
+      const noItemsEmptyState = page.getByText(/No POS items found|No matching items/).first();
+      const hasNoItemsEmptyState = await noItemsEmptyState.isVisible().catch(() => false);
+      const hasRenderedItemRow = await itemsPanel.locator('button:has-text("Edit")').first().isVisible().catch(() => false);
+      expect(hasNoItemsEmptyState || hasRenderedItemRow).toBe(true);
+
+      expect(pageErrors).toEqual([]);
+    } catch (error) {
+      if (page) {
+        await page.screenshot({
+          path: path.join(ARTIFACT_ROOT, `${artifactBase}.png`),
+          fullPage: true
+        }).catch(() => {});
+      }
+      await context.tracing.stop({
+        path: path.join(ARTIFACT_ROOT, `${artifactBase}.trace.zip`)
+      }).catch(() => {});
+      tracePersisted = true;
+      throw error;
+    } finally {
+      if (!tracePersisted) {
+        await context.tracing.stop().catch(() => {});
+      }
+      await context.close();
+    }
+  }, 120000);
 });
