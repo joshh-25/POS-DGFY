@@ -49,6 +49,7 @@ const FRONTEND_LOGIN = {
   email: `ims.pos.sales.e2e.${TEST_USER_SUFFIX}@tenant.test`,
   password: 'Admin123!',
   username: `ims_pos_sales_e2e_${TEST_USER_SUFFIX}`,
+  phoneNumber: '+15555550100',
   companyToken: COMPANY_TOKEN
 };
 const TERMINAL_REGISTRY_VALUE = Object.freeze([
@@ -604,7 +605,11 @@ const startBackendServer = async () => {
       PORT: String(BACKEND_PORT),
       NODE_ENV: 'development',
       SKIP_SERVER_START: 'false',
-      CORS_ORIGIN: `http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT}`
+      CORS_ORIGIN: `http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT}`,
+      // registerUser() (authService.js) 403s with DGFY_ACCOUNT_REQUIRED unless this is 'true' --
+      // this suite's self-registration flow (ensureBrowserE2EUser()) is exactly the legacy,
+      // non-invited tenant-registration path this flag gates. Found live while re-verifying RF-2.
+      DGFY_LEGACY_TENANT_REGISTRATION_ENABLED: 'true'
     }
   });
 
@@ -628,6 +633,35 @@ const startBackendServer = async () => {
 };
 
 const ensureBrowserE2EUser = async () => {
+  // registerSchema (authValidator.js) requires both phone_number and email_otp_code
+  // unconditionally -- the latter only when isEmailOtpEnforcementEnabled(), which is true here
+  // since the spawned backend runs with NODE_ENV=development, not 'test'. Request a real code
+  // first: emailOtpService.js returns it as `dev_code` in the response body whenever email
+  // delivery isn't configured (isDevOtpFallbackEnabled(), true by default outside production) --
+  // no real inbox needed. Found live while re-verifying RF-2.
+  const otpResponse = await fetch(`${BACKEND_BASE}/api/v1/auth/email-otp/request`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-company-token': FRONTEND_LOGIN.companyToken
+    },
+    body: JSON.stringify({
+      purpose: 'tenant_user_registration',
+      email: FRONTEND_LOGIN.email
+    })
+  });
+
+  if (![200, 202].includes(otpResponse.status)) {
+    const payload = await otpResponse.text().catch(() => '');
+    throw new Error(`Failed to request browser E2E user's email OTP: HTTP ${otpResponse.status} ${payload}`);
+  }
+
+  const otpBody = await otpResponse.json();
+  const emailOtpCode = otpBody?.data?.dev_code;
+  if (!emailOtpCode) {
+    throw new Error(`Email OTP request did not return a dev_code -- response: ${JSON.stringify(otpBody)}`);
+  }
+
   const registerResponse = await fetch(`${BACKEND_BASE}/api/v1/auth/register`, {
     method: 'POST',
     headers: {
@@ -637,7 +671,9 @@ const ensureBrowserE2EUser = async () => {
     body: JSON.stringify({
       username: FRONTEND_LOGIN.username,
       email: FRONTEND_LOGIN.email,
-      password: FRONTEND_LOGIN.password
+      password: FRONTEND_LOGIN.password,
+      phone_number: FRONTEND_LOGIN.phoneNumber,
+      email_otp_code: emailOtpCode
     })
   });
 
