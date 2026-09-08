@@ -62,6 +62,15 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    should have cleared it well before this PR was opened — worth checking whether an open
    `compliance:preflight-handoff` issue explains the miss), **blocker** for a `release/*` PR
    regardless of what it was cut from (per the policy, none may reach `main`).
+   A third shape needs its own explicit rule: a hotfix PR targeting `main` whose head is **neither**
+   `release/*` (that's the promotion case above) — in practice today `fix/*`, per #1701's finding that
+   this repo's real hotfix branches never actually use the `hotfix/*` prefix ADR/#1529 assumed.
+   `NOT-EXECUTED-*` surviving in the diff here is a **blocker**, same severity as the `release/*` case
+   and for the same reason (`docs/ops/RELEASE_CANDIDATE_POLICY.md`: no `NOT-EXECUTED-*` may reach
+   `main`, no exception for this path). The fix is `npm run compliance:reconcile-local` run against the
+   file(s) in question, as part of the same hotfix PR — `.agents/skills/incident-responder/SKILL.md`'s
+   "Compliance-preflight reconciliation obligation" section owns the procedure; propose it as the RF's
+   concrete fix rather than restating the command inline.
    A `NOT-APPLICABLE-*` `preflight_request_ref` (#1396) is a distinct, legitimate reconciled state —
    not a finding on any PR — recording a `minor` declaration whose surfaces the live endpoint cannot
    evaluate at all; a `major`/`regulatory` declaration reaching this state instead of a real

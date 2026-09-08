@@ -1510,3 +1510,51 @@ match). Full detail: ADR 0081's matching 2026-09-07 Amendment,
 `scripts/check-app-version-bump.js`'s `runFloor()`, issue #1740.
 
 PR: (this PR). Refs #1740.
+
+### 2026-09-08: Compliance-preflight reconciliation path for a `main`-based hotfix (#1700)
+
+Closes a gap this document's own "No `NOT-EXECUTED-*` declaration may reach `main`" rule (2026-08-22
+amendment above) never actually addressed for one path: `incident-responder`/`hotfix`
+(`.agents/skills/incident-responder/SKILL.md`, #331/#546/#861) branches a hotfix directly off `main`
+— that branch is outside `compliance-preflight-sweep.yml`'s `push: branches: [develop]` trigger by
+construction, and the sweep's reconciliation PR is hardcoded `--base develop`, so neither the
+continuous sweep nor its manual `workflow_dispatch` form can produce a reconciliation *for* this
+branch before it merges. The only two paths anyone had actually used before this entry were an
+undocumented, untested-for-this-ref manual reproduction of the sweep's whole fixture procedure, or
+reaching for #1007's promoter-scoped expedited override — a mechanism explicitly written for a
+different role and a different flow (see #1694's own issue body, quoted in
+`docs/compliance/request-time-preflight-protocol.md`).
+
+**Resolution: `npm run compliance:reconcile-local` (#1694/#1703, 2026-09-07) is the sanctioned
+path, made mandatory for this case rather than merely available.** It performs no git operation, so
+it already works unmodified against a `main`-based hotfix branch's checked-out worktree — the
+`staging`/`release/*` case #1694 built it for is structurally identical. `incident-responder`'s own
+SKILL.md now states this as a required step (not optional) whenever a hotfix diff carries an
+outstanding `NOT-EXECUTED-*` ref, before `pr-reviewer`'s fast-track review; `pr-reviewer`'s own
+Compliance rule is extended so a surviving `NOT-EXECUTED-*` on this specific PR shape (a hotfix PR
+into `main`, not `release/*`-headed) is an explicit blocker, closing a gap where that PR shape
+previously fell outside both of `pr-reviewer`'s named cases and was only caught by reviewer
+judgment (see #1700's own origin, PR #1699/#1702's RF-1).
+
+**This deliberately does not extend #1007's phrase-gated override to this path** (#1700's option
+(b), rejected) — a real ~several-minute local check that produces a genuine `PREFLIGHT-*` result is
+available, so authorizing a skip here would weaken the audit posture #1007 was deliberately scoped
+narrowly to protect, for no real time savings. #1007 stays exactly what it already is: `promoter`'s
+own `develop → main` business-urgency override, unchanged.
+
+**What this does not change:** the never-skippable absolute rule itself (no `NOT-EXECUTED-*` reaches
+`main`, this entry only adds *how* a hotfix branch clears that bar); `incident-responder`'s own
+separate, already-narrow `main`-merge override (still scoped to skipping the deep manual review
+pass, never compliance evidence — see that role's own SKILL.md, updated alongside this to say so
+explicitly); the "Hotfix and back-port" procedure immediately above this entry (unaffected — a
+reconciled declaration back-ports to `develop` exactly like any other hotfix content, no special
+handling needed since the local tool never produces a divergent ref shape from what the continuous
+sweep would have produced).
+
+**Concrete evidence this gap was real, not theoretical:** #1700's own origin, PR #1702 (merged
+2026-09-07), shipped to `main` with a `NOT-EXECUTED-*` ref still in place and closed it only via the
+`develop`-detour this entry's fix exists to make unnecessary (back-port PR #1709, reconciled by the
+continuous sweep on `develop`, then present on both branches) — see
+`docs/compliance/request-time-preflight-protocol.md`'s matching entry for the verified detail.
+
+PR: (this PR). Closes #1700.

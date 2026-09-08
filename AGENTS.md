@@ -162,7 +162,10 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   files → Worker fixes → fast-track Reviewer → Promoter redeploys), also reachable manually via
   `/hotfix` (#861) for an on-demand fix outside the monitor loop. Carries a narrow, phrase-gated
   override to merge a hotfix into `main` during an open incident; every other case keeps "never
-  merge `main`" absolute. Only runs when explicitly authorized — either an active incident session,
+  merge `main`" absolute. Also carries a mandatory compliance-preflight reconciliation step for any
+  hotfix diff touching an outstanding `NOT-EXECUTED-*` declaration (#1700, `npm run
+  compliance:reconcile-local` — see that role's own SKILL.md), never waivable via #1007 or its own
+  `main`-merge override. Only runs when explicitly authorized — either an active incident session,
   or an explicit `/hotfix` invocation; a detected hotfix-shaped request with neither only proposes.
   @.agents/skills/incident-responder/SKILL.md
 - **Notes/Intake** (#331/#645) — primes on stakeholder-meeting topics beforehand, captures pasted
