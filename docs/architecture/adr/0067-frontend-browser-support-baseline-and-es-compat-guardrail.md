@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: pos
 date: 2026-08-18
-last_reviewed: 2026-08-29
+last_reviewed: 2026-09-08
 review_by: 2027-02-18
 applies_to: architecture_decision
 topic: frontend_browser_support_baseline_and_es_compat_guardrail
@@ -276,3 +276,51 @@ web-core's test suite already used, wired into `frontend-ims-quality`'s job in
 
 Clause 5's own list ("POS, storefront, and `packages/web-core` itself currently have no ESLint
 config of their own") is now fully superseded, not just partially as the prior amendment left it.
+
+### 2026-09-08 — `packages/web-core` lint gains develop-PR coverage and goes blocking (#1712)
+
+Closes the enforcement half of the gap the 2026-08-29 amendment above left open. Two changes, both
+downstream of #1698 (a three-undefined-identifier `ReferenceError` in
+`packages/web-core/src/features/pos/services/posService.js` that reached both `staging` and `main`
+undetected — root-caused in #1712, fixed separately by #1702/PR #1709):
+
+- **Clause 6's "eslint coverage on a develop-bound PR remains exactly what Layer 2's build-time scan
+  already provided" is now superseded.** A new `pr-frontend-lint-checks.yml` job
+  (`frontend-ims-lint-check` in `pr-checks.yml`) runs `apps/dgfy-ims`'s and `packages/web-core`'s
+  ESLint (the same `--resolve-plugins-relative-to` invocation #918 already wired into the promotion
+  leg) on every ordinary `develop`-base PR that touches `apps/dgfy-ims/`, `packages/web-core/`,
+  `packages/pos-receipt/`, or `packages/shared-constants/` — blocking, not advisory.
+  `apps/dgfy-pos`/`apps/dgfy-storefront` lint remains promotion-leg-only; extending develop-PR
+  coverage to those two is tracked as a follow-up, not done here.
+- **`promotion-quality-gate.yml`'s `run_web_core_lint` step flips from advisory
+  (`continue-on-error: true`) to blocking on the `release/*→main` leg**, matching `run_ims_lint`'s
+  #1431 Phase 1 treatment. Safe to flip because #1433/PR #1437 had already downgraded every one of
+  web-core's 14 real ESLint errors to `warn` (13 React-Compiler-readiness diagnostics + 1
+  `react/no-unescaped-entities`) for exactly this reason. **Verified live, not just inherited from
+  #1433/#1437**: a fresh `npx eslint ../../packages/web-core --ext .js,.jsx
+  --resolve-plugins-relative-to .` run (from `apps/dgfy-ims`) turned up one further real error
+  #1433/#1437 never touched — `src/components/media/ResponsiveImage.jsx`'s own
+  `eslint-disable-next-line react/no-unknown-property` comment sat three comment lines above the
+  JSX attribute it meant to suppress, so it silently suppressed nothing
+  (`eslint-disable-next-line` only reaches the single line immediately below the comment it's
+  written on). Fixed in the same PR by moving the directive to the line directly above the
+  attribute. Confirmed 0 errors / 155 warnings, exit code 0, after that fix — the actual evidence
+  this flip's safety claim rests on, not an assumption carried over from #1433/#1437 alone.
+- **Functional-check gap, named in #1712, is separately tracked, not closed by this amendment**: a
+  new advisory-only `frontend-ims-pos-sales-e2e-quality` job now runs a real-browser IMS/POS journey
+  (`apps/dgfy-api/tests/frontend.imsPosSalesJourney.e2e.test.js`, repaired — it had been unrunnable
+  since 2026-07-20 due to a stale `frontendDir` path, independent of the #322 split) on the promotion
+  leg, plus one new assertion targeting `TerminalOperationsWorkspace`'s Items tab specifically (the
+  code path #1698 broke). This is **not yet a Layer in this ADR's guardrail scheme** (it's a
+  functional/behavioral check, not an ES-compat guardrail) and is **not blocking** — recorded here
+  because it's the other half of the same incident's root-cause fix, not because it changes any of
+  Layers 1-4's ES-compat mechanism. Two further, pre-existing defects were found live while wiring
+  this job (neither introduced nor fixed by this PR, both reasons this stays advisory rather than
+  blocking): the suite's `frontendDir` path fix alone was not sufficient to actually launch the dev
+  server on its intended port — a second, deeper bug (`npm run dev:skupervisor -- --port ...`
+  silently mis-parses across the nested `cd apps/dgfy-ims && npm run dev` script, crashing vite —
+  fixed by spawning `apps/dgfy-ims`'s own `dev` script directly instead); and the suite's
+  `ensureBrowserE2EUser()` helper registers against a `token-original` tenant that does not exist on
+  a freshly migrated DB, and even once provisioned (`scripts/register_original_tenant.js`, already
+  documented, not new tooling) its registration payload is missing a `phone_number` field
+  `apps/dgfy-api/src/validators/authValidator.js` now requires unconditionally.
