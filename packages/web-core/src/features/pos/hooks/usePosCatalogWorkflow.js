@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { getFolders } from '@/services/itemService.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { fetchPosCatalog } from '../services/posService';
+import { preserveCatalogRows } from '../services/posCatalogReadCoordinator.js';
 import { loadOfflinePosSnapshot, saveOfflinePosSnapshot } from '../services/offlinePosSnapshotStore.js';
 import { buildOfflinePosScopeKey } from '../services/offlinePosScope.js';
 import {
@@ -106,6 +107,8 @@ export const usePosCatalogWorkflow = ({
     const catalogRefreshDebounceRef = useRef(null);
     const catalogRequestInFlightKeyRef = useRef('');
     const catalogRequestSequenceRef = useRef(0);
+    const catalogReadRerunRef = useRef(false);
+    const loadCatalogRef = useRef(null);
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
     const folderStripRef = useRef(null);
@@ -193,7 +196,10 @@ export const usePosCatalogWorkflow = ({
             return;
         }
         const requestKey = buildCatalogRequestKey(deferredSearch, selectedLocationId);
-        if (catalogRequestInFlightKeyRef.current === requestKey) return;
+        if (catalogRequestInFlightKeyRef.current === requestKey) {
+            catalogReadRerunRef.current = true;
+            return;
+        }
         catalogRequestInFlightKeyRef.current = requestKey;
         const requestSequence = catalogRequestSequenceRef.current + 1;
         catalogRequestSequenceRef.current = requestSequence;
@@ -204,7 +210,7 @@ export const usePosCatalogWorkflow = ({
         try {
             const data = await fetchPosCatalog(buildCatalogRequestParams(deferredSearch, selectedLocationId));
             if (catalogRequestSequenceRef.current !== requestSequence) return;
-            setCatalog(data || []);
+            setCatalog((previous) => preserveCatalogRows(previous, data || []));
             if (!deferredSearch) {
                 saveCatalogSnapshot(data || []);
             }
@@ -236,9 +242,19 @@ export const usePosCatalogWorkflow = ({
             }
             if (catalogRequestInFlightKeyRef.current === requestKey) {
                 catalogRequestInFlightKeyRef.current = '';
+                if (catalogReadRerunRef.current) {
+                    catalogReadRerunRef.current = false;
+                    void loadCatalogRef.current?.();
+                }
             }
         }
     }, [canViewHistory, deferredSearch, offlineSnapshotScope, saveCatalogSnapshot, selectedLocationId, sessionLocked, setLowStockDisplayThreshold, setReceiptSettings]);
+    loadCatalogRef.current = loadCatalog;
+    useEffect(() => () => {
+        catalogRequestSequenceRef.current++;
+        catalogReadRerunRef.current = false;
+        loadCatalogRef.current = null;
+    }, []);
 
     const loadPosFolders = useCallback(async () => {
         if (sessionLocked) {

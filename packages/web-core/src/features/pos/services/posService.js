@@ -1,4 +1,7 @@
 import api from '@/services/api';
+import { reconcilePosImageUploads } from './posImageUploadReconciliation.js';
+import { getBrowserSessionSnapshot } from '../../../services/browserSession.js';
+import { createCatalogReadCoordinator } from './posCatalogReadCoordinator.js';
 import { emitPosHardwareMessage } from '../utils/posHardwareMessageBus.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../observability/analyticsEvents.js';
 import {
@@ -9,8 +12,6 @@ import {
     listServiceOptionGroups,
     updateServiceOptionGroup
 } from '../../services/api/servicesApi.js';
-import { getBrowserSessionSnapshot } from '../../../services/browserSession.js';
-
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
 export const POS_ATTENDANCE_CONFIG_CHANGED_EVENT = 'dgfy:pos-attendance-config-changed';
 
@@ -22,8 +23,13 @@ const getRegisteredTerminalHeaders = (terminalId = '') => {
     return resolvedTerminalId ? { 'x-pos-terminal-id': resolvedTerminalId } : undefined;
 };
 
+const coordinateCatalogRead = createCatalogReadCoordinator();
 export const fetchPosCatalog = async (params = {}) => {
-    const response = await api.get('/pos/catalog', { params });
+    const session = getBrowserSessionSnapshot();
+    const key = JSON.stringify([session.companyToken, session.generation, Object.entries(params).sort()]);
+    const response = await coordinateCatalogRead(key, () => api.get('/pos/catalog', { params }));
+    if (getBrowserSessionSnapshot().generation !== session.generation) throw new Error('Catalog session changed.');
+    void reconcilePosImageUploads(response.data?.data || []);
     return response.data?.data || [];
 };
 

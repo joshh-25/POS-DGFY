@@ -337,6 +337,9 @@ CI enforcement policy:
 1. `main` and `release/*` pushes run the core desktop journey as a release gate before build/deploy stages.
 2. Nightly schedule runs the matrix journey (desktop + mobile) for drift detection.
 3. Failure artifacts (trace/video/screenshot) are uploaded and retained for 14 days (release gate) and 21 days (nightly).
+4. **New/expanded E2E coverage here is lower priority than POS/Storefront**, per `AGENTS.md`'s
+   "Engineering-investment priority" note (#1739) — this existing required journey gate is
+   unaffected; the priority note only weighs *additional* investment, not what already runs.
 
 ## Startup Regression Guard (PM2 + Local)
 

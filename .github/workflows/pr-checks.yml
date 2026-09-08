@@ -238,3 +238,17 @@ jobs:
       app: dgfy-storefront
       runner_labels_json: ${{ needs.route-build-checks.outputs.heavy != '' && needs.route-build-checks.outputs.heavy || '["sieitz-lg"]' }}
       cache_from: *build_cache_from
+
+  # #1712: closes the develop-PR half of the "no eslint coverage on an ordinary develop-bound PR"
+  # gap (ADR 0067's 2026-08-29 amendment, clause 6's `[snapshot]` note) -- lint-only, no Docker/vite
+  # build cost, runs in parallel with the build-check jobs above via the same
+  # needs: [changes, route-build-checks] shape, on the light runner (lint has no build cost).
+  # Reuses changes.outputs.frontend_ims verbatim -- no new path-filter logic, see
+  # shared-changed-paths.yml:202. apps/dgfy-pos/apps/dgfy-storefront lint stays promotion-leg-only;
+  # a follow-up issue tracks extending this job to those two.
+  frontend-ims-lint-check:
+    needs: [changes, route-build-checks]
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.frontend_ims == 'true'
+    uses: ./.github/workflows/pr-frontend-lint-checks.yml
+    with:
+      runner_labels_json: ${{ needs.route-build-checks.outputs.light != '' && needs.route-build-checks.outputs.light || '["sieitz-runner"]' }}

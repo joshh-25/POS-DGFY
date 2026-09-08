@@ -7,7 +7,7 @@ function downloadQrImage(dataUrl, filename) {
   anchor.download = filename;
   document.body.appendChild(anchor);
   anchor.click();
-  document.body.removeChild(anchor);
+  anchor.remove();
 }
 
 function toQrFilename(itemName) {

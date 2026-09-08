@@ -53,6 +53,33 @@ this file. Two related, **unsettled** questions this rule does not answer:
 (matching where the code actually lands), not `area:skupervisor` — see
 `docs/process/ISSUE-TAXONOMY.md`'s `area:*` table, whose own meaning is unchanged by this note.
 
+## Engineering-investment priority: apps/dgfy-ims is low-priority and on a deprecation track
+
+Pat's call (#1739), generalizing the Feature placement policy above from *where new back-office
+feature work lands* to *engineering priority overall*: **`apps/dgfy-ims` is low-priority and
+expected to shrink/deprecate over time.** The structural mechanism — extract-and-keep,
+extract-and-freeze, or deprecate — stays open and undecided under #358; this note doesn't pick one
+of those three outcomes and holds regardless of which eventually wins.
+
+**New or proactive engineering investment — tests, tooling, refactors, and any non-required feature
+work — should default away from IMS toward `apps/dgfy-pos` / `apps/dgfy-storefront`, absent an
+explicit reason.** This is broader than the Feature placement policy above (which only routes *new
+back-office-level feature* work to POS): it covers every kind of proactive effort, including new
+test coverage. See `.agents/skills/observer/SKILL.md`'s noise policy and
+`.agents/skills/pm/SKILL.md`'s filing procedure for where this is reflected in role-level judgment
+calls, and `docs/testing/README.md`'s IMS E2E section for the test-coverage-specific instance —
+read the rule here, it is not restated in any of those three.
+
+**This does not block required maintenance, security patches, or emergency fixes on IMS** — the
+same carve-out the Feature placement policy above holds for back-office feature work applies here:
+"low-priority for new/proactive investment," not "abandoned." A merchant-blocking defect, a
+security patch, or any emergency work on IMS proceeds exactly as it would on any other app.
+
+This is a priority signal, not an architecture decision: it does not amend ADR 0071
+(`apps/dgfy-ims` remains, today, one of the three independently deployable apps that ADR governs),
+and it does not resolve #358 (structural outcome) or #1354 (Back Office target end state) — see
+#1739 for the full rationale.
+
 ## MANDATORY: Pull Request Conventions
 
 Before creating, updating, or describing any pull request in this repository, **read and follow `docs/ai/PR.md` in full**. This is not optional. It governs:
@@ -162,7 +189,10 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   files → Worker fixes → fast-track Reviewer → Promoter redeploys), also reachable manually via
   `/hotfix` (#861) for an on-demand fix outside the monitor loop. Carries a narrow, phrase-gated
   override to merge a hotfix into `main` during an open incident; every other case keeps "never
-  merge `main`" absolute. Only runs when explicitly authorized — either an active incident session,
+  merge `main`" absolute. Also carries a mandatory compliance-preflight reconciliation step for any
+  hotfix diff touching an outstanding `NOT-EXECUTED-*` declaration (#1700, `npm run
+  compliance:reconcile-local` — see that role's own SKILL.md), never waivable via #1007 or its own
+  `main`-merge override. Only runs when explicitly authorized — either an active incident session,
   or an explicit `/hotfix` invocation; a detected hotfix-shaped request with neither only proposes.
   @.agents/skills/incident-responder/SKILL.md
 - **Notes/Intake** (#331/#645) — primes on stakeholder-meeting topics beforehand, captures pasted

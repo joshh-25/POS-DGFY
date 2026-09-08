@@ -31,7 +31,12 @@ const mocks = vi.hoisted(() => ({
     resolveTenantComplianceSecurityIncident: vi.fn(),
     updateComplianceFinalReviewDocumentReview: vi.fn(),
     listStoreTemplates: vi.fn(),
-    getTenantRevenueDashboard: vi.fn()
+    getTenantRevenueDashboard: vi.fn(),
+    listTenantRevenueTransactions: vi.fn(),
+    listTenantSettlementBatches: vi.fn(),
+    listTenantRevenueReconciliation: vi.fn(),
+    listTenantRevenueFeePolicies: vi.fn(),
+    listTenantRevenueAdjustments: vi.fn()
   },
   toastMock: {
     success: vi.fn(),
@@ -122,6 +127,11 @@ describe('TenantManager capability controls', () => {
     });
     mocks.adminServiceMock.listStoreTemplates.mockResolvedValue({ success: true, data: { templates: [] } });
     mocks.adminServiceMock.getTenantRevenueDashboard.mockResolvedValue({ data: null });
+    mocks.adminServiceMock.listTenantRevenueTransactions.mockResolvedValue({ data: { transactions: [] } });
+    mocks.adminServiceMock.listTenantSettlementBatches.mockResolvedValue({ data: { batches: [] } });
+    mocks.adminServiceMock.listTenantRevenueReconciliation.mockResolvedValue({ data: { records: [] } });
+    mocks.adminServiceMock.listTenantRevenueFeePolicies.mockResolvedValue({ data: { policies: [] } });
+    mocks.adminServiceMock.listTenantRevenueAdjustments.mockResolvedValue({ data: { adjustments: [] } });
   });
 
   afterEach(() => {

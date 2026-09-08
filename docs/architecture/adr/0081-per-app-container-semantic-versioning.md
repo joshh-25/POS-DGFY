@@ -364,6 +364,50 @@ shape-verified against this repo's real files, same caveat the Phase 293 Amendme
 states for its own mechanism; the issue stays open (`Refs #1610`, not `Closes`) pending a real
 `deploy-main.yml` dispatch that exercises an already-published, content-unchanged app.
 
+### 2026-09-07 — `runFloor()`'s pre-cut floor step had no change detection at all; now scoped to changed apps (#1740)
+
+Found live investigating PR #1738 (candidate `2026-09-08-01`): the promoter's pre-cut floor step
+(`node scripts/check-app-version-bump.js --floor --base origin/staging --head origin/develop`)
+force-bumped all five apps' versions even though the candidate's only real code change was two
+files in `apps/dgfy-storefront/src/`. Same pattern confirmed on candidates `2026-09-07-03` and
+`2026-09-07-04`.
+
+**Root cause:** `runFloor()` and `runCheck()` (the PR-time check) are two independent code paths for
+"does this app need a bump." `runCheck()` correctly filters through `detectChangedApps()` — direct
+`apps/<app>/` changes or a changed `file:`-dependency package. `runFloor()` had no such filter at
+all: it iterated the full, hardcoded five-app list unconditionally and flagged any app whose
+`develop` version wasn't at least a minor above `staging`'s, whether or not that app's files had
+changed between the two refs. An app's version not having moved *because nothing in it changed* is
+exactly the case Decision 6 says to skip ("Apps with no changes keep their version untouched") —
+the implementation did the opposite of its own spec.
+
+**This is not a Decision 6 change** — the clause was always correct; the code simply didn't
+implement it for this one entry point. `[snapshot]` tier, no Decision clause changes tier or
+substance, matching this ADR's 2026-09-05 Amendment's own stated practice of "recording every
+operationally-significant build/deploy mechanism change" even where nothing above `[snapshot]`
+tier is at stake.
+
+**Consequence beyond git-history noise:** `resolve-build-skip-plan.js` (the 2026-09-05 Amendment
+above) already skips rebuilding an app whose version tag is already published and whose tracked
+build inputs are byte-for-byte unchanged. A spurious version bump defeats that mechanism outright —
+a newly bumped, not-yet-published tag always falls to the "build normally" outcome, so every
+force-bumped-but-unchanged app was rebuilt and republished to GHCR on every promotion, burning CI
+minutes and registry storage for zero content change. Fixing the floor's scope is what actually lets
+the existing skip mechanism engage for a promotion; no workflow change was needed.
+
+**Resolution:** `runFloor()` now reuses `detectChangedApps()` — the same function `runCheck()`
+already uses — computing the changed-file diff between the given refs and evaluating the floor only
+for apps with `changed: true`. `file:` fan-out (a `packages/web-core` change still bumping every
+frontend that depends on it) is preserved exactly as-is, since `detectChangedApps()` is the single
+source of truth for that already. An app with zero changed files is now reported in a new,
+informational `unchanged` bucket rather than `belowFloor`. A diff that can't be computed (an
+unresolvable ref, shallow history) surfaces its own `diffError` and fails the check rather than
+silently reading as "nothing changed."
+
+Full detail: `scripts/check-app-version-bump.js`'s `runFloor()`, `printFloorResult()`; its test
+file's `--floor` section (regression coverage for the single-app case and for `file:` fan-out
+staying intact); issue #1740.
+
 ## Alternatives considered
 
 - **Build each frontend once and inject environment config at container start**, so one digest
