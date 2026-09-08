@@ -35,4 +35,20 @@ describe('POS edit-item image save flow', () => {
     expect(workspace).toContain('<SelectedItemImageCarousel');
     expect(workspace).toContain('multiple');
   });
+
+  it('supports image drops in Edit Item without allowing browser navigation', () => {
+    const workspace = fs.readFileSync(workspacePath, 'utf8');
+    const dropStart = workspace.indexOf('const handleEditImageDrop = async (event) => {');
+    const dropEnd = workspace.indexOf('const handleRemoveSelectedEditImageFile', dropStart);
+    const dropHandler = workspace.slice(dropStart, dropEnd);
+
+    expect(workspace).toContain('data-testid="pos-edit-item-image-drop-zone"');
+    expect(workspace).toContain('onDrop={handleEditImageDrop}');
+    expect(workspace).toContain('const [isEditImageDragActive, setIsEditImageDragActive] = useState(false);');
+    expect(workspace).toContain('Drag item images here or choose files');
+    expect(dropHandler).toContain('event.preventDefault();');
+    expect(dropHandler).toContain('event.stopPropagation();');
+    expect(dropHandler).toContain('handleSelectEditImageFile(imageFiles);');
+    expect(dropHandler).toContain("event.dataTransfer?.getData('text/uri-list')");
+  });
 });

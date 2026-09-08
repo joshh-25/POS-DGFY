@@ -2168,6 +2168,7 @@ function ItemsWorkspace({
   const [editingItemId, setEditingItemId] = useState(null);
   const [persistingEditAssets, setPersistingEditAssets] = useState(false);
   const [selectedEditImageFiles, setSelectedEditImageFiles] = useState([]);
+  const [isEditImageDragActive, setIsEditImageDragActive] = useState(false);
   const [deferredEditImageFiles, setDeferredEditImageFiles] = useState([]);
   const [selectedEditPrimaryFile, setSelectedEditPrimaryFile] = useState(null);
   const [editImageUploadJob, setEditImageUploadJob] = useState(null);
@@ -2686,6 +2687,7 @@ function ItemsWorkspace({
     });
     setEditCategoryInput(String(item?.folder?.name || item?.product_folder || ''));
     setSelectedEditImageFiles([]);
+    setIsEditImageDragActive(false);
     setDeferredEditImageFiles([]);
     setSelectedEditPrimaryFile(null);
     setEditImageUploadJob(null);
@@ -2700,6 +2702,7 @@ function ItemsWorkspace({
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setSelectedEditImageFiles([]);
+    setIsEditImageDragActive(false);
     setDeferredEditImageFiles([]);
     setSelectedEditPrimaryFile(null);
     setEditImageUploadJob(null);
@@ -3042,6 +3045,44 @@ function ItemsWorkspace({
     setSelectedEditPrimaryFile(null);
     if (existingGalleryCount >= STOREFRONT_ITEM_IMAGE_MAX_COUNT) {
       toast.info('Preview shown. Remove existing images to make room; upload will continue automatically.');
+    }
+  };
+
+  const handleEditImageDrop = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsEditImageDragActive(false);
+    if (savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh) return;
+
+    const droppedFiles = Array.from(event.dataTransfer?.files || []);
+    const imageFiles = droppedFiles.filter((file) => file.type?.startsWith('image/'));
+    if (droppedFiles.length > imageFiles.length) {
+      toast.error('Only image files can be added as item images.');
+    }
+    if (imageFiles.length > 0) {
+      handleSelectEditImageFile(imageFiles);
+      return;
+    }
+
+    const droppedUrl = String(event.dataTransfer?.getData('text/uri-list') || '')
+      .split(/\r?\n/)
+      .find((value) => value && !value.startsWith('#'));
+    if (!droppedUrl || !/^https?:\/\//i.test(droppedUrl)) {
+      toast.error('Drag the saved image from File Explorer into this box.');
+      return;
+    }
+
+    try {
+      const response = await fetch(droppedUrl);
+      if (!response.ok) throw new Error(`Image request failed with ${response.status}`);
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('Dropped URL is not an image');
+      const urlName = new URL(droppedUrl).pathname.split('/').pop() || 'dragged-item-image';
+      const extension = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+      const filename = urlName.includes('.') ? urlName : `${urlName}.${extension}`;
+      handleSelectEditImageFile([new File([blob], filename, { type: blob.type })]);
+    } catch {
+      toast.error('Chrome blocked access to that image. Save it first, then drag it from File Explorer.');
     }
   };
 
@@ -4505,6 +4546,8 @@ function ItemsWorkspace({
           aria-modal="true"
           aria-labelledby="pos-items-edit-modal-title"
           onClick={closeEdit}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => event.preventDefault()}
         >
           <div
             className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
@@ -4627,10 +4670,26 @@ function ItemsWorkspace({
                         <div className="space-y-3">
                           <label
                             htmlFor="pos-item-edit-image"
-                            className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/10 p-4 text-center transition-colors hover:bg-blue-50/20 ${(savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh) ? 'cursor-not-allowed opacity-50' : ''}`}
+                            data-testid="pos-edit-item-image-drop-zone"
+                            className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-4 text-center transition-colors ${(isEditImageDragActive ? 'border-blue-500 bg-blue-100/70 ring-2 ring-blue-200' : 'border-blue-200 bg-blue-50/10 hover:bg-blue-50/20')} ${(savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh) ? 'cursor-not-allowed opacity-50' : ''}`}
+                            onDragEnter={(event) => {
+                              event.preventDefault();
+                              setIsEditImageDragActive(true);
+                            }}
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              event.dataTransfer.dropEffect = 'copy';
+                              setIsEditImageDragActive(true);
+                            }}
+                            onDragLeave={(event) => {
+                              if (!event.currentTarget.contains(event.relatedTarget)) {
+                                setIsEditImageDragActive(false);
+                              }
+                            }}
+                            onDrop={handleEditImageDrop}
                           >
                             <Upload className="mx-auto h-9 w-9 text-blue-500" aria-hidden="true" />
-                            <p className="mt-2.5 text-xs sm:text-sm font-semibold text-[#0F172A]">Add item images</p>
+                            <p className="mt-2.5 text-xs sm:text-sm font-semibold text-[#0F172A]">Drag item images here or choose files</p>
                             <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (large files optimized by server, up to 5 total)</p>
                             <p className="mt-2 text-[10px] leading-normal text-[#94A3B8]">
                               The preview appears immediately. The optimized image is saved automatically and then replaces the preview.
