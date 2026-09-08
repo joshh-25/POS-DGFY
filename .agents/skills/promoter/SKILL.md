@@ -94,8 +94,11 @@ warning's mere presence.
 #1548 Wave 4).** Shipping to staging is, by definition, at least a minor bump per app that actually
 changed between `staging` and the candidate: `node scripts/check-app-version-bump.js --floor --base
 origin/staging --head origin/develop` — reuse this script's own floor logic, don't reimplement it.
-Every app it lists as below floor needs one `chore(release): bump <apps> to X.(Y+1).0 for candidate
-<id>` PR opened and merged into `develop` *before* `to-staging/<candidate_id>` is cut, since a
+**The reported list is scoped to apps that actually changed between the two refs (#1740, fixed
+2026-09-07)** — an unchanged app is reported informationally as skipped, never as below floor,
+so don't second-guess the list by bumping an app it didn't name. Every app it lists as below floor
+needs one `chore(release): bump <apps> to X.(Y+1).0 for candidate <id>` PR opened and merged into
+`develop` *before* `to-staging/<candidate_id>` is cut, since a
 promotion branch carries no commits of its own — the bump has to already be on `develop` by cut
 time. That PR is an ordinary `develop`-base PR, no new merge authority needed (`pr-reviewer`'s
 existing unattended-merge policy on `develop` already covers it, per this repo's role-handoff

@@ -384,8 +384,15 @@ test('main <- ad-hoc hotfix head: a minor bump fails patch-only', () => {
 });
 
 // --- --floor mode ------------------------------------------------------------
+//
+// #1740: runFloor() used to iterate the full APPS list unconditionally, with no change
+// detection at all -- flagging (and forcing a bump on) an app whose version simply hadn't
+// moved because nothing in it changed. Every scenario below now gives an app real changed
+// files (source or package.json under apps/<app>/, or a fan-out package) whenever it's
+// expected to be in scope; an app with zero changed files must never appear in `belowFloor`
+// or `invalid`, only in `unchanged`.
 
-test('--floor lists exactly the apps below floor with the right X.(Y+1).0 target', () => {
+test('--floor: only apps with real changed files are evaluated; the rest land in `unchanged`', () => {
     const root = makeGitRepo();
     writeFiles(root, baseFixture({
         'dgfy-api': '1.2.0',
@@ -397,25 +404,35 @@ test('--floor lists exactly the apps below floor with the right X.(Y+1).0 target
     const baseGitRef = commitAll(root, 'staging snapshot');
 
     writeFiles(root, {
-        // patch-only bump -- below floor, target 1.3.0
+        // patch-only bump, package.json changed directly -- below floor, target 1.3.0
         'apps/dgfy-api/package.json': pkgJson('1.2.5', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
-        // minor bump -- meets floor
+        // minor bump, package.json changed directly -- meets floor
         'apps/dgfy-migration-runner/package.json': pkgJson('1.1.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
-        // unchanged -- below floor, target 2.1.0
-        // (dgfy-ims package.json intentionally left untouched)
-        // minor + extra patch bump -- meets floor
+        // version untouched, but a real source file changed -- still in scope (direct),
+        // below floor, target 2.1.0. This is the #1740 case: version hasn't moved, but
+        // unlike the old buggy behavior, it's flagged because it DID change, not by default.
+        'apps/dgfy-ims/src/index.js': 'module.exports = { touched: true };\n',
+        // minor + extra patch bump, package.json changed directly -- meets floor
         'apps/dgfy-pos/package.json': pkgJson('1.5.2', {
             '@sieitzz/pos-receipt': 'file:../../packages/pos-receipt',
             '@sieitzz/shared-constants': 'file:../../packages/shared-constants',
             '@sieitzz/web-core': 'file:../../packages/web-core',
         }),
-        // unchanged -- below floor, target 1.4.0
-        // (dgfy-storefront package.json intentionally left untouched)
+        // version untouched, but a real source file changed -- in scope (direct), below
+        // floor, target 1.4.0.
+        'apps/dgfy-storefront/src/index.js': 'module.exports = { touched: true };\n',
+        // dgfy-migration-runner's own src/index.js is untouched -- no second change needed,
+        // its package.json change alone already puts it in scope.
     });
     const headGitRef = commitAll(root, 'develop snapshot');
 
     try {
         const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        assert.equal(result.diffError, null);
+
+        // Every app changed in this scenario -- nothing lands in `unchanged`.
+        assert.deepEqual(result.unchanged, []);
+
         const belowFloorApps = result.belowFloor.map((entry) => entry.app).sort();
         assert.deepEqual(belowFloorApps, ['dgfy-api', 'dgfy-ims', 'dgfy-storefront']);
 
@@ -426,6 +443,106 @@ test('--floor lists exactly the apps below floor with the right X.(Y+1).0 target
 
         const meetsFloorApps = result.results.filter((entry) => !entry.belowFloor).map((entry) => entry.app).sort();
         assert.deepEqual(meetsFloorApps, ['dgfy-migration-runner', 'dgfy-pos']);
+
+        // Every in-scope entry's reason is 'direct' -- none of these came from a fan-out
+        // package in this scenario.
+        for (const entry of result.results) {
+            assert.equal(entry.reason, 'direct');
+        }
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+// The #1740 regression itself: a candidate where exactly one app (dgfy-storefront) has a
+// real code change and the other four have none. Before the fix, all five were flagged
+// below floor regardless; after the fix, only dgfy-storefront is evaluated, and the other
+// four are reported as unchanged with no floor obligation.
+test('--floor (#1740 regression): a single-app change bumps only that app, not all five', () => {
+    const { root, baseGitRef, headGitRef } = setupScenario({
+        baseVersions: {
+            'dgfy-api': '1.2.0',
+            'dgfy-migration-runner': '1.0.0',
+            'dgfy-ims': '2.0.0',
+            'dgfy-pos': '1.4.0',
+            'dgfy-storefront': '1.3.0',
+        },
+        headFiles: {
+            // storefront's version does not move -- it should still land in belowFloor
+            // because it's the one app with a real code change (PR #1738's own shape: two
+            // files changed, version left as-is until the floor step catches it).
+            'apps/dgfy-storefront/src/index.js': 'module.exports = { fixed: true };\n',
+        },
+    });
+    try {
+        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        assert.equal(result.diffError, null);
+
+        assert.deepEqual(result.belowFloor.map((entry) => entry.app), ['dgfy-storefront']);
+        assert.equal(result.belowFloor[0].floorTarget, '1.4.0');
+        assert.equal(result.belowFloor[0].reason, 'direct');
+
+        assert.equal(result.invalid.length, 0);
+        assert.deepEqual(
+            result.unchanged.slice().sort(),
+            ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-pos'],
+        );
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+// `file:` fan-out is preserved exactly as detectChangedApps() already computes it -- a
+// packages/web-core change must still put every app that depends on it (ims/pos/storefront
+// per baseFixture()'s own dependency shape) in scope, while dgfy-api/dgfy-migration-runner
+// (which don't depend on web-core) land in `unchanged`.
+test('--floor: a packages/web-core change fans out to ims/pos/storefront only', () => {
+    const { root, baseGitRef, headGitRef } = setupScenario({
+        baseVersions: {
+            'dgfy-ims': '1.2.0',
+            'dgfy-pos': '1.2.0',
+            'dgfy-storefront': '1.2.0',
+        },
+        headFiles: {
+            'packages/web-core/index.js': 'module.exports = { changed: true };\n',
+        },
+    });
+    try {
+        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        assert.equal(result.diffError, null);
+
+        const inScope = result.results.map((entry) => entry.app).sort();
+        assert.deepEqual(inScope, ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']);
+        for (const entry of result.results) {
+            assert.equal(entry.reason, 'fan-out:packages/web-core');
+            assert.equal(entry.belowFloor, true);
+        }
+
+        assert.deepEqual(result.unchanged.sort(), ['dgfy-api', 'dgfy-migration-runner']);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+// A packages/shared-constants change fans out to all five apps (mirrors the equivalent
+// runCheck() test above) -- confirms runFloor() reaches the same fan-out breadth, not a
+// narrower one.
+test('--floor: a packages/shared-constants change fans out to all five apps', () => {
+    const { root, baseGitRef, headGitRef } = setupScenario({
+        headFiles: {
+            'packages/shared-constants/index.js': 'module.exports = { changed: true };\n',
+        },
+    });
+    try {
+        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        assert.equal(result.diffError, null);
+
+        const inScope = result.results.map((entry) => entry.app).sort();
+        assert.deepEqual(inScope, ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-pos', 'dgfy-storefront']);
+        assert.deepEqual(result.unchanged, []);
+        for (const entry of result.results) {
+            assert.equal(entry.reason, 'fan-out:packages/shared-constants');
+        }
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
@@ -434,6 +551,7 @@ test('--floor lists exactly the apps below floor with the right X.(Y+1).0 target
 // PR #1562 review RF-2: an unparseable/missing version used to report belowFloor: false
 // and be invisible to a caller that only checked belowFloor.length -- the floor for that
 // app was never actually established, but the caller could treat the run as a clean pass.
+// dgfy-api's package.json changes directly here, so it stays in scope under #1740's fix.
 test('--floor: an unparseable version is surfaced as invalid, never silently treated as floor-met', () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
@@ -473,6 +591,51 @@ test('--floor: a missing version (no package.json at one ref) is also surfaced a
         const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
         assert.ok(result.invalid.some((entry) => entry.app === 'dgfy-api'));
         assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-api'), false);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+// #1740: an app that did NOT change is never evaluated, even if its version happens to be
+// unparseable at both refs -- an unchanged app has no floor obligation, so its unparseable
+// version must not surface as `invalid` (that bucket is reserved for in-scope apps only).
+test('--floor: an app with an unparseable version but no changed files is skipped, not flagged', () => {
+    const root = makeGitRepo();
+    // dgfy-storefront starts (and stays) on an unparseable version -- never touched at head.
+    writeFiles(root, baseFixture({ 'dgfy-storefront': 'not-a-version' }));
+    const baseGitRef = commitAll(root, 'base with a pre-existing unparseable storefront version');
+
+    // Only dgfy-api changes at head; dgfy-storefront is left entirely alone.
+    writeFiles(root, {
+        'apps/dgfy-api/package.json': pkgJson('1.1.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+    });
+    const headGitRef = commitAll(root, 'head');
+
+    try {
+        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        assert.deepEqual(result.results.map((entry) => entry.app), ['dgfy-api']);
+        assert.equal(result.invalid.some((entry) => entry.app === 'dgfy-storefront'), false);
+        assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-storefront'), false);
+        assert.ok(result.unchanged.includes('dgfy-storefront'));
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+// A broken diff (unresolvable ref) must never silently read as "zero files changed" --
+// that would degrade to a false "floor clear" on exactly the gate a promotion depends on.
+test('--floor: a diff that cannot be computed surfaces diffError, never a silent pass', () => {
+    const root = makeGitRepo();
+    writeFiles(root, baseFixture());
+    const headGitRef = commitAll(root, 'only commit');
+
+    try {
+        const result = runFloor({ repoRoot: root, baseGitRef: 'not-a-real-ref', headGitRef });
+        assert.ok(result.diffError);
+        assert.deepEqual(result.results, []);
+        assert.deepEqual(result.belowFloor, []);
+        assert.deepEqual(result.invalid, []);
+        assert.deepEqual(result.unchanged, []);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
