@@ -30,9 +30,14 @@
  *   node scripts/check-app-version-bump.js --floor --base <ref> --head <ref>
  *     Standalone minor-floor report, outside any PR context -- e.g.
  *     `--base origin/staging --head origin/develop` before cutting
- *     to-staging/<candidate_id>. Lists every app below floor with its current
- *     (head) version and the minimum acceptable one (X.(Y+1).0). Exits non-zero
- *     iff at least one app is below floor.
+ *     to-staging/<candidate_id>. Scoped to apps that actually changed between the two
+ *     refs (#1740 -- reuses detectChangedApps(), same scope runCheck() uses; an
+ *     unchanged app is never listed as below floor, per ADR 0081 Decision 6's own
+ *     "apps with no changes keep their version untouched"). Lists every in-scope app
+ *     below floor with its current (head) version and the minimum acceptable one
+ *     (X.(Y+1).0). Exits non-zero iff at least one in-scope app is below floor, an
+ *     in-scope app's version couldn't be parsed, or the changed-file diff itself
+ *     couldn't be computed.
  */
 
 const { execSync } = require('child_process');
@@ -422,13 +427,48 @@ function runCheck(options = {}) {
 }
 
 /**
- * Standalone --floor mode: for every app (regardless of "changed" status -- there is
- * no PR diff in this mode), is headGitRef's version at least a minor above
- * baseGitRef's? Used by the promoter ahead of cutting to-staging/<candidate_id>.
+ * Standalone --floor mode: for every app whose files changed between baseGitRef and
+ * headGitRef -- directly under apps/<app>/, or via a changed `file:` dependency
+ * package, the same scope detectChangedApps() gives runCheck() -- is headGitRef's
+ * version at least a minor above baseGitRef's? Used by the promoter ahead of cutting
+ * to-staging/<candidate_id>.
+ *
+ * #1740: this used to iterate the full, hardcoded APPS list unconditionally, with no
+ * change detection at all -- flagging (and forcing a bump on) an app whose version
+ * simply hadn't moved because nothing in it changed, the exact case ADR 0081
+ * Decision 6 says to skip ("Apps with no changes keep their version untouched"). Now
+ * reuses detectChangedApps() -- the same function runCheck() already uses -- so an
+ * app is only ever evaluated against the floor when it's actually in scope for this
+ * promotion; `file:` fan-out (e.g. a packages/web-core change bumping every frontend
+ * that depends on it) is preserved exactly as-is, since detectChangedApps() is the
+ * single source of truth for that already.
+ *
+ * `changedFiles` may be supplied directly (tests); by default this diffs
+ * baseGitRef...headGitRef the same three-dot merge-base way runCheck() does. A
+ * failure computing that diff (unresolvable ref, shallow history, etc.) must never
+ * silently read as "zero files changed" -- that would degrade to a false "floor
+ * clear" on exactly the gate a promotion depends on -- so it's surfaced as its own
+ * `diffError` instead of an empty change set.
  */
-function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef }) {
-    const results = APPS.map((app) => {
-        const appDir = `apps/${app}`;
+function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedFiles: changedFilesOverride }) {
+    let changedFiles;
+    let diffError = null;
+    if (changedFilesOverride !== undefined) {
+        changedFiles = changedFilesOverride;
+    } else {
+        try {
+            changedFiles = splitLines(runCommand(`git diff --name-only ${baseGitRef}...${headGitRef}`, { cwd: repoRoot }));
+        } catch (error) {
+            changedFiles = [];
+            diffError = error.message || String(error);
+        }
+    }
+
+    const changedApps = diffError
+        ? []
+        : detectChangedApps(repoRoot, headGitRef, changedFiles).filter((entry) => entry.changed);
+
+    const results = changedApps.map(({ app, appDir, reason }) => {
         const baseVersionRaw = readVersionAt(repoRoot, baseGitRef, appDir);
         const headVersionRaw = readVersionAt(repoRoot, headGitRef, appDir);
         const base = parseVersion(baseVersionRaw);
@@ -436,7 +476,7 @@ function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef }) {
 
         if (!base || !head) {
             return {
-                app, appDir, baseVersion: baseVersionRaw, headVersion: headVersionRaw,
+                app, appDir, reason, baseVersion: baseVersionRaw, headVersion: headVersionRaw,
                 floorTarget: null, belowFloor: false, unparseable: true,
             };
         }
@@ -445,7 +485,7 @@ function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef }) {
         const meetsFloor = head.major > base.major || (head.major === base.major && head.minor > base.minor);
 
         return {
-            app, appDir, baseVersion: baseVersionRaw, headVersion: headVersionRaw,
+            app, appDir, reason, baseVersion: baseVersionRaw, headVersion: headVersionRaw,
             floorTarget, belowFloor: !meetsFloor, unparseable: false,
         };
     });
@@ -456,11 +496,18 @@ function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef }) {
     // established, but the command still exited 0 as if it had been. `invalid` is a
     // distinct collection so a caller (main() below, or the promoter script this is
     // built for) can treat "couldn't establish the floor" as its own failure, not a
-    // silent skip folded into a false "floor met".
+    // silent skip folded into a false "floor met". Scoped to in-scope (changed) apps
+    // only, same as `results` above (#1740) -- an unchanged app has no floor
+    // obligation, so an unparseable version there is not a failure.
     return {
         results,
         belowFloor: results.filter((entry) => entry.belowFloor),
         invalid: results.filter((entry) => entry.unparseable),
+        // #1740: apps skipped because nothing in them changed -- informational only,
+        // never gates the exit code.
+        unchanged: diffError ? [] : APPS.filter((app) => !changedApps.some((entry) => entry.app === app)),
+        changedFiles,
+        diffError,
     };
 }
 
@@ -488,8 +535,27 @@ function printCheckResult(result) {
 }
 
 function printFloorResult(result) {
+    // #1740: a broken diff must read as a failure, never as a silent "nothing changed"
+    // pass -- printed and returned before any of the (now-empty) scoping output below.
+    if (result.diffError) {
+        console.error(`[check:app-versions --floor] Could not compute the changed-file diff between the given refs -- treat as FAILED, not a clean floor pass: ${result.diffError}`);
+        return;
+    }
+
+    // #1740: report scope before verdict, so a promoter reading this output can see
+    // *why* an app is or isn't being evaluated, not just the pass/fail outcome.
+    if (result.results.length === 0) {
+        console.log('[check:app-versions --floor] No apps changed between the given refs -- nothing to bump.');
+    } else {
+        const scoped = result.results.map((entry) => `${entry.app} (${entry.reason})`).join(', ');
+        console.log(`[check:app-versions --floor] Apps in scope (changed between the given refs): ${scoped}`);
+    }
+    if (result.unchanged.length > 0) {
+        console.log(`[check:app-versions --floor] Apps skipped (unchanged -- no floor obligation): ${result.unchanged.join(', ')}`);
+    }
+
     if (result.belowFloor.length === 0 && result.invalid.length === 0) {
-        console.log('[check:app-versions --floor] All apps at or above the minor floor.');
+        console.log('[check:app-versions --floor] All changed apps are at or above the minor floor.');
         return;
     }
 
@@ -528,7 +594,7 @@ async function main() {
 
         const result = runFloor({ repoRoot: REPO_ROOT, baseGitRef, headGitRef });
         printFloorResult(result);
-        process.exitCode = (result.belowFloor.length > 0 || result.invalid.length > 0) ? 1 : 0;
+        process.exitCode = (result.diffError || result.belowFloor.length > 0 || result.invalid.length > 0) ? 1 : 0;
         return;
     }
 
