@@ -86,6 +86,10 @@ The core design constraint (#368, verbatim checklist):
 - **Rate limit: cap of 3 filed issues per run.** Anything past the cap is recorded in the summary as
   "additional candidates, not filed this run" — never silently dropped, never filed past the cap
   either.
+- **IMS findings are lower filing priority.** Per `AGENTS.md`'s "Engineering-investment priority"
+  note (#1739), when candidates compete for the cap, prefer filing a POS/Storefront-affecting root
+  cause over an IMS-only one, absent an explicit reason (e.g. a security or merchant-blocking
+  defect) — see `AGENTS.md`, not restated here.
 
 There is no existing "dedupe against the open-issue backlog" tool in this codebase — that part is
 genuinely new work this role does by hand each run (`gh issue list --search`), it isn't inherited
