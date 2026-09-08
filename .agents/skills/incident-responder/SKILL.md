@@ -109,6 +109,34 @@ origin/develop` / `sed` against `docs/releases/notes/$CANDIDATE_ID.md` before th
 fails outright — the file isn't on `develop` yet. Step 5 folds finalization into itself instead: see
 its own worked commands below.
 
+**Compliance-preflight reconciliation obligation, applies to both entry points above (#1700,
+2026-09-08).** If the hotfix diff touches a `docs/compliance/impact-declarations/*.md` file that
+still carries a `NOT-EXECUTED-*` `preflight_request_ref` at commit time — whether newly authored by
+this fix or a pre-existing declaration the fix's changed surfaces now require — `implement`'s hotfix
+PR reconciles it locally, in the same commit, before opening the PR:
+
+```bash
+npm run compliance:reconcile-local -- docs/compliance/impact-declarations/<file>.md
+git add docs/compliance/impact-declarations/<file>.md
+```
+
+This is the sanctioned path for *any* branch the continuous `develop`-push sweep doesn't cover —
+`staging`/`release/*` fixes already use it (`.agents/skills/implement/SKILL.md`'s Workflow step 3);
+a `main`-based hotfix branch is the same case, structurally, and no other documented, tested path
+exists for it (#1700). Requires Docker and both `apps/dgfy-migration-runner`/`apps/dgfy-api`
+already `npm install`-ed — see the tool's own header for the full precondition list and
+`docs/compliance/request-time-preflight-protocol.md`'s "Reconciling one declaration locally" section
+for the full mechanism. **This is never optional and is not something #1007-style authorization can
+waive for this path** — see this file's own "The `main` incident override" section: that override
+covers *skipping the deep manual review pass*, not compliance evidence. A hotfix PR into `main`
+that still carries a `NOT-EXECUTED-*` ref after this step is a `pr-reviewer` blocker, full stop
+(`.agents/skills/pr-reviewer/SKILL.md`'s Compliance section, updated alongside this).
+
+If the tool reports a real `breach`/`review_required` result (not merely "not yet run"), that's a
+genuine policy finding, not a tooling gap — stop and escalate the same as any other compliance
+failure this loop would encounter, per gap 1 in "What this role cannot do yet" below if the finding
+implies a DB-shaped remediation, or to Pat directly otherwise.
+
 ## Manual entry point — `/hotfix`
 
 Added 2026-08-22 (#861). The loop above starts from an automated monitor signal
@@ -205,7 +233,10 @@ applies identically here, unchanged and unweakened.
 Not "skip review" — keep every scripted gate (`npm run check:compliance`,
 `npm run check:architecture`, `npm run lint:docs` — these run in seconds, they were never the
 bottleneck) and still post one `## Review` comment per `pr-reviewer`'s fixed format. What's dropped
-is the deep manual diff-reading pass a full review does. "Quick" never means "skip the automated
+is the deep manual diff-reading pass a full review does. This override narrows what `pr-reviewer`'s
+review depth needs to be before a hotfix merges into `main` — it does not touch the
+compliance-preflight reconciliation obligation above, which is a different control with its own,
+separate resolution path and no override. "Quick" never means "skip the automated
 gates too."
 
 ## The `main` incident override — narrow, and superseding #543's earlier "no exception"
