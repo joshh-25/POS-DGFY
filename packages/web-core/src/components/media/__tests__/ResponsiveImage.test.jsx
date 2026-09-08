@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 
 import { ResponsiveImage } from '../ResponsiveImage.jsx';
 
@@ -52,5 +52,36 @@ describe('ResponsiveImage', () => {
     expect(sources).toHaveLength(2);
     expect(sources[0].getAttribute('type')).toBe('image/avif');
     expect(sources[1].getAttribute('type')).toBe('image/webp');
+  });
+
+  it('removes failed responsive sources through React during image fallback', () => {
+    const { container, rerender, unmount } = render(
+      <ResponsiveImage
+        sources={{
+          src: 'https://cdn.example.test/thumb.jpg',
+          avifSrcSet: 'https://cdn.example.test/thumb.avif 400w',
+          webpSrcSet: 'https://cdn.example.test/thumb.webp 400w'
+        }}
+      />
+    );
+
+    const image = container.querySelector('img');
+    expect(container.querySelectorAll('source')).toHaveLength(2);
+    fireEvent.error(image);
+    expect(container.querySelectorAll('source')).toHaveLength(0);
+
+    // The failed image can be replaced or unmounted without React trying to
+    // remove DOM nodes that an event handler removed imperatively.
+    rerender(
+      <ResponsiveImage
+        sources={{
+          src: 'https://cdn.example.test/replacement.jpg',
+          avifSrcSet: 'https://cdn.example.test/replacement.avif 400w',
+          webpSrcSet: 'https://cdn.example.test/replacement.webp 400w'
+        }}
+      />
+    );
+    expect(container.querySelectorAll('source')).toHaveLength(2);
+    expect(() => unmount()).not.toThrow();
   });
 });

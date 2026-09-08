@@ -297,11 +297,26 @@ Shipping to staging is, by definition, at least a minor change per app that actu
 node scripts/check-app-version-bump.js --floor --base origin/staging --head origin/develop
 ```
 
-Exit 0 (`All apps at or above the minor floor.`) → proceed straight to the branch cut below. A
-non-zero exit lists every app below floor with its current (head) version and the minimum
-acceptable one (`X.(Y+1).0`) — open and merge one ordinary `develop`-base PR for the bump before
-cutting anything, per `implement`'s own workflow (this is not a promotion-branch PR, no new merge
-authority needed, `pr-reviewer`'s existing unattended-merge policy on `develop` already covers it).
+**Scoped to changed apps only (#1740, fixed 2026-09-07)** — the report evaluates the floor exclusively
+for apps whose files changed between the two refs (direct `apps/<app>/` changes, or a changed
+`file:`-dependency package the app lists), the same `detectChangedApps()` scope `check:app-versions`
+itself uses at PR time. An app with no changes prints in an informational "Apps skipped (unchanged —
+no floor obligation)" line and is never treated as below floor. Cross-check the reported scope against
+the raw diff if anything looks off:
+
+```bash
+git diff --name-only origin/staging...origin/develop | cut -d/ -f1-2 | sort -u
+```
+
+Exit 0 (`All changed apps are at or above the minor floor.`) → proceed straight to the branch cut
+below — this includes the legitimate case where **zero** apps changed and there is nothing to bump;
+the "Release note" step right below still runs (its own "note-only branch/PR if no app was below
+floor" path already covers this). A non-zero exit lists every in-scope app below floor with its
+current (head) version and the minimum acceptable one (`X.(Y+1).0`) — open and merge one ordinary
+`develop`-base PR for the bump before cutting anything, per `implement`'s own workflow (this is not a
+promotion-branch PR, no new merge authority needed, `pr-reviewer`'s existing unattended-merge policy
+on `develop` already covers it). **Only bump the apps the floor check actually listed** — do not bump
+every app "to be safe"; that recreates the exact spurious-version-bump waste #1740 fixed.
 **Same clean-tree safeguard as the branch cuts elsewhere in this runbook (RF-4, PR #1590 review):**
 `git switch -c` carries a dirty working tree's uncommitted changes onto the new branch just as
 readily here as it does for `to-staging/<candidate_id>`/`release/<label>` — a clean `git status`

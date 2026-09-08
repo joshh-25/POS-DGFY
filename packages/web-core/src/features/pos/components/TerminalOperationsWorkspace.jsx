@@ -105,11 +105,15 @@ import {
 import { persistPosItemBarcode } from '../utils/posItemBarcodePersistence.js';
 import { useItemImageGenerationPoll } from '../hooks/useItemImageGenerationPoll.js';
 import {
+  bindPendingPosItemImagePreviewJob,
+  markPendingPosItemImagePreviewFailed,
+  stagePendingPosItemImagePreview
+} from '../services/posPendingItemImagePreviewStore.js';
+import {
   updateStorefrontCatalogOverride,
   importExternalStorefrontCatalogImage,
   queueStorefrontCatalogImage,
   queueStorefrontCatalogImages,
-  getStorefrontCatalogImageUploadStatus,
   updateStorefrontCatalogGallery,
   deleteStorefrontCatalogImage,
   generateStorefrontCatalogImage
@@ -289,16 +293,6 @@ const money = (value) => Number(value || 0).toFixed(2);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
-
-// RF-2 (PR #1656 review, #1410): the create-item modal disables its own close button while
-// postCreateSaving is true, so a stuck background upload job locks the operator out of the
-// modal for the full poll duration -- unlike handleGenerateEditImage's edit-modal path, which
-// stays dismissible throughout its own poll. Reusing useItemImageGenerationPoll's full
-// ITEM_IMAGE_POLL_TIMEOUT_MS (90s) here would mean a genuinely stuck job locks the modal that
-// long; bound it to a much shorter ceiling instead -- the common/fast case still resolves in a
-// couple of seconds well under this, and a timeout here degrades to today's pre-fix behavior
-// (soft warning, pos.catalog.changed SSE backstop), not a hard failure.
-const CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS = 15 * 1000;
 
 const resolveStoredItemImageUrl = (urlOrPath) => {
   const raw = String(urlOrPath || '').trim();
@@ -2184,15 +2178,6 @@ function ItemsWorkspace({
   const [generatingEditImage, setGeneratingEditImage] = useState(false);
   const [pollingEditImage, setPollingEditImage] = useState(false);
   const { pollItemImageGeneration, cancel: cancelImageGenerationPoll } = useItemImageGenerationPoll();
-  // Same generic poll-until-terminal-status hook as above, just pointed at the
-  // catalog-image-upload-status endpoint instead of the AI-generation one --
-  // used by runPostCreateStages below to wait out the async image upload
-  // worker (catalogImageUploadWorker.js) before the post-create item refetch.
-  // A shorter timeout than the hook's 90s default (see
-  // CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS above) -- this poll runs while
-  // the create-item modal is locked, unlike the AI-generation path this hook
-  // was originally built for.
-  const { pollItemImageGeneration: pollCatalogImageUploadStatus } = useItemImageGenerationPoll(getStorefrontCatalogImageUploadStatus, CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS);
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
@@ -2239,6 +2224,7 @@ function ItemsWorkspace({
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
+  const [isCreateImageDragActive, setIsCreateImageDragActive] = useState(false);
   const [manualBarcode, setManualBarcode] = useState('');
   const [externalBarcode, setExternalBarcode] = useState('');
   const [externalLookupLoading, setExternalLookupLoading] = useState(false);
@@ -2740,6 +2726,7 @@ function ItemsWorkspace({
     setCreateForm(createEmptyPosItemForm());
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
+    setIsCreateImageDragActive(false);
     setManualBarcode('');
     setExternalBarcode('');
     setExternalLookupLoading(false);
@@ -2757,6 +2744,7 @@ function ItemsWorkspace({
     setCreateForm(createEmptyPosItemForm());
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
+    setIsCreateImageDragActive(false);
     setManualBarcode('');
     setExternalBarcode('');
     setExternalLookupLoading(false);
@@ -2916,6 +2904,44 @@ function ItemsWorkspace({
 
   const removeSelectedCreateImageFile = (imageIndex) => {
     setSelectedImageFiles((current) => current.filter((_, index) => index !== imageIndex));
+  };
+
+  const handleCreateImageDrop = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsCreateImageDragActive(false);
+    if (creatingItem || postCreateSaving) return;
+
+    const droppedFiles = Array.from(event.dataTransfer?.files || []);
+    const imageFiles = droppedFiles.filter((file) => file.type?.startsWith('image/'));
+    if (droppedFiles.length > imageFiles.length) {
+      toast.error('Only image files can be added as item images.');
+    }
+    if (imageFiles.length > 0) {
+      handleSelectCreateImageFiles(imageFiles);
+      return;
+    }
+
+    const droppedUrl = String(event.dataTransfer?.getData('text/uri-list') || '')
+      .split(/\r?\n/)
+      .find((value) => value && !value.startsWith('#'));
+    if (!droppedUrl || !/^https?:\/\//i.test(droppedUrl)) {
+      toast.error('Drag the saved image from File Explorer into this box.');
+      return;
+    }
+
+    try {
+      const response = await fetch(droppedUrl);
+      if (!response.ok) throw new Error(`Image request failed with ${response.status}`);
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('Dropped URL is not an image');
+      const urlName = new URL(droppedUrl).pathname.split('/').pop() || 'dragged-item-image';
+      const extension = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+      const filename = urlName.includes('.') ? urlName : `${urlName}.${extension}`;
+      handleSelectCreateImageFiles([new File([blob], filename, { type: blob.type })]);
+    } catch {
+      toast.error('Chrome blocked access to that image. Save it first, then drag it from File Explorer.');
+    }
   };
 
   const handleExternalBarcodeChange = (value) => {
@@ -3131,13 +3157,16 @@ function ItemsWorkspace({
     externalProductCode = '',
     requestedBarcodeCode = '',
     posAlwaysAvailable,
-    posBestSellerMode = 'auto'
+    posBestSellerMode = 'auto',
+    retryStageKeys = null,
+    imageAttemptId = null
   }) => {
 
     const failedStages = [];
     let barcodeCode = String(requestedBarcodeCode || '').trim();
 
     const runStage = async (key, label, action) => {
+      if (retryStageKeys instanceof Set && !retryStageKeys.has(key)) return null;
       try {
         return await action();
       } catch (error) {
@@ -3145,14 +3174,17 @@ function ItemsWorkspace({
           key,
           label,
           message: getStageErrorMessage(error),
-          readinessBlocked: error?.is_pos_readiness_blocked === true
+          readinessBlocked: error?.is_pos_readiness_blocked === true,
+          missingRequirements: Array.isArray(error?.missing_requirements)
+            ? error.missing_requirements
+            : []
         });
         return null;
       }
     };
 
     if (Array.isArray(imageFiles) && imageFiles.length > 0) {
-      const queuedImageUpload = await runStage(
+      const imageUploadJob = await runStage(
         'storefront_images',
         imageFiles.length === 1 ? 'Item image upload' : 'Item image gallery upload',
         () => (imageFiles.length === 1
@@ -3160,26 +3192,17 @@ function ItemsWorkspace({
           : queueStorefrontCatalogImages(itemId, imageFiles))
       );
 
-      // The queue call above only confirms the upload was accepted (HTTP 202,
-      // {job_id, queued: true}) -- the backend worker
-      // (catalogImageUploadWorker.js) still resizes/attaches the image in the
-      // background afterwards. Without waiting here, finalizeCreatedItem's
-      // loadItems() below fires immediately after this function returns and
-      // commonly beats the worker, so the new item renders with no image
-      // until a manual refresh or a pos.catalog.changed SSE event happens to
-      // land. Mirrors handleGenerateEditImage's own
-      // `await pollItemImageGeneration(itemId)` above, just against the
-      // upload-status endpoint instead of the generation-status one -- same
-      // hook, different readStatus.
-      if (queuedImageUpload) {
-        const uploadStatus = await pollCatalogImageUploadStatus(itemId);
-        if (uploadStatus.status === 'failed') {
-          toast.warning(`Item #${itemId} was created, but its image failed to process${uploadStatus.error_message ? `: ${uploadStatus.error_message}` : '.'} Try re-uploading it from Edit Item.`);
-        } else if (uploadStatus.status === 'timeout') {
-          toast.warning(`Item #${itemId} was created — its image is still processing and will appear shortly.`);
-        }
-        // 'completed': loadItems() below will already return the image, no
-        // toast needed. 'cancelled': the workspace unmounted mid-poll.
+      // The local primary preview remains visible while the accepted job runs.
+      // Authorized catalog refreshes reconcile it with the stored image later,
+      // so item creation never waits for every gallery variant to be encoded.
+      if (imageUploadJob?.job_id) {
+        bindPendingPosItemImagePreviewJob({
+          itemId,
+          attemptId: imageAttemptId,
+          jobId: imageUploadJob.job_id
+        });
+      } else if (imageAttemptId) {
+        markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
       }
     } else if (externalProductCode) {
       await runStage(
@@ -3207,22 +3230,24 @@ function ItemsWorkspace({
         : 'auto'
     }));
     await runStage('pos_visibility', 'POS visibility', () => updatePosCatalogOverride(itemId, {
-      pos_visible: true
+      pos_visible: true,
+      location_id: operatingLocationId
     }));
 
     if (failedStages.length > 0) {
       setPendingCreateRecovery({
         itemId,
         name: itemName,
-        imageFiles,
+        imageFiles: failedStages.some((stage) => stage.key === 'storefront_images') ? imageFiles : [],
         externalProductCode,
         requestedBarcodeCode: barcodeCode,
         posAlwaysAvailable,
         posBestSellerMode,
+        imageAttemptId,
         failedStages
       });
       const labels = failedStages.map((stage) => stage.label).join(', ');
-      throw new Error(`Item #${itemId} was created, but these post-create steps still need retry: ${labels}.`);
+      throw new Error(`${itemName} was created, but setup needs attention: ${labels}. Your item was saved and will not be duplicated.`);
     }
 
     setPendingCreateRecovery(null);
@@ -3347,19 +3372,31 @@ function ItemsWorkspace({
       setPostCreateSaving(true);
       if (pendingCreateRecovery?.itemId) {
         const recoveryName = pendingCreateRecovery.name || name;
+        const recoveryItemPatch = { ...payload };
+        delete recoveryItemPatch.manufacturer_barcode;
+        delete recoveryItemPatch.internal_barcode;
+        delete recoveryItemPatch.create_category_name;
+        await updateItem(pendingCreateRecovery.itemId, recoveryItemPatch);
+        const retryStageKeys = new Set([
+          ...pendingCreateRecovery.failedStages.map((stage) => stage.key),
+          'always_available',
+          'best_seller_mode'
+        ]);
         const result = await runPostCreateStages({
           itemId: pendingCreateRecovery.itemId,
           itemName: recoveryName,
-          imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles,
+          imageFiles: pendingCreateRecovery.imageFiles || [],
           externalProductCode: pendingCreateRecovery.externalProductCode || '',
           requestedBarcodeCode: pendingCreateRecovery.requestedBarcodeCode || '',
-          posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable,
-          posBestSellerMode: pendingCreateRecovery.posBestSellerMode,
+          posAlwaysAvailable: createForm.pos_always_available === true,
+          posBestSellerMode: createForm.pos_best_seller_mode,
+          retryStageKeys,
+          imageAttemptId: pendingCreateRecovery.imageAttemptId || null
         });
         await finalizeCreatedItem({
           barcode: result.barcodeCode,
           action: 'created',
-          warningMessage: `Post-create setup completed for item #${pendingCreateRecovery.itemId}.`
+          warningMessage: `${recoveryName} setup completed.`
         });
         toast.success('POS item setup resumed successfully.');
         return;
@@ -3378,6 +3415,10 @@ function ItemsWorkspace({
         });
       }
 
+      const imageAttemptId = selectedImageFiles[0]
+        ? stagePendingPosItemImagePreview({ itemId, file: selectedImageFiles[0] })
+        : null;
+
       const result = await runPostCreateStages({
         itemId,
         itemName: name,
@@ -3388,12 +3429,13 @@ function ItemsWorkspace({
         requestedBarcodeCode: barcodeSelection.code,
         posAlwaysAvailable: createForm.pos_always_available === true,
         posBestSellerMode: createForm.pos_best_seller_mode,
+        imageAttemptId
       });
 
       await finalizeCreatedItem({ barcode: result.barcodeCode });
       toast.success('POS item created.');
     } catch (createError) {
-      if (pendingCreateRecovery?.itemId || /post-create steps still need retry/i.test(String(createError?.message || ''))) {
+      if (pendingCreateRecovery?.itemId || /setup needs attention/i.test(String(createError?.message || ''))) {
         await loadItems().catch(() => {});
         toast.warning(createError.message);
       } else {
@@ -3953,6 +3995,8 @@ function ItemsWorkspace({
           aria-modal="true"
           aria-labelledby="pos-items-create-modal-title"
           onClick={closeCreate}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => event.preventDefault()}
         >
           <div
             className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
@@ -4135,10 +4179,26 @@ function ItemsWorkspace({
 
                   <label
                     htmlFor="pos-item-image"
-                    className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/10 p-5 text-center transition-colors hover:bg-blue-50/20 ${(creatingItem || postCreateSaving) ? 'cursor-not-allowed opacity-50' : ''}`}
+                    data-testid="pos-create-item-image-drop-zone"
+                    className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-5 text-center transition-colors ${(isCreateImageDragActive ? 'border-blue-500 bg-blue-100/70 ring-2 ring-blue-200' : 'border-blue-200 bg-blue-50/10 hover:bg-blue-50/20')} ${(creatingItem || postCreateSaving) ? 'cursor-not-allowed opacity-50' : ''}`}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setIsCreateImageDragActive(true);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'copy';
+                      setIsCreateImageDragActive(true);
+                    }}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) {
+                        setIsCreateImageDragActive(false);
+                      }
+                    }}
+                    onDrop={handleCreateImageDrop}
                   >
                     <Upload className="mx-auto h-10 w-10 text-blue-500" aria-hidden="true" />
-                    <p className="mt-3 text-xs sm:text-sm font-semibold text-[#0F172A]">Add item images</p>
+                    <p className="mt-3 text-xs sm:text-sm font-semibold text-[#0F172A]">Drag item images here or choose files</p>
                     <p className="mt-1 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (large files optimized by server)</p>
                     <p className="mt-3 text-[10px] leading-normal text-[#94A3B8]">
                       Up to 5 images per item. The first image is the primary image; all images are shared with Storefront.
@@ -4177,12 +4237,21 @@ function ItemsWorkspace({
                 <div className="space-y-4">
                   {pendingCreateRecovery?.itemId ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs sm:text-sm text-amber-800">
-                      <p className="font-bold">Item #{pendingCreateRecovery.itemId} was created. Resume setup retries only unfinished post-create stages and will not create a duplicate item.</p>
+                      <p className="font-bold">
+                        {pendingCreateRecovery.name || 'Your item'} was created, but setup needs attention. Your item was saved and will not be duplicated.
+                      </p>
                       {Array.isArray(pendingCreateRecovery.failedStages) && pendingCreateRecovery.failedStages.length > 0 ? (
                         <ul className="mt-2 list-disc space-y-1 pl-5">
-                          {pendingCreateRecovery.failedStages.map((stage) => (
-                            <li key={stage.key}>{stage.label}: {stage.message}</li>
-                          ))}
+                          {pendingCreateRecovery.failedStages.flatMap((stage) => {
+                            if (stage.readinessBlocked && stage.missingRequirements.length > 0) {
+                              return stage.missingRequirements.map((requirement, index) => (
+                                <li key={`${stage.key}-${requirement?.code || index}`}>
+                                  {requirement?.fix_hint || requirement?.label || 'Complete the missing POS requirement.'}
+                                </li>
+                              ));
+                            }
+                            return [<li key={stage.key}>{stage.label}: {stage.message}</li>];
+                          })}
                         </ul>
                       ) : null}
                     </div>

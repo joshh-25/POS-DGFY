@@ -166,7 +166,7 @@ const downloadBlob = (blob, filename) => {
   link.download = filename;
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
+  link.remove();
   window.URL.revokeObjectURL(url);
 };
 

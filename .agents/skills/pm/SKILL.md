@@ -135,7 +135,8 @@ updates are the default case.
 3. File via `gh issue create`.
 4. Parent it (`addSubIssue`) if applicable — see `references/board-operations.md`.
 5. Set repo-level fields (`Priority` at minimum) via the issue-field mutation, not the project
-   mirror.
+   mirror. For IMS-scoped work, default `Priority` lower per `AGENTS.md`'s "Engineering-investment
+   priority" note (#1739), absent an explicit reason (e.g. security or merchant-blocking).
 6. Add to project #10 and set `Status` (defaults to `Backlog` per the status table above) and
    `Iteration` if it's already scheduled.
 
