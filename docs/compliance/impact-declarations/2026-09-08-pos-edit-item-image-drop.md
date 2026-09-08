@@ -8,7 +8,7 @@ surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
 verification_evidence: focused POS edit-item image contract tests,POS production build,git diff --check
-rollback_note: Revert the Edit Item drop handlers and drag-active styling; file-picker uploads and all persisted catalog data remain unchanged.
+rollback_note: Revert the Edit Item drop handlers, drag-active styling, and saved-preview reconciliation; file-picker uploads and all persisted catalog data remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-09-08T00:00:00.000Z
@@ -29,6 +29,8 @@ tax, discount, receipt, identity, or authorization behavior.
 - POS Edit Item image selection accepts images dropped from File Explorer or a
   browser image URL.
 - The Edit Item modal prevents the browser's default file-drop navigation.
+- Pending previews disappear as their matching saved gallery entries arrive, so
+  one upload is not rendered twice during catalog refresh.
 - The existing file-picker path, gallery preview, five-image limit, automatic
   upload, optimization, and saved-gallery behavior remain authoritative.
 

@@ -2444,6 +2444,19 @@ function ItemsWorkspace({
     () => sortedItems.find((item) => Number(item?.item_id) === Number(editingItemId)) || editingItemSnapshot,
     [editingItemId, editingItemSnapshot, sortedItems]
   );
+  const visibleSelectedEditImageFiles = useMemo(() => {
+    if (!pendingEditImageRefresh || !activeEditItem) return selectedEditImageFiles;
+    if (Number(activeEditItem.item_id) !== Number(pendingEditImageRefresh.itemId)) {
+      return selectedEditImageFiles;
+    }
+
+    const savedUploadCount = Math.max(0, Math.min(
+      Number(pendingEditImageRefresh.pendingCount || 0),
+      normalizeStorefrontItemGallery(activeEditItem).length
+        - Number(pendingEditImageRefresh.existingGalleryCount || 0)
+    ));
+    return selectedEditImageFiles.slice(savedUploadCount);
+  }, [activeEditItem, pendingEditImageRefresh, selectedEditImageFiles]);
 
   // Real, already-persisted item id backing the open edit modal, or 0 when
   // there isn't one. This modal only ever opens for an item found in
@@ -4710,7 +4723,7 @@ function ItemsWorkspace({
                           </label>
 
                           <SelectedItemImageCarousel
-                            files={selectedEditImageFiles}
+                            files={visibleSelectedEditImageFiles}
                             savedGallery={editGallery}
                             itemName={editForm.name || activeEditItem?.name || 'Item'}
                             disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh}

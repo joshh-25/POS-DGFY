@@ -36,6 +36,19 @@ describe('POS edit-item image save flow', () => {
     expect(workspace).toContain('multiple');
   });
 
+  it('hides pending previews as their saved gallery entries arrive', () => {
+    const workspace = fs.readFileSync(workspacePath, 'utf8');
+    const reconciliationStart = workspace.indexOf('const visibleSelectedEditImageFiles = useMemo(() => {');
+    const reconciliationEnd = workspace.indexOf('// Real, already-persisted item id', reconciliationStart);
+    const reconciliation = workspace.slice(reconciliationStart, reconciliationEnd);
+
+    expect(reconciliation).toContain('normalizeStorefrontItemGallery(activeEditItem).length');
+    expect(reconciliation).toContain('pendingEditImageRefresh.existingGalleryCount');
+    expect(reconciliation).toContain('pendingEditImageRefresh.pendingCount');
+    expect(reconciliation).toContain('return selectedEditImageFiles.slice(savedUploadCount);');
+    expect(workspace).toContain('files={visibleSelectedEditImageFiles}');
+  });
+
   it('supports image drops in Edit Item without allowing browser navigation', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
     const dropStart = workspace.indexOf('const handleEditImageDrop = async (event) => {');
