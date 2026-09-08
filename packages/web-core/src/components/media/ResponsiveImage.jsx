@@ -20,10 +20,14 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
   ...imageProps
 }) {
   const placeholder = sources.placeholderSrc || sources.placeholderUrl || '';
+  const [failedResponsiveSourceKey, setFailedResponsiveSourceKey] = React.useState(null);
+  const responsiveSourceKey = `${sources.src || ''}\u0000${sources.srcSet || ''}\u0000${sources.avifSrcSet || ''}\u0000${sources.webpSrcSet || ''}`;
+  const responsiveSourcesFailed = failedResponsiveSourceKey === responsiveSourceKey;
+
   return (
     <picture style={{ display: 'contents' }}>
-      {sources.avifSrcSet ? <source type="image/avif" srcSet={sources.avifSrcSet} sizes={sizes} /> : null}
-      {sources.webpSrcSet ? <source type="image/webp" srcSet={sources.webpSrcSet} sizes={sizes} /> : null}
+      {!responsiveSourcesFailed && sources.avifSrcSet ? <source type="image/avif" srcSet={sources.avifSrcSet} sizes={sizes} /> : null}
+      {!responsiveSourcesFailed && sources.webpSrcSet ? <source type="image/webp" srcSet={sources.webpSrcSet} sizes={sizes} /> : null}
       <img
         {...imageProps}
         src={sources.src}
@@ -51,7 +55,10 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
           ...style
         }}
         onError={(event) => {
-          event.currentTarget.parentElement?.querySelectorAll('source').forEach((s) => s.remove());
+          // Let React remove its own <source> nodes on the next render. Mutating
+          // the picture DOM here leaves React with stale child references and can
+          // trigger a removeChild NotFoundError during a later unmount/update.
+          setFailedResponsiveSourceKey(responsiveSourceKey);
           onError?.(event);
         }}
       />

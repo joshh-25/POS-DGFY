@@ -301,7 +301,7 @@ export default function StockMovements() {
       link.setAttribute('download', `stock_movements_${format(new Date(), 'yyyy-MM-dd')}.csv`);
       document.body.appendChild(link);
       link.click();
-      link.parentNode.removeChild(link);
+      link.remove();
       window.URL.revokeObjectURL(url);
 
       toast.success('Export downloaded successfully');

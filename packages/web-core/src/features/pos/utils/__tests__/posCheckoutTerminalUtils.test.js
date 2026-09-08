@@ -268,13 +268,15 @@ describe('POS checkout terminal pure utilities', () => {
         const imageSources = resolvePosCatalogImageSources({
             storefront_image_url: 'https://cdn.example.test/large.jpg',
             storefront_image_variants: {
+                pos_thumbnail_url: 'https://cdn.example.test/pos-thumb.jpg',
                 thumbnail_url: 'https://cdn.example.test/thumb.jpg',
                 medium_url: 'https://cdn.example.test/medium.jpg',
                 large_url: 'https://cdn.example.test/large.jpg'
             }
         });
-        expect(imageSources.src).toBe('https://cdn.example.test/thumb.jpg');
-        expect(imageSources.srcSet).toContain('400w');
+        expect(imageSources.src).toBe('https://cdn.example.test/pos-thumb.jpg');
+        expect(imageSources.srcSet).toBeUndefined();
+        expect(imageSources.thumbnailFallbackSrc).toBe('https://cdn.example.test/thumb.jpg');
         expect(imageSources.configuredLargeSrc).toBe('https://cdn.example.test/large.jpg');
         expect(inferReceiptContract({ invoice_number: 'NFS-000001' })).toEqual({
             document_type: 'non_fiscal_slip',
