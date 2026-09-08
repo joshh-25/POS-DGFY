@@ -11,8 +11,8 @@ verification_evidence: focused transaction-history repository tests 2/2; generat
 rollback_note: Restore the explicit JSON root-path argument. No database or persisted-data rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-07T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-POS-PAYMENT-FILTER-JSON-PATH
+preflight_run_at: 2026-09-07T14:45:53.974Z
+preflight_request_ref: PREFLIGHT-34134412537-2026-09-07-POS-PAYMENT-FILTER-JSON-PATH
 ---
 
 # POS payment-filter JSON path compatibility

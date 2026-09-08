@@ -22031,7 +22031,77 @@ content differs from what was implemented and tested under the "303" label.
   shadow-mode evidence bar) is the named follow-up, not started here.
 - Next eligible phase: 305.
 
-## Phase 305 - Split-payment inventory preflight before tender acceptance
+## Phase 305 - Scope the promoter's pre-cut version floor check to changed apps (#1740)
+
+- Initiative/release: CI-tooling correctness (standalone issue, not part of an existing epic) /
+  current release process.
+- Objective and scope: closes #1740 -- `check-app-version-bump.js`'s `--floor` mode
+  (`runFloor()`, the promoter's pre-cut gate ahead of cutting `to-staging/<candidate_id>`) had no
+  change detection at all, unlike its sibling PR-time check (`runCheck()`, which correctly scopes
+  through `detectChangedApps()`). It iterated the full, hardcoded five-app list unconditionally and
+  flagged any app whose `develop` version wasn't a minor above `staging`'s, regardless of whether
+  that app's files had actually changed between the two refs -- inverting ADR 0081 Decision 6's own
+  text ("Apps with no changes keep their version untouched"). Confirmed against three consecutive
+  real candidates (`2026-09-07-03`, `2026-09-07-04`, `2026-09-08-01`) that this force-bumped 4-5
+  apps' versions when only 1 had actually changed (PR #1738: two files under
+  `apps/dgfy-storefront/src/`). Beyond git-history noise, this defeated Phase 293's build-skip
+  mechanism (`resolve-build-skip-plan.js`, ADR 0081's 2026-09-05 Amendment): a spurious version
+  bump is by definition an unpublished tag, so the skip-eligible outcome never applies and the
+  unchanged app gets rebuilt and republished to GHCR on every promotion for no content reason --
+  the wasted CI minutes and registry storage #1740 reports.
+- Mechanically: `runFloor()` now reuses `detectChangedApps()` -- the same function `runCheck()`
+  already uses -- computing the changed-file diff between `baseGitRef`/`headGitRef` (the same
+  three-dot merge-base form `runCheck()` uses) and evaluating the floor only for apps with
+  `changed: true`. `file:` fan-out (a `packages/web-core` change still bumping every dependent
+  frontend) is preserved exactly as detectChangedApps() already computes it -- no narrowing beyond
+  what that function already does (import-graph-aware reachability narrowing, Phase 304/#1695,
+  stays shadow-mode-only and untouched by this phase). The return shape gains an informational
+  `unchanged` bucket (apps skipped because nothing in them changed -- never gates the exit code)
+  and a `diffError` field: a diff that can't be computed (unresolvable ref, shallow history) now
+  fails the check outright instead of silently reading as "zero files changed" -> false floor-clear
+  pass. `printFloorResult()` reports the in-scope apps and their `reason` (`direct`/`fan-out:<pkg>`)
+  plus the skipped-unchanged list before the pass/fail verdict, so a promoter reading the output can
+  see why an app is or isn't being evaluated; the existing below-floor and RF-2 invalid-version
+  error blocks are unchanged verbatim. `runCheck()`, `detectChangedApps()`, `evaluateBump()`,
+  `resolveMode()`, and every Phase 304 shadow-mode function are untouched.
+- Status: completed.
+- Dependencies: none (standalone issue).
+- Acceptance and validation evidence: `node --check scripts/check-app-version-bump.js` OK. `node
+  --test scripts/check-app-version-bump.test.js` (28/28 -- all pre-#1740 tests pass, one test that
+  encoded the bug itself rewritten to give the in-scope apps real changed files, plus 5 new tests:
+  the #1740 regression reproduced directly (a single changed app bumps only that app, the other
+  four report as `unchanged`), `file:` fan-out to a subset of apps preserved
+  (`packages/web-core` -> ims/pos/storefront only), fan-out to all five apps preserved
+  (`packages/shared-constants`), an unparseable version on an unchanged app never surfaces as
+  `invalid` or below floor, and a diff that can't be computed surfaces `diffError` rather than a
+  silent pass). Downstream consumers re-run clean: `node --test
+  scripts/check-version-bump-flip-readiness.test.js` (46/46 -- marker-string anti-drift unaffected,
+  this phase never touched `printCheckResult()`), `node --test scripts/propose-version-level.test.js`
+  (15/15 -- imports `detectChangedApps`/`runCheck` only, both untouched), `node --test
+  scripts/pr-checks.test.js` (50/50), `node --test scripts/check-release-notes.test.js` (16/16),
+  `node --test scripts/resolve-build-skip-plan.test.js` (24/24 -- confirms its own,
+  deliberately-wider reuse of `resolveFileDependencyPackages`/`readVersionAt`/`APPS` is unaffected),
+  `node --test scripts/resolve-web-core-reachability.test.js` (18/18). `GITHUB_BASE_REF=develop
+  node scripts/check-app-version-bump.js --staged` against this PR's own diff -- PASS, "no apps/*
+  or fan-out package changes" (this PR touches only `scripts/`, `docs/`, `.agents/`, no app or
+  `file:`-dependency package -- no app version bump needed for this PR itself).
+  `npm run check:compliance` (no compliance-sensitive changes detected, both commit batches).
+  `npm run check:architecture` (OK, 54 modules/563 files + 94 controllers, unaffected --
+  scripts-only change). `npm run lint:docs` (OK, 30 governed docs + 89 ADRs -- validates the new
+  ADR 0081 Amendments entry and the `RELEASE_CANDIDATE_POLICY.md` addition below).
+- Completion date: 2026-09-07.
+- Contracts/files: `scripts/check-app-version-bump.js` (`runFloor()` rewritten, `printFloorResult()`
+  updated, `main()`'s `--floor` exit-code condition extended for `diffError`; `runCheck()` and every
+  other export unchanged), `scripts/check-app-version-bump.test.js` (1 test rewritten, 5 new),
+  `docs/architecture/adr/0081-per-app-container-semantic-versioning.md` (new dated
+  `## Amendments` entry, `[snapshot]` tier -- no Decision clause changes tier or substance),
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md` (matching dated amendment),
+  `.agents/skills/promoter/references/promotion-runbook.md` (floor-step section updated to state
+  the scoping and add a cross-check command), `.agents/skills/promoter/SKILL.md` (floor-step
+  paraphrase corrected to state the list is scoped), issue #1740.
+- Next eligible phase: 306.
+
+## Phase 306 - Split-payment inventory preflight before tender acceptance
 
 - Initiative/release: POS split payment and Inventory consistency / current release.
 - Objective and scope: validate every stock-bearing direct item, recipe ingredient, and linked
@@ -22051,9 +22121,9 @@ content differs from what was implemented and tested under the "303" label.
   service and contract, POS checkout and split-payment use cases, their focused tests,
   `docs/compliance/impact-declarations/2026-09-07-pos-split-inventory-preflight.md`, and
   `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
-- Next eligible phase: 306.
+- Next eligible phase: 308.
 
-## Phase 306 - Standalone mobile POS item-option bootstrap parity
+## Phase 307 - Standalone mobile POS item-option bootstrap parity
 
 - Initiative/release: standalone native cashier offline parity / current release.
 - Objective and scope: enrich `GET /mobile-pos/bootstrap/catalog` with the
@@ -22074,4 +22144,4 @@ content differs from what was implemented and tested under the "303" label.
   Services option repository batch query,
   `apps/dgfy-api/tests/mobilePosCatalogBootstrap.usecases.test.js`, and
   `docs/api/specification.md`.
-- Next eligible phase: 307.
+- Next eligible phase: 308.
