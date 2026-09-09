@@ -2173,10 +2173,7 @@ function ItemsWorkspace({
   const [persistingEditAssets, setPersistingEditAssets] = useState(false);
   const [selectedEditImageFiles, setSelectedEditImageFiles] = useState([]);
   const [isEditImageDragActive, setIsEditImageDragActive] = useState(false);
-  const [deferredEditImageFiles, setDeferredEditImageFiles] = useState([]);
   const [selectedEditPrimaryFile, setSelectedEditPrimaryFile] = useState(null);
-  const [editImageUploadJob, setEditImageUploadJob] = useState(null);
-  const [pendingEditImageRefresh, setPendingEditImageRefresh] = useState(null);
   // generatingEditImage covers the POST that queues the job; pollingEditImage
   // covers the wait for a terminal status afterwards — split so the button
   // label can tell the operator which stage it's actually in.
@@ -2449,19 +2446,6 @@ function ItemsWorkspace({
     () => sortedItems.find((item) => Number(item?.item_id) === Number(editingItemId)) || editingItemSnapshot,
     [editingItemId, editingItemSnapshot, sortedItems]
   );
-  const visibleSelectedEditImageFiles = useMemo(() => {
-    if (!pendingEditImageRefresh || !activeEditItem) return selectedEditImageFiles;
-    if (Number(activeEditItem.item_id) !== Number(pendingEditImageRefresh.itemId)) {
-      return selectedEditImageFiles;
-    }
-
-    const savedUploadCount = Math.max(0, Math.min(
-      Number(pendingEditImageRefresh.pendingCount || 0),
-      normalizeStorefrontItemGallery(activeEditItem).length
-        - Number(pendingEditImageRefresh.existingGalleryCount || 0)
-    ));
-    return selectedEditImageFiles.slice(savedUploadCount);
-  }, [activeEditItem, pendingEditImageRefresh, selectedEditImageFiles]);
 
   // Real, already-persisted item id backing the open edit modal, or 0 when
   // there isn't one. This modal only ever opens for an item found in
@@ -2598,70 +2582,45 @@ function ItemsWorkspace({
     }
   };
 
-  const queueDeferredEditImageFiles = useCallback(async ({ itemId, files, existingGalleryCount }) => {
+  const queueEditImageFiles = useCallback(async ({ itemId, files, existingGalleryCount }) => {
     const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
     const availableSlots = Math.max(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount);
     const filesToUpload = normalizedFiles.slice(0, availableSlots);
-    const remainingFiles = normalizedFiles.slice(filesToUpload.length);
-    if (!itemId || filesToUpload.length === 0) return;
+    if (!itemId || filesToUpload.length === 0) {
+      return normalizedFiles.length > 0
+        ? 'Remove an existing image before uploading another one.'
+        : '';
+    }
+    const skippedCount = normalizedFiles.length - filesToUpload.length;
 
-    setPendingEditImageRefresh({
+    const imageAttemptId = stagePendingPosItemImagePreview({
       itemId,
-      existingGalleryCount,
-      pendingCount: filesToUpload.length,
-      remainingFiles
+      file: filesToUpload[0]
     });
-    setEditImageUploadJob({ itemId, jobId: null });
     try {
-      const queued = await queueStorefrontCatalogImages(itemId, filesToUpload);
-      setEditImageUploadJob((current) => (
-        current?.itemId === itemId
-          ? { ...current, jobId: queued?.job_id || null }
-          : current
-      ));
+      const queued = filesToUpload.length === 1
+        ? await queueStorefrontCatalogImage(itemId, filesToUpload[0])
+        : await queueStorefrontCatalogImages(itemId, filesToUpload);
+      if (queued?.job_id && imageAttemptId) {
+        bindPendingPosItemImagePreviewJob({
+          itemId,
+          attemptId: imageAttemptId,
+          jobId: queued.job_id
+        });
+      } else if (imageAttemptId) {
+        markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
+        return 'Image upload was not accepted. The preview is kept so you can retry.';
+      }
+      return skippedCount > 0
+        ? `Only ${filesToUpload.length} image${filesToUpload.length === 1 ? '' : 's'} uploaded; the item gallery limit is ${STOREFRONT_ITEM_IMAGE_MAX_COUNT}.`
+        : '';
     } catch (error) {
-      setSelectedEditImageFiles([]);
-      setDeferredEditImageFiles([]);
-      setSelectedEditPrimaryFile(null);
-      setPendingEditImageRefresh((current) => (
-        current?.itemId === itemId ? null : current
-      ));
-      toast.error(error?.response?.data?.message || 'Image upload failed. Try selecting the image again.');
-    } finally {
-      setEditImageUploadJob((current) => (
-        current?.itemId === itemId ? null : current
-      ));
+      if (imageAttemptId) {
+        markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
+      }
+      return error?.response?.data?.message || 'Image upload failed. The preview is kept so you can retry.';
     }
   }, []);
-
-  useEffect(() => {
-    if (!pendingEditImageRefresh || !activeEditItem) return;
-    if (Number(activeEditItem.item_id) !== Number(pendingEditImageRefresh.itemId)) return;
-    const galleryCount = normalizeStorefrontItemGallery(activeEditItem).length;
-    const expectedGalleryCount = pendingEditImageRefresh.existingGalleryCount
-      + pendingEditImageRefresh.pendingCount;
-    if (galleryCount < expectedGalleryCount) return;
-    const remainingFiles = Array.isArray(pendingEditImageRefresh.remainingFiles)
-      ? pendingEditImageRefresh.remainingFiles.filter(Boolean)
-      : [];
-    setSelectedEditImageFiles(remainingFiles);
-    setDeferredEditImageFiles(remainingFiles);
-    setSelectedEditPrimaryFile(null);
-    setPendingEditImageRefresh(null);
-  }, [activeEditItem, pendingEditImageRefresh]);
-
-  useEffect(() => {
-    if (!activeEditItem || deferredEditImageFiles.length === 0 || editImageUploadJob || pendingEditImageRefresh) return;
-    const itemId = Number(activeEditItem.item_id || 0);
-    if (!itemId) return;
-    const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem).length;
-    if (existingGalleryCount >= STOREFRONT_ITEM_IMAGE_MAX_COUNT) return;
-    void queueDeferredEditImageFiles({
-      itemId,
-      files: deferredEditImageFiles,
-      existingGalleryCount
-    });
-  }, [activeEditItem, deferredEditImageFiles, editImageUploadJob, pendingEditImageRefresh, queueDeferredEditImageFiles]);
 
   const activeEditStorefrontUrl = useMemo(() => resolveStorefrontItemUrl({
     slug: storefrontSlug,
@@ -2704,10 +2663,7 @@ function ItemsWorkspace({
     setEditCategoryInput(String(item?.folder?.name || item?.product_folder || ''));
     setSelectedEditImageFiles([]);
     setIsEditImageDragActive(false);
-    setDeferredEditImageFiles([]);
     setSelectedEditPrimaryFile(null);
-    setEditImageUploadJob(null);
-    setPendingEditImageRefresh(null);
   };
 
   const closeEdit = ({ force = false } = {}) => {
@@ -2719,10 +2675,7 @@ function ItemsWorkspace({
     setPersistingEditAssets(false);
     setSelectedEditImageFiles([]);
     setIsEditImageDragActive(false);
-    setDeferredEditImageFiles([]);
     setSelectedEditPrimaryFile(null);
-    setEditImageUploadJob(null);
-    setPendingEditImageRefresh(null);
     setGeneratingEditImage(false);
     setPollingEditImage(false);
     setEditCategoryInput('');
@@ -2887,6 +2840,15 @@ function ItemsWorkspace({
         attachBarcode: attachItemBarcode,
         updateBarcode: updateItemBarcode
       });
+      let imageUploadMessage = '';
+      if (selectedEditImageFiles.length > 0) {
+        editSaveStage = 'images';
+        imageUploadMessage = await queueEditImageFiles({
+          itemId: editItemId,
+          files: selectedEditImageFiles,
+          existingGalleryCount: normalizeStorefrontItemGallery(activeEditItem).length
+        });
+      }
       editSaveStage = 'refresh';
       closeEdit({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
@@ -2896,6 +2858,7 @@ function ItemsWorkspace({
         barcode: barcodeSelection.shouldGenerate ? existingPrimaryCode : barcodeSelection.code,
         action: 'updated'
       });
+      if (imageUploadMessage) toast.warning(imageUploadMessage);
     } catch (updateError) {
       toast.error(resolveEditItemSaveError(updateError, editSaveStage).message);
     } finally {
@@ -3043,32 +3006,28 @@ function ItemsWorkspace({
     const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
     const itemId = Number(activeEditItem?.item_id || 0);
     if (normalizedFiles.length === 0 || !itemId) return;
-    if (editImageUploadJob || pendingEditImageRefresh) {
-      toast.info('The previous image is still being optimized. It will be replaced automatically when ready.');
+    const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem || {}).length;
+    const availableSlots = Math.max(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount);
+    const filesToPreview = normalizedFiles.slice(0, availableSlots);
+    if (filesToPreview.length === 0) {
+      toast.info('Remove an existing image before adding another one.');
       return;
     }
-    const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem || {}).length;
-    const filesToPreview = normalizedFiles.slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT);
     if (normalizedFiles.length > filesToPreview.length) {
-      toast.error(`Only ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} pending images can be selected at once.`);
+      toast.error(`Only ${availableSlots} more image${availableSlots === 1 ? '' : 's'} can be added to this item.`);
     }
 
-    // Always mount the local preview first. If legacy data already exceeds
-    // the gallery limit, the selected files stay deferred until the operator
-    // removes enough existing images; no existing image is deleted silently.
+    // Selection is local-only. The worker starts after Save Item, matching Add
+    // Item and allowing the operator to replace the preview before committing.
     setSelectedEditImageFiles(filesToPreview);
-    setDeferredEditImageFiles(filesToPreview);
     setSelectedEditPrimaryFile(null);
-    if (existingGalleryCount >= STOREFRONT_ITEM_IMAGE_MAX_COUNT) {
-      toast.info('Preview shown. Remove existing images to make room; upload will continue automatically.');
-    }
   };
 
   const handleEditImageDrop = async (event) => {
     event.preventDefault();
     event.stopPropagation();
     setIsEditImageDragActive(false);
-    if (savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh) return;
+    if (savingItem || persistingEditAssets) return;
 
     const droppedFiles = Array.from(event.dataTransfer?.files || []);
     const imageFiles = droppedFiles.filter((file) => file.type?.startsWith('image/'));
@@ -3108,7 +3067,6 @@ function ItemsWorkspace({
       setSelectedEditPrimaryFile(null);
     }
     setSelectedEditImageFiles((current) => current.filter((_, index) => index !== imageIndex));
-    setDeferredEditImageFiles((current) => current.filter((_, index) => index !== imageIndex));
   };
 
   const handleSetPendingEditPrimary = (file) => {
@@ -4700,7 +4658,7 @@ function ItemsWorkspace({
                           <label
                             htmlFor="pos-item-edit-image"
                             data-testid="pos-edit-item-image-drop-zone"
-                            className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-4 text-center transition-colors ${(isEditImageDragActive ? 'border-blue-500 bg-blue-100/70 ring-2 ring-blue-200' : 'border-blue-200 bg-blue-50/10 hover:bg-blue-50/20')} ${(savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh) ? 'cursor-not-allowed opacity-50' : ''}`}
+                            className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-4 text-center transition-colors ${(isEditImageDragActive ? 'border-blue-500 bg-blue-100/70 ring-2 ring-blue-200' : 'border-blue-200 bg-blue-50/10 hover:bg-blue-50/20')} ${(savingItem || persistingEditAssets) ? 'cursor-not-allowed opacity-50' : ''}`}
                             onDragEnter={(event) => {
                               event.preventDefault();
                               setIsEditImageDragActive(true);
@@ -4721,7 +4679,7 @@ function ItemsWorkspace({
                             <p className="mt-2.5 text-xs sm:text-sm font-semibold text-[#0F172A]">Drag item images here or choose files</p>
                             <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (large files optimized by server, up to 5 total)</p>
                             <p className="mt-2 text-[10px] leading-normal text-[#94A3B8]">
-                              The preview appears immediately. The optimized image is saved automatically and then replaces the preview.
+                              The preview appears immediately. Save Item uploads it silently and replaces the preview when ready.
                             </p>
                             <input
                               id="pos-item-edit-image"
@@ -4729,7 +4687,7 @@ function ItemsWorkspace({
                               accept="image/*"
                               multiple
                               className="hidden"
-                              disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh}
+                              disabled={savingItem || persistingEditAssets}
                               onChange={(event) => {
                                 const files = Array.from(event.target.files || []);
                                 void handleSelectEditImageFile(files);
@@ -4739,10 +4697,10 @@ function ItemsWorkspace({
                           </label>
 
                           <SelectedItemImageCarousel
-                            files={visibleSelectedEditImageFiles}
+                            files={selectedEditImageFiles}
                             savedGallery={editGallery}
                             itemName={editForm.name || activeEditItem?.name || 'Item'}
-                            disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh}
+                            disabled={savingItem || persistingEditAssets}
                             showPrimaryToggle
                             onRemove={handleRemoveSelectedEditImageFile}
                             onSetPendingPrimary={handleSetPendingEditPrimary}
@@ -4750,21 +4708,12 @@ function ItemsWorkspace({
                             onRemoveSaved={handleRemoveSavedEditImage}
                           />
 
-                          {selectedEditImageFiles.length > 0
-                            && editGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT
-                            && !editImageUploadJob
-                            && !pendingEditImageRefresh && (
-                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium leading-normal text-amber-800" role="status">
-                              Preview ready. Remove existing images to make room; the upload will continue automatically.
-                            </p>
-                          )}
-
                           {canEditItems && (
                             <Button
                               type="button"
                               variant="outline"
                               onClick={() => handleGenerateEditImage(activeEditItem)}
-                              disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh || generatingEditImage || pollingEditImage}
+                              disabled={savingItem || persistingEditAssets || generatingEditImage || pollingEditImage}
                               className="w-full rounded-xl"
                               title={
                                 editGallery.length > 0
@@ -5358,9 +5307,15 @@ function CategoryManagementWorkspace() {
           }))
           .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
       );
+      return true;
     } catch (loadError) {
-      setFolders([]);
+      // Keep the last known list when a silent refresh fails. Callers use a
+      // silent refresh after a rejected reorder to reconcile a stale tab; an
+      // unavailable refresh must not replace the useful local list with an
+      // empty state.
+      if (!silent) setFolders([]);
       setError(loadError?.response?.data?.message || 'Failed to load categories.');
+      return false;
     } finally {
       if (!silent) setLoading(false);
     }
@@ -5394,7 +5349,12 @@ function CategoryManagementWorkspace() {
       notifyPosCatalogUpdated({ reason: 'category_order_updated' });
       toast.success('Category order updated.');
     } catch (reorderError) {
-      setFolders(previous);
+      // A 409 means another tab changed the category set while this one was
+      // open. Reload the authoritative tenant-scoped order so the UI cannot
+      // keep showing a list that the server rejected. If that reconciliation
+      // request also fails, retain the previous list rather than blanking it.
+      const refreshed = await loadFolders({ silent: true });
+      if (!refreshed) setFolders(previous);
       toast.error(reorderError?.response?.data?.message || 'Unable to save category order.');
     } finally {
       setBusy(false);
