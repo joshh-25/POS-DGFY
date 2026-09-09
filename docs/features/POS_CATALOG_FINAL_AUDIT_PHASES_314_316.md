@@ -82,13 +82,16 @@ container and dimensions recorded only on image load before claiming zoom is saf
 - API: 25 passed across `storeRepository.locationStockFallback.test.js`,
   `storeRepositorySecondaryCategories.test.js`, and
   `storeCatalogSecondaryCategories.usecase.test.js`; voucher/store use-case
-  suites passed 81 tests and F&B modifier suites passed 3 tests.
-- Storefront: 30 passed across F&B/services view models, shared catalog toolbar,
-  and services toolbar.
+  suites passed 81 tests; dedicated F&B modifier suites passed 3 tests; and
+  resolver/primary-membership safeguards passed 6 tests.
+- Storefront: 30 focused model/toolbar tests passed; the full suite passed
+  218 files and 1,171 tests, and the production build completed successfully.
 - POS: 3 passed in `tests/unit/PosItemImageViewer.test.jsx`.
 - `npm run check:architecture`: passed.
-- Prior builds are historical evidence; no production build, browser E2E, latency
-  measurement, or tenant migration was rerun for this audit.
+- `npm run check:compliance`, `npm run check:docs`, and
+  `npm run check:app-versions`: passed; the changed API files pass ESLint.
+- No browser E2E, latency measurement, or tenant migration was rerun for this
+  audit; those remain Phase 315/316 work.
 - Phase 314 readiness: implementation and focused validation complete. Phases 315
   and 316 remain pending for synchronization and rendered/performance evidence.
 
@@ -121,8 +124,9 @@ expansion of money calculations is permitted.
 Completion evidence: the shared include now retains folder associations and
 status fields; the mapper keeps the stored primary ID for internal business
 inputs and redacts only stale public category fields. API repository/catalog
-tests passed 25/25, voucher/store use-case tests passed 81/81, F&B modifier
-tests passed 3/3, and the architecture gate passed. Completion date: 2026-09-09.
+tests passed 25/25, voucher/store use-case tests passed 81/81, dedicated F&B
+modifier tests passed 3/3, resolver safeguards passed 6/6, and architecture,
+compliance, docs, and app-version gates passed. Completion date: 2026-09-09.
 
 ## Phase 315 — Close category regression and synchronization coverage
 
@@ -184,4 +188,4 @@ Phases 314, 315, and 316 sequentially when approved; each phase must meet its ga
 before being marked completed. Existing application work is committed; preserve
 unrelated untracked files. Do not silently broaden scope, delete tenant data,
 disable cache safety, or claim existing passing unit tests prove G1/G2 absent.
-Current completed phase is 313; next eligible implementation phase is 314.
+Current completed phase is 314; next eligible implementation phase is 315.
