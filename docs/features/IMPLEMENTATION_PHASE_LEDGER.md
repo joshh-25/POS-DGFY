@@ -22304,7 +22304,7 @@ content differs from what was implemented and tested under the "303" label.
   inherited modifier associations and status fields; the repository mapper keeps
   the stored primary ID for voucher/modifier inputs while public serialization
   redacts inactive/deleted category fields. API repository/catalog tests passed
-  25/25, voucher/store use-case tests 81/81, dedicated F&B modifier tests 3/3,
+  28/28, voucher/store use-case tests 81/81, dedicated F&B modifier tests 3/3,
   resolver/primary-membership safeguards 6/6, and architecture, compliance,
   documentation, and app-version gates passed. The legacy-only stock fallback
   fixture now uses an explicit active folder, preserving its original coverage.

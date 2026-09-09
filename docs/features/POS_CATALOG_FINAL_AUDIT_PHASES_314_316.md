@@ -79,7 +79,7 @@ container and dimensions recorded only on image load before claiming zoom is saf
 
 ## Evidence from this audit
 
-- API: 25 passed across `storeRepository.locationStockFallback.test.js`,
+- API: 28 passed across `storeRepository.locationStockFallback.test.js`,
   `storeRepositorySecondaryCategories.test.js`, and
   `storeCatalogSecondaryCategories.usecase.test.js`; voucher/store use-case
   suites passed 81 tests; dedicated F&B modifier suites passed 3 tests; and
@@ -124,7 +124,7 @@ expansion of money calculations is permitted.
 Completion evidence: the shared include now retains folder associations and
 status fields; the mapper keeps the stored primary ID for internal business
 inputs and redacts only stale public category fields. API repository/catalog
-tests passed 25/25, voucher/store use-case tests passed 81/81, dedicated F&B
+tests passed 28/28, voucher/store use-case tests passed 81/81, dedicated F&B
 modifier tests passed 3/3, resolver safeguards passed 6/6, and architecture,
 compliance, docs, and app-version gates passed. Completion date: 2026-09-09.
 
