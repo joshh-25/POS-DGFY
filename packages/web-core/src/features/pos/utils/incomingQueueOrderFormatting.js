@@ -13,7 +13,7 @@ export const formatOrderDateTime = (value) => {
 
 export const formatOrderAmount = (value) => {
   const amount = Number(value || 0);
-  return `PHP ${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
+  return `₱${(Number.isFinite(amount) ? amount : 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 export const humanizeOrderStatus = (value) => String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());

@@ -169,15 +169,15 @@ export default function HospitalityPosPanel() {
                             <option value="">Select folio</option>
                             {folios.map((folio) => (
                                 <option key={folio.folio_id} value={folio.folio_id}>
-                                    Folio #{folio.folio_id} - {folio.status} - balance PHP {money(folio.balance)}
+                                    Folio #{Number(folio.folio_id || 0).toLocaleString('en-US')} - {folio.status} - balance ₱{money(folio.balance)}
                                 </option>
                             ))}
                         </select>
                         {selectedFolio && (
                             <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-                                <p><strong>Charges:</strong> PHP {money(selectedFolio.total_charges)}</p>
-                                <p><strong>Payments:</strong> PHP {money(selectedFolio.total_payments)}</p>
-                                <p><strong>Balance:</strong> PHP {money(selectedFolio.balance)}</p>
+                                <p><strong>Charges:</strong> ₱{money(selectedFolio.total_charges)}</p>
+                                <p><strong>Payments:</strong> ₱{money(selectedFolio.total_payments)}</p>
+                                <p><strong>Balance:</strong> ₱{money(selectedFolio.balance)}</p>
                             </div>
                         )}
                     </div>

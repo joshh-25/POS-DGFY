@@ -202,7 +202,7 @@ describe('VoucherManagementPanel delivery-campaign authoring (#1334, Phase 245)'
 
         expect(await screen.findByText(/Campaign performance/i)).toBeTruthy();
         expect(screen.getByText('4')).toBeTruthy();
-        expect(screen.getByText('PHP 200.00')).toBeTruthy();
+        expect(screen.getByText('₱200.00')).toBeTruthy();
         expect(screen.queryByText(/cache_in_sync/i)).toBeNull();
         expect(screen.queryByText(/out of sync/i)).toBeNull();
     });
@@ -246,7 +246,7 @@ describe('VoucherManagementPanel delivery-campaign authoring (#1334, Phase 245)'
         await user.type(getFieldByLabel('Campaign name'), 'Free delivery over 500');
         await user.type(getFieldByLabel('Code'), 'FREEDEL500');
         await user.click(screen.getByRole('radio', { name: 'Waive up to a set amount' }));
-        await user.type(getFieldByLabel('Waive up to (PHP)'), '50');
+        await user.type(getFieldByLabel('Waive up to (₱)'), '50');
         await user.click(screen.getByRole('button', { name: /Create voucher/i }));
 
         expect(await screen.findByText('Enter an amount greater than 0.')).toBeTruthy();

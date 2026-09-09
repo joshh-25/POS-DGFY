@@ -167,7 +167,7 @@ const formatAuditValue = (value) => {
 
 const formatAuditMoney = (value) => {
     const amount = Number(value);
-    return Number.isFinite(amount) ? `PHP ${amount.toFixed(2)}` : formatAuditValue(value);
+    return Number.isFinite(amount) ? `₱${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatAuditValue(value);
 };
 
 const formatAuditOrderReference = (entry, changes) => {

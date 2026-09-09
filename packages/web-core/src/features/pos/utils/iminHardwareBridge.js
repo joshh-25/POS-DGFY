@@ -5,7 +5,7 @@ const RECEIPT_COLUMNS = 42;
 const IMIN_ASYNC_RESULT_EVENT = 'dgfy:imin-command-result';
 const IMIN_ASYNC_COMMAND_TIMEOUT_MS = 30_000;
 
-const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
+const money = (value) => `₱${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const safeText = (value, fallback = '') => {
     const text = String(value ?? fallback).replace(/\s+/g, ' ').trim();
@@ -375,7 +375,7 @@ const formatDiscountLabel = (transaction) => {
 
 const negativeMoney = (value) => {
     const amount = roundCurrency(value);
-    return amount > 0 ? `-PHP ${amount.toFixed(2)}` : money(0);
+    return amount > 0 ? `-₱${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : money(0);
 };
 
 const parseArrayMetadata = (value) => {
@@ -476,7 +476,7 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
             item?.item_name_snapshot || item?.item?.name || item?.item_snapshot?.name || item?.name,
             `Item #${item?.item_id || '-'}`
         );
-        const quantity = Number(item?.quantity || 0).toFixed(2);
+        const quantity = Number(item?.quantity || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
         const unit = safeText(item?.unit_of_measure);
         const price = money(item?.sale_price);
         const netTotal = roundCurrency(item?.line_subtotal ?? item?.line_total ?? item?.total_amount ?? item?.amount);
@@ -683,7 +683,7 @@ const resolveOrderTicketItemName = (cartLine, index) => safeText(
     `Item #${cartLine?.item_id || index + 1}`
 );
 
-const formatShiftSummaryValue = (value) => value == null ? '-' : Number(value || 0).toFixed(2);
+const formatShiftSummaryValue = (value) => value == null ? '-' : Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const paymentBreakdownLabel = (entry) => safeText(
     entry?.payment_label || entry?.payment_type,
     'Other'
@@ -749,7 +749,7 @@ export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings
     });
 };
 
-const formatZReadingValue = (value) => Number(value || 0).toFixed(2);
+const formatZReadingValue = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } = {}) => {
     const reading = zReading?.z_reading || {};

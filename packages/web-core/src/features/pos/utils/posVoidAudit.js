@@ -80,8 +80,7 @@ export const resolvePosVoidFinancialOutcomeAmount = (transaction) => {
     const amount = Number(outcome.refund_amount);
     if (!Number.isFinite(amount) || amount <= 0) return null;
 
-    const currency = String(outcome.currency || 'PHP').trim().toUpperCase() || 'PHP';
-    return `${currency} ${amount.toLocaleString('en-PH', {
+    return `₱${amount.toLocaleString('en-PH', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     })}`;

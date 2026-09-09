@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const currencyLabel = (value) => String(value || '').toUpperCase() === 'PHP' ? '₱' : String(value || '₱');
 const reconciliationMoney = (value, currency, pendingLabel) => (
-    value == null ? pendingLabel : `${currency} ${money(value)}`
+    value == null ? pendingLabel : `${currencyLabel(currency)}${money(value)}`
 );
 const paymentLabel = (entry) => (
     String(entry?.payment_label || entry?.payment_type || '').replace(/_/g, ' ') || '-'
@@ -18,7 +19,7 @@ const Row = ({ name, value, strong = false }) => (
 
 export default function ShiftCloseSummaryPrintView({
     report,
-    currency = 'PHP',
+    currency = '₱',
     onClose,
     onPrint,
     autoPrint = false,
@@ -52,7 +53,7 @@ export default function ShiftCloseSummaryPrintView({
     ).trim();
 
     return (
-        <div className="pos-shift-summary-print-shell fixed inset-0 z-[100] overflow-y-auto bg-slate-950/40 p-4 print:static print:inset-auto print:overflow-visible print:bg-white print:p-0">
+        <div className="pos-shift-summary-print-shell fixed inset-0 z-[100] overflow-y-auto bg-slate-950/70 p-4 print:static print:inset-auto print:overflow-visible print:bg-white print:p-0">
             <article className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-4 font-mono text-[11px] leading-tight text-slate-900 shadow-2xl print:max-w-[80mm] print:rounded-none print:border-0 print:p-0 print:shadow-none">
                 <header className="border-b border-dashed border-slate-300 pb-2 text-center">
                     {businessIcon ? (
@@ -71,18 +72,18 @@ export default function ShiftCloseSummaryPrintView({
                         <Row
                             key={`${entry.payment_type}-${entry.count}`}
                             name={`${paymentLabel(entry)} (${entry.count || 0})`}
-                            value={`${currency} ${money(entry.amount)}`}
+                            value={`${currencyLabel(currency)}${money(entry.amount)}`}
                         />
                     ))}
                 </section>
 
                 <section className="space-y-1 py-2">
                     <p className="font-black uppercase">Cash reconciliation</p>
-                    <Row name="Opening/petty cash" value={`${currency} ${money(cash.opening_float_amount)}`} />
-                    <Row name="Cash sales" value={`${currency} ${money(cash.cash_sales_amount)}`} />
-                    <Row name="Cash in" value={`${currency} ${money(cash.cash_in_total)}`} />
-                    <Row name="Cash out" value={`${currency} ${money(cash.cash_out_total)}`} />
-                    <Row name="Expected cash in drawer" value={`${currency} ${money(cash.expected_cash_amount)}`} />
+                    <Row name="Opening/petty cash" value={`${currencyLabel(currency)}${money(cash.opening_float_amount)}`} />
+                    <Row name="Cash sales" value={`${currencyLabel(currency)}${money(cash.cash_sales_amount)}`} />
+                    <Row name="Cash in" value={`${currencyLabel(currency)}${money(cash.cash_in_total)}`} />
+                    <Row name="Cash out" value={`${currencyLabel(currency)}${money(cash.cash_out_total)}`} />
+                    <Row name="Expected cash in drawer" value={`${currencyLabel(currency)}${money(cash.expected_cash_amount)}`} />
                     <Row name="Closing cash" value={reconciliationMoney(cash.closing_cash_amount, currency, 'Not closed')} />
                     <Row name="Variance" value={reconciliationMoney(cash.cash_variance_amount, currency, 'Pending close')} strong />
                 </section>

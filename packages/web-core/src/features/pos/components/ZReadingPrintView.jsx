@@ -1,7 +1,8 @@
 import React from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const currencyLabel = (value) => String(value || '').toUpperCase() === 'PHP' ? '₱' : String(value || '₱');
 const paymentLabel = (entry) => (
     String(entry?.payment_label || entry?.payment_type || '').replace(/_/g, ' ') || '-'
 );
@@ -15,7 +16,7 @@ const Row = ({ name, value, strong = false }) => (
 
 export default function ZReadingPrintView({
     report,
-    currency = 'PHP',
+    currency = '₱',
     onClose,
     onPrint,
     autoPrint = false,
@@ -24,6 +25,7 @@ export default function ZReadingPrintView({
 }) {
     if (!report) return null;
     const summary = report.summary || {};
+    const displayCurrency = currencyLabel(currency);
     const counters = report.counters || {};
     const payments = Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : [];
     const printFailed = printState === 'failed';
@@ -39,7 +41,7 @@ export default function ZReadingPrintView({
     ).trim();
 
     return (
-        <div className="pos-z-reading-print-shell fixed inset-0 z-[100] overflow-y-auto bg-slate-950/40 p-4 print:static print:inset-auto print:overflow-visible print:bg-white print:p-0">
+        <div className="pos-z-reading-print-shell fixed inset-0 z-[100] overflow-y-auto bg-slate-950/70 p-4 print:static print:inset-auto print:overflow-visible print:bg-white print:p-0">
             <article className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-4 font-mono text-[11px] leading-tight text-slate-900 shadow-2xl print:max-w-[80mm] print:rounded-none print:border-0 print:p-0 print:shadow-none">
                 <header className="border-b border-dashed border-slate-300 pb-2 text-center">
                     {businessIcon ? (
@@ -53,12 +55,12 @@ export default function ZReadingPrintView({
                 </header>
 
                 <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
-                    <Row name="Transactions" value={summary.transaction_count || 0} />
-                    <Row name="Subtotal" value={`${currency} ${money(summary.subtotal_amount)}`} />
-                    <Row name="Discounts" value={`${currency} ${money(summary.discount_amount)}`} />
-                    <Row name="VAT" value={`${currency} ${money(summary.vat_amount)}`} />
-                    <Row name="Total sales" value={`${currency} ${money(summary.total_amount)}`} strong />
-                    <Row name={`POS voids (${summary.void_transaction_count || 0})`} value={`${currency} ${money(summary.void_amount)}`} />
+                    <Row name="Transactions" value={Number(summary.transaction_count || 0).toLocaleString('en-US')} />
+                    <Row name="Subtotal" value={`${displayCurrency}${money(summary.subtotal_amount)}`} />
+                    <Row name="Discounts" value={`${displayCurrency}${money(summary.discount_amount)}`} />
+                    <Row name="VAT" value={`${displayCurrency}${money(summary.vat_amount)}`} />
+                    <Row name="Total sales" value={`${displayCurrency}${money(summary.total_amount)}`} strong />
+                    <Row name={`POS voids (${Number(summary.void_transaction_count || 0).toLocaleString('en-US')})`} value={`${displayCurrency}${money(summary.void_amount)}`} />
                 </section>
 
                 <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
@@ -66,17 +68,17 @@ export default function ZReadingPrintView({
                     {payments.length === 0 ? <Row name="No payments" value="0" /> : payments.map((entry) => (
                         <Row
                             key={`${entry.payment_type}-${entry.count}`}
-                            name={`${paymentLabel(entry)} (${entry.count || 0})`}
-                            value={`${currency} ${money(entry.amount)}`}
+                            name={`${paymentLabel(entry)} (${Number(entry.count || 0).toLocaleString('en-US')})`}
+                            value={`${displayCurrency}${money(entry.amount)}`}
                         />
                     ))}
                 </section>
 
                 <section className="space-y-1 py-2">
                     <p className="font-black uppercase">Fiscal counters</p>
-                    <Row name="Z counter" value={counters.z_counter || 0} />
-                    <Row name="Reset counter" value={counters.reset_counter || 0} />
-                    <Row name="Lifetime total" value={`${currency} ${money(Number(counters.lifetime_grand_total_cents || 0) / 100)}`} strong />
+                    <Row name="Z counter" value={Number(counters.z_counter || 0).toLocaleString('en-US')} />
+                    <Row name="Reset counter" value={Number(counters.reset_counter || 0).toLocaleString('en-US')} />
+                    <Row name="Lifetime total" value={`${displayCurrency}${money(Number(counters.lifetime_grand_total_cents || 0) / 100)}`} strong />
                 </section>
 
                 {printFailed ? (

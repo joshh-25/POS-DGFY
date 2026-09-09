@@ -23,7 +23,7 @@ describe('POS history search normalization', () => {
     });
 
     it('matches formatted amounts and displayed dates', () => {
-        expect(matchesPosHistorySearch(employeeCreditRow, 'PHP 326.40')).toBe(true);
+        expect(matchesPosHistorySearch(employeeCreditRow, '₱326.40')).toBe(true);
         expect(matchesPosHistorySearch(employeeCreditRow, '8/18/2026')).toBe(true);
         expect(getPosHistorySearchValues(employeeCreditRow)).toContain('2026-08-18');
     });

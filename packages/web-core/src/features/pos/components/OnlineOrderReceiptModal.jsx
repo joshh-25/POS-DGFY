@@ -20,7 +20,7 @@ import {
 // surfaces agree on how merchant identity is displayed (#1319).
 const DGFY_BRAND_NAME = 'DGFY';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const formatDateTime = (value) => {
   if (!value) return '-';
@@ -57,7 +57,7 @@ const resolveLineName = (line) => String(
 const formatQuantity = (value) => {
   const quantity = Number(value || 0);
   if (!Number.isFinite(quantity)) return '0';
-  return Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(2);
+  return quantity.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 };
 
 const paymentStatus = (value) => String(value || 'unpaid')
@@ -166,18 +166,18 @@ export default function OnlineOrderReceiptModal({
                     <tr key={line?.line_id || `${line?.item_id || 'item'}-${index}`}>
                       <td className="py-1.5 pr-2">{resolveLineName(line)}</td>
                       <td className="py-1.5 text-right">{formatQuantity(resolveQuantity(line))}</td>
-                      <td className="py-1.5 text-right">PHP {money(resolveLineTotal(line))}</td>
+                      <td className="py-1.5 text-right">₱{money(resolveLineTotal(line))}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
               <dl className="space-y-1 border-b border-dashed border-slate-300 py-3">
-                <div className="flex justify-between gap-3"><dt>Subtotal</dt><dd>PHP {money(order.subtotal_amount)}</dd></div>
-                {Number(order.discount_amount || 0) > 0 && <div className="flex justify-between gap-3"><dt>Discount</dt><dd>-PHP {money(order.discount_amount)}</dd></div>}
-                {Number(order.delivery_fee || 0) > 0 && <div className="flex justify-between gap-3"><dt>Delivery Fee</dt><dd>PHP {money(order.delivery_fee)}</dd></div>}
-                {Number(order.service_fee_amount || 0) > 0 && <div className="flex justify-between gap-3"><dt>Fees</dt><dd>PHP {money(order.service_fee_amount)}</dd></div>}
-                <div className="flex justify-between gap-3 border-t border-slate-300 pt-2 text-sm font-bold"><dt>Total</dt><dd>PHP {money(order.total_amount)}</dd></div>
+                <div className="flex justify-between gap-3"><dt>Subtotal</dt><dd>₱{money(order.subtotal_amount)}</dd></div>
+                {Number(order.discount_amount || 0) > 0 && <div className="flex justify-between gap-3"><dt>Discount</dt><dd>-₱{money(order.discount_amount)}</dd></div>}
+                {Number(order.delivery_fee || 0) > 0 && <div className="flex justify-between gap-3"><dt>Delivery Fee</dt><dd>₱{money(order.delivery_fee)}</dd></div>}
+                {Number(order.service_fee_amount || 0) > 0 && <div className="flex justify-between gap-3"><dt>Fees</dt><dd>₱{money(order.service_fee_amount)}</dd></div>}
+                <div className="flex justify-between gap-3 border-t border-slate-300 pt-2 text-sm font-bold"><dt>Total</dt><dd>₱{money(order.total_amount)}</dd></div>
               </dl>
 
               {order.special_instructions && <p className="pt-3">Notes: {order.special_instructions}</p>}

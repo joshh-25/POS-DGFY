@@ -97,7 +97,7 @@ describe('CashierHistoryPanel', () => {
         );
 
         expect(screen.getByText('Post-close voids')).toBeTruthy();
-        expect(screen.getAllByText('1 · PHP 125.00')).toHaveLength(2);
+        expect(screen.getAllByText('1 · ₱125.00')).toHaveLength(2);
     });
 
     it('shows post-close refund actor and shift accountability separately from void totals', () => {

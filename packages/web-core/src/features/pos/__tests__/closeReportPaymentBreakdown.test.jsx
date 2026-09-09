@@ -120,7 +120,7 @@ describe('close-report payment breakdown rendering', () => {
 
         expect(markup).toContain('Closing cash</span><span class="whitespace-nowrap text-right tabular-nums">Not closed');
         expect(markup).toContain('Variance</span><span class="whitespace-nowrap text-right tabular-nums">Pending close');
-        expect(markup).not.toContain('Closing cash</span><span class="whitespace-nowrap text-right tabular-nums">PHP 0.00');
-        expect(markup).not.toContain('Variance</span><span class="whitespace-nowrap text-right tabular-nums">PHP 0.00');
+        expect(markup).not.toContain('Closing cash</span><span class="whitespace-nowrap text-right tabular-nums">₱0.00');
+        expect(markup).not.toContain('Variance</span><span class="whitespace-nowrap text-right tabular-nums">₱0.00');
     });
 });
