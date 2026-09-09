@@ -94,4 +94,29 @@ describe('buildListStoreCatalogUseCase -- Phase 285 (#1318, C1) secondary_catego
         expect(result.success).toBe(true);
         expect(result.data.items[0].secondary_categories).toEqual([]);
     });
+
+    test('does not publish legacy category text when the item has no live primary folder', async () => {
+        const storeRepository = {
+            listStoreCatalog: jest.fn().mockResolvedValue([{
+                item_id: 43,
+                name: 'Unassigned Legacy Item',
+                current_stock: 1,
+                default_sale_price: 50,
+                folder_id: null,
+                folder_name: 'Masu Cafe',
+                product_folder: 'Masu Cafe'
+            }])
+        };
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository,
+            resolveWorkflowCapabilitySettings: resolveWorkflowCapabilitySettingsFixture
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'cat-store' }, () => (
+            useCase({ query: { limit: 20 } })
+        ));
+
+        expect(result.data.items).toHaveLength(1);
+        expect(result.data.items[0]).toMatchObject({ folder_id: null, folder_name: null, folder_sort_order: null });
+    });
 });

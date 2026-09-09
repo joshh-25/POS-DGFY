@@ -191,17 +191,14 @@ describe('getServicesStorefrontViewModel — secondary-category grouping fan-out
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it('falls back to name-based identity only for a genuinely ID-less category', () => {
-    // No folder_id at all -- the category resolved from service_detail.service_category, not a
-    // real primary folder. Two such items whose resolved category matches still group together,
-    // unchanged from pre-Phase-289 behavior.
+  it('keeps unassigned services under All without creating an inferred category', () => {
     const result = getServicesStorefrontViewModel([
-      baseService({ item_id: 8, folder_id: null, folder_name: '', service_detail: { service_category: 'wellness' } }),
+      baseService({ item_id: 8, folder_id: null, folder_name: 'Legacy Services', service_detail: { service_category: 'wellness' } }),
       baseService({ item_id: 9, folder_id: null, folder_name: '', service_detail: { service_category: 'wellness' } })
     ]);
 
-    expect(result.serviceGroups).toHaveLength(1);
-    expect(result.serviceGroups[0].categoryIdentity).toBe('name:wellness');
-    expect(result.serviceGroups[0].items.map((item) => item.item_id).sort()).toEqual([8, 9]);
+    expect(result.allServices.map((item) => item.item_id)).toEqual([8, 9]);
+    expect(result.totalServices).toBe(2);
+    expect(result.serviceGroups).toEqual([]);
   });
 });

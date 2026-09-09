@@ -47,7 +47,12 @@ const buildCatalogRow = (overrides = {}) => ({
     category: 'product',
     product_type: 'finished_goods',
     product_folder: overrides.product_folder ?? 'Primary Folder',
-    folder_id: overrides.folder_id ?? 1,
+    folder_id: Object.hasOwn(overrides, 'folder_id') ? overrides.folder_id : 1,
+    folder: overrides.folder === null ? null : {
+        folder_id: Object.hasOwn(overrides, 'folder_id') ? overrides.folder_id : 1,
+        name: overrides.product_folder ?? 'Primary Folder',
+        sort_order: overrides.folder_sort_order ?? 0
+    },
     unit_of_measure: 'pc',
     current_stock: overrides.current_stock ?? 7,
     default_sale_price: 25,
@@ -111,6 +116,21 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
         expect(result).toHaveLength(1);
         expect(result[0].secondary_categories).toEqual([]);
         expect(itemFolderFindAllMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps an unassigned item public without turning legacy product_folder text into a category', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({
+            item_id: 201,
+            folder_id: null,
+            folder: null,
+            product_folder: 'Masu Cafe'
+        })]);
+        listItemFolderMembershipsMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toMatchObject({ folder_id: null, folder_name: null, folder_sort_order: null });
     });
 
     it('fails open (empty array, no throw) when the membership lookup errors -- an additive projection must never break the public catalog', async () => {

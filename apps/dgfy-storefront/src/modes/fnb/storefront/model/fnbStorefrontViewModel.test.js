@@ -187,17 +187,14 @@ describe('getFoodBeverageStorefrontViewModel — secondary-category grouping fan
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it('falls back to name-based identity only for a genuinely ID-less section', () => {
-    // No folder_id at all -- the section resolved from a heuristic fallback field, not a real
-    // primary folder. Two such items whose resolved label matches still group together, unchanged
-    // from pre-Phase-289 behavior.
+  it('keeps unassigned items under All without creating an inferred category', () => {
     const result = getFoodBeverageStorefrontViewModel([
-      baseItem({ item_id: 8, folder_id: null, folder_name: '', item_group_name: 'Chef Specials' }),
-      baseItem({ item_id: 9, folder_id: null, folder_name: '', item_group_name: 'Chef Specials' })
+      baseItem({ item_id: 8, folder_id: null, folder_name: 'Masu Cafe', item_group_name: 'Chef Specials' }),
+      baseItem({ item_id: 9, folder_id: null, folder_name: '', product_type: 'main course' })
     ]);
 
-    expect(result.menuSections).toHaveLength(1);
-    expect(result.menuSections[0].sectionIdentity).toBe('name:chef_specials');
-    expect(result.menuSections[0].items.map((item) => item.item_id).sort()).toEqual([8, 9]);
+    expect(result.menuItems.map((item) => item.item_id)).toEqual([8, 9]);
+    expect(result.totalItems).toBe(2);
+    expect(result.menuSections).toEqual([]);
   });
 });

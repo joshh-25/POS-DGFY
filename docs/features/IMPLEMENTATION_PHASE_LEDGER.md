@@ -22282,8 +22282,12 @@ content differs from what was implemented and tested under the "303" label.
   tests); POS category interaction/contract suites passed (21 tests);
   Storefront F&B/services ordering suites passed (20 tests); POS, Storefront,
   and IMS production builds passed; architecture, compliance, documentation,
-  migration syntax, and per-app version gates passed.
-- Completion date: 2026-09-08.
+  migration syntax, and per-app version gates passed. The Phase 313 corrective
+  audit now also excludes legacy `product_folder` text, heuristic labels, and
+  inactive/deleted primary folders from Storefront category controls while
+  retaining unassigned items in All; focused API and F&B/services model tests
+  cover that boundary.
+- Completion date: 2026-09-09.
 - Contracts/files: `item_folders.sort_order`, inventory folder repository/use
   case/route, shared item service, POS category workspace, Storefront category
   view models, focused tests, and Phase 313 compliance declaration.

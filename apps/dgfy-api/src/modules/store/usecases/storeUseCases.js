@@ -1401,15 +1401,17 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellin
         : null;
     const { price: displaySalePrice, applied: affiliatePriceApplied } = applyAffiliateDisplayPrice(item, affiliateSellingPriceRule);
     const { voucherPriceApplied, voucherDisplayPrice, voucherBadgeOnly } = applyVoucherDisplayPrice(item, voucherDisplay);
+    const folderId = Number.parseInt(item.folder_id, 10);
+    const hasPrimaryFolder = Number.isInteger(folderId) && folderId > 0 && String(item.folder_name || '').trim();
     return {
         item_id: item.item_id,
         name: item.name,
         description: item.description || null,
         category: item.category,
         product_type: item.product_type || null,
-        folder_name: item.folder_name || item.product_folder || item?.folder?.name || null,
-        folder_id: item.folder_id ?? null,
-        folder_sort_order: Number(item.folder_sort_order || 0),
+        folder_name: hasPrimaryFolder ? String(item.folder_name).trim() : null,
+        folder_id: hasPrimaryFolder ? folderId : null,
+        folder_sort_order: hasPrimaryFolder ? Number(item.folder_sort_order || 0) : null,
         // Secondary memberships carry each category's display order so Storefront can
         // render the same tenant-managed sequence as POS.
         secondary_categories: Array.isArray(item.secondary_categories) ? item.secondary_categories : [],

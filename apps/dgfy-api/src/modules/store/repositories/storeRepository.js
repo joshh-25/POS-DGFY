@@ -379,6 +379,7 @@ const buildStorefrontCatalogDetailIncludes = () => {
             model: ItemFolder,
             as: 'folder',
             attributes: ['folder_id', 'name', 'sort_order'],
+            where: { is_active: true, deleted_at: null },
             required: false,
             include: FnbModifierGroup && FnbFolderModifierGroup ? [{
                 model: FnbModifierGroup,
@@ -879,9 +880,12 @@ export const storeRepository = {
                 // `secondary_categories` (the item's non-primary memberships) is attached
                 // separately by attachSecondaryCategories() below, once item_ids are known,
                 // since that lookup is async and this mapper is not.
-                folder_name: row.product_folder || row?.folder?.name || null,
-                folder_id: row.folder_id ?? null,
-                folder_sort_order: Number(row?.folder?.sort_order || 0),
+                // Public categories must come from a live ItemFolder association. Legacy
+                // product_folder text is descriptive migration data and must not create a
+                // Storefront filter category when the item is unassigned or its folder is stale.
+                folder_name: row?.folder?.folder_id != null ? row.folder.name : null,
+                folder_id: row?.folder?.folder_id ?? null,
+                folder_sort_order: row?.folder?.folder_id != null ? Number(row.folder.sort_order || 0) : null,
                 unit_of_measure: row.unit_of_measure,
                 current_stock: isStockExemptServiceItem(row) ? 0 : row.current_stock,
                 default_sale_price: row.default_sale_price,
