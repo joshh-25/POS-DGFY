@@ -30,8 +30,8 @@ authorization.
   local until Save Item.
 - A saved edit sends one validated gallery intent with the asynchronous upload,
   so a single new image cannot replace or duplicate the existing gallery.
-- Repeated file selections are ignored, and stale concurrent gallery edits are
-  rejected with a reopen message.
+- Repeated file selections are ignored, and stale concurrent gallery edits,
+  including edits that started with no images, are rejected with a reopen message.
 - Legacy append-only gallery uploads keep their previous behavior.
 
 ## Compliance Preconditions

@@ -879,6 +879,37 @@ describe('storefront catalog use cases', () => {
         expect(await pathExists(tempPath)).toBe(false);
     });
 
+    it('rejects an empty-base edit intent when another upload filled the gallery', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gallery-intent-empty-stale' });
+        const store = jest.fn();
+        const useCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 97, name: 'Empty stale intent item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
+                    item_id: 97,
+                    storefront_visible: true,
+                    storefront_image_gallery: [{ path: 'storefront-catalog/tenant/other.png', url: '/uploads/other.png' }]
+                }),
+                updateStorefrontCatalogImage: jest.fn()
+            },
+            imageStorage: { store, remove: jest.fn() }
+        });
+
+        await expect(useCase({
+            itemId: 97,
+            files: [{ path: tempPath, key: 'new.png|12|7|image/png', mimetype: 'image/png', originalname: 'new.png', size: PNG_BYTES.length }],
+            galleryIntent: {
+                base_keys: [],
+                pending_keys: ['new.png|12|7|image/png'],
+                entries: [{ type: 'pending', key: 'new.png|12|7|image/png' }]
+            },
+            user: editableUser
+        })).rejects.toMatchObject({ code: 'CONFLICT', statusCode: 409 });
+
+        expect(store).not.toHaveBeenCalled();
+        expect(await pathExists(tempPath)).toBe(false);
+    });
+
     it('uploadStorefrontCatalogGalleryImages appends to legacy primary-only image rows', async () => {
         const tempPath = await writeTempUpload({ prefix: 'storefront-gallery-legacy-primary' });
         const updateStorefrontCatalogImage = jest.fn().mockResolvedValue({

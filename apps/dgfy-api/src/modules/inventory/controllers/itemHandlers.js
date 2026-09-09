@@ -843,6 +843,7 @@ const parseGalleryIntent = (rawIntent, fileCount) => {
     return { error: 'gallery_intent must be valid JSON.' };
   }
   if (!intent || typeof intent !== 'object' || Array.isArray(intent)
+    || !Array.isArray(intent.base_keys)
     || !Array.isArray(intent.entries) || !Array.isArray(intent.pending_keys)
     || intent.pending_keys.length !== fileCount
     || intent.entries.length > 5) {

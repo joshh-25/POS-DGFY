@@ -607,6 +607,7 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
       const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
       const existingGallery = normalizeExistingStorefrontGallery(existing);
       const hasGalleryIntent = galleryIntent && typeof galleryIntent === 'object'
+        && Array.isArray(galleryIntent.base_keys)
         && Array.isArray(galleryIntent.entries)
         && Array.isArray(galleryIntent.pending_keys);
       if (galleryIntent !== null && !hasGalleryIntent) {
@@ -617,7 +618,7 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
         const baseKeys = Array.isArray(galleryIntent.base_keys)
           ? galleryIntent.base_keys.map((key) => String(key || '').trim()).filter(Boolean)
           : [];
-        if (baseKeys.length > 0 && (baseKeys.length !== currentKeys.length || baseKeys.some((key, index) => key !== currentKeys[index]))) {
+        if (baseKeys.length !== currentKeys.length || baseKeys.some((key, index) => key !== currentKeys[index])) {
           throw new DomainError(
             DomainErrorCode.CONFLICT,
             'The item images changed while you were editing. Reopen the item and try again.',
