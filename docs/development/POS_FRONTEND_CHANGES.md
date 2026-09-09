@@ -13,25 +13,31 @@ topic: pos_frontend_full_documentation_and_branch_change_inventory
 ## Purpose
 
 This document is the complete POS frontend reference for the work currently present in
-the local branch 'codex/services-storefront-next-followup'. It combines the functional
+the isolated branch 'codex/services-storefront-next-followup-pos-only'. It combines the functional
 POS guide, technical ownership map, operator workflow, UI/UX contract, validation plan,
 release inventory, and exact branch change inventory. It is a branch snapshot and not a
 replacement for an ADR, API contract, or governed feature document. The governed
 architecture and ADR documents listed below take precedence if a future change conflicts
 with this record.
 
-The documented feature snapshot consists of the following three local commits:
+The isolated branch was created from the current `origin/develop` and contains only the POS
+frontend payload, its tests, and the required documentation. The three original POS source
+batches were ported to the current `develop` surface as the first three commits below; two
+additional POS-only commits complete the current contracts and align tests with the shared image
+architecture.
 
 | Commit | Conventional Commit | Scope | Files | Diff |
 |---|---|---:|---:|---:|
-| 6bab3628f | style(pos): refine terminal catalog presentation | Catalog and terminal presentation | 25 | +981 / -312 |
-| bb03fc154 | fix(pos): harden checkout payment workflows | Checkout, payment, discount, settlement, and receipt workflows | 31 | +806 / -434 |
-| 67170d806 | style(pos): normalize operational workspace presentation | Operational workspaces, mode panels, reports, history, printing, and hardware formatting | 39 | +240 / -212 |
-| **Total** |  |  | **95** | **+2,027 / -958** |
+| d92c636b0 | style(pos): refine terminal catalog presentation | Catalog and terminal presentation; port of source `6bab3628f` | 25 | +962 / -302 |
+| 4a6f878a4 | fix(pos): harden checkout payment workflows | Checkout, payment, discount, settlement, and receipt workflows; port of source `bb03fc154` | 31 | +775 / -438 |
+| 20b6b009a | style(pos): normalize operational workspace presentation | Operational workspaces, mode panels, reports, history, printing, and hardware formatting; port of source `67170d806` | 39 | +240 / -212 |
+| 5fa0538e1 | fix(pos): complete responsive terminal contracts | POS elevation/focus tokens, responsive terminal behavior, and statutory-beneficiary presentation | 3 | +103 / -3 |
+| 67467df33 | test(pos): align contracts with shared image architecture | POS image, loading-priority, and receipt contract alignment | 4 | +15 / -14 |
+| **Feature total** |  |  | **96 unique paths** | **POS feature files plus shared POS CSS** |
 
-The three commits are local only. They have not been pushed by this documentation task.
-The documentation commit, if created separately, is not part of the 95-file feature
-snapshot.
+The documentation commits are `6c3bc6eb5` and `9f2907bf6`; the compliance declaration is
+`37a154066`. The final documentation refresh is intentionally kept as a separate documentation
+commit so the feature history remains bisectable.
 
 ## Scope and safety boundary
 
@@ -45,13 +51,11 @@ snapshot.
 
 ### Not included
 
-- No backend, migration, tenant-schema, or new API endpoint changes are in these three
-  POS commits.
+- No backend, migration, tenant-schema, or new API endpoint changes are in the POS commits.
 - No public Services storefront booking, fulfillment, tracking, or storefront-route
   implementation is included in these three commits.
-- The branch still has service-related ancestors and unrelated dirty/unmerged work in
-  the working tree. Those are intentionally excluded from this POS inventory and must
-  not be included in a POS-only push.
+- The original mixed worktree contains service-related and unrelated dirty/unmerged work, but
+  none of that work was copied into this isolated branch or included in the POS-only inventory.
 - The POS-side ServicesWorkflowPanel and related POS mode presentation are included
   because they are POS screens. That does not mean the public Services storefront flow
   was changed.
@@ -64,22 +68,18 @@ before promoting a branch that combines this work with other frontend changes.
 
 ### Branch status at audit time
 
-- Current local branch: codex/services-storefront-next-followup.
-- Compared with the fetched origin/develop, the branch was **709 commits behind and
-  6 commits ahead** before this documentation commit. The six commits ahead were the
-  three POS commits plus three service-related commits already in the branch history.
-- No remote branch named codex/services-storefront-next-followup was found during the
-  audit.
-- The POS path was clean after the three feature commits:
-  git status --short -- packages/web-core/src/features/pos returned no output, and
-  git diff HEAD --name-only -- packages/web-core/src/features/pos returned no output.
-- The rest of the worktree contains existing user changes, including non-POS and
-  unresolved paths. They were preserved.
-
-Because the branch is substantially behind develop and its history is mixed, it is
-not the safest branch to push as a POS-only branch. The safer release inventory is to
-start a fresh branch from the current origin/develop and cherry-pick only the three
-POS commits, plus this documentation commit if the documentation is intended to ship.
+- Current local branch: `codex/services-storefront-next-followup-pos-only` in the isolated
+  worktree `C:\w`.
+- Compared with the fetched `origin/develop`, the branch was **0 commits behind and 8 commits
+  ahead** before this final documentation refresh. The ahead commits are the five POS feature
+  commits, two POS documentation commits, and one compliance declaration.
+- The final refresh will make the branch 0 behind and 9 commits ahead; the remote branch is
+  `origin/codex/services-storefront-next-followup-pos-only`.
+- The branch diff contains 95 POS feature paths, `packages/web-core/src/index.css`, and two
+  documentation paths only. No Services Storefront, backend, migration, registration, or
+  unrelated frontend path is present.
+- The original worktree at `C:\xampp\htdocs\DGFY` remains untouched and may still contain the
+  user's unrelated dirty/unmerged changes.
 
 ## Governing references
 
@@ -610,7 +610,7 @@ On a supported terminal or bridge:
 
 This branch-level POS work is considered technically documented when:
 
-- all three POS feature commits are identified by exact hash and Conventional Commit name;
+- all five POS feature commits are identified by exact hash and Conventional Commit name;
 - every changed POS path is listed and matches the commit manifests;
 - catalog, current-sale, checkout/payment, operational, mode, hardware, and browser-state
   responsibilities are explained;
@@ -619,7 +619,9 @@ This branch-level POS work is considered technically documented when:
 - automated validation evidence and its limitations are recorded;
 - manual QA and hardware follow-up steps are available;
 - service ancestry and unrelated working-tree changes are explicitly excluded;
-- no push, merge, deployment, or claim of production verification is made.
+- the final branch's relationship to `origin/develop`, pushed branch name, and documentation
+  inventory are recorded;
+- no merge, deployment, or claim of production verification is made.
 
 The current document satisfies the documentation criteria above. Product acceptance still
 requires the release branch's own checks and any required browser, hardware, API, and
@@ -629,8 +631,8 @@ deployment evidence.
 
 ### 1. Catalog and terminal presentation
 
-Commit 6bab3628f improves the catalog and terminal shell without moving catalog or
-inventory ownership into POS:
+The catalog and terminal presentation batch (`d92c636b0`, ported from source `6bab3628f`)
+improves the catalog and terminal shell without moving catalog or inventory ownership into POS:
 
 - Added a responsive catalog page-size control with an Auto mode and explicit page
   options.
@@ -654,7 +656,8 @@ inventory ownership into POS:
 
 ### 2. Checkout, payments, discounts, settlement, and receipts
 
-Commit bb03fc154 hardens the sales-completion path:
+The checkout and payment batch (`4a6f878a4`, ported from source `bb03fc154`) hardens the
+sales-completion path:
 
 - Standardized POS monetary display around the peso glyph ₱ in checkout, payment,
   settlement, and related receipt-facing surfaces. Existing numeric calculations remain
@@ -677,7 +680,8 @@ Commit bb03fc154 hardens the sales-completion path:
 
 ### 3. Operational workspace and mode consistency
 
-Commit 67170d806 normalizes the broader POS operating experience:
+The operational presentation batch (`20b6b009a`, ported from source `67170d806`) normalizes the
+broader POS operating experience:
 
 - Refined terminal operations, transaction history, cashier history, audit workspace,
   reports/analytics, and terminal-lock surfaces.
@@ -782,10 +786,12 @@ The changes can be reviewed in this order:
 
 ## Exhaustive changed-file manifest
 
-The following lists are the complete 95-file manifest for the three documented feature
-commits. All paths are repository-relative and are under the shared POS feature trunk.
+The following lists are the complete 96-path POS/shared-POS manifest for the five current
+feature commits. The original three source-batch sections are retained for provenance, followed
+by the two follow-up contract sections. All paths are repository-relative and no Services
+Storefront, backend, migration, or unrelated frontend path is included.
 
-### Commit 6bab3628f — catalog and terminal presentation
+### Commit d92c636b0 — catalog and terminal presentation (source batch 6bab3628f)
 
 #### Tests and contracts
 
@@ -830,7 +836,7 @@ These files implement the catalog controls, responsive terminal/catalog layout,
 current-sale presentation, item/service option surfaces, text-size control, image
 fallback state, and catalog workflow helpers described above.
 
-### Commit bb03fc154 — checkout and payment workflows
+### Commit 4a6f878a4 — checkout and payment workflows (source batch bb03fc154)
 
 #### Tests and contracts
 
@@ -881,7 +887,7 @@ These files implement the checkout shell, payment confirmation, discount workspa
 split payments, settlements, refunds, downpayments, employee credit, parked sales,
 bill requests, receipt dialogs, and checkout formatting/validation behavior.
 
-### Commit 67170d806 — operational workspace presentation
+### Commit 20b6b009a — operational workspace presentation (source batch 67170d806)
 
 #### Tests and contracts
 
@@ -941,57 +947,93 @@ transaction/cashier history, reports, audit, pricing, affiliates, vouchers, rece
 shift close, Z-reading, Skupervisor parallels, hardware formatting, queue formatting,
 history search, and void-audit behavior.
 
+### Follow-up commit 5fa0538e1 — responsive terminal contracts
+
+~~~text
+packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx
+packages/web-core/src/features/pos/components/POSDiscountWorkspace.jsx
+packages/web-core/src/index.css
+~~~
+
+This follow-up completes the responsive terminal contract by keeping mobile catalog images eager
+when appropriate, aligning statutory-beneficiary presentation with the POS blue surface, and
+providing the shared POS elevation, focus-shadow, scroll, and mobile checkout-sheet rules required
+by the current terminal layout.
+
+### Follow-up commit 67467df33 — shared image and receipt contract tests
+
+~~~text
+packages/web-core/src/features/pos/__tests__/itemDiscountEligibility.contract.test.js
+packages/web-core/src/features/pos/__tests__/posCatalogCardPresentation.contract.test.js
+packages/web-core/src/features/pos/__tests__/posCatalogPerformance.contract.test.js
+packages/web-core/src/features/pos/__tests__/receiptContractConformance.contract.test.js
+~~~
+
+These tests are aligned with the current `develop` architecture: shared responsive image components,
+pending POS image-preview state, mobile-aware loading priority, and the current peso-symbol receipt
+format. The tests do not introduce a separate service storefront flow.
+
 ## Validation evidence
 
-Validation was run against the POS scope before the commits were recorded:
+Validation was run against the final isolated POS branch after the feature and documentation
+commits were assembled:
 
 | Check | Command or scope | Result |
 |---|---|---|
-| POS unit/component/contract suite | From apps/dgfy-ims: npx vitest run --maxWorkers=1 ../../packages/web-core/src/features/pos | **PASS — 189 test files passed; 1,169 tests passed** |
-| POS application lint | npm --prefix apps/dgfy-pos run lint | **PASS** |
-| POS production build | From apps/dgfy-pos: $env:GOMAXPROCS='1'; npx vite build --minify=false | **PASS — 2,976 modules transformed** |
-| Architecture guardrails and controller boundaries | npm run check:architecture | **PASS — ArchitectureGuardrails: 53 modules / 549 files; ControllerBoundary: 93 controller files** |
-| Compliance checks | npm run check:compliance | **PASS** |
-| Whitespace/error check | git diff --check -- packages/web-core/src/features/pos | **PASS** |
-| Commit-marker safety scan | Repository marker scan across the POS paths | **No matches** |
+| POS unit/component/contract suite | From apps/dgfy-ims: `npx vitest run --maxWorkers=1 ../../packages/web-core/src/features/pos` | **PASS — 199 test files passed; 1,264 tests passed** |
+| POS application lint | `npm run lint` from apps/dgfy-pos | **PASS** |
+| POS production build | `npm run build` from apps/dgfy-pos with `GOMAXPROCS=1` | **PASS — 2,994 modules transformed** |
+| IMS consuming production build | `npm run build` from apps/dgfy-ims | **PASS — 3,817 modules transformed** |
+| Architecture guardrails and controller boundaries | `npm run check:architecture` | **PASS — ArchitectureGuardrails: 54 modules / 563 files; ControllerBoundary: 94 controller files** |
+| Documentation and ADR checks | `npm run lint:docs` | **PASS — 30 governed docs; 89 ADRs** |
+| Compliance checks | `npm run check:compliance` | **PASS — 6 sensitive files covered by the POS declaration; API contract checks passed** |
+| Whitespace/error check | `git diff --check` | **PASS** |
+| Commit-marker safety scan | `DO NOT COMMIT` scan across staged/changed files | **No matches** |
+| Scope audit | `git diff --name-only origin/develop...HEAD` | **PASS — 98 paths: 96 POS/shared POS paths and 2 documentation paths; no non-POS paths** |
 
-### Build caveat
+### Build notes
 
-The normal optimized Vite build previously hit a Windows esbuild virtual-memory
-allocation failure while the machine had approximately 1 GB available. The documented
-successful build intentionally used a single worker and --minify=false to reduce peak
-memory. This proves the application can transform and bundle the POS code under the
-available local resources, but it is not equivalent to a successful minified production
-build. The release pipeline or a machine with adequate memory should run the normal
-production build before release approval.
+The normal optimized Vite builds passed for both `apps/dgfy-pos` and the consuming
+`apps/dgfy-ims` application. Vite emitted only existing advisory warnings about a dynamically
+imported image rollout module and large chunks; neither warning failed the build. The builds were
+run with `GOMAXPROCS=1` for predictable local resource use.
 
 ### Validation not performed in this audit
 
-- No browser-driven end-to-end walkthrough was run as part of this documentation task.
-- No GitHub push, PR update, merge, deployment, or production verification was performed.
-- No POS backend/API contract change was introduced, so backend and migration checks
-  were not part of these three commits; the repository-wide compliance/architecture
-  checks above still passed.
+- No browser-driven end-to-end walkthrough or hardware/printer validation was run in this audit.
+- No merge, deployment, or production verification is claimed.
+- No POS backend/API contract change was introduced, so backend and migration checks were not
+  required for this frontend-only payload; the repository-wide compliance and architecture checks
+  passed.
 
 ## POS-only release inventory and exclusions
 
-### Files/commits intended for a POS-only follow-up branch
+### Files/commits included in the POS-only follow-up branch
 
-The POS feature payload is:
+The POS feature payload on the isolated branch is:
 
 ~~~text
-6bab3628f style(pos): refine terminal catalog presentation
-bb03fc154 fix(pos): harden checkout payment workflows
-67170d806 style(pos): normalize operational workspace presentation
+d92c636b0 style(pos): refine terminal catalog presentation
+4a6f878a4 fix(pos): harden checkout payment workflows
+20b6b009a style(pos): normalize operational workspace presentation
+5fa0538e1 fix(pos): complete responsive terminal contracts
+67467df33 test(pos): align contracts with shared image architecture
 ~~~
 
-The 95 paths listed in the exhaustive manifest are the files associated with those
-commits. If this documentation is also required in the pushed branch, include the
-separate documentation commit that adds this file.
+The 96 unique POS/shared-POS paths listed in the exhaustive manifest are the files associated with
+those commits. The documentation payload is:
+
+~~~text
+6c3bc6eb5 docs(pos): document POS frontend changes
+9f2907bf6 docs(pos): expand frontend functional documentation
+37a154066 docs(pos): add compliance impact declaration
+~~~
+
+The final refresh of this file is the remaining documentation commit on this branch.
 
 ### Explicitly excluded service ancestry
 
-These commits are present in the current branch history but are not part of the POS-only
+These source-branch commits were deliberately not cherry-picked into the isolated POS-only
 payload:
 
 ~~~text
@@ -1000,38 +1042,41 @@ payload:
 8cc5a1653 style(pos-services): normalize service image model files
 ~~~
 
-They contain service-specific paths under packages/web-core/src/features/services and
-service-catalog/POS service integration. They must not be bundled into a POS-only
-cherry-pick or push merely because they are ancestors of the current branch.
+They contain service-specific paths under `packages/web-core/src/features/services` and
+service-catalog/POS service integration. They must not be bundled into the POS-only branch or
+push. The isolated branch has no service ancestry from those commits.
 
 ### Explicitly excluded working-tree changes
 
-The working tree also contains existing non-POS changes and unresolved/unmerged paths
-across areas such as backend/API, migration runner, registration, storefront, and shared
-service code. This document does not enumerate those as POS changes. They were not
-staged, overwritten, resolved, reset, or pushed by this task.
+The original worktree at `C:\xampp\htdocs\DGFY` contains existing non-POS changes and
+unresolved/unmerged paths across areas such as backend/API, migration runner, registration,
+storefront, and shared service code. This document does not enumerate those as POS changes. They
+were not staged, overwritten, resolved, reset, or pushed by this task. The isolated `C:\w` worktree
+is clean except for the documentation refresh being committed now.
 
 ## Recommended inspection and release procedure
 
-Use these read-only commands to inspect the exact commits without touching the dirty
-working tree:
+Use these read-only commands from `C:\w` to inspect the exact isolated branch without touching the
+original dirty working tree:
 
 ~~~powershell
 git status --short --branch
-git show --stat --oneline 6bab3628f
-git show --stat --oneline bb03fc154
-git show --stat --oneline 67170d806
-git show --name-only --format=fuller 6bab3628f
-git show --name-only --format=fuller bb03fc154
-git show --name-only --format=fuller 67170d806
-git diff --name-only origin/develop...67170d806 -- packages/web-core/src/features/pos
+git show --stat --oneline d92c636b0
+git show --stat --oneline 4a6f878a4
+git show --stat --oneline 20b6b009a
+git show --stat --oneline 5fa0538e1
+git show --stat --oneline 67467df33
+git show --name-only --format=fuller d92c636b0
+git show --name-only --format=fuller 4a6f878a4
+git show --name-only --format=fuller 20b6b009a
+git show --name-only --format=fuller 5fa0538e1
+git show --name-only --format=fuller 67467df33
+git diff --name-only origin/develop...HEAD -- packages/web-core/src/features/pos
 git rev-list --left-right --count origin/develop...HEAD
 ~~~
 
-For a safe POS-only branch, after confirming the current worktree is protected, use a
-fresh branch based on the current origin/develop, then cherry-pick only the three POS
-commits and the documentation commit if desired. Do not use a hard reset or checkout on
-the current dirty branch. After the cherry-pick, verify:
+The branch has already been created from the current `origin/develop`, and the selected POS and
+documentation commits have already been assembled. Before pushing, verify:
 
 ~~~powershell
 git rev-list --left-right --count origin/develop...HEAD
@@ -1039,16 +1084,17 @@ git diff --name-only origin/develop...HEAD
 git status --short
 ~~~
 
-The resulting diff should contain only packages/web-core/src/features/pos/** plus the
-explicit POS documentation file. If service, backend, migration, registration, or
-storefront paths appear, stop and remove them from the release inventory before pushing.
+The resulting diff should contain only `packages/web-core/src/features/pos/**`,
+`packages/web-core/src/index.css`, and the two explicit POS documentation files. If service,
+backend, migration, registration, or storefront paths appear, stop and remove them from the
+release inventory before pushing.
 
 ## Maintenance notes
 
-- Update this document when the documented POS commits are amended, replaced, or
-  cherry-picked into a new release branch.
-- Do not claim that the whole mixed branch is POS-only; only the three listed commits are
-  the POS feature payload documented here.
+- Update this document when the documented POS commits are amended, replaced, or cherry-picked
+  into a new release branch.
+- Do not claim that the original mixed worktree is POS-only; only the isolated branch's listed
+  commits are the POS feature payload documented here.
 - Run the POS test suite, POS lint, application build, architecture checks, compliance
   checks, and the repository's required PR checks again on the final branch that will be
   pushed.
