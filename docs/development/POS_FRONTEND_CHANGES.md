@@ -13,7 +13,7 @@ topic: pos_frontend_full_documentation_and_branch_change_inventory
 ## Purpose
 
 This document is the complete POS frontend reference for the work currently present in
-the isolated branch 'codex/services-storefront-next-followup-pos-only'. It combines the functional
+the isolated branch 'codex/pos-frontend-changes-sell'. It combines the functional
 POS guide, technical ownership map, operator workflow, UI/UX contract, validation plan,
 release inventory, and exact branch change inventory. It is a branch snapshot and not a
 replacement for an ADR, API contract, or governed feature document. The governed
@@ -68,12 +68,12 @@ before promoting a branch that combines this work with other frontend changes.
 
 ### Branch status at audit time
 
-- Current local branch: `codex/services-storefront-next-followup-pos-only` in the isolated
+- Current local branch: `codex/pos-frontend-changes-sell` in the isolated
   worktree `C:\w`.
 - Compared with the fetched `origin/develop`, the branch is **0 commits behind and 10 commits
   ahead**. The ahead commits are the five POS feature commits, four POS documentation commits,
   and one compliance declaration.
-- The remote branch is `origin/codex/services-storefront-next-followup-pos-only`; its history is
+- The remote branch is `origin/codex/pos-frontend-changes-sell`; its history is
   rebased onto the latest fetched `origin/develop` before the push.
 - The branch diff contains 95 POS feature paths, `packages/web-core/src/index.css`, and two
   documentation paths only. No Services Storefront, backend, migration, registration, or
