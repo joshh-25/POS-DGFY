@@ -26,8 +26,8 @@ describe('hosted POS catalog performance contracts', () => {
 
     expect(checkoutUtilsSource).toContain("item?.pos_image_url || item?.storefront_image_url");
     expect(checkoutUtilsSource).toContain('fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl');
-    expect(checkoutSource).toContain("loading={itemIndex < 4 ? 'eager' : 'lazy'}");
-    expect(checkoutSource).toContain("fetchpriority={itemIndex < 4 ? 'high' : 'auto'}");
+    expect(checkoutSource).toContain("loading={isMobileViewport || itemIndex < 4 ? 'eager' : 'lazy'}");
+    expect(checkoutSource).toContain("fetchpriority={isMobileViewport || itemIndex < 4 ? 'high' : 'auto'}");
     expect(checkoutSource).toContain('width={144}');
     expect(checkoutSource).toContain('height={144}');
     expect(checkoutSource).toContain('sizes="144px"');
@@ -92,9 +92,9 @@ describe('hosted POS catalog performance contracts', () => {
     expect(checkoutSource).toContain('max-sm:aspect-square');
     expect(checkoutSource).toContain('max-sm:w-auto');
     expect(checkoutSource).toContain('max-sm:self-start');
-    expect(checkoutSource).toContain('mobileSafe={isMobileViewport}');
-    expect(checkoutSource).toContain('src={mobileSafe ? (sources.mobileSrc || sources.src) : sources.src}');
-    expect(checkoutSource).toContain('event.currentTarget.removeAttribute(\'srcset\');');
+    expect(checkoutSource).toContain('pendingItemImagePreviews[String(item.item_id)]?.url');
+    expect(checkoutSource).toContain('<PosItemImage');
+    expect(checkoutSource).toContain("fetchpriority={isMobileViewport || itemIndex < 4 ? 'high' : 'auto'}");
     expect(checkoutSource).toContain('max-w-full line-clamp-2 text-[13px] font-black leading-tight');
     expect(checkoutSource).not.toContain('truncate text-center text-[14px] font-black leading-tight text-white');
     expect(checkoutSource).not.toContain('No POS Image');

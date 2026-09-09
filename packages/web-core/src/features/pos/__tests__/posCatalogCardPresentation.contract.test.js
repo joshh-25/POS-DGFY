@@ -19,7 +19,9 @@ describe('standalone POS catalog card presentation', () => {
         expect(source).toContain("'max-sm:w-[128px]'");
         expect(source).toContain("{ flex: '0 0 128px', width: '128px' }");
         expect(source).toContain("{ width: '128px', maxWidth: 'none', aspectRatio: 'auto' }");
-        expect(source).toContain("{ width: '100%', maxWidth: 'none', height: '100%', aspectRatio: 'auto' }");
+        expect(source).toContain('<PosItemImage');
+        expect(source).toContain('className="product-image h-full w-full object-cover object-center"');
+        expect(source).not.toContain('<PosResponsiveImage');
         expect(source).toContain('relative flex flex-1 min-w-0 flex-col gap-1 p-1.5 sm:hidden');
         expect(source).toContain('flex min-w-0 flex-col items-start gap-0.5 pr-14');
         expect(source).toContain("'flex min-w-0 min-h-[2.5rem] flex-col items-start justify-center p-1 text-left text-[12px] leading-tight'");

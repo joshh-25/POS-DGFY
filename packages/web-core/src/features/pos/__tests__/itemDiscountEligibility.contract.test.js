@@ -58,9 +58,8 @@ describe('item Senior/PWD discount eligibility controls', () => {
 
     expect(discountWorkspace).toContain("String(item?.item_id ?? '') === String(line?.item_id ?? '')");
     expect(discountWorkspace).toContain('resolvePosCatalogImageSources(catalogItem || line)');
-    expect(discountWorkspace).toContain('srcSet={imageSources.srcSet}');
-    expect(discountWorkspace).toContain('type="image/avif"');
-    expect(discountWorkspace).toContain('type="image/webp"');
-    expect(discountWorkspace).toContain('advanceAssetImageFallback(event, imageFallbackCandidates)');
+    expect(discountWorkspace).toContain('const discountThumbSources = resolvedSrc');
+    expect(discountWorkspace).toContain('<ResponsiveImage sources={discountThumbSources}');
+    expect(discountWorkspace).not.toContain('advanceAssetImageFallback(event, imageFallbackCandidates)');
   });
 });

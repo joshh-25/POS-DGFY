@@ -472,10 +472,10 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     });
 
     expect(hardwareText).toContain('Payment Breakdown');
-    expect(hardwareText).toMatch(/Cash\s+PHP 90\.00/);
-    expect(hardwareText).toMatch(/GCash\s+PHP 230\.00/);
-    expect(hardwareText).toMatch(/Cash Received\s+PHP 90\.00/);
-    expect(hardwareText).toMatch(/Change\s+PHP 0\.00/);
+    expect(hardwareText).toMatch(/Cash\s+₱90\.00/);
+    expect(hardwareText).toMatch(/GCash\s+₱230\.00/);
+    expect(hardwareText).toMatch(/Cash Received\s+₱90\.00/);
+    expect(hardwareText).toMatch(/Change\s+₱0\.00/);
   });
 
   it('renders and formats receipts when Android WebView does not provide replaceAll', () => {
