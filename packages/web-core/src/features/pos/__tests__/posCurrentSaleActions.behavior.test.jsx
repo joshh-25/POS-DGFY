@@ -81,6 +81,26 @@ describe('PosCurrentSaleActions', () => {
     expect(actions.onOpenCashDrawer).toHaveBeenCalledOnce();
   });
 
+  it('disables the drawer action when the resolved terminal has no cash drawer capability', () => {
+    const onOpenCashDrawer = vi.fn();
+
+    render(
+      <PosCurrentSaleActions
+        presentationBundle={resolvePosPresentationBundle(resolvePosWorkflow('services'))}
+        onCheckout={vi.fn()}
+        onPrintOrder={vi.fn()}
+        onOpenCashDrawer={onOpenCashDrawer}
+        cashDrawerAvailable={false}
+      />
+    );
+
+    const drawerButton = screen.getByTestId('pos-open-cash-drawer-button');
+    expect(drawerButton.disabled).toBe(true);
+    expect(drawerButton.getAttribute('title')).toBe('No cash drawer is configured for this terminal.');
+    fireEvent.click(drawerButton);
+    expect(onOpenCashDrawer).not.toHaveBeenCalled();
+  });
+
   it('falls back to the Services-safe action set when the bundle is missing', () => {
     render(
       <PosCurrentSaleActions
