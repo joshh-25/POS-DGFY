@@ -172,7 +172,7 @@ production or tenant data was changed. Completion date: 2026-09-09.
 
 ## Phase 316 — Rendered image and release-readiness validation
 
-Status: in_progress. Depends on Phase 315. Addresses remaining G4.
+Status: completed. Depends on Phase 315. Addresses remaining G4.
 
 1. Check the actual POS image viewer at desktop and 360px mobile width, plus short
    landscape height. Exercise open, next/previous, fallback failure, zoom in/out,
@@ -203,19 +203,30 @@ desktop emulation as proof on a physical APK device. No PR/push/deploy unless as
 
 - Reproduced the stale-dimension gap at the rendered component level: a zoomed
   image kept explicit pixel dimensions after a narrow viewport change.
+- Reproduced a duplicate gallery entry where a regenerated primary record and
+  its older original path rendered the same image twice. The POS gallery resolver
+  now preserves authoritative primary variants and aliases original source paths
+  for duplicate detection, so item 3233 exposes three unique images.
 - Updated `PosItemImageViewer.jsx` to listen for `resize` and
   `orientationchange`, clear zoom and stale metrics immediately, then remeasure
   the loaded image on the next animation frame (with a timer fallback).
 - Added a focused POS regression test covering 800px-to-320px resizing, stale
   style removal, remeasurement, and safe re-enlargement. The POS viewer suite
-  passes 4/4 and the POS production build passes.
-- The local POS browser was reachable but authentication-gated at the login
-  screen. No credentials were available, so authenticated desktop/mobile
-  interaction, HAR request counts/bytes, and live close/reopen proof remain
-  unexecuted. No production or tenant data was changed.
-- Phase 316 remains `in_progress` until that authenticated rendered and network
-  evidence is available; this is an external access limitation, not a test
-  failure. Physical iMin validation remains excluded.
+  passes 4/4, the shared resolver/asset suites pass 23/23, and the POS
+  production build passes.
+- Authenticated local POS browser proof passed with the documented development
+  account: desktop 1280x800, mobile 360x640, and landscape 640x360 all kept
+  document/body width within the viewport; zoom produced a scrollable image;
+  resize cleared explicit pixel dimensions; navigation changed from image 1 of
+  3 to a distinct image 2 of 3; Escape closed and focus returned to the image
+  trigger; close/reopen worked; and no page errors, failed requests, or viewer
+  response errors occurred.
+- Opening the viewer requested one active HD image and three gallery thumbnails;
+  localStorage keys were unchanged. The controlled resolver test covers fallback
+  failure without adding a POS image copy, prefetch loop, or new dependency.
+  No production or tenant data was changed. Physical iMin validation remains
+  excluded per the user instruction.
+- Phase 316 acceptance gates pass and the phase is complete.
 
 ## Execution handoff
 
@@ -224,5 +235,4 @@ Read this document and its authoritative references before editing. Phases 314 a
 marking it completed. Existing application work is committed; preserve unrelated
 untracked files. Do not silently broaden scope, delete tenant data, disable cache
 safety, or claim existing passing unit tests prove G1/G2 absent. Current completed
-phase is 315; Phase 316 is active and remains the next eligible implementation
-phase until its required authenticated evidence passes.
+phase is 316; next eligible implementation phase is 317.

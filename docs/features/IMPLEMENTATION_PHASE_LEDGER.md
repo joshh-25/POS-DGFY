@@ -22353,13 +22353,16 @@ content differs from what was implemented and tested under the "303" label.
   explicit-dimension gap after a narrow viewport change. `PosItemImageViewer.jsx`
   now clears zoom and metrics on `resize`/`orientationchange`, then remeasures the
   loaded image on the next animation frame (with a timer fallback). The focused
-  POS viewer suite passes 4/4 and the POS production build passes. The local POS
-  browser is authentication-gated, so authenticated desktop/mobile interaction,
-  HAR request counts/bytes, and live close/reopen proof remain unexecuted; no
-  production or tenant data was changed. Physical iMin validation is excluded per
-  user instruction.
-- Completion date: pending authenticated rendered/network evidence.
+  POS viewer suite passes 4/4 and the shared resolver/asset suites pass 23/23.
+  Authenticated local POS browser proof passed at desktop 1280x800, mobile
+  360x640, and landscape 640x360: the dialog stayed within the viewport, zoom
+  remained scrollable, resize cleared explicit dimensions, navigation moved from
+  image 1 of 3 to a distinct image 2 of 3, Escape closed and restored focus, and
+  close/reopen worked. The viewer requested one active HD image and three
+  thumbnails, added no localStorage keys, and produced no page errors, failed
+  requests, or viewer response errors. No production or tenant data was changed.
+  Physical iMin validation is excluded per user instruction.
+- Completion date: 2026-09-09.
 - Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
   PosItemImageViewer.jsx, POS viewer tests, and local rendered validation artifacts.
-- Next eligible phase: 316 remains active until its required authenticated
-  evidence passes; Phase 317 is not yet eligible.
+- Next eligible phase: 317.
