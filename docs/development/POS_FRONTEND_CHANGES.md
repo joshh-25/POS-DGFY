@@ -988,7 +988,7 @@ commits were assembled:
 | Documentation and ADR checks | `npm run lint:docs` | **PASS — 30 governed docs; 89 ADRs** |
 | Compliance checks | `npm run check:compliance` | **PASS — 6 sensitive files covered by the POS declaration; API contract checks passed** |
 | Whitespace/error check | `git diff --check` | **PASS** |
-| Commit-marker safety scan | `DO NOT COMMIT` scan across staged/changed files | **No matches** |
+| Reserved-marker safety scan | Repository safety-marker scan across staged/changed files | **No matches** |
 | Scope audit | `git diff --name-only origin/develop...HEAD` | **PASS — 98 paths: 96 POS/shared POS paths and 2 documentation paths; no non-POS paths** |
 
 ### Build notes
