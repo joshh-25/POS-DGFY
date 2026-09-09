@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-09-04
+last_reviewed: 2026-09-09
 review_by: 2027-03-04
 applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, release_process
 topic: per_app_container_semantic_versioning
@@ -407,6 +407,49 @@ silently reading as "nothing changed."
 Full detail: `scripts/check-app-version-bump.js`'s `runFloor()`, `printFloorResult()`; its test
 file's `--floor` section (regression coverage for the single-app case and for `file:` fan-out
 staying intact); issue #1740.
+
+### 2026-09-09 — `release_process` in `applies_to` does not bind store-constrained (mobile) release processes to Decision 6's patch-timing/build-number rules
+
+Filed as #1770, cross-repo source `Sieitzz/dgfy-mobile#195` (found during that repo's PR #194
+review, epic #78). `dgfy-mobile` adopted this ADR's general promotion shape (per-app versions,
+PR-authored bumps, a minor floor at promotion) but its own `docs/VERSIONING.md` deliberately
+diverges from Decision 6 on two points, both forced by shipping through App Store Connect / Google
+Play instead of GHCR:
+
+1. **Patch timing.** Decision 6 patches on both a staging repair *and* a main hotfix. Mobile
+   patches **only** on a production hotfix — a staging (TestFlight) repair advances only the
+   native build number, because App Store Connect refuses to reuse a version string once released
+   to real users, and TestFlight groups builds under one marketing version regardless.
+2. **Build-number scope.** Decision 6 has no concept of a counter distinct from the version/tag —
+   none of the five containers need one. Mobile's native build number
+   (`iOS CFBundleVersion` / `Android versionCode`) is a separate, per-app-per-channel counter with
+   no container equivalent.
+
+`applies_to` listing `release_process` alongside the five container names read as a candidate for
+binding Decision 6 to `dgfy-mobile` too, which would put these two documented, store-forced
+divergences in conflict with this ADR. That was never the intent — `applies_to` is a
+doc-discovery/topic tag (used by `.agents/skills/notes/SKILL.md`'s ADR-matching grep, among
+others), not an assertion that every clause below binds every repo that ships anything called a
+"release process." Decision 6 was designed against GHCR/container constraints (Context, above) and
+never considered App Store Connect/Google Play's version-reuse and build-number semantics.
+
+**Resolution: `applies_to` and Decision 6's text are unchanged.** Rather than narrow the
+frontmatter (which would just relocate the ambiguity to "then why is `release_process` there at
+all"), this amendment states directly: **Decision 6 does not bind a release process constrained by
+an external app-store platform's version-reuse/build-numbering rules.** `dgfy-mobile`'s
+`docs/VERSIONING.md` (§3 patch timing, §4 build-number scope) is the authoritative record of that
+carve-out for `dgfy-mobile` specifically; a future non-container adopter of this ADR outside
+`dgfy-platform` gets the same carve-out for the same reason (store constraints, not repo identity,
+is what's exempted) without needing its own amendment here. Everything else `release_process`
+might reasonably cover — the promotion shape (per-app independent versions, PR-authored bumps, a
+minor floor at promotion, patch-only repairs/hotfixes as a *ceiling*, not a floor, on how sparingly
+version increments happen) is unaffected and continues to apply as general guidance to any adopter,
+`dgfy-mobile` included, per `dgfy-mobile/docs/VERSIONING.md`'s own "Relationship to
+`dgfy-platform`" section.
+
+`[default]` tier (Decision 6 is untagged/`[default]`), so this is a dated amendment, not a
+superseding ADR, per ADR 0039 — decided by Pat, 2026-09-09. Full detail: issue #1770,
+`Sieitzz/dgfy-mobile#195`, `dgfy-mobile/docs/VERSIONING.md`.
 
 ## Alternatives considered
 
