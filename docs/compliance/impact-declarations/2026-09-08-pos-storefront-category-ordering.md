@@ -7,7 +7,7 @@ classification: major
 surfaces: api,pos,storefront,database,inventory,payments,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
-verification_evidence: inventory repository tests,tenant schema sync regression tests and 15-tenant repair report,storefront category view-model tests,POS and Storefront production builds,architecture check,compliance check,app-version check,migration syntax check
+verification_evidence: inventory repository tests,tenant schema sync regression tests and 15-tenant repair report,public catalog serialization test and live 118-item Masu Cafe payload,storefront category view-model tests,POS and Storefront production builds,architecture check,compliance check,app-version check,migration syntax check
 rollback_note: Revert Phase 313 application changes and leave the additive sort_order column in place; existing category identity and item memberships remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED

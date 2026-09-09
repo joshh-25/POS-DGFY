@@ -22,9 +22,11 @@ describe('buildListStoreCatalogUseCase -- Phase 285 (#1318, C1) secondary_catego
                 default_sale_price: 500,
                 folder_id: 1,
                 folder_name: 'Primary',
+                folder_id: 4,
+                folder_sort_order: 7,
                 secondary_categories: [
-                    { folder_id: 5, folder_name: 'Seasonal' },
-                    { folder_id: 6, folder_name: 'Clearance' }
+                    { folder_id: 5, folder_name: 'Seasonal', sort_order: 2 },
+                    { folder_id: 6, folder_name: 'Clearance', sort_order: 3 }
                 ]
             }])
         };
@@ -40,10 +42,12 @@ describe('buildListStoreCatalogUseCase -- Phase 285 (#1318, C1) secondary_catego
         expect(result.success).toBe(true);
         expect(result.data.items).toHaveLength(1);
         expect(result.data.items[0].secondary_categories).toEqual([
-            { folder_id: 5, folder_name: 'Seasonal' },
-            { folder_id: 6, folder_name: 'Clearance' }
+            { folder_id: 5, folder_name: 'Seasonal', sort_order: 2 },
+            { folder_id: 6, folder_name: 'Clearance', sort_order: 3 }
         ]);
         expect(result.data.items[0].folder_name).toBe('Primary');
+        expect(result.data.items[0].folder_id).toBe(4);
+        expect(result.data.items[0].folder_sort_order).toBe(7);
     });
 
     test('defaults to an empty array for a repository row with no secondary_categories field (pre-Phase-285 shape, e.g. a fallback path this phase did not touch)', async () => {

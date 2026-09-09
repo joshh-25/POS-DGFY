@@ -22276,7 +22276,9 @@ content differs from what was implemented and tested under the "303" label.
 - Acceptance and validation evidence: additive migration applied to the local
   development database and all 15 active local tenant databases; tenant schema
   capability `2026-09-08.1` detects and repairs `item_folders.sort_order` with
-  deterministic one-time backfill; inventory repository/transport suites passed (118
+  deterministic one-time backfill; the public Storefront serializer preserves
+  primary and secondary category IDs and display order (verified against the
+  live 118-item Masu Cafe catalog); inventory repository/transport suites passed (118
   tests); POS category interaction/contract suites passed (21 tests);
   Storefront F&B/services ordering suites passed (20 tests); POS, Storefront,
   and IMS production builds passed; architecture, compliance, documentation,
