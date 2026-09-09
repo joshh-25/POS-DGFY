@@ -51,7 +51,9 @@ const buildCatalogRow = (overrides = {}) => ({
     folder: overrides.folder === null ? null : {
         folder_id: Object.hasOwn(overrides, 'folder_id') ? overrides.folder_id : 1,
         name: overrides.product_folder ?? 'Primary Folder',
-        sort_order: overrides.folder_sort_order ?? 0
+        sort_order: overrides.folder_sort_order ?? 0,
+        is_active: overrides.folder_is_active ?? true,
+        deleted_at: overrides.folder_deleted_at ?? null
     },
     unit_of_measure: 'pc',
     current_stock: overrides.current_stock ?? 7,
@@ -84,8 +86,8 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
             { item_id: 101, folder_id: 5, sort_order: 0 }
         ]);
         itemFolderFindAllMock.mockResolvedValue([
-            { folder_id: 5, name: 'Seasonal' },
-            { folder_id: 6, name: 'Clearance' }
+            { folder_id: 5, name: 'Seasonal', is_active: true, deleted_at: null },
+            { folder_id: 6, name: 'Clearance', is_active: true, deleted_at: null }
         ]);
 
         const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
@@ -131,6 +133,27 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
 
         expect(result).toHaveLength(1);
         expect(result[0]).toMatchObject({ folder_id: null, folder_name: null, folder_sort_order: null });
+    });
+
+    it('keeps the stored primary ID and modifier source available while hiding an inactive primary category', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({
+            item_id: 202,
+            folder_id: 22,
+            folder_is_active: false,
+            folder_deleted_at: '2026-09-09T00:00:00.000Z',
+            product_folder: 'Retired Category'
+        })]);
+        listItemFolderMembershipsMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
+        expect(result[0]).toMatchObject({ folder_id: 22, folder_name: null, folder_sort_order: null });
+        expect(itemFindAllMock.mock.calls[0][0].include).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                as: 'folder',
+                attributes: expect.arrayContaining(['is_active', 'deleted_at'])
+            })
+        ]));
     });
 
     it('fails open (empty array, no throw) when the membership lookup errors -- an additive projection must never break the public catalog', async () => {

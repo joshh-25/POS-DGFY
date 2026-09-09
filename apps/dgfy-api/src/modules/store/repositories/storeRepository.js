@@ -378,8 +378,11 @@ const buildStorefrontCatalogDetailIncludes = () => {
         includes.push({
             model: ItemFolder,
             as: 'folder',
-            attributes: ['folder_id', 'name', 'sort_order'],
-            where: { is_active: true, deleted_at: null },
+            // Keep the complete primary-folder association available to business resolvers. The
+            // same include carries inherited F&B modifiers, so filtering inactive folders here
+            // would silently change checkout behavior. Public category fields are projected below
+            // only when this association is active and not soft-deleted.
+            attributes: ['folder_id', 'name', 'sort_order', 'is_active', 'deleted_at'],
             required: false,
             include: FnbModifierGroup && FnbFolderModifierGroup ? [{
                 model: FnbModifierGroup,
@@ -883,9 +886,22 @@ export const storeRepository = {
                 // Public categories must come from a live ItemFolder association. Legacy
                 // product_folder text is descriptive migration data and must not create a
                 // Storefront filter category when the item is unassigned or its folder is stale.
-                folder_name: row?.folder?.folder_id != null ? row.folder.name : null,
-                folder_id: row?.folder?.folder_id ?? null,
-                folder_sort_order: row?.folder?.folder_id != null ? Number(row.folder.sort_order || 0) : null,
+                // Keep row.folder_id as the stored primary ID for voucher/modifier business rules;
+                // the use-case serializer redacts it from the public category projection when the
+                // associated folder is not live.
+                folder_name: row?.folder
+                    && row.folder.folder_id != null
+                    && row.folder.is_active === true
+                    && row.folder.deleted_at == null
+                    ? row.folder.name
+                    : null,
+                folder_id: row.folder_id ?? null,
+                folder_sort_order: row?.folder
+                    && row.folder.folder_id != null
+                    && row.folder.is_active === true
+                    && row.folder.deleted_at == null
+                    ? Number(row.folder.sort_order || 0)
+                    : null,
                 unit_of_measure: row.unit_of_measure,
                 current_stock: isStockExemptServiceItem(row) ? 0 : row.current_stock,
                 default_sale_price: row.default_sale_price,

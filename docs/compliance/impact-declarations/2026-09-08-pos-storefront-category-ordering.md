@@ -7,7 +7,7 @@ classification: major
 surfaces: api,pos,storefront,database,inventory,payments,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
-verification_evidence: inventory repository tests,tenant schema sync regression tests and 15-tenant repair report,public catalog serialization test and live 118-item Masu Cafe payload,legacy and unassigned category exclusion tests,storefront category view-model tests,POS and Storefront production builds,architecture check,compliance check,app-version check,migration syntax check
+verification_evidence: inventory repository tests,tenant schema sync regression tests and 15-tenant repair report,public catalog serialization test and live 118-item Masu Cafe payload,legacy and unassigned category exclusion tests,active-folder status projection and modifier/voucher input regression tests,storefront category view-model tests,POS and Storefront production builds,architecture check,compliance check,app-version check,migration syntax check
 rollback_note: Revert Phase 313 application changes and leave the additive sort_order column in place; existing category identity and item memberships remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -47,6 +47,8 @@ change item identity, prices, stock, payments, taxes, receipts, or customer data
 - Focused Storefront tests cover persisted category ordering.
 - Focused API and Storefront tests cover inactive, stale, and unassigned
   category data without hiding the underlying catalog items.
+- Phase 314 retains folder associations for inherited modifier and voucher
+  business inputs while redacting inactive/deleted public category fields.
 - POS and Storefront production builds pass.
 - Architecture, compliance, documentation, migration, and version gates pass.
 

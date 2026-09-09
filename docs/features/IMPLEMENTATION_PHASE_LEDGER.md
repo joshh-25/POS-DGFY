@@ -22298,15 +22298,19 @@ content differs from what was implemented and tested under the "303" label.
 - Initiative/release: POS catalog final audit / current release.
 - Objective and scope: isolate public active-category display from stored primary
   IDs used by voucher pricing and inherited F&B modifiers; retain unassigned items.
-- Status: planned.
+- Status: completed.
 - Dependencies: Phase 313; ADR 0029 and ADR 0080; existing F&B modifier contract.
-- Acceptance and validation evidence: pending; prove inactive category presentation
-  does not change modifier resolution or voucher scope inputs, with repository,
-  serializer, checkout-loader, and voucher regression tests plus architecture gates.
-- Completion date: pending.
+- Acceptance and validation evidence: the shared Storefront folder include keeps
+  inherited modifier associations and status fields; the repository mapper keeps
+  the stored primary ID for voucher/modifier inputs while public serialization
+  redacts inactive/deleted category fields. API repository/catalog tests passed
+  25/25, voucher/store use-case tests 81/81, F&B modifier tests 3/3, and
+  architecture checks passed. The legacy-only stock fallback fixture now uses an
+  explicit active folder, preserving its original coverage.
+- Completion date: 2026-09-09.
 - Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
   storeRepository.js, storeUseCases.js, effectiveFnbModifierGroups.js and related tests.
-- Next eligible phase: 315 after Phase 314 acceptance passes.
+- Next eligible phase: 315.
 
 ## Phase 315 - Category regression and synchronization closure
 

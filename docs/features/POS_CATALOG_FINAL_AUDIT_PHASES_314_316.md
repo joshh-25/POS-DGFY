@@ -44,34 +44,29 @@ for the confirmed repairs. Do not alter binding money/modifier rules to fit the 
 
 ## Findings
 
-### G1 — High: category visibility changes inherited modifiers
+### G1 — High: category visibility changes inherited modifiers (resolved in Phase 314)
 
-`apps/dgfy-api/src/modules/store/repositories/storeRepository.js:382` filters the
-shared `folder` include to active/non-deleted rows. The same include is used by
-both catalog browsing and checkout-item loading, and contains folder-inherited
-modifier groups. `resolveEffectiveFnbModifierGroups` reads these groups from
-`item.folder`. Deactivating a folder therefore removes inherited groups from this
-Storefront path. The F&B repository's `listEffectiveItemModifierGroups` still reads
-the primary folder assignments without that folder-active filter. This is a
-confirmed code-path mismatch; no live customer checkout was executed in this audit.
+The previous Phase 313 implementation filtered the shared `folder` include to
+active/non-deleted rows. That include is also used by checkout-item loading and
+contains inherited F&B modifier groups. Phase 314 removed that shared filter and
+loads the folder status fields for presentation-only redaction; the resolver can
+therefore continue to consume the same folder modifier source as POS.
 
-### G2 — High: presentation mapping changes voucher inputs
+### G2 — High: presentation mapping changes voucher inputs (resolved in Phase 314)
 
-The same repository's catalog mapper now assigns `folder_id` from the filtered
-association, replacing a stored primary ID with null when its folder is inactive.
-`storeUseCases.js:3108` passes that mapped ID into voucher display-price resolution.
-Checkout loads the original item primary ID through a different path. Thus hiding
-a category can change the voucher preview's scope input while checkout retains it.
-Observed evidence is the divergent data flow, not a claimed production charge error.
+The previous mapper assigned `folder_id` from the filtered association, replacing
+the stored primary ID with null when its folder was inactive. Phase 314 now keeps
+`row.folder_id` for voucher and modifier business inputs while redacting only the
+public `folder_name`/sort projection. The serializer hides the public ID when no
+live display folder exists. This keeps voucher preview and checkout scope inputs
+consistent without exposing stale category controls.
 
-### G3 — Medium: the expanded API regression gate fails
+### G3 — Medium: the expanded API regression gate fails (resolved in Phase 314)
 
-`apps/dgfy-api/tests/storeRepository.locationStockFallback.test.js:118` expects
-`folder_name: 'Rocket Fuel'` from a fixture containing only legacy `product_folder`.
-The new presentation contract correctly returns null for this unassigned fixture.
-The test must distinguish an active assigned category from legacy text, while
-continuing to prove the missing-stock-table fallback. Do not restore inferred
-categories merely to satisfy the outdated assertion.
+`apps/dgfy-api/tests/storeRepository.locationStockFallback.test.js:118` expected
+`folder_name: 'Rocket Fuel'` from a fixture containing only legacy
+`product_folder`. Phase 314 repaired the fixture with an explicit active folder,
+so the stock fallback remains covered without restoring inferred categories.
 
 ### G4 — Validation gap: rendered behavior and latency are not certified
 
@@ -84,20 +79,22 @@ container and dimensions recorded only on image load before claiming zoom is saf
 
 ## Evidence from this audit
 
-- API: 23 passed, 1 failed across `storeRepository.locationStockFallback.test.js`,
+- API: 25 passed across `storeRepository.locationStockFallback.test.js`,
   `storeRepositorySecondaryCategories.test.js`, and
-  `storeCatalogSecondaryCategories.usecase.test.js`; failure is G3.
+  `storeCatalogSecondaryCategories.usecase.test.js`; voucher/store use-case
+  suites passed 81 tests and F&B modifier suites passed 3 tests.
 - Storefront: 30 passed across F&B/services view models, shared catalog toolbar,
   and services toolbar.
 - POS: 3 passed in `tests/unit/PosItemImageViewer.test.jsx`.
 - `npm run check:architecture`: passed.
 - Prior builds are historical evidence; no production build, browser E2E, latency
   measurement, or tenant migration was rerun for this audit.
-- Readiness: repairs and final validation required before declaring PR-ready.
+- Phase 314 readiness: implementation and focused validation complete. Phases 315
+  and 316 remain pending for synchronization and rendered/performance evidence.
 
 ## Phase 314 — Isolate category presentation from business rules
 
-Status: planned. Depends on Phase 313. Addresses G1 and G2.
+Status: completed. Depends on Phase 313. Addresses G1 and G2.
 
 1. In `storeRepository.js`, remove presentation filtering from the shared folder
    association. Select `is_active` and `deleted_at` alongside folder ID/name/order
@@ -120,6 +117,12 @@ Acceptance: inactive categories produce no filter button; hiding them does not
 change business category inputs or inherited modifiers; All retains the items.
 No migration, category deletion, price-policy change, or secondary-category
 expansion of money calculations is permitted.
+
+Completion evidence: the shared include now retains folder associations and
+status fields; the mapper keeps the stored primary ID for internal business
+inputs and redacts only stale public category fields. API repository/catalog
+tests passed 25/25, voucher/store use-case tests passed 81/81, F&B modifier
+tests passed 3/3, and the architecture gate passed. Completion date: 2026-09-09.
 
 ## Phase 315 — Close category regression and synchronization coverage
 
