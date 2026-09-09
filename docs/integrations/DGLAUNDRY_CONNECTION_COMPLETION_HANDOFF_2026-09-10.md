@@ -33,9 +33,14 @@ slash, or `skupervisor.surebizcorp.com`.
 
 DGLaundry is delivering the package from its isolated branch
 `codex/dgfy-connection-completion`, created from the deployed baseline
-`da9ced73e98ed4d0a6f886273920cf9ae2a6203c`. The final qualified SHA, contract
-manifest hash, migration head, image digests, and public-key fingerprints will
-be recorded in the linked DGLaundry release PR before provider qualification.
+`da9ced73e98ed4d0a6f886273920cf9ae2a6203c`. The exact qualified and deployed
+application SHA is `253cfcfa771d15942d28b80c73a577b02c58259b` (DGLaundry PR
+[#3](https://github.com/Sieitzz/dglaundry/pull/3)), running at the staff origin
+with DGFY disabled. Its contract manifest hash is
+`a295bed55bfe1d4c98f4613b27bdd239fc83fea181628f00bacfeec700db4df3`, and the
+schema head is `075_mock_provider_credentials.sql`. The immutable image
+digests and deployment verification record are in the DGLaundry release
+manifest; provider qualification remains pending.
 
 The provider can run the black-box contract manifest and fixtures from
 `tests/fixtures/dgfy/connection-contract.json` without importing DGLaundry
@@ -43,6 +48,18 @@ runtime source or a database. The manifest defines all required event types,
 signature components, exact URLs, negative cases, and the six acceptance
 suites. Public keys and fingerprints may be exchanged; private keys, tokens,
 passwords, and full signed payloads must remain in the approved secret channel.
+
+The DGLaundry key ceremony has generated these public fingerprints for
+provider registration. They identify the key sets only; no private material is
+included here. Fingerprints are SHA-256 over the DER-encoded SubjectPublicKeyInfo;
+the corresponding public PEM files are in
+[`docs/integrations/dglaundry-public-keys/`](./dglaundry-public-keys/):
+
+| Purpose | Key ID | Public PEM | SHA-256 public-key fingerprint |
+| --- | --- | --- | --- |
+| DGFY partner request verification (P-256) | `dgfy-partner-p256-20260910` | [`dgfy-partner-p256-20260910.pub`](./dglaundry-public-keys/dgfy-partner-p256-20260910.pub) | `913bfd2594af5fa8f4b5924f801fa357102654ead2e8acc8edb61afa8b7f7d03` |
+| DGLaundry event verification (Ed25519) | `dglaundry-events-ed25519-20260910` | [`dglaundry-events-ed25519-20260910.pub`](./dglaundry-public-keys/dglaundry-events-ed25519.pub) | `4a9d9cb1a524dc25cc7e5a5afafd0ba12308f76dec51ce2f5dba40cd476a554e` |
+| Machine client assertions (RSA) | `dglaundry-machine-rsa-20260910` | [`dglaundry-machine-rsa-20260910.pub`](./dglaundry-public-keys/dglaundry-machine-rsa-20260910.pub) | `261b7de775689cf72c8cf5aef56f84b575fd2f8dd48c5eeb09f5714928f661a2` |
 
 ## Required provider work
 
