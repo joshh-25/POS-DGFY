@@ -120,6 +120,13 @@ access.
 - [ ] Confirm the mapping can be revoked without deleting DGFY identity or
       DGLaundry operational records.
 
+## Storefront implementation follow-up
+
+Use [the storefront connection checklist](DGLAUNDRY_STOREFRONT_CONNECTION_CHECKLIST.md)
+for exact routes, configuration ownership, source gaps and the end-to-end
+customer/order/payment acceptance matrix. PR #1721 merged this handoff; it
+did not certify the storefront or provider configuration as complete.
+
 ## Contract package to qualify
 
 The DGLaundry candidate reviewed for this handoff is:
