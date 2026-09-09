@@ -88,8 +88,8 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
             { item_id: 101, folder_id: 5, sort_order: 0 }
         ]);
         itemFolderFindAllMock.mockResolvedValue([
-            { folder_id: 5, name: 'Seasonal', is_active: true, deleted_at: null },
-            { folder_id: 6, name: 'Clearance', is_active: true, deleted_at: null }
+            { folder_id: 5, name: 'Seasonal', sort_order: 4, is_active: true, deleted_at: null },
+            { folder_id: 6, name: 'Clearance', sort_order: 2, is_active: true, deleted_at: null }
         ]);
 
         const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
@@ -100,11 +100,11 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
         const item100 = result.find((row) => row.item_id === 100);
         const item101 = result.find((row) => row.item_id === 101);
         expect(item100.secondary_categories).toEqual([
-            { folder_id: 5, folder_name: 'Seasonal', sort_order: 0 },
-            { folder_id: 6, folder_name: 'Clearance', sort_order: 0 }
+            { folder_id: 5, folder_name: 'Seasonal', sort_order: 4 },
+            { folder_id: 6, folder_name: 'Clearance', sort_order: 2 }
         ]);
         expect(item101.secondary_categories).toEqual([
-            { folder_id: 5, folder_name: 'Seasonal', sort_order: 0 }
+            { folder_id: 5, folder_name: 'Seasonal', sort_order: 4 }
         ]);
         // Primary projection (ADR 0080 Decision 1) stays exactly what it was before this phase.
         expect(item100.folder_id).toBe(1);
