@@ -22292,3 +22292,48 @@ content differs from what was implemented and tested under the "303" label.
   case/route, shared item service, POS category workspace, Storefront category
   view models, focused tests, and Phase 313 compliance declaration.
 - Next eligible phase: 314.
+
+## Phase 314 - Category presentation and business-rule isolation
+
+- Initiative/release: POS catalog final audit / current release.
+- Objective and scope: isolate public active-category display from stored primary
+  IDs used by voucher pricing and inherited F&B modifiers; retain unassigned items.
+- Status: planned.
+- Dependencies: Phase 313; ADR 0029 and ADR 0080; existing F&B modifier contract.
+- Acceptance and validation evidence: pending; prove inactive category presentation
+  does not change modifier resolution or voucher scope inputs, with repository,
+  serializer, checkout-loader, and voucher regression tests plus architecture gates.
+- Completion date: pending.
+- Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
+  storeRepository.js, storeUseCases.js, effectiveFnbModifierGroups.js and related tests.
+- Next eligible phase: 315 after Phase 314 acceptance passes.
+
+## Phase 315 - Category regression and synchronization closure
+
+- Initiative/release: POS catalog final audit / current release.
+- Objective and scope: repair the confirmed legacy-fixture test failure and verify
+  category order, secondary-only items, stale saves, and tenant isolation end to end.
+- Status: planned.
+- Dependencies: Phase 314.
+- Acceptance and validation evidence: pending; expanded API/model tests pass and
+  rendered local POS-to-Storefront order verification preserves All and tenant scope.
+- Completion date: pending.
+- Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
+  storeRepository.locationStockFallback.test.js, F&B/services view-model tests,
+  TerminalOperationsWorkspace.jsx and local cross-app validation evidence.
+- Next eligible phase: 316 after Phase 315 acceptance passes.
+
+## Phase 316 - Image viewer rendered validation and final readiness
+
+- Initiative/release: POS catalog final audit / current release.
+- Objective and scope: verify viewer mobile/desktop layout, zoom/resize, focus,
+  network/storage behavior and affected application gates; fix only reproduced gaps.
+- Status: planned.
+- Dependencies: Phase 315; ADR 0067 and architecture governance rendered-proof rules.
+- Acceptance and validation evidence: pending; rendered primary interactions and
+  request/storage evidence pass, all affected builds/tests/gates pass, limitations
+  recorded. Physical iMin validation excluded per user instruction.
+- Completion date: pending.
+- Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
+  PosItemImageViewer.jsx, POS viewer tests, and local rendered validation artifacts.
+- Next eligible phase: 317 after Phase 316 acceptance passes.

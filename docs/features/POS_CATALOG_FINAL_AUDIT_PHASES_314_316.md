@@ -1,0 +1,184 @@
+---
+status: reference
+authority_level: reference
+owner: engineering
+last_reviewed: 2026-09-09
+topic: pos_catalog_final_audit
+---
+
+# POS catalog final audit and repair plan
+
+## Baseline and scope
+
+Audited local branch: `POS-Development`, application commit `d4879eacb`.
+All tracked application work was already committed when this audit began.
+Untracked archives, nested worktrees, obsolete app directories, and build outputs
+are excluded from the application change set. No push, PR, migration, or deployment
+is part of this request.
+
+This audit covers the recent HD image viewer (Phases 308-312) and shared category
+ordering/presentation (Phase 313), including their API consumers. It is not a
+certification of every historical checkout, payment, or image-upload change.
+
+## Authoritative constraints
+
+- [Architecture boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md)
+  (last reviewed 2026-03-06): persistence stays in repositories.
+- [Architecture governance](../architecture/ARCHITECTURE_GOVERNANCE.md)
+  (last reviewed 2026-05-21): require behavior tests and rendered UI evidence.
+- [ADR 0029](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md)
+  (last reviewed 2026-07-14): Catalog owns categories; Storefront owns presentation.
+- [ADR 0080](../architecture/adr/0080-item-multi-category-membership.md)
+  (last reviewed 2026-09-05): primary category remains the sole money/modifier
+  tiebreak; secondary-only and uncategorized items are legal.
+- [ADR 0019](../architecture/adr/0019-food-and-beverage-mode-full-service-restaurant.md):
+  POS and Storefront consume the same effective folder/item modifiers.
+- [ADR 0014](../architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md)
+  (last reviewed 2026-08-27): retain tenant-scoped cache behavior.
+- [ADR 0067](../architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md)
+  (last reviewed 2026-08-29): preserve the Chrome 80 runtime floor.
+
+Classification: within existing boundaries, restoring existing contracts.
+No new ADR, architecture allowlist, database migration, or data deletion is needed
+for the confirmed repairs. Do not alter binding money/modifier rules to fit the UI.
+
+## Findings
+
+### G1 — High: category visibility changes inherited modifiers
+
+`apps/dgfy-api/src/modules/store/repositories/storeRepository.js:382` filters the
+shared `folder` include to active/non-deleted rows. The same include is used by
+both catalog browsing and checkout-item loading, and contains folder-inherited
+modifier groups. `resolveEffectiveFnbModifierGroups` reads these groups from
+`item.folder`. Deactivating a folder therefore removes inherited groups from this
+Storefront path. The F&B repository's `listEffectiveItemModifierGroups` still reads
+the primary folder assignments without that folder-active filter. This is a
+confirmed code-path mismatch; no live customer checkout was executed in this audit.
+
+### G2 — High: presentation mapping changes voucher inputs
+
+The same repository's catalog mapper now assigns `folder_id` from the filtered
+association, replacing a stored primary ID with null when its folder is inactive.
+`storeUseCases.js:3108` passes that mapped ID into voucher display-price resolution.
+Checkout loads the original item primary ID through a different path. Thus hiding
+a category can change the voucher preview's scope input while checkout retains it.
+Observed evidence is the divergent data flow, not a claimed production charge error.
+
+### G3 — Medium: the expanded API regression gate fails
+
+`apps/dgfy-api/tests/storeRepository.locationStockFallback.test.js:118` expects
+`folder_name: 'Rocket Fuel'` from a fixture containing only legacy `product_folder`.
+The new presentation contract correctly returns null for this unassigned fixture.
+The test must distinguish an active assigned category from legacy text, while
+continuing to prove the missing-stock-table fallback. Do not restore inferred
+categories merely to satisfy the outdated assertion.
+
+### G4 — Validation gap: rendered behavior and latency are not certified
+
+The viewer's three jsdom tests pass, but they stub image dimensions and do not
+prove actual mobile overflow, zoom edge reachability, resize behavior, or network
+cost. Category model/toolbar tests also do not prove a save propagates between
+running POS and Storefront sessions. These are unverified acceptance conditions,
+not confirmed UI defects. In particular inspect the viewer's centered scrolling
+container and dimensions recorded only on image load before claiming zoom is safe.
+
+## Evidence from this audit
+
+- API: 23 passed, 1 failed across `storeRepository.locationStockFallback.test.js`,
+  `storeRepositorySecondaryCategories.test.js`, and
+  `storeCatalogSecondaryCategories.usecase.test.js`; failure is G3.
+- Storefront: 30 passed across F&B/services view models, shared catalog toolbar,
+  and services toolbar.
+- POS: 3 passed in `tests/unit/PosItemImageViewer.test.jsx`.
+- `npm run check:architecture`: passed.
+- Prior builds are historical evidence; no production build, browser E2E, latency
+  measurement, or tenant migration was rerun for this audit.
+- Readiness: repairs and final validation required before declaring PR-ready.
+
+## Phase 314 — Isolate category presentation from business rules
+
+Status: planned. Depends on Phase 313. Addresses G1 and G2.
+
+1. In `storeRepository.js`, remove presentation filtering from the shared folder
+   association. Select `is_active` and `deleted_at` alongside folder ID/name/order
+   so visibility can be decided in the presentation mapper.
+2. Retain `row.folder_id` as the internal primary category ID consumed by voucher
+   and other business calculations. Never derive it from a visibility-filtered
+   association, replace it with a secondary category, or update the database ID.
+3. Project `folder_name` and `folder_sort_order` only for a matching, active,
+   non-deleted primary folder. In `serializeStoreCatalogItem`, emit the public
+   category ID only when this live display category exists. Keep legacy text
+   excluded, secondary membership handling intact, and unassigned items in All.
+4. Add regression fixtures for active, inactive, deleted, missing, and null primary
+   folders. Prove modifier inheritance still follows the established resolver
+   and item overrides; prove voucher display receives the stored primary ID even
+   when public category fields are null. Cover both catalog and checkout loaders.
+5. Run focused repository, voucher-display, F&B modifier, and serializer tests;
+   run architecture/compliance gates. Bump affected app versions using repo policy.
+
+Acceptance: inactive categories produce no filter button; hiding them does not
+change business category inputs or inherited modifiers; All retains the items.
+No migration, category deletion, price-policy change, or secondary-category
+expansion of money calculations is permitted.
+
+## Phase 315 — Close category regression and synchronization coverage
+
+Status: planned. Depends on Phase 314. Addresses G3 and category portion of G4.
+
+1. Repair `storeRepository.locationStockFallback.test.js` with separate explicit
+   active-folder and legacy-only fixtures. Preserve its stock fallback assertions.
+2. Expand F&B/services tests: null primary with valid secondary category; invalid
+   category IDs; two distinct IDs with colliding names; inactive/deleted category;
+   every item present exactly once in All; saved relative order preserved.
+3. In local rendered POS and Storefront sessions for the same tenant/location,
+   reorder a category, verify persisted order after reload, then verify the
+   Storefront order. Record the refresh/invalidation mechanism and observed delay.
+   Test rejected/stale-list save restores or refreshes the correct POS order.
+4. Check a second tenant does not receive the first tenant's order or invalidation.
+   Use isolated test data and restore its original ordering after verification.
+5. Fix only reproduced synchronization defects; keep existing tenant-scoped cache
+   mechanisms, avoid polling loops and per-item API requests.
+
+Acceptance: all expanded suites pass; a persisted POS order is reflected in the
+Storefront's eligible categories; All remains first; unassigned items remain
+visible; no cross-tenant effect. Empty/invisible categories may be absent from
+Storefront, so compare the relative order of eligible categories rather than
+requiring identical category counts.
+
+## Phase 316 — Rendered image and release-readiness validation
+
+Status: planned. Depends on Phase 315. Addresses remaining G4.
+
+1. Check the actual POS image viewer at desktop and 360px mobile width, plus short
+   landscape height. Exercise open, next/previous, fallback failure, zoom in/out,
+   resize/orientation change, Escape, focus restoration, and close/reopen.
+2. Prove close/price/navigation stay reachable, the complete zoomed image can be
+   scrolled into view, and resizing cannot leave stale image dimensions or page
+   overflow. If reproduced, repair only the relevant layout/measurement code in
+   `packages/web-core/src/features/pos/components/PosItemImageViewer.jsx` and add
+   a targeted rendered regression test.
+3. Capture network/storage evidence: opening requests only the active HD image
+   (plus necessary thumbnails); navigating requests the selected image; closing
+   removes the viewer. POS adds no persistent image copy, prefetch loop, or new
+   dependency. Browser HTTP caching remains allowed. Record request counts/bytes
+   and controlled before/after timing; do not promise zero latency without data.
+4. Run all affected tests and builds (POS, Storefront, and IMS if shared reach
+   requires it), architecture, compliance, docs, and actual changed-app version
+   gates. Resolve every failure or document a precise external blocker.
+5. Record evidence and completion dates in the phase ledger; commit by domain on
+   POS-Development after the marker scan. Final report lists commits, tests,
+   reproduced fixes, limitations, current phase, and next eligible phase.
+
+Acceptance: rendered evidence covers required interactions without runtime errors,
+all required gates pass, and no measured avoidable network/storage work is added.
+Physical iMin validation is excluded per the user's instruction; do not describe
+desktop emulation as proof on a physical APK device. No PR/push/deploy unless asked.
+
+## Execution handoff
+
+Read this document and its authoritative references before editing. Implement
+Phases 314, 315, and 316 sequentially when approved; each phase must meet its gates
+before being marked completed. Existing application work is committed; preserve
+unrelated untracked files. Do not silently broaden scope, delete tenant data,
+disable cache safety, or claim existing passing unit tests prove G1/G2 absent.
+Current completed phase is 313; next eligible implementation phase is 314.
