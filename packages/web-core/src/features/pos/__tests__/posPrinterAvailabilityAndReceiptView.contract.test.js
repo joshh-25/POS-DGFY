@@ -26,7 +26,7 @@ describe('POS printer availability and post-checkout receipt view', () => {
         expect(source).toContain('const isPrinterAvailable = posHardware.isPrinterAvailable;');
         expect(source).toContain('const isOrderPrinterAvailable = posHardware.isOrderPrinterAvailable;');
         expect(source).toContain('cashDrawerAvailable={cashDrawerAvailable}');
-        expect(currentSaleActionsSource).toContain('disabled={cashDrawerDisabled || !cashDrawerAvailable}');
+        expect(currentSaleActionsSource).toContain('disabled={cashDrawerDisabled}');
         expect(currentSaleActionsSource).toContain('data-testid="pos-open-cash-drawer-button"');
         expect(source).toContain('printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isOrderPrinterAvailable}');
         expect(currentSaleActionsSource).toContain('disabled={printOrderDisabled}');

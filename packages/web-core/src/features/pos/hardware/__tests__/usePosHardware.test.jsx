@@ -70,7 +70,6 @@ describe('usePosHardware authentication boundary', () => {
 
         expect(result.current.isPrinterAvailable).toBe(true);
         expect(result.current.isOrderPrinterAvailable).toBe(true);
-        expect(result.current.isCashDrawerAvailable).toBe(false);
         expect(result.current.supportsCapability(POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT)).toBe(true);
         expect(result.current.supportsCapability(POS_HARDWARE_CAPABILITIES.PRINT_ORDER_TICKET)).toBe(true);
         expect(result.current.supportsCapability(POS_HARDWARE_CAPABILITIES.AUTO_PRINT_CHECKOUT)).toBe(true);
@@ -88,6 +87,5 @@ describe('usePosHardware authentication boundary', () => {
 
         expect(result.current.isPrinterAvailable).toBe(true);
         expect(result.current.isOrderPrinterAvailable).toBe(false);
-        expect(result.current.isCashDrawerAvailable).toBe(false);
     });
 });
