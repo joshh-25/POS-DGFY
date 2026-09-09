@@ -28,16 +28,16 @@ architecture.
 
 | Commit | Conventional Commit | Scope | Files | Diff |
 |---|---|---:|---:|---:|
-| d92c636b0 | style(pos): refine terminal catalog presentation | Catalog and terminal presentation; port of source `6bab3628f` | 25 | +962 / -302 |
-| 4a6f878a4 | fix(pos): harden checkout payment workflows | Checkout, payment, discount, settlement, and receipt workflows; port of source `bb03fc154` | 31 | +775 / -438 |
-| 20b6b009a | style(pos): normalize operational workspace presentation | Operational workspaces, mode panels, reports, history, printing, and hardware formatting; port of source `67170d806` | 39 | +240 / -212 |
-| 5fa0538e1 | fix(pos): complete responsive terminal contracts | POS elevation/focus tokens, responsive terminal behavior, and statutory-beneficiary presentation | 3 | +103 / -3 |
-| 67467df33 | test(pos): align contracts with shared image architecture | POS image, loading-priority, and receipt contract alignment | 4 | +15 / -14 |
+| 8a115870f | style(pos): refine terminal catalog presentation | Catalog and terminal presentation; port of source `6bab3628f` | 25 | +962 / -302 |
+| 9dc2b924f | fix(pos): harden checkout payment workflows | Checkout, payment, discount, settlement, and receipt workflows; port of source `bb03fc154` | 31 | +775 / -438 |
+| 28469ad41 | style(pos): normalize operational workspace presentation | Operational workspaces, mode panels, reports, history, printing, and hardware formatting; port of source `67170d806` | 39 | +240 / -212 |
+| 317e6f07f | fix(pos): complete responsive terminal contracts | POS elevation/focus tokens, responsive terminal behavior, and statutory-beneficiary presentation | 3 | +103 / -3 |
+| 443f84934 | test(pos): align contracts with shared image architecture | POS image, loading-priority, and receipt contract alignment | 4 | +15 / -14 |
 | **Feature total** |  |  | **96 unique paths** | **POS feature files plus shared POS CSS** |
 
-The documentation commits are `6c3bc6eb5` and `9f2907bf6`; the compliance declaration is
-`37a154066`. The final documentation refresh is intentionally kept as a separate documentation
-commit so the feature history remains bisectable.
+The documentation commits are `5ff155af7`, `0cee9b244`, `b442ba34`, and `da5f6efb4`; the
+compliance declaration is `81b9edf7b`. The documentation commits are intentionally kept separate
+so the feature history remains bisectable.
 
 ## Scope and safety boundary
 
@@ -70,11 +70,11 @@ before promoting a branch that combines this work with other frontend changes.
 
 - Current local branch: `codex/services-storefront-next-followup-pos-only` in the isolated
   worktree `C:\w`.
-- Compared with the fetched `origin/develop`, the branch was **0 commits behind and 8 commits
-  ahead** before this final documentation refresh. The ahead commits are the five POS feature
-  commits, two POS documentation commits, and one compliance declaration.
-- The final refresh will make the branch 0 behind and 9 commits ahead; the remote branch is
-  `origin/codex/services-storefront-next-followup-pos-only`.
+- Compared with the fetched `origin/develop`, the branch is **0 commits behind and 10 commits
+  ahead**. The ahead commits are the five POS feature commits, four POS documentation commits,
+  and one compliance declaration.
+- The remote branch is `origin/codex/services-storefront-next-followup-pos-only`; its history is
+  rebased onto the latest fetched `origin/develop` before the push.
 - The branch diff contains 95 POS feature paths, `packages/web-core/src/index.css`, and two
   documentation paths only. No Services Storefront, backend, migration, registration, or
   unrelated frontend path is present.
@@ -631,7 +631,7 @@ deployment evidence.
 
 ### 1. Catalog and terminal presentation
 
-The catalog and terminal presentation batch (`d92c636b0`, ported from source `6bab3628f`)
+The catalog and terminal presentation batch (`8a115870f`, ported from source `6bab3628f`)
 improves the catalog and terminal shell without moving catalog or inventory ownership into POS:
 
 - Added a responsive catalog page-size control with an Auto mode and explicit page
@@ -656,7 +656,7 @@ improves the catalog and terminal shell without moving catalog or inventory owne
 
 ### 2. Checkout, payments, discounts, settlement, and receipts
 
-The checkout and payment batch (`4a6f878a4`, ported from source `bb03fc154`) hardens the
+The checkout and payment batch (`9dc2b924f`, ported from source `bb03fc154`) hardens the
 sales-completion path:
 
 - Standardized POS monetary display around the peso glyph ₱ in checkout, payment,
@@ -680,7 +680,7 @@ sales-completion path:
 
 ### 3. Operational workspace and mode consistency
 
-The operational presentation batch (`20b6b009a`, ported from source `67170d806`) normalizes the
+The operational presentation batch (`28469ad41`, ported from source `67170d806`) normalizes the
 broader POS operating experience:
 
 - Refined terminal operations, transaction history, cashier history, audit workspace,
@@ -791,7 +791,7 @@ feature commits. The original three source-batch sections are retained for prove
 by the two follow-up contract sections. All paths are repository-relative and no Services
 Storefront, backend, migration, or unrelated frontend path is included.
 
-### Commit d92c636b0 — catalog and terminal presentation (source batch 6bab3628f)
+### Commit 8a115870f — catalog and terminal presentation (source batch 6bab3628f)
 
 #### Tests and contracts
 
@@ -836,7 +836,7 @@ These files implement the catalog controls, responsive terminal/catalog layout,
 current-sale presentation, item/service option surfaces, text-size control, image
 fallback state, and catalog workflow helpers described above.
 
-### Commit 4a6f878a4 — checkout and payment workflows (source batch bb03fc154)
+### Commit 9dc2b924f — checkout and payment workflows (source batch bb03fc154)
 
 #### Tests and contracts
 
@@ -887,7 +887,7 @@ These files implement the checkout shell, payment confirmation, discount workspa
 split payments, settlements, refunds, downpayments, employee credit, parked sales,
 bill requests, receipt dialogs, and checkout formatting/validation behavior.
 
-### Commit 20b6b009a — operational workspace presentation (source batch 67170d806)
+### Commit 28469ad41 — operational workspace presentation (source batch 67170d806)
 
 #### Tests and contracts
 
@@ -947,7 +947,7 @@ transaction/cashier history, reports, audit, pricing, affiliates, vouchers, rece
 shift close, Z-reading, Skupervisor parallels, hardware formatting, queue formatting,
 history search, and void-audit behavior.
 
-### Follow-up commit 5fa0538e1 — responsive terminal contracts
+### Follow-up commit 317e6f07f — responsive terminal contracts
 
 ~~~text
 packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx
@@ -960,7 +960,7 @@ when appropriate, aligning statutory-beneficiary presentation with the POS blue 
 providing the shared POS elevation, focus-shadow, scroll, and mobile checkout-sheet rules required
 by the current terminal layout.
 
-### Follow-up commit 67467df33 — shared image and receipt contract tests
+### Follow-up commit 443f84934 — shared image and receipt contract tests
 
 ~~~text
 packages/web-core/src/features/pos/__tests__/itemDiscountEligibility.contract.test.js
@@ -1013,20 +1013,22 @@ run with `GOMAXPROCS=1` for predictable local resource use.
 The POS feature payload on the isolated branch is:
 
 ~~~text
-d92c636b0 style(pos): refine terminal catalog presentation
-4a6f878a4 fix(pos): harden checkout payment workflows
-20b6b009a style(pos): normalize operational workspace presentation
-5fa0538e1 fix(pos): complete responsive terminal contracts
-67467df33 test(pos): align contracts with shared image architecture
+8a115870f style(pos): refine terminal catalog presentation
+9dc2b924f fix(pos): harden checkout payment workflows
+28469ad41 style(pos): normalize operational workspace presentation
+317e6f07f fix(pos): complete responsive terminal contracts
+443f84934 test(pos): align contracts with shared image architecture
 ~~~
 
 The 96 unique POS/shared-POS paths listed in the exhaustive manifest are the files associated with
 those commits. The documentation payload is:
 
 ~~~text
-6c3bc6eb5 docs(pos): document POS frontend changes
-9f2907bf6 docs(pos): expand frontend functional documentation
-37a154066 docs(pos): add compliance impact declaration
+5ff155af7 docs(pos): document POS frontend changes
+0cee9b244 docs(pos): expand frontend functional documentation
+81b9edf7b docs(pos): add compliance impact declaration
+b442ba34c docs(pos): refresh branch audit evidence
+da5f6efb4 docs(pos): remove marker literal from audit
 ~~~
 
 The final refresh of this file is the remaining documentation commit on this branch.
@@ -1061,16 +1063,16 @@ original dirty working tree:
 
 ~~~powershell
 git status --short --branch
-git show --stat --oneline d92c636b0
-git show --stat --oneline 4a6f878a4
-git show --stat --oneline 20b6b009a
-git show --stat --oneline 5fa0538e1
-git show --stat --oneline 67467df33
-git show --name-only --format=fuller d92c636b0
-git show --name-only --format=fuller 4a6f878a4
-git show --name-only --format=fuller 20b6b009a
-git show --name-only --format=fuller 5fa0538e1
-git show --name-only --format=fuller 67467df33
+git show --stat --oneline 8a115870f
+git show --stat --oneline 9dc2b924f
+git show --stat --oneline 28469ad41
+git show --stat --oneline 317e6f07f
+git show --stat --oneline 443f84934
+git show --name-only --format=fuller 8a115870f
+git show --name-only --format=fuller 9dc2b924f
+git show --name-only --format=fuller 28469ad41
+git show --name-only --format=fuller 317e6f07f
+git show --name-only --format=fuller 443f84934
 git diff --name-only origin/develop...HEAD -- packages/web-core/src/features/pos
 git rev-list --left-right --count origin/develop...HEAD
 ~~~
