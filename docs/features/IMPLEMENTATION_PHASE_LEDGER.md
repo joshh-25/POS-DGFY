@@ -22366,3 +22366,24 @@ content differs from what was implemented and tested under the "303" label.
 - Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
   PosItemImageViewer.jsx, POS viewer tests, and local rendered validation artifacts.
 - Next eligible phase: 317.
+
+## Phase 317 - Add/Edit Item image draft consistency
+
+- Initiative/release: POS catalog item image management / current release.
+- Objective and scope: make Edit Item image changes transactional from the
+  operator's perspective. New files, removals, reordering, and Primary selection
+  remain local until Save Item; the save sends one validated gallery intent to the
+  asynchronous gallery worker so an upload cannot replace or duplicate the existing
+  gallery. Repeated file selections are deduplicated, stale concurrent edits are
+  rejected with a reopen message, and legacy append uploads retain their behavior.
+- Status: in_progress.
+- Dependencies: Phase 316; existing storefront gallery API and image worker;
+  ADR 0029 catalog/storefront ownership boundaries; ADR 0067 browser floor.
+- Acceptance and validation evidence: focused POS draft-helper and edit-save
+  contract tests; API gallery use-case and worker tests, including stale-edit
+  rejection and atomic remove/reorder/Primary application; POS production build;
+  changed-file lint and repository architecture/compliance/documentation gates.
+- Contracts/files: `posEditImageDraft.js`, Edit Item image flow in
+  `TerminalOperationsWorkspace.jsx`, `storefrontCatalogService.js`, gallery-intent
+  transport/controller/worker/use-case code, and focused frontend/API tests.
+- Next eligible phase: 318.
