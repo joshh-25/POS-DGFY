@@ -3,10 +3,10 @@ import { CreditCard, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fetchEmployeeCreditReport } from '../services/employeeCreditService.js';
 
-const money = (value, symbol = 'PHP') => `${symbol} ${Number(value || 0).toFixed(2)}`;
+const money = (value, symbol = '₱') => `${String(symbol).toUpperCase() === 'PHP' ? '₱' : symbol}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : '-';
 
-export default function EmployeeCreditReportPanel({ dateFrom, dateTo, currencySymbol = 'PHP', refreshKey = 0, isOnline = true }) {
+export default function EmployeeCreditReportPanel({ dateFrom, dateTo, currencySymbol = '₱', refreshKey = 0, isOnline = true }) {
   const [data, setData] = useState({ entries: [], totals: {}, excluded_from_cashflow: true });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

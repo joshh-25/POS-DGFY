@@ -448,10 +448,10 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
 
     expect(hardwareText).toContain('Garlic');
     expect(hardwareText).not.toContain('Renamed Later');
-    expect(hardwareText).toContain('PHP 80.00');
-    expect(hardwareText).toContain('-PHP 12.00');
+    expect(hardwareText).toContain('₱80.00');
+    expect(hardwareText).toContain('-₱12.00');
     expect(hardwareText).toContain('NET TOTAL');
-    expect(hardwareText).toContain('PHP 68.00');
+    expect(hardwareText).toContain('₱68.00');
   });
 
   it('prints persisted Cash and GCash split-payment amounts on the physical receipt', () => {

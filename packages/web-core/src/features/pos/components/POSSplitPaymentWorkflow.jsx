@@ -16,7 +16,7 @@ import {
 import POSSplitPaymentDialog from './POSSplitPaymentDialog.jsx';
 import { buildFnbGlobalOrderNote } from '../utils/posOrderNotes.js';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const buildCheckoutSnapshot = (context = {}) => ({
   schema_version: 1,
@@ -261,12 +261,12 @@ export default function POSSplitPaymentWorkflow({
             <>
               <p className="mt-2 text-[12px] font-semibold leading-5 text-slate-700">
                 {Number(session.paid_amount || 0) > 0
-                  ? `PHP ${money(session.paid_amount)} is already recorded. Resume this payment to finish the sale.`
+                  ? `₱${money(session.paid_amount)} is already recorded. Resume this payment to finish the sale.`
                   : 'No money is recorded. Resume this payment or discard the unpaid draft.'}
               </p>
               <div className="mt-2 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-600">
                 <span>{Number(session?.line_count || session?.snapshot?.lines?.length || 0)} saved item(s)</span>
-                <span className="font-black text-[#1A4E8D]">PHP {money(session?.total_amount)}</span>
+                <span className="font-black text-[#1A4E8D]">₱{money(session?.total_amount)}</span>
               </div>
             </>
           ) : null}

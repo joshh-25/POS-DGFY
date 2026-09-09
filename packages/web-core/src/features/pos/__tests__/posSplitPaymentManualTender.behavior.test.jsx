@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const serviceMocks = vi.hoisted(() => ({
@@ -296,8 +296,8 @@ describe('POS manual walk-in tender', () => {
 
         await screen.findByText('Payment Methods');
         expect(screen.queryByText('Quick two-way split')).toBeNull();
-        expect(screen.getByRole('combobox', { name: 'Method of payment 1' }).value).toBe('gcash');
-        expect(screen.getByRole('combobox', { name: 'Method of payment 2' }).value).toBe('cash');
+        expect(within(screen.getByTestId('pos-payment-method-1')).getByRole('button', { name: 'GCash' }).getAttribute('aria-pressed')).toBe('true');
+        expect(within(screen.getByTestId('pos-payment-method-2')).getByRole('button', { name: 'Cash' }).getAttribute('aria-pressed')).toBe('true');
         const amountInput = screen.getByRole('spinbutton', { name: 'Amount for GCash' });
         const cashInput = screen.getByRole('spinbutton', { name: 'Amount for Cash' });
         expect(amountInput.value).toBe('');
@@ -307,9 +307,9 @@ describe('POS manual walk-in tender', () => {
         expect(screen.queryByTestId('pos-payment-received-1')).toBeNull();
         expect(screen.queryByText(/This does not use PayMongo\./)).toBeNull();
         const summary = screen.getByTestId('pos-split-payment-summary');
-        expect(summary.textContent).toContain('PaidPHP 300.00');
-        expect(summary.textContent).toContain('RemainingPHP 0.00');
-        expect(summary.textContent).toContain('ChangePHP 50.00');
+        expect(summary.textContent).toContain('Paid₱300.00');
+        expect(summary.textContent).toContain('Remaining₱0.00');
+        expect(summary.textContent).toContain('Change₱50.00');
         expect(screen.queryByTestId('pos-payment-rows-preview')).toBeNull();
         const completeButton = screen.getByRole('button', { name: 'Record Payment' });
         expect(completeButton.disabled).toBe(false);
@@ -480,8 +480,9 @@ describe('POS manual walk-in tender', () => {
 
         await screen.findByText('Payment Methods');
         await user.click(screen.getByRole('button', { name: /Add Another Payment/ }));
-        expect(screen.getByRole('combobox', { name: 'Method of payment 3' }).value).toBe('maya');
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Method of payment 3' }), 'card');
+        const thirdMethodGroup = screen.getByTestId('pos-payment-method-3');
+        expect(within(thirdMethodGroup).getByRole('button', { name: 'Maya' }).getAttribute('aria-pressed')).toBe('true');
+        await user.click(within(thirdMethodGroup).getByRole('button', { name: 'Card' }));
         await user.type(screen.getByRole('spinbutton', { name: 'Amount for Card' }), '1250');
         await user.click(screen.getByRole('button', { name: 'Record Payment' }));
 
@@ -536,7 +537,7 @@ describe('POS manual walk-in tender', () => {
         await user.click(screen.getByRole('button', { name: 'Record Payment' }));
 
         expect(await screen.findByText(/GCash was recorded, but the remaining payment was not completed/)).toBeTruthy();
-        expect(screen.getAllByText('PHP 500.00').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('₱500.00').length).toBeGreaterThan(0);
         expect(screen.getByRole('spinbutton', { name: 'Amount for Cash' }).value).toBe('750');
         expect(screen.getByRole('spinbutton', { name: 'Amount for GCash' }).value).toBe('');
         expect(screen.getByRole('button', { name: 'Record Payment' }).disabled).toBe(false);
