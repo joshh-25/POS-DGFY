@@ -876,7 +876,7 @@ return (
                                                 alt={`${item.name} menu`}
                                                 loading={isMobileViewport || itemIndex < 4 ? 'eager' : 'lazy'}
                                                 decoding="async"
-                                                fetchpriority={itemIndex < 4 ? 'high' : 'auto'}
+                                                fetchpriority={isMobileViewport || itemIndex < 4 ? 'high' : 'auto'}
                                                 width={144}
                                                 height={144}
                                                 sizes="144px"

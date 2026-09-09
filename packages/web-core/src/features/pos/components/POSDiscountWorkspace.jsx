@@ -516,7 +516,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                     {isStatutoryDiscountType(discountDraft.type) ? (
                         <div className="space-y-2 border-t border-slate-100 pt-3">
                             {toArray(discountDraft.beneficiaries).map((beneficiary, beneficiaryIndex) => (
-                                <div key={`statutory-beneficiary-${beneficiaryIndex}`} className="space-y-2 rounded-lg border border-teal-100 bg-teal-50/20 p-2.5">
+                                <div key={`statutory-beneficiary-${beneficiaryIndex}`} className="space-y-2 rounded-lg border border-blue-100 bg-blue-50/40 p-2.5">
                                     <div className="flex items-center justify-between gap-2">
                                         <p className="text-xs font-bold text-slate-800">Additional beneficiary {beneficiaryIndex + 2}</p>
                                         <button type="button" aria-label={`Remove beneficiary ${beneficiaryIndex + 2}`} className="rounded-md p-1 text-rose-600 hover:bg-rose-50" onClick={() => setDiscountDraft((previous) => ({ ...previous, beneficiaries: toArray(previous.beneficiaries).filter((_, index) => index !== beneficiaryIndex) }))}>
