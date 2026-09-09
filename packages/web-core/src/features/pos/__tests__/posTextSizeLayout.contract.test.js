@@ -38,7 +38,7 @@ describe('POS text-size layout hardening contracts', () => {
     it('allows enlarged sidebar and current-sale labels to wrap', () => {
         expect(sidebarSource).toContain('break-words whitespace-normal text-[12px]');
         expect(sidebarSource).toContain('break-words whitespace-normal line-clamp-2 text-[10.5px]');
-        expect(checkoutSource).toContain('block break-words line-clamp-2 text-[13px]');
+        expect(checkoutSource).toContain('block max-w-full line-clamp-2 text-[13px]');
         expect(checkoutSource).toContain('break-words line-clamp-2 text-[10px]');
     });
 

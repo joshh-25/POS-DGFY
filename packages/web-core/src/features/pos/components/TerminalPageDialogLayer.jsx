@@ -191,8 +191,8 @@ export default function TerminalPageDialogLayer({ model }) {
             </DialogHeader>
             <div className="space-y-3">
               <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
-                <p className="font-semibold">Order total: PHP {Number(cashCollectionOrder?.total_amount || 0).toFixed(2)}</p>
-                <p>Change: PHP {Math.max(0, Number(cashReceivedInput || 0) - Number(cashCollectionOrder?.total_amount || 0)).toFixed(2)}</p>
+                <p className="font-semibold">Order total: ₱{Number(cashCollectionOrder?.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p>Change: ₱{Math.max(0, Number(cashReceivedInput || 0) - Number(cashCollectionOrder?.total_amount || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="cash-received">Amount received</Label>

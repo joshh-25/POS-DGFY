@@ -1,6 +1,9 @@
 import { buildOfflinePosScopeKey } from './offlinePosScope.js';
 
-const STORAGE_KEY_PREFIX = 'dgfy.pos.catalog-image-failures.v1';
+// The resolver now retries gallery variants that were previously quarantined
+// after a failed primary-image request. Keep the old failure cache isolated so
+// those stale entries do not suppress the new fallback behavior.
+const STORAGE_KEY_PREFIX = 'dgfy.pos.catalog-image-failures.v2';
 const MAX_FAILED_ITEM_IDS = 500;
 const inMemoryFailuresByScope = new Map();
 

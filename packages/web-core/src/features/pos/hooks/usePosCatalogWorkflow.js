@@ -18,6 +18,7 @@ import { isPosTabletViewport } from '../utils/posTabletViewport.js';
 import {
     buildCatalogRequestKey,
     buildCatalogRequestParams,
+    CATALOG_PAGE_SIZE_OPTIONS,
     CATALOG_DESKTOP_CARD_HEIGHT_PX,
     CATALOG_DESKTOP_CARD_MIN_WIDTH_PX,
     filterAvailableCatalog,
@@ -33,9 +34,12 @@ import {
 } from '../utils/posCatalogWorkflow.js';
 
 export {
+    CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX,
+    CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX,
     CATALOG_DESKTOP_CARD_HEIGHT_PX,
     CATALOG_DESKTOP_CARD_MIN_WIDTH_PX,
     CATALOG_GRID_GAP_PX,
+    CATALOG_PAGE_SIZE_OPTIONS,
     CATALOG_MOBILE_CARD_HEIGHT_PX,
     CATALOG_TABLET_CARD_HEIGHT_PX,
     CATALOG_TABLET_CARD_MIN_WIDTH_PX
@@ -79,7 +83,6 @@ export const usePosCatalogWorkflow = ({
     const [catalogError, setCatalogError] = useState('');
     const [posFolders, setPosFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
-    const [mobileSearchExpanded, setMobileSearchExpanded] = useState(false);
     const [posFoldersLoading, setPosFoldersLoading] = useState(true);
     const [posFoldersError, setPosFoldersError] = useState('');
     const [catalogLoading, setCatalogLoading] = useState(true);
@@ -90,7 +93,12 @@ export const usePosCatalogWorkflow = ({
     // on the fixed Chrome 80-84 iMin WebView when typing or holding backspace.
     const deferredSearch = useDeferredValue(search);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
+    const [isMobileViewport, setIsMobileViewport] = useState(() => (
+        typeof window !== 'undefined'
+        && window.matchMedia?.('(max-width: 639px)')?.matches === true
+    ));
     const [catalogPage, setCatalogPage] = useState(1);
+    const [catalogPageSizeOverride, setCatalogPageSizeOverride] = useState(null);
     const [catalogCapacityViewport, setCatalogCapacityViewport] = useState(null);
     const [catalogGridLayout, setCatalogGridLayout] = useState({
         columns: 1,
@@ -344,7 +352,18 @@ export const usePosCatalogWorkflow = ({
         return () => window.removeEventListener('resize', syncTabletViewport);
     }, [isDgfyPosSurface]);
 
-    const catalogPageSize = getCatalogPageSize(catalogGridLayout.pageSize);
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        const syncMobileViewport = () => {
+            setIsMobileViewport(window.matchMedia?.('(max-width: 639px)')?.matches === true);
+        };
+        syncMobileViewport();
+        window.addEventListener('resize', syncMobileViewport);
+        return () => window.removeEventListener('resize', syncMobileViewport);
+    }, []);
+
+    const autoCatalogPageSize = getCatalogPageSize(catalogGridLayout.pageSize);
+    const catalogPageSize = catalogPageSizeOverride || autoCatalogPageSize;
     const availableCatalog = useMemo(
         () => filterAvailableCatalog(Array.isArray(catalog) ? catalog : []),
         [catalog]
@@ -401,14 +420,40 @@ export const usePosCatalogWorkflow = ({
         return () => window.clearTimeout(timeoutId);
     }, [nextCatalogImageUrls]);
 
-    const handleCatalogPageChange = useCallback((direction) => {
+    const handleCatalogPageChange = useCallback((target) => {
         setCatalogPage((previous) => {
-            if (direction === 'previous') {
+            if (typeof target === 'number' && Number.isFinite(target)) {
+                return Math.min(totalCatalogPages, Math.max(1, Math.trunc(target)));
+            }
+            if (target === 'first') {
+                return 1;
+            }
+            if (target === 'last') {
+                return totalCatalogPages;
+            }
+            if (target === 'previous') {
                 return Math.max(1, previous - 1);
             }
-            return Math.min(totalCatalogPages, previous + 1);
+            if (target === 'next') {
+                return Math.min(totalCatalogPages, previous + 1);
+            }
+            return previous;
         });
     }, [totalCatalogPages]);
+
+    const handleCatalogPageSizeChange = useCallback((nextPageSize) => {
+        const normalizedValue = String(nextPageSize ?? '').trim().toLowerCase();
+        if (normalizedValue === 'auto') {
+            setCatalogPageSizeOverride(null);
+            setCatalogPage(1);
+            return;
+        }
+
+        const normalizedPageSize = Number(normalizedValue);
+        if (!CATALOG_PAGE_SIZE_OPTIONS.includes(normalizedPageSize)) return;
+        setCatalogPageSizeOverride(normalizedPageSize);
+        setCatalogPage(1);
+    }, []);
 
     const handleCatalogSwipeStart = useCallback((clientX, pointerId = null) => {
         catalogSwipeStartXRef.current = clientX;
@@ -558,8 +603,19 @@ export const usePosCatalogWorkflow = ({
         let animationFrameId = null;
         const measureCapacity = () => {
             animationFrameId = null;
-            const width = viewport.clientWidth;
-            const height = viewport.clientHeight;
+            const computedStyle = typeof window.getComputedStyle === 'function'
+                && typeof Element !== 'undefined'
+                && viewport instanceof Element
+                ? window.getComputedStyle(viewport)
+                : null;
+            const horizontalPadding = computedStyle
+                ? (Number.parseFloat(computedStyle.paddingLeft) || 0) + (Number.parseFloat(computedStyle.paddingRight) || 0)
+                : 0;
+            const verticalPadding = computedStyle
+                ? (Number.parseFloat(computedStyle.paddingTop) || 0) + (Number.parseFloat(computedStyle.paddingBottom) || 0)
+                : 0;
+            const width = viewport.clientWidth - horizontalPadding;
+            const height = viewport.clientHeight - verticalPadding;
             if (width <= 0 || height <= 0) return;
 
             const isMobileViewport = window.matchMedia?.('(max-width: 639px)')?.matches === true;
@@ -667,15 +723,15 @@ export const usePosCatalogWorkflow = ({
         posFolders,
         selectedFolderId,
         setSelectedFolderId,
-        mobileSearchExpanded,
-        setMobileSearchExpanded,
         posFoldersLoading,
         posFoldersError,
         search,
         setSearch,
         isTabletViewport,
+        isMobileViewport,
         catalogPage,
         setCatalogPage,
+        catalogPageSizeOverride,
         catalogGridLayout,
         catalogSectionRef,
         catalogViewportRef,
@@ -687,6 +743,7 @@ export const usePosCatalogWorkflow = ({
         availableCatalog,
         availableCategories,
         catalogPageSize,
+        catalogPageSizeOptions: CATALOG_PAGE_SIZE_OPTIONS,
         catalogForDisplay,
         totalCatalogPages,
         visibleCatalogItems,
@@ -697,6 +754,7 @@ export const usePosCatalogWorkflow = ({
         saveCatalogSnapshot,
         refreshCatalogAfterInvalidation,
         handleCatalogPageChange,
+        handleCatalogPageSizeChange,
         handleCatalogSwipeStart,
         handleCatalogSwipeEnd,
         handleFolderStripPointerDown,
