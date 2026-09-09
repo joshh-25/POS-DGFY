@@ -22318,15 +22318,29 @@ content differs from what was implemented and tested under the "303" label.
 - Initiative/release: POS catalog final audit / current release.
 - Objective and scope: repair the confirmed legacy-fixture test failure and verify
   category order, secondary-only items, stale saves, and tenant isolation end to end.
-- Status: planned.
+- Status: completed.
 - Dependencies: Phase 314.
-- Acceptance and validation evidence: pending; expanded API/model tests pass and
-  rendered local POS-to-Storefront order verification preserves All and tenant scope.
-- Completion date: pending.
+- Acceptance and validation evidence: the category reorder handler submits the
+  complete folder ID list, keeps the optimistic order after a successful save, and
+  reloads the authoritative tenant-scoped list after a rejected stale save. POS
+  rendered category behavior tests passed 16/16. Storefront F&B and services
+  model tests passed 24/24 and the full Storefront suite passed 218 files and
+  1,175 tests, covering secondary-only items, invalid IDs, colliding names,
+  inactive/deleted memberships, unique All membership, and persisted relative
+  order. API repository/category suites passed 96/96, including secondary sort
+  order and active/deleted filtering. The local public catalog payload and
+  rendered Storefront for Masu Cafe exposed the same eligible category order; a
+  second tenant had a distinct category set with no ID overlap. POS and
+  Storefront production builds plus architecture, compliance, documentation,
+  app-version, and diff checks passed. Authenticated live POS credentials were
+  unavailable, so no destructive browser reorder was attempted; the rendered
+  handler and API atomic reorder contract provide the mutation evidence.
+- Completion date: 2026-09-09.
 - Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
-  storeRepository.locationStockFallback.test.js, F&B/services view-model tests,
-  TerminalOperationsWorkspace.jsx and local cross-app validation evidence.
-- Next eligible phase: 316 after Phase 315 acceptance passes.
+  storeRepository.locationStockFallback.test.js, storeRepositorySecondaryCategories.test.js,
+  F&B/services view-model tests, TerminalOperationsWorkspace.jsx,
+  categoryPlacement.behavior.test.jsx, and local cross-app validation evidence.
+- Next eligible phase: 316.
 
 ## Phase 316 - Image viewer rendered validation and final readiness
 

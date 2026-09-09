@@ -90,10 +90,12 @@ container and dimensions recorded only on image load before claiming zoom is saf
 - `npm run check:architecture`: passed.
 - `npm run check:compliance`, `npm run check:docs`, and
   `npm run check:app-versions`: passed; the changed API files pass ESLint.
-- No browser E2E, latency measurement, or tenant migration was rerun for this
-  audit; those remain Phase 315/316 work.
-- Phase 314 readiness: implementation and focused validation complete. Phases 315
-  and 316 remain pending for synchronization and rendered/performance evidence.
+- No image-viewer browser E2E or latency measurement was rerun for this audit;
+  those remain Phase 316 work. Phase 315 now has rendered POS component
+  coverage, API projection coverage, and a live public Storefront smoke.
+- Phase 314 readiness: implementation and focused validation complete. Phase 315
+  is complete for category regression/reconciliation coverage; Phase 316 remains
+  pending for rendered image-viewer and performance evidence.
 
 ## Phase 314 — Isolate category presentation from business rules
 
@@ -130,10 +132,11 @@ compliance, docs, and app-version gates passed. Completion date: 2026-09-09.
 
 ## Phase 315 — Close category regression and synchronization coverage
 
-Status: planned. Depends on Phase 314. Addresses G3 and category portion of G4.
+Status: completed. Depends on Phase 314. Addresses G3 and category portion of G4.
 
-1. Repair `storeRepository.locationStockFallback.test.js` with separate explicit
-   active-folder and legacy-only fixtures. Preserve its stock fallback assertions.
+1. Verify the Phase 314 repair in `storeRepository.locationStockFallback.test.js`:
+   explicit active-folder and legacy-only fixtures remain separate and the stock
+   fallback assertions stay intact.
 2. Expand F&B/services tests: null primary with valid secondary category; invalid
    category IDs; two distinct IDs with colliding names; inactive/deleted category;
    every item present exactly once in All; saved relative order preserved.
@@ -146,11 +149,26 @@ Status: planned. Depends on Phase 314. Addresses G3 and category portion of G4.
 5. Fix only reproduced synchronization defects; keep existing tenant-scoped cache
    mechanisms, avoid polling loops and per-item API requests.
 
-Acceptance: all expanded suites pass; a persisted POS order is reflected in the
-Storefront's eligible categories; All remains first; unassigned items remain
+Acceptance: all expanded suites pass; the category reorder path submits the
+complete ID list and reconciles a rejected stale save from the authoritative
+tenant-scoped list; Storefront model and public catalog rendering preserve the
+saved eligible-category order; All remains first; unassigned items remain
 visible; no cross-tenant effect. Empty/invisible categories may be absent from
 Storefront, so compare the relative order of eligible categories rather than
 requiring identical category counts.
+
+Validation evidence: POS rendered category behavior tests passed 16/16,
+including optimistic reorder and stale-list refresh recovery. Storefront F&B and
+services model tests passed 24/24, and the full Storefront suite passed 218 files
+and 1,175 tests. API repository/category suites passed 96/96, including persisted
+secondary sort order and active/deleted filtering. The local API catalog payload
+and rendered public Storefront for Masu Cafe exposed the same eligible category
+order; a second tenant's payload had a distinct category set with no ID overlap.
+POS and Storefront production builds, architecture, compliance, documentation,
+app-version, and diff checks passed. Authenticated browser credentials were not
+available for a destructive live POS reorder, so the cross-app mutation itself is
+covered by the rendered POS handler test and the API atomic reorder contract; no
+production or tenant data was changed. Completion date: 2026-09-09.
 
 ## Phase 316 — Rendered image and release-readiness validation
 
@@ -183,10 +201,9 @@ desktop emulation as proof on a physical APK device. No PR/push/deploy unless as
 
 ## Execution handoff
 
-Read this document and its authoritative references before editing. Phase 314 is
-completed; implement Phases 315 and 316 sequentially when approved, and require
-each phase to meet its gates before marking it completed. Existing application work
-is committed; preserve unrelated untracked files. Do not silently broaden scope,
-delete tenant data, disable cache safety, or claim existing passing unit tests prove
-G1/G2 absent. Current completed phase is 314; next eligible implementation phase is
-315.
+Read this document and its authoritative references before editing. Phases 314 and
+315 are completed; implement Phase 316 when approved, and require its gates before
+marking it completed. Existing application work is committed; preserve unrelated
+untracked files. Do not silently broaden scope, delete tenant data, disable cache
+safety, or claim existing passing unit tests prove G1/G2 absent. Current completed
+phase is 315; next eligible implementation phase is 316.
