@@ -3007,19 +3007,22 @@ function ItemsWorkspace({
     const itemId = Number(activeEditItem?.item_id || 0);
     if (normalizedFiles.length === 0 || !itemId) return;
     const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem || {}).length;
-    const availableSlots = Math.max(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount);
-    const filesToPreview = normalizedFiles.slice(0, availableSlots);
-    if (filesToPreview.length === 0) {
+    const availableSlots = Math.max(
+      0,
+      STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount - selectedEditImageFiles.length
+    );
+    if (availableSlots === 0) {
       toast.info('Remove an existing image before adding another one.');
       return;
     }
-    if (normalizedFiles.length > filesToPreview.length) {
+    const filesToAdd = normalizedFiles.slice(0, availableSlots);
+    if (normalizedFiles.length > filesToAdd.length) {
       toast.error(`Only ${availableSlots} more image${availableSlots === 1 ? '' : 's'} can be added to this item.`);
     }
 
     // Selection is local-only. The worker starts after Save Item, matching Add
     // Item and allowing the operator to replace the preview before committing.
-    setSelectedEditImageFiles(filesToPreview);
+    setSelectedEditImageFiles((current) => [...current, ...filesToAdd]);
     setSelectedEditPrimaryFile(null);
   };
 

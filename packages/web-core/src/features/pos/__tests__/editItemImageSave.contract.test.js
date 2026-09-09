@@ -21,7 +21,7 @@ describe('POS edit-item image save flow', () => {
     expect(saveHandler).toContain('const editItemId = activeEditItem.item_id;');
     expect(saveHandler).toContain("let editSaveStage = 'item_details';");
     expect(saveHandler).toContain('resolveEditItemSaveError(updateError, editSaveStage).message');
-    expect(uploadHandler).toContain('setSelectedEditImageFiles(filesToPreview);');
+    expect(uploadHandler).toContain('setSelectedEditImageFiles((current) => [...current, ...filesToAdd]);');
     expect(uploadHandler).not.toContain('queueEditImageFiles');
     expect(saveHandler).toContain('imageUploadMessage = await queueEditImageFiles({');
     expect(workspace).toContain('const imageAttemptId = stagePendingPosItemImagePreview({');

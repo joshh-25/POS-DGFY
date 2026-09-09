@@ -42,6 +42,9 @@ receipts, or customer data.
   adds no database write or new endpoint.
 - A failed silent refresh retains the last known list rather than replacing it
   with an empty state.
+- Edit Item image selection remains local until Save Item; pending files count
+  toward the existing five-image gallery limit, and no saved image is removed
+  implicitly.
 - No polling loop, per-item request, or new cache is introduced.
 
 ## Verification Evidence
