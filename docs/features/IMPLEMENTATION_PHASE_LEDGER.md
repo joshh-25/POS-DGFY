@@ -20125,7 +20125,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   ADR 0081 Decision 6's base-aware bump-level rule per `(base, head)` pair; wired into
   `shared-changed-paths.yml` + `scripts/pr-checks.js`; ships advisory (non-blocking) per ADR 0081
   Decision 9.
-- Status: planned.
+- Status: in_progress.
 - Dependencies: Phase 273 / ADR 0081 (Decisions 6 and 9 specifically); #1560 (filed, not started).
 - Acceptance and validation evidence: not yet started. Expected at implementation: a script test
   suite covering each `(base, head)` bump-level mode from ADR 0081 Decision 6, plus a live advisory
@@ -22349,10 +22349,17 @@ content differs from what was implemented and tested under the "303" label.
   network/storage behavior and affected application gates; fix only reproduced gaps.
 - Status: planned.
 - Dependencies: Phase 315; ADR 0067 and architecture governance rendered-proof rules.
-- Acceptance and validation evidence: pending; rendered primary interactions and
-  request/storage evidence pass, all affected builds/tests/gates pass, limitations
-  recorded. Physical iMin validation excluded per user instruction.
-- Completion date: pending.
+- Acceptance and validation evidence: the rendered POS viewer reproduced a stale
+  explicit-dimension gap after a narrow viewport change. `PosItemImageViewer.jsx`
+  now clears zoom and metrics on `resize`/`orientationchange`, then remeasures the
+  loaded image on the next animation frame (with a timer fallback). The focused
+  POS viewer suite passes 4/4 and the POS production build passes. The local POS
+  browser is authentication-gated, so authenticated desktop/mobile interaction,
+  HAR request counts/bytes, and live close/reopen proof remain unexecuted; no
+  production or tenant data was changed. Physical iMin validation is excluded per
+  user instruction.
+- Completion date: pending authenticated rendered/network evidence.
 - Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
   PosItemImageViewer.jsx, POS viewer tests, and local rendered validation artifacts.
-- Next eligible phase: 317 after Phase 316 acceptance passes.
+- Next eligible phase: 316 remains active until its required authenticated
+  evidence passes; Phase 317 is not yet eligible.

@@ -172,7 +172,7 @@ production or tenant data was changed. Completion date: 2026-09-09.
 
 ## Phase 316 — Rendered image and release-readiness validation
 
-Status: planned. Depends on Phase 315. Addresses remaining G4.
+Status: in_progress. Depends on Phase 315. Addresses remaining G4.
 
 1. Check the actual POS image viewer at desktop and 360px mobile width, plus short
    landscape height. Exercise open, next/previous, fallback failure, zoom in/out,
@@ -199,6 +199,24 @@ all required gates pass, and no measured avoidable network/storage work is added
 Physical iMin validation is excluded per the user's instruction; do not describe
 desktop emulation as proof on a physical APK device. No PR/push/deploy unless asked.
 
+### Phase 316 execution record — 2026-09-09
+
+- Reproduced the stale-dimension gap at the rendered component level: a zoomed
+  image kept explicit pixel dimensions after a narrow viewport change.
+- Updated `PosItemImageViewer.jsx` to listen for `resize` and
+  `orientationchange`, clear zoom and stale metrics immediately, then remeasure
+  the loaded image on the next animation frame (with a timer fallback).
+- Added a focused POS regression test covering 800px-to-320px resizing, stale
+  style removal, remeasurement, and safe re-enlargement. The POS viewer suite
+  passes 4/4 and the POS production build passes.
+- The local POS browser was reachable but authentication-gated at the login
+  screen. No credentials were available, so authenticated desktop/mobile
+  interaction, HAR request counts/bytes, and live close/reopen proof remain
+  unexecuted. No production or tenant data was changed.
+- Phase 316 remains `in_progress` until that authenticated rendered and network
+  evidence is available; this is an external access limitation, not a test
+  failure. Physical iMin validation remains excluded.
+
 ## Execution handoff
 
 Read this document and its authoritative references before editing. Phases 314 and
@@ -206,4 +224,5 @@ Read this document and its authoritative references before editing. Phases 314 a
 marking it completed. Existing application work is committed; preserve unrelated
 untracked files. Do not silently broaden scope, delete tenant data, disable cache
 safety, or claim existing passing unit tests prove G1/G2 absent. Current completed
-phase is 315; next eligible implementation phase is 316.
+phase is 315; Phase 316 is active and remains the next eligible implementation
+phase until its required authenticated evidence passes.
