@@ -777,6 +777,108 @@ describe('storefront catalog use cases', () => {
         await fs.rm(secondTempPath, { force: true });
     });
 
+    it('uploadStorefrontCatalogGalleryImages applies an edit gallery intent atomically', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gallery-intent' });
+        const updateStorefrontCatalogImage = jest.fn().mockResolvedValue({
+            item_id: 94,
+            storefront_visible: true,
+            storefront_image_url: '/uploads/new-primary.png',
+            storefront_image_gallery: []
+        });
+        const remove = jest.fn().mockResolvedValue(undefined);
+        const useCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 94, name: 'Intent item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
+                    item_id: 94,
+                    storefront_visible: true,
+                    storefront_image_path: 'storefront-catalog/tenant/old-primary.png',
+                    storefront_image_gallery: [
+                        { path: 'storefront-catalog/tenant/old-primary.png', url: '/uploads/old-primary.png' },
+                        { path: 'storefront-catalog/tenant/old-keep.png', url: '/uploads/old-keep.png' }
+                    ]
+                }),
+                updateStorefrontCatalogImage
+            },
+            imageStorage: {
+                store: jest.fn().mockResolvedValue({
+                    path: 'storefront-catalog/tenant/new-primary.png',
+                    url: '/uploads/new-primary.png'
+                }),
+                remove
+            }
+        });
+
+        await useCase({
+            itemId: 94,
+            files: [{
+                path: tempPath,
+                key: 'new.png|12|7|image/png',
+                mimetype: 'image/png',
+                originalname: 'new.png',
+                size: PNG_BYTES.length
+            }],
+            galleryIntent: {
+                base_keys: ['storefront-catalog/tenant/old-primary.png', 'storefront-catalog/tenant/old-keep.png'],
+                pending_keys: ['new.png|12|7|image/png'],
+                entries: [
+                    { type: 'pending', key: 'new.png|12|7|image/png' },
+                    { type: 'saved', path: 'storefront-catalog/tenant/old-keep.png', url: '/uploads/old-keep.png' }
+                ]
+            },
+            user: editableUser
+        });
+
+        expect(updateStorefrontCatalogImage).toHaveBeenCalledWith(94, expect.objectContaining({
+            path: 'storefront-catalog/tenant/new-primary.png',
+            url: '/uploads/new-primary.png',
+            gallery: [
+                expect.objectContaining({ path: 'storefront-catalog/tenant/new-primary.png', is_primary: true, sort_order: 0 }),
+                expect.objectContaining({ path: 'storefront-catalog/tenant/old-keep.png', is_primary: false, sort_order: 1 })
+            ]
+        }), expect.objectContaining({ keepVisible: true }));
+        expect(remove).toHaveBeenCalledWith({ path: 'storefront-catalog/tenant/old-primary.png' });
+
+        await fs.rm(tempPath, { force: true });
+    });
+
+    it('rejects an edit gallery intent when the saved gallery changed after the editor opened', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gallery-intent-stale' });
+        const store = jest.fn();
+        const useCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 96, name: 'Stale intent item', default_sale_price: 125 }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
+                    item_id: 96,
+                    storefront_visible: true,
+                    storefront_image_gallery: [
+                        { path: 'storefront-catalog/tenant/changed.png', url: '/uploads/changed.png' }
+                    ]
+                }),
+                updateStorefrontCatalogImage: jest.fn()
+            },
+            imageStorage: { store, remove: jest.fn() }
+        });
+
+        await expect(useCase({
+            itemId: 96,
+            files: [{ path: tempPath, key: 'new.png|12|7|image/png', mimetype: 'image/png', originalname: 'new.png', size: PNG_BYTES.length }],
+            galleryIntent: {
+                base_keys: ['storefront-catalog/tenant/original.png'],
+                pending_keys: ['new.png|12|7|image/png'],
+                entries: [{ type: 'pending', key: 'new.png|12|7|image/png' }]
+            },
+            user: editableUser
+        })).rejects.toMatchObject({
+            code: 'CONFLICT',
+            statusCode: 409,
+            details: { reason_code: 'STOREFRONT_GALLERY_STALE' }
+        });
+
+        expect(store).not.toHaveBeenCalled();
+        expect(await pathExists(tempPath)).toBe(false);
+    });
+
     it('uploadStorefrontCatalogGalleryImages appends to legacy primary-only image rows', async () => {
         const tempPath = await writeTempUpload({ prefix: 'storefront-gallery-legacy-primary' });
         const updateStorefrontCatalogImage = jest.fn().mockResolvedValue({

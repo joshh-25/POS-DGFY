@@ -834,6 +834,23 @@ const cleanupQueuedCatalogImageFiles = async (files = []) => {
   }));
 };
 
+const parseGalleryIntent = (rawIntent, fileCount) => {
+  if (rawIntent === undefined || rawIntent === null || rawIntent === '') return null;
+  let intent;
+  try {
+    intent = typeof rawIntent === 'string' ? JSON.parse(rawIntent) : rawIntent;
+  } catch {
+    return { error: 'gallery_intent must be valid JSON.' };
+  }
+  if (!intent || typeof intent !== 'object' || Array.isArray(intent)
+    || !Array.isArray(intent.entries) || !Array.isArray(intent.pending_keys)
+    || intent.pending_keys.length !== fileCount
+    || intent.entries.length > 5) {
+    return { error: 'gallery_intent is invalid for this image upload.' };
+  }
+  return { value: intent };
+};
+
 const queueStorefrontCatalogImages = async ({ req, res, mode, files }) => {
   const itemId = req.validatedParams?.item_id || req.params.item_id;
   const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
@@ -841,6 +858,20 @@ const queueStorefrontCatalogImages = async ({ req, res, mode, files }) => {
     return res.status(400).json({
       success: false,
       message: 'At least one image file is required.',
+      error_code: 'VALIDATION_FAILED',
+      request_id: requestId(req, res),
+      timestamp: timestamp()
+    });
+  }
+
+  const parsedGalleryIntent = mode === 'gallery'
+    ? parseGalleryIntent(req.body?.gallery_intent, normalizedFiles.length)
+    : null;
+  if (parsedGalleryIntent?.error) {
+    await cleanupQueuedCatalogImageFiles(normalizedFiles);
+    return res.status(400).json({
+      success: false,
+      message: parsedGalleryIntent.error,
       error_code: 'VALIDATION_FAILED',
       request_id: requestId(req, res),
       timestamp: timestamp()
@@ -868,7 +899,8 @@ const queueStorefrontCatalogImages = async ({ req, res, mode, files }) => {
       },
       itemId,
       mode,
-      files: normalizedFiles
+      files: normalizedFiles,
+      galleryIntent: parsedGalleryIntent?.value || null
     });
 
     return res.status(202).json({

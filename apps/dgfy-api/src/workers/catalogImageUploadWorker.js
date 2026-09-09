@@ -57,12 +57,17 @@ const processTaskInTenantContext = async (task) => {
 
     return dbStore.run(context, () => (
         task.mode === 'gallery'
-            ? uploadStorefrontCatalogGalleryImagesUseCase({ itemId: task.item_id, files, user })
+            ? uploadStorefrontCatalogGalleryImagesUseCase({
+                itemId: task.item_id,
+                files,
+                user,
+                galleryIntent: task.gallery_intent
+            })
             : uploadStorefrontCatalogImageUseCase({ itemId: task.item_id, file: files[0], user })
     ));
 };
 
-export const enqueueCatalogImageUpload = async ({ tenantId, user, itemId, mode = 'single', files = [] }) => {
+export const enqueueCatalogImageUpload = async ({ tenantId, user, itemId, mode = 'single', files = [], galleryIntent = null }) => {
     const jobId = crypto.randomUUID();
     const task = {
         job_id: jobId,
@@ -75,11 +80,15 @@ export const enqueueCatalogImageUpload = async ({ tenantId, user, itemId, mode =
             is_master_admin: user?.is_master_admin === true,
             permissions: Array.isArray(user?.permissions) ? [...user.permissions] : []
         },
-        files: files.map((file) => ({
+        gallery_intent: mode === 'gallery' && galleryIntent && typeof galleryIntent === 'object'
+            ? JSON.parse(JSON.stringify(galleryIntent))
+            : null,
+        files: files.map((file, index) => ({
             path: file.path,
             originalname: file.originalname,
             mimetype: file.mimetype,
-            size: file.size
+            size: file.size,
+            key: galleryIntent?.pending_keys?.[index] || null
         }))
     };
 

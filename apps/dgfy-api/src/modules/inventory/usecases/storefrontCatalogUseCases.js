@@ -580,7 +580,7 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
 };
 
 export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepository, imageStorage }) => {
-  return async ({ itemId, files = [], user }) => {
+  return async ({ itemId, files = [], user, galleryIntent = null }) => {
     const normalizedItemId = parsePositiveInt(itemId);
     const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
     const storedImages = [];
@@ -606,7 +606,60 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
 
       const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
       const existingGallery = normalizeExistingStorefrontGallery(existing);
-      if (existingGallery.length + normalizedFiles.length > STOREFRONT_CATALOG_GALLERY_MAX_IMAGES) {
+      const hasGalleryIntent = galleryIntent && typeof galleryIntent === 'object'
+        && Array.isArray(galleryIntent.entries)
+        && Array.isArray(galleryIntent.pending_keys);
+      if (galleryIntent !== null && !hasGalleryIntent) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'gallery_intent is invalid.', { statusCode: 422 });
+      }
+      if (hasGalleryIntent) {
+        const currentKeys = existingGallery.map((entry) => entry.path || entry.url).filter(Boolean);
+        const baseKeys = Array.isArray(galleryIntent.base_keys)
+          ? galleryIntent.base_keys.map((key) => String(key || '').trim()).filter(Boolean)
+          : [];
+        if (baseKeys.length > 0 && (baseKeys.length !== currentKeys.length || baseKeys.some((key, index) => key !== currentKeys[index]))) {
+          throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'The item images changed while you were editing. Reopen the item and try again.',
+            { statusCode: 409, details: { reason_code: 'STOREFRONT_GALLERY_STALE' } }
+          );
+        }
+        if (galleryIntent.entries.length > STOREFRONT_CATALOG_GALLERY_MAX_IMAGES) {
+          throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Item image gallery is limited to ${STOREFRONT_CATALOG_GALLERY_MAX_IMAGES} images per item.`, { statusCode: 422 });
+        }
+        const pendingKeys = galleryIntent.pending_keys.map((key) => String(key || '').trim());
+        if (pendingKeys.some((key) => !key) || new Set(pendingKeys).size !== pendingKeys.length) {
+          throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'gallery_intent contains duplicate pending image keys.', { statusCode: 422 });
+        }
+        if (pendingKeys.length !== normalizedFiles.length) {
+          throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'gallery_intent does not match the uploaded images.', { statusCode: 422 });
+        }
+        const existingKeys = new Set(existingGallery.flatMap((entry) => [entry.path, entry.url].filter(Boolean)));
+        const uploadedKeys = new Set(pendingKeys);
+        const seenIntentKeys = new Set();
+        galleryIntent.entries.forEach((entry) => {
+          const type = String(entry?.type || '').trim().toLowerCase();
+          const key = type === 'pending'
+            ? String(entry?.key || '').trim()
+            : String(entry?.path || entry?.url || '').trim();
+          if (!key || seenIntentKeys.has(key)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'gallery_intent contains duplicate or empty entries.', { statusCode: 422 });
+          }
+          seenIntentKeys.add(key);
+          if (type === 'pending' && !uploadedKeys.has(key)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'gallery_intent references an unknown uploaded image.', { statusCode: 422 });
+          }
+          if (type === 'saved' && !existingKeys.has(key)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'gallery_intent references an image that is no longer saved.', { statusCode: 422 });
+          }
+          if (!['saved', 'pending'].includes(type)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'gallery_intent contains an unsupported entry.', { statusCode: 422 });
+          }
+        });
+        if (galleryIntent.entries.filter((entry) => String(entry?.type || '').trim().toLowerCase() === 'pending').length !== pendingKeys.length) {
+          throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'gallery_intent must include every uploaded image exactly once.', { statusCode: 422 });
+        }
+      } else if (existingGallery.length + normalizedFiles.length > STOREFRONT_CATALOG_GALLERY_MAX_IMAGES) {
         throw new DomainError(
           DomainErrorCode.VALIDATION_FAILED,
           `Item image gallery is limited to ${STOREFRONT_CATALOG_GALLERY_MAX_IMAGES} images per item.`,
@@ -669,16 +722,26 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
             user
           });
         }
-        storedImages.push(stored);
+        storedImages.push({ ...stored, key: file.key || null });
       }
 
-      const gallery = normalizeStoredGalleryEntries([...existingGallery, ...storedImages.map((stored) => ({
+      const storedGalleryEntries = storedImages.map((stored) => ({
         path: stored.path,
         url: stored.url,
         variants: stored.image_variants,
         original_path: stored.original?.path || null,
-        classification: stored.classification || null
-      }))]);
+        classification: stored.classification || null,
+        key: stored.key
+      }));
+      const gallery = hasGalleryIntent
+        ? normalizeStoredGalleryEntries(galleryIntent.entries.map((entry) => {
+          const type = String(entry?.type || '').trim().toLowerCase();
+          if (type === 'pending') {
+            return storedGalleryEntries.find((stored) => stored.key === String(entry.key || '').trim()) || null;
+          }
+          return existingGallery.find((saved) => [saved.path, saved.url].filter(Boolean).includes(String(entry?.path || entry?.url || '').trim())) || null;
+        }).filter(Boolean))
+        : normalizeStoredGalleryEntries([...existingGallery, ...storedGalleryEntries]);
       const primary = gallery[0] || null;
       let data;
       try {
@@ -701,6 +764,15 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
         });
       }
       storedCommitted = true;
+
+      if (hasGalleryIntent) {
+        const requestedPaths = new Set(gallery.map((entry) => entry.path).filter(Boolean));
+        const removedPaths = [
+          existing?.storefront_image_path,
+          ...existingGallery.map((entry) => entry.path)
+        ].filter((path) => path && !requestedPaths.has(path));
+        await Promise.all([...new Set(removedPaths)].map((path) => imageStorage.remove({ path })));
+      }
 
       const response = toSerializable(data);
       response.storefront_image_variants = primary?.variants || null;
