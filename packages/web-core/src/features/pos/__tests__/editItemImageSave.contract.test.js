@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 
 describe('POS edit-item image save flow', () => {
-  it('uploads edited images automatically while keeping a temporary preview', () => {
+  it('keeps selection local and queues edited images only when the item is saved', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
     const saveStart = workspace.indexOf('const handleSave = async () => {');
     const uploadStart = workspace.indexOf('const handleSelectEditImageFile = (files) => {');
@@ -18,16 +18,19 @@ describe('POS edit-item image save flow', () => {
     expect(workspace).toContain('const [selectedEditImageFiles, setSelectedEditImageFiles] = useState([]);');
     expect(workspace).toContain('void handleSelectEditImageFile(files);');
     expect(workspace).not.toContain('handleUploadStorefrontImage');
-    expect(workspace).toContain('const [deferredEditImageFiles, setDeferredEditImageFiles] = useState([]);');
     expect(saveHandler).toContain('const editItemId = activeEditItem.item_id;');
     expect(saveHandler).toContain("let editSaveStage = 'item_details';");
     expect(saveHandler).toContain('resolveEditItemSaveError(updateError, editSaveStage).message');
     expect(uploadHandler).toContain('setSelectedEditImageFiles(filesToPreview);');
-    expect(uploadHandler).toContain('setDeferredEditImageFiles(filesToPreview);');
+    expect(uploadHandler).not.toContain('queueEditImageFiles');
+    expect(saveHandler).toContain('imageUploadMessage = await queueEditImageFiles({');
+    expect(workspace).toContain('const imageAttemptId = stagePendingPosItemImagePreview({');
+    expect(workspace).toContain('bindPendingPosItemImagePreviewJob({');
+    expect(workspace).toContain('markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId })');
+    expect(workspace).toContain('await queueStorefrontCatalogImage(itemId, filesToUpload[0])');
     expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload)');
-    expect(uploadHandler).not.toContain('queueStorefrontCatalogImage(itemId, filesToUpload[0])');
-    expect(workspace).toContain('setPendingEditImageRefresh({');
-    expect(workspace).toContain('Remove existing images to make room; upload will continue automatically.');
+    expect(workspace).not.toContain('setPendingEditImageRefresh');
+    expect(workspace).not.toContain('The previous image is still being optimized');
     expect(uploadHandler).not.toContain('pollEditImageUpload');
     expect(workspace).toContain('subscribeToRemotePosCatalogUpdates');
     expect(uploadHandler).not.toContain('setPersistingEditAssets(true);');
@@ -36,17 +39,11 @@ describe('POS edit-item image save flow', () => {
     expect(workspace).toContain('multiple');
   });
 
-  it('hides pending previews as their saved gallery entries arrive', () => {
+  it('renders selected previews until Save Item queues the worker job', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
-    const reconciliationStart = workspace.indexOf('const visibleSelectedEditImageFiles = useMemo(() => {');
-    const reconciliationEnd = workspace.indexOf('// Real, already-persisted item id', reconciliationStart);
-    const reconciliation = workspace.slice(reconciliationStart, reconciliationEnd);
-
-    expect(reconciliation).toContain('normalizeStorefrontItemGallery(activeEditItem).length');
-    expect(reconciliation).toContain('pendingEditImageRefresh.existingGalleryCount');
-    expect(reconciliation).toContain('pendingEditImageRefresh.pendingCount');
-    expect(reconciliation).toContain('return selectedEditImageFiles.slice(savedUploadCount);');
-    expect(workspace).toContain('files={visibleSelectedEditImageFiles}');
+    expect(workspace).toContain('files={selectedEditImageFiles}');
+    expect(workspace).toContain('Selection is local-only. The worker starts after Save Item');
+    expect(workspace).toContain('Save Item uploads it silently and replaces the preview when ready.');
   });
 
   it('supports image drops in Edit Item without allowing browser navigation', () => {

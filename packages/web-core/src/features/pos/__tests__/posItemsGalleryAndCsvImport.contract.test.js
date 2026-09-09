@@ -38,7 +38,7 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
     expect(workspace).toContain('onSetPendingPrimary={handleSetPendingEditPrimary}');
     expect(workspace).not.toContain('<StorefrontImageCarousel');
     expect(workspace).toContain('showPrimaryToggle');
-    expect(workspace).toContain('The preview appears immediately. The optimized image is saved automatically and then replaces the preview.');
+    expect(workspace).toContain('The preview appears immediately. Save Item uploads it silently and replaces the preview when ready.');
     expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload)');
     expect(workspace).toContain('subscribeToRemotePosCatalogUpdates');
     expect(workspace).toContain('Only ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images are allowed per item.');

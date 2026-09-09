@@ -3,9 +3,33 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Keep category-order coverage deterministic: DndContext captures the handler so the test can
+// exercise the same reorder path without depending on browser pointer geometry in jsdom.
+let capturedCategoryDragEnd = null;
+vi.mock('@dnd-kit/core', () => ({
+  DndContext: ({ children, onDragEnd }) => {
+    capturedCategoryDragEnd = onDragEnd;
+    return children;
+  },
+  closestCenter: {},
+  KeyboardSensor: {},
+  PointerSensor: {},
+  useDraggable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: () => {},
+    transform: null,
+    isDragging: false
+  }),
+  useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
+  useSensor: () => ({}),
+  useSensors: () => []
+}));
+
 import TerminalOperationsWorkspace from '../components/TerminalOperationsWorkspace.jsx';
 import { fetchPosCatalogPage } from '../services/posService.js';
-import { getFolders } from '@/services/itemService.js';
+import { getFolders, reorderFolders } from '@/services/itemService.js';
 
 vi.mock('../services/posService.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -20,7 +44,8 @@ vi.mock('@/services/itemService.js', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    getFolders: vi.fn().mockResolvedValue([])
+    getFolders: vi.fn().mockResolvedValue([]),
+    reorderFolders: vi.fn().mockResolvedValue({ success: true })
   };
 });
 
@@ -47,6 +72,7 @@ const buildProps = (overrides = {}) => ({
 
 afterEach(() => {
   cleanup();
+  capturedCategoryDragEnd = null;
   vi.clearAllMocks();
 });
 
@@ -66,6 +92,59 @@ describe('Items category placement', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Search categories'), { target: { value: 'Drink' } });
     expect(screen.getByRole('button', { name: 'Move Drinks' }).disabled).toBe(true);
+  });
+
+  it('saves the complete reordered ID list and leaves the optimistic order visible', async () => {
+    getFolders.mockResolvedValue([
+      { folder_id: 1, name: 'Mains', sort_order: 0, is_active: true },
+      { folder_id: 2, name: 'Drinks', sort_order: 1, is_active: true },
+      { folder_id: 3, name: 'Desserts', sort_order: 2, is_active: true }
+    ]);
+    render(<TerminalOperationsWorkspace {...buildProps()} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
+    await screen.findByRole('button', { name: 'Move Mains' });
+
+    await capturedCategoryDragEnd({ active: { id: 3 }, over: { id: 1 } });
+
+    await waitFor(() => expect(reorderFolders).toHaveBeenCalledWith([3, 1, 2]));
+    const handles = screen.getAllByRole('button', { name: /^Move / });
+    expect(handles.map((handle) => handle.getAttribute('aria-label'))).toEqual([
+      'Move Desserts',
+      'Move Mains',
+      'Move Drinks'
+    ]);
+  });
+
+  it('refreshes the authoritative list after a stale reorder instead of keeping a rejected order', async () => {
+    const initialFolders = [
+      { folder_id: 1, name: 'Mains', sort_order: 0, is_active: true },
+      { folder_id: 2, name: 'Drinks', sort_order: 1, is_active: true },
+      { folder_id: 3, name: 'Desserts', sort_order: 2, is_active: true }
+    ];
+    const refreshedFolders = [
+      { folder_id: 2, name: 'Drinks', sort_order: 0, is_active: true },
+      { folder_id: 3, name: 'Desserts', sort_order: 1, is_active: true }
+    ];
+    getFolders.mockResolvedValue(initialFolders);
+    reorderFolders.mockImplementationOnce(async () => {
+      // The category set changed in another tab while this tab was open.
+      getFolders.mockResolvedValue(refreshedFolders);
+      const staleError = new Error('Category list changed. Refresh and try again.');
+      staleError.response = { status: 409, data: { message: staleError.message } };
+      throw staleError;
+    });
+
+    render(<TerminalOperationsWorkspace {...buildProps()} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
+    await screen.findByRole('button', { name: 'Move Mains' });
+
+    await capturedCategoryDragEnd({ active: { id: 3 }, over: { id: 1 } });
+
+    await waitFor(() => expect(getFolders.mock.calls.length).toBeGreaterThan(1));
+    expect(reorderFolders).toHaveBeenCalledWith([3, 1, 2]);
+    expect(screen.queryByRole('button', { name: 'Move Mains' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /^Move / }).map((handle) => handle.getAttribute('aria-label')))
+      .toEqual(['Move Drinks', 'Move Desserts']);
   });
 
   it('queries the complete server catalog with search, filters, location, and page size', async () => {
