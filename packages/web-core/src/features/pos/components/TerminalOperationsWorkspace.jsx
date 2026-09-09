@@ -3837,7 +3837,10 @@ function ItemsWorkspace({
                           height={288}
                           className="absolute h-full w-full object-cover"
                           onError={(event) => {
-                            if (advanceAssetImageFallback(event, [imageSources.configuredLargeSrc])) return;
+                            if (advanceAssetImageFallback(event, [
+                              imageSources.configuredLargeSrc,
+                              ...(imageSources.fallbackSrcs || [])
+                            ])) return;
                             event.currentTarget.hidden = true;
                           }}
                         />

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PosItemImageViewer from '../../../../packages/web-core/src/features/pos/components/PosItemImageViewer.jsx';
 
@@ -52,6 +52,28 @@ describe('POS item image viewer', () => {
     expect(screen.getByAltText('Beef Meal full-size view').style.width).toBe('1200px');
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets and remeasures zoom after a mobile or orientation resize', async () => {
+    const onClose = vi.fn();
+    render(<PosItemImageViewer preview={{ ...preview, gallery: [preview.gallery[0]] }} onClose={onClose} />);
+    const fullImage = screen.getByAltText('Beef Meal full-size view');
+    Object.defineProperties(fullImage, {
+      naturalWidth: { configurable: true, value: 1600 },
+      naturalHeight: { configurable: true, value: 1200 }
+    });
+    let bounds = { width: 800, height: 600 };
+    fullImage.getBoundingClientRect = () => bounds;
+    fireEvent.load(fullImage);
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(fullImage.style.width).toBe('1200px');
+
+    bounds = { width: 320, height: 240 };
+    fireEvent(window, new Event('resize'));
+    await waitFor(() => expect(fullImage.style.width).toBe(''));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Zoom in' }).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(fullImage.style.width).toBe('480px');
   });
 
   it('disables enlargement for a thumbnail and traps focus inside the dialog', () => {

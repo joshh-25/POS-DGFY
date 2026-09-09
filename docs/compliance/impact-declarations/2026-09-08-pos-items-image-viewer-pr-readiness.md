@@ -1,13 +1,13 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-09-08
+last_reviewed: 2026-09-09
 declaration_id: 2026-09-08-pos-items-image-viewer-pr-readiness
 classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
-verification_evidence: focused POS image resolver tests,focused POS image viewer behavior tests,POS production build,architecture check,compliance check,app-version check,git diff --check
+verification_evidence: focused POS image resolver tests,POS image viewer behavior tests including resize remeasurement,POS production build,architecture check,compliance check,app-version check,git diff --check
 rollback_note: Revert Phase 312 image resolution, dialog, zoom, and app-version changes; stored catalog images and data remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -30,6 +30,8 @@ inventory, checkout, payments, taxes, receipts, identity, or authorization.
 - Legacy POS image paths remain viewable.
 - Zoom is available only when the source contains enough pixels.
 - The shared dialog traps focus, handles Escape, and restores focus on close.
+- A mobile viewport or orientation resize clears stale zoom dimensions and
+  remeasures the active image after layout settles.
 - Gallery controls use true thumbnails or lightweight numbered placeholders.
 - POS, IMS, and Storefront versions increase for the shared web-core feature.
 
@@ -43,6 +45,8 @@ inventory, checkout, payments, taxes, receipts, identity, or authorization.
 ## Verification Evidence
 
 - Focused resolver and viewer behavior tests pass.
+- The viewer resize regression test confirms a zoomed image resets at a narrow
+  viewport and can be enlarged again using the new measured dimensions.
 - The POS production build passes.
 - Architecture, compliance, documentation, version, and diff checks pass.
 

@@ -343,6 +343,35 @@ describe('POS checkout terminal pure utilities', () => {
         expect(flatPosUrlOnly.srcSet).toBeUndefined();
         expect(flatPosUrlOnly.avifSrcSet).toBeUndefined();
         expect(flatPosUrlOnly.webpSrcSet).toBeUndefined();
+        expect(flatPosUrlOnly.fallbackSrcs).toEqual([
+            'https://cdn.example.test/storefront/large.jpg',
+            'https://cdn.example.test/storefront/medium.jpg',
+            'https://cdn.example.test/storefront/thumb.jpg'
+        ]);
+
+        const stalePosOverride = resolvePosCatalogImageSources({
+            pos_image_url: '/uploads/pos/missing-large.webp',
+            pos_image_variants: {
+                thumbnail_url: '/uploads/pos/missing-thumb.webp'
+            },
+            storefront_image_url: '/uploads/storefront/primary-large.webp',
+            storefront_image_variants: {
+                large_url: '/uploads/storefront/primary-large.webp',
+                thumbnail_url: '/uploads/storefront/primary-thumb.webp'
+            },
+            storefront_image_gallery: [{
+                url: '/uploads/storefront/secondary-large.webp',
+                variants: {
+                    medium_url: '/uploads/storefront/secondary-medium.webp'
+                }
+            }]
+        });
+        expect(stalePosOverride.fallbackSrcs).toEqual([
+            '/uploads/storefront/primary-large.webp',
+            '/uploads/storefront/primary-thumb.webp',
+            '/uploads/storefront/secondary-medium.webp',
+            '/uploads/storefront/secondary-large.webp'
+        ]);
     });
 
     it('resolves an ordered on-demand POS item preview gallery without duplicate images', () => {

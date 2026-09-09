@@ -576,7 +576,11 @@ export const resolvePosCatalogImageSources = (item = {}) => {
         srcSet: fallbackVariants.posThumbnailUrl ? undefined : fallbackVariants.srcSet,
         avifSrcSet: fallbackVariants.posThumbnailUrl ? undefined : resolveVariantSet(variants?.avif).srcSet,
         webpSrcSet: fallbackVariants.posThumbnailUrl ? undefined : resolveVariantSet(variants?.webp).srcSet,
-        placeholderSrc: resolveAssetUrl(variants?.placeholder_url || '')
+        placeholderSrc: resolveAssetUrl(variants?.placeholder_url || ''),
+        // A stale POS override must not hide an item that still has a valid
+        // Storefront image. Keep the override first, then let the card's
+        // onError handler try these Storefront candidates in order.
+        fallbackSrcs: hasPosOverride ? resolveStorefrontCatalogImageFallbacks(item) : []
     };
 };
 
@@ -601,6 +605,44 @@ const resolveStoredCatalogImageUrl = (value) => {
 };
 
 const uniqueImageUrls = (values = []) => Array.from(new Set(values.filter(Boolean)));
+
+const resolveStorefrontCatalogImageFallbacks = (item = {}) => {
+    const candidates = [];
+    const addEntryCandidates = (entry = {}) => {
+        const variants = entry?.variants && typeof entry.variants === 'object' ? entry.variants : {};
+        [
+            variants.large_url,
+            variants.medium_url,
+            variants.thumbnail_url,
+            variants.pos_thumbnail_url,
+            entry?.url,
+            entry?.path
+        ].forEach((value) => {
+            const resolved = resolveStoredCatalogImageUrl(value);
+            if (resolved) candidates.push(resolved);
+        });
+    };
+
+    addEntryCandidates({
+        url: item?.storefront_image_url,
+        path: item?.storefront_image_path,
+        variants: item?.storefront_image_variants
+    });
+
+    parseCatalogImageGallery(item?.storefront_image_gallery).forEach((entry) => {
+        if (entry && typeof entry === 'object') {
+            addEntryCandidates({
+                url: entry.url || entry.image_url,
+                path: entry.path || entry.original_path,
+                variants: entry.variants || entry.image_variants
+            });
+        } else {
+            addEntryCandidates({ url: entry });
+        }
+    });
+
+    return uniqueImageUrls(candidates);
+};
 
 const buildPosCatalogPreviewEntry = ({ url, path, variants } = {}) => {
     const configuredSrc = resolveStoredCatalogImageUrl(url || path || '');

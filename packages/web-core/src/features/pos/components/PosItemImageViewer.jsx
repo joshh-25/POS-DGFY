@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Minus, Plus, X } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 
@@ -10,6 +10,8 @@ export default function PosItemImageViewer({ preview, onClose }) {
   const [fallbackIndex, setFallbackIndex] = useState(0);
   const [zoomIndex, setZoomIndex] = useState(0);
   const [imageMetrics, setImageMetrics] = useState(null);
+  const imageRef = useRef(null);
+  const resizeFrameRef = useRef(null);
 
   useEffect(() => {
     if (!preview) return undefined;
@@ -66,6 +68,46 @@ export default function PosItemImageViewer({ preview, onClose }) {
         maxHeight: 'none'
       };
 
+  useEffect(() => {
+    if (!preview || !activeSrc || typeof window === 'undefined') return undefined;
+
+    const requestFrame = window.requestAnimationFrame
+      ? (callback) => window.requestAnimationFrame(callback)
+      : (callback) => window.setTimeout(callback, 0);
+    const cancelFrame = window.cancelAnimationFrame
+      ? (frame) => window.cancelAnimationFrame(frame)
+      : (frame) => window.clearTimeout(frame);
+    const remeasureAfterResize = () => {
+      // A zoomed image has explicit pixel dimensions. Reset it before reading
+      // the new viewport fit so an orientation change cannot preserve stale
+      // dimensions or leave the page horizontally overflowing.
+      setZoomIndex(0);
+      setImageMetrics(null);
+      if (resizeFrameRef.current !== null) cancelFrame(resizeFrameRef.current);
+      resizeFrameRef.current = requestFrame(() => {
+        resizeFrameRef.current = null;
+        const image = imageRef.current;
+        if (!image?.naturalWidth || !image?.naturalHeight) return;
+        const bounds = image.getBoundingClientRect();
+        setImageMetrics({
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+          renderedWidth: bounds.width,
+          renderedHeight: bounds.height
+        });
+      });
+    };
+
+    window.addEventListener('resize', remeasureAfterResize);
+    window.addEventListener('orientationchange', remeasureAfterResize);
+    return () => {
+      window.removeEventListener('resize', remeasureAfterResize);
+      window.removeEventListener('orientationchange', remeasureAfterResize);
+      if (resizeFrameRef.current !== null) cancelFrame(resizeFrameRef.current);
+      resizeFrameRef.current = null;
+    };
+  }, [activeSrc, preview]);
+
   return (
     <Dialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) onClose(); }} overlayClassName="bg-slate-950/85 backdrop-blur-none">
       <DialogContent
@@ -108,6 +150,7 @@ export default function PosItemImageViewer({ preview, onClose }) {
         <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-6">
           {activeSrc ? (
             <img
+              ref={imageRef}
               key={`${activeIndex}-${fallbackIndex}`}
               src={activeSrc}
               alt={`${preview?.itemName || 'Item'} full-size view`}
