@@ -20125,7 +20125,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   ADR 0081 Decision 6's base-aware bump-level rule per `(base, head)` pair; wired into
   `shared-changed-paths.yml` + `scripts/pr-checks.js`; ships advisory (non-blocking) per ADR 0081
   Decision 9.
-- Status: completed.
+- Status: in_progress.
 - Dependencies: Phase 273 / ADR 0081 (Decisions 6 and 9 specifically); #1560 (filed, not started).
 - Acceptance and validation evidence: not yet started. Expected at implementation: a script test
   suite covering each `(base, head)` bump-level mode from ADR 0081 Decision 6, plus a live advisory
@@ -22376,13 +22376,14 @@ content differs from what was implemented and tested under the "303" label.
   asynchronous gallery worker so an upload cannot replace or duplicate the existing
   gallery. Repeated file selections are deduplicated, stale concurrent edits are
   rejected with a reopen message, and legacy append uploads retain their behavior.
-- Status: in_progress.
+- Status: completed.
 - Dependencies: Phase 316; existing storefront gallery API and image worker;
   ADR 0029 catalog/storefront ownership boundaries; ADR 0067 browser floor.
 - Acceptance and validation evidence: POS draft-helper, Edit Item save-contract,
   and carousel suites passed 3/3 each; POS app suite passed 4/4; API gallery
-  use-case and worker suites passed 40/40, including stale-edit rejection and
-  atomic remove/reorder/Primary application; POS production build passed;
+  use-case and worker suites passed 41/41, including stale-edit rejection for
+  populated and empty galleries and atomic reorder/remove/Primary application;
+  POS production build passed;
   changed-file lint, architecture, compliance, documentation, app-version, and
   committed-diff checks passed. No database migration was required.
 - Completion date: 2026-09-09.
