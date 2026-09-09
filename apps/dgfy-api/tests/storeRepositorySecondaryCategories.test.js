@@ -48,13 +48,15 @@ const buildCatalogRow = (overrides = {}) => ({
     product_type: 'finished_goods',
     product_folder: overrides.product_folder ?? 'Primary Folder',
     folder_id: Object.hasOwn(overrides, 'folder_id') ? overrides.folder_id : 1,
-    folder: overrides.folder === null ? null : {
-        folder_id: Object.hasOwn(overrides, 'folder_id') ? overrides.folder_id : 1,
-        name: overrides.product_folder ?? 'Primary Folder',
-        sort_order: overrides.folder_sort_order ?? 0,
-        is_active: overrides.folder_is_active ?? true,
-        deleted_at: overrides.folder_deleted_at ?? null
-    },
+    folder: Object.hasOwn(overrides, 'folder')
+        ? overrides.folder
+        : {
+            folder_id: Object.hasOwn(overrides, 'folder_id') ? overrides.folder_id : 1,
+            name: overrides.product_folder ?? 'Primary Folder',
+            sort_order: overrides.folder_sort_order ?? 0,
+            is_active: overrides.folder_is_active ?? true,
+            deleted_at: overrides.folder_deleted_at ?? null
+        },
     unit_of_measure: 'pc',
     current_stock: overrides.current_stock ?? 7,
     default_sale_price: 25,
@@ -154,6 +156,35 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
                 attributes: expect.arrayContaining(['is_active', 'deleted_at'])
             })
         ]));
+    });
+
+    it('hides a soft-deleted primary category even if its active flag is stale', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({
+            item_id: 203,
+            folder_id: 23,
+            folder_is_active: true,
+            folder_deleted_at: '2026-09-09T00:00:00.000Z',
+            product_folder: 'Deleted Category'
+        })]);
+        listItemFolderMembershipsMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
+        expect(result[0]).toMatchObject({ folder_id: 23, folder_name: null, folder_sort_order: null });
+    });
+
+    it('keeps the stored primary ID for business rules when the folder association is missing', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({
+            item_id: 204,
+            folder_id: 24,
+            folder: undefined,
+            product_folder: 'Missing Category'
+        })]);
+        listItemFolderMembershipsMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
+        expect(result[0]).toMatchObject({ folder_id: 24, folder_name: null, folder_sort_order: null });
     });
 
     it('fails open (empty array, no throw) when the membership lookup errors -- an additive projection must never break the public catalog', async () => {

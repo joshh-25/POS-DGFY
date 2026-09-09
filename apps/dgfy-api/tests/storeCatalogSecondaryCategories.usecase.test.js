@@ -119,4 +119,28 @@ describe('buildListStoreCatalogUseCase -- Phase 285 (#1318, C1) secondary_catego
         expect(result.data.items).toHaveLength(1);
         expect(result.data.items[0]).toMatchObject({ folder_id: null, folder_name: null, folder_sort_order: null });
     });
+
+    test('redacts a stored stale primary ID from the public category projection', async () => {
+        const storeRepository = {
+            listStoreCatalog: jest.fn().mockResolvedValue([{
+                item_id: 44,
+                name: 'Retired Category Item',
+                current_stock: 1,
+                default_sale_price: 50,
+                folder_id: 22,
+                folder_name: null,
+                folder_sort_order: null
+            }])
+        };
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository,
+            resolveWorkflowCapabilitySettings: resolveWorkflowCapabilitySettingsFixture
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'cat-store' }, () => (
+            useCase({ query: { limit: 20 } })
+        ));
+
+        expect(result.data.items[0]).toMatchObject({ folder_id: null, folder_name: null, folder_sort_order: null });
+    });
 });
