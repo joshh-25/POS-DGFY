@@ -22347,7 +22347,7 @@ content differs from what was implemented and tested under the "303" label.
 - Initiative/release: POS catalog final audit / current release.
 - Objective and scope: verify viewer mobile/desktop layout, zoom/resize, focus,
   network/storage behavior and affected application gates; fix only reproduced gaps.
-- Status: planned.
+- Status: completed.
 - Dependencies: Phase 315; ADR 0067 and architecture governance rendered-proof rules.
 - Acceptance and validation evidence: the rendered POS viewer reproduced a stale
   explicit-dimension gap after a narrow viewport change. `PosItemImageViewer.jsx`
