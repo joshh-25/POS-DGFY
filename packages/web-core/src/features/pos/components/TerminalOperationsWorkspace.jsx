@@ -118,9 +118,13 @@ import {
   queueStorefrontCatalogImage,
   queueStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
-  deleteStorefrontCatalogImage,
   generateStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
+import {
+  buildEditGalleryIntent,
+  dedupeImageFiles,
+  getGallerySignature
+} from '../utils/posEditImageDraft.js';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
 import {
   deleteStorefrontAsset,
@@ -2174,6 +2178,8 @@ function ItemsWorkspace({
   const [selectedEditImageFiles, setSelectedEditImageFiles] = useState([]);
   const [isEditImageDragActive, setIsEditImageDragActive] = useState(false);
   const [selectedEditPrimaryFile, setSelectedEditPrimaryFile] = useState(null);
+  const [editGalleryBase, setEditGalleryBase] = useState([]);
+  const [editGalleryDraft, setEditGalleryDraft] = useState([]);
   // generatingEditImage covers the POST that queues the job; pollingEditImage
   // covers the wait for a terminal status afterwards — split so the button
   // label can tell the operator which stage it's actually in.
@@ -2303,6 +2309,7 @@ function ItemsWorkspace({
       setItemsTotal(Number(data?.pagination?.total || 0));
       itemsLoaded.current = true;
       loadPrimaryBarcodes(catalogItems);
+      return catalogItems;
     } catch (loadError) {
       if (itemsReadSequence.current !== sequence) return;
       setError(loadError?.response?.data?.message || 'Failed to load POS-visible IMS items.');
@@ -2582,14 +2589,25 @@ function ItemsWorkspace({
     }
   };
 
-  const queueEditImageFiles = useCallback(async ({ itemId, files, existingGalleryCount }) => {
-    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+  const queueEditImageFiles = useCallback(async ({
+    itemId,
+    files,
+    existingGalleryCount,
+    baseGallery,
+    galleryDraft,
+    pendingPrimaryFile
+  }) => {
+    const normalizedFiles = dedupeImageFiles(files);
     const availableSlots = Math.max(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount);
     const filesToUpload = normalizedFiles.slice(0, availableSlots);
     if (!itemId || filesToUpload.length === 0) {
-      return normalizedFiles.length > 0
-        ? 'Remove an existing image before uploading another one.'
-        : '';
+      return {
+        message: normalizedFiles.length > 0
+          ? 'Remove an existing image before uploading another one.'
+          : '',
+        jobId: null,
+        files: []
+      };
     }
     const skippedCount = normalizedFiles.length - filesToUpload.length;
 
@@ -2598,9 +2616,17 @@ function ItemsWorkspace({
       file: filesToUpload[0]
     });
     try {
-      const queued = filesToUpload.length === 1
-        ? await queueStorefrontCatalogImage(itemId, filesToUpload[0])
-        : await queueStorefrontCatalogImages(itemId, filesToUpload);
+      // Edit always uses the gallery endpoint. The singular endpoint replaces
+      // the item's gallery, so using it for one newly-added photo silently
+      // deleted every existing photo.
+      const queued = await queueStorefrontCatalogImages(itemId, filesToUpload, {
+        galleryIntent: buildEditGalleryIntent({
+          baseGallery,
+          draftGallery: galleryDraft,
+          pendingFiles: filesToUpload,
+          pendingPrimaryFile
+        })
+      });
       if (queued?.job_id && imageAttemptId) {
         bindPendingPosItemImagePreviewJob({
           itemId,
@@ -2609,16 +2635,28 @@ function ItemsWorkspace({
         });
       } else if (imageAttemptId) {
         markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
-        return 'Image upload was not accepted. The preview is kept so you can retry.';
+        return {
+          message: 'Image upload was not accepted. The preview is kept so you can retry.',
+          jobId: null,
+          files: []
+        };
       }
-      return skippedCount > 0
-        ? `Only ${filesToUpload.length} image${filesToUpload.length === 1 ? '' : 's'} uploaded; the item gallery limit is ${STOREFRONT_ITEM_IMAGE_MAX_COUNT}.`
-        : '';
+      return {
+        message: skippedCount > 0
+          ? `Only ${filesToUpload.length} image${filesToUpload.length === 1 ? '' : 's'} uploaded; the item gallery limit is ${STOREFRONT_ITEM_IMAGE_MAX_COUNT}.`
+          : '',
+        jobId: queued?.job_id || null,
+        files: filesToUpload
+      };
     } catch (error) {
       if (imageAttemptId) {
         markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
       }
-      return error?.response?.data?.message || 'Image upload failed. The preview is kept so you can retry.';
+      return {
+        message: error?.response?.data?.message || 'Image upload failed. The preview is kept so you can retry.',
+        jobId: null,
+        files: []
+      };
     }
   }, []);
 
@@ -2661,6 +2699,9 @@ function ItemsWorkspace({
       gtin: savedBarcodeIsGtin ? savedBarcodeCode : ''
     });
     setEditCategoryInput(String(item?.folder?.name || item?.product_folder || ''));
+    const initialEditGallery = normalizeStorefrontItemGallery(item || {});
+    setEditGalleryBase(initialEditGallery);
+    setEditGalleryDraft(initialEditGallery);
     setSelectedEditImageFiles([]);
     setIsEditImageDragActive(false);
     setSelectedEditPrimaryFile(null);
@@ -2676,6 +2717,8 @@ function ItemsWorkspace({
     setSelectedEditImageFiles([]);
     setIsEditImageDragActive(false);
     setSelectedEditPrimaryFile(null);
+    setEditGalleryBase([]);
+    setEditGalleryDraft([]);
     setGeneratingEditImage(false);
     setPollingEditImage(false);
     setEditCategoryInput('');
@@ -2778,6 +2821,12 @@ function ItemsWorkspace({
       return;
     }
 
+    const currentEditGallery = normalizeStorefrontItemGallery(activeEditItem);
+    if (getGallerySignature(currentEditGallery) !== getGallerySignature(editGalleryBase)) {
+      toast.error('This item images changed while you were editing. Reopen the item and try again.');
+      return;
+    }
+
     try {
       setItemSaveInFlight(true);
       setPersistingEditAssets(true);
@@ -2843,11 +2892,18 @@ function ItemsWorkspace({
       let imageUploadMessage = '';
       if (selectedEditImageFiles.length > 0) {
         editSaveStage = 'images';
-        imageUploadMessage = await queueEditImageFiles({
+        const imageUploadResult = await queueEditImageFiles({
           itemId: editItemId,
           files: selectedEditImageFiles,
-          existingGalleryCount: normalizeStorefrontItemGallery(activeEditItem).length
+          existingGalleryCount: editGalleryDraft.length,
+          baseGallery: editGalleryBase,
+          galleryDraft: editGalleryDraft,
+          pendingPrimaryFile: selectedEditPrimaryFile
         });
+        imageUploadMessage = imageUploadResult.message;
+      } else if (getGallerySignature(editGalleryDraft) !== getGallerySignature(editGalleryBase)) {
+        editSaveStage = 'images';
+        await updateStorefrontCatalogGallery(editItemId, editGalleryDraft);
       }
       editSaveStage = 'refresh';
       closeEdit({ force: true });
@@ -2868,7 +2924,7 @@ function ItemsWorkspace({
   };
 
   const handleSelectCreateImageFiles = (files) => {
-    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const normalizedFiles = dedupeImageFiles(files, selectedImageFiles);
     if (normalizedFiles.length === 0) return;
     const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedImageFiles.length;
     if (remainingSlots <= 0) {
@@ -3003,10 +3059,10 @@ function ItemsWorkspace({
   };
 
   const handleSelectEditImageFile = (files) => {
-    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
+    const normalizedFiles = dedupeImageFiles(Array.isArray(files) ? files : (files ? [files] : []), selectedEditImageFiles);
     const itemId = Number(activeEditItem?.item_id || 0);
     if (normalizedFiles.length === 0 || !itemId) return;
-    const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem || {}).length;
+    const existingGalleryCount = editGalleryDraft.length;
     const availableSlots = Math.max(
       0,
       STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount - selectedEditImageFiles.length
@@ -3076,60 +3132,25 @@ function ItemsWorkspace({
     setSelectedEditPrimaryFile(file || null);
   };
 
-  const handleSetSavedEditPrimary = async (imageIndex) => {
+  const handleSetSavedEditPrimary = (imageIndex) => {
     setSelectedEditPrimaryFile(null);
-    await handleSetPrimaryStorefrontImage(activeEditItem, imageIndex);
-  };
-
-  const handleRemoveSavedEditImage = async (imageIndex) => {
-    await handleDeleteStorefrontImage(activeEditItem, imageIndex);
-  };
-
-  const handleSetPrimaryStorefrontImage = async (item, imageIndex) => {
-    const itemId = item?.item_id;
-    if (!itemId) return;
-    const current = normalizeStorefrontItemGallery(item);
-    const normalizedImageIndex = Number.parseInt(imageIndex, 10);
-    if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex <= 0 || normalizedImageIndex >= current.length) return;
-    const nextGallery = [
-      current[normalizedImageIndex],
-      ...current.filter((_, index) => index !== normalizedImageIndex)
-    ].map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
-
-    try {
-      await updateStorefrontCatalogGallery(itemId, nextGallery);
-      await loadItems();
-      toast.success(`Primary item image updated for ${item.name}`);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update primary item image');
-    }
-  };
-
-  const handleDeleteStorefrontImage = async (item, imageIndex = null) => {
-    const itemId = item?.item_id;
-    if (!itemId) return;
-
-    try {
+    setEditGalleryDraft((current) => {
       const normalizedImageIndex = Number.parseInt(imageIndex, 10);
-      const isSingleImageDelete = Number.isInteger(normalizedImageIndex) && normalizedImageIndex >= 0;
-      if (isSingleImageDelete) {
-        const currentGallery = normalizeStorefrontItemGallery(item);
-        if (normalizedImageIndex >= currentGallery.length) {
-          toast.error('This item image is no longer available. Reopen the item and try again.');
-          return;
-        }
-        const nextGallery = currentGallery
-          .filter((_, index) => index !== normalizedImageIndex)
-          .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
-        await updateStorefrontCatalogGallery(itemId, nextGallery);
-      } else {
-        await deleteStorefrontCatalogImage(itemId);
-      }
-      await loadItems();
-      toast.success(isSingleImageDelete ? `Item gallery image removed for ${item.name}` : `Item image removed for ${item.name}`);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to remove item image');
-    }
+      if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex < 0 || normalizedImageIndex >= current.length) return current;
+      const selected = current[normalizedImageIndex];
+      return [selected, ...current.filter((_, index) => index !== normalizedImageIndex)]
+        .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
+    });
+  };
+
+  const handleRemoveSavedEditImage = (imageIndex) => {
+    setEditGalleryDraft((current) => {
+      const normalizedImageIndex = Number.parseInt(imageIndex, 10);
+      if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex < 0 || normalizedImageIndex >= current.length) return current;
+      return current
+        .filter((_, index) => index !== normalizedImageIndex)
+        .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
+    });
   };
 
   // The POST only confirms the item was queued, not that a photo exists yet
@@ -4658,7 +4679,7 @@ function ItemsWorkspace({
                     </div>
 
                     {(() => {
-                      const editGallery = normalizeStorefrontItemGallery(activeEditItem || {});
+                      const editGallery = editGalleryDraft;
                       return (
                         <div className="space-y-3">
                           <label

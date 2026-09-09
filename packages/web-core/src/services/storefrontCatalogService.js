@@ -59,10 +59,13 @@ export const queueStorefrontCatalogImage = async (itemId, file) => {
   return response.data.data;
 };
 
-export const queueStorefrontCatalogImages = async (itemId, files = []) => {
+export const queueStorefrontCatalogImages = async (itemId, files = [], options = {}) => {
   const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
   const formData = new FormData();
   normalizedFiles.forEach((file) => formData.append('images', file));
+  if (options?.galleryIntent && typeof options.galleryIntent === 'object') {
+    formData.append('gallery_intent', JSON.stringify(options.galleryIntent));
+  }
   const response = await api.post(`/items/${itemId}/storefront-images/async`, formData);
   return response.data.data;
 };

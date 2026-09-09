@@ -23,12 +23,13 @@ describe('POS edit-item image save flow', () => {
     expect(saveHandler).toContain('resolveEditItemSaveError(updateError, editSaveStage).message');
     expect(uploadHandler).toContain('setSelectedEditImageFiles((current) => [...current, ...filesToAdd]);');
     expect(uploadHandler).not.toContain('queueEditImageFiles');
-    expect(saveHandler).toContain('imageUploadMessage = await queueEditImageFiles({');
+    expect(saveHandler).toContain('const imageUploadResult = await queueEditImageFiles({');
+    expect(workspace).toContain('galleryIntent: buildEditGalleryIntent');
+    expect(saveHandler).toContain('updateStorefrontCatalogGallery(editItemId, editGalleryDraft)');
     expect(workspace).toContain('const imageAttemptId = stagePendingPosItemImagePreview({');
     expect(workspace).toContain('bindPendingPosItemImagePreviewJob({');
     expect(workspace).toContain('markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId })');
-    expect(workspace).toContain('await queueStorefrontCatalogImage(itemId, filesToUpload[0])');
-    expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload)');
+    expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload, {');
     expect(workspace).not.toContain('setPendingEditImageRefresh');
     expect(workspace).not.toContain('The previous image is still being optimized');
     expect(uploadHandler).not.toContain('pollEditImageUpload');
