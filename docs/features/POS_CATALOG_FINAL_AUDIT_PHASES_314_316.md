@@ -230,9 +230,8 @@ desktop emulation as proof on a physical APK device. No PR/push/deploy unless as
 
 ## Execution handoff
 
-Read this document and its authoritative references before editing. Phases 314 and
-315 are completed; implement Phase 316 when approved, and require its gates before
-marking it completed. Existing application work is committed; preserve unrelated
-untracked files. Do not silently broaden scope, delete tenant data, disable cache
-safety, or claim existing passing unit tests prove G1/G2 absent. Current completed
-phase is 316; next eligible implementation phase is 317.
+Read this document and its authoritative references before editing. Phases 314,
+315, and 316 are completed. Existing application work is committed; preserve
+unrelated untracked files. Do not silently broaden scope, delete tenant data,
+disable cache safety, or claim existing passing unit tests prove G1/G2 absent.
+Current completed phase is 316; next eligible implementation phase is 317.
