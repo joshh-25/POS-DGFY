@@ -40,6 +40,7 @@ import {
 } from '../services/posPendingItemImagePreviewStore.js';
 import { getCatalogStockColorClassName, isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
+import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import PosItemImage from './PosItemImage.jsx';
 import { formatQuantity, getCartLineSubtotal, getLineKey, money, resolvePosCatalogImageSources, sanitizeQuantityInput, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
@@ -498,6 +499,9 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
     const handleCloseDiscountModal = () => {
         closeDiscountModal();
     };
+    const cashDrawerAvailable = posHardware?.supportsCapability?.(POS_HARDWARE_CAPABILITIES.OPEN_DRAWER) === true;
+    const cashDrawerChecking = posHardware?.loading === true;
+    const cashDrawerReady = cashDrawerAvailable && !cashDrawerChecking;
 
 
 return (
@@ -1602,7 +1606,8 @@ return (
                                 transactionId: Number(lastReceipt?.pos_transaction_id) || null,
                                 reason: 'manual_drawer_panel'
                             })}
-                            cashDrawerDisabled={!activeShiftId || drawerOpening || drawerAuthorizationModalOpen}
+                            cashDrawerDisabled={!activeShiftId || drawerOpening || drawerAuthorizationModalOpen || posHardware?.loading}
+                            cashDrawerAvailable={cashDrawerAvailable}
                             drawerOpening={drawerOpening}
                             showParkedSaleControls={posPresentationBundle.currentSaleActions.showParkedSaleControls}
                             onParkSale={openParkSaleNameDialog}
@@ -1769,7 +1774,19 @@ return (
                             Enter the reason and authorize this drawer opening before the terminal sends the hardware command.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 px-5 py-4">
+                    {!cashDrawerReady && (
+                        <div className="mx-5 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" role="status">
+                            {cashDrawerChecking ? 'Checking for a cash drawer on this terminal.' : 'No cash drawer is configured for this terminal.'}
+                        </div>
+                    )}
+                    <form
+                        id="pos-drawer-authorization-form"
+                        className="space-y-4 px-5 py-4"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            submitDrawerAuthorization();
+                        }}
+                    >
                         <div>
                             <label htmlFor="pos-drawer-open-reason" className="text-xs font-extrabold text-slate-700">Reason <span className="text-rose-600">*</span></label>
                             <Input
@@ -1805,7 +1822,7 @@ return (
                                 />
                             </div>
                         )}
-                    </div>
+                    </form>
                     <DialogFooter className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-4">
                         <Button
                             type="button"
@@ -1816,9 +1833,11 @@ return (
                             Cancel
                         </Button>
                         <Button
-                            type="button"
-                            onClick={submitDrawerAuthorization}
-                            disabled={drawerAuthorizationSubmitting}
+                            type="submit"
+                            form="pos-drawer-authorization-form"
+                            disabled={drawerAuthorizationSubmitting || !cashDrawerReady}
+                            aria-busy={drawerAuthorizationSubmitting}
+                            title={cashDrawerReady ? undefined : 'A configured cash drawer is required.'}
                             className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
                             data-testid="pos-drawer-authorize-submit"
                         >

@@ -13,6 +13,7 @@ export function PosCurrentSaleActions({
   printerAvailable = false,
   onOpenCashDrawer,
   cashDrawerDisabled = false,
+  cashDrawerAvailable = true,
   drawerOpening = false,
   showParkedSaleControls = false,
   onParkSale,
@@ -84,10 +85,11 @@ export function PosCurrentSaleActions({
       )}
       <Button
         type="button"
+        data-testid="pos-open-cash-drawer-button"
         variant="outline"
         onClick={onOpenCashDrawer}
-        disabled={cashDrawerDisabled}
-        title={printerAvailable ? undefined : 'No cash drawer is configured for this terminal.'}
+        disabled={cashDrawerDisabled || !cashDrawerAvailable}
+        title={cashDrawerAvailable ? undefined : 'No cash drawer is configured for this terminal.'}
         className={`${bottomActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center`}
       >
         <Banknote size={14} className="mb-0.5 shrink-0" aria-hidden="true" />

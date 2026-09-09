@@ -84,6 +84,7 @@ export const usePosHardware = ({ enabled = true } = {}) => {
         // failing silently on click.
         isPrinterAvailable: capabilities.includes(POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT),
         isOrderPrinterAvailable: capabilities.includes(POS_HARDWARE_CAPABILITIES.PRINT_ORDER_TICKET),
+        isCashDrawerAvailable: capabilities.includes(POS_HARDWARE_CAPABILITIES.OPEN_DRAWER),
         capabilities,
         supportsCapability,
         loading,
