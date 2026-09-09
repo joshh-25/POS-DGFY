@@ -2,14 +2,14 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-09-09
+last_reviewed: 2026-09-10
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md,docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md
 declaration_id: 2026-09-09-pos-frontend-terminal-followup
 classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,CONFLICT
 policy_version: 2026.09.09
-verification_evidence: npx vitest run --maxWorkers=1 ../../packages/web-core/src/features/pos,npm --prefix apps/dgfy-pos run lint,npm --prefix apps/dgfy-pos run build,npm --prefix apps/dgfy-ims run build,npm run lint:docs,npm run check:architecture
+verification_evidence: npx vitest run --maxWorkers=1 ../../packages/web-core/src/features/pos,npm --prefix apps/dgfy-pos run lint,npm --prefix apps/dgfy-pos run build,npm --prefix apps/dgfy-ims run build,npm run lint:docs,npm run check:architecture,npm run check:compliance
 rollback_note: Revert the POS-only frontend commits and this declaration together if terminal catalog presentation, checkout payment workflows, operational workspaces, or POS responsive behavior regresses. No backend migration or API rollback is required because this slice does not change backend contracts, fiscal calculations, schemas, or payment settlement logic.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -42,7 +42,8 @@ terminal, shift, receipt, and offline-operation boundaries.
 3. POS discount and statutory-beneficiary presentation surfaces.
 4. POS operational workspace panels, responsive scroll behavior, and focus/elevation styling.
 5. POS receipt and hardware-contract frontend tests aligned with the current shared POS surface.
-6. POS frontend functional and technical documentation.
+6. POS cash-drawer authorization and no-hardware fallback controls.
+7. POS frontend functional and technical documentation.
 
 ## Compliance Preconditions
 
@@ -55,14 +56,16 @@ terminal, shift, receipt, and offline-operation boundaries.
    storefront gallery image into the terminal catalog.
 5. Responsive behavior must preserve usable checkout controls and readable operator actions on
    desktop, tablet, and mobile terminal widths.
-6. No customer, payment, or fiscal data is added to browser storage by this frontend-only slice.
-7. The POS test suite, POS lint, consuming frontend builds, documentation lint, and architecture
+6. Cash-drawer controls remain available when no drawer capability is detected; the existing
+   hardware workflow reports the honest unsupported outcome rather than disabling the POS action.
+7. No customer, payment, or fiscal data is added to browser storage by this frontend-only slice.
+8. The POS test suite, POS lint, consuming frontend builds, documentation lint, and architecture
    guardrails must pass before the branch is pushed.
 
 ## Verification Evidence
 
 1. `npx vitest run --maxWorkers=1 ../../packages/web-core/src/features/pos` passed: 199 test files
-   and 1,264 tests passed.
+   and 1,265 tests passed.
 2. `npm run lint` passed in `apps/dgfy-pos`.
 3. `npm run build` passed in `apps/dgfy-pos`.
 4. `npm run build` passed in `apps/dgfy-ims`, confirming the shared POS trunk remains consumable by
