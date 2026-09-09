@@ -695,7 +695,8 @@ export const resolvePosCatalogPreviewGallery = (item = {}) => {
         entry && typeof entry === 'object'
             ? {
                 url: entry.url || entry.image_url,
-                path: entry.path || entry.original_path,
+                path: entry.path,
+                originalPath: entry.original_path,
                 variants: entry.variants || entry.image_variants
             }
             : { url: entry }
@@ -707,21 +708,30 @@ export const resolvePosCatalogPreviewGallery = (item = {}) => {
 
     const identityIndexes = new Map();
     const gallery = entries.reduce((result, entry) => {
-        const identity = resolveStoredCatalogImageUrl(entry?.url || entry?.path);
+        const identity = resolveStoredCatalogImageUrl(entry?.url || entry?.path || entry?.originalPath);
         if (!identity) return result;
-        if (identityIndexes.has(identity)) {
-            const index = identityIndexes.get(identity);
+        const sourceIdentity = resolveStoredCatalogImageUrl(entry?.originalPath || '');
+        const matchingIndex = [identity, sourceIdentity]
+            .map((key) => identityIndexes.get(key))
+            .find((index) => index !== undefined);
+        if (matchingIndex !== undefined) {
+            const index = matchingIndex;
             const previous = result[index];
-            const variants = { ...(previous.variants || {}), ...(entry?.variants || {}) };
+            const variants = { ...(entry?.variants || {}) };
+            Object.entries(previous.variants || {}).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') variants[key] = value;
+            });
             result[index] = {
-                ...buildPosCatalogPreviewEntry({ url: identity, variants }),
-                configuredSrc: identity,
+                ...buildPosCatalogPreviewEntry({ url: previous.configuredSrc || identity, variants }),
+                configuredSrc: previous.configuredSrc || identity,
                 variants,
                 isPrimary: index === 0
             };
+            [identity, sourceIdentity].filter(Boolean).forEach((key) => identityIndexes.set(key, index));
             return result;
         }
-        identityIndexes.set(identity, result.length);
+        const index = result.length;
+        [identity, sourceIdentity].filter(Boolean).forEach((key) => identityIndexes.set(key, index));
         const resolved = buildPosCatalogPreviewEntry(entry);
         result.push({
             ...resolved,

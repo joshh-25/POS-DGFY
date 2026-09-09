@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
-verification_evidence: focused POS image resolver tests,POS image viewer behavior tests including resize remeasurement,POS production build,architecture check,compliance check,app-version check,git diff --check
+verification_evidence: focused POS image resolver tests including regenerated-gallery deduplication,POS image viewer behavior tests including resize remeasurement,POS production build,architecture check,compliance check,app-version check,git diff --check
 rollback_note: Revert Phase 312 image resolution, dialog, zoom, and app-version changes; stored catalog images and data remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -32,6 +32,8 @@ inventory, checkout, payments, taxes, receipts, identity, or authorization.
 - The shared dialog traps focus, handles Escape, and restores focus on close.
 - A mobile viewport or orientation resize clears stale zoom dimensions and
   remeasures the active image after layout settles.
+- Regenerated gallery records that share an original source path are rendered
+  once, while the authoritative primary variant remains first.
 - Gallery controls use true thumbnails or lightweight numbered placeholders.
 - POS, IMS, and Storefront versions increase for the shared web-core feature.
 
@@ -47,6 +49,8 @@ inventory, checkout, payments, taxes, receipts, identity, or authorization.
 - Focused resolver and viewer behavior tests pass.
 - The viewer resize regression test confirms a zoomed image resets at a narrow
   viewport and can be enlarged again using the new measured dimensions.
+- The resolver regression test confirms a regenerated primary does not duplicate
+  an older gallery entry tied to the same original source path.
 - The POS production build passes.
 - Architecture, compliance, documentation, version, and diff checks pass.
 

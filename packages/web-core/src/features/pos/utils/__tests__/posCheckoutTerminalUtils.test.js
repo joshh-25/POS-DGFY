@@ -490,4 +490,51 @@ describe('POS checkout terminal pure utilities', () => {
         expect(pathOnly.previewSrc).toContain('/uploads/pos/legacy-photo.jpg');
         expect(pathOnly.thumbnailSrc).toBe('');
     });
+
+    it('removes regenerated gallery duplicates linked by the original source path', () => {
+        const sources = resolvePosCatalogPreviewGallery({
+            storefront_image_url: '/uploads/items/processed/current-large.jpg',
+            storefront_image_variants: {
+                thumbnail_url: '/uploads/items/processed/current-thumb.jpg',
+                large_url: '/uploads/items/processed/current-large.jpg'
+            },
+            storefront_image_gallery: [{
+                path: '/uploads/items/processed/current-large.jpg',
+                original_path: 'originals/items/source-one/original.jpg',
+                variants: {
+                    thumbnail_url: '/uploads/items/old/source-one-thumb.jpg',
+                    large_url: '/uploads/items/old/source-one-large.jpg'
+                }
+            }, {
+                path: '/uploads/items/old/source-one-large.jpg',
+                original_path: 'originals/items/source-one/original.jpg',
+                variants: {
+                    thumbnail_url: '/uploads/items/old/source-one-thumb.jpg',
+                    large_url: '/uploads/items/old/source-one-large.jpg'
+                }
+            }, {
+                path: '/uploads/items/source-two-large.jpg',
+                original_path: 'originals/items/source-two/original.jpg',
+                variants: {
+                    thumbnail_url: '/uploads/items/source-two-thumb.jpg',
+                    large_url: '/uploads/items/source-two-large.jpg'
+                }
+            }, {
+                path: '/uploads/items/source-three-large.jpg',
+                original_path: 'originals/items/source-three/original.jpg',
+                variants: {
+                    thumbnail_url: '/uploads/items/source-three-thumb.jpg',
+                    large_url: '/uploads/items/source-three-large.jpg'
+                }
+            }]
+        });
+
+        expect(sources.gallery).toHaveLength(3);
+        expect(sources.gallery.map((entry) => entry.previewSrc)).toEqual([
+            '/uploads/items/processed/current-large.jpg',
+            '/uploads/items/source-two-large.jpg',
+            '/uploads/items/source-three-large.jpg'
+        ]);
+        expect(sources.gallery[0].thumbnailSrc).toBe('/uploads/items/processed/current-thumb.jpg');
+    });
 });
