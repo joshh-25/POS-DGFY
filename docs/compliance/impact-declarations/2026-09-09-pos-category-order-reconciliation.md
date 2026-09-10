@@ -11,8 +11,8 @@ verification_evidence: POS category reorder behavior tests,Storefront F&B/servic
 rollback_note: Revert the category-list reconciliation change and its regression tests; persisted category sort_order and existing tenant data remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-09T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-315-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-09-POS-CATEGORY-ORDER-RECONCILIATION
 ---
 
 # POS category order reconciliation

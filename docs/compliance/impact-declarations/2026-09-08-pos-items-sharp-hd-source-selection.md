@@ -11,8 +11,8 @@ verification_evidence: focused POS image resolver tests,focused POS image viewer
 rollback_note: Revert image-source marker handling and default-zoom rendering; catalog images and persistence remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-08T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-311-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-08-POS-ITEMS-SHARP-HD-SOURCE-SELECTION
 ---
 
 # POS Items sharp HD source selection

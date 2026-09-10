@@ -11,8 +11,8 @@ verification_evidence: focused POS image viewer behavior tests,focused POS catal
 rollback_note: Revert the POS Items thumbnail button and image viewer component; catalog images and persistence remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-08T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-309-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-08-POS-ITEMS-HD-IMAGE-VIEWER
 ---
 
 # POS Items on-demand HD image viewer

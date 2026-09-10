@@ -11,8 +11,8 @@ verification_evidence: Focused POS Items modal component and contract tests; des
 rollback_note: Revert the CSS utility and component class changes. No API, database, inventory, fiscal, payment, or persisted record changes require cleanup.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-ISSUE-1629
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-05-POS-ITEMS-MODAL-VIEWPORT-HARDENING
 ---
 
 # POS Items modal viewport hardening (#1629, Phase 292)
