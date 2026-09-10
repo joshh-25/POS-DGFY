@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { runCheck, runFloor, detectChangedAppsNarrowed } = require('./check-app-version-bump');
+const { runCheck, runFloor, detectChangedAppsNarrowed, fileExistsAtRef } = require('./check-app-version-bump');
 
 // --- git fixture harness, same shape as scripts/check-compat-seams.test.js's ------
 
@@ -1000,6 +1000,74 @@ test("runCheck(): return shape is unchanged once resolved (now genuinely async),
         const frontendEntries = result.narrowedEntries.filter((entry) => ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront'].includes(entry.app));
         assert.equal(frontendEntries.length, 3);
         assert.ok(frontendEntries.every((entry) => entry.verdict && entry.verdict.code === 'reachability-error-fail-closed'));
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+// --- #1817 review RF-1: fileExistsAtRef must never shell-interpolate a git-diff-derived path ---
+//
+// `relativePath` here comes from a real PR's changed-file list -- attacker-controlled, since
+// anyone opening a PR chooses what filenames it touches. Before this fix, fileExistsAtRef() built
+// its git command via `execSync(`git cat-file -e ${ref}:${relativePath}`)`, a shell-interpolated
+// string; a filename containing shell metacharacters could inject a second command that a
+// self-hosted runner would then execute. Both tests below plant a real git blob whose own path IS
+// the malicious string (git tracks arbitrary byte sequences for a path, only `/` and NUL are
+// special to it), confirm fileExistsAtRef() still correctly reports it exists, and confirm no
+// injected side effect ever ran.
+
+test('fileExistsAtRef (#1817 review RF-1): a filename containing a semicolon does not chain a second shell command', () => {
+    const root = makeGitRepo();
+    const markerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'file-exists-at-ref-injection-marker-'));
+    const markerFile = path.join(markerDir, 'pwned-semicolon');
+    try {
+        // Under the pre-fix shell-interpolated command, this would parse as two commands separated
+        // by `;` (the trailing ` #.js` would then start a shell comment, swallowing the rest) --
+        // `git cat-file -e <ref>:packages/web-core/src/reachable.js` (a path that doesn't actually
+        // exist -- the REAL blob path is this entire malicious string) followed unconditionally by
+        // `touch <markerFile>`.
+        const maliciousName = `packages/web-core/src/reachable.js; touch ${markerFile} #.js`;
+        writeFiles(root, { [maliciousName]: 'export default {};\n' });
+        const headGitRef = commitAll(root, 'add a semicolon-named file');
+
+        const exists = fileExistsAtRef(root, headGitRef, maliciousName);
+        assert.equal(exists, true, 'the real (maliciously-named) blob should be found to exist');
+        assert.equal(fs.existsSync(markerFile), false, 'no injected command should have executed');
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+        fs.rmSync(markerDir, { recursive: true, force: true });
+    }
+});
+
+test('fileExistsAtRef (#1817 review RF-1): a filename containing backtick command substitution does not execute', () => {
+    const root = makeGitRepo();
+    const markerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'file-exists-at-ref-injection-marker-'));
+    const markerFile = path.join(markerDir, 'pwned-backtick');
+    try {
+        // Under the pre-fix shell-interpolated command, the shell would evaluate the backticked
+        // segment as command substitution (running `touch <markerFile>` as a side effect and
+        // splicing in its -- empty -- stdout) before `git cat-file` ever ran.
+        const maliciousName = `packages/web-core/src/\`touch ${markerFile}\`.js`;
+        writeFiles(root, { [maliciousName]: 'export default {};\n' });
+        const headGitRef = commitAll(root, 'add a backtick-named file');
+
+        const exists = fileExistsAtRef(root, headGitRef, maliciousName);
+        assert.equal(exists, true, 'the real (maliciously-named) blob should be found to exist');
+        assert.equal(fs.existsSync(markerFile), false, 'no injected command substitution should have executed');
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+        fs.rmSync(markerDir, { recursive: true, force: true });
+    }
+});
+
+test('fileExistsAtRef: a genuinely nonexistent path (even one containing shell metacharacters) still correctly reports false', () => {
+    const root = makeGitRepo();
+    try {
+        writeFiles(root, { 'packages/web-core/src/real.js': 'export default {};\n' });
+        const headGitRef = commitAll(root, 'add a real file, but not the one we check for');
+
+        const exists = fileExistsAtRef(root, headGitRef, 'packages/web-core/src/does-not-exist; rm -rf /tmp/nope');
+        assert.equal(exists, false);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }

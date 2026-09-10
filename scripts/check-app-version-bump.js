@@ -40,7 +40,7 @@
  *     couldn't be computed.
  */
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const path = require('path');
 
 const { resolveAppReachabilityVerdict } = require('./resolve-web-core-reachability');
@@ -268,9 +268,19 @@ function detectChangedApps(repoRoot, headGitRef, changedFiles) {
 // appear in a reachability graph built from the working tree -- §3.4's conservative default
 // applies: treat it as an automatic "changed" rather than silently reading its absence from the
 // graph as "not reachable".
+//
+// #1817 review RF-1 (pr-reviewer): `relativePath` comes from a real PR's changed-file list --
+// attacker-controlled, since anyone opening a PR chooses what files (and filenames) it touches.
+// `resolveAppReachabilityVerdict()` now calls this via a caller-injected callback from BOTH
+// check-app-version-bump.js's own gating path AND resolve-frontend-build-triggers.js's live CI
+// path -- a shell-interpolated command string here would let a filename containing shell
+// metacharacters or command substitution execute arbitrary commands on the runner. `execFileSync`
+// with an argv array (never a shell) closes this off entirely: `${ref}:${relativePath}` is passed
+// as ONE argv element to `git cat-file` directly, never parsed by a shell, so no metacharacter in
+// either half of that string can break out of the argument boundary.
 function fileExistsAtRef(repoRoot, ref, relativePath) {
     try {
-        execSync(`git cat-file -e ${ref}:${relativePath}`, { cwd: repoRoot, stdio: 'ignore' });
+        execFileSync('git', ['cat-file', '-e', `${ref}:${relativePath}`], { cwd: repoRoot, stdio: 'ignore' });
         return true;
     } catch {
         return false;
