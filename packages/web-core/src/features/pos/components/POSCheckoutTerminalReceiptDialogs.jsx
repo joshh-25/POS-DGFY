@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useLayoutEffect, useRef } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { Printer, Receipt, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -127,6 +127,13 @@ export function POSCheckoutTerminalReceiptDialogs({
     handlePrintOrder,
     OrderPreviewView
 }) {
+    const receiptPreviewTitleRef = useRef(null);
+
+    useLayoutEffect(() => {
+        if (!receiptPreviewModalOpen) return;
+        receiptPreviewTitleRef.current?.focus();
+    }, [receiptPreviewModalOpen, receiptPreviewSource]);
+
     return (
         <>
             <Dialog open={splitPaymentCancelModalOpen} onOpenChange={(nextOpen) => {
@@ -186,6 +193,7 @@ export function POSCheckoutTerminalReceiptDialogs({
                             </div>
                             <div>
                                 <DialogTitle
+                                    ref={receiptPreviewTitleRef}
                                     id="pos-history-receipt-modal-title"
                                     autoFocus
                                     tabIndex={-1}
