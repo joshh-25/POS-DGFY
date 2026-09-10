@@ -1,6 +1,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { createPortal } from 'react-dom';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import {
   AlertCircle,
   AlertTriangle,
@@ -22,6 +23,7 @@ import {
   Barcode,
   FileText,
   Ghost,
+  GripVertical,
   History,
   ImagePlus,
   Info,
@@ -65,6 +67,7 @@ import CSVImportModal from '@/components/items/CSVImportModal.jsx';
 import { resolveStorefrontItemUrl, resolveStorefrontTenantUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
+import { acquireModalScrollLock } from '@/components/ui/dialog';
 import {
   Dialog,
   DialogContent,
@@ -87,6 +90,7 @@ import {
   listItemFolders,
   lookupExternalProduct,
   replaceItemFolders,
+  reorderFolders,
   updateItemBarcode,
   updateFolder
 } from '@/services/itemService.js';
@@ -106,7 +110,9 @@ import { persistPosItemBarcode } from '../utils/posItemBarcodePersistence.js';
 import { useItemImageGenerationPoll } from '../hooks/useItemImageGenerationPoll.js';
 import {
   bindPendingPosItemImagePreviewJob,
+  getPendingPosItemImagePreviews,
   markPendingPosItemImagePreviewFailed,
+  markPendingPosItemImagePreviewUncertain,
   stagePendingPosItemImagePreview
 } from '../services/posPendingItemImagePreviewStore.js';
 import {
@@ -115,9 +121,16 @@ import {
   queueStorefrontCatalogImage,
   queueStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
-  deleteStorefrontCatalogImage,
   generateStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
+import {
+  buildEditGalleryIntent,
+  dedupeImageFiles,
+  getImageFileSelectionKey,
+  getPendingGalleryEntryKey,
+  getSavedGalleryEntryKey,
+  getGallerySignature
+} from '../utils/posEditImageDraft.js';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
 import {
   deleteStorefrontAsset,
@@ -140,7 +153,8 @@ import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } fr
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
 import resolveAssetUrl, { advanceAssetImageFallback } from '@/src/utils/assetUrl.js';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
-import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
+import { resolvePosCatalogImageSources, resolvePosCatalogPreviewGallery } from '../utils/posCheckoutTerminalUtils.js';
+import PosItemImageViewer from './PosItemImageViewer.jsx';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
 import PdfMenuImportModal from '@/components/items/PdfMenuImportModal.jsx';
 import MenuImportBatchModal from '@/components/items/MenuImportBatchModal.jsx';
@@ -175,6 +189,11 @@ import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
 import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
+
+const isAmbiguousImageUploadError = (error) => (
+  !error?.response
+  && Boolean(error?.request || /network|timeout|fetch/i.test(String(error?.message || '')))
+);
 
 const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const POS_ITEMS_PAGE_SIZE = 15;
@@ -289,7 +308,8 @@ const SETTINGS_FIELD_LABELS = {
   'storefront_locations.primary_location': 'Primary Storefront Location'
 };
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const currencyLabel = (value) => String(value || '').toUpperCase() === 'PHP' ? '₱' : String(value || '₱');
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
@@ -667,8 +687,8 @@ function MerchantTenderReconciliationPanel({ shiftId, salesSummary = null, disab
       setObserved(Object.fromEntries(MERCHANT_TENDER_METHODS.map(({ key }) => [
         key,
         latestObserved?.[key] != null
-          ? String(Number(latestObserved[key]).toFixed(2))
-          : String(Number(data?.expected?.breakdown?.[key]?.amount || 0).toFixed(2))
+          ? Number(latestObserved[key]).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : Number(data?.expected?.breakdown?.[key]?.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       ])));
       setReviewNote(data?.latest_reconciliation?.review_note || '');
       setState({ loading: false, saving: false, data, error: '' });
@@ -728,16 +748,16 @@ function MerchantTenderReconciliationPanel({ shiftId, salesSummary = null, disab
                 {MERCHANT_TENDER_METHODS.map(({ key, label }) => (
                   <tr key={key} className="border-t border-blue-100">
                     <td className="py-2 font-bold text-slate-800">{label}</td>
-                    <td className="py-2">PHP {money(state.data?.expected?.breakdown?.[key]?.amount)}</td>
+                    <td className="py-2">₱{money(state.data?.expected?.breakdown?.[key]?.amount)}</td>
                     <td className="py-2"><Input aria-label={`${label} observed total`} type="number" min="0" step="0.01" className="h-8 w-32 bg-white text-[11px]" value={observed[key]} onChange={(event) => setObserved((previous) => ({ ...previous, [key]: event.target.value }))} disabled={state.saving || disabled} /></td>
-                    <td className={`py-2 text-right font-bold ${Math.abs(variances[key]) > 0.0001 ? 'text-amber-800' : 'text-emerald-700'}`}>PHP {money(variances[key])}</td>
+                  <td className={`py-2 text-right font-bold ${Math.abs(variances[key]) > 0.0001 ? 'text-amber-800' : 'text-emerald-700'}`}>₱{money(variances[key])}</td>
                   </tr>
                 ))}
                 <tr className="border-t border-blue-200 bg-white/60" data-testid="employee-credit-reconciliation-row">
                   <td className="py-2 font-bold text-slate-800">
                     Employee Credit <span className="block text-[10px] font-medium text-slate-500">Internal receivable · {employeeCreditCount} transaction{employeeCreditCount === 1 ? '' : 's'}</span>
                   </td>
-                  <td className="py-2 font-bold text-[#1A4E8D]">PHP {money(employeeCredit.amount)}</td>
+                  <td className="py-2 font-bold text-[#1A4E8D]">₱{money(employeeCredit.amount)}</td>
                   <td className="py-2 text-slate-500">Not applicable</td>
                   <td className="py-2 text-right text-slate-500">Not applicable</td>
                 </tr>
@@ -824,6 +844,7 @@ function ShiftControlsWorkspace({
   const activeShift = shiftState?.shift || null;
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
+  const displayCurrency = currencyLabel(terminalMeta?.pettyCashSymbol);
   const shiftCashierLabel = activeShift?.cashier?.username
     || activeShift?.cashier?.email
     || (activeShift?.cashier_id ? `Cashier #${activeShift.cashier_id}` : 'Current cashier');
@@ -973,25 +994,25 @@ function ShiftControlsWorkspace({
     {
       icon: CircleDollarSign,
       label: 'Opening/Petty Cash:',
-      value: `${terminalMeta.pettyCashSymbol} ${money(activeShift.opening_float_amount)}`,
+      value: `${displayCurrency}${money(activeShift.opening_float_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
     },
     {
       icon: Receipt,
       label: 'Total Sales (excluding opening cash):',
-      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.salesSummary?.total_amount)}`,
+      value: `${displayCurrency}${money(shiftState.salesSummary?.total_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-[#1A4E8D]'
     },
     {
       icon: Banknote,
       label: 'Expected Cash in Drawer:',
-      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.expected_cash_amount)}`,
+      value: `${displayCurrency}${money(shiftState.cashSummary?.expected_cash_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-emerald-700'
     },
     {
       icon: Banknote,
       label: 'Cash Sales:',
-      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.cash_sales_amount)}`,
+      value: `${displayCurrency}${money(shiftState.cashSummary?.cash_sales_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-emerald-700'
     },
     {
@@ -1276,7 +1297,7 @@ function ShiftControlsWorkspace({
           </p>
           {renderAdminBranchContext()}
           <div className="mt-4 space-y-3">
-            <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({displayCurrency})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1539,7 +1560,7 @@ function ShiftControlsWorkspace({
             No active shift is open. Start a shift here before using cashier-only actions.
           </p>
           <div className="mt-4 space-y-3">
-            <Label className="text-[12px] font-black text-[#0F172A]">Opening Cash ({terminalMeta.pettyCashSymbol})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Opening Cash ({displayCurrency})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1590,10 +1611,10 @@ function ShiftControlsWorkspace({
           <div className="mt-3 space-y-3">
             <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
               <span className="text-xs font-semibold text-slate-600">Total Sales (excluding opening cash)</span>
-              <span className="text-sm font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol} {money(shiftState.salesSummary?.total_amount)}</span>
+              <span className="text-sm font-black text-[#1A4E8D]">{displayCurrency}{money(shiftState.salesSummary?.total_amount)}</span>
             </div>
             <p className="text-xs text-slate-600">
-              Expected Cash in Drawer: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span>
+              Expected Cash in Drawer: <span className="font-semibold text-slate-900">{displayCurrency}{money(shiftState.cashSummary?.expected_cash_amount)}</span>
             </p>
             {canCloseDay ? (
               <MerchantTenderReconciliationPanel
@@ -1602,7 +1623,7 @@ function ShiftControlsWorkspace({
                 disabled={locked || !isOnline}
               />
             ) : null}
-            <Label className="text-[12px] font-black text-[#0F172A]">Closing Cash ({terminalMeta.pettyCashSymbol})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Closing Cash ({displayCurrency})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1685,7 +1706,7 @@ function ShiftControlsWorkspace({
               <option value="opening_adjustment">Opening Adjustment</option>
               <option value="closing_adjustment">Closing Adjustment</option>
             </select>
-            <Label className="text-[12px] font-black text-[#0F172A]">Amount ({terminalMeta.pettyCashSymbol})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Amount ({displayCurrency})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1734,7 +1755,7 @@ function ShiftControlsWorkspace({
       activeShift={activeShift}
       locked={locked}
       isOnline={isOnline}
-      currency={terminalMeta.pettyCashSymbol}
+      currency={displayCurrency}
     />
   );
 
@@ -2168,10 +2189,11 @@ function ItemsWorkspace({
   const [editingItemId, setEditingItemId] = useState(null);
   const [persistingEditAssets, setPersistingEditAssets] = useState(false);
   const [selectedEditImageFiles, setSelectedEditImageFiles] = useState([]);
-  const [deferredEditImageFiles, setDeferredEditImageFiles] = useState([]);
-  const [selectedEditPrimaryFile, setSelectedEditPrimaryFile] = useState(null);
-  const [editImageUploadJob, setEditImageUploadJob] = useState(null);
-  const [pendingEditImageRefresh, setPendingEditImageRefresh] = useState(null);
+  const [isEditImageDragActive, setIsEditImageDragActive] = useState(false);
+  const [selectedEditPrimaryKey, setSelectedEditPrimaryKey] = useState('');
+  const [editGalleryBase, setEditGalleryBase] = useState([]);
+  const [editGalleryDraft, setEditGalleryDraft] = useState([]);
+  const editSessionRef = useRef({ id: 0, itemId: null });
   // generatingEditImage covers the POST that queues the job; pollingEditImage
   // covers the wait for a terminal status afterwards — split so the button
   // label can tell the operator which stage it's actually in.
@@ -2196,6 +2218,7 @@ function ItemsWorkspace({
   const [itemSaveInFlight, setItemSaveInFlight] = useState(false);
   const [deletedItemName, setDeletedItemName] = useState('');
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
+  const [itemImagePreview, setItemImagePreview] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
@@ -2300,6 +2323,7 @@ function ItemsWorkspace({
       setItemsTotal(Number(data?.pagination?.total || 0));
       itemsLoaded.current = true;
       loadPrimaryBarcodes(catalogItems);
+      return catalogItems;
     } catch (loadError) {
       if (itemsReadSequence.current !== sequence) return;
       setError(loadError?.response?.data?.message || 'Failed to load POS-visible IMS items.');
@@ -2444,6 +2468,14 @@ function ItemsWorkspace({
     [editingItemId, editingItemSnapshot, sortedItems]
   );
 
+  const selectedEditPrimaryFile = useMemo(() => (
+    selectedEditImageFiles.find((file) => getPendingGalleryEntryKey(file) === selectedEditPrimaryKey) || null
+  ), [selectedEditImageFiles, selectedEditPrimaryKey]);
+  const editPrimaryEntryKey = selectedEditPrimaryKey
+    || (editGalleryDraft[0] ? getSavedGalleryEntryKey(editGalleryDraft[0], 0) : '');
+  const hasUnsavedEditImages = selectedEditImageFiles.length > 0
+    || getGallerySignature(editGalleryDraft) !== getGallerySignature(editGalleryBase);
+
   // Real, already-persisted item id backing the open edit modal, or 0 when
   // there isn't one. This modal only ever opens for an item found in
   // sortedItems (activeEditItem above), so in practice this is always > 0
@@ -2579,72 +2611,126 @@ function ItemsWorkspace({
     }
   };
 
-  const queueDeferredEditImageFiles = useCallback(async ({ itemId, files, existingGalleryCount }) => {
-    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+  const queueEditImageFiles = useCallback(async ({
+    itemId,
+    files,
+    existingGalleryCount,
+    baseGallery,
+    galleryDraft,
+    pendingPrimaryFile
+  }) => {
+    const normalizedFiles = dedupeImageFiles(files);
     const availableSlots = Math.max(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount);
     const filesToUpload = normalizedFiles.slice(0, availableSlots);
-    const remainingFiles = normalizedFiles.slice(filesToUpload.length);
-    if (!itemId || filesToUpload.length === 0) return;
-
-    setPendingEditImageRefresh({
-      itemId,
-      existingGalleryCount,
-      pendingCount: filesToUpload.length,
-      remainingFiles
+    if (!itemId || filesToUpload.length === 0) {
+      return {
+        accepted: false,
+        message: normalizedFiles.length > 0
+          ? 'Remove an existing image before uploading another one.'
+          : '',
+        jobId: null,
+        files: []
+      };
+    }
+    const skippedCount = normalizedFiles.length - filesToUpload.length;
+    const fileKeys = filesToUpload.map(getImageFileSelectionKey);
+    const galleryIntent = buildEditGalleryIntent({
+      baseGallery,
+      draftGallery: galleryDraft,
+      pendingFiles: filesToUpload,
+      pendingPrimaryFile
     });
-    setEditImageUploadJob({ itemId, jobId: null });
+    const intentMatches = (pending) => (
+      pending?.fileKeys?.length === fileKeys.length
+      && pending.fileKeys.every((key, index) => key === fileKeys[index])
+      && JSON.stringify(pending.galleryIntent || {}) === JSON.stringify(galleryIntent)
+    );
+    const existingAttempt = getPendingPosItemImagePreviews()[String(itemId)];
+    if (['uploading', 'processing'].includes(existingAttempt?.status)) {
+      return intentMatches(existingAttempt)
+        ? {
+          accepted: true,
+          alreadyAccepted: true,
+          message: '',
+          jobId: existingAttempt.jobId || null,
+          files: filesToUpload
+        }
+        : {
+          accepted: false,
+          requiresReconciliation: true,
+          message: 'An earlier image upload is still being processed. Refresh the item before changing or retrying its gallery.',
+          jobId: existingAttempt.jobId || null,
+          files: []
+        };
+    }
+    if (existingAttempt?.status === 'uncertain') {
+      return {
+        accepted: false,
+        requiresReconciliation: true,
+        message: 'The image upload result is uncertain. Refresh the item before retrying so it is not uploaded twice.',
+        jobId: null,
+        files: []
+      };
+    }
+
+    const imageAttemptId = stagePendingPosItemImagePreview({
+      itemId,
+      file: filesToUpload[0],
+      fileKeys,
+      galleryIntent
+    });
     try {
-      const queued = filesToUpload.length === 1
-        ? await queueStorefrontCatalogImage(itemId, filesToUpload[0])
-        : await queueStorefrontCatalogImages(itemId, filesToUpload);
-      setEditImageUploadJob((current) => (
-        current?.itemId === itemId
-          ? { ...current, jobId: queued?.job_id || null }
-          : current
-      ));
+      // Edit always uses the gallery endpoint. The singular endpoint replaces
+      // the item's gallery, so using it for one newly-added photo silently
+      // deleted every existing photo.
+      const queued = await queueStorefrontCatalogImages(itemId, filesToUpload, {
+        galleryIntent
+      });
+      if (queued?.job_id && imageAttemptId) {
+        bindPendingPosItemImagePreviewJob({
+          itemId,
+          attemptId: imageAttemptId,
+          jobId: queued.job_id,
+          fileKeys,
+          galleryIntent
+        });
+      } else if (imageAttemptId) {
+        markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
+        return {
+          accepted: false,
+          message: 'Image upload was not accepted. The preview is kept so you can retry.',
+          jobId: null,
+          files: []
+        };
+      }
+      return {
+        accepted: true,
+        message: skippedCount > 0
+          ? `Only ${filesToUpload.length} image${filesToUpload.length === 1 ? '' : 's'} uploaded; the item gallery limit is ${STOREFRONT_ITEM_IMAGE_MAX_COUNT}.`
+          : '',
+        jobId: queued?.job_id || null,
+        files: filesToUpload
+      };
     } catch (error) {
-      setSelectedEditImageFiles([]);
-      setDeferredEditImageFiles([]);
-      setSelectedEditPrimaryFile(null);
-      setPendingEditImageRefresh((current) => (
-        current?.itemId === itemId ? null : current
-      ));
-      toast.error(error?.response?.data?.message || 'Image upload failed. Try selecting the image again.');
-    } finally {
-      setEditImageUploadJob((current) => (
-        current?.itemId === itemId ? null : current
-      ));
+      const ambiguous = isAmbiguousImageUploadError(error);
+      if (imageAttemptId) {
+        if (ambiguous) {
+          markPendingPosItemImagePreviewUncertain({ itemId, attemptId: imageAttemptId });
+        } else {
+          markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
+        }
+      }
+      return {
+        accepted: false,
+        requiresReconciliation: ambiguous,
+        message: ambiguous
+          ? 'The image upload result is uncertain. Refresh the item before retrying so it is not uploaded twice.'
+          : error?.response?.data?.message || 'Image upload failed. The preview is kept so you can retry.',
+        jobId: null,
+        files: []
+      };
     }
   }, []);
-
-  useEffect(() => {
-    if (!pendingEditImageRefresh || !activeEditItem) return;
-    if (Number(activeEditItem.item_id) !== Number(pendingEditImageRefresh.itemId)) return;
-    const galleryCount = normalizeStorefrontItemGallery(activeEditItem).length;
-    const expectedGalleryCount = pendingEditImageRefresh.existingGalleryCount
-      + pendingEditImageRefresh.pendingCount;
-    if (galleryCount < expectedGalleryCount) return;
-    const remainingFiles = Array.isArray(pendingEditImageRefresh.remainingFiles)
-      ? pendingEditImageRefresh.remainingFiles.filter(Boolean)
-      : [];
-    setSelectedEditImageFiles(remainingFiles);
-    setDeferredEditImageFiles(remainingFiles);
-    setSelectedEditPrimaryFile(null);
-    setPendingEditImageRefresh(null);
-  }, [activeEditItem, pendingEditImageRefresh]);
-
-  useEffect(() => {
-    if (!activeEditItem || deferredEditImageFiles.length === 0 || editImageUploadJob || pendingEditImageRefresh) return;
-    const itemId = Number(activeEditItem.item_id || 0);
-    if (!itemId) return;
-    const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem).length;
-    if (existingGalleryCount >= STOREFRONT_ITEM_IMAGE_MAX_COUNT) return;
-    void queueDeferredEditImageFiles({
-      itemId,
-      files: deferredEditImageFiles,
-      existingGalleryCount
-    });
-  }, [activeEditItem, deferredEditImageFiles, editImageUploadJob, pendingEditImageRefresh, queueDeferredEditImageFiles]);
 
   const activeEditStorefrontUrl = useMemo(() => resolveStorefrontItemUrl({
     slug: storefrontSlug,
@@ -2655,6 +2741,10 @@ function ItemsWorkspace({
       if (canManageServiceCatalog) setEditingServiceItem(item);
       return;
     }
+    editSessionRef.current = {
+      id: editSessionRef.current.id + 1,
+      itemId: Number(item?.item_id || 0)
+    };
     const savedFolderId = Number(item?.folder_id || 0);
     const savedFolderName = String(item?.folder?.name || item?.product_folder || '').trim();
     const matchedActiveCategory = savedFolderId > 0
@@ -2685,25 +2775,30 @@ function ItemsWorkspace({
       gtin: savedBarcodeIsGtin ? savedBarcodeCode : ''
     });
     setEditCategoryInput(String(item?.folder?.name || item?.product_folder || ''));
+    const initialEditGallery = normalizeStorefrontItemGallery(item || {});
+    setEditGalleryBase(initialEditGallery);
+    setEditGalleryDraft(initialEditGallery);
     setSelectedEditImageFiles([]);
-    setDeferredEditImageFiles([]);
-    setSelectedEditPrimaryFile(null);
-    setEditImageUploadJob(null);
-    setPendingEditImageRefresh(null);
+    setIsEditImageDragActive(false);
+    setSelectedEditPrimaryKey('');
   };
 
   const closeEdit = ({ force = false } = {}) => {
-    if (!force && (savingItem || persistingEditAssets || generatingEditImage || pollingEditImage)) return;
+    if (!force && (savingItem || persistingEditAssets)) return;
+    editSessionRef.current = {
+      id: editSessionRef.current.id + 1,
+      itemId: null
+    };
     cancelImageGenerationPoll();
     setEditingItemId(null);
     setEditingItemSnapshot(null);
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setSelectedEditImageFiles([]);
-    setDeferredEditImageFiles([]);
-    setSelectedEditPrimaryFile(null);
-    setEditImageUploadJob(null);
-    setPendingEditImageRefresh(null);
+    setIsEditImageDragActive(false);
+    setSelectedEditPrimaryKey('');
+    setEditGalleryBase([]);
+    setEditGalleryDraft([]);
     setGeneratingEditImage(false);
     setPollingEditImage(false);
     setEditCategoryInput('');
@@ -2755,6 +2850,28 @@ function ItemsWorkspace({
     if (force) setPendingCreateRecovery(null);
   };
 
+  useEffect(() => {
+    if (!showCreateModal && !activeEditItem) return undefined;
+    const releaseScrollLock = acquireModalScrollLock();
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (showCreateModal && !creatingItem && !postCreateSaving) {
+        event.preventDefault();
+        closeCreate();
+        return;
+      }
+      if (activeEditItem && !savingItem && !persistingEditAssets) {
+        event.preventDefault();
+        closeEdit();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      releaseScrollLock();
+    };
+  }, [activeEditItem, creatingItem, persistingEditAssets, postCreateSaving, savingItem, showCreateModal]);
+
   const parseMoneyValue = (rawValue) => Number(String(rawValue || '').trim());
 
   const getStageErrorMessage = (error) => (
@@ -2803,6 +2920,12 @@ function ItemsWorkspace({
     }
     if (barcodeSelection.validationMessage) {
       toast.error(barcodeSelection.validationMessage);
+      return;
+    }
+
+    const currentEditGallery = normalizeStorefrontItemGallery(activeEditItem);
+    if (getGallerySignature(currentEditGallery) !== getGallerySignature(editGalleryBase)) {
+      toast.error('This item images changed while you were editing. Reopen the item and try again.');
       return;
     }
 
@@ -2868,6 +2991,33 @@ function ItemsWorkspace({
         attachBarcode: attachItemBarcode,
         updateBarcode: updateItemBarcode
       });
+      let imageUploadMessage = '';
+      if (selectedEditImageFiles.length > 0) {
+        editSaveStage = 'images';
+        const imageUploadResult = await queueEditImageFiles({
+          itemId: editItemId,
+          files: selectedEditImageFiles,
+          existingGalleryCount: editGalleryDraft.length,
+          baseGallery: editGalleryBase,
+          galleryDraft: editGalleryDraft,
+          pendingPrimaryFile: selectedEditPrimaryFile
+        });
+        imageUploadMessage = imageUploadResult.message;
+        if (!imageUploadResult.accepted) {
+          const recoveryMessage = imageUploadResult.requiresReconciliation
+            ? imageUploadMessage
+            : `Item details were saved, but the images still need attention. ${imageUploadMessage}`;
+          toast.warning(recoveryMessage);
+          return;
+        }
+      } else if (getGallerySignature(editGalleryDraft) !== getGallerySignature(editGalleryBase)) {
+        editSaveStage = 'images';
+        await updateStorefrontCatalogGallery(editItemId, editGalleryDraft, {
+          expectedGalleryKeys: editGalleryBase
+            .map((entry) => entry?.path || entry?.url)
+            .filter(Boolean)
+        });
+      }
       editSaveStage = 'refresh';
       closeEdit({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
@@ -2877,6 +3027,7 @@ function ItemsWorkspace({
         barcode: barcodeSelection.shouldGenerate ? existingPrimaryCode : barcodeSelection.code,
         action: 'updated'
       });
+      if (imageUploadMessage) toast.warning(imageUploadMessage);
     } catch (updateError) {
       toast.error(resolveEditItemSaveError(updateError, editSaveStage).message);
     } finally {
@@ -2886,7 +3037,7 @@ function ItemsWorkspace({
   };
 
   const handleSelectCreateImageFiles = (files) => {
-    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const normalizedFiles = dedupeImageFiles(files, selectedImageFiles);
     if (normalizedFiles.length === 0) return;
     const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedImageFiles.length;
     if (remainingSlots <= 0) {
@@ -3021,97 +3172,97 @@ function ItemsWorkspace({
   };
 
   const handleSelectEditImageFile = (files) => {
-    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
+    const normalizedFiles = dedupeImageFiles(Array.isArray(files) ? files : (files ? [files] : []), selectedEditImageFiles);
     const itemId = Number(activeEditItem?.item_id || 0);
     if (normalizedFiles.length === 0 || !itemId) return;
-    if (editImageUploadJob || pendingEditImageRefresh) {
-      toast.info('The previous image is still being optimized. It will be replaced automatically when ready.');
+    const existingGalleryCount = editGalleryDraft.length;
+    const availableSlots = Math.max(
+      0,
+      STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount - selectedEditImageFiles.length
+    );
+    if (availableSlots === 0) {
+      toast.info('Remove an existing image before adding another one.');
       return;
     }
-    const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem || {}).length;
-    const filesToPreview = normalizedFiles.slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT);
-    if (normalizedFiles.length > filesToPreview.length) {
-      toast.error(`Only ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} pending images can be selected at once.`);
+    const filesToAdd = normalizedFiles.slice(0, availableSlots);
+    if (normalizedFiles.length > filesToAdd.length) {
+      toast.error(`Only ${availableSlots} more image${availableSlots === 1 ? '' : 's'} can be added to this item.`);
     }
 
-    // Always mount the local preview first. If legacy data already exceeds
-    // the gallery limit, the selected files stay deferred until the operator
-    // removes enough existing images; no existing image is deleted silently.
-    setSelectedEditImageFiles(filesToPreview);
-    setDeferredEditImageFiles(filesToPreview);
-    setSelectedEditPrimaryFile(null);
-    if (existingGalleryCount >= STOREFRONT_ITEM_IMAGE_MAX_COUNT) {
-      toast.info('Preview shown. Remove existing images to make room; upload will continue automatically.');
+    // Selection is local-only. The worker starts after Save Item, matching Add
+    // Item and allowing the operator to replace the preview before committing.
+    setSelectedEditImageFiles((current) => [...current, ...filesToAdd]);
+  };
+
+  const handleEditImageDrop = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsEditImageDragActive(false);
+    if (savingItem || persistingEditAssets) return;
+
+    const droppedFiles = Array.from(event.dataTransfer?.files || []);
+    const imageFiles = droppedFiles.filter((file) => file.type?.startsWith('image/'));
+    if (droppedFiles.length > imageFiles.length) {
+      toast.error('Only image files can be added as item images.');
+    }
+    if (imageFiles.length > 0) {
+      handleSelectEditImageFile(imageFiles);
+      return;
+    }
+
+    const droppedUrl = String(event.dataTransfer?.getData('text/uri-list') || '')
+      .split(/\r?\n/)
+      .find((value) => value && !value.startsWith('#'));
+    if (!droppedUrl || !/^https?:\/\//i.test(droppedUrl)) {
+      toast.error('Drag the saved image from File Explorer into this box.');
+      return;
+    }
+
+    try {
+      const response = await fetch(droppedUrl);
+      if (!response.ok) throw new Error(`Image request failed with ${response.status}`);
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('Dropped URL is not an image');
+      const urlName = new URL(droppedUrl).pathname.split('/').pop() || 'dragged-item-image';
+      const extension = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+      const filename = urlName.includes('.') ? urlName : `${urlName}.${extension}`;
+      handleSelectEditImageFile([new File([blob], filename, { type: blob.type })]);
+    } catch {
+      toast.error('Chrome blocked access to that image. Save it first, then drag it from File Explorer.');
     }
   };
 
   const handleRemoveSelectedEditImageFile = (imageIndex) => {
     const removedFile = selectedEditImageFiles[imageIndex];
-    if (removedFile === selectedEditPrimaryFile) {
-      setSelectedEditPrimaryFile(null);
+    if (removedFile && getPendingGalleryEntryKey(removedFile) === selectedEditPrimaryKey) {
+      setSelectedEditPrimaryKey('');
     }
     setSelectedEditImageFiles((current) => current.filter((_, index) => index !== imageIndex));
-    setDeferredEditImageFiles((current) => current.filter((_, index) => index !== imageIndex));
   };
 
   const handleSetPendingEditPrimary = (file) => {
-    setSelectedEditPrimaryFile(file || null);
+    setSelectedEditPrimaryKey(file ? getPendingGalleryEntryKey(file) : '');
   };
 
-  const handleSetSavedEditPrimary = async (imageIndex) => {
-    setSelectedEditPrimaryFile(null);
-    await handleSetPrimaryStorefrontImage(activeEditItem, imageIndex);
-  };
-
-  const handleRemoveSavedEditImage = async (imageIndex) => {
-    await handleDeleteStorefrontImage(activeEditItem, imageIndex);
-  };
-
-  const handleSetPrimaryStorefrontImage = async (item, imageIndex) => {
-    const itemId = item?.item_id;
-    if (!itemId) return;
-    const current = normalizeStorefrontItemGallery(item);
-    const normalizedImageIndex = Number.parseInt(imageIndex, 10);
-    if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex <= 0 || normalizedImageIndex >= current.length) return;
-    const nextGallery = [
-      current[normalizedImageIndex],
-      ...current.filter((_, index) => index !== normalizedImageIndex)
-    ].map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
-
-    try {
-      await updateStorefrontCatalogGallery(itemId, nextGallery);
-      await loadItems();
-      toast.success(`Primary item image updated for ${item.name}`);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update primary item image');
-    }
-  };
-
-  const handleDeleteStorefrontImage = async (item, imageIndex = null) => {
-    const itemId = item?.item_id;
-    if (!itemId) return;
-
-    try {
+  const handleSetSavedEditPrimary = (imageIndex) => {
+    setSelectedEditPrimaryKey('');
+    setEditGalleryDraft((current) => {
       const normalizedImageIndex = Number.parseInt(imageIndex, 10);
-      const isSingleImageDelete = Number.isInteger(normalizedImageIndex) && normalizedImageIndex >= 0;
-      if (isSingleImageDelete) {
-        const currentGallery = normalizeStorefrontItemGallery(item);
-        if (normalizedImageIndex >= currentGallery.length) {
-          toast.error('This item image is no longer available. Reopen the item and try again.');
-          return;
-        }
-        const nextGallery = currentGallery
-          .filter((_, index) => index !== normalizedImageIndex)
-          .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
-        await updateStorefrontCatalogGallery(itemId, nextGallery);
-      } else {
-        await deleteStorefrontCatalogImage(itemId);
-      }
-      await loadItems();
-      toast.success(isSingleImageDelete ? `Item gallery image removed for ${item.name}` : `Item image removed for ${item.name}`);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to remove item image');
-    }
+      if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex < 0 || normalizedImageIndex >= current.length) return current;
+      const selected = current[normalizedImageIndex];
+      return [selected, ...current.filter((_, index) => index !== normalizedImageIndex)]
+        .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
+    });
+  };
+
+  const handleRemoveSavedEditImage = (imageIndex) => {
+    setEditGalleryDraft((current) => {
+      const normalizedImageIndex = Number.parseInt(imageIndex, 10);
+      if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex < 0 || normalizedImageIndex >= current.length) return current;
+      return current
+        .filter((_, index) => index !== normalizedImageIndex)
+        .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
+    });
   };
 
   // The POST only confirms the item was queued, not that a photo exists yet
@@ -3124,17 +3275,39 @@ function ItemsWorkspace({
   const handleGenerateEditImage = async (item) => {
     const itemId = item?.item_id;
     if (!itemId) return;
+    if (hasUnsavedEditImages) {
+      toast.info('Save or discard your pending image changes before generating an AI image.');
+      return;
+    }
+    const sessionId = editSessionRef.current.id;
+    const isCurrentEditSession = () => (
+      editSessionRef.current.id === sessionId
+      && Number(editSessionRef.current.itemId) === Number(itemId)
+    );
 
     setGeneratingEditImage(true);
     try {
       await generateStorefrontCatalogImage(itemId);
+      if (!isCurrentEditSession()) return;
       setGeneratingEditImage(false);
       setPollingEditImage(true);
 
       const result = await pollItemImageGeneration(itemId);
-      if (result.status === 'cancelled') return; // modal closed mid-poll — no toast for an item no longer in view
+      if (!isCurrentEditSession() || result.status === 'cancelled') return; // modal closed or switched mid-poll
       if (result.status === 'completed') {
-        await loadItems();
+        const refreshedItems = await loadItems();
+        if (!isCurrentEditSession()) return;
+        const refreshedItem = Array.isArray(refreshedItems)
+          ? refreshedItems.find((entry) => Number(entry?.item_id) === Number(itemId))
+          : null;
+        if (refreshedItem) {
+          const refreshedGallery = normalizeStorefrontItemGallery(refreshedItem);
+          setEditingItemSnapshot(refreshedItem);
+          setEditGalleryBase(refreshedGallery);
+          setEditGalleryDraft(refreshedGallery);
+          setSelectedEditImageFiles([]);
+          setSelectedEditPrimaryKey('');
+        }
         notifyPosCatalogUpdated();
         toast.success(`Image generated for ${item.name}.`);
       } else if (result.status === 'failed') {
@@ -3143,10 +3316,13 @@ function ItemsWorkspace({
         toast.error(`Still working on ${item.name}'s image — check back in a bit.`);
       }
     } catch (error) {
+      if (!isCurrentEditSession()) return;
       toast.error(error?.response?.data?.message || 'Failed to queue image generation');
     } finally {
-      setGeneratingEditImage(false);
-      setPollingEditImage(false);
+      if (isCurrentEditSession()) {
+        setGeneratingEditImage(false);
+        setPollingEditImage(false);
+      }
     }
   };
 
@@ -3163,6 +3339,7 @@ function ItemsWorkspace({
   }) => {
 
     const failedStages = [];
+    let imageUploadAmbiguous = false;
     let barcodeCode = String(requestedBarcodeCode || '').trim();
 
     const runStage = async (key, label, action) => {
@@ -3170,6 +3347,14 @@ function ItemsWorkspace({
       try {
         return await action();
       } catch (error) {
+        if (key === 'storefront_images' && imageAttemptId) {
+          imageUploadAmbiguous = isAmbiguousImageUploadError(error);
+          if (imageUploadAmbiguous) {
+            markPendingPosItemImagePreviewUncertain({ itemId, attemptId: imageAttemptId });
+          } else {
+            markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
+          }
+        }
         failedStages.push({
           key,
           label,
@@ -3199,9 +3384,10 @@ function ItemsWorkspace({
         bindPendingPosItemImagePreviewJob({
           itemId,
           attemptId: imageAttemptId,
-          jobId: imageUploadJob.job_id
+          jobId: imageUploadJob.job_id,
+          fileKeys: Array.isArray(imageFiles) ? imageFiles.map(getImageFileSelectionKey) : []
         });
-      } else if (imageAttemptId) {
+      } else if (imageAttemptId && !imageUploadAmbiguous) {
         markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
       }
     } else if (externalProductCode) {
@@ -3372,10 +3558,27 @@ function ItemsWorkspace({
       setPostCreateSaving(true);
       if (pendingCreateRecovery?.itemId) {
         const recoveryName = pendingCreateRecovery.name || name;
+        const failedImageStage = pendingCreateRecovery.failedStages
+          .some((stage) => stage.key === 'storefront_images');
+        const pendingRecoveryImageAttempt = failedImageStage
+          ? getPendingPosItemImagePreviews()[String(pendingCreateRecovery.itemId)]
+          : null;
+        if (pendingRecoveryImageAttempt && ['uploading', 'processing', 'uncertain'].includes(pendingRecoveryImageAttempt.status)) {
+          toast.warning('The previous image upload is still being reconciled. Refresh the catalog before retrying so it is not duplicated.');
+          return;
+        }
+        const recoveryImageFiles = failedImageStage ? selectedImageFiles : [];
         const recoveryItemPatch = { ...payload };
         delete recoveryItemPatch.manufacturer_barcode;
         delete recoveryItemPatch.internal_barcode;
         delete recoveryItemPatch.create_category_name;
+        const recoveryImageAttemptId = failedImageStage && recoveryImageFiles[0]
+          ? stagePendingPosItemImagePreview({
+            itemId: pendingCreateRecovery.itemId,
+            file: recoveryImageFiles[0],
+            fileKeys: recoveryImageFiles.map(getImageFileSelectionKey)
+          })
+          : null;
         await updateItem(pendingCreateRecovery.itemId, recoveryItemPatch);
         const retryStageKeys = new Set([
           ...pendingCreateRecovery.failedStages.map((stage) => stage.key),
@@ -3385,13 +3588,13 @@ function ItemsWorkspace({
         const result = await runPostCreateStages({
           itemId: pendingCreateRecovery.itemId,
           itemName: recoveryName,
-          imageFiles: pendingCreateRecovery.imageFiles || [],
+          imageFiles: recoveryImageFiles,
           externalProductCode: pendingCreateRecovery.externalProductCode || '',
           requestedBarcodeCode: pendingCreateRecovery.requestedBarcodeCode || '',
           posAlwaysAvailable: createForm.pos_always_available === true,
           posBestSellerMode: createForm.pos_best_seller_mode,
           retryStageKeys,
-          imageAttemptId: pendingCreateRecovery.imageAttemptId || null
+          imageAttemptId: recoveryImageAttemptId
         });
         await finalizeCreatedItem({
           barcode: result.barcodeCode,
@@ -3416,7 +3619,11 @@ function ItemsWorkspace({
       }
 
       const imageAttemptId = selectedImageFiles[0]
-        ? stagePendingPosItemImagePreview({ itemId, file: selectedImageFiles[0] })
+        ? stagePendingPosItemImagePreview({
+          itemId,
+          file: selectedImageFiles[0],
+          fileKeys: selectedImageFiles.map(getImageFileSelectionKey)
+        })
         : null;
 
       const result = await runPostCreateStages({
@@ -3766,6 +3973,7 @@ function ItemsWorkspace({
             const isServiceItem = isServiceCatalogItem(item);
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
             const imageSources = resolvePosCatalogImageSources(item);
+            const previewSources = resolvePosCatalogPreviewGallery(item);
             const stockQuantity = Number(item?.current_stock || 0);
             const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
@@ -3797,7 +4005,17 @@ function ItemsWorkspace({
               >
                 <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.18fr)_minmax(18.5rem,0.96fr)] xl:items-center">
                   <div className="flex min-w-0 gap-2.5 xl:border-r xl:border-slate-100 xl:pr-3">
-                    <div className="relative flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner sm:h-[4.5rem] sm:w-[4.5rem]">
+                    <button
+                      type="button"
+                      disabled={previewSources.gallery.length === 0}
+                      aria-label={previewSources.gallery.length > 0 ? `View ${item.name || 'item'} image` : undefined}
+                      onClick={() => setItemImagePreview({
+                        itemName: item.name,
+                        sellingPrice: item.default_sale_price,
+                        gallery: previewSources.gallery
+                      })}
+                      className="relative flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 enabled:cursor-zoom-in sm:h-[4.5rem] sm:w-[4.5rem]"
+                    >
                       <ImagePlus className="h-5 w-5 text-slate-300" />
                       {imageSources.src ? (
                         <ResponsiveImage
@@ -3808,12 +4026,15 @@ function ItemsWorkspace({
                           height={288}
                           className="absolute h-full w-full object-cover"
                           onError={(event) => {
-                            if (advanceAssetImageFallback(event, [imageSources.configuredLargeSrc])) return;
+                            if (advanceAssetImageFallback(event, [
+                              imageSources.configuredLargeSrc,
+                              ...(imageSources.fallbackSrcs || [])
+                            ])) return;
                             event.currentTarget.hidden = true;
                           }}
                         />
                       ) : null}
-                    </div>
+                    </button>
                     <div className="min-w-0 flex-1">
                       <div className="flex min-h-full flex-col">
                         <div className="min-h-[2.875rem]">
@@ -3882,7 +4103,7 @@ function ItemsWorkspace({
                             <p className="mt-0.5 text-xs font-bold text-[#0F172A]">
                               {isServiceItem && item.cost_per_unit == null
                                 ? 'Not tracked'
-                                : <>PHP {money(profit)} <span className="text-[#2563EB]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</span></>}
+                                : <>₱{money(profit)} <span className="text-[#2563EB]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</span></>}
                             </p>
                           </div>
                         </div>
@@ -3900,7 +4121,7 @@ function ItemsWorkspace({
                               <div className="min-w-0 flex-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Price</p>
                                 <div className="mt-0.5 min-w-0 leading-none">
-                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-[#1A4E8D]">PHP</p>
+                                  <p className="text-[10px] font-bold tracking-[0.06em] text-[#1A4E8D]">₱</p>
                                   <p className="text-[0.95rem] font-black tracking-tight text-[#1A4E8D]">{money(item.default_sale_price)}</p>
                                 </div>
                               </div>
@@ -3914,7 +4135,7 @@ function ItemsWorkspace({
                               <div className="min-w-0 flex-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Cost</p>
                                 <div className="mt-0.5 min-w-0 leading-none">
-                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'OPTIONAL' : 'PHP'}</p>
+                                  <p className="text-[10px] font-bold tracking-[0.06em] text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'OPTIONAL' : '₱'}</p>
                                   <p className="text-[0.95rem] font-black tracking-tight text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'Not tracked' : money(item.cost_per_unit)}</p>
                                 </div>
                               </div>
@@ -3988,9 +4209,11 @@ function ItemsWorkspace({
         </div>
       )}
 
+      <PosItemImageViewer preview={itemImagePreview} onClose={() => setItemImagePreview(null)} />
+
       {showCreateModal && typeof document !== 'undefined' && createPortal((
         <div
-          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 backdrop-blur-none px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-create-modal-title"
@@ -3999,7 +4222,7 @@ function ItemsWorkspace({
           onDrop={(event) => event.preventDefault()}
         >
           <div
-            className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="pos-items-modal-panel relative flex h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Header */}
@@ -4026,7 +4249,7 @@ function ItemsWorkspace({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
+            <div className="pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
               <section className="mb-5 space-y-3 rounded-xl border border-blue-200 bg-blue-50/70 p-4" aria-labelledby="pos-external-barcode-heading">
                 <div className="flex items-start gap-3">
                   <div className="rounded-lg bg-white p-2 text-blue-700 shadow-sm">
@@ -4129,7 +4352,7 @@ function ItemsWorkspace({
                         {externalProductLookup.suggested_price ? (
                           <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                             <p className="font-semibold">
-                              Suggested selling price: PHP {Number(externalProductLookup.suggested_price.amount).toFixed(2)}
+                              Suggested selling price: ₱{Number(externalProductLookup.suggested_price.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                             <p>
                               {externalProductLookup.suggested_price.label} from Open Prices
@@ -4468,7 +4691,7 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="shrink-0 bg-[#0F172A] px-5 py-3 sm:px-6 flex justify-end gap-2.5">
+            <div className="pos-items-modal-footer shrink-0 bg-[#0F172A] px-5 py-3 sm:px-6 flex justify-end gap-2.5">
               <Button
                 type="button"
                 variant="outline"
@@ -4500,14 +4723,16 @@ function ItemsWorkspace({
 
       {activeEditItem && typeof document !== 'undefined' && createPortal((
         <div
-          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 backdrop-blur-none px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-edit-modal-title"
           onClick={closeEdit}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => event.preventDefault()}
         >
           <div
-            className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="pos-items-modal-panel relative flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Header */}
@@ -4532,7 +4757,7 @@ function ItemsWorkspace({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 space-y-4 sm:space-y-5">
+            <div className="pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 space-y-4 sm:space-y-5">
               {/* Top Horizontal Row: 3 Toggle Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
                 {/* Toggle Card 1: Always Available */}
@@ -4622,18 +4847,34 @@ function ItemsWorkspace({
                     </div>
 
                     {(() => {
-                      const editGallery = normalizeStorefrontItemGallery(activeEditItem || {});
+                      const editGallery = editGalleryDraft;
                       return (
                         <div className="space-y-3">
                           <label
                             htmlFor="pos-item-edit-image"
-                            className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/10 p-4 text-center transition-colors hover:bg-blue-50/20 ${(savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh) ? 'cursor-not-allowed opacity-50' : ''}`}
+                            data-testid="pos-edit-item-image-drop-zone"
+                            className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-4 text-center transition-colors ${(isEditImageDragActive ? 'border-blue-500 bg-blue-100/70 ring-2 ring-blue-200' : 'border-blue-200 bg-blue-50/10 hover:bg-blue-50/20')} ${(savingItem || persistingEditAssets) ? 'cursor-not-allowed opacity-50' : ''}`}
+                            onDragEnter={(event) => {
+                              event.preventDefault();
+                              setIsEditImageDragActive(true);
+                            }}
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              event.dataTransfer.dropEffect = 'copy';
+                              setIsEditImageDragActive(true);
+                            }}
+                            onDragLeave={(event) => {
+                              if (!event.currentTarget.contains(event.relatedTarget)) {
+                                setIsEditImageDragActive(false);
+                              }
+                            }}
+                            onDrop={handleEditImageDrop}
                           >
                             <Upload className="mx-auto h-9 w-9 text-blue-500" aria-hidden="true" />
-                            <p className="mt-2.5 text-xs sm:text-sm font-semibold text-[#0F172A]">Add item images</p>
+                            <p className="mt-2.5 text-xs sm:text-sm font-semibold text-[#0F172A]">Drag item images here or choose files</p>
                             <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (large files optimized by server, up to 5 total)</p>
                             <p className="mt-2 text-[10px] leading-normal text-[#94A3B8]">
-                              The preview appears immediately. The optimized image is saved automatically and then replaces the preview.
+                              The preview appears immediately. Save Item uploads it silently and replaces the preview when ready.
                             </p>
                             <input
                               id="pos-item-edit-image"
@@ -4641,7 +4882,7 @@ function ItemsWorkspace({
                               accept="image/*"
                               multiple
                               className="hidden"
-                              disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh}
+                              disabled={savingItem || persistingEditAssets}
                               onChange={(event) => {
                                 const files = Array.from(event.target.files || []);
                                 void handleSelectEditImageFile(files);
@@ -4654,32 +4895,26 @@ function ItemsWorkspace({
                             files={selectedEditImageFiles}
                             savedGallery={editGallery}
                             itemName={editForm.name || activeEditItem?.name || 'Item'}
-                            disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh}
+                            disabled={savingItem || persistingEditAssets}
                             showPrimaryToggle
+                            primaryEntryKey={editPrimaryEntryKey}
                             onRemove={handleRemoveSelectedEditImageFile}
                             onSetPendingPrimary={handleSetPendingEditPrimary}
                             onSetSavedPrimary={handleSetSavedEditPrimary}
                             onRemoveSaved={handleRemoveSavedEditImage}
                           />
 
-                          {selectedEditImageFiles.length > 0
-                            && editGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT
-                            && !editImageUploadJob
-                            && !pendingEditImageRefresh && (
-                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium leading-normal text-amber-800" role="status">
-                              Preview ready. Remove existing images to make room; the upload will continue automatically.
-                            </p>
-                          )}
-
                           {canEditItems && (
                             <Button
                               type="button"
                               variant="outline"
                               onClick={() => handleGenerateEditImage(activeEditItem)}
-                              disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh || generatingEditImage || pollingEditImage}
+                              disabled={savingItem || persistingEditAssets || generatingEditImage || pollingEditImage || hasUnsavedEditImages}
                               className="w-full rounded-xl"
                               title={
-                                editGallery.length > 0
+                                hasUnsavedEditImages
+                                  ? 'Save or discard your pending image changes before generating an AI image.'
+                                  : editGallery.length > 0
                                   ? 'Generate a new AI photo, replacing the current one.'
                                   : 'Generate an AI photo for this item (watermarked).'
                               }
@@ -4979,7 +5214,7 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="shrink-0 bg-white border-t border-slate-200/80 px-5 py-3.5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="pos-items-modal-footer shrink-0 bg-white border-t border-slate-200/80 px-5 py-3.5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-600 w-full sm:w-auto">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
                   <ShieldCheck className="h-4 w-4" aria-hidden="true" />
@@ -5014,7 +5249,7 @@ function ItemsWorkspace({
 
       {itemSaveInFlight && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-md transition-all duration-300"
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/70 px-4 backdrop-blur-none transition-all duration-300"
           role="status"
           aria-live="assertive"
           aria-label={itemWorkspacePresentation.savingAriaLabel}
@@ -5072,7 +5307,7 @@ function ItemsWorkspace({
 
       {savedMessage.name && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-4 py-6 animate-pos-overlay-fade-in"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-slate-950/70 backdrop-blur-none px-4 py-6 animate-pos-overlay-fade-in"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-saved-modal-title"
@@ -5133,7 +5368,7 @@ function ItemsWorkspace({
 
       {deleteConfirmItem && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-delete-confirm-modal-title"
@@ -5181,7 +5416,7 @@ function ItemsWorkspace({
 
       {deletedItemName && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-deleted-modal-title"
@@ -5220,6 +5455,21 @@ function ItemsWorkspace({
   );
 }
 
+function DraggableCategoryRow({ folder, disabled, children }) {
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({ id: folder.folder_id, disabled });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: folder.folder_id, disabled });
+  const setNodeRef = useCallback((node) => { setDragRef(node); setDropRef(node); }, [setDragRef, setDropRef]);
+  return (
+    <div
+      ref={setNodeRef}
+      style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined}
+      className={`${isDragging ? 'relative z-10 opacity-70 shadow-lg' : ''} ${isOver && !isDragging ? 'bg-blue-50' : 'bg-white'}`}
+    >
+      {children({ attributes, listeners })}
+    </div>
+  );
+}
+
 function CategoryManagementWorkspace() {
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5229,6 +5479,10 @@ function CategoryManagementWorkspace() {
   const [editor, setEditor] = useState(null);
   const [form, setForm] = useState({ name: '', description: '' });
   const [pendingAction, setPendingAction] = useState(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor)
+  );
 
   const loadFolders = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -5246,13 +5500,20 @@ function CategoryManagementWorkspace() {
             // #1318 follow-up (ADR 0080 Consequences item 4) — items that list this
             // folder only as a secondary category, invisible to item_count above.
             secondary_item_count: Number(folder?.secondary_item_count || 0),
-            is_active: folder?.is_active !== false
+            is_active: folder?.is_active !== false,
+            sort_order: Number(folder?.sort_order || 0)
           }))
           .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
       );
+      return true;
     } catch (loadError) {
-      setFolders([]);
+      // Keep the last known list when a silent refresh fails. Callers use a
+      // silent refresh after a rejected reorder to reconcile a stale tab; an
+      // unavailable refresh must not replace the useful local list with an
+      // empty state.
+      if (!silent) setFolders([]);
       setError(loadError?.response?.data?.message || 'Failed to load categories.');
+      return false;
     } finally {
       if (!silent) setLoading(false);
     }
@@ -5266,11 +5527,37 @@ function CategoryManagementWorkspace() {
     const normalizedQuery = String(query || '').trim().toLowerCase();
     return [...folders]
       .filter((folder) => !normalizedQuery || `${folder.name} ${folder.description}`.toLowerCase().includes(normalizedQuery))
-      .sort((left, right) => {
-        if (left.is_active !== right.is_active) return left.is_active ? -1 : 1;
-        return left.name.localeCompare(right.name);
-      });
+      .sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name));
   }, [folders, query]);
+
+  const handleCategoryDragEnd = async ({ active, over }) => {
+    if (!over || active.id === over.id || query.trim() || busy) return;
+    const previous = folders;
+    const fromIndex = folders.findIndex((folder) => folder.folder_id === Number(active.id));
+    const toIndex = folders.findIndex((folder) => folder.folder_id === Number(over.id));
+    if (fromIndex < 0 || toIndex < 0) return;
+    const next = [...folders];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    const normalized = next.map((folder, index) => ({ ...folder, sort_order: index }));
+    setFolders(normalized);
+    setBusy(true);
+    try {
+      await reorderFolders(normalized.map((folder) => folder.folder_id));
+      notifyPosCatalogUpdated({ reason: 'category_order_updated' });
+      toast.success('Category order updated.');
+    } catch (reorderError) {
+      // A 409 means another tab changed the category set while this one was
+      // open. Reload the authoritative tenant-scoped order so the UI cannot
+      // keep showing a list that the server rejected. If that reconciliation
+      // request also fails, retain the previous list rather than blanking it.
+      const refreshed = await loadFolders({ silent: true });
+      if (!refreshed) setFolders(previous);
+      toast.error(reorderError?.response?.data?.message || 'Unable to save category order.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const replacementFolders = useMemo(() => folders
     .filter((folder) => folder.is_active && Number(folder.folder_id) !== Number(pendingAction?.folder?.folder_id))
@@ -5375,6 +5662,7 @@ function CategoryManagementWorkspace() {
             Refresh
           </Button>
         </div>
+        <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">Drag the handle to rearrange categories. Clear search before rearranging.</p>
 
         {error ? (
           <div className="m-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
@@ -5387,11 +5675,14 @@ function CategoryManagementWorkspace() {
             <p className="mt-1 text-sm text-slate-500">Create a category before adding POS items.</p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {filteredFolders.map((folder) => (
-              <div key={folder.folder_id} className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
+            <div className="divide-y divide-slate-100">
+              {filteredFolders.map((folder) => (
+                <DraggableCategoryRow key={folder.folder_id} folder={folder} disabled={Boolean(query.trim()) || busy}>
+                  {({ attributes, listeners }) => <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" aria-label={`Move ${folder.name}`} title={query.trim() ? 'Clear search to rearrange categories.' : 'Drag to rearrange'} disabled={Boolean(query.trim()) || busy} className="touch-none rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40" {...attributes} {...listeners}><GripVertical className="h-5 w-5" /></button>
                     <p className="font-extrabold text-[#0F172A]">{folder.name}</p>
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${folder.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>{folder.is_active ? 'Active' : 'Inactive'}</span>
                   </div>
@@ -5403,15 +5694,17 @@ function CategoryManagementWorkspace() {
                   <Button type="button" variant="outline" onClick={() => setPendingAction({ type: folder.is_active ? 'deactivate' : 'activate', folder })} disabled={busy} className="h-9 rounded-lg">{folder.is_active ? 'Deactivate' : 'Activate'}</Button>
                   <Button type="button" variant="outline" onClick={() => setPendingAction({ type: 'delete', folder, replacementFolderId: '' })} disabled={busy} title={folder.item_count > 0 ? 'Delete and reassign assigned items.' : 'Delete category'} className="h-9 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed"><Trash2 className="mr-1.5 h-3.5 w-3.5" />Delete</Button>
                 </div>
-              </div>
-            ))}
-          </div>
+                  </div>}
+                </DraggableCategoryRow>
+              ))}
+            </div>
+          </DndContext>
         )}
       </div>
 
       {editor && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/70 px-3 py-3 backdrop-blur-none sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-category-editor-title"
@@ -5442,7 +5735,7 @@ function CategoryManagementWorkspace() {
 
       {pendingAction && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/70 px-3 py-3 backdrop-blur-none sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-category-action-title"
@@ -9791,6 +10084,11 @@ export default function TerminalOperationsWorkspace({
           <PosServicesOperationsWorkspace
             permissions={serviceOperationsPermissions}
             isOnline={isOnline}
+            settlementContext={{
+              shiftId: shiftState?.shift?.pos_terminal_shift_id,
+              terminalId: activeTerminalId,
+              locationId: shiftState?.shift?.location_id || operatingLocationId
+            }}
           />
         </div>
       );

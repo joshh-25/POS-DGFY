@@ -19,31 +19,33 @@ export function FnbWorkflowPanel({
   ];
 
   return (
-    <div data-testid="fnb-workflow-panel" className="grid grid-cols-2 gap-2 max-[360px]:grid-cols-1">
+    <div data-testid="fnb-workflow-panel" className="grid w-full min-w-0 max-w-full grid-cols-2 gap-x-2 gap-y-0">
       {buttonLayout ? (
-        <fieldset className="col-span-full space-y-1" aria-label="Order Method">
-          <legend className="text-[11px] font-medium text-slate-500">Order Method</legend>
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4" data-testid="pos-checkout-order-method-buttons">
-            {orderMethods.map((method) => (
-              <button
-                key={method.value}
-                type="button"
-                aria-pressed={orderMethod === method.value}
-                onClick={() => setOrderMethod(method.value)}
-                disabled={disabled}
-                className={`h-9 rounded-lg border px-2 text-[11px] font-extrabold transition ${
-                  orderMethod === method.value
-                    ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'
-                }`}
-              >
-                {method.label}
-              </button>
-            ))}
+        <fieldset className="col-span-full w-full min-w-0 max-w-full space-y-1 py-[5px]" aria-label="Order Method">
+          <legend className="text-[11px] font-bold text-slate-600">Order Method</legend>
+          <div className="w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x">
+            <div className="grid w-max min-w-full grid-cols-4 gap-1.5 overflow-visible sm:w-full" data-testid="pos-checkout-order-method-buttons">
+              {orderMethods.map((method) => (
+                <button
+                  key={method.value}
+                  type="button"
+                  aria-pressed={orderMethod === method.value}
+                  onClick={() => setOrderMethod(method.value)}
+                  disabled={disabled}
+                  className={`h-9 min-w-[6.5rem] rounded-lg border px-2 text-[11px] font-extrabold transition sm:min-w-0 sm:w-full ${
+                    orderMethod === method.value
+                      ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'
+                  }`}
+                >
+                  {method.label}
+                </button>
+              ))}
+            </div>
           </div>
         </fieldset>
       ) : (
-        <label className="block text-[11px] font-medium text-slate-500">
+        <label className="block text-[11px] font-bold text-slate-600">
           Order Method
           <select
             value={orderMethod}
@@ -60,7 +62,7 @@ export function FnbWorkflowPanel({
       )}
 
       {orderMethod === 'dine_in' && (
-        <label className="text-[11px] text-slate-500 block font-medium">
+        <label className="block text-[11px] font-bold text-slate-600">
           Table # (Optional)
           <input
             type="text"
@@ -74,8 +76,8 @@ export function FnbWorkflowPanel({
       )}
 
       {(orderMethod === 'dine_in' || orderMethod === 'takeout') && setKitchenNotes && (
-        <label className="text-[11px] text-slate-500 block font-medium">
-          Order Notes (global)
+        <label className="block text-[11px] font-bold text-slate-600">
+          Order Notes (Global)
           <input
             type="text"
             placeholder="Applies to the whole order"
@@ -87,7 +89,11 @@ export function FnbWorkflowPanel({
         </label>
       )}
 
-      {paymentTypeField}
+      {paymentTypeField ? (
+        <div className="col-span-full w-full min-w-0 max-w-full">
+          {paymentTypeField}
+        </div>
+      ) : null}
     </div>
   );
 }

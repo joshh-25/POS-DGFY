@@ -3,11 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
 const formatDiscountDisplay = (value) => {
     const amount = Number(value || 0);
-    return amount > 0 ? `PHP ${money(amount)}` : '-';
+    return amount > 0 ? `₱${money(amount)}` : '-';
 };
 const ORDER_SOURCE_LABELS = {
     in_store: 'In-Store',
@@ -128,9 +128,9 @@ export default function POSTransactionHistoryPanel({
                                         <td className="py-2 text-slate-600">
                                             {formatDiscountDisplay(row.discount_amount)}
                                         </td>
-                                        <td className="py-2 text-right text-slate-600">PHP {money(row.vatable_sales)}</td>
-                                        <td className="py-2 text-right text-slate-600">PHP {money(row.vat_amount)}</td>
-                                        <td className="py-2 text-right font-semibold text-slate-900">PHP {money(row.total_amount)}</td>
+                                        <td className="py-2 text-right text-slate-600">₱{money(row.vatable_sales)}</td>
+                                        <td className="py-2 text-right text-slate-600">₱{money(row.vat_amount)}</td>
+                                        <td className="py-2 text-right font-semibold text-slate-900">₱{money(row.total_amount)}</td>
                                         <td className="w-[5.75rem] py-2 text-center">
                                             <div className="flex justify-center gap-2">
                                                 <Button

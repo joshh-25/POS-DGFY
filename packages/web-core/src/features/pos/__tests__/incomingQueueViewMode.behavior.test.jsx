@@ -185,7 +185,7 @@ describe('Table columns', () => {
     expect(table.textContent).toContain('1234'); // PIN
     expect(table.textContent).toContain('cashier1'); // Cashier
     expect(table.textContent).toContain('Cash'); // Payment type
-    expect(table.textContent).toMatch(/PHP 100\.00 paid.*PHP 50\.00 due/); // Balance column
+    expect(table.textContent).toMatch(/₱100\.00 paid.*₱50\.00 due/); // Balance column
     expect(table.textContent).toContain('Delivery'); // Mode column label
     expect(table.textContent).toContain('Pending Dispatch'); // Delivery column status
     expect(table.textContent).toContain('123 Main St'); // Address column

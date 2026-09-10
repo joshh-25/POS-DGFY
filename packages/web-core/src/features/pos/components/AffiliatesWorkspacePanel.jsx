@@ -63,7 +63,7 @@ const resolveUserPermissionList = (user) => {
     }
 };
 
-const money = (centavos) => `PHP ${(Number(centavos || 0) / 100).toFixed(2)}`;
+const money = (centavos) => `₱${(Number(centavos || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const bpsToPercentString = (bps) => (bps === null || bps === undefined ? '' : String(Number(bps) / 100));
 const percentStringToBps = (value) => {
     const parsed = Number(value);
@@ -595,7 +595,7 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-xs font-semibold text-[#0F172A]">Minimum cashout (PHP)</label>
+                            <label className="text-xs font-semibold text-[#0F172A]">Minimum cashout (₱)</label>
                             <Input
                                 type="number"
                                 min="0"
@@ -666,7 +666,7 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                         {templateRuleDraft.rule_type !== 'BASE_PRICE' && (
                             <div className="space-y-1">
                                 <label className="text-xs font-semibold text-[#0F172A]">
-                                    {RATE_BASED_RULE_TYPES.has(templateRuleDraft.rule_type) ? 'Percentage (%)' : 'Amount (PHP)'}
+                                    {RATE_BASED_RULE_TYPES.has(templateRuleDraft.rule_type) ? 'Percentage (%)' : 'Amount (₱)'}
                                 </label>
                                 <Input
                                     type="number"
@@ -680,7 +680,7 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                             </div>
                         )}
                         <div className="space-y-1">
-                            <label className="text-xs font-semibold text-[#0F172A]">Preview using base price (PHP)</label>
+                            <label className="text-xs font-semibold text-[#0F172A]">Preview using base price (₱)</label>
                             <Input
                                 type="number"
                                 min="0"
@@ -896,7 +896,7 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                                                     {affiliateRuleDraft.rule_type !== 'BASE_PRICE' && (
                                                         <div className="space-y-1">
                                                             <label className="text-xs font-semibold text-[#0F172A]">
-                                                                {RATE_BASED_RULE_TYPES.has(affiliateRuleDraft.rule_type) ? 'Percentage (%)' : 'Amount (PHP)'}
+                                                                {RATE_BASED_RULE_TYPES.has(affiliateRuleDraft.rule_type) ? 'Percentage (%)' : 'Amount (₱)'}
                                                             </label>
                                                             <Input
                                                                 type="number"

@@ -215,7 +215,11 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         await row.update(updatePayload);
     };
 
-    const checkoutAsCashier = async (cashier, payload, { operatorSessionId = null } = {}) => {
+    const checkoutAsCashier = async (
+        cashier,
+        payload,
+        { operatorSessionId = null, quoteOnly = false, validateInventoryAvailability = false } = {}
+    ) => {
         const itemIds = [...new Set((payload.lines || []).map((line) => Number(line.item_id)))];
         for (const itemId of itemIds) {
             const item = await models.Item.findByPk(itemId);
@@ -231,6 +235,8 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             userId: cashier.user_id,
             user: cashier,
             operatorSessionId,
+            quoteOnly,
+            validateInventoryAvailability,
             payload: {
                 ...payload,
                 terminal_id: cashier.posTestTerminalId,
@@ -790,6 +796,42 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             }
         });
         expect(driftBatch).toBeNull();
+
+        const refreshedItem = await models.Item.findByPk(product.item_id);
+        expect(Number(refreshedItem.current_stock)).toBeCloseTo(1, 6);
+    });
+
+    it('blocks a split-payment quote before payment when FIFO ledger quantities are insufficient', async () => {
+        const cashier = await createCashier();
+        const product = await createFinishedGood({
+            fifo_enabled: true,
+            current_stock: 1,
+            unit_of_measure: 'L'
+        });
+
+        await createFifoBatch(product.item_id, {
+            location_id: cashier.posTestLocationId,
+            quantity: 0.2,
+            quantity_consumed: 0
+        });
+
+        const transactionCountBefore = await models.PosTransaction.count();
+        const movementCountBefore = await models.StockMovement.count();
+        const quoteResult = await checkoutAsCashier(cashier, {
+            idempotency_key: `idem-fifo-preflight-${crypto.randomUUID()}`,
+            payment_type: 'cash',
+            order_method: 'dine_in',
+            lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
+        }, {
+            quoteOnly: true,
+            validateInventoryAvailability: true
+        });
+
+        expect(quoteResult.success).toBe(false);
+        expect(quoteResult.error.code).toBe('INVENTORY_LEDGER_RECONCILIATION_REQUIRED');
+        expect(quoteResult.error.message).toContain('No payment was accepted');
+        expect(await models.PosTransaction.count()).toBe(transactionCountBefore);
+        expect(await models.StockMovement.count()).toBe(movementCountBefore);
 
         const refreshedItem = await models.Item.findByPk(product.item_id);
         expect(Number(refreshedItem.current_stock)).toBeCloseTo(1, 6);

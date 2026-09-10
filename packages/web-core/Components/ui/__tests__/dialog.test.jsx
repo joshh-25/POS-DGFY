@@ -36,6 +36,30 @@ function DialogOverlayHarness({ overlayClassName }) {
   )
 }
 
+function NestedDialogHarness() {
+  const [parentOpen, setParentOpen] = useState(false)
+  const [childOpen, setChildOpen] = useState(false)
+
+  return (
+    <>
+      <button type="button" onClick={() => setParentOpen(true)}>Open parent</button>
+      <Dialog open={parentOpen} onOpenChange={setParentOpen}>
+        <DialogContent>
+          <DialogTitle>Parent</DialogTitle>
+          <button type="button" onClick={() => setChildOpen(true)}>Open child</button>
+          <button type="button" onClick={() => setParentOpen(false)}>Close parent</button>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={childOpen} onOpenChange={setChildOpen}>
+        <DialogContent>
+          <DialogTitle>Child</DialogTitle>
+          <button type="button" onClick={() => setChildOpen(false)}>Close child</button>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 describe('Dialog focus management', () => {
   it('exposes modal semantics and focuses the requested initial field', () => {
     render(<DialogHarness />)
@@ -87,5 +111,35 @@ describe('Dialog focus management', () => {
     expect(overlay.className).toContain('bg-slate-950/60')
     expect(overlay.className).toContain('backdrop-blur-none')
     expect(overlay.className).not.toContain('backdrop-blur-sm')
+  })
+
+  it('keeps body scrolling locked until the final nested dialog closes', () => {
+    document.body.style.overflow = 'scroll'
+    render(<NestedDialogHarness />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open parent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open child' }))
+    expect(document.body.style.overflow).toBe('hidden')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close child' }))
+    expect(document.body.style.overflow).toBe('hidden')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close parent' }))
+    expect(document.body.style.overflow).toBe('scroll')
+  })
+
+  it('restores focus through nested dialogs and back to the original trigger', () => {
+    render(<NestedDialogHarness />)
+    const parentTrigger = screen.getByRole('button', { name: 'Open parent' })
+    parentTrigger.focus()
+    fireEvent.click(parentTrigger)
+
+    const childTrigger = screen.getByRole('button', { name: 'Open child' })
+    fireEvent.click(childTrigger)
+    fireEvent.click(screen.getByRole('button', { name: 'Close child' }))
+    expect(document.activeElement).toBe(childTrigger)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close parent' }))
+    expect(document.activeElement).toBe(parentTrigger)
   })
 })

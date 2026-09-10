@@ -128,8 +128,8 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).toContain('data-testid="pos-checkout-discount-summary"');
         expect(checkoutSource).not.toContain('Total Sales (before discount)');
         expect(checkoutSource).toContain('data-testid="pos-checkout-payment-summary"');
-        expect(checkoutSource).toContain('className="shrink-0 border-b border-slate-200 bg-white"');
-        expect(checkoutSource).toContain('rounded-none border-x-0 border-t-0 border-emerald-300');
+        expect(checkoutSource).toContain('className="shrink-0 border-b border-slate-200 bg-white px-4 py-3"');
+        expect(checkoutSource).toContain('rounded-xl border border-emerald-200 bg-emerald-50/70');
         expect(checkoutSource).not.toContain('pos-checkout-payment-summary-heading');
         expect(checkoutSource).toContain("selectedDiscountType === 'senior' || selectedDiscountType === 'pwd'");
         expect(checkoutSource).toContain('data-testid="pos-checkout-vat-removed"');
@@ -162,13 +162,15 @@ describe('POS split-payment UI contract', () => {
 
     it('keeps all payment methods in one horizontally scrollable row', () => {
         expect(checkoutSource).toContain('data-testid="pos-checkout-payment-method-buttons"');
-        expect(checkoutSource).toContain('className="grid min-w-[720px] grid-cols-6 gap-1.5"');
+        expect(checkoutSource).toContain("const CHECKOUT_SECONDARY_HOVER = 'hover:border-[#1A4E8D] hover:bg-[#EFF7FF]';");
+        expect(checkoutSource).not.toContain('hover:shadow-[0_3px_10px_rgba(15,23,42,0.12)]');
+        expect(checkoutSource).toContain('className="grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5"');
         expect(checkoutSource).not.toContain('grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6');
     });
 
     it('removes redundant checkout labels without removing the selection controls', () => {
         expect(checkoutCleanupSource).not.toContain('Select items and the quantity this discount should apply to.');
-        expect(checkoutCleanupSource).toContain('Select eligible items and discount quantities for this customer.');
+        expect(checkoutCleanupSource).toContain('Select only items and quantities for this Senior/PWD customer.');
         expect(checkoutCleanupSource).toContain('data-testid="pos-discount-select-all"');
         expect(checkoutCleanupSource).toContain('showHeading = !buttonLayout');
         expect(checkoutCleanupSource).toContain('Outstanding after sale');
@@ -190,12 +192,19 @@ describe('POS split-payment UI contract', () => {
 
     it('orders Order Details, Total Payment, then Apply Discount', () => {
         const orderSettingsIndex = checkoutSource.indexOf('data-testid="pos-checkout-order-settings"');
+        const paymentGroupIndex = checkoutSource.indexOf('data-testid="pos-checkout-payment-group"');
+        const paymentTypeIndex = checkoutSource.indexOf('aria-label="Payment Type"', paymentGroupIndex);
         const paymentEntryIndex = checkoutSource.indexOf('data-testid="pos-checkout-payment-entry"');
         const discountControlsIndex = checkoutSource.indexOf('aria-label="Apply Discount"');
 
         expect(orderSettingsIndex).toBeGreaterThan(-1);
-        expect(paymentEntryIndex).toBeGreaterThan(orderSettingsIndex);
+        expect(paymentGroupIndex).toBeGreaterThan(orderSettingsIndex);
+        expect(paymentTypeIndex).toBeGreaterThan(paymentGroupIndex);
+        expect(paymentEntryIndex).toBeGreaterThan(paymentTypeIndex);
         expect(discountControlsIndex).toBeGreaterThan(paymentEntryIndex);
+        expect(checkoutSource).toContain('content-start gap-0 overflow-x-hidden overflow-y-auto overscroll-contain');
+        expect(checkoutSource).toContain('space-y-0 py-[25px] lg:col-span-2" data-testid="pos-checkout-payment-group"');
+        expect(checkoutSource).toContain('space-y-1 py-2 lg:col-span-2" aria-label="Apply Discount"');
     });
 
     it('does not auto-focus Total Payment when checkout confirmation opens', () => {
@@ -245,14 +254,28 @@ describe('POS split-payment UI contract', () => {
 
     it('renders configurable payment rows with server-owned recovery', () => {
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-dialog"');
+        expect(splitDialogSource).toContain('max-w-2xl');
+        expect(splitDialogSource).toContain('overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x');
+        expect(splitDialogSource).toContain('grid w-max min-w-full grid-cols-5 gap-1.5 overflow-visible sm:w-full');
+        expect(splitDialogSource).toContain('h-8 min-w-[7.25rem] whitespace-nowrap');
+        expect(splitDialogSource).toContain('px-2 text-center text-[11px]');
+        expect(splitDialogSource).toContain('className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white text-sm font-black text-slate-900"');
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-allocations"');
         expect(splitDialogSource).not.toContain('data-testid="pos-quick-two-way-split"');
         expect(splitDialogSource).not.toContain('Quick two-way split');
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-add-form"');
         expect(splitDialogSource).toContain('data-testid="pos-payment-rows-form"');
+        expect(splitDialogSource).not.toContain('rounded-xl border border-blue-200 bg-blue-50/40 p-2 sm:space-y-3 sm:p-3');
         expect(splitDialogSource).toContain('data-testid="pos-payment-rows"');
+        expect(splitDialogSource).toContain('ref={paymentRowsScrollRef}');
+        expect(splitDialogSource).toContain('max-h-[18rem] space-y-4 overflow-y-auto overscroll-contain pr-1');
+        expect(splitDialogSource).toContain('className="grid grid-cols-1 gap-1.5"');
+        expect(splitDialogSource).toContain('const paymentRowsScrollRef = useRef(null);');
+        expect(splitDialogSource).toContain('scrollContainer.scrollTop = scrollContainer.scrollHeight');
         expect(splitDialogSource).toContain('data-testid={`pos-payment-method-${index + 1}`}');
         expect(splitDialogSource).toContain('data-testid={`pos-payment-amount-${index + 1}`}');
+        expect(splitDialogSource).toContain('data-testid={`pos-remove-payment-${index + 1}`}');
+        expect(splitDialogSource).toContain('<Trash2 className="h-4 w-4"');
         expect(splitDialogSource).not.toContain('data-testid={`pos-payment-received-${index + 1}`}');
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-summary"');
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-paid"');
@@ -262,6 +285,20 @@ describe('POS split-payment UI contract', () => {
         expect(splitDialogSource).toContain('data-testid="pos-complete-payment-rows"');
         expect(splitDialogSource).toContain('Record Payment');
         expect(splitDialogSource).toContain('Method of Payment');
+        expect(splitDialogSource).not.toContain('<select');
+        expect(splitDialogSource).toContain('role="group"');
+        expect(splitDialogSource).toContain('aria-pressed={active}');
+        expect(splitDialogSource).toContain('active && <Check className="h-3 w-3 shrink-0"');
+        expect(splitDialogSource).not.toContain('grid grid-cols-2 gap-1 sm:grid-cols-5');
+        expect(splitDialogSource).toContain("grid w-full min-w-0 ${paymentRows.length > 2 ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-1'} items-end gap-2");
+        expect(splitDialogSource).toContain('const methodColor = resolvePaymentMethodColorStyles(method.value);');
+        expect(splitDialogSource).toContain('${methodColor.selectClassName} ${methodColor.activeRingClassName} ring-2 ring-offset-1');
+        expect(splitDialogSource).toContain("const PAYMENT_METHOD_IDLE_CLASS_NAME = 'border-slate-300 bg-white text-[#0F172A] hover:border-[#1A4E8D] hover:bg-[#EFF7FF]';");
+        expect(splitDialogSource).toContain('PAYMENT_METHOD_IDLE_CLASS_NAME');
+        expect(splitDialogSource).toContain('className="min-w-0"');
+        expect(splitDialogSource).not.toContain('border-b border-slate-200 pb-3 last:border-b-0 last:pb-0');
+        expect(splitDialogSource).not.toContain('rounded-xl border border-blue-200 bg-white p-2');
+        expect(splitDialogSource).toContain('disabled={loading || unavailable}');
         expect(splitDialogSource).toContain('Amount');
         expect(splitDialogSource).toContain('Add Another Payment');
         expect(splitDialogSource).toContain('createDefaultPaymentRows');

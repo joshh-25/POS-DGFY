@@ -393,6 +393,80 @@ export const reconcileFifoLedgerOpeningBalance = async ({
 };
 
 /**
+ * Validates an outbound stock issue without changing stock, FIFO batches, or movements.
+ * Final checkout still performs the authoritative locked issue inside its transaction.
+ */
+export const validateStockIssueAvailability = async (movementData = {}, userId, transaction = null) => {
+  const Item = dbStore.get('Item');
+  const FIFOBatch = dbStore.get('FIFOBatch');
+  const ItemLocationStock = dbStore.get('ItemLocationStock');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+  const movementQuantity = toQuantity(movementData.quantity);
+  const resolvedLocation = await resolveMovementLocation({
+    requestedLocationId: movementData.location_id,
+    userId,
+    transaction,
+    lock: Boolean(transaction),
+    operationLabel: 'POS stock availability check'
+  });
+  const resolvedLocationId = resolvedLocation?.location_id || null;
+  const options = transaction ? { transaction, lock: transaction.LOCK.UPDATE } : {};
+  const item = await findVisibleItemById(Item, movementData.item_id, options);
+  if (!item) {
+    const error = new Error('Item not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (isStockExemptServiceItem(item)) {
+    return { item_id: item.item_id, location_id: resolvedLocationId, available: true };
+  }
+
+  const locationStock = resolvedLocationId
+    ? await ItemLocationStock.findOne({
+      where: { item_id: item.item_id, location_id: resolvedLocationId },
+      ...options
+    })
+    : null;
+  const currentLocationStock = resolvedLocationId
+    ? Number.parseFloat(locationStock?.quantity_on_hand || 0)
+    : Number.parseFloat(item.current_stock || 0);
+  if (currentLocationStock + 0.000001 < movementQuantity) {
+    const error = new Error(`Insufficient stock${resolvedLocationId ? ` at location ${resolvedLocationId}` : ''}`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (item.fifo_enabled) {
+    const batchWhere = {
+      item_id: item.item_id,
+      [Op.and]: [sequelize.where(sequelize.col('quantity'), Op.gt, sequelize.col('quantity_consumed'))]
+    };
+    if (resolvedLocationId) batchWhere.location_id = resolvedLocationId;
+    const batches = await FIFOBatch.findAll({ where: batchWhere, ...options });
+    const totalAvailableFromBatches = batches.reduce((sum, batch) => (
+      sum + Math.max(0, Number.parseFloat(batch.quantity || 0) - Number.parseFloat(batch.quantity_consumed || 0))
+    ), 0);
+    if (totalAvailableFromBatches + 0.000001 < movementQuantity) {
+      const stockDrift = Math.max(0, currentLocationStock - totalAvailableFromBatches);
+      if (stockDrift > INVENTORY_RECONCILIATION_TOLERANCE) {
+        const error = new Error(
+          `Inventory ledger reconciliation is required for "${item.name}"${resolvedLocationId ? ` at location ${resolvedLocationId}` : ''}. `
+          + `Recorded stock exceeds available FIFO batches by ${stockDrift.toFixed(4)} ${item.unit_of_measure}. No payment was accepted.`
+        );
+        error.statusCode = 409;
+        error.code = 'INVENTORY_LEDGER_RECONCILIATION_REQUIRED';
+        throw error;
+      }
+      const error = new Error(`Unable to fulfill quantity from FIFO batches for "${item.name}". Required: ${movementQuantity}, Shortfall: ${(movementQuantity - totalAvailableFromBatches).toFixed(4)} ${item.unit_of_measure}.`);
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  return { item_id: item.item_id, location_id: resolvedLocationId, available: true };
+};
+
+/**
  * Internal implementation detailing the lock and movement logic
  * (Moved from original createStockMovement)
  */

@@ -28,6 +28,8 @@ describe('POS Always Available contract', () => {
     expect(checkout).toContain('item?.is_best_seller === true');
     expect(checkout).toContain('isBestSeller={isBestSeller}');
     expect(checkout).toContain('flex min-w-0 items-start gap-1.5');
+    expect(checkout).toContain('className="flex min-w-0 flex-col items-start gap-1"');
+    expect(checkout).not.toContain('className="flex min-w-0 flex-wrap items-center gap-1"');
     expect(checkout).toContain('isBestSeller={false}');
     expect(checkout).not.toContain('pos_best_seller_item_ids');
     expect(workspace).toContain('pos_best_seller_settings');

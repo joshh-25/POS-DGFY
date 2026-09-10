@@ -4,6 +4,7 @@ import ServiceCatalogForm from '../../services/components/ServiceCatalogForm.jsx
 import { buildServiceCatalogPayload, createServiceCatalogFormValues } from '../../services/catalog/serviceCatalogFormModel.js';
 import { listServicesCatalog, updateServiceCatalogEntry } from '../../services/api/servicesApi.js';
 import { posToast as toast } from '../../../utils/iminRuntimeFeedback.js';
+import { acquireModalScrollLock } from '@/components/ui/dialog';
 
 export default function PosServiceCatalogEditModal({
   serviceItem,
@@ -16,6 +17,11 @@ export default function PosServiceCatalogEditModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open || !serviceItem) return undefined;
+    return acquireModalScrollLock();
+  }, [open, serviceItem]);
 
   useEffect(() => {
     if (!open || !serviceItem?.item_id) return undefined;
@@ -82,7 +88,7 @@ export default function PosServiceCatalogEditModal({
 
   return (
     <div className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:items-center sm:px-4 sm:py-6" role="dialog" aria-modal="true" aria-labelledby="pos-service-edit-title" onClick={closeModal}>
-      <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]" onClick={(event) => event.stopPropagation()}>
+      <div className="pos-items-modal-panel pos-items-modal-panel--auto flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="flex shrink-0 items-center justify-between gap-4 bg-[#0F172A] px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-teal-600 text-white"><CalendarDays className="h-5 w-5" aria-hidden="true" /></div>
@@ -94,7 +100,7 @@ export default function PosServiceCatalogEditModal({
           <button type="button" onClick={closeModal} disabled={busy} aria-label="Close Edit Service" className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-50"><X className="h-5 w-5" /></button>
         </div>
 
-        <div className="overflow-y-auto p-4 sm:p-6">
+        <div className="pos-items-modal-scroll-region flex-1 p-4 sm:p-6">
           {!isOnline ? (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <p className="font-bold">Service editing is available online only.</p>

@@ -65,7 +65,7 @@ describe('EmployeeCreditPaymentPanel', () => {
     await user.click(screen.getByRole('combobox', { name: /select employee/i }));
     const employeeMeta = await screen.findByText(/EMP-044/);
     expect(employeeMeta.textContent).toContain('Makati Branch');
-    expect(screen.getByText(/Outstanding: PHP/).textContent).toContain('80.00');
+    expect(screen.getByText(/Outstanding: ₱/).textContent).toContain('80.00');
     expect(screen.getByText('Open tab')).toBeTruthy();
 
     await user.click(screen.getByText('Branch Employee'));
@@ -87,13 +87,13 @@ describe('EmployeeCreditPaymentPanel', () => {
     expect(screen.getByText('EMP-044')).toBeTruthy();
     expect(screen.getByText('Employee ID')).toBeTruthy();
     expect(screen.getByText('Charge amount')).toBeTruthy();
-    expect(screen.getByText('PHP 125.00')).toBeTruthy();
+    expect(screen.getByText('₱125.00')).toBeTruthy();
     expect(screen.getByText('Branch')).toBeTruthy();
     expect(screen.getByText('Makati Branch')).toBeTruthy();
     expect(screen.getByText('Current outstanding')).toBeTruthy();
-    expect(screen.getByText('PHP 80.00')).toBeTruthy();
+    expect(screen.getByText('₱80.00')).toBeTruthy();
     expect(screen.getByText('Outstanding after sale')).toBeTruthy();
-    expect(screen.getByText('PHP 205.00')).toBeTruthy();
+    expect(screen.getByText('₱205.00')).toBeTruthy();
   });
 
   it('prefills the eligible Employee Credit account linked to the sale-level employee discount', async () => {

@@ -29,6 +29,7 @@ export const ItemRepositoryContract = Object.freeze([
     'listFolders',
     'createFolder',
     'updateFolder',
+    'reorderFolders',
     'deleteFolder'
 ]);
 

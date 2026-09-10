@@ -23,6 +23,7 @@ const baseSession = (overrides = {}) => ({
     total_amount: 1250,
     paid_amount: 0,
     remaining_amount: 1250,
+    snapshot: JSON.stringify({ lines: [{ item_id: 7, quantity: 2, sale_price: 625 }] }),
     ...overrides
 });
 
@@ -112,11 +113,43 @@ describe('POS split-payment engine', () => {
         expect(result.data.status).toBe('open');
         expect(result.data.remaining_amount).toBe(1250);
         expect(result.data.snapshot.lines[0]).not.toHaveProperty('manager_pin');
+        expect(quotePosCheckoutUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            quoteOnly: true,
+            validateInventoryAvailability: true
+        }));
         expect(harness.posRepository.createPosPaymentSession).toHaveBeenCalledWith(
             expect.objectContaining({ cashier_id: 15, shift_id: 41, terminal_id: 'COUNTER-01', location_id: 3 }),
             expect.objectContaining({ transaction: harness.transaction })
         );
         expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects FIFO ledger drift before creating a session or accepting allocations', async () => {
+        const harness = buildHarness();
+        const reconciliationError = Object.assign(
+            new Error('Inventory ledger reconciliation is required for "Chicken Tinola" at location 1. No payment was accepted.'),
+            { code: 'INVENTORY_LEDGER_RECONCILIATION_REQUIRED', statusCode: 409 }
+        );
+        const quoteWithInventoryFailure = jest.fn(async () => ({
+            success: false,
+            error: reconciliationError
+        }));
+        const useCase = buildCreatePosPaymentSessionUseCase({
+            posRepository: harness.posRepository,
+            quotePosCheckoutUseCase: quoteWithInventoryFailure
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            payload: basePayload(),
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('INVENTORY_LEDGER_RECONCILIATION_REQUIRED');
+        expect(result.error.message).toContain('No payment was accepted');
+        expect(harness.posRepository.createPosPaymentSession).not.toHaveBeenCalled();
+        expect(harness.posRepository.createPosPaymentAllocation).not.toHaveBeenCalled();
+        expect(harness.transaction.rollback).toHaveBeenCalledTimes(1);
     });
 
     it('records a server-validated relief cashier without transferring the register shift', async () => {
@@ -357,7 +390,7 @@ describe('POS split-payment engine', () => {
 
     it('records cash, calculates the remaining balance, and returns change for over-tendering', async () => {
         const harness = buildHarness({ session: baseSession() });
-        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository });
+        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
 
         const result = await runInTenant(harness.sequelize, () => useCase({
             paymentSessionId: 501,
@@ -375,9 +408,45 @@ describe('POS split-payment engine', () => {
         expect(result.data.session.remaining_amount).toBe(0);
     });
 
+    it('revalidates inventory before the first allocation and accepts no payment on FIFO drift', async () => {
+        const harness = buildHarness({ session: baseSession() });
+        const reconciliationError = Object.assign(
+            new Error('Inventory ledger reconciliation is required for "Chicken Tinola" at location 1. No payment was accepted.'),
+            { code: 'INVENTORY_LEDGER_RECONCILIATION_REQUIRED', statusCode: 409 }
+        );
+        const quoteWithInventoryFailure = jest.fn(async () => ({ success: false, error: reconciliationError }));
+        const useCase = buildAddPosPaymentAllocationUseCase({
+            posRepository: harness.posRepository,
+            quotePosCheckoutUseCase: quoteWithInventoryFailure
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            payload: {
+                idempotency_key: 'gcash-preflight-001',
+                shift_id: 41,
+                terminal_id: 'COUNTER-01',
+                payment_method: 'gcash',
+                amount: 500,
+                manual_payment_received: true
+            },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('INVENTORY_LEDGER_RECONCILIATION_REQUIRED');
+        expect(result.error.message).toContain('No payment was accepted');
+        expect(quoteWithInventoryFailure).toHaveBeenCalledWith(expect.objectContaining({
+            quoteOnly: true,
+            validateInventoryAvailability: true
+        }));
+        expect(harness.posRepository.createPosPaymentAllocation).not.toHaveBeenCalled();
+        expect(harness.transaction.rollback).toHaveBeenCalledTimes(1);
+    });
+
     it('keeps non-cash allocations pending until provider confirmation', async () => {
         const harness = buildHarness({ session: baseSession() });
-        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository });
+        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
 
         const result = await runInTenant(harness.sequelize, () => useCase({
             paymentSessionId: 501,
@@ -397,7 +466,7 @@ describe('POS split-payment engine', () => {
 
     it('records a cashier-confirmed store-owned GCash payment without PayMongo', async () => {
         const harness = buildHarness({ session: baseSession() });
-        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository });
+        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
 
         const result = await runInTenant(harness.sequelize, () => useCase({
             paymentSessionId: 501,
@@ -430,7 +499,7 @@ describe('POS split-payment engine', () => {
 
     it('rejects client-side non-cash success claims', async () => {
         const harness = buildHarness({ session: baseSession() });
-        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository });
+        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
 
         const result = await runInTenant(harness.sequelize, () => useCase({
             paymentSessionId: 501,
@@ -732,7 +801,7 @@ describe('POS split-payment engine', () => {
 
     it('rejects non-cash overpayment instead of silently treating it as change', async () => {
         const harness = buildHarness({ session: baseSession() });
-        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository });
+        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
 
         const result = await runInTenant(harness.sequelize, () => useCase({
             paymentSessionId: 501,

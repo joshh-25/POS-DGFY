@@ -18,7 +18,7 @@ export function ServicesWorkflowPanel({
   const isWalkIn = visitType === 'walk_in';
 
   return (
-    <div data-testid="services-workflow-panel" className="space-y-2">
+    <div data-testid="services-workflow-panel" className="space-y-4">
       <label className="text-[11px] text-slate-500 block font-medium">
         Visit Method
         <select
@@ -32,7 +32,7 @@ export function ServicesWorkflowPanel({
         </select>
       </label>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 gap-y-4">
         <label className="text-[11px] text-slate-500 block font-medium">
           Client Name
           <input
@@ -56,7 +56,7 @@ export function ServicesWorkflowPanel({
         </label>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 gap-y-4">
         <label className="text-[11px] text-slate-500 block font-medium">
           Provider / Employee
           <input

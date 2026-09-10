@@ -59,16 +59,36 @@ const matches = ({ itemId, attemptId, jobId }) => {
     && (!jobId || entry.jobId === jobId) ? entry : null;
 };
 
-export const stagePendingPosItemImagePreview = ({ itemId, file, url = '', jobId = null }) => {
+export const stagePendingPosItemImagePreview = ({
+  itemId,
+  file,
+  url = '',
+  jobId = null,
+  fileKeys = [],
+  galleryIntent = null
+}) => {
   syncScope();
   const key = String(itemId || '');
   if (!key || (!file && !url)) return null;
   const attemptId = `${++sequence}`;
   const previous = snapshot[key];
   const lease = file ? acquirePosImagePreview(file) : null;
+  const normalizedFileKeys = Array.from(new Set((Array.isArray(fileKeys) ? fileKeys : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)));
   replaceSnapshot({
     ...snapshot,
-    [key]: { url, file, jobId, attemptId, status: 'uploading', readyUrl: '', resultUrl: '' }
+    [key]: {
+      url,
+      file,
+      fileKeys: normalizedFileKeys,
+      galleryIntent,
+      jobId,
+      attemptId,
+      status: 'uploading',
+      readyUrl: '',
+      resultUrl: ''
+    }
   });
   resources.set(attemptId, { release: lease?.release, expiry: setTimeout(() => {
     clearPendingPosItemImagePreview({ itemId, attemptId });
@@ -81,13 +101,19 @@ export const stagePendingPosItemImagePreview = ({ itemId, file, url = '', jobId 
   return attemptId;
 };
 
-export const bindPendingPosItemImagePreviewJob = ({ itemId, attemptId, jobId }) => {
+export const bindPendingPosItemImagePreviewJob = ({ itemId, attemptId, jobId, fileKeys, galleryIntent }) => {
   const key = String(itemId || '');
   const entry = matches({ itemId, attemptId });
   if (!entry || !jobId) return;
   replaceSnapshot({
     ...snapshot,
-    [key]: { ...entry, jobId, status: 'processing' }
+    [key]: {
+      ...entry,
+      ...(Array.isArray(fileKeys) ? { fileKeys } : {}),
+      ...(galleryIntent ? { galleryIntent } : {}),
+      jobId,
+      status: 'processing'
+    }
   });
 };
 
@@ -98,6 +124,16 @@ export const markPendingPosItemImagePreviewFailed = ({ itemId, attemptId, jobId 
   replaceSnapshot({
     ...snapshot,
     [key]: { ...entry, status: 'failed' }
+  });
+};
+
+export const markPendingPosItemImagePreviewUncertain = ({ itemId, attemptId }) => {
+  const key = String(itemId || '');
+  const entry = matches({ itemId, attemptId });
+  if (!entry) return;
+  replaceSnapshot({
+    ...snapshot,
+    [key]: { ...entry, status: 'uncertain' }
   });
 };
 

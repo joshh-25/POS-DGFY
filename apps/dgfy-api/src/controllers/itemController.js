@@ -45,6 +45,7 @@ export {
   getFolders,
   createFolder,
   updateFolder,
+  reorderFolders,
   deleteFolder,
   listItemFolders,
   replaceItemFolders
@@ -93,6 +94,7 @@ import {
   getFolders,
   createFolder,
   updateFolder,
+  reorderFolders,
   deleteFolder,
   listItemFolders,
   replaceItemFolders
@@ -141,6 +143,7 @@ export default {
   getFolders,
   createFolder,
   updateFolder,
+  reorderFolders,
   deleteFolder,
   listItemFolders,
   replaceItemFolders

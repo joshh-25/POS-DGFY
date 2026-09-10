@@ -232,14 +232,14 @@ export default function POSCheckoutTerminal({
         catalogRefreshing,
         selectedFolderId,
         setSelectedFolderId,
-        mobileSearchExpanded,
-        setMobileSearchExpanded,
         posFoldersLoading,
         posFoldersError,
         search,
         setSearch,
         isTabletViewport,
+        isMobileViewport,
         catalogPage,
+        catalogPageSizeOverride,
         catalogGridLayout,
         catalogSectionRef,
         catalogViewportRef,
@@ -250,6 +250,7 @@ export default function POSCheckoutTerminal({
         catalogSwipePointerIdRef,
         availableCategories,
         catalogPageSize,
+        catalogPageSizeOptions,
         catalogForDisplay,
         totalCatalogPages,
         visibleCatalogItems,
@@ -258,6 +259,7 @@ export default function POSCheckoutTerminal({
         loadPosFolders,
         saveCatalogSnapshot,
         handleCatalogPageChange,
+        handleCatalogPageSizeChange,
         handleCatalogSwipeStart,
         handleCatalogSwipeEnd,
         handleFolderStripPointerDown,
@@ -456,18 +458,22 @@ export default function POSCheckoutTerminal({
         splitPaymentSession
     });
     const catalogCardClassName = IS_DGFY_POS_SURFACE && isTabletViewport
-        ? 'group flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-        : isTabletViewport
-            ? 'group flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-            : 'group flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:w-full max-sm:flex-row max-sm:p-0 md:p-1.5';
+        ? 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
+        : IS_DGFY_POS_SURFACE
+            ? 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-1 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:w-full max-sm:flex-row max-sm:px-2 max-sm:pt-2 max-sm:pb-2 sm:grid sm:grid-rows-[minmax(0,1fr)_auto]'
+            : isTabletViewport
+                ? 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
+                : 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:w-full max-sm:flex-row max-sm:p-2 md:p-1.5';
     const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
+        : IS_DGFY_POS_SURFACE
+            ? 'flex h-full w-full shrink-0 items-center justify-center overflow-hidden rounded-md max-sm:h-full max-sm:w-full max-sm:flex-none max-sm:self-start'
         : isTabletViewport
-            ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
-            : 'flex h-24 w-full shrink-0 items-center justify-center overflow-hidden rounded-md max-sm:h-full max-sm:w-24 max-sm:self-stretch max-sm:rounded-r-none max-sm:rounded-l-[calc(0.5rem-1px)] md:h-16 xl:h-24';
+                ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
+                : 'flex h-24 w-full shrink-0 items-center justify-center overflow-hidden rounded-md max-sm:h-full max-sm:w-full max-sm:flex-none max-sm:self-start md:h-16 xl:h-24';
     const folderButtonClassName = isTabletViewport
-        ? 'inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-extrabold transition-all shadow-xs'
-        : 'inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-[12px] font-extrabold transition-all shadow-xs';
+        ? 'inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-extrabold transition-all'
+        : 'inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-[12px] text-[12px] font-extrabold transition-all';
     const setupMeta = terminalMeta && typeof terminalMeta === 'object' ? terminalMeta : {};
     const setupCurrency = String(setupMeta.pettyCashSymbol || 'PHP').trim() || 'PHP';
     const setupReadiness = setupMeta.locationBindingReadiness && typeof setupMeta.locationBindingReadiness === 'object'
@@ -1233,6 +1239,8 @@ export default function POSCheckoutTerminal({
         catalogLoading,
         catalogPage,
         catalogPageSize,
+        catalogPageSizeOverride,
+        catalogPageSizeOptions,
         catalogPaneHeightClassName,
         catalogRefreshing,
         catalogSectionRef,
@@ -1292,6 +1300,7 @@ export default function POSCheckoutTerminal({
         handleCartQtyButtonPointerMove,
         handleCartQtyButtonPointerUp,
         handleCatalogPageChange,
+        handleCatalogPageSizeChange,
         handleCatalogSwipeEnd,
         handleCatalogSwipeStart,
         handleCheckout,
@@ -1346,6 +1355,7 @@ export default function POSCheckoutTerminal({
         isOrderPrinterAvailable,
         isPrinterAvailable,
         isTabletViewport,
+        isMobileViewport,
         itemDiscountTotals,
         itemOptionsGlobalDiscount,
         itemOptionsLine,
@@ -1359,7 +1369,6 @@ export default function POSCheckoutTerminal({
         lowStockDisplayThreshold,
         manualSyncPolicy,
         mobileCheckoutPanelOpen,
-        mobileSearchExpanded,
         modalOnly,
         netItemsTotal,
         normalizedTerminalId,
@@ -1445,7 +1454,6 @@ export default function POSCheckoutTerminal({
         setItemOptionsLineKey,
         setKitchenNotes,
         setMobileCheckoutPanelOpen,
-        setMobileSearchExpanded,
         setOrderMethod,
         setParkSaleNameDialogOpen,
         setParkSaleNameInput,

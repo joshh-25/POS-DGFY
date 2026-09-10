@@ -23,6 +23,52 @@ const baseItem = (overrides = {}) => ({
 });
 
 describe('getFoodBeverageStorefrontViewModel — secondary-category grouping fan-out', () => {
+  it('orders category sections by the shared catalog sort order', () => {
+    const result = getFoodBeverageStorefrontViewModel([
+      baseItem({ item_id: 1, folder_id: 100, folder_name: 'Mains', folder_sort_order: 8 }),
+      baseItem({ item_id: 2, folder_id: 200, folder_name: 'Drinks', folder_sort_order: 2 }),
+      baseItem({ item_id: 3, folder_id: 300, folder_name: 'Desserts', folder_sort_order: 5 })
+    ]);
+    expect(result.menuSections.map((section) => section.sectionLabel)).toEqual(['Drinks', 'Desserts', 'Mains']);
+  });
+
+  it('keeps a secondary-only item available in All while using only its valid secondary category', () => {
+    const result = getFoodBeverageStorefrontViewModel([
+      baseItem({
+        item_id: 10,
+        folder_id: null,
+        folder_name: 'Legacy Category',
+        secondary_categories: [
+          { folder_id: 200, folder_name: 'Mains', sort_order: 4 },
+          { folder_id: 0, folder_name: 'Invalid ID', sort_order: 1 },
+          { folder_id: 'not-a-number', folder_name: 'Invalid ID', sort_order: 2 },
+          { folder_id: 201, folder_name: '   ', sort_order: 3 }
+        ]
+      })
+    ]);
+
+    expect(result.menuItems.map((item) => item.item_id)).toEqual([10]);
+    expect(result.totalItems).toBe(1);
+    expect(result.menuSections).toHaveLength(1);
+    expect(result.menuSections[0]).toMatchObject({
+      sectionIdentity: 'folder:200',
+      sectionLabel: 'Mains',
+      sortOrder: 4
+    });
+    expect(result.menuSections[0].items.map((item) => item.item_id)).toEqual([10]);
+  });
+
+  it('keeps every item exactly once in All when primary and secondary memberships coexist', () => {
+    const result = getFoodBeverageStorefrontViewModel([
+      baseItem({ item_id: 11, folder_id: 100, folder_name: 'Mains', secondary_categories: [{ folder_id: 200, folder_name: 'Drinks' }] }),
+      baseItem({ item_id: 12, folder_id: null, folder_name: '', secondary_categories: [{ folder_id: 201, folder_name: 'Desserts' }] }),
+      baseItem({ item_id: 13, folder_id: 101, folder_name: 'Mains' })
+    ]);
+
+    expect(result.menuItems.map((item) => item.item_id)).toEqual([11, 12, 13]);
+    expect(new Set(result.menuItems.map((item) => item.item_id)).size).toBe(3);
+  });
+
   it('renders a primary-only item exactly once, in its primary section', () => {
     const result = getFoodBeverageStorefrontViewModel([
       baseItem({ item_id: 1, folder_id: 100, folder_name: 'Coffee & Tea' })
@@ -179,17 +225,14 @@ describe('getFoodBeverageStorefrontViewModel — secondary-category grouping fan
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it('falls back to name-based identity only for a genuinely ID-less section', () => {
-    // No folder_id at all -- the section resolved from a heuristic fallback field, not a real
-    // primary folder. Two such items whose resolved label matches still group together, unchanged
-    // from pre-Phase-289 behavior.
+  it('keeps unassigned items under All without creating an inferred category', () => {
     const result = getFoodBeverageStorefrontViewModel([
-      baseItem({ item_id: 8, folder_id: null, folder_name: '', item_group_name: 'Chef Specials' }),
-      baseItem({ item_id: 9, folder_id: null, folder_name: '', item_group_name: 'Chef Specials' })
+      baseItem({ item_id: 8, folder_id: null, folder_name: 'Masu Cafe', item_group_name: 'Chef Specials' }),
+      baseItem({ item_id: 9, folder_id: null, folder_name: '', product_type: 'main course' })
     ]);
 
-    expect(result.menuSections).toHaveLength(1);
-    expect(result.menuSections[0].sectionIdentity).toBe('name:chef_specials');
-    expect(result.menuSections[0].items.map((item) => item.item_id).sort()).toEqual([8, 9]);
+    expect(result.menuItems.map((item) => item.item_id)).toEqual([8, 9]);
+    expect(result.totalItems).toBe(2);
+    expect(result.menuSections).toEqual([]);
   });
 });

@@ -4,16 +4,18 @@ import { createPortal } from 'react-dom';
 import {
     AlertCircle,
     CarTaxiFront,
+    ChevronDown,
     ChevronLeft,
     ChevronRight,
     Delete,
     Folder,
-    Lock,
     Minus,
     Plus,
     Percent,
     Printer,
+    ScanLine,
     Search,
+    ShoppingCart,
     X,
     Eye,
     Trash2,
@@ -38,6 +40,7 @@ import {
 } from '../services/posPendingItemImagePreviewStore.js';
 import { getCatalogStockColorClassName, isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
+import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import PosItemImage from './PosItemImage.jsx';
 import { formatQuantity, getCartLineSubtotal, getLineKey, money, resolvePosCatalogImageSources, sanitizeQuantityInput, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
@@ -59,16 +62,189 @@ const POSDiscountWorkspace = lazyWithChunkRetry(() => import('./POSDiscountWorks
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const CatalogItemBadges = ({ isServiceItem = false, isAlwaysAvailable = false, isBestSeller = false, overlay = false }) => {
     if (!isServiceItem && !isAlwaysAvailable && !isBestSeller) return null;
-    const sharedClassName = overlay ? 'border-white/30 bg-slate-950/55 text-white' : 'border-blue-200 bg-blue-50 text-[#1A4E8D]';
-    const bestSellerClassName = overlay ? 'border-amber-200/70 bg-amber-500/85 text-white' : 'border-amber-200 bg-amber-50 text-amber-700';
+    const sharedClassName = overlay ? 'border-slate-950/20 bg-[#0F274D] text-white' : 'border-blue-200 bg-blue-50 text-[#1A4E8D]';
+    const bestSellerClassName = overlay ? 'border-orange-600/20 bg-[#F97316] text-white' : 'border-amber-200 bg-amber-50 text-amber-700';
     return (
-        <div data-pos-catalog-badges="true" className="flex min-w-0 flex-wrap items-center gap-1">
-            {isServiceItem && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${sharedClassName}`}>Service</span>}
-            {isAlwaysAvailable && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${sharedClassName}`}>Always available</span>}
-            {isBestSeller && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${bestSellerClassName}`}>Best seller</span>}
+        <div data-pos-catalog-badges="true" className="flex min-w-0 flex-col items-start gap-1">
+            {isServiceItem && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide ${sharedClassName}`}>Service</span>}
+            {isAlwaysAvailable && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide ${sharedClassName}`}>Always available</span>}
+            {isBestSeller && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide ${bestSellerClassName}`}>Best seller</span>}
         </div>
     );
 };
+
+const CatalogPageSizeControl = React.memo(({ value = null, options = [], onChange = () => {}, showPageSuffix = false }) => {
+    const [open, setOpen] = React.useState(false);
+    const controlRef = React.useRef(null);
+    const selectedValue = value ?? 'auto';
+    const selectedLabel = selectedValue === 'auto' ? 'Auto' : String(selectedValue);
+
+    React.useEffect(() => {
+        if (!open) return undefined;
+
+        const handleOutsidePointerDown = (event) => {
+            if (!controlRef.current?.contains(event.target)) setOpen(false);
+        };
+        const handleEscape = (event) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+
+        document.addEventListener('pointerdown', handleOutsidePointerDown);
+        document.addEventListener('keydown', handleEscape);
+        return () => {
+            document.removeEventListener('pointerdown', handleOutsidePointerDown);
+            document.removeEventListener('keydown', handleEscape);
+        };
+    }, [open]);
+
+    const choosePageSize = (nextValue) => {
+        onChange(nextValue);
+        setOpen(false);
+    };
+
+    return (
+        <div ref={controlRef} className="relative z-20">
+            <button
+                type="button"
+                onClick={() => setOpen((current) => !current)}
+                aria-label={`Products per page, currently ${selectedLabel}`}
+                aria-haspopup="listbox"
+                aria-expanded={open}
+                className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-[11px] font-medium leading-none text-slate-900 outline-none transition hover:border-slate-400 hover:bg-white hover:text-slate-900 focus-visible:ring-slate-300 ${showPageSuffix ? 'min-w-[6.25rem]' : 'min-w-[4.25rem]'}`}
+            >
+                <span>{selectedLabel}</span>
+                {showPageSuffix && <span className="text-slate-500">/ page</span>}
+                <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </button>
+            {open && (
+                <div
+                    role="listbox"
+                    aria-label="Products per page options"
+                    className="absolute bottom-[calc(100%+0.25rem)] right-0 min-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-xl shadow-slate-950/15"
+                >
+                    <button
+                        type="button"
+                        role="option"
+                        aria-selected={selectedValue === 'auto'}
+                        onClick={() => choosePageSize('auto')}
+                        className={`flex h-7 w-full items-center justify-center rounded-md px-2 text-center text-[11px] font-medium leading-none transition ${selectedValue === 'auto' ? 'bg-blue-600 text-white' : 'text-slate-800 hover:bg-blue-50'}`}
+                    >
+                        Auto
+                    </button>
+                    {options.map((pageSize) => (
+                        <button
+                            key={pageSize}
+                            type="button"
+                            role="option"
+                            aria-selected={selectedValue === pageSize}
+                            onClick={() => choosePageSize(pageSize)}
+                            className={`flex h-7 w-full items-center justify-center rounded-md px-2 text-center text-[11px] font-medium leading-none transition ${selectedValue === pageSize ? 'bg-blue-600 text-white' : 'text-slate-800 hover:bg-blue-50'}`}
+                        >
+                            {pageSize}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+});
+CatalogPageSizeControl.displayName = 'CatalogPageSizeControl';
+
+const CatalogPageJumpControl = React.memo(({ currentPage = 1, totalPages = 1, onChange = () => {} }) => {
+    const [inputValue, setInputValue] = React.useState(String(currentPage));
+    const safeTotalPages = Math.max(1, Number(totalPages) || 1);
+
+    React.useEffect(() => {
+        setInputValue(String(currentPage));
+    }, [currentPage]);
+
+    const commitPageJump = () => {
+        const requestedPage = Number.parseInt(inputValue, 10);
+        if (!Number.isFinite(requestedPage)) {
+            setInputValue(String(currentPage));
+            return;
+        }
+
+        const nextPage = Math.min(safeTotalPages, Math.max(1, requestedPage));
+        setInputValue(String(nextPage));
+        onChange(nextPage);
+    };
+
+    return (
+        <form
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700"
+            onSubmit={(event) => {
+                event.preventDefault();
+                commitPageJump();
+            }}
+            onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) commitPageJump();
+            }}
+        >
+            <label htmlFor="pos-catalog-page-jump" className="whitespace-nowrap">Go to</label>
+            <input
+                id="pos-catalog-page-jump"
+                type="text"
+                inputMode="numeric"
+                 pattern="[0-9]*"
+                 value={inputValue}
+                 onChange={(event) => setInputValue(event.target.value.replace(/[^0-9]/g, ''))}
+                 aria-label="Go to catalog page"
+                className="h-8 w-14 rounded-lg border border-slate-300 bg-white px-2 text-center text-[11px] font-semibold text-slate-900 outline-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-blue-100"
+            />
+            <span className="whitespace-nowrap">Page</span>
+        </form>
+    );
+});
+CatalogPageJumpControl.displayName = 'CatalogPageJumpControl';
+
+const getCatalogPageNumbers = (currentPage, totalPages) => {
+    const safeTotalPages = Math.max(1, Number(totalPages) || 1);
+    const safeCurrentPage = Math.min(
+        safeTotalPages,
+        Math.max(1, Number(currentPage) || 1)
+    );
+    const maxVisiblePages = 5;
+    const lastVisibleStart = Math.max(1, safeTotalPages - maxVisiblePages + 1);
+    const startPage = Math.min(
+        Math.max(1, safeCurrentPage - Math.floor(maxVisiblePages / 2)),
+        lastVisibleStart
+    );
+    const endPage = Math.min(safeTotalPages, startPage + maxVisiblePages - 1);
+
+    return Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
+};
+
+const PosImagelessCatalogName = React.memo(({ name = '' }) => {
+    const labelRef = React.useRef(null);
+    const [isWrapped, setIsWrapped] = React.useState(false);
+
+    React.useLayoutEffect(() => {
+        const label = labelRef.current;
+        if (!label) return undefined;
+
+        const measureWrapping = () => {
+            const lineHeight = Number.parseFloat(window.getComputedStyle(label).lineHeight) || 14;
+            setIsWrapped(label.getBoundingClientRect().height > lineHeight * 1.5);
+        };
+
+        measureWrapping();
+        if (typeof ResizeObserver === 'undefined') return undefined;
+        const observer = new ResizeObserver(measureWrapping);
+        observer.observe(label);
+        return () => observer.disconnect();
+    }, [name]);
+
+    return (
+        <p
+            ref={labelRef}
+            className={`min-w-0 max-w-full break-words line-clamp-2 pt-[7px] text-center text-[12px] font-black leading-tight text-white drop-shadow-sm ${isWrapped ? 'translate-y-[5px]' : ''}`}
+        >
+            {name}
+        </p>
+    );
+});
+PosImagelessCatalogName.displayName = 'PosImagelessCatalogName';
 
 const renderViewModeControls = ({ sectionTitle = '', action = null } = {}) => {
     if (!sectionTitle && !action) return null;
@@ -118,6 +294,8 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         catalogLoading,
         catalogPage,
         catalogPageSize,
+        catalogPageSizeOverride,
+        catalogPageSizeOptions,
         catalogPaneHeightClassName,
         catalogRefreshing,
         catalogSectionRef,
@@ -159,6 +337,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         handleCartQtyButtonPointerMove,
         handleCartQtyButtonPointerUp,
         handleCatalogPageChange,
+        handleCatalogPageSizeChange,
         handleCatalogSwipeEnd,
         handleCatalogSwipeStart,
         handleCompletePreparedSplitPayment,
@@ -199,6 +378,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         historyStatus,
         imagePreview,
         isEmployeeCreditPayment,
+        isMobileViewport,
         isMsmeMode,
         isOrderPrinterAvailable,
         isPrinterAvailable,
@@ -215,7 +395,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         lowStockDisplayThreshold,
         manualSyncPolicy,
         mobileCheckoutPanelOpen,
-        mobileSearchExpanded,
         modalOnly,
         netItemsTotal,
         normalizedTerminalId,
@@ -279,7 +458,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setImagePreview,
         setItemOptionsLineKey,
         setMobileCheckoutPanelOpen,
-        setMobileSearchExpanded,
         setParkSaleNameDialogOpen,
         setParkSaleNameInput,
         setParkedSalesDialogOpen,
@@ -292,7 +470,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setServiceOptionsModal,
         setSetupSnapshotModalOpen,
         setSplitPaymentCancelModalOpen,
-        setupCurrency,
         setupMeta,
         setupSnapshotModalOpen,
         shellClassName,
@@ -317,9 +494,12 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         voidingTransactionId
     } = viewModel;
     const { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow } = historyRefundWorkflow || {};
+    const catalogPageNumbers = getCatalogPageNumbers(catalogPage, totalCatalogPages);
+    const hasManyCatalogPages = totalCatalogPages > 5;
     const handleCloseDiscountModal = () => {
         closeDiscountModal();
     };
+    const cashDrawerAvailable = posHardware?.supportsCapability?.(POS_HARDWARE_CAPABILITIES.OPEN_DRAWER) === true;
 
 
 return (
@@ -406,36 +586,21 @@ return (
                 <div key="view-checkout" className="h-full min-h-0 overflow-hidden catalog-slide-enter">
                 <>
                 <div className={checkoutGridClassName}>
-            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
+            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 pb-0 shadow-sm shadow-slate-200/70 sm:p-6 sm:pb-0 ${IS_DGFY_POS_SURFACE ? 'max-sm:rounded-none max-sm:border-0 max-sm:p-2 max-sm:shadow-none' : ''} ${catalogPaneHeightClassName} flex min-h-0 flex-col overflow-hidden`}>
                     {isTabletViewport && renderViewModeControls()}
                     <div ref={catalogViewportRef} className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
-                <div data-testid="pos-catalog-controls" className={`${isTabletViewport ? 'mb-3 gap-2.5' : 'mb-5 gap-4'} flex min-w-0 shrink-0 flex-col ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
-                    <div className={`${isTabletViewport ? 'flex-row items-center' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3 max-sm:relative`}>
-                        {/* Mobile: collapsed search icon button */}
-                        {!isTabletViewport && !(mobileSearchExpanded || search) && (
-                            <button
-                                type="button"
-                                aria-label="Search POS-visible items"
-                                onClick={() => setMobileSearchExpanded(true)}
-                                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white shadow-sm transition hover:bg-slate-50 sm:hidden"
-                            >
-                                <Search size={20} className="text-[#1A4E8D]" />
-                            </button>
-                        )}
-                        {/* Mobile: expanded full-width search with correction icon inside */}
-                        {!isTabletViewport && (mobileSearchExpanded || Boolean(search)) && (
-                            <div className="absolute inset-0 z-10 flex items-center sm:hidden">
+                <div data-testid="pos-catalog-controls" className={`${isTabletViewport ? 'mb-4 max-sm:mb-[18px] sm:mb-6 gap-2.5' : 'mb-4 max-sm:mb-[18px] sm:mb-6 gap-4'} flex min-w-0 shrink-0 flex-col max-sm:pt-[10px] ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
+                    <div className={`${isTabletViewport ? 'flex-row items-center' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3 max-sm:relative max-sm:gap-2.5`}>
+                        {/* Mobile: keep the search field visible by default. */}
+                        {!isTabletViewport && (
+                            <div className="relative flex min-w-0 flex-1 items-center sm:hidden">
                                 <Search size={16} className="pointer-events-none absolute left-3 text-[#1A4E8D]" />
                                 <input
                                     type="text"
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
                                     placeholder="Search POS-visible items..."
-                                    autoFocus
-                                    onBlur={() => {
-                                        if (!search) setMobileSearchExpanded(false);
-                                    }}
-                                    className="h-11 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-10 text-[13px] text-[#0F172A] shadow-sm placeholder:text-[#64748B] transition focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                                    className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-10 text-[13px] text-[#0F172A] shadow-sm placeholder:text-[#64748B] transition focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
                                 />
                                 <button
                                     type="button"
@@ -443,7 +608,6 @@ return (
                                     onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => {
                                         setSearch('');
-                                        setMobileSearchExpanded(false);
                                     }}
                                     className={`absolute right-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition ${search ? 'hover:bg-slate-100' : ''}`}
                                 >
@@ -504,17 +668,20 @@ return (
                                 <button
                                     type="button"
                                     disabled
-                                    className="flex h-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-bold text-slate-400 max-sm:flex-1 max-sm:min-w-0"
-                                >
-                                    Scan
-                                </button>
+                                        aria-label="Scan barcode"
+                                        title="Scan barcode"
+                                        className="flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-bold text-slate-400 max-sm:h-10 max-sm:w-10 max-sm:flex-none max-sm:min-w-0 max-sm:gap-0 max-sm:px-0"
+                                    >
+                                        <ScanLine className="hidden h-5 w-5 max-sm:block" />
+                                        <span className="max-sm:hidden">Scan</span>
+                                    </button>
                             )}>
                                 <POSBarcodeScanner
                                     sessionLocked={sessionLocked}
                                     selectedLocationId={selectedLocationId}
                                     terminalId={normalizedTerminalId}
                                     onAddToCart={addToCart}
-                                    className="max-sm:flex-1 max-sm:min-w-0"
+                                    className="max-sm:h-10 max-sm:w-10 max-sm:flex-none max-sm:min-w-0"
                                 />
                             </Suspense>
                             </>
@@ -523,7 +690,7 @@ return (
                 </div>
                 <div
                     ref={folderStripRef}
-                    className="mb-4 flex cursor-grab items-center gap-2 overflow-x-auto pb-1 pt-0.5 dgfy-pos-scrollbar-hidden"
+                    className="mb-0 flex cursor-grab items-center gap-2 overflow-x-auto px-1 py-1 dgfy-pos-scrollbar-hidden"
                     onPointerDown={handleFolderStripPointerDown}
                     onPointerMove={handleFolderStripPointerMove}
                     onPointerUp={handleFolderStripPointerEnd}
@@ -582,7 +749,7 @@ return (
                 <div
                     ref={catalogCapacityViewportRef}
                     data-testid="pos-catalog-scroll"
-                    className="dgfy-pos-scroll-region relative mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y select-none"
+                    className="dgfy-pos-scroll-region dgfy-pos-catalog-scroll relative mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pt-4 pb-1 max-sm:pt-[18px] sm:pt-6 touch-pan-y select-none"
                     onTouchStart={(event) => {
                         const touch = event.touches?.[0];
                         if (!touch) return;
@@ -647,12 +814,21 @@ return (
                                 : resolvedImageSources;
                             const { src: posImageSrc } = imageSources;
                             const hasImage = Boolean(posImageSrc);
+                            const catalogCardMediaClassName = `${IS_DGFY_POS_SURFACE ? 'mb-0' : 'mb-1'} ${IS_DGFY_POS_SURFACE && !isTabletViewport ? 'sm:flex sm:min-h-0' : ''} max-sm:mb-0 max-sm:h-full max-sm:min-h-0 ${IS_DGFY_POS_SURFACE && !isTabletViewport ? 'max-sm:w-[128px]' : 'max-sm:w-auto'} max-sm:min-w-0 max-sm:flex-none max-sm:shrink-0 max-sm:self-stretch ${IS_DGFY_POS_SURFACE && !isTabletViewport ? '' : 'max-sm:aspect-square'}`;
+                            const catalogCardImageFrameClassName = `${catalogCardImageWrapClassName} relative ${IS_DGFY_POS_SURFACE && !isTabletViewport ? '' : 'max-sm:aspect-square'} max-sm:box-border max-sm:h-full max-sm:w-full max-sm:flex-none`;
                             const cartQuantityForItem = safeCart
                                 .filter((line) => line.item_id === item.item_id)
                                 .reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
                             const isLoadingServiceOptions = serviceOptionsLoadingItemId === Number(item.item_id);
                             const stockColorClassName = getCatalogStockColorClassName(item, lowStockDisplayThreshold);
+                            const catalogCardCaptionClassName = !hasImage
+                                ? (isTabletViewport
+                                    ? 'flex min-w-0 min-h-[2.5rem] flex-col items-start justify-center p-1 text-left text-[10px] leading-tight'
+                                    : 'flex min-w-0 min-h-[2.5rem] flex-col items-start justify-center p-1 text-left text-[12px] leading-tight')
+                                : (isTabletViewport
+                                    ? 'flex min-w-0 flex-col items-start gap-0 p-1 text-[10px] leading-tight'
+                                    : 'flex min-w-0 flex-col items-start gap-0.5 p-1 min-h-[2.5rem] text-[12px] leading-tight');
                             return (
                                 <div
                                     key={item.item_id}
@@ -683,18 +859,26 @@ return (
                                             : 'cursor-pointer hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md'
                                     }`}
                                 >
-                                <div className="mb-1 max-sm:mb-0 max-sm:self-stretch">
+                                <div
+                                    className={catalogCardMediaClassName}
+                                    style={IS_DGFY_POS_SURFACE && isMobileViewport && !isTabletViewport
+                                        ? { flex: '0 0 128px', width: '128px' }
+                                        : undefined}
+                                >
                                     <div
-                                        className={`${catalogCardImageWrapClassName} relative`}
+                                        className={catalogCardImageFrameClassName}
+                                        style={IS_DGFY_POS_SURFACE && isMobileViewport && !isTabletViewport
+                                            ? { width: '128px', maxWidth: 'none', aspectRatio: 'auto' }
+                                            : undefined}
                                         aria-hidden="true"
                                     >
                                         {hasImage ? (
                                             <PosItemImage
                                                 item={item}
                                                 alt={`${item.name} menu`}
-                                                loading={itemIndex < 4 ? 'eager' : 'lazy'}
+                                                loading={isMobileViewport || itemIndex < 4 ? 'eager' : 'lazy'}
                                                 decoding="async"
-                                                fetchpriority={itemIndex < 4 ? 'high' : 'auto'}
+                                                fetchpriority={isMobileViewport || itemIndex < 4 ? 'high' : 'auto'}
                                                 width={144}
                                                 height={144}
                                                 sizes="144px"
@@ -730,28 +914,29 @@ return (
                                                         overlay
                                                     />
                                                 </div>
-                                                <div className={`absolute inset-0 flex items-center justify-center px-2 py-1.5 ${hasImage ? 'bg-transparent' : 'bg-[#1A4E8D]/85'}`}>
-                                                    <p className="min-w-0 text-center text-[14px] font-black leading-tight text-white line-clamp-2 drop-shadow-sm">
-                                                        {item.name}
-                                                    </p>
-                                                </div>
+                                                {!hasImage && (
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-[#1A4E8D]/85 px-2 py-1.5 max-sm:hidden">
+                                                        <PosImagelessCatalogName name={item.name} />
+                                                    </div>
+                                                )}
                                             </>
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex flex-1 min-w-0 flex-col justify-between gap-1.5 p-2.5 sm:hidden">
-                                    {!IS_DGFY_POS_SURFACE && (
-                                        <p className={`min-w-0 text-[13px] font-black leading-tight ${stockColorClassName}`}>{item.name}</p>
-                                    )}
-                                    <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
-                                        <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                                            <CatalogItemBadges
-                                                isServiceItem={isServiceItem}
-                                                isAlwaysAvailable={isAlwaysAvailable}
-                                                isBestSeller={isBestSeller}
-                                            />
-                                            <span className="font-black text-[#1A4E8D] whitespace-nowrap text-[10.5px]">
-                                                {Number(item.default_sale_price || 0) > 0 ? `PHP ${money(item.default_sale_price)}` : 'Not set'}
+                                <div className="relative flex flex-1 min-w-0 flex-col gap-1 p-1.5 sm:hidden">
+                                    <p className={`min-w-0 max-w-full shrink-0 line-clamp-2 text-[18px] font-black leading-tight ${IS_DGFY_POS_SURFACE ? 'text-[#0F172A]' : stockColorClassName}`}>
+                                        {item.name}
+                                    </p>
+                                    <div className="flex min-w-0 flex-col items-start gap-0.5 pr-14">
+                                            {!IS_DGFY_POS_SURFACE && (
+                                                <CatalogItemBadges
+                                                    isServiceItem={isServiceItem}
+                                                    isAlwaysAvailable={isAlwaysAvailable}
+                                                    isBestSeller={isBestSeller}
+                                                />
+                                            )}
+                                            <span className={`shrink-0 font-black text-[#1A4E8D] whitespace-nowrap text-[15px] ${!hasImage ? 'pt-px pb-1' : ''}`}>
+                                                {Number(item.default_sale_price || 0) > 0 ? `₱${money(item.default_sale_price)}` : 'Not set'}
                                             </span>
                                         </div>
                                         {/* Quantity control, laid out horizontally as [ - ] [ item count ] [ + ].
@@ -760,14 +945,14 @@ return (
                                             uses a sanitized text input (not type="number") so no native
                                             increment/decrement spinner buttons render inside the field. */}
                                         <div
-                                            className="flex shrink-0 items-center gap-1"
+                                            className="absolute bottom-1.5 right-1.5 flex shrink-0 items-center gap-1"
                                             onClick={(event) => event.stopPropagation()}
                                         >
                                             <button
                                                 type="button"
                                                 onClick={() => adjustCartQuantity(item, -1)}
                                                 disabled={cartQuantityForItem <= 0 || posActionsBlocked}
-                                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-base font-black leading-none text-slate-500 active:scale-95 active:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-100"
                                                 aria-label={`Decrease quantity for ${item.name}`}
                                             >
                                                 −
@@ -800,10 +985,11 @@ return (
                                                         setQuantityInputValue(String(cartQuantityForItem));
                                                     }}
                                                     disabled={isOutOfStock || posActionsBlocked}
-                                                    className="flex h-8 w-9 shrink-0 items-center justify-center rounded-md text-[13px] font-black text-[#0F172A] disabled:cursor-not-allowed disabled:opacity-40"
+                                                    className="flex h-8 min-w-[2.25rem] max-w-[5.5rem] shrink-0 items-center justify-center overflow-hidden rounded-md px-1 text-center text-[13px] font-black tabular-nums text-[#0F172A] text-ellipsis whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
                                                     aria-label={`Quantity for ${item.name}, tap to type a value`}
+                                                    title={`Quantity: ${formatQuantity(cartQuantityForItem)}`}
                                                 >
-                                                    {cartQuantityForItem}
+                                                    {formatQuantity(cartQuantityForItem)}
                                                 </button>
                                             )}
                                             <button
@@ -819,13 +1005,12 @@ return (
                                                 }}
                                                 onPointerCancel={handleQtyButtonPointerCancel}
                                                 disabled={isOutOfStock || posActionsBlocked}
-                                                className="flex h-8 w-8 shrink-0 touch-none select-none items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                className="flex h-8 w-8 shrink-0 touch-none select-none items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-100"
                                                 aria-label={`Increase quantity for ${item.name}. Tap to add one, or press and hold then drag up to add more.`}
                                             >
                                                 +
                                             </button>
                                         </div>
-                                    </div>
                                 </div>
                                 {!IS_DGFY_POS_SURFACE && (
                                     <>
@@ -847,12 +1032,22 @@ return (
                                         <p className="mt-0.5 truncate text-[10px] font-extrabold tracking-wide text-[#64748B] max-sm:hidden">{item.sku_code}</p>
                                     </>
                                 )}
-                                {IS_DGFY_POS_SURFACE && isTabletViewport ? (
-                                    <div className="mt-1 flex items-center justify-center rounded-md px-1 py-0.5">
-                                        <span className={`text-[11px] font-black ${isOutOfStock ? 'text-rose-700' : 'text-[#1A4E8D]'}`}>
+                                {IS_DGFY_POS_SURFACE ? (
+                                    <div
+                                        data-pos-catalog-card-caption="true"
+                                        className={`${catalogCardCaptionClassName} max-sm:hidden`}
+                                    >
+                                        {hasImage && (
+                                            <p className="min-w-0 max-w-full truncate text-left font-black text-[#0F172A]">
+                                                {item.name}
+                                            </p>
+                                        )}
+                                        <span className={`font-black tracking-[0.01em] ${isOutOfStock ? 'text-rose-700' : 'text-[#1A4E8D]'}`}>
                                             {isOutOfStock
                                                 ? 'Unavailable'
-                                                : `PHP ${money(item.default_sale_price)}`}
+                                                : Number(item.default_sale_price || 0) > 0
+                                                    ? `₱${money(item.default_sale_price)}`
+                                                    : 'Not set'}
                                         </span>
                                     </div>
                                 ) : (
@@ -860,12 +1055,12 @@ return (
                                         <div className={`${isTabletViewport ? 'mt-1.5' : 'mt-3'} grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10.5px] text-[#64748B] max-sm:hidden`}>
                                             <span className="font-semibold">Stock:</span>
                                             <span className={`text-right font-bold whitespace-nowrap ${stockColorClassName}`}>
-                                                {isServiceItem ? 'Service' : isAlwaysAvailable ? 'Always available' : Number(item.current_stock || 0).toFixed(2)}
+                                                {isServiceItem ? 'Service' : isAlwaysAvailable ? 'Always available' : Number(item.current_stock || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                             </span>
                                             <span className="font-semibold">Price:</span>
                                             <span className="text-right font-black text-[#1A4E8D] whitespace-nowrap">
                                                 {Number(item.default_sale_price || 0) > 0
-                                                    ? `PHP ${money(item.default_sale_price)}`
+                                                    ? `₱${money(item.default_sale_price)}`
                                                     : 'Not set'}
                                             </span>
                                             <span className="font-semibold">VAT:</span>
@@ -900,15 +1095,17 @@ return (
                     </div>
                     <div
                         data-testid="pos-catalog-footer"
-                        className="mt-auto shrink-0 border-t border-slate-200 bg-slate-50/80 px-1 py-1.5 supports-[backdrop-filter]:bg-white/80"
+                        className="relative z-10 mt-auto flex min-h-[56px] w-full shrink-0 items-center border-t border-slate-200 bg-white px-3 py-3 shadow-[0_-1px_0_rgba(148,163,184,0.14)] max-sm:min-h-0 max-sm:py-2"
                     >
-                            <div className="flex flex-col items-center justify-between gap-1 sm:flex-row">
-                                <div className="text-center sm:text-left">
-                                    <p className="text-[11px] font-semibold text-[#334155]">
-                                    Showing {visibleCatalogRange.start}-{visibleCatalogRange.end} of {catalogForDisplay.length || 0} items
-                                    </p>
-                                </div>
-                                <div className="flex items-center justify-center gap-3">
+                        <div className="grid w-full min-w-0 items-center gap-x-3 gap-y-2 max-sm:gap-y-1 sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto_auto] max-sm:grid-cols-[minmax(0,1fr)_auto]">
+                            <p className="whitespace-nowrap text-[11px] font-semibold text-[#334155]">
+                                Showing {visibleCatalogRange.start}-{visibleCatalogRange.end} of {catalogForDisplay.length || 0} items
+                            </p>
+                            <nav
+                                data-testid="pos-catalog-pagination"
+                                aria-label="Product catalog pagination"
+                                className="flex min-w-0 shrink-0 items-center justify-end gap-1.5 sm:justify-self-center max-sm:col-span-2 max-sm:row-start-2 max-sm:w-max max-sm:justify-self-center max-sm:justify-center max-sm:gap-1"
+                            >
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -916,13 +1113,31 @@ return (
                                     onClick={() => handleCatalogPageChange('previous')}
                                     disabled={catalogPage <= 1}
                                     aria-label="Go to previous catalog page"
+                                    title="Previous catalog page"
+                                    className="mr-1 h-9 w-9 shrink-0 touch-manipulation border-slate-200 bg-white p-0 text-slate-900 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-slate-300"
                                 >
-                                    <ChevronLeft className="mr-1 h-4 w-4" />
-                                    Previous
+                                    <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
                                 </Button>
-                                <span className="text-xs font-semibold text-[#334155]">
-                                    Page {catalogPage} of {totalCatalogPages}
-                                </span>
+                                {catalogPageNumbers.map((page) => {
+                                    const isCurrentPage = catalogPage === page;
+                                    return (
+                                        <Button
+                                            key={page}
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleCatalogPageChange(page)}
+                                            aria-label={`Go to catalog page ${page}`}
+                                            aria-current={isCurrentPage ? 'page' : undefined}
+                                            title={`Catalog page ${page}`}
+                                            className={`${isCurrentPage || !hasManyCatalogPages ? 'inline-flex' : 'hidden sm:inline-flex'} ${isCurrentPage
+                                                ? 'h-9 w-9 shrink-0 touch-manipulation border-[#1A4E8D] bg-[#1A4E8D] p-0 text-[11px] font-bold text-white hover:border-[#143F73] hover:bg-[#143F73] hover:text-white focus-visible:ring-[#1A4E8D]'
+                                                : 'h-9 w-9 shrink-0 touch-manipulation border-slate-200 bg-white p-0 text-[11px] font-semibold text-slate-900 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-slate-300'}`}
+                                        >
+                                            {page}
+                                        </Button>
+                                    );
+                                })}
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -930,18 +1145,34 @@ return (
                                     onClick={() => handleCatalogPageChange('next')}
                                     disabled={catalogPage >= totalCatalogPages}
                                     aria-label="Go to next catalog page"
+                                    title="Next catalog page"
+                                    className="ml-1 h-9 w-9 shrink-0 touch-manipulation border-slate-200 bg-white p-0 text-slate-900 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-slate-300"
                                 >
-                                    Next
-                                    <ChevronRight className="ml-1 h-4 w-4" />
+                                    <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                                 </Button>
+                            </nav>
+                            <div className="max-sm:justify-self-end">
+                                <CatalogPageSizeControl
+                                    value={catalogPageSizeOverride}
+                                    options={catalogPageSizeOptions}
+                                    onChange={handleCatalogPageSizeChange}
+                                    showPageSuffix
+                                />
                             </div>
+                            <div className="hidden sm:inline-flex">
+                                <CatalogPageJumpControl
+                                    currentPage={catalogPage}
+                                    totalPages={totalCatalogPages}
+                                    onChange={handleCatalogPageChange}
+                                />
                             </div>
                         </div>
+                    </div>
             </section>
 
             {mobileCheckoutPanelOpen && (
                 <div
-                    className="fixed inset-0 z-40 bg-slate-950/45 md:hidden"
+                    className="fixed inset-0 z-40 bg-slate-950/70 md:hidden"
                     onClick={() => setMobileCheckoutPanelOpen(false)}
                     aria-hidden="true"
                 />
@@ -949,13 +1180,13 @@ return (
 
             <aside
                 data-testid="pos-current-sale-panel"
-                className={`${checkoutPaneClassName} ${mobileCheckoutPanelOpen
-                    ? 'fixed inset-x-0 bottom-0 z-50 h-[calc(100dvh-0.5rem)] max-h-[calc(100dvh-0.5rem)] translate-y-0 pointer-events-auto'
-                    : 'fixed inset-x-0 bottom-0 z-50 h-[calc(100dvh-0.5rem)] max-h-[calc(100dvh-0.5rem)] translate-y-full pointer-events-none'
-                } transition-transform duration-300 ease-out md:static md:z-auto md:max-h-none md:translate-y-0 md:overflow-hidden md:pointer-events-auto md:transition-none`}
+                className={`${checkoutPaneClassName} pos-mobile-bottom-sheet ${mobileCheckoutPanelOpen
+                    ? 'fixed inset-x-0 bottom-0 z-50 translate-y-0 pointer-events-auto'
+                    : 'fixed inset-x-0 bottom-0 z-50 translate-y-full pointer-events-none'
+                } transition-transform duration-300 ease-out motion-reduce:transition-none md:static md:z-auto md:h-auto md:max-h-none md:translate-y-0 md:overflow-hidden md:pointer-events-auto md:transition-none`}
             >
-            <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-t-2xl rounded-b-none border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70 sm:p-4 md:rounded-xl ${currentSalePaneHeightClassName}`}>
-                    <div role="region" aria-label="Current sale contents" className="flex h-full min-h-0 flex-col">
+            <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-t-2xl rounded-b-none border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-950/20 sm:p-4 md:rounded-xl md:shadow-sm md:shadow-slate-200/70 ${currentSalePaneHeightClassName}`}>
+                    <div role="region" aria-label="Current sale contents" className="dgfy-pos-current-sale-scroll-surface flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div data-testid="pos-current-sale-header" className="relative mb-2 shrink-0">
                     <div className="flex items-center justify-between gap-2">
                         <h2 className="text-[21px] font-black tracking-tight text-[#0F172A]">Current Sale</h2>
@@ -1030,14 +1261,14 @@ return (
                                             setItemOptionsLineKey(lineKey);
                                         }
                                     }}
-                                    className="cursor-pointer rounded-lg border border-slate-200 p-2.5 transition-colors hover:border-blue-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                                    className="relative box-border w-full min-w-0 cursor-pointer overflow-hidden rounded-lg border border-blue-300 bg-clip-padding bg-slate-50 p-2.5 transition-colors hover:border-blue-400 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
                                 >
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex min-w-0 items-center gap-2.5">
                                             <div className="flex min-w-0 items-center gap-2.5 text-left">
                                                 <span className="min-w-0">
-                                                    <span className="block break-words line-clamp-2 text-[13px] font-extrabold text-[#0F172A]">{line.item_name}</span>
-                                                    <span className="mt-0.5 block text-[10px] font-bold text-blue-700">Tap item to customize</span>
+                                                    <span className="block max-w-full line-clamp-2 text-[13px] font-black leading-tight break-words text-[#0F172A]">{line.item_name}</span>
+                                                    <span className="mt-0.5 hidden text-[10px] font-bold text-blue-700 sm:block">Tap item to customize</span>
                                                 </span>
                                             </div>
                                             <div className="min-w-0">
@@ -1064,7 +1295,7 @@ return (
                                                                     : 'Other discount')}: {line.item_discount.discount_type === 'promo'
                                                             ? 'configured rate'
                                                             : line.item_discount.method === 'fixed'
-                                                            ? `-PHP ${money(line.item_discount.amount)}`
+                                                            ? `-₱${money(line.item_discount.amount)}`
                                                             : `-${money(line.item_discount.rate)}%`}
                                                     </p>
                                                 ) : null}
@@ -1085,16 +1316,36 @@ return (
                                         </button>
                                     </div>
                                     <div
-                                        className="mt-2 grid grid-cols-2 gap-2"
+                                        className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 sm:grid-cols-2 sm:gap-2"
                                         onClick={(event) => event.stopPropagation()}
                                         onKeyDown={(event) => event.stopPropagation()}
                                     >
                                         <label className="text-[11px] text-slate-500">
                                             Qty
                                             {/* Mobile: read-only, qty is managed from the catalog card's stepper. */}
-                                            <p className="mt-1 flex h-8 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold text-[#0F172A] sm:hidden">
-                                                {formatQuantity(line.quantity)}
-                                            </p>
+                                            <div className="mt-1 flex items-center gap-1 sm:hidden">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) - 1)}
+                                                    disabled={posActionsBlocked}
+                                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-100"
+                                                    aria-label={`Decrease quantity for ${line.item_name}`}
+                                                >
+                                                    −
+                                                </button>
+                                                <span className="flex h-8 min-w-[2.25rem] max-w-[5.5rem] shrink-0 items-center justify-center overflow-hidden rounded-md px-1 text-center text-[13px] font-black tabular-nums text-[#0F172A] text-ellipsis whitespace-nowrap">
+                                                    {formatQuantity(line.quantity)}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
+                                                    disabled={posActionsBlocked}
+                                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-100"
+                                                    aria-label={`Increase quantity for ${line.item_name}`}
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
                                             {/* Tablet/desktop: +/- controls restored here. Tablet's row uses the
                                                 same taller h-10 sizing as the "+" button below (for touch-target
                                                 consistency/alignment - not itself a functional change), desktop
@@ -1110,7 +1361,7 @@ return (
                                                 >
                                                     <Minus className="h-3.5 w-3.5" />
                                                 </Button>
-                                                <span className={`flex min-w-0 flex-1 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold text-[#0F172A] ${isTabletViewport ? 'h-10' : 'h-8'}`}>
+                                                <span className={`flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold tabular-nums text-[#0F172A] text-ellipsis whitespace-nowrap ${isTabletViewport ? 'h-10' : 'h-8'}`}>
                                                     {formatQuantity(line.quantity)}
                                                 </span>
                                                 {/* Desktop and tablet: long-press-then-drag-up shows the same
@@ -1133,16 +1384,6 @@ return (
                                                     onPointerMove={(event) => handleCartQtyButtonPointerMove(event, line)}
                                                     onPointerUp={(event) => handleCartQtyButtonPointerUp(event, line)}
                                                     onPointerCancel={handleCartQtyButtonPointerCancel}
-                                                    disabled={posActionsBlocked}
-                                                >
-                                                    <Plus className="h-3.5 w-3.5" />
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-8 px-2 text-[13px] sm:hidden"
-                                                    onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
                                                     disabled={posActionsBlocked}
                                                 >
                                                     <Plus className="h-3.5 w-3.5" />
@@ -1199,134 +1440,116 @@ return (
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 md:hidden">
                         <div className="flex justify-between">
                             <span className="text-[13px] text-[#334155]">Items Subtotal</span>
-                            <span className="text-[13px] font-extrabold text-[#0F172A]">PHP {money(cartSubtotal)}</span>
+                            <span className="text-[13px] font-extrabold text-[#0F172A]">₱{money(cartSubtotal)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-[#334155]">
                                 Item discount
                             </span>
-                            <span className="font-extrabold text-rose-600">- PHP {money(itemDiscountTotals.discountAmount)}</span>
+                            <span className="font-extrabold text-rose-600">- ₱{money(itemDiscountTotals.discountAmount)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-[#334155]">
                                 Global discount{appliedDiscount ? ` (${appliedDiscount.label})` : (selectedDiscount ? ` (${selectedDiscount.name})` : '')}
                             </span>
-                            <span className="font-extrabold text-rose-600">- PHP {money(globalDiscountAmount)}</span>
+                            <span className="font-extrabold text-rose-600">- ₱{money(globalDiscountAmount)}</span>
                         </div>
-                        {governedDiscountTotals.vatRemoved > 0 && <div className="flex justify-between"><span className="text-[#334155]">VAT Removed</span><span className="font-extrabold text-rose-600">- PHP {money(governedDiscountTotals.vatRemoved)}</span></div>}
-                        {governedDiscountTotals.vatExemptAmount > 0 && <div className="flex justify-between"><span className="text-[#334155]">VAT-Exempt Amount</span><span className="font-extrabold text-[#0F172A]">PHP {money(governedDiscountTotals.vatExemptAmount)}</span></div>}
+                        {governedDiscountTotals.vatRemoved > 0 && <div className="flex justify-between"><span className="text-[#334155]">VAT Removed</span><span className="font-extrabold text-rose-600">- ₱{money(governedDiscountTotals.vatRemoved)}</span></div>}
+                        {governedDiscountTotals.vatExemptAmount > 0 && <div className="flex justify-between"><span className="text-[#334155]">VAT-Exempt Amount</span><span className="font-extrabold text-[#0F172A]">₱{money(governedDiscountTotals.vatExemptAmount)}</span></div>}
                         <div className="flex justify-between">
                             <span className="text-[#334155]">Net Items</span>
-                            <span className="font-extrabold text-[#0F172A]">PHP {money(netItemsTotal)}</span>
+                            <span className="font-extrabold text-[#0F172A]">₱{money(netItemsTotal)}</span>
                         </div>
                         <div className="col-span-2 my-1 border-t border-dashed border-slate-200" />
                         <div className="flex justify-between">
                             <span className="text-slate-600">VATable Sales</span>
-                            <span className="font-medium">PHP {money(vatBreakdown.vatableSales)}</span>
+                            <span className="font-medium">₱{money(vatBreakdown.vatableSales)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-slate-600">VAT Amount (12%)</span>
-                            <span className="font-medium">PHP {money(vatBreakdown.vatAmount)}</span>
+                            <span className="font-medium">₱{money(vatBreakdown.vatAmount)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-slate-600">VAT Exempt Sales</span>
-                            <span className="font-medium">PHP {money(vatBreakdown.vatExemptSales)}</span>
+                            <span className="font-medium">₱{money(vatBreakdown.vatExemptSales)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-slate-600">Zero Rated Sales</span>
-                            <span className="font-medium">PHP {money(vatBreakdown.zeroRatedSales)}</span>
+                            <span className="font-medium">₱{money(vatBreakdown.zeroRatedSales)}</span>
                         </div>
                         <div className="col-span-2 mt-1 flex items-baseline justify-between border-t border-slate-200 pt-1">
                             <span className="text-[18px] font-black text-[#0F172A]">Total</span>
-                            <span className="text-[18px] font-black text-[#1A4E8D]">PHP {money(cartTotal)}</span>
+                            <span className="text-[18px] font-black text-[#1A4E8D]">₱{money(cartTotal)}</span>
                         </div>
                     </div>
 
                     <div data-testid="pos-current-sale-desktop-summary" className="hidden gap-y-0.5 md:grid">
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                             <span className="min-w-0 text-[13px] text-[#334155]">Items Subtotal</span>
-                            <span className="whitespace-nowrap text-right text-[13px] font-extrabold tabular-nums text-[#0F172A]">PHP {money(cartSubtotal)}</span>
+                            <span className="whitespace-nowrap text-right text-[13px] font-extrabold tabular-nums text-[#0F172A]">₱{money(cartSubtotal)}</span>
                         </div>
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                             <span className="min-w-0 text-[#334155]">Net Items</span>
-                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-[#0F172A]">PHP {money(netItemsTotal)}</span>
+                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-[#0F172A]">₱{money(netItemsTotal)}</span>
                         </div>
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                             <span className="min-w-0 text-[#334155]">Item discount</span>
-                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-PHP {money(itemDiscountTotals.discountAmount)}</span>
+                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-₱{money(itemDiscountTotals.discountAmount)}</span>
                         </div>
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                             <span className="min-w-0 text-[#334155]">Global discount{appliedDiscount ? ` (${appliedDiscount.label})` : (selectedDiscount ? ` (${selectedDiscount.name})` : '')}</span>
-                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-PHP {money(globalDiscountAmount)}</span>
+                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-₱{money(globalDiscountAmount)}</span>
                         </div>
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                             <span className="min-w-0 text-[#334155]">Total discounts</span>
-                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-PHP {money(calculatedDiscountAmount)}</span>
+                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-₱{money(calculatedDiscountAmount)}</span>
                         </div>
                         {governedDiscountTotals.vatRemoved > 0 && (
                             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                                 <span className="min-w-0 text-[#334155]">VAT Removed</span>
-                                <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-PHP {money(governedDiscountTotals.vatRemoved)}</span>
+                                <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-₱{money(governedDiscountTotals.vatRemoved)}</span>
                             </div>
                         )}
                         {governedDiscountTotals.vatExemptAmount > 0 && (
                             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                                 <span className="min-w-0 text-[#334155]">VAT-Exempt Amount</span>
-                                <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-[#0F172A]">PHP {money(governedDiscountTotals.vatExemptAmount)}</span>
+                                <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-[#0F172A]">₱{money(governedDiscountTotals.vatExemptAmount)}</span>
                             </div>
                         )}
                         <div className="my-1 border-t border-dashed border-slate-200" />
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                             <span className="min-w-0 text-slate-600">VATable Sales</span>
-                            <span className="whitespace-nowrap text-right font-medium tabular-nums">PHP {money(vatBreakdown.vatableSales)}</span>
+                            <span className="whitespace-nowrap text-right font-medium tabular-nums">₱{money(vatBreakdown.vatableSales)}</span>
                         </div>
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                             <span className="min-w-0 text-slate-600">VAT Exempt Sales</span>
-                            <span className="whitespace-nowrap text-right font-medium tabular-nums">PHP {money(vatBreakdown.vatExemptSales)}</span>
+                            <span className="whitespace-nowrap text-right font-medium tabular-nums">₱{money(vatBreakdown.vatExemptSales)}</span>
                         </div>
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                             <span className="min-w-0 text-slate-600">VAT Amount (12%)</span>
-                            <span className="whitespace-nowrap text-right font-medium tabular-nums">PHP {money(vatBreakdown.vatAmount)}</span>
+                            <span className="whitespace-nowrap text-right font-medium tabular-nums">₱{money(vatBreakdown.vatAmount)}</span>
                         </div>
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                             <span className="min-w-0 text-slate-600">Zero Rated Sales</span>
-                            <span className="whitespace-nowrap text-right font-medium tabular-nums">PHP {money(vatBreakdown.zeroRatedSales)}</span>
+                            <span className="whitespace-nowrap text-right font-medium tabular-nums">₱{money(vatBreakdown.zeroRatedSales)}</span>
                         </div>
                         <div className="mt-1 flex items-baseline justify-between border-t border-slate-200 pt-1">
                             <span className="text-[18px] font-black text-[#0F172A]">Total</span>
-                            <span className="whitespace-nowrap text-[18px] font-black tabular-nums text-[#1A4E8D]">PHP {money(cartTotal)}</span>
+                            <span className="whitespace-nowrap text-[18px] font-black tabular-nums text-[#1A4E8D]">₱{money(cartTotal)}</span>
                         </div>
                     </div>
                 </div>
-                </div>
-
                 {(checkoutBlockedReason || safeCart.length === 0) && (
-                    <div className="shrink-0 border-t border-slate-200 pt-2">
+                    <div className="col-span-2 shrink-0 border-t border-slate-200 pt-2">
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800">
                             {checkoutBlockedReason || 'Add at least one item before checkout.'}
                         </div>
                     </div>
                 )}
 
-                {!posHardware.loading && !isPrinterAvailable && (
-                    <div className="shrink-0 border-t border-slate-200 pt-2">
-                        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] font-semibold text-slate-600">
-                            <span>No printer detected on this device.</span>
-                            <button
-                                type="button"
-                                onClick={() => posHardware.refresh()}
-                                disabled={posHardware.loading}
-                                className="shrink-0 whitespace-nowrap rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                Recheck printer
-                            </button>
-                        </div>
-                    </div>
-                )}
-
                 {Number(universalPendingSyncCount || 0) > 0 && (
                     <div
-                        className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 pt-2"
+                        className="col-span-2 flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 pt-2"
                         data-testid="pos-pending-sync-banner"
                     >
                         <div className="min-w-0 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] font-semibold leading-5 text-blue-900">
@@ -1344,36 +1567,57 @@ return (
                     </div>
                 )}
 
-                <Suspense fallback={<div className="h-[46px] w-full animate-pulse rounded-lg bg-slate-100" aria-hidden="true" />}>
-                    <PosCurrentSaleActions
-                        presentationBundle={posPresentationBundle}
-                        onParkAndNewSale={openParkSaleNameDialog}
-                        parkSaleDisabled={posActionsBlocked || checkoutLoading || parkLoading || safeCart.length === 0 || !activeShiftId || !normalizedTerminalId}
-                        parkLoading={parkLoading}
-                        activeParkedSale={activeParkedSale}
-                        onCheckout={openCheckoutConfirmModal}
-                        checkoutDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
-                        checkoutLoading={checkoutLoading}
-                        itemCount={safeCart.length}
-                        onPrintOrder={handlePrintOrder}
-                        printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isOrderPrinterAvailable}
-                        printerAvailable={isOrderPrinterAvailable}
-                        onOpenCashDrawer={() => handleOpenDrawer({
-                            transactionId: Number(lastReceipt?.pos_transaction_id) || null,
-                            reason: 'manual_drawer_panel'
-                        })}
-                        cashDrawerDisabled={!activeShiftId || drawerOpening || drawerAuthorizationModalOpen}
-                        drawerOpening={drawerOpening}
-                        showParkedSaleControls={posPresentationBundle.currentSaleActions.showParkedSaleControls}
-                        onParkSale={openParkSaleNameDialog}
-                        parkSaleLoading={parkLoading}
-                        parkSaleLabel={activeParkedSale ? 'Update Parked Sale' : 'Park Sale'}
-                        onSplitPayment={openSplitPaymentModal}
-                        splitPaymentDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || isEmployeeCreditPayment}
-                        splitPaymentLoading={checkoutLoading}
-                        tabletLayout={isTabletViewport}
-                    />
-                </Suspense>
+                </div>
+
+                {!posHardware.loading && !isPrinterAvailable && (
+                    <div data-testid="pos-no-printer-notice" className="shrink-0 border-t border-slate-200 pt-2">
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-semibold text-slate-600">
+                            <span>No printer detected on this device.</span>
+                            <button
+                                type="button"
+                                onClick={() => posHardware.refresh()}
+                                disabled={posHardware.loading}
+                                className="shrink-0 whitespace-nowrap rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                Recheck printer
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                <div className="shrink-0 bg-white">
+                    <Suspense fallback={<div className="h-[46px] w-full animate-pulse rounded-lg bg-slate-100" aria-hidden="true" />}>
+                        <PosCurrentSaleActions
+                            presentationBundle={posPresentationBundle}
+                            onParkAndNewSale={openParkSaleNameDialog}
+                            parkSaleDisabled={posActionsBlocked || checkoutLoading || parkLoading || safeCart.length === 0 || !activeShiftId || !normalizedTerminalId}
+                            parkLoading={parkLoading}
+                            activeParkedSale={activeParkedSale}
+                            onCheckout={openCheckoutConfirmModal}
+                            checkoutDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
+                            checkoutLoading={checkoutLoading}
+                            itemCount={safeCart.length}
+                            onPrintOrder={handlePrintOrder}
+                            printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isOrderPrinterAvailable}
+                            printerAvailable={isOrderPrinterAvailable}
+                            onOpenCashDrawer={() => handleOpenDrawer({
+                                transactionId: Number(lastReceipt?.pos_transaction_id) || null,
+                                reason: 'manual_drawer_panel'
+                            })}
+                            cashDrawerDisabled={!activeShiftId || drawerOpening || drawerAuthorizationModalOpen}
+                            cashDrawerAvailable={cashDrawerAvailable}
+                            drawerOpening={drawerOpening}
+                            showParkedSaleControls={posPresentationBundle.currentSaleActions.showParkedSaleControls}
+                            onParkSale={openParkSaleNameDialog}
+                            parkSaleLoading={parkLoading}
+                            parkSaleLabel={activeParkedSale ? 'Update Parked Sale' : 'Park Sale'}
+                            onSplitPayment={openSplitPaymentModal}
+                            splitPaymentDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || isEmployeeCreditPayment}
+                            splitPaymentLoading={checkoutLoading}
+                            tabletLayout={isTabletViewport}
+                        />
+                    </Suspense>
+                </div>
                     </div>
             </section>
             </aside>
@@ -1393,7 +1637,7 @@ return (
                                 {cartTotalQuantity} item{cartTotalQuantity === 1 ? '' : 's'} selected
                             </p>
                             <p className="truncate text-[18px] font-black text-[#1A4E8D]">
-                                PHP {money(cartTotal)}
+                                ₱{money(cartTotal)}
                             </p>
                         </div>
                         <Button
@@ -1403,8 +1647,8 @@ return (
                             disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
                             className="h-11 shrink-0 rounded-lg bg-[#1A4E8D] px-5 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                            <Lock size={16} className="mr-1.5" />
-                            {checkoutLoading ? 'Processing...' : 'Checkout'}
+                            <ShoppingCart size={16} className="mr-1.5" aria-hidden="true" />
+                            {checkoutLoading ? 'Processing...' : 'Cart'}
                         </Button>
                     </div>
                 </div>
@@ -1528,7 +1772,14 @@ return (
                             Enter the reason and authorize this drawer opening before the terminal sends the hardware command.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 px-5 py-4">
+                    <form
+                        id="pos-drawer-authorization-form"
+                        className="space-y-4 px-5 py-4"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            submitDrawerAuthorization();
+                        }}
+                    >
                         <div>
                             <label htmlFor="pos-drawer-open-reason" className="text-xs font-extrabold text-slate-700">Reason <span className="text-rose-600">*</span></label>
                             <Input
@@ -1564,7 +1815,7 @@ return (
                                 />
                             </div>
                         )}
-                    </div>
+                    </form>
                     <DialogFooter className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-4">
                         <Button
                             type="button"
@@ -1575,9 +1826,10 @@ return (
                             Cancel
                         </Button>
                         <Button
-                            type="button"
-                            onClick={submitDrawerAuthorization}
+                            type="submit"
+                            form="pos-drawer-authorization-form"
                             disabled={drawerAuthorizationSubmitting}
+                            aria-busy={drawerAuthorizationSubmitting}
                             className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
                             data-testid="pos-drawer-authorize-submit"
                         >
@@ -1632,7 +1884,7 @@ return (
 
             {setupSnapshotModalOpen && createPortal((
                 <div
-                    className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 px-4 py-6"
+                    className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 px-4 py-6"
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="pos-setup-snapshot-modal-title"
@@ -1668,7 +1920,7 @@ return (
                             <div className="space-y-2 text-[13px]">
                                 <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2.5">
                                     <span className="text-[13px] text-[#64748B]">Petty Cash</span>
-                                    <span className="text-[13px] font-extrabold text-[#0F172A]">{setupCurrency} {money(setupMeta.pettyCashAmount)}</span>
+                                    <span className="text-[13px] font-extrabold text-[#0F172A]">₱{money(setupMeta.pettyCashAmount)}</span>
                                 </div>
                                 <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2.5">
                                     <span className="text-[13px] text-[#64748B]">Active Discounts</span>
@@ -1751,19 +2003,20 @@ return (
                             />
                             <p className="mt-1.5 text-right text-[11px] text-slate-500">{parkSaleNameInput.length}/100</p>
                         </div>
-                        <DialogFooter className="border-t border-slate-200 px-5 py-4 sm:justify-end">
+                        <DialogFooter className="flex-row gap-2 border-0 px-5 !pt-1 pb-3 sm:justify-end">
                             <Button
                                 type="button"
                                 variant="outline"
                                 onClick={() => setParkSaleNameDialogOpen(false)}
                                 disabled={parkLoading}
+                                className="min-w-0 flex-1"
                             >
                                 Cancel
                             </Button>
                             <Button
                                 type="submit"
                                 disabled={parkLoading || !parkSaleNameInput.trim()}
-                                className="bg-[#1A4E8D] hover:bg-[#143F73]"
+                                className="min-w-0 flex-1 bg-[#1A4E8D] hover:bg-[#143F73]"
                                 data-testid="pos-confirm-park-sale"
                             >
                                 {parkLoading ? 'Parking Sale…' : 'Park'}

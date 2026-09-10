@@ -71,7 +71,7 @@ export default function PosFnbModifierManager({ groups = [], items = [], locatio
               <div className="flex min-w-0 justify-between gap-2"><span className="min-w-0 break-words font-semibold text-slate-900">{group.display_name || group.name}</span><span className={`shrink-0 text-xs ${group.is_active === false ? 'text-rose-600' : 'text-emerald-600'}`}>{group.is_active === false ? 'Inactive' : 'Active'}</span></div>
               <p className="mt-1 text-xs font-semibold text-teal-700">{group.group_kind === 'combo_choice' ? 'Combo choice' : 'Menu modifier'}</p>
               <p className="mt-1 text-xs text-slate-500">Select {getEffectiveMinimum(group)}–{group.max_select} · {(group.options || []).length} options</p>
-              <div className="mt-2 flex flex-wrap gap-1">{(group.options || []).slice(0, 5).map((option) => <span key={option.modifier_option_id} className="rounded bg-slate-100 px-2 py-1 text-xs">{option.name} {Number(option.price_delta) ? `+₱${Number(option.price_delta).toFixed(2)}` : ''}</span>)}</div>
+              <div className="mt-2 flex flex-wrap gap-1">{(group.options || []).slice(0, 5).map((option) => <span key={option.modifier_option_id} className="rounded bg-slate-100 px-2 py-1 text-xs">{option.name} {Number(option.price_delta) ? `+₱${Number(option.price_delta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}</span>)}</div>
             </button>
           ))}
           {!groups.length && <p className="text-sm text-slate-500">No modifier groups yet.</p>}

@@ -3,8 +3,13 @@ import { isSellAvailableCatalogItem } from './posCatalogAvailability.js';
 import { resolvePosCatalogImageSources } from './posCheckoutTerminalUtils.js';
 
 export const CATALOG_GRID_GAP_PX = 8;
+export const CATALOG_PAGE_SIZE_OPTIONS = [4, 6, 8, 12];
 export const CATALOG_DESKTOP_CARD_HEIGHT_PX = 176;
 export const CATALOG_DESKTOP_CARD_MIN_WIDTH_PX = 176;
+// The standalone POS keeps the current card styling, but uses the original
+// 100% desktop geometry so the catalog retains its four-column layout.
+export const CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX = CATALOG_DESKTOP_CARD_HEIGHT_PX;
+export const CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX = CATALOG_DESKTOP_CARD_MIN_WIDTH_PX;
 export const CATALOG_MOBILE_CARD_HEIGHT_PX = 120;
 export const CATALOG_TABLET_CARD_HEIGHT_PX = 112;
 export const CATALOG_TABLET_CARD_MIN_WIDTH_PX = 160;
@@ -114,9 +119,11 @@ export const getCatalogGridMeasurement = ({
     textSizeScale
 }) => {
     const safeTextSizeScale = Number.isFinite(Number(textSizeScale)) ? Number(textSizeScale) : 1;
-    const baseMinimumCardWidth = isTabletViewport
-        ? CATALOG_TABLET_CARD_MIN_WIDTH_PX
-        : CATALOG_DESKTOP_CARD_MIN_WIDTH_PX;
+    const baseMinimumCardWidth = isDgfyPosSurface && !isTabletViewport
+        ? CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX
+        : isTabletViewport
+            ? CATALOG_TABLET_CARD_MIN_WIDTH_PX
+            : CATALOG_DESKTOP_CARD_MIN_WIDTH_PX;
     const minimumCardWidth = isMobileViewport
         ? width
         : Math.round(baseMinimumCardWidth * safeTextSizeScale);
@@ -124,6 +131,8 @@ export const getCatalogGridMeasurement = ({
         ? CATALOG_MOBILE_CARD_HEIGHT_PX
         : isDgfyPosSurface && isTabletViewport
             ? CATALOG_TABLET_CARD_HEIGHT_PX
+            : isDgfyPosSurface
+                ? CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX
             : CATALOG_DESKTOP_CARD_HEIGHT_PX;
     const cardHeight = Math.round(baseCardHeight * safeTextSizeScale);
     const capacity = calculateCatalogGridCapacity({

@@ -156,14 +156,16 @@ export default function POSBarcodeScanner({
             <Button
                 type="button"
                 disabled={sessionLocked || scannerLoading}
+                aria-label="Scan barcode"
+                title="Scan barcode"
                 onClick={openScannerModal}
-                className={`flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-extrabold text-[#0F172A] shadow-sm transition hover:border-slate-400 hover:bg-white disabled:opacity-50${className ? ` ${className}` : ''}`}
+                className={`flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-extrabold text-[#0F172A] shadow-sm transition hover:border-slate-400 hover:bg-white disabled:opacity-50 max-sm:gap-0 max-sm:px-0${className ? ` ${className}` : ''}`}
             >
-                <ScanLine size={20} />
-                {scannerLoading ? 'Resolving...' : 'Scan'}
+                <ScanLine className="h-5 w-5" />
+                <span className="max-sm:hidden">{scannerLoading ? 'Resolving...' : 'Scan'}</span>
             </Button>
             {scannerModalOpen && (
-                <div className="pos-mobile-no-focus-zoom fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6">
+                <div className="pos-mobile-no-focus-zoom fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 px-4 py-6">
                     <form onSubmit={handleSubmit} className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl shadow-slate-950/20">
                         <div className="flex items-start justify-between gap-3">
                             <div>
@@ -214,20 +216,20 @@ export default function POSBarcodeScanner({
                             </p>
                         )}
 
-                        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <div className="mt-5 grid grid-cols-2 gap-2">
                             <Button
                                 type="button"
                                 variant="outline"
                                 onClick={closeScannerModal}
                                 disabled={scannerLoading}
-                                className="h-11 rounded-lg"
+                                className="h-10 w-full rounded-lg"
                             >
                                 Cancel
                             </Button>
                             <Button
                                 type="submit"
                                 disabled={scannerLoading || !scannerCode.trim()}
-                                className="h-11 rounded-lg bg-[#1A4E8D] px-5 font-extrabold text-white hover:bg-[#143F73]"
+                                className="h-10 w-full rounded-lg bg-[#1A4E8D] px-5 font-extrabold text-white hover:bg-[#143F73]"
                             >
                                 {scannerLoading ? 'Adding...' : 'Add'}
                             </Button>

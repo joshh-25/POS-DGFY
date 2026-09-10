@@ -25,6 +25,11 @@ const ItemFolder = sequelize.define('ItemFolder', {
         allowNull: false,
         defaultValue: true
     },
+    sort_order: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+    },
     deleted_at: {
         type: DataTypes.DATE,
         allowNull: true
