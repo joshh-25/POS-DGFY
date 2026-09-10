@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { runCheck, runFloor, computeReachabilityShadowVerdict } = require('./check-app-version-bump');
+const { runCheck, runFloor, detectChangedAppsNarrowed } = require('./check-app-version-bump');
 
 // --- git fixture harness, same shape as scripts/check-compat-seams.test.js's ------
 
@@ -111,12 +111,12 @@ function findApp(result, app) {
 
 // --- no apps changed --------------------------------------------------------
 
-test('no apps changed: skips cleanly', () => {
+test('no apps changed: skips cleanly', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: { 'README.md': 'unrelated change\n' },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
         assert.equal(result.ok, true);
@@ -130,7 +130,7 @@ test('no apps changed: skips cleanly', () => {
 
 // --- develop mode (any-increase) --------------------------------------------
 
-test('develop: one app changed with a correct bump passes', () => {
+test('develop: one app changed with a correct bump passes', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: {
             'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n',
@@ -138,7 +138,7 @@ test('develop: one app changed with a correct bump passes', () => {
         },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
         assert.equal(result.ok, true);
@@ -152,12 +152,12 @@ test('develop: one app changed with a correct bump passes', () => {
     }
 });
 
-test('develop: one app changed with no bump fails', () => {
+test('develop: one app changed with no bump fails', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: { 'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n' },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
         assert.equal(result.ok, false);
@@ -169,7 +169,7 @@ test('develop: one app changed with no bump fails', () => {
     }
 });
 
-test('develop: packages/shared-constants change fans out to all five apps', () => {
+test('develop: packages/shared-constants change fans out to all five apps', async () => {
     // Only the shared package changes -- no app bumps its own version here -- so this
     // isolates fan-out *detection* (all 5 apps flagged as changed via the dependency
     // map read from their own package.json, not a hardcoded list) from the separate
@@ -180,7 +180,7 @@ test('develop: packages/shared-constants change fans out to all five apps', () =
         headFiles: { 'packages/shared-constants/index.js': 'module.exports = { changed: true };\n' },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
         assert.equal(result.ok, false);
@@ -197,7 +197,7 @@ test('develop: packages/shared-constants change fans out to all five apps', () =
     }
 });
 
-test('develop: unparseable head version fails with a clear message', () => {
+test('develop: unparseable head version fails with a clear message', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: {
             'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n',
@@ -205,7 +205,7 @@ test('develop: unparseable head version fails with a clear message', () => {
         },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
         assert.equal(result.ok, false);
@@ -217,7 +217,7 @@ test('develop: unparseable head version fails with a clear message', () => {
     }
 });
 
-test('develop: a version that changed but decreased fails', () => {
+test('develop: a version that changed but decreased fails', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -226,7 +226,7 @@ test('develop: a version that changed but decreased fails', () => {
         },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
         assert.equal(result.ok, false);
@@ -239,7 +239,7 @@ test('develop: a version that changed but decreased fails', () => {
 
 // --- staging mode: to-staging/* -> minor-floor ------------------------------
 
-test('staging <- to-staging/*: a patch-only bump fails the minor floor', () => {
+test('staging <- to-staging/*: a patch-only bump fails the minor floor', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -248,7 +248,7 @@ test('staging <- to-staging/*: a patch-only bump fails the minor floor', () => {
         },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'to-staging/2026-09-04-01',
         });
         assert.equal(result.mode, 'minor-floor');
@@ -259,7 +259,7 @@ test('staging <- to-staging/*: a patch-only bump fails the minor floor', () => {
     }
 });
 
-test('staging <- to-staging/*: a minor bump already present from develop passes', () => {
+test('staging <- to-staging/*: a minor bump already present from develop passes', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -268,7 +268,7 @@ test('staging <- to-staging/*: a minor bump already present from develop passes'
         },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'to-staging/2026-09-04-01',
         });
         assert.equal(result.mode, 'minor-floor');
@@ -279,7 +279,7 @@ test('staging <- to-staging/*: a minor bump already present from develop passes'
     }
 });
 
-test('staging <- to-staging/*: an unchanged app is left untouched (pass, not evaluated)', () => {
+test('staging <- to-staging/*: an unchanged app is left untouched (pass, not evaluated)', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0', 'dgfy-pos': '1.4.0' },
         headFiles: {
@@ -288,7 +288,7 @@ test('staging <- to-staging/*: an unchanged app is left untouched (pass, not eva
         },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'to-staging/2026-09-04-01',
         });
         assert.equal(result.ok, true);
@@ -299,7 +299,7 @@ test('staging <- to-staging/*: an unchanged app is left untouched (pass, not eva
     }
 });
 
-test('staging <- to-staging/* (#1802): backported staging repairs do not fail runCheck in minor-floor mode', () => {
+test('staging <- to-staging/* (#1802): backported staging repairs do not fail runCheck in minor-floor mode', async () => {
     const root = makeGitRepo();
     runGit(root, ['checkout', '-b', 'staging']);
     writeFiles(root, baseFixture({
@@ -338,7 +338,7 @@ test('staging <- to-staging/* (#1802): backported staging repairs do not fail ru
     runGit(root, ['update-ref', 'refs/remotes/origin/staging', runGit(root, ['rev-parse', 'staging'])]);
 
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root,
             baseBranchName: 'staging',
             headBranchName: 'to-staging/2026-09-10-02',
@@ -357,7 +357,7 @@ test('staging <- to-staging/* (#1802): backported staging repairs do not fail ru
 
 // --- staging mode: any other head -> patch-only -----------------------------
 
-test('staging <- fix/staging/*: a minor bump fails patch-only', () => {
+test('staging <- fix/staging/*: a minor bump fails patch-only', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -366,7 +366,7 @@ test('staging <- fix/staging/*: a minor bump fails patch-only', () => {
         },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'fix/staging/2026-09-04-01-r2',
         });
         assert.equal(result.mode, 'patch-only');
@@ -377,7 +377,7 @@ test('staging <- fix/staging/*: a minor bump fails patch-only', () => {
     }
 });
 
-test('staging <- fix/staging/*: a patch bump passes patch-only', () => {
+test('staging <- fix/staging/*: a patch bump passes patch-only', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -386,7 +386,7 @@ test('staging <- fix/staging/*: a patch bump passes patch-only', () => {
         },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'fix/staging/2026-09-04-01-r2',
         });
         assert.equal(result.mode, 'patch-only');
@@ -399,7 +399,7 @@ test('staging <- fix/staging/*: a patch bump passes patch-only', () => {
 
 // --- main mode: release/* -> any-increase; anything else -> patch-only ------
 
-test('main <- release/*: any increase passes', () => {
+test('main <- release/*: any increase passes', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -408,7 +408,7 @@ test('main <- release/*: any increase passes', () => {
         },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'main', headBranchName: 'release/2026-09-04-01-r1',
         });
         assert.equal(result.mode, 'any-increase');
@@ -419,7 +419,7 @@ test('main <- release/*: any increase passes', () => {
     }
 });
 
-test('main <- ad-hoc hotfix head: a minor bump fails patch-only', () => {
+test('main <- ad-hoc hotfix head: a minor bump fails patch-only', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -428,7 +428,7 @@ test('main <- ad-hoc hotfix head: a minor bump fails patch-only', () => {
         },
     });
     try {
-        const result = runCheck({
+        const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'main', headBranchName: 'hotfix/urgent-fix',
         });
         assert.equal(result.mode, 'patch-only');
@@ -448,7 +448,7 @@ test('main <- ad-hoc hotfix head: a minor bump fails patch-only', () => {
 // expected to be in scope; an app with zero changed files must never appear in `belowFloor`
 // or `invalid`, only in `unchanged`.
 
-test('--floor: only apps with real changed files are evaluated; the rest land in `unchanged`', () => {
+test('--floor: only apps with real changed files are evaluated; the rest land in `unchanged`', async () => {
     const root = makeGitRepo();
     writeFiles(root, baseFixture({
         'dgfy-api': '1.2.0',
@@ -483,7 +483,7 @@ test('--floor: only apps with real changed files are evaluated; the rest land in
     const headGitRef = commitAll(root, 'develop snapshot');
 
     try {
-        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
         assert.equal(result.diffError, null);
 
         // Every app changed in this scenario -- nothing lands in `unchanged`.
@@ -514,7 +514,7 @@ test('--floor: only apps with real changed files are evaluated; the rest land in
 // real code change and the other four have none. Before the fix, all five were flagged
 // below floor regardless; after the fix, only dgfy-storefront is evaluated, and the other
 // four are reported as unchanged with no floor obligation.
-test('--floor (#1740 regression): a single-app change bumps only that app, not all five', () => {
+test('--floor (#1740 regression): a single-app change bumps only that app, not all five', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: {
             'dgfy-api': '1.2.0',
@@ -531,7 +531,7 @@ test('--floor (#1740 regression): a single-app change bumps only that app, not a
         },
     });
     try {
-        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
         assert.equal(result.diffError, null);
 
         assert.deepEqual(result.belowFloor.map((entry) => entry.app), ['dgfy-storefront']);
@@ -552,7 +552,7 @@ test('--floor (#1740 regression): a single-app change bumps only that app, not a
 // packages/web-core change must still put every app that depends on it (ims/pos/storefront
 // per baseFixture()'s own dependency shape) in scope, while dgfy-api/dgfy-migration-runner
 // (which don't depend on web-core) land in `unchanged`.
-test('--floor: a packages/web-core change fans out to ims/pos/storefront only', () => {
+test('--floor: a packages/web-core change fans out to ims/pos/storefront only', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: {
             'dgfy-ims': '1.2.0',
@@ -564,7 +564,7 @@ test('--floor: a packages/web-core change fans out to ims/pos/storefront only', 
         },
     });
     try {
-        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
         assert.equal(result.diffError, null);
 
         const inScope = result.results.map((entry) => entry.app).sort();
@@ -583,14 +583,14 @@ test('--floor: a packages/web-core change fans out to ims/pos/storefront only', 
 // A packages/shared-constants change fans out to all five apps (mirrors the equivalent
 // runCheck() test above) -- confirms runFloor() reaches the same fan-out breadth, not a
 // narrower one.
-test('--floor: a packages/shared-constants change fans out to all five apps', () => {
+test('--floor: a packages/shared-constants change fans out to all five apps', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: {
             'packages/shared-constants/index.js': 'module.exports = { changed: true };\n',
         },
     });
     try {
-        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
         assert.equal(result.diffError, null);
 
         const inScope = result.results.map((entry) => entry.app).sort();
@@ -608,7 +608,7 @@ test('--floor: a packages/shared-constants change fans out to all five apps', ()
 // and be invisible to a caller that only checked belowFloor.length -- the floor for that
 // app was never actually established, but the caller could treat the run as a clean pass.
 // dgfy-api's package.json changes directly here, so it stays in scope under #1740's fix.
-test('--floor: an unparseable version is surfaced as invalid, never silently treated as floor-met', () => {
+test('--floor: an unparseable version is surfaced as invalid, never silently treated as floor-met', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -616,7 +616,7 @@ test('--floor: an unparseable version is surfaced as invalid, never silently tre
         },
     });
     try {
-        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
 
         const invalidApps = result.invalid.map((entry) => entry.app);
         assert.deepEqual(invalidApps, ['dgfy-api']);
@@ -631,7 +631,7 @@ test('--floor: an unparseable version is surfaced as invalid, never silently tre
     }
 });
 
-test('--floor: a missing version (no package.json at one ref) is also surfaced as invalid', () => {
+test('--floor: a missing version (no package.json at one ref) is also surfaced as invalid', async () => {
     const root = makeGitRepo();
     // dgfy-api doesn't exist yet at this "base" commit at all.
     const fixtureWithoutApi = baseFixture();
@@ -644,7 +644,7 @@ test('--floor: a missing version (no package.json at one ref) is also surfaced a
     const headGitRef = commitAll(root, 'dgfy-api added');
 
     try {
-        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
         assert.ok(result.invalid.some((entry) => entry.app === 'dgfy-api'));
         assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-api'), false);
     } finally {
@@ -655,7 +655,7 @@ test('--floor: a missing version (no package.json at one ref) is also surfaced a
 // #1740: an app that did NOT change is never evaluated, even if its version happens to be
 // unparseable at both refs -- an unchanged app has no floor obligation, so its unparseable
 // version must not surface as `invalid` (that bucket is reserved for in-scope apps only).
-test('--floor: an app with an unparseable version but no changed files is skipped, not flagged', () => {
+test('--floor: an app with an unparseable version but no changed files is skipped, not flagged', async () => {
     const root = makeGitRepo();
     // dgfy-storefront starts (and stays) on an unparseable version -- never touched at head.
     writeFiles(root, baseFixture({ 'dgfy-storefront': 'not-a-version' }));
@@ -668,7 +668,7 @@ test('--floor: an app with an unparseable version but no changed files is skippe
     const headGitRef = commitAll(root, 'head');
 
     try {
-        const result = runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
         assert.deepEqual(result.results.map((entry) => entry.app), ['dgfy-api']);
         assert.equal(result.invalid.some((entry) => entry.app === 'dgfy-storefront'), false);
         assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-storefront'), false);
@@ -680,13 +680,13 @@ test('--floor: an app with an unparseable version but no changed files is skippe
 
 // A broken diff (unresolvable ref) must never silently read as "zero files changed" --
 // that would degrade to a false "floor clear" on exactly the gate a promotion depends on.
-test('--floor: a diff that cannot be computed surfaces diffError, never a silent pass', () => {
+test('--floor: a diff that cannot be computed surfaces diffError, never a silent pass', async () => {
     const root = makeGitRepo();
     writeFiles(root, baseFixture());
     const headGitRef = commitAll(root, 'only commit');
 
     try {
-        const result = runFloor({ repoRoot: root, baseGitRef: 'not-a-real-ref', headGitRef });
+        const result = await runFloor({ repoRoot: root, baseGitRef: 'not-a-real-ref', headGitRef });
         assert.ok(result.diffError);
         assert.deepEqual(result.results, []);
         assert.deepEqual(result.belowFloor, []);
@@ -703,7 +703,7 @@ test('--floor: a diff that cannot be computed surfaces diffError, never a silent
 // falsely flagged the cherry-picked commits on develop as changes, reporting the app
 // as below the minor floor. Two-dot diff (staging..develop) correctly observes that the
 // app is content-identical between staging and develop, placing it in `unchanged`.
-test('--floor (#1802 regression): backported staging repairs do not falsely flag apps as below floor', () => {
+test('--floor (#1802 regression): backported staging repairs do not falsely flag apps as below floor', async () => {
     const root = makeGitRepo();
     runGit(root, ['checkout', '-b', 'staging']);
     writeFiles(root, baseFixture({
@@ -736,7 +736,7 @@ test('--floor (#1802 regression): backported staging repairs do not falsely flag
     commitAll(root, 'feat(storefront): new feature on develop');
 
     try {
-        const result = runFloor({ repoRoot: root, baseGitRef: 'staging', headGitRef: 'develop' });
+        const result = await runFloor({ repoRoot: root, baseGitRef: 'staging', headGitRef: 'develop' });
         assert.equal(result.diffError, null);
         assert.deepEqual(result.belowFloor, []);
         assert.deepEqual(result.invalid, []);
@@ -754,13 +754,22 @@ test('--floor (#1802 regression): backported staging repairs do not falsely flag
     }
 });
 
-// --- Phase 303 (#1695): computeReachabilityShadowVerdict, LOG-ONLY -----------------------------
+// --- #1809 (Phase 324): detectChangedAppsNarrowed(), GATING -----------------------------------
+//
+// Supersedes the old Phase 303 (#1695) shadow-mode tests (computeReachabilityShadowVerdict /
+// runReachabilityShadowAudit, both removed) -- these drive the SAME shapes through the real,
+// now-gating path (detectChangedApps() -> detectChangedAppsNarrowed()), never a hand-constructed
+// `entry` object, so a regression like the pre-#1809 multi-scope-package bug (fixed in
+// resolve-web-core-reachability.js, regression-tested in resolve-web-core-reachability.test.js)
+// can't hide behind a fixture that bypasses detectChangedApps() entirely.
 //
 // Own dedicated fixture -- ENTRY_FILE_BY_APP hardcodes real Vite entry points
 // (apps/<app>/src/main.jsx), distinct from baseFixture()'s placeholder apps/<app>/src/index.js
-// above (which stays exactly as-is: it is what every non-Phase-303 test in this file exercises,
-// and none of it is touched here). These tests confirm the wiring never affects `runCheck()`'s own
-// gating result -- see the "runCheck's own ok/changed result is unaffected" assertions below.
+// above. baseFixture() stays exactly as-is and untouched -- every test above this section still
+// exercises it, and (confirmed by the "return shape" test at the end of this section) still hits
+// the reachability-error-fail-closed path (no real main.jsx to resolve), which is why none of
+// those pre-#1809 tests needed a single assertion changed: fail-closed reproduces the exact
+// conservative "changed" verdict they already expected.
 
 function reachabilityFixtureRepo() {
     const root = makeGitRepo();
@@ -781,67 +790,70 @@ function reachabilityFixtureRepo() {
     return { root, baseGitRef };
 }
 
-test('shadow: a real reachability hit agrees with the old fan-out verdict', async () => {
+function findNarrowedEntry(entries, app) {
+    return entries.find((entry) => entry.app === app);
+}
+
+test('detectChangedAppsNarrowed: a real reachability hit stays gated "changed" (the general case)', async () => {
     const { root } = reachabilityFixtureRepo();
     try {
         writeFiles(root, { 'packages/web-core/src/reachable.js': 'export default { changed: true };\n' });
         const headGitRef = commitAll(root, 'change reachable.js');
         const changedFiles = ['packages/web-core/src/reachable.js'];
-        const entry = { app: 'dgfy-ims', appDir: 'apps/dgfy-ims', changed: true, reason: 'fan-out:packages/web-core' };
 
-        const shadow = await computeReachabilityShadowVerdict(root, headGitRef, entry, changedFiles);
-        assert.equal(shadow.applicable, true);
-        assert.equal(shadow.safetyNetPassed, true);
-        assert.equal(shadow.changed, true);
-        assert.equal(shadow.code, 'reachable');
+        const entries = await detectChangedAppsNarrowed(root, headGitRef, changedFiles);
+        const ims = findNarrowedEntry(entries, 'dgfy-ims');
+        assert.equal(ims.changed, true);
+        assert.equal(ims.reason, 'fan-out:packages/web-core');
+        assert.equal(ims.verdict.applicable, true);
+        assert.equal(ims.verdict.safetyNetPassed, true);
+        assert.equal(ims.verdict.code, 'reachable');
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
 });
 
-test('shadow: dgfy-storefront disagrees with the old fan-out verdict when the changed file is not reachable from its entry (the PR #1689 shape)', async () => {
+test("detectChangedAppsNarrowed: dgfy-storefront's fan-out entry is narrowed away when the changed file is not reachable from its entry (the PR #1689 shape)", async () => {
     const { root } = reachabilityFixtureRepo();
     try {
         writeFiles(root, { 'packages/web-core/src/reachable.js': 'export default { changed: true };\n' });
         const headGitRef = commitAll(root, 'change reachable.js');
         const changedFiles = ['packages/web-core/src/reachable.js'];
-        // dgfy-storefront's own directory-level verdict is "changed" too (fan-out is a directory
-        // check) -- this is what the old verdict would have said; the shadow verdict is expected
-        // to DISAGREE, which is exactly the narrowing #1695 exists to prove is safe.
-        const entry = { app: 'dgfy-storefront', appDir: 'apps/dgfy-storefront', changed: true, reason: 'fan-out:packages/web-core' };
 
-        const shadow = await computeReachabilityShadowVerdict(root, headGitRef, entry, changedFiles);
-        assert.equal(shadow.applicable, true);
-        assert.equal(shadow.safetyNetPassed, true);
-        assert.equal(shadow.changed, false);
-        assert.equal(shadow.code, 'not-reachable');
-        assert.notEqual(shadow.changed, entry.changed); // confirms this is a genuine disagreement
+        const entries = await detectChangedAppsNarrowed(root, headGitRef, changedFiles);
+        // dgfy-storefront's own directory-level verdict (detectChangedApps(), pre-narrowing) is
+        // "changed" too -- fan-out is a directory check -- but its main.jsx only ever imports
+        // other.js, never reachable.js, so the real oracle must narrow this entry away entirely
+        // (this is what actually GATES now, unlike the old shadow-mode log line).
+        const storefront = findNarrowedEntry(entries, 'dgfy-storefront');
+        assert.equal(storefront.changed, false);
+        assert.equal(storefront.reason, 'fan-out-not-reachable');
+        assert.equal(storefront.verdict.safetyNetPassed, true);
+        assert.equal(storefront.verdict.code, 'not-reachable');
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
 });
 
-test('shadow: a deleted fan-out-package file is conservatively counted as changed, never silently read as unreachable', async () => {
+test('detectChangedAppsNarrowed: a deleted fan-out-package file is conservatively counted as changed, never silently read as unreachable', async () => {
     const { root, baseGitRef } = reachabilityFixtureRepo();
     try {
         writeFiles(root, { 'packages/web-core/src/toDelete.js': 'export default { willBeDeleted: true };\n' });
         commitAll(root, 'add toDelete.js');
         fs.unlinkSync(path.join(root, 'packages/web-core/src/toDelete.js'));
         const headGitRef = commitAll(root, 'delete toDelete.js');
-
         const changedFiles = ['packages/web-core/src/toDelete.js'];
-        // Deletion applies identically regardless of which app is asked -- dgfy-storefront's own
-        // entry never even referenced toDelete.js, which is exactly the point: a deleted file
-        // can't be looked up in a reachability graph built from HEAD's tree at all, so the
-        // conservative "changed" fallback must fire independent of any real reachability edge.
-        const entry = { app: 'dgfy-storefront', appDir: 'apps/dgfy-storefront', changed: true, reason: 'fan-out:packages/web-core' };
 
-        const shadow = await computeReachabilityShadowVerdict(root, headGitRef, entry, changedFiles);
-        assert.equal(shadow.applicable, true);
-        assert.equal(shadow.safetyNetPassed, true);
-        assert.equal(shadow.changed, true);
-        assert.equal(shadow.code, 'deleted-file-fail-closed');
-        assert.deepEqual(shadow.hitFiles, ['packages/web-core/src/toDelete.js']);
+        const entries = await detectChangedAppsNarrowed(root, headGitRef, changedFiles);
+        // Deletion applies identically regardless of which app is asked -- dgfy-storefront's own
+        // entry never even referenced toDelete.js, which is exactly the point: a deleted file can't
+        // be looked up in a reachability graph built from HEAD's tree at all, so the conservative
+        // "changed" fallback must fire independent of any real reachability edge.
+        const storefront = findNarrowedEntry(entries, 'dgfy-storefront');
+        assert.equal(storefront.changed, true);
+        assert.equal(storefront.reason, 'fan-out:packages/web-core');
+        assert.equal(storefront.verdict.code, 'deleted-file-fail-closed');
+        assert.deepEqual(storefront.verdict.hitFiles, ['packages/web-core/src/toDelete.js']);
 
         // Sanity: baseGitRef really did have the file (so this is a genuine deletion, not a file
         // that never existed).
@@ -851,7 +863,7 @@ test('shadow: a deleted fan-out-package file is conservatively counted as change
     }
 });
 
-test('shadow: a synthetic safety-net violation falls back to the conservative "changed" verdict', async () => {
+test('detectChangedAppsNarrowed: a synthetic safety-net violation falls back to the conservative "changed" verdict', async () => {
     const { root } = reachabilityFixtureRepo();
     try {
         writeFiles(root, {
@@ -863,70 +875,131 @@ test('shadow: a synthetic safety-net violation falls back to the conservative "c
         });
         const headGitRef = commitAll(root, 'change reachable.js + introduce a risky pattern');
         const changedFiles = ['packages/web-core/src/reachable.js'];
-        // dgfy-storefront would normally disagree here (see the test above) -- the safety net
-        // must override that and fall back to "changed", matching the old verdict.
-        const entry = { app: 'dgfy-storefront', appDir: 'apps/dgfy-storefront', changed: true, reason: 'fan-out:packages/web-core' };
 
-        const shadow = await computeReachabilityShadowVerdict(root, headGitRef, entry, changedFiles);
-        assert.equal(shadow.applicable, true);
-        assert.equal(shadow.safetyNetPassed, false);
-        assert.equal(shadow.changed, true);
-        assert.equal(shadow.code, 'safety-net-tripped');
-        assert.ok(shadow.violations.length > 0);
+        const entries = await detectChangedAppsNarrowed(root, headGitRef, changedFiles);
+        // dgfy-storefront would normally be narrowed away here (see the test above) -- the safety
+        // net must override that and fall back to "changed", matching detectChangedApps()'s own
+        // directory-level verdict, and this is now the actual GATING behavior, not a log line.
+        const storefront = findNarrowedEntry(entries, 'dgfy-storefront');
+        assert.equal(storefront.changed, true);
+        assert.equal(storefront.reason, 'fan-out:packages/web-core');
+        assert.equal(storefront.verdict.safetyNetPassed, false);
+        assert.equal(storefront.verdict.code, 'safety-net-tripped');
+        assert.ok(storefront.verdict.violations.length > 0);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
 });
 
-test('shadow: a direct (non-fan-out) app change is not applicable -- nothing to narrow', async () => {
+test('detectChangedAppsNarrowed: a direct (non-fan-out) app change is left untouched -- nothing to narrow', async () => {
     const { root } = reachabilityFixtureRepo();
     try {
         writeFiles(root, { 'apps/dgfy-ims/src/main.jsx': "import '../../../packages/web-core/src/reachable.js';\n// direct change\n" });
         const headGitRef = commitAll(root, 'direct ims change');
-        const entry = { app: 'dgfy-ims', appDir: 'apps/dgfy-ims', changed: true, reason: 'direct' };
+        const changedFiles = ['apps/dgfy-ims/src/main.jsx'];
 
-        const shadow = await computeReachabilityShadowVerdict(root, headGitRef, entry, ['apps/dgfy-ims/src/main.jsx']);
-        assert.equal(shadow.applicable, false);
+        const entries = await detectChangedAppsNarrowed(root, headGitRef, changedFiles);
+        const ims = findNarrowedEntry(entries, 'dgfy-ims');
+        assert.equal(ims.changed, true);
+        assert.equal(ims.reason, 'direct');
+        // A direct change never asks the oracle at all -- kept exactly as detectChangedApps()
+        // returned it, no `verdict` attached.
+        assert.equal(ims.verdict, undefined);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
 });
 
-test('shadow: a backend app (no bundler entry) is not applicable -- out of scope per plan §3.5', async () => {
+test("detectChangedAppsNarrowed: a backend app (no bundler entry) is left untouched -- out of scope per resolve-web-core-reachability.js's own ENTRY_FILE_BY_APP", async () => {
     const { root } = reachabilityFixtureRepo();
     try {
         writeFiles(root, { 'packages/shared-constants/index.js': 'module.exports = { changed: true };\n' });
         const headGitRef = commitAll(root, 'change shared-constants');
-        const entry = { app: 'dgfy-api', appDir: 'apps/dgfy-api', changed: true, reason: 'fan-out:packages/shared-constants' };
+        const changedFiles = ['packages/shared-constants/index.js'];
 
-        const shadow = await computeReachabilityShadowVerdict(root, headGitRef, entry, ['packages/shared-constants/index.js']);
-        assert.equal(shadow.applicable, false);
-        assert.match(shadow.reason, /backend app/);
+        const entries = await detectChangedAppsNarrowed(root, headGitRef, changedFiles);
+        const api = findNarrowedEntry(entries, 'dgfy-api');
+        assert.equal(api.changed, true);
+        assert.equal(api.reason, 'fan-out:packages/shared-constants');
+        // !applicable (no known bundler entry for a backend app) -- kept exactly as
+        // detectChangedApps() returned it, no `verdict` attached.
+        assert.equal(api.verdict, undefined);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
 });
 
-test("shadow: runCheck()'s own ok/changed result is unaffected by anything in the reachability module -- zero behavior change", () => {
-    // Regression guard for the core Phase 303 requirement: runCheck() itself (the function every
-    // pre-existing test above exercises) must remain 100% synchronous and untouched. This test
-    // doesn't call the shadow functions at all -- it just re-runs a representative scenario
-    // (already covered above) to pin that runCheck's return shape/behavior is unchanged by this
-    // file's edits, independent of whatever computeReachabilityShadowVerdict does.
+// #1809's own "Fresh evidence" incident (plan doc §1.3): candidate 2026-09-10-02's dgfy-storefront
+// was force-bumped to the minor floor purely because runFloor()'s directory-level fan-out check
+// flagged it "changed" when an unrelated POS/IMS-only packages/web-core change landed, even though
+// dgfy-storefront's own bundle never reached the actual changed file. Flipping only runCheck()
+// (leaving runFloor() untouched) would leave this exact incident fully reproducible on the next
+// promotion -- this test pins that runFloor() is narrowed too.
+test('--floor (#1809 regression): an app below the minor floor purely via directory-level fan-out, with no real reachability, must no longer appear in belowFloor', async () => {
+    const root = makeGitRepo();
+    writeFiles(root, {
+        'apps/dgfy-ims/package.json': pkgJson('1.10.4', { '@sieitzz/web-core': 'file:../../packages/web-core' }),
+        'apps/dgfy-ims/src/main.jsx': "import '../../../packages/web-core/src/reachable.js';\n",
+        'apps/dgfy-storefront/package.json': pkgJson('1.11.6', { '@sieitzz/web-core': 'file:../../packages/web-core' }),
+        'apps/dgfy-storefront/src/main.jsx': "import '../../../packages/web-core/src/other.js';\n",
+        'packages/web-core/package.json': pkgJson('1.0.0'),
+        'packages/web-core/src/reachable.js': 'export default {};\n',
+        'packages/web-core/src/other.js': 'export default {};\n',
+    });
+    const baseGitRef = commitAll(root, 'base');
+    try {
+        // Only packages/web-core changes, and only in a way reachable from dgfy-ims's own entry --
+        // mirrors the real incident's POS/IMS-only change fanning out to dgfy-storefront too.
+        writeFiles(root, { 'packages/web-core/src/reachable.js': 'export default { changed: true };\n' });
+        const headGitRef = commitAll(root, 'change reachable.js (IMS-reachable only, mirrors #1809)');
+
+        const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        assert.equal(result.diffError, null);
+
+        // dgfy-ims genuinely reaches the changed file and is unbumped (still 1.10.4) -- correctly
+        // flagged below floor.
+        const ims = result.results.find((entry) => entry.app === 'dgfy-ims');
+        assert.ok(ims, 'dgfy-ims should still be in scope -- it genuinely reaches the changed file');
+        assert.equal(ims.belowFloor, true);
+
+        // dgfy-storefront never reaches reachable.js -- must be excluded from `results` (and so
+        // from `belowFloor`) entirely, landing in `unchanged` (no floor obligation) instead. This is
+        // the exact incident #1809 exists to fix: pre-fix, this app would have been force-bumped.
+        assert.ok(!result.results.some((entry) => entry.app === 'dgfy-storefront'));
+        assert.ok(!result.belowFloor.some((entry) => entry.app === 'dgfy-storefront'));
+        assert.ok(result.unchanged.includes('dgfy-storefront'));
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+// Replaces the old Phase-303-era "runCheck()'s own ok/changed result is unaffected... zero
+// behavior change" test, whose premise is now false by design (#1809's whole point is that
+// reachability DOES affect the gating result) -- see §2.4 of the plan doc. What's still true and
+// worth pinning: the shape of the resolved object, and that baseFixture()'s placeholder apps (no
+// real main.jsx) deterministically hit the reachability-error-fail-closed path rather than
+// throwing or silently under-narrowing.
+test("runCheck(): return shape is unchanged once resolved (now genuinely async), and baseFixture()'s placeholder apps fail closed to the old conservative verdict", async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: { 'packages/shared-constants/index.js': 'module.exports = { changed: true };\n' },
     });
     try {
-        const result = runCheck({
+        const resultPromise = runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
-        assert.equal(typeof result.then, 'undefined'); // still a plain object, not a Promise
+        assert.equal(typeof resultPromise.then, 'function'); // genuinely async now, not a plain object
+        const result = await resultPromise;
         assert.equal(result.ok, false);
         assert.equal(result.appResults.length, 5);
-        // Additive-only: the new repoRoot/changedFiles fields exist but don't change any existing
-        // field's value.
         assert.equal(result.repoRoot, root);
         assert.deepEqual(result.changedFiles, ['packages/shared-constants/index.js']);
+
+        // The three frontend apps' fan-out entries were genuinely narrowing-attempted (each carries
+        // a `verdict`) but fail closed, since baseFixture() never gives them a real main.jsx --
+        // confirms this is "narrowing tried and safely degraded", not "narrowing silently skipped".
+        const frontendEntries = result.narrowedEntries.filter((entry) => ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront'].includes(entry.app));
+        assert.equal(frontendEntries.length, 3);
+        assert.ok(frontendEntries.every((entry) => entry.verdict && entry.verdict.code === 'reachability-error-fail-closed'));
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
