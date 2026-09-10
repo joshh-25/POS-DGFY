@@ -824,6 +824,7 @@ git status   # confirm clean before cutting -- an unnoticed diff here rides onto
 # shell session -- same convention $TARGET_REF/$TARGET_SHA already rely on in the compliance
 # preflight block above.
 SYNC_ID="${CANDIDATE_ID:?candidate ID required -- set earlier in the branch-cut section above}"
+TARGET_SYNC_BRANCH="chore/release/sync-version-baselines-$SYNC_ID"
 
 # Rerun guard: check for an existing sync PR for this candidate before cutting a new branch --
 # without this, a stale local branch surviving past a prior run's post-merge remote deletion would
@@ -838,7 +839,7 @@ SYNC_ID="${CANDIDATE_ID:?candidate ID required -- set earlier in the branch-cut 
 # GitHub/API error (auth, rate limit, network) stops the run instead of `$SYNC_PR_JSON` coming back
 # empty and being misread as "no existing PR, safe to create" -- the exact silent-fallthrough gap
 # the prior version of this guard had.
-if ! SYNC_PR_JSON=$(gh pr list --head "chore/release/sync-version-baselines-$SYNC_ID" --state all --json number,state,mergedAt --jq '.[0] // empty'); then
+if ! SYNC_PR_JSON=$(gh pr list --head "$TARGET_SYNC_BRANCH" --state all --json number,state,mergedAt --jq '.[0] // empty'); then
   echo "ERROR: gh pr list failed while checking for an existing sync PR for candidate $SYNC_ID -- stopping rather than risking a duplicate PR. Investigate (auth/rate-limit/network) and re-run this step." >&2
   exit 1
 fi
@@ -868,10 +869,23 @@ case "$SYNC_PR_ACTION" in
   retry|create)
     if [ "$SYNC_PR_ACTION" = retry ]; then
       echo "Candidate $SYNC_ID's prior sync PR (#$SYNC_PR_NUMBER) was closed without merging -- its version changes never reached develop. Retrying." >&2
-      git push origin --delete "chore/release/sync-version-baselines-$SYNC_ID" 2>/dev/null || true   # drop the dead remote branch, if it still exists
+      git push origin --delete "$TARGET_SYNC_BRANCH" 2>/dev/null || true   # drop the dead remote branch, if it still exists
     fi
-    git branch -D "chore/release/sync-version-baselines-$SYNC_ID" 2>/dev/null || true   # drop a stale local branch from an earlier interrupted attempt, if any
-    git switch -c "chore/release/sync-version-baselines-$SYNC_ID" origin/develop
+    # Drop a stale local branch from an earlier interrupted attempt, if any (#1813 RF-4). Never
+    # swallow a real deletion failure: `git branch -D` refuses to delete the branch that's
+    # currently checked out, and the old `|| true` here silently ate that refusal -- the
+    # following `git switch -c` then failed too (a branch of that name already existed), silently
+    # skipping the required reconciliation. Detach to `origin/develop` first when we're actually
+    # on the stale branch -- safe, since `git status` at the top of this block already confirmed a
+    # clean working tree -- then delete for real, failing loudly if it still can't be removed
+    # (e.g. checked out in another worktree, which a local detach can't fix).
+    if [ "$(git branch --show-current)" = "$TARGET_SYNC_BRANCH" ]; then
+      git switch --detach origin/develop
+    fi
+    if git rev-parse --verify --quiet "$TARGET_SYNC_BRANCH" >/dev/null; then
+      git branch -D "$TARGET_SYNC_BRANCH" || { echo "ERROR: could not delete stale local branch $TARGET_SYNC_BRANCH -- resolve manually (check for another worktree/checkout using it) before retrying this step." >&2; exit 1; }
+    fi
+    git switch -c "$TARGET_SYNC_BRANCH" origin/develop
     node -e "
 const fs = require('fs');
 const { computeBaselineSync } = require('./scripts/sync-app-version-baselines');
@@ -890,8 +904,8 @@ for (const entry of result.needsSync) {
 "
     git add apps/*/package.json
     git commit -m "chore(release): sync app version baselines from main"
-    git push -u origin "chore/release/sync-version-baselines-$SYNC_ID"
-    gh pr create --base develop --head "chore/release/sync-version-baselines-$SYNC_ID" \
+    git push -u origin "$TARGET_SYNC_BRANCH"
+    gh pr create --base develop --head "$TARGET_SYNC_BRANCH" \
       --title "chore(release): sync app version baselines from main" \
       --body "## Summary
 
