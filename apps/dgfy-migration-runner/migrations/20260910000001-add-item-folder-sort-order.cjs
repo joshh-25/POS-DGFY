@@ -58,11 +58,17 @@ const targetDatabases = async (queryInterface) => {
 
 const addAndBackfill = async (queryInterface, Sequelize, databaseName) => {
   const qualifiedTable = `${quoteIdentifier(databaseName)}.${quoteIdentifier(TABLE)}`;
-  if (!(await columnExists(queryInterface, databaseName))) {
+  const columnWasAdded = !(await columnExists(queryInterface, databaseName));
+  if (columnWasAdded) {
     await queryInterface.sequelize.query(
       `ALTER TABLE ${qualifiedTable} ADD COLUMN ${quoteIdentifier(COLUMN)} INTEGER NOT NULL DEFAULT 0`
     );
   }
+  // Existing tenants may have a deliberate category order written by the POS or
+  // synchronizer. The migration only needs to initialize rows when it creates the
+  // new column; rerunning it must never replace that operator-owned order.
+  if (!columnWasAdded) return;
+
   const [folders] = await queryInterface.sequelize.query(
     `SELECT folder_id FROM ${qualifiedTable} WHERE deleted_at IS NULL ORDER BY name ASC, folder_id ASC`
   );
