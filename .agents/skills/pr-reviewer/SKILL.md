@@ -77,20 +77,25 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    `no_breach` is a `should-fix` at PR time, since `check-compliance-impact.js` will fail it closed.
 4. **Version level** — run `node scripts/propose-version-level.js --base <base> --head <head>`;
    compare its proposed level per changed app against `check-app-version-bump.js`'s own pass/fail
-   for the PR's actual `(base, head)` mode (`npm run check:app-versions`). **`check:app-versions` is
-   now blocking, live (#1592, epic #1548 Phase 283, flipped 2026-09-05) — not advisory.** A missing
-   or insufficient bump (the check's own FAIL) now fails CI outright on both consuming surfaces
-   (`shared-changed-paths.yml`, `scripts/pr-checks.js`); that failure mode should already show up as
-   a red check under Merge readiness (item 8 below), not something this item has to catch by hand.
-   What this item still catches that CI does not: a proposed level *higher* than what the diff's
-   actual bump satisfies (e.g. the commits look like a `feat` but the PR only bumped patch) — CI's
-   `any-increase` mode (the mode a `develop`-base PR always runs under) accepts *any* increase
-   regardless of size, so a too-small-but-nonzero bump still passes CI. That mismatch is now a
-   **`blocker`**, not a `should-fix` — with blocking live, a mismatched level is a real policy gap,
-   not just a style note (previously: `nit` while advisory, `should-fix` once flipped — that flip has
-   now landed). A proposed level *lower* than the actual bump is never a finding — bumping more than
-   the diff calls for is never wrong. Add one row to the fixed `## Review` table shape for this
-   finding when it fires.
+   for the PR's actual `(base, head)` mode (`npm run check:app-versions`). **`check:app-versions`
+   blocking is base-aware (#1774, epic #1548, revised 2026-09-10 from #1592/Phase 283's 2026-09-05
+   global flip) — blocking on a promotion-leg PR (a `staging`/`main`-base PR: `to-staging/*`,
+   `fix/staging/*`, `release/*`, or a plain hotfix branch), advisory on a `develop`-base PR.** On a
+   promotion-leg PR, a missing or insufficient bump (the check's own FAIL) fails CI outright on both
+   consuming surfaces (`shared-changed-paths.yml`, `scripts/pr-checks.js`); that failure mode should
+   already show up as a red check under Merge readiness (item 8 below), not something this item has
+   to catch by hand. On a `develop`-base PR, a missing bump only warns — `develop -> staging`'s own
+   minor-floor bump (ADR 0081 Decision 6) is what actually enforces the requirement at promotion
+   time, so a missing bump here is a `should-fix`, not a blocker. What this item still catches that
+   CI does not, on either base: a proposed level *higher* than what the diff's actual bump satisfies
+   (e.g. the commits look like a `feat` but the PR only bumped patch) — CI's `any-increase` mode (the
+   mode a `develop`-base PR always runs under, and the mode a `release/*`-headed `main`-base PR also
+   runs under) accepts *any* increase regardless of size, so a too-small-but-nonzero bump still
+   passes CI. That mismatch is a **`blocker`** on a promotion-leg PR — with blocking live there, a
+   mismatched level is a real policy gap, not just a style note — and a **`should-fix`** on a
+   `develop`-base PR, since CI doesn't block that leg at all. A proposed level *lower* than the
+   actual bump is never a finding — bumping more than the diff calls for is never wrong. Add one row
+   to the fixed `## Review` table shape for this finding when it fires.
 5. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
    `npm run lint:docs`, which chains `check:adr`, for docs-only PRs) against the merge-result tree.
 6. **Tenant schema risk** — if the PR touches `apps/dgfy-migration-runner/migrations/` or
