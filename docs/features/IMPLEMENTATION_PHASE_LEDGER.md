@@ -22475,6 +22475,36 @@ content differs from what was implemented and tested under the "303" label.
   artifacts and compliance declaration. Physical iMin validation excluded.
 - Next eligible phase: 321.
 
+## Phase 321 - POS large-cart search and receipt-print responsiveness
+
+- Initiative/release: POS terminal large-cart performance / current release.
+- Objective and scope: reduce avoidable work when a cashier searches with more than
+  ten cart lines and reduce client-driver receipt audit latency while preserving
+  catalog results, financial totals, print outcomes, audit idempotency, and
+  iMin browser compatibility.
+- Status: completed.
+- Dependencies: Phase 320; ADR 0014 Storefront/POS cache and read-performance
+  contracts; ADR 0053 client-executed hardware audit contract; ADR 0067 browser
+  support baseline.
+- Acceptance and validation evidence: stale catalog requests are cancelled
+  with the existing sequence guard as fallback; catalog card quantity lookup
+  is linear per cart render; financial calculation stages are memoized by their
+  input snapshots; client-driver receipt audits fetch only identity and receipt
+  contract metadata and skip settings/logo rasterization while still awaiting
+  the required idempotent audit. Focused shared POS contracts passed 3 files /
+  15 tests; client-delegated receipt API tests passed 12/12; POS production
+  build passed; changed-file API/frontend lint and `git diff --check` passed.
+  No schema or database migration was required. The full API suite was not used
+  as a gate because it retains the unrelated baseline
+  `imageLifecycleFullValidation` v2-path fixture failure outside this phase.
+- Completion date: 2026-09-10.
+- Contracts/files: `usePosCatalogWorkflow.js`, `posService.js`,
+  `POSCheckoutTerminalView.jsx`, `usePosFinancialWorkflow.js`,
+  `posRepository.js`, `posDeviceUseCases.js`, and their focused contract/unit
+  tests. Performance behavior remains governed by ADR 0014 and hardware audit
+  behavior by ADR 0053.
+- Next eligible phase: 322.
+
 ## Phase 322 - POS item image reliability and responsiveness
 
 - Initiative/release: POS item image upload repair / current release.
