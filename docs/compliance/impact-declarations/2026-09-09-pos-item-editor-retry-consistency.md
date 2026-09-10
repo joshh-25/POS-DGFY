@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-09-09
+last_reviewed: 2026-09-10
 declaration_id: 2026-09-09-pos-item-editor-retry-consistency
 classification: major
 surfaces: pos,terminal,inventory
@@ -44,6 +44,11 @@ inventory movement, or tenant access.
   request, or physical iMin validation is introduced.
 
 ## Verification Evidence
+
+- PR #1777 follow-up restores the missing `resolveAssetVariantUrl` import used
+  by the existing gallery variant mapping. It changes no API, schema, payment,
+  or authorization behavior. Focused ESLint and all 16 checkout utility tests
+  pass after the import correction.
 
 - Phase 319 focused suite passes 8 files and 40 tests, including controlled
   Primary identity, cancel/retry contracts, stale AI completion, Add recovery,

@@ -1,4 +1,4 @@
-import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import { resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { matchesPosHistorySearch } from './posHistorySearch.js';
 import { getDiscountLineRef } from './posDiscountSelection.js';
 import { matchesPosTransactionPaymentMethod } from './posPaymentMethods.js';
