@@ -12,8 +12,8 @@ verification_evidence: authenticated responsive Chrome Add Item validation,focus
 rollback_note: Revert the custom item-modal body lock and Escape handler; no persistent data, migration, or external operation is involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T10:45:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-295-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-05-POS-ITEMS-PHASE-295-BROWSER-CORRECTION
 ---
 
 # POS Items Phase 295 browser correction

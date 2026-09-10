@@ -11,8 +11,8 @@ verification_evidence: focused POS catalog image resolver tests,POS production b
 rollback_note: Revert the preview-source resolver, its focused tests, and Phase 308 ledger entry; catalog images and persistence remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-08T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-308-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-08-POS-ITEMS-HD-PREVIEW-SOURCE-CONTRACT
 ---
 
 # POS Items HD preview source contract

@@ -11,8 +11,8 @@ verification_evidence: focused POS edit-item image contract tests,POS production
 rollback_note: Revert the Edit Item drop handlers, drag-active styling, and saved-preview reconciliation; file-picker uploads and all persisted catalog data remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-08T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-POS-EDIT-ITEM-IMAGE-DROP-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-08-POS-EDIT-ITEM-IMAGE-DROP
 ---
 
 # POS Edit Item image drag and drop

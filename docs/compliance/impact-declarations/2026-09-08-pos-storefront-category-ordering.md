@@ -11,8 +11,8 @@ verification_evidence: inventory repository tests,tenant schema sync regression 
 rollback_note: Revert Phase 313 application changes and leave the additive sort_order column in place; existing category identity and item memberships remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-08T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-313-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-08-POS-STOREFRONT-CATEGORY-ORDERING
 ---
 
 # Shared POS and Storefront category ordering

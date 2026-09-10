@@ -11,8 +11,8 @@ verification_evidence: 176 API tests; POS build; architecture and ADR checks; th
 rollback_note: Revert the local integration commit only after checking database compatibility; pre-migration local SQL backups are retained in Git metadata. No production operation was performed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-06T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-POS-DEVELOPMENT-INTEGRATION
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-06-POS-DEVELOPMENT-INTEGRATION
 ---
 
 # Local POS-Development integration with develop

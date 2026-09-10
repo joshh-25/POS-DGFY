@@ -11,8 +11,8 @@ verification_evidence: focused POS edit-gallery helper and save-contract tests,f
 rollback_note: Revert the Phase 317 gallery-intent transport, worker, and staged Edit Item changes; existing catalog image records remain valid and no migration is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-09T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-317-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-09-POS-EDIT-ITEM-GALLERY-DRAFT
 ---
 
 # POS Edit Item gallery draft consistency

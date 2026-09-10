@@ -11,8 +11,8 @@ verification_evidence: 31 focused split-payment unit tests; targeted migrated-da
 rollback_note: Revert the read-only stock availability command and split-session preflight call. No database or persisted-data rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-07T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-POS-SPLIT-INVENTORY-PREFLIGHT
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-07-POS-SPLIT-INVENTORY-PREFLIGHT
 ---
 
 # POS split-payment inventory preflight
