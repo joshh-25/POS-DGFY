@@ -1510,3 +1510,117 @@ match). Full detail: ADR 0081's matching 2026-09-07 Amendment,
 `scripts/check-app-version-bump.js`'s `runFloor()`, issue #1740.
 
 PR: (this PR). Refs #1740.
+
+### 2026-09-08: Compliance-preflight reconciliation path for a `main`-based hotfix (#1700)
+
+Closes a gap this document's own "No `NOT-EXECUTED-*` declaration may reach `main`" rule (2026-08-22
+amendment above) never actually addressed for one path: `incident-responder`/`hotfix`
+(`.agents/skills/incident-responder/SKILL.md`, #331/#546/#861) branches a hotfix directly off `main`
+— that branch is outside `compliance-preflight-sweep.yml`'s `push: branches: [develop]` trigger by
+construction, and the sweep's reconciliation PR is hardcoded `--base develop`, so neither the
+continuous sweep nor its manual `workflow_dispatch` form can produce a reconciliation *for* this
+branch before it merges. The only two paths anyone had actually used before this entry were an
+undocumented, untested-for-this-ref manual reproduction of the sweep's whole fixture procedure, or
+reaching for #1007's promoter-scoped expedited override — a mechanism explicitly written for a
+different role and a different flow (see #1694's own issue body, quoted in
+`docs/compliance/request-time-preflight-protocol.md`).
+
+**Resolution: `npm run compliance:reconcile-local` (#1694/#1703, 2026-09-07) is the sanctioned
+path, made mandatory for this case rather than merely available.** It performs no git operation, so
+it already works unmodified against a `main`-based hotfix branch's checked-out worktree — the
+`staging`/`release/*` case #1694 built it for is structurally identical. `incident-responder`'s own
+SKILL.md now states this as a required step (not optional) whenever a hotfix diff carries an
+outstanding `NOT-EXECUTED-*` ref, before `pr-reviewer`'s fast-track review; `pr-reviewer`'s own
+Compliance rule is extended so a surviving `NOT-EXECUTED-*` on this specific PR shape (a hotfix PR
+into `main`, not `release/*`-headed) is an explicit blocker, closing a gap where that PR shape
+previously fell outside both of `pr-reviewer`'s named cases and was only caught by reviewer
+judgment (see #1700's own origin, PR #1699/#1702's RF-1).
+
+**This deliberately does not extend #1007's phrase-gated override to this path** (#1700's option
+(b), rejected) — a real ~several-minute local check that produces a genuine `PREFLIGHT-*` result is
+available, so authorizing a skip here would weaken the audit posture #1007 was deliberately scoped
+narrowly to protect, for no real time savings. #1007 stays exactly what it already is: `promoter`'s
+own `develop → main` business-urgency override, unchanged.
+
+**What this does not change:** the never-skippable absolute rule itself (no `NOT-EXECUTED-*` reaches
+`main`, this entry only adds *how* a hotfix branch clears that bar); `incident-responder`'s own
+separate, already-narrow `main`-merge override (still scoped to skipping the deep manual review
+pass, never compliance evidence — see that role's own SKILL.md, updated alongside this to say so
+explicitly); the "Hotfix and back-port" procedure immediately above this entry (unaffected — a
+reconciled declaration back-ports to `develop` exactly like any other hotfix content, no special
+handling needed since the local tool never produces a divergent ref shape from what the continuous
+sweep would have produced).
+
+**Concrete evidence this gap was real, not theoretical:** #1700's own origin, PR #1702 (merged
+2026-09-07), shipped to `main` with a `NOT-EXECUTED-*` ref still in place and closed it only via the
+`develop`-detour this entry's fix exists to make unnecessary (back-port PR #1709, reconciled by the
+continuous sweep on `develop`, then present on both branches) — see
+`docs/compliance/request-time-preflight-protocol.md`'s matching entry for the verified detail.
+
+PR: (this PR). Closes #1700.
+
+### 2026-09-10: `check:app-versions` blocking made base-aware — advisory on `develop`, blocking on every promotion leg (#1774, epic #1548)
+
+The 2026-09-05 entry above (#1592, Phase 283) flipped `check:app-versions`' `BLOCKING` toggle `true`
+**globally** — every base (`develop`, `staging`, `main`) failed CI on an insufficient app version
+bump. PR #1773 hit exactly this: three apps unbumped on a `develop`-base PR, blocked from merging.
+
+**What changed:** `scripts/lib/version-bump-gate-toggle.js` now exports `resolveBlocking(base,
+head)` in place of the flat `BLOCKING` constant as the value both consuming surfaces
+(`scripts/pr-checks.js`'s `runChecks()`, and `.github/workflows/shared-changed-paths.yml`'s "Load
+check:app-versions gate toggle" step) actually pass through — blocking only when `base` is
+`staging` or `main` (a promotion leg or a hotfix), advisory on `develop`. `BLOCKING` itself stays
+exported as a global kill switch — flipping it `false` still forces every base advisory in one
+edit.
+
+**Why:** Pat's call, quoted in #1774 — `develop` PRs should not be blocked on this. `develop ->
+staging`'s own minor-floor bump requirement (ADR 0081 Decision 6) supersedes whatever an individual
+`develop` PR did or didn't bump, so blocking it there enforces a requirement that becomes irrelevant
+at promotion time while needlessly blocking contributors. Decision 6's own mode table already
+treats `develop` as the least-restrictive tier ("non-blocking by design") — Decision 9's blocking
+flag never carried that same base split forward when it was introduced; #1592's global flip is the
+bug this entry reverts, base-aware rather than wholesale.
+
+**A real correctness hazard was found and avoided, not assumed away.** The obvious shortcut —
+derive blocking from `check-app-version-bump.js`'s own `resolveMode(base, head) !==
+'any-increase'` — is wrong: a `release/*` head into `main` resolves to mode `'any-increase'`, the
+*same* value `develop` gets, so that proxy would read `false` (advisory) for exactly the
+release-to-`main` leg #1774 requires to stay blocking. `resolveBlocking()` does not derive from
+`resolveMode()` at all — every real blocking case (`to-staging/* -> staging`, `fix/staging/* ->
+staging`, `release/* -> main`, a plain hotfix branch into `main`) reduces to "base is `staging` or
+`main`," which needs no head-pattern classification. This also avoids requiring
+`check-app-version-bump.js` (and its transitive `madge` dependency) from the toggle module, keeping
+`shared-changed-paths.yml`'s toggle-load step dependency-free as designed (see that workflow's own
+"Install root dependencies" step, which now still runs only after the toggle step).
+
+**Both consuming surfaces re-verified, not assumed symmetric:**
+
+- `scripts/pr-checks.js` — `scripts/pr-checks.test.js` now asserts the call site derives its
+  `blocking` argument from `resolveBlocking(options.base, options.headRefName)`: a `develop`-base
+  fixture with a failing bump check produces `'warn'`, a `staging`-base fixture (`to-staging/*`
+  head) with the same failing check produces `'fail'`.
+- `.github/workflows/shared-changed-paths.yml` — the "Load check:app-versions gate toggle" step now
+  threads `github.base_ref`/`github.head_ref` through to `resolveBlocking()` instead of reading a
+  flat boolean.
+- `scripts/lib/version-bump-gate-toggle.test.js` (new) unit-covers `resolveBlocking()` directly:
+  `develop` (any head) advisory; `staging`/`main` blocking for every real head shape; an
+  unrecognized base defaults to advisory.
+- **Not yet done as of this PR, tracked as a required follow-up:** a live throwaway PR per base
+  pattern (`develop`; `to-staging/* -> staging`; `fix/staging/* -> staging`; `release/* -> main`; a
+  plain hotfix branch `-> main`), each with a deliberately unbumped app change, observing both
+  `shared-changed-paths.yml`'s check run and `scripts/pr-checks.js`'s local output, closed without
+  merging. This requires opening/closing multiple throwaway PRs against live CI, out of scope for
+  this PR to do unattended — the reviewer or promoter should run this before the next promotion
+  leg exercises the blocking path for real.
+
+**What did not change:** ADR 0081 Decision 6's mode table (`resolveMode()`'s bump-*level*
+requirements are untouched); `check-app-version-bump.js`'s check logic;
+`scripts/check-version-bump-flip-readiness.js` (a separate, one-time-use mechanism from #1569's
+original rollout).
+
+This is a `[default]`-tier procedure amendment under ADR 0039, matching ADR 0081 Decision 9's own
+`[default]` tag — no `[binding]` clause of this policy or of ADR 0081 is changed by this entry. See
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "`check:app-versions` flip-readiness" entry and ADR
+0081's own 2026-09-10 Amendment, kept in sync with this one.
+
+PR: (this PR). Closes #1774. Refs #1592, #1548.

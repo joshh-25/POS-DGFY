@@ -114,6 +114,9 @@ const REQUIRED_QUALITY_MARKERS = [
   'repository-dependency-quality:',
   'repository-ci-contracts-quality:',
   'repository-docs-quality:',
+  // #1712: new advisory-only job -- the functional-check half of this issue's gap, wiring the
+  // repaired frontend.imsPosSalesJourney.e2e.test.js into the promotion leg.
+  'frontend-ims-pos-sales-e2e-quality:',
   'node scripts/run-backend-test-matrix.js',
   '--detectOpenHandles',
   'npm run audit:indexes',
@@ -290,7 +293,10 @@ const QUALITY_JOB_NAMES = [
   'repository-docs-quality',
   // #1431 Phase 2 (2026-09-02), P2-2: gate 16 (frontend.budgets) -- see this job's own header
   // comment in promotion-quality-gate.yml for why it needs to be its own job.
-  'frontend-budgets-quality'
+  'frontend-budgets-quality',
+  // #1712: new advisory-only job, not (yet) a gate-release-local.js-delegated gate -- no
+  // BLOCKING_STEP_IDS entry, deliberately, pending real green promotion evidence (follow-up issue).
+  'frontend-ims-pos-sales-e2e-quality'
 ];
 
 // 2026-08-26 (#1066 follow-up): `gate` legitimately has a different `if:` shape than the six
@@ -348,7 +354,9 @@ const REPORTER_JOB_NAME = 'report-advisory-failures';
 // locally required, pending #1015/#925/fixture-rot.
 const BLOCKING_STEP_IDS = {
   'dgfy-api-quality': ['enforce_arch_guardrails', 'enforce_controller_boundaries', 'run_api_lint', 'run_runtime_doctor'],
-  'frontend-ims-quality': ['run_ims_lint', 'run_scroll_contracts', 'run_shared_fnb_contract_tests'],
+  // #1712: run_web_core_lint joins -- #1433/PR #1437 already fixed every real ESLint error in
+  // packages/web-core, closing the prerequisite the original #1431 Phase 1 exception cited.
+  'frontend-ims-quality': ['run_ims_lint', 'run_web_core_lint', 'run_scroll_contracts', 'run_shared_fnb_contract_tests'],
   'frontend-pos-quality': ['run_pos_lint'],
   'frontend-storefront-quality': ['run_storefront_lint', 'run_storefront_vitest'],
   // 2026-09-04 (#1550/#1551 triage): validate_pr_quality_workflow/validate_runner_routing/

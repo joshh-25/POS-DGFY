@@ -3,7 +3,11 @@ import { matchesPosHistorySearch } from './posHistorySearch.js';
 import { getDiscountLineRef } from './posDiscountSelection.js';
 import { matchesPosTransactionPaymentMethod } from './posPaymentMethods.js';
 
-export const money = (value) => Number(value || 0).toFixed(2);
+export const money = (value) => Number(value || 0).toLocaleString('en-US', {
+    useGrouping: true,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+});
 export const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 export const toCentavos = (value) => Math.round((Number(value) || 0) * 100);
 export const isPaymentAmountSufficient = (paymentAmount, payableAmount) => (
@@ -318,7 +322,11 @@ export const calculateGovernedDiscount = (cart, application) => {
 export const formatQuantity = (value) => {
     const quantity = Number(value || 0);
     if (!Number.isFinite(quantity)) return '0';
-    return Number.isInteger(quantity) ? String(quantity) : String(round4(quantity));
+    return round4(quantity).toLocaleString('en-US', {
+        useGrouping: true,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 4
+    });
 };
 
 export const toValidPercentage = (value) => {
@@ -529,6 +537,16 @@ export const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Mat
 // no POS-specific image exists at all does resolution fall back to the
 // Storefront fields, matching the number-218 fallback case.
 export const resolvePosCatalogImageSources = (item = {}) => {
+    const parseGallery = (value) => {
+        if (Array.isArray(value)) return value;
+        if (typeof value !== 'string') return [];
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    };
     const imageSource = String(item?.pos_image_source || '').trim().toLowerCase();
     const hasPosOverride = imageSource
         ? imageSource === 'override'
@@ -536,10 +554,32 @@ export const resolvePosCatalogImageSources = (item = {}) => {
             item?.pos_image_url
             && item.pos_image_url !== item?.storefront_image_url
         );
-    const effectiveUrl = item?.pos_image_url || item?.storefront_image_url || '';
+    const gallery = [
+        ...(hasPosOverride ? parseGallery(item?.pos_image_gallery) : []),
+        ...(!hasPosOverride ? parseGallery(item?.storefront_image_gallery) : [])
+    ].filter((entry) => typeof entry === 'string' || entry?.url || entry?.path || entry?.variants);
+    const posVariants = item?.pos_image_variants || {};
+    const storefrontVariants = item?.storefront_image_variants || {};
+    const hasVariantUrl = (variantSet = {}) => [
+        variantSet?.thumbnail_url,
+        variantSet?.medium_url,
+        variantSet?.large_url
+    ].some((value) => String(value || '').trim());
+    const getGalleryVariants = (entry = {}) => {
+        const variants = entry?.variants && typeof entry.variants === 'object' ? entry.variants : {};
+        if (hasVariantUrl(variants)) return variants;
+        if (hasVariantUrl(variants?.webp)) return variants.webp;
+        if (hasVariantUrl(variants?.avif)) return variants.avif;
+        const imageUrl = entry?.url || entry?.path || '';
+        return imageUrl ? {
+            thumbnail_url: resolveAssetVariantUrl(imageUrl, 'thumbnail'),
+            medium_url: resolveAssetVariantUrl(imageUrl, 'medium'),
+            large_url: resolveAssetVariantUrl(imageUrl, 'large')
+        } : {};
+    };
     const variants = hasPosOverride
-        ? (item?.pos_image_variants || {})
-        : (item?.storefront_image_variants || {});
+        ? posVariants
+        : (hasVariantUrl(storefrontVariants) ? storefrontVariants : getGalleryVariants(gallery[0]));
     const resolveVariantSet = (variantSet = {}) => {
         const posThumbnailUrl = resolveAssetUrl(variantSet?.pos_thumbnail_url || '');
         const thumbnailUrl = resolveAssetUrl(variantSet?.thumbnail_url || '');
@@ -568,19 +608,34 @@ export const resolvePosCatalogImageSources = (item = {}) => {
     const configuredSrc = resolveAssetUrl(item?.pos_image_url || item?.storefront_image_url || '');
     const configuredLargeSrc = configuredSrc;
     const fallbackVariants = resolveVariantSet(variants);
+    const avifVariants = resolveVariantSet(variants?.avif);
+    const webpVariants = resolveVariantSet(variants?.webp);
+    const galleryFallbackSrcs = hasPosOverride ? [] : gallery.flatMap((entry) => {
+        const entryVariants = getGalleryVariants(entry);
+        return [
+            entryVariants?.thumbnail_url,
+            entryVariants?.medium_url,
+            entryVariants?.large_url,
+            entry?.url,
+            entry?.path
+        ].map((value) => resolveAssetUrl(value || '')).filter(Boolean);
+    });
     return {
         configuredSrc,
         configuredLargeSrc,
         thumbnailFallbackSrc: fallbackVariants.thumbnailUrl || configuredSrc || '',
         src: fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl || configuredSrc || '',
         srcSet: fallbackVariants.posThumbnailUrl ? undefined : fallbackVariants.srcSet,
-        avifSrcSet: fallbackVariants.posThumbnailUrl ? undefined : resolveVariantSet(variants?.avif).srcSet,
-        webpSrcSet: fallbackVariants.posThumbnailUrl ? undefined : resolveVariantSet(variants?.webp).srcSet,
+        avifSrcSet: fallbackVariants.posThumbnailUrl ? undefined : avifVariants.srcSet,
+        webpSrcSet: fallbackVariants.posThumbnailUrl ? undefined : webpVariants.srcSet,
+        mobileSrc: webpVariants.thumbnailUrl || fallbackVariants.thumbnailUrl || configuredSrc || '',
         placeholderSrc: resolveAssetUrl(variants?.placeholder_url || ''),
         // A stale POS override must not hide an item that still has a valid
         // Storefront image. Keep the override first, then let the card's
         // onError handler try these Storefront candidates in order.
-        fallbackSrcs: hasPosOverride ? resolveStorefrontCatalogImageFallbacks(item) : []
+        fallbackSrcs: hasPosOverride
+            ? resolveStorefrontCatalogImageFallbacks(item)
+            : [...new Set(galleryFallbackSrcs)]
     };
 };
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Hash, Calendar, CircleDollarSign } from 'lucide-react';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function OrderPreviewView({ transaction, mobileResponsive = false }) {
   if (!transaction) return null;

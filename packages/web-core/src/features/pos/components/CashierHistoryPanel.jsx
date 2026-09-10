@@ -13,7 +13,7 @@ const getManilaDate = () => {
     return `${values.year}-${values.month}-${values.day}`;
 };
 
-const money = (value, currency) => `${currency} ${Number(value || 0).toFixed(2)}`;
+const money = (value, currency = '₱') => `${String(currency).toUpperCase() === 'PHP' ? '₱' : currency}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const reconciliationMoney = (value, currency, pendingLabel) => (
     value == null ? pendingLabel : money(value, currency)
 );
@@ -46,7 +46,7 @@ export default function CashierHistoryPanel({
     activeShift = null,
     locked = false,
     isOnline = true,
-    currency = 'PHP'
+    currency = '₱'
 }) {
     const [rangeMode, setRangeMode] = useState('today');
     const [page, setPage] = useState(1);

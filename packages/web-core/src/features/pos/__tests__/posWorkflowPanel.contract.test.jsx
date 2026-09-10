@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { FnbWorkflowPanel } from '../components/FnbWorkflowPanel.jsx';
 import { CounterWorkflowPanel } from '../components/CounterWorkflowPanel.jsx';
 import { ServicesWorkflowPanel } from '../components/ServicesWorkflowPanel.jsx';
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('POS Workflow Panels Contract', () => {
   it('renders FnbWorkflowPanel with F&B fulfillment options and no Services terminology', () => {
@@ -37,7 +41,7 @@ describe('POS Workflow Panels Contract', () => {
     expect(screen.getByText('Pickup')).toBeDefined();
     expect(screen.getByText('Delivery')).toBeDefined();
     expect(screen.getByText('Table # (Optional)')).toBeDefined();
-    expect(screen.getByText('Order Notes (global)')).toBeDefined();
+    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
     expect(screen.queryByText(/Use an item note for a request that applies to only one item/)).toBeNull();
     expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
     expect(screen.getByText('Payment Type')).toBeDefined();
@@ -91,6 +95,10 @@ describe('POS Workflow Panels Contract', () => {
       />
     );
 
+    expect(screen.getByTestId('pos-checkout-order-method-buttons').getAttribute('class')).toContain('grid w-max min-w-full grid-cols-4 gap-1.5 overflow-visible sm:w-full');
+    expect(screen.getByTestId('fnb-workflow-panel').textContent).toContain('Dine In');
+    expect(screen.getByTestId('fnb-workflow-panel').getAttribute('class')).not.toContain('max-[360px]:grid-cols-1');
+    expect(screen.getAllByRole('button')).toHaveLength(4);
     fireEvent.click(screen.getByRole('button', { name: 'Take Out' }));
     expect(setFnbMethod).toHaveBeenCalledWith('takeout');
 

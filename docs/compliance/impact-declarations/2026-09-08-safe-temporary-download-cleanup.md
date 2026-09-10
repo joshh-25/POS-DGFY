@@ -11,8 +11,8 @@ verification_evidence: POS IMS and Storefront production builds,git diff --check
 rollback_note: Revert the three element self-removal substitutions; no database or persisted-data rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-08T05:50:00.000Z
-preflight_request_ref: NOT-EXECUTED-SAFE-TEMPORARY-DOWNLOAD-CLEANUP
+preflight_run_at: 2026-09-08T08:04:43.672Z
+preflight_request_ref: PREFLIGHT-34202201982-2026-09-08-SAFE-TEMPORARY-DOWNLOAD-CLEANUP
 ---
 
 # Safe temporary download element cleanup

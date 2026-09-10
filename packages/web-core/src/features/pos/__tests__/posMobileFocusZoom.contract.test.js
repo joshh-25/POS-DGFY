@@ -27,4 +27,13 @@ describe('POS mobile focus zoom contracts', () => {
     expect(scanner).toContain("activeElement?.matches?.('input, textarea, select, [contenteditable=\"true\"]')");
     expect(scanner).toContain('activeElement.blur();');
   });
+
+  it('keeps barcode dialog actions in one compact row', () => {
+    const scanner = readSource('src/features/pos/components/POSBarcodeScanner.jsx');
+
+    expect(scanner).toContain('mt-5 grid grid-cols-2 gap-2');
+    expect(scanner).toContain('className="h-10 w-full rounded-lg"');
+    expect(scanner).toContain('className="h-10 w-full rounded-lg bg-[#1A4E8D]');
+    expect(scanner).not.toContain('flex flex-col-reverse gap-2 sm:flex-row sm:justify-end');
+  });
 });

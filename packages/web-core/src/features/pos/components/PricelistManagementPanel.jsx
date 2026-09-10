@@ -61,7 +61,7 @@ const describeError = (error, fallback) => {
 const pesoNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 const centavosToPesoNumber = (centavos) => Math.round((Number(centavos) || 0)) / 100;
 const pesosToCentavos = (pesos) => Math.round(pesoNumber(pesos) * 100);
-const money = (pesos) => `₱${pesoNumber(pesos).toFixed(2)}`;
+const money = (pesos) => `₱${pesoNumber(pesos).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formatSavedAt = (iso) => {
   if (!iso) return '';
   const date = new Date(iso);
@@ -561,7 +561,7 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-[#0F172A]">Voucher price (PHP)</Label>
+                  <Label className="text-xs font-semibold text-[#0F172A]">Voucher price (₱)</Label>
                   <Input
                     type="number" min="0" step="0.01" className="h-10 text-sm"
                     disabled={disabled || !canManage}
@@ -588,7 +588,7 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
                   <th className="p-3 text-left font-medium text-slate-600">Category</th>
                   <th className="p-3 text-left font-medium text-slate-600">Cost</th>
                   <th className="p-3 text-left font-medium text-slate-600">SRP</th>
-                  <th className="p-3 text-left font-medium text-slate-600">Voucher price (PHP)</th>
+                  <th className="p-3 text-left font-medium text-slate-600">Voucher price (₱)</th>
                   <th className="p-3 text-left font-medium text-slate-600">Warnings</th>
                 </tr>
               </thead>

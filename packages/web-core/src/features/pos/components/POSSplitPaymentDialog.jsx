@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Banknote, Ban, CreditCard, Loader2, RefreshCw, X } from 'lucide-react';
+import { Banknote, Ban, Check, CreditCard, Loader2, RefreshCw, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -36,6 +36,7 @@ const PAYMENT_METHODS = [
     { value: 'card', label: 'Card', entryLabel: 'Card (Store Terminal)' },
     { value: 'bank_transfer', label: 'Bank Transfer', entryLabel: 'Bank Transfer (Store Account)' }
 ];
+const PAYMENT_METHOD_IDLE_CLASS_NAME = 'border-slate-300 bg-white text-[#0F172A] hover:border-[#1A4E8D] hover:bg-[#EFF7FF]';
 const MAX_PAYMENT_ROWS = PAYMENT_METHODS.length;
 const createPaymentRow = (id, method) => ({
     id,
@@ -46,7 +47,7 @@ const createDefaultPaymentRows = () => [
     createPaymentRow('payment-row-1', 'gcash'),
     createPaymentRow('payment-row-2', 'cash')
 ];
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const createIdempotencyKey = (prefix) => (
     `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -114,6 +115,8 @@ export default function POSSplitPaymentDialog({
     const [recoveredFromStorage, setRecoveredFromStorage] = useState(false);
     const nextPaymentRowIdRef = useRef(3);
     const paymentRowIdempotencyKeysRef = useRef(new Map());
+    const paymentRowsScrollRef = useRef(null);
+    const previousPaymentRowsLengthRef = useRef(paymentRows.length);
     const sessionOpenAttemptRef = useRef(false);
     const recoveredCompletionAttemptRef = useRef(false);
 
@@ -283,6 +286,14 @@ export default function POSSplitPaymentDialog({
         setError('');
     };
 
+    useEffect(() => {
+        if (paymentRows.length > previousPaymentRowsLengthRef.current) {
+            const scrollContainer = paymentRowsScrollRef.current;
+            if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        }
+        previousPaymentRowsLengthRef.current = paymentRows.length;
+    }, [paymentRows.length]);
+
     const handleRemovePaymentRow = (rowId) => {
         setPaymentRows((currentRows) => currentRows.filter((row) => row.id !== rowId));
         setError('');
@@ -336,7 +347,7 @@ export default function POSSplitPaymentDialog({
             return;
         }
         if (nonCashAmountTooHigh) {
-            setError(`Non-cash payments cannot exceed the remaining PHP ${money(remainingAmount)}.`);
+            setError(`Non-cash payments cannot exceed the remaining ₱${money(remainingAmount)}.`);
             return;
         }
         if (cashHasNoBalance) {
@@ -344,7 +355,7 @@ export default function POSSplitPaymentDialog({
             return;
         }
         if (amountStillDue > 0) {
-            setError(`Enter PHP ${money(amountStillDue)} more before completing payment.`);
+            setError(`Enter ₱${money(amountStillDue)} more before completing payment.`);
             return;
         }
 
@@ -475,7 +486,7 @@ export default function POSSplitPaymentDialog({
             if (!nextOpen && loading) return;
             onOpenChange?.(nextOpen);
         }}>
-            <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full" data-testid="pos-split-payment-dialog">
+            <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full" data-testid="pos-split-payment-dialog">
                 <DialogHeader className="shrink-0 border-b border-slate-200 px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
@@ -495,25 +506,25 @@ export default function POSSplitPaymentDialog({
                     </div>
                 </DialogHeader>
 
-                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5 sm:space-y-3 sm:p-4">
                     {error && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700" role="alert">{error}</p>}
 
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-live="polite" data-testid="pos-split-payment-summary">
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2" aria-live="polite" data-testid="pos-split-payment-summary">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 sm:p-2.5">
                             <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Total</p>
-                            <p className="mt-1 text-base font-black text-[#1A4E8D]">PHP {money(session?.total_amount ?? totalAmount)}</p>
+                            <p className="mt-1 text-base font-black text-[#1A4E8D]">₱{money(session?.total_amount ?? totalAmount)}</p>
                         </div>
-                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3" data-testid="pos-split-payment-paid">
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 sm:p-2.5" data-testid="pos-split-payment-paid">
                             <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Paid</p>
-                            <p className="mt-1 text-base font-black text-emerald-700">PHP {money(livePaidAmount)}</p>
+                            <p className="mt-1 text-base font-black text-emerald-700">₱{money(livePaidAmount)}</p>
                         </div>
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3" data-testid="pos-split-payment-remaining">
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 sm:p-2.5" data-testid="pos-split-payment-remaining">
                             <p className="text-[10px] font-black uppercase tracking-wide text-amber-700">Remaining</p>
-                            <p className="mt-1 text-base font-black text-amber-700">PHP {money(liveRemainingAmount)}</p>
+                            <p className="mt-1 text-base font-black text-amber-700">₱{money(liveRemainingAmount)}</p>
                         </div>
-                        <div className="rounded-lg border border-sky-200 bg-sky-50 p-3" data-testid="pos-split-payment-change">
+                        <div className="rounded-lg border border-sky-200 bg-sky-50 p-2 sm:p-2.5" data-testid="pos-split-payment-change">
                             <p className="text-[10px] font-black uppercase tracking-wide text-sky-700">Change</p>
-                            <p className="mt-1 text-base font-black text-sky-700">PHP {money(cashChangePreview)}</p>
+                            <p className="mt-1 text-base font-black text-sky-700">₱{money(cashChangePreview)}</p>
                         </div>
                     </div>
 
@@ -546,11 +557,11 @@ export default function POSSplitPaymentDialog({
                                             </div>
                                             <p className="mt-1 text-[11px] text-slate-500">
                                                 {allocation.payment_reference ? `Reference: ${allocation.payment_reference}` : (allocation.payment_provider === 'merchant_owned' ? 'Store-owned payment · no reference entered' : 'No provider reference')}
-                                                {allocation.change_amount > 0 ? ` · Change PHP ${money(allocation.change_amount)}` : ''}
+                                                {allocation.change_amount > 0 ? ` · Change ₱${money(allocation.change_amount)}` : ''}
                                             </p>
                                         </div>
                                         <div className="flex shrink-0 items-center gap-2">
-                                            <span className={`text-sm font-black ${paymentMethodColor.amountClassName}`}>PHP {money(allocation.applied_amount)}</span>
+                                            <span className={`text-sm font-black ${paymentMethodColor.amountClassName}`}>₱{money(allocation.applied_amount)}</span>
                                             {!['cancelled', 'reversed'].includes(allocation.status) && session?.status !== 'completed' && (
                                                 <Button type="button" variant="ghost" size="sm" onClick={() => setCancelTarget(allocation)} disabled={loading} className="h-7 px-2 text-rose-700 hover:bg-rose-50" aria-label={`Cancel ${allocation.payment_method} payment`}>
                                                     <Ban className="h-3.5 w-3.5" aria-hidden="true" />
@@ -565,74 +576,90 @@ export default function POSSplitPaymentDialog({
 
                     {!isReadyToComplete && session && (
                         <div className="space-y-3" data-testid="pos-split-payment-add-form">
-                            <div className="space-y-4 rounded-xl border border-blue-200 bg-blue-50/40 p-3" data-testid="pos-payment-rows-form">
+                        <div className="space-y-2 sm:space-y-3" data-testid="pos-payment-rows-form">
                                 <div>
                                     <p className="text-[11px] font-black uppercase tracking-wide text-[#1A4E8D]">Payment Methods</p>
                                     <p className="mt-1 text-xs font-medium text-slate-600">Select a method and enter the amount for each part of the payment.</p>
                                 </div>
 
-                                <div className="space-y-3" data-testid="pos-payment-rows">
+                                 <div ref={paymentRowsScrollRef} className="max-h-[18rem] space-y-4 overflow-y-auto overscroll-contain pr-1" data-testid="pos-payment-rows">
                                     {paymentRows.map((row, index) => {
                                         const selectedMethod = PAYMENT_METHODS.find((method) => method.value === row.method);
                                         const paymentMethodColor = resolvePaymentMethodColorStyles(selectedMethod?.value || row.method);
                                         return (
-                                            <div key={row.id} className={`rounded-xl border p-3 ${paymentMethodColor.rowClassName}`} data-testid={`pos-payment-row-${index + 1}`}>
-                                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-                                                    <label className="block text-xs font-bold text-slate-700">
-                                                        Method of Payment
-                                                        <select
-                                                            value={row.method}
-                                                            onChange={(event) => updatePaymentRow(row.id, {
-                                                                method: event.target.value
-                                                            })}
-                                                            disabled={loading}
-                                                            aria-label={`Method of payment ${index + 1}`}
-                                                            className={`mt-1 h-12 w-full rounded-lg border px-3 text-sm font-extrabold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${paymentMethodColor.selectClassName}`}
-                                                            data-testid={`pos-payment-method-${index + 1}`}
-                                                        >
-                                                            {PAYMENT_METHODS.map((method) => (
-                                                                <option
-                                                                    key={method.value}
-                                                                    value={method.value}
-                                                                    disabled={method.value !== row.method && selectedMethodValues.includes(method.value)}
-                                                                >
-                                                                    {method.label}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </label>
-                                                    <label className="block text-xs font-bold text-slate-700">
-                                                        Amount
-                                                        <Input
-                                                            type="number"
-                                                            min="0"
-                                                            step="0.01"
-                                                            value={row.amount}
-                                                            onChange={(event) => updatePaymentRow(row.id, {
-                                                                amount: event.target.value
-                                                            })}
-                                                            onFocus={(event) => {
-                                                                if (event.currentTarget.value === '0') updatePaymentRow(row.id, { amount: '' });
-                                                            }}
-                                                            disabled={loading}
-                                                            placeholder="0.00"
-                                                            aria-label={`Amount for ${selectedMethod?.label || 'payment'}`}
-                                                            className="mt-1 h-12 rounded-lg border border-slate-300 bg-white text-lg font-black text-slate-900"
-                                                            data-testid={`pos-payment-amount-${index + 1}`}
-                                                        />
-                                                    </label>
-                                                    {paymentRows.length > 2 && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            onClick={() => handleRemovePaymentRow(row.id)}
-                                                            disabled={loading}
-                                                            className="h-12 border-slate-300 px-3 text-xs font-bold text-slate-600"
-                                                            aria-label={`Remove payment ${index + 1}`}
-                                                        >
-                                                            Remove
-                                                        </Button>
-                                                    )}
+                                            <div key={row.id} className="min-w-0" data-testid={`pos-payment-row-${index + 1}`}>
+                                                <div className="grid grid-cols-1 gap-1.5">
+                                                    <div className="text-xs font-bold text-slate-700">
+                                                        <span className="block">Method of Payment</span>
+                                                        <div className="mt-1 w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x">
+                                                            <div
+                                                                className="grid w-max min-w-full grid-cols-5 gap-1.5 overflow-visible sm:w-full"
+                                                                role="group"
+                                                                aria-label={`Method of payment ${index + 1}`}
+                                                                data-testid={`pos-payment-method-${index + 1}`}
+                                                            >
+                                                                {PAYMENT_METHODS.map((method) => {
+                                                                    const active = method.value === row.method;
+                                                                    const unavailable = !active && selectedMethodValues.includes(method.value);
+                                                                    const methodColor = resolvePaymentMethodColorStyles(method.value);
+                                                                    return (
+                                                                        <button
+                                                                            key={method.value}
+                                                                            type="button"
+                                                                            aria-pressed={active}
+                                                                            onClick={() => updatePaymentRow(row.id, { method: method.value })}
+                                                                            disabled={loading || unavailable}
+                                                                            data-testid={`pos-payment-method-${index + 1}-${method.value}`}
+                                                                            className={`h-8 min-w-[7.25rem] whitespace-nowrap rounded-lg border px-2 text-center text-[11px] font-extrabold leading-tight transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-0 sm:w-full ${active
+                                                                                ? `${methodColor.selectClassName} ${methodColor.activeRingClassName} ring-2 ring-offset-1 shadow-sm hover:brightness-95`
+                                                                                : PAYMENT_METHOD_IDLE_CLASS_NAME}`}
+                                                                        >
+                                                                            <span className="inline-flex items-center justify-center gap-1">
+                                                                                {active && <Check className="h-3 w-3 shrink-0" strokeWidth={3} aria-hidden="true" />}
+                                                                                {method.label}
+                                                                            </span>
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                     <div className={`grid w-full min-w-0 ${paymentRows.length > 2 ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-1'} items-end gap-2`}>
+                                                        <label className="block w-full min-w-0 text-xs font-bold text-slate-700">
+                                                            Amount
+                                                            <Input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={row.amount}
+                                                                onChange={(event) => updatePaymentRow(row.id, {
+                                                                    amount: event.target.value
+                                                                })}
+                                                                onFocus={(event) => {
+                                                                    if (event.currentTarget.value === '0') updatePaymentRow(row.id, { amount: '' });
+                                                                }}
+                                                                disabled={loading}
+                                                                placeholder="0.00"
+                                                                aria-label={`Amount for ${selectedMethod?.label || 'payment'}`}
+                                                                className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white text-sm font-black text-slate-900"
+                                                                data-testid={`pos-payment-amount-${index + 1}`}
+                                                            />
+                                                        </label>
+                                                        {paymentRows.length > 2 && (
+                                                            <Button
+                                                                type="button"
+                                                                                variant="outline"
+                                                                                onClick={() => handleRemovePaymentRow(row.id)}
+                                                                                disabled={loading}
+                                                                                 className="h-8 w-8 shrink-0 border-slate-300 bg-white p-0 text-slate-600 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
+                                                                                aria-label={`Remove payment ${index + 1}`}
+                                                                                title="Remove payment"
+                                                                                data-testid={`pos-remove-payment-${index + 1}`}
+                                                                            >
+                                                                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </div>
 
                                             </div>
@@ -645,7 +672,7 @@ export default function POSSplitPaymentDialog({
                                         type="button"
                                         onClick={handleAddPaymentRow}
                                         disabled={loading}
-                                        className="w-full rounded-lg border border-dashed border-blue-300 bg-white px-3 py-2.5 text-xs font-extrabold text-[#1A4E8D] hover:bg-blue-50"
+                                         className="w-full rounded-lg border border-dashed border-blue-300 bg-white px-3 py-2 text-xs font-extrabold text-[#1A4E8D] hover:bg-blue-50 sm:py-2.5"
                                         data-testid="pos-add-payment-row"
                                     >
                                         + Add Another Payment
@@ -656,13 +683,13 @@ export default function POSSplitPaymentDialog({
                                     <p className="text-xs font-semibold text-rose-700" role="alert">Use each payment method only once.</p>
                                 )}
                                 {nonCashAmountTooHigh && (
-                                    <p className="text-xs font-semibold text-rose-700" role="alert">Non-cash payments cannot exceed the remaining PHP {money(remainingAmount)}.</p>
+                                    <p className="text-xs font-semibold text-rose-700" role="alert">Non-cash payments cannot exceed the remaining ₱{money(remainingAmount)}.</p>
                                 )}
                                 {cashHasNoBalance && (
                                     <p className="text-xs font-semibold text-rose-700" role="alert">Reduce non-cash payments so the cash row has a balance to cover.</p>
                                 )}
 
-                                <Button type="button" onClick={handleCompletePaymentRows} disabled={loading || !canCompletePaymentRows} className="h-12 w-full bg-[#1A4E8D] text-sm font-extrabold hover:bg-[#143F73]" data-testid="pos-complete-payment-rows">
+                                 <Button type="button" onClick={handleCompletePaymentRows} disabled={loading || !canCompletePaymentRows} className="h-11 w-full bg-[#1A4E8D] text-sm font-extrabold hover:bg-[#143F73] sm:h-12" data-testid="pos-complete-payment-rows">
                                     {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Banknote className="mr-2 h-4 w-4" aria-hidden="true" />}
                                     Record Payment
                                 </Button>

@@ -36,6 +36,7 @@ describe('POS checkout terminal pure utilities', () => {
         expect(getCartLineSubtotal({ quantity: 2, sale_price: 150 })).toBe(300);
         expect(getCartLineSubtotal({ quantity: 1.25, sale_price: 90 })).toBe(112.5);
         expect(formatQuantity(2.5)).toBe('2.5');
+        expect(formatQuantity(1000)).toBe('1,000');
         expect(formatQuantity('invalid')).toBe('0');
         expect(sanitizeQuantityInput('1a.2.3', true)).toBe('1.23');
         expect(sanitizeQuantityInput('1a.2', false)).toBe('12');
@@ -278,7 +279,48 @@ describe('POS checkout terminal pure utilities', () => {
         expect(imageSources.src).toBe('https://cdn.example.test/pos-thumb.jpg');
         expect(imageSources.srcSet).toBeUndefined();
         expect(imageSources.thumbnailFallbackSrc).toBe('https://cdn.example.test/thumb.jpg');
+        expect(imageSources.mobileSrc).toBe('https://cdn.example.test/thumb.jpg');
         expect(imageSources.configuredLargeSrc).toBe('https://cdn.example.test/large.jpg');
+
+        const posImageSources = resolvePosCatalogImageSources({
+            pos_image_url: 'https://cdn.example.test/pos-large.jpg',
+            pos_image_variants: {
+                thumbnail_url: 'https://cdn.example.test/pos-thumb.jpg',
+                medium_url: 'https://cdn.example.test/pos-medium.jpg',
+                large_url: 'https://cdn.example.test/pos-large.jpg'
+            },
+            storefront_image_variants: {
+                thumbnail_url: null,
+                medium_url: null,
+                large_url: null
+            }
+        });
+        expect(posImageSources.src).toBe('https://cdn.example.test/pos-thumb.jpg');
+        expect(posImageSources.configuredLargeSrc).toBe('https://cdn.example.test/pos-large.jpg');
+
+        const galleryImageSources = resolvePosCatalogImageSources({
+            storefront_image_gallery: JSON.stringify([
+                {
+                    url: '/uploads/missing-primary/large.webp',
+                    variants: {
+                        thumbnail_url: '/uploads/missing-primary/thumb.webp',
+                        medium_url: '/uploads/missing-primary/medium.webp',
+                        large_url: '/uploads/missing-primary/large.webp'
+                    }
+                },
+                {
+                    url: '/uploads/available-gallery/large.webp',
+                    variants: {
+                        thumbnail_url: '/uploads/available-gallery/thumb.webp',
+                        medium_url: '/uploads/available-gallery/medium.webp',
+                        large_url: '/uploads/available-gallery/large.webp'
+                    }
+                }
+            ])
+        });
+        expect(galleryImageSources.src).toBe('/uploads/missing-primary/thumb.webp');
+        expect(galleryImageSources.fallbackSrcs).toContain('/uploads/available-gallery/thumb.webp');
+
         expect(inferReceiptContract({ invoice_number: 'NFS-000001' })).toEqual({
             document_type: 'non_fiscal_slip',
             label: 'NON-FISCAL SLIP'

@@ -40,7 +40,7 @@ const WORKSPACE_VIEW_CONFIG = {
   }
 };
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const isValidOpeningCashAmount = (value) => {
   const rawValue = String(value ?? '').trim();

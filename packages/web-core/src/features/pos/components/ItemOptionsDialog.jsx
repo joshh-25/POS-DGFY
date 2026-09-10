@@ -157,7 +157,7 @@ export default function ItemOptionsDialog({
                                   <span className="text-sm font-semibold text-slate-900">{option.name}</span>
                                 </span>
                                 <span className="text-xs font-bold text-blue-700">
-                                  {Number(option.price_delta) ? `+₱${Number(option.price_delta).toFixed(2)} each` : 'Included'}
+                                  {Number(option.price_delta) ? `+₱${Number(option.price_delta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each` : 'Included'}
                                 </span>
                               </label>
                               {checked && (
@@ -193,7 +193,7 @@ export default function ItemOptionsDialog({
               <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50/70 p-3">
                 <div className="flex items-center justify-between gap-3 text-xs">
                   <span className="font-bold text-blue-900">Global discount also applies to this item</span>
-                  <span className="font-black text-blue-800">-₱{Number(globalDiscount.amount || 0).toFixed(2)}</span>
+                  <span className="font-black text-blue-800">-₱{Number(globalDiscount.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <p className="mt-1 text-xs font-semibold text-blue-800">
                   {globalDiscount.label || 'Global discount'} · {globalDiscount.rate == null ? 'Fixed amount' : `${Number(globalDiscount.rate).toFixed(2)}%`}

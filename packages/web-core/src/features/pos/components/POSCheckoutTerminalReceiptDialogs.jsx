@@ -86,7 +86,7 @@ const RefundAdjustmentAudit = ({ transaction }) => {
                             <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 font-black uppercase tracking-wide text-slate-700">{String(adjustment.status || 'unknown').replace(/_/g, ' ')}</span>
                         </div>
                         <p className="mt-1">Reference: <span className="font-bold">{adjustment.adjustment_reference || '-'}</span></p>
-                        <p>Amount: <span className="font-bold">{adjustment.currency || 'PHP'} {Number(adjustment.amount || 0).toFixed(2)}</span></p>
+                        <p>Amount: <span className="font-bold">₱{Number(adjustment.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
                         <p>Original cashier/shift: <span className="font-bold">{adjustment.original_cashier_name || adjustment.original_cashier_id || '-'} / {adjustment.original_shift_id || '-'}</span></p>
                         <p>Actioned by/shift: <span className="font-bold">{adjustment.actor_name || adjustment.actor_user_id || '-'} / {adjustment.actor_shift_id || 'No acting shift'}</span></p>
                         <p>Recorded: <span className="font-bold">{formatPosVoidTimestamp(adjustment.completed_at || adjustment.created_at)}</span></p>

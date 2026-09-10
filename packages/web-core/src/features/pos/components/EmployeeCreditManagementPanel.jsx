@@ -14,7 +14,7 @@ import {
 import { fetchEmployees } from '../services/employeeService.js';
 
 const createIdempotencyKey = () => `employee-credit-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function EmployeeCreditManagementPanel({ disabled = false, refreshKey = 0 }) {
   const [accounts, setAccounts] = useState([]);
@@ -255,9 +255,9 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
           <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Account</p>
           <p className="mt-1 font-black text-slate-900">{account?.account_code || 'Created when first saved'}</p>
-          <p className="mt-2 text-slate-600">Outstanding balance: <strong className="text-slate-950">PHP {money(account?.outstanding_balance)}</strong></p>
+          <p className="mt-2 text-slate-600">Outstanding balance: <strong className="text-slate-950">₱{money(account?.outstanding_balance)}</strong></p>
           {Number(account?.balance || 0) !== 0 ? (
-            <p className="mt-1 text-xs text-slate-500">Legacy funded balance: PHP {money(account.balance)}</p>
+            <p className="mt-1 text-xs text-slate-500">Legacy funded balance: ₱{money(account.balance)}</p>
           ) : null}
         </div>
         <label className="flex items-center justify-between rounded-xl border border-slate-200 p-3">
@@ -343,7 +343,7 @@ export default function EmployeeCreditManagementPanel({ disabled = false, refres
         }}
         title="Repay Employee Credit in full?"
         description={repayAllTarget
-          ? `This will record a full repayment of PHP ${money(repayAllTarget.outstandingBalance)} for ${repayAllTarget.employeeName}. The account must still have the same balance when you confirm.`
+          ? `This will record a full repayment of ₱${money(repayAllTarget.outstandingBalance)} for ${repayAllTarget.employeeName}. The account must still have the same balance when you confirm.`
           : 'This will record a full repayment for the selected Employee Credit account.'}
         confirmLabel="Repay all"
         reasonLabel="Repayment reason"

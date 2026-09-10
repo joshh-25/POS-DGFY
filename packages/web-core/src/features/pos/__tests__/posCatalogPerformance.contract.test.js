@@ -26,8 +26,8 @@ describe('hosted POS catalog performance contracts', () => {
 
     expect(checkoutUtilsSource).toContain("item?.pos_image_url || item?.storefront_image_url");
     expect(checkoutUtilsSource).toContain('fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl');
-    expect(checkoutSource).toContain("loading={itemIndex < 4 ? 'eager' : 'lazy'}");
-    expect(checkoutSource).toContain("fetchpriority={itemIndex < 4 ? 'high' : 'auto'}");
+    expect(checkoutSource).toContain("loading={isMobileViewport || itemIndex < 4 ? 'eager' : 'lazy'}");
+    expect(checkoutSource).toContain("fetchpriority={isMobileViewport || itemIndex < 4 ? 'high' : 'auto'}");
     expect(checkoutSource).toContain('width={144}');
     expect(checkoutSource).toContain('height={144}');
     expect(checkoutSource).toContain('sizes="144px"');
@@ -38,8 +38,13 @@ describe('hosted POS catalog performance contracts', () => {
     expect(catalogWorkflowSource).toContain('catalogImageErrors\n        ),');
     expect(catalogWorkflowSource).not.toContain('setCatalogImageErrors(new Set());');
     expect(catalogImageFailureStoreSource).toContain('window.sessionStorage');
-    expect(operationsSource).toContain('<PosItemImage');
-    expect(operationsSource).toContain('loading="lazy"');
+    // #1728/#1744 (bd311e37f) replaced the old direct <PosItemImage> render in this file with
+    // the pending-preview job mechanism (stagePendingPosItemImagePreview /
+    // bindPendingPosItemImagePreviewJob) -- the previous assertion here (`toContain('<PosItemImage')`)
+    // was asserting removed implementation detail, not a still-load-bearing contract. Assert the
+    // mechanism that actually replaced it instead of a stale JSX string match.
+    expect(operationsSource).toContain('stagePendingPosItemImagePreview');
+    expect(operationsSource).toContain('bindPendingPosItemImagePreviewJob');
   });
 
   it('keeps the existing catalog rendered during background refreshes', () => {
@@ -72,15 +77,26 @@ describe('hosted POS catalog performance contracts', () => {
     expect(addToCartToastIndex).toBeGreaterThanOrEqual(0);
   });
 
-  it('keeps image-less POS cards blank and centers item names over item images', () => {
+  it('places standalone POS item names inside the mobile card content', () => {
     const checkoutSource = readCheckoutRenderSource();
     const checkoutUtilsSource = readSource(checkoutUtilsPath);
 
     expect(checkoutUtilsSource).toContain("src: fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl || configuredSrc || '',");
     expect(checkoutSource).not.toContain('src: fallbackVariants.thumbnailUrl || configuredSrc || mappedSrc || fallbackSrc');
-    expect(checkoutSource).toContain("hasImage ? 'bg-transparent' : 'bg-[#1A4E8D]/85'");
-    expect(checkoutSource).not.toContain('flex items-center justify-center bg-[#1A4E8D]/85');
-    expect(checkoutSource).toContain('text-center text-[14px] font-black leading-tight text-white');
+    expect(checkoutSource).toContain('{!hasImage && (');
+    expect(checkoutSource).toContain('const PosImagelessCatalogName = React.memo');
+    expect(checkoutSource).toContain('line-clamp-2 pt-[7px] text-center text-[12px]');
+    expect(checkoutSource).toContain("${isWrapped ? 'translate-y-[5px]' : ''}");
+    expect(checkoutSource).toContain('data-pos-catalog-card-caption="true"');
+    expect(checkoutSource).toContain('max-sm:h-full');
+    expect(checkoutSource).toContain('max-sm:aspect-square');
+    expect(checkoutSource).toContain('max-sm:w-auto');
+    expect(checkoutSource).toContain('max-sm:self-start');
+    expect(checkoutSource).toContain('pendingItemImagePreviews[String(item.item_id)]?.url');
+    expect(checkoutSource).toContain('<PosItemImage');
+    expect(checkoutSource).toContain("fetchpriority={isMobileViewport || itemIndex < 4 ? 'high' : 'auto'}");
+    expect(checkoutSource).toContain('max-w-full line-clamp-2 text-[13px] font-black leading-tight');
+    expect(checkoutSource).not.toContain('truncate text-center text-[14px] font-black leading-tight text-white');
     expect(checkoutSource).not.toContain('No POS Image');
     expect(checkoutSource).toContain('backgroundImage: `url(${imageSources.placeholderSrc})`');
     expect(checkoutSource).toContain('<PosItemImage');

@@ -181,7 +181,7 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
         </div>
 
         <div className="mt-4 space-y-1.5">
-          <Label htmlFor="delivery-fee-flat">Flat Delivery Fee (PHP)</Label>
+          <Label htmlFor="delivery-fee-flat">Flat Delivery Fee (₱)</Label>
           <Input
             id="delivery-fee-flat"
             type="number"
@@ -208,7 +208,7 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label htmlFor="delivery-calc-min-fee" className="text-xs text-slate-500">Minimum Fee (PHP)</Label>
+                <Label htmlFor="delivery-calc-min-fee" className="text-xs text-slate-500">Minimum Fee (₱)</Label>
                 <Input
                   id="delivery-calc-min-fee"
                   type="number"
@@ -234,7 +234,7 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="delivery-calc-per-km-rate" className="text-xs text-slate-500">Rate per km (PHP)</Label>
+                <Label htmlFor="delivery-calc-per-km-rate" className="text-xs text-slate-500">Rate per km (₱)</Label>
                 <Input
                   id="delivery-calc-per-km-rate"
                   type="number"

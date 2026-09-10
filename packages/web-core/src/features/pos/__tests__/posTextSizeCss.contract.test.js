@@ -37,4 +37,16 @@ describe('POS text-size CSS compatibility contract', () => {
         expect(cssSource).toContain('@media print');
         expect(cssSource).toContain('--pos-text-size-scale: 1;');
     });
+
+    it('uses a restrained global elevation and focus-shadow system', () => {
+        expect(cssSource).toContain('--pos-shell-shadow: 0 1px 4px');
+        expect(cssSource).toContain('--pos-surface-shadow: 0 2px 8px');
+        expect(cssSource).toContain('--pos-elevated-shadow: 0 4px 12px');
+        expect(cssSource).toContain('--pos-overlay-shadow: 0 10px 24px');
+        expect(cssSource).toContain('--pos-control-focus-shadow: inset 0 0 0 1px');
+        expect(cssSource).toContain('[class~="shadow-sm"]');
+        expect(cssSource).toContain('[class*="shadow-["]');
+        expect(cssSource).toContain(':where(input, textarea, select):focus');
+        expect(cssSource).toContain(':where(button, [role="button"], a, summary):focus-visible');
+    });
 });

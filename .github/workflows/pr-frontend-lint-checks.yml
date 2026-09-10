@@ -1,0 +1,90 @@
+name: PR Frontend Lint Check
+
+# #1712: closes the develop-PR half of the gap this ADR (0067) and #1698 both name -- an ordinary
+# `develop`-base PR that breaks `apps/dgfy-ims`/`packages/web-core` ESLint (a `no-undef`-class
+# defect, exactly what #1698 was) had no gate capable of catching it before this file, only
+# `promotion-quality-gate.yml`'s advisory `run_web_core_lint` step, which only runs on a promotion
+# leg. Deliberately narrow: lint only, no Docker build, no vite build -- the cheapest possible
+# check, not a return of the old multi-concern `code-quality` job `pr-checks.yml`'s own header
+# comment records removing (#416) and re-removing after PR #1003's revert. `apps/dgfy-pos`/
+# `apps/dgfy-storefront` lint stays promotion-leg-only -- named residual gap, follow-up filed
+# alongside this PR, not fixed here.
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels_json:
+        description: JSON array passed to runs-on for this job
+        required: false
+        type: string
+        default: '["sieitz-runner"]'  # #923: generic, either box
+
+jobs:
+  lint-check:
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    timeout-minutes: 10
+    steps:
+      # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
+      # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
+      # duplicated: a composite action or repo script cannot run before checkout populates the
+      # workspace. See docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528).
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - uses: actions/checkout@v4
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/dgfy-ims/package-lock.json
+
+      - name: Install dgfy-ims dependencies
+        working-directory: apps/dgfy-ims
+        run: npm ci
+
+      - name: Run dgfy-ims lint
+        working-directory: apps/dgfy-ims
+        run: npm run lint
+
+      # Same --resolve-plugins-relative-to pattern as promotion-quality-gate.yml's own
+      # "Run web-core lint" step (#918) -- packages/web-core has no lint script/devDependencies
+      # of its own (ADR 0071 Decision 4 [binding]), so coverage runs from dgfy-ims's already-
+      # installed ESLint. Both lint steps in this job are blocking by default -- no
+      # continue-on-error -- this is a brand-new job, not subject to promotion-quality-gate.yml's
+      # #1063 advisory regime.
+      - name: Run web-core lint
+        working-directory: apps/dgfy-ims
+        run: npx eslint ../../packages/web-core --ext .js,.jsx --resolve-plugins-relative-to .
