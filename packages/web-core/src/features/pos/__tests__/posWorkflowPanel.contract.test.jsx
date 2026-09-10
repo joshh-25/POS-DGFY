@@ -114,4 +114,29 @@ describe('POS Workflow Panels Contract', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delivery' }));
     expect(setCounterMethod).toHaveBeenCalledWith('delivery');
   });
+
+  it('uses the full available row for takeout order notes', () => {
+    render(
+      <FnbWorkflowPanel
+        orderMethod="takeout"
+        setOrderMethod={vi.fn()}
+        kitchenNotes=""
+        setKitchenNotes={vi.fn()}
+        isTabletViewport
+      />
+    );
+
+    expect(screen.getByPlaceholderText('Applies to the whole order').closest('label').className).toContain('col-span-full');
+
+    const desktopView = render(
+      <FnbWorkflowPanel
+        orderMethod="takeout"
+        setOrderMethod={vi.fn()}
+        kitchenNotes=""
+        setKitchenNotes={vi.fn()}
+        isTabletViewport={false}
+      />
+    );
+    expect(desktopView.container.querySelector('label').className).not.toContain('col-span-full');
+  });
 });

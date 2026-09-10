@@ -10,6 +10,7 @@ export const CATALOG_DESKTOP_CARD_MIN_WIDTH_PX = 176;
 // 100% desktop geometry so the catalog retains its four-column layout.
 export const CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX = CATALOG_DESKTOP_CARD_HEIGHT_PX;
 export const CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX = CATALOG_DESKTOP_CARD_MIN_WIDTH_PX;
+export const CATALOG_DGFY_TABLET_DEFAULT_COLUMNS = 4;
 export const CATALOG_MOBILE_CARD_HEIGHT_PX = 120;
 export const CATALOG_TABLET_CARD_HEIGHT_PX = 112;
 export const CATALOG_TABLET_CARD_MIN_WIDTH_PX = 160;
@@ -119,19 +120,26 @@ export const getCatalogGridMeasurement = ({
     textSizeScale
 }) => {
     const safeTextSizeScale = Number.isFinite(Number(textSizeScale)) ? Number(textSizeScale) : 1;
-    const baseMinimumCardWidth = isDgfyPosSurface && !isTabletViewport
+    const isDgfyTabletViewport = isDgfyPosSurface && isTabletViewport && !isMobileViewport;
+    const baseMinimumCardWidth = isDgfyPosSurface
         ? CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX
         : isTabletViewport
             ? CATALOG_TABLET_CARD_MIN_WIDTH_PX
             : CATALOG_DESKTOP_CARD_MIN_WIDTH_PX;
+    const scaledMinimumCardWidth = Math.round(baseMinimumCardWidth * safeTextSizeScale);
+    const safeWidth = Math.max(1, Number(width) || 1);
+    const fittedTabletCardWidth = Math.floor(
+        (safeWidth - ((CATALOG_DGFY_TABLET_DEFAULT_COLUMNS - 1) * CATALOG_GRID_GAP_PX))
+        / CATALOG_DGFY_TABLET_DEFAULT_COLUMNS
+    );
     const minimumCardWidth = isMobileViewport
         ? width
-        : Math.round(baseMinimumCardWidth * safeTextSizeScale);
+        : isDgfyTabletViewport
+            ? Math.max(1, Math.min(scaledMinimumCardWidth, fittedTabletCardWidth))
+            : scaledMinimumCardWidth;
     const baseCardHeight = isMobileViewport
         ? CATALOG_MOBILE_CARD_HEIGHT_PX
-        : isDgfyPosSurface && isTabletViewport
-            ? CATALOG_TABLET_CARD_HEIGHT_PX
-            : isDgfyPosSurface
+        : isDgfyPosSurface
                 ? CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX
             : CATALOG_DESKTOP_CARD_HEIGHT_PX;
     const cardHeight = Math.round(baseCardHeight * safeTextSizeScale);
@@ -142,5 +150,16 @@ export const getCatalogGridMeasurement = ({
         cardHeight,
         gap: CATALOG_GRID_GAP_PX
     });
-    return { ...capacity, minimumCardWidth, cardHeight, textSizeScale: safeTextSizeScale };
+    return {
+        ...capacity,
+        ...(isDgfyTabletViewport
+            ? {
+                columns: CATALOG_DGFY_TABLET_DEFAULT_COLUMNS,
+                pageSize: CATALOG_DGFY_TABLET_DEFAULT_COLUMNS * capacity.rows
+            }
+            : {}),
+        minimumCardWidth,
+        cardHeight,
+        textSizeScale: safeTextSizeScale
+    };
 };
