@@ -104,6 +104,13 @@ base URL `https://laundry.surebizcorp.com`. Partner writes use the approved
 asymmetric HTTP Message Signature profile in production; local HMAC fixtures
 are not production evidence.
 
+Register two distinct clients: a browser client for Authorization Code + PKCE
+and a machine client for `client_credentials` using `private_key_jwt`. The
+machine client must validate the DGLaundry assertion issuer/subject, audience,
+expiry, and one-time `jti`; do not issue or store a long-lived static partner
+bearer token for the production path. Record only client IDs, key IDs, and
+public-key fingerprints in the handoff.
+
 The provider must verify that every company and location mapping is explicit,
 immutable, tenant-scoped, and membership-authorized. Email, name, slug,
 phone, or a caller-supplied company ID must never select a company or grant
@@ -154,8 +161,10 @@ acceptance evidence for:
 
 The customer storefront and online payment/refund authority remain dark for
 this integration until the corresponding provider and hosted gates are
-qualified. A local test, a source review, or a draft PR does not authorize
-production activation.
+qualified. After qualification, freeze an explicit approved-branch allowlist,
+validate every listed branch independently, run one controlled payment/refund/
+receipt path, and enable all approved branches together. A local test, a source
+review, or a draft PR does not authorize production activation.
 
 ## Acceptance criteria
 

@@ -40,7 +40,7 @@ or caller-selected tenant as an identity substitute.
 
 Laundry registration persists `business_mode=laundry`,
 `runtime_owner=dglaundry`, `dgfy_storefront=true`, `ims=false`, `pos=false`,
-and the fixed operations origin `https://laundry.dgfy.ph`. DGFY continues to
+and the fixed operations origin `https://laundry.surebizcorp.com`. DGFY continues to
 own the customer URL `https://dgfy.ph/tenant-store/<handle>`.
 
 ## Qualification boundary
