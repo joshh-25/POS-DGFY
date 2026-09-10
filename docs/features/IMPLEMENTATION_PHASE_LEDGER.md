@@ -22558,3 +22558,25 @@ content differs from what was implemented and tested under the "303" label.
   bulk image worker/storage, shared bulk upload services, focused API/POS tests,
   and ADR 0017's bulk-package amendment.
 - Next eligible phase: 324.
+
+## Phase 324 - POS History positive payment-method filtering
+
+- Initiative/release: POS split-tender history and reporting correctness / current release.
+- Objective and scope: exclude zero-value normalized tender placeholders from
+  History and analytics payment-method filters while retaining valid single-tender
+  and split-tender matches before pagination.
+- Status: completed.
+- Dependencies: existing POS split-payment history/report contract; ADR 0063;
+  MySQL 8 JSON column support.
+- Acceptance and validation evidence: the repository payment predicate preserves
+  the top-level legacy payment-type fallback and uses a qualified MariaDB
+  `JSON_SEARCH`/`JSON_EXTRACT` check requiring a positive allocation; query-generation tests passed
+  2/2, existing POS payment-method tests passed 2/2, changed API lint passed,
+  architecture guardrails passed, compliance and documentation checks passed, and
+  `git diff --check` passed. No transaction, payment, or schema data was modified.
+- Completion date: 2026-09-10.
+- Contracts/files: `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/tests/posTransactionHistory.repository.test.js`,
+  `packages/web-core/src/features/pos/utils/posPaymentMethods.js`, and
+  `docs/compliance/impact-declarations/2026-09-10-pos-history-payment-filter.md`.
+- Next eligible phase: 325.
