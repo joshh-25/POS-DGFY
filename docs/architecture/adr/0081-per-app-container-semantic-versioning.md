@@ -538,13 +538,19 @@ collide with) and cannot affect the parity gate's per-app comparison. A version 
 is still governed by Decision 6's ordinary bump-mode rules the next time it's actually published
 — this script creates, removes, and shortcuts none of those checks.
 
-`[snapshot]` tier — this is new operational tooling filling a gap this ADR's Decision 6 text never
-addressed (baseline drift for an app *no* promotion or backport has touched recently, as opposed to
-Decision 6's own floor step, which only fires for an app a promotion *is* actively touching), not a
-change to any existing Decision clause's meaning or tier. Per ADR 0039, a `[snapshot]` entry needs
-neither a superseding ADR nor a dated Amendment with `status: amended` — added here anyway to match
-this ADR's own established practice of recording every operationally-significant build/deploy
-mechanism change (see the 2026-09-05 Amendment above). Full detail:
+`[default]` tier — corrected 2026-09-10 (PR #1813 review, RF-1) from an earlier version of this
+entry that mislabeled it `[snapshot]`. This Amendment adds a new, recurring rollout procedure — run
+`scripts/sync-app-version-baselines.js` once per ordinary promotion, and open and merge a sync PR
+whenever it reports drift — not a point-in-time description of current state. Per ADR 0039's own
+tier table, `[snapshot]` is "documentation, never a constraint" whose "staleness is not a
+violation"; a standing "do this every promotion" obligation is squarely the `[default]` tier's own
+example category ("rollout sequencing"), not `[snapshot]`. **Decisions 6, 7, and 8's own text and
+tier are unchanged by this Amendment** — their substance is not modified (see "No clause change; no
+interaction with #1610" above); this Amendment adds one new `[default]`-tier obligation alongside
+them, via ADR 0039's own amendment path for a `default`-tier change ("append to the ADR in the same
+PR that implements the change... normal code review is sufficient," no superseding ADR needed).
+`status: amended` (front matter, already set) and this dated Amendment block together are exactly
+what that path requires — nothing added "anyway"; it's the mechanism itself. Full detail:
 `scripts/sync-app-version-baselines.js` (+ its test file),
 `.agents/skills/promoter/SKILL.md`/`references/promotion-runbook.md`, issue #1807.
 
@@ -600,8 +606,8 @@ mechanism change (see the 2026-09-05 Amendment above). Full detail:
   and rollback; this ADR documents the tag contract #495 must honor but does not implement it.
 - Phase 272, #1550, #1551 — the advisory-to-blocking rollout precedent Decision 9 follows.
 - #1807 — the post-promotion `develop` version-baseline sync mechanism added by this ADR's
-  2026-09-10 Amendment above; `[snapshot]` tier, no Decision clause changed, no interaction with
-  #1610.
+  2026-09-10 Amendment above; `[default]` tier (a recurring rollout procedure, not a point-in-time
+  snapshot), no change to Decisions 6-8's own text or tier, no interaction with #1610.
 - `scripts/check-pos-receipt-version-bump.js` — the existing single-package version-bump precedent
   this ADR's scheme deliberately does not fold `packages/pos-receipt` into.
 - Sieitzz/dgfy-mobile#78, #79 — the sibling repo's versioning policy cited for pattern reuse in

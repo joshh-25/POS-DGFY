@@ -1656,9 +1656,15 @@ and never reads or writes the `org.dgfy-platform.candidate-source-sha` label #16
 version this step writes is still governed by ADR 0081 Decision 6's ordinary bump-mode rules the
 next time it's actually published on a future candidate — this step shortcuts none of those checks.
 
-`[snapshot]`-tier new mechanism, no `[binding]`/`[default]` clause of this policy or of ADR 0081
-changed by this entry — ADR 0081's own matching 2026-09-10 Amendment (added anyway, per that ADR's
-established practice of recording every operationally-significant mechanism change) carries the
-full design statement; not restated here beyond this operational summary.
+`[default]`-tier new mechanism — corrected 2026-09-10 (PR #1813 review, RF-1) from an earlier
+version of this entry that mislabeled it `[snapshot]`. Per ADR 0039, `[snapshot]` is a point-in-time
+description that is "never a constraint" and whose staleness "is not a violation"; this entry
+instead records a standing, recurring procedure (run the sync script every ordinary promotion, open
+and merge a PR whenever it reports drift), which is exactly `[default]`'s own "rollout sequencing"
+example category. **This does not change any `[binding]`/`[default]` clause's own text or tier —
+ADR 0081 Decisions 6, 7, and 8 are unchanged in substance**; it is itself a new `[default]`-tier
+procedure, amended onto ADR 0081 via that ADR's own dated-Amendment path (`status: amended`, no
+superseding ADR needed). ADR 0081's own matching 2026-09-10 Amendment carries the full design
+statement; not restated here beyond this operational summary.
 
 PR: (this PR). Closes #1807. Refs #1548, #1610, #1611, #1740, #1802.
