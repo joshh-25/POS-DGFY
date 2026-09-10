@@ -295,11 +295,19 @@ jobs:
       # header for why this is a genuine runtime read, not a hand-kept-in-sync pair.
       # Flipping that one module flips this step *and* scripts/pr-checks.js's own
       # blocking argument for the same check together; nothing else to edit here.
+      # #1774: the toggle is now base-aware -- `resolveBlocking(base, head)` is blocking only on
+      # a `staging`/`main` base (a promotion leg or a hotfix), advisory on `develop` -- so this
+      # step now threads github.base_ref/github.head_ref through instead of reading a flat
+      # boolean. See that module's own header for why a `develop`-base PR should not be blocked
+      # on this check.
       - name: Load check:app-versions gate toggle
         if: inputs.validate_pr_metadata
         id: app_versions_gate
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
         run: |
-          echo "continue_on_error=$(node -e "console.log(require('./scripts/lib/version-bump-gate-toggle').BLOCKING ? 'false' : 'true')")" >> "$GITHUB_OUTPUT"
+          echo "continue_on_error=$(node -e "console.log(require('./scripts/lib/version-bump-gate-toggle').resolveBlocking(process.env.GITHUB_BASE_REF, process.env.GITHUB_HEAD_REF) ? 'false' : 'true')")" >> "$GITHUB_OUTPUT"
 
       # #1695 (Phase 303): check-app-version-bump.js now transitively requires the root
       # devDependency `madge` (via scripts/resolve-web-core-reachability.js's shadow-mode
@@ -317,11 +325,12 @@ jobs:
       # pos-receipt check above to all five deployable apps, with a real semver-increase
       # requirement and a (base, head) mode switch (see the script's own header). #1569:
       # continue-on-error reads the toggle step above (scripts/lib/version-bump-gate-
-      # toggle.js's BLOCKING) instead of a hardcoded literal. Shipped advisory
-      # (BLOCKING: false); flipped to blocking (BLOCKING: true) by #1592 (epic #1548,
-      # Phase 283) on 2026-09-05, once scripts/check-version-bump-flip-readiness.js
-      # confirmed enough clean-run evidence existed and a human confirmed it -- see
-      # docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md.
+      # toggle.js) instead of a hardcoded literal. Shipped advisory (BLOCKING: false);
+      # flipped to blocking globally (BLOCKING: true) by #1592 (epic #1548, Phase 283) on
+      # 2026-09-05, once scripts/check-version-bump-flip-readiness.js confirmed enough
+      # clean-run evidence existed and a human confirmed it. #1774 then narrowed that global
+      # flip to be base-aware: blocking on a `staging`/`main` base, advisory on `develop` --
+      # see the toggle module's own header and docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md.
       - name: Enforce per-app version bump on source changes
         if: inputs.validate_pr_metadata
         continue-on-error: ${{ steps.app_versions_gate.outputs.continue_on_error == 'true' }}
