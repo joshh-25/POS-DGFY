@@ -3,17 +3,13 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { acquirePosImagePreview } from '@/src/features/pos/services/posImagePreview.js';
+import {
+  getPendingGalleryEntryKey,
+  getSavedGalleryEntryKey
+} from './imageGalleryIdentity.js';
 const EMPTY_IMAGES = Object.freeze([]);
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
 import { buildImageVariantSources } from '@/src/utils/imageVariantSources.js';
-
-const buildFileKey = (file, index) => (
-  `${file?.name || 'item-image'}-${file?.size || 0}-${file?.lastModified || 0}-${index}`
-);
-
-const buildSavedImageKey = (entry, index) => (
-  `saved:${entry?.url || entry?.path || `image-${index}`}`
-);
 
 export default function SelectedItemImageCarousel({
   files = EMPTY_IMAGES,
@@ -22,13 +18,15 @@ export default function SelectedItemImageCarousel({
   disabled = false,
   posPreview = false,
   showPrimaryToggle = false,
+  primaryEntryKey,
+  onPrimaryChange,
   onRemove,
   onSetSavedPrimary,
   onRemoveSaved,
   onSetPendingPrimary
 }) {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [primaryEntryKey, setPrimaryEntryKey] = useState('');
+  const [activeEntryKey, setActiveEntryKey] = useState('');
+  const [internalPrimaryEntryKey, setInternalPrimaryEntryKey] = useState('');
   const [pendingPreviewUrls, setPendingPreviewUrls] = useState([]);
   const normalizedFiles = useMemo(
     () => (Array.isArray(files) ? files.filter(Boolean) : []),
@@ -45,7 +43,7 @@ export default function SelectedItemImageCarousel({
       kind: 'pending',
       file,
       pendingIndex: index,
-      key: `pending:${buildFileKey(file, index)}`,
+      key: getPendingGalleryEntryKey(file),
       label: file?.name || `selected image ${index + 1}`,
       url: pendingPreviewUrls[index] || ''
     }))
@@ -54,7 +52,7 @@ export default function SelectedItemImageCarousel({
     () => normalizedSavedGallery.map((entry, index) => ({
       kind: 'saved',
       savedIndex: index,
-      key: buildSavedImageKey(entry, index),
+      key: getSavedGalleryEntryKey(entry, index),
       label: entry?.name || `saved image ${index + 1}`,
       url: resolveAssetUrl((posPreview && (entry?.variants?.pos_thumbnail_url || entry?.variants?.thumbnail_url)) || entry?.url || entry?.path),
       variants: entry?.variants || entry?.image_variants || null
@@ -66,8 +64,11 @@ export default function SelectedItemImageCarousel({
     [previews, savedEntries]
   );
   const fallbackPrimaryKey = baseEntries[0]?.key || '';
-  const selectedPrimaryKey = baseEntries.some((entry) => entry.key === primaryEntryKey)
-    ? primaryEntryKey
+  const requestedPrimaryKey = primaryEntryKey === undefined
+    ? internalPrimaryEntryKey
+    : String(primaryEntryKey || '');
+  const selectedPrimaryKey = baseEntries.some((entry) => entry.key === requestedPrimaryKey)
+    ? requestedPrimaryKey
     : fallbackPrimaryKey;
   const orderedEntries = selectedPrimaryKey
     ? [
@@ -75,9 +76,8 @@ export default function SelectedItemImageCarousel({
       ...baseEntries.filter((entry) => entry.key !== selectedPrimaryKey)
     ].filter(Boolean)
     : baseEntries;
-  const resolvedActiveIndex = orderedEntries.length > 0
-    ? Math.min(activeIndex, orderedEntries.length - 1)
-    : 0;
+  const activeEntryIndex = orderedEntries.findIndex((entry) => entry.key === activeEntryKey);
+  const resolvedActiveIndex = activeEntryIndex >= 0 ? activeEntryIndex : 0;
   const activeEntry = orderedEntries[resolvedActiveIndex] || null;
   const hasMultipleImages = orderedEntries.length > 1;
   const combinedGallery = normalizedSavedGallery.length > 0;
@@ -87,9 +87,9 @@ export default function SelectedItemImageCarousel({
     let cancelled = false;
     const generatedUrls = [];
     const leases = [];
-    setPendingPreviewUrls([]);
 
     const generateSequentially = async () => {
+      setPendingPreviewUrls([]);
       for (const file of normalizedFiles) {
         if (cancelled) break;
         try {
@@ -124,13 +124,17 @@ export default function SelectedItemImageCarousel({
 
   const goToImage = (nextIndex) => {
     if (!hasMultipleImages) return;
-    setActiveIndex(((nextIndex % orderedEntries.length) + orderedEntries.length) % orderedEntries.length);
+    const normalizedIndex = ((nextIndex % orderedEntries.length) + orderedEntries.length) % orderedEntries.length;
+    setActiveEntryKey(orderedEntries[normalizedIndex].key);
   };
 
   const handleSetPrimary = (entry) => {
     if (!entry || entry.key === selectedPrimaryKey) return;
-    setPrimaryEntryKey(entry.key);
-    setActiveIndex(0);
+    if (primaryEntryKey === undefined) {
+      setInternalPrimaryEntryKey(entry.key);
+    }
+    onPrimaryChange?.(entry.key, entry);
+    setActiveEntryKey(entry.key);
     if (entry.kind === 'saved') {
       onSetSavedPrimary && onSetSavedPrimary(entry.savedIndex);
     } else {
@@ -224,7 +228,7 @@ export default function SelectedItemImageCarousel({
               aria-label={`Focus ${imageLabel} image ${index + 1}`}
               aria-current={index === resolvedActiveIndex ? 'true' : undefined}
               className={`relative h-14 w-16 flex-shrink-0 overflow-hidden rounded-md border bg-white text-[10px] text-slate-500 transition ${index === resolvedActiveIndex ? 'border-teal-500 ring-2 ring-teal-100' : 'border-slate-200 hover:border-slate-300'}`}
-              onClick={() => setActiveIndex(index)}
+              onClick={() => setActiveEntryKey(entry.key)}
               disabled={disabled}
             >
               {entry.url ? (

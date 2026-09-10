@@ -48,4 +48,25 @@ describe('catalog image upload worker queue', () => {
         expect(workerSource).not.toContain('.lPush(');
         expect(workerSource).toContain('localQueue.push(task)');
     });
+
+    it('keeps edit gallery intent metadata with the queued files', async () => {
+        const queued = await enqueueCatalogImageUpload({
+            tenantId: 'tenant-a',
+            user: { tenant_id: 'tenant-a', user_id: 7, permissions: ['items:edit'] },
+            itemId: 23,
+            mode: 'gallery',
+            files: [{ path: 'C:/tmp/new.jpg', originalname: 'new.jpg', mimetype: 'image/jpeg', size: 123 }],
+            galleryIntent: {
+                base_keys: ['old.webp'],
+                pending_keys: ['new.jpg|123|1|image/jpeg'],
+                entries: [{ type: 'pending', key: 'new.jpg|123|1|image/jpeg' }]
+            }
+        });
+
+        expect(queued).toEqual(expect.objectContaining({ item_id: 23, queued: true }));
+        await expect(getCatalogImageUploadStatus('tenant-a', 23)).resolves.toEqual(expect.objectContaining({
+            job_id: queued.job_id,
+            status: 'queued'
+        }));
+    });
 });

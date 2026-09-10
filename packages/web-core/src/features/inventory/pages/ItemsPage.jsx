@@ -768,7 +768,9 @@ export default function Items() {
     ].map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
 
     try {
-      const updated = await updateStorefrontCatalogGallery(itemId, nextGallery);
+      const updated = await updateStorefrontCatalogGallery(itemId, nextGallery, {
+        expectedGalleryKeys: current.map((entry) => entry?.path || entry?.url).filter(Boolean)
+      });
       setStorefrontCatalogOverrides((prev) => ({
         ...prev,
         [itemId]: { ...(prev[itemId] || {}), ...updated }
@@ -796,7 +798,9 @@ export default function Items() {
         const nextGallery = currentGallery
           .filter((_, index) => index !== normalizedImageIndex)
           .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
-        updated = await updateStorefrontCatalogGallery(itemId, nextGallery);
+        updated = await updateStorefrontCatalogGallery(itemId, nextGallery, {
+          expectedGalleryKeys: currentGallery.map((entry) => entry?.path || entry?.url).filter(Boolean)
+        });
       } else {
         updated = await deleteStorefrontCatalogImage(itemId);
       }

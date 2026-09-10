@@ -360,6 +360,130 @@ describe('inventory itemRepository', () => {
     expect(StorefrontCatalogOverride.create.mock.calls[1][0]).not.toHaveProperty('storefront_image_gallery');
   });
 
+  it('commits a reordered gallery under the tenant item lock and preserves stored metadata', async () => {
+    const update = jest.fn().mockResolvedValue();
+    const existing = {
+      storefront_catalog_override_id: 91,
+      item_id: 901,
+      storefront_visible: true,
+      storefront_image_path: 'storefront/a.webp',
+      storefront_image_url: '/uploads/storefront/a.webp',
+      storefront_image_gallery: [
+        {
+          path: 'storefront/a.webp',
+          url: '/uploads/storefront/a.webp',
+          original_path: 'storefront/a-original.jpg',
+          classification: 'manual',
+          source: { type: 'registry', provider: 'catalog', attribution_label: 'Catalog' },
+          is_primary: true,
+          sort_order: 0
+        },
+        {
+          path: 'storefront/b.webp',
+          url: '/uploads/storefront/b.webp',
+          original_path: 'storefront/b-original.jpg',
+          classification: 'ai',
+          source: { type: 'ai', provider: 'openai' },
+          is_primary: false,
+          sort_order: 1
+        }
+      ],
+      update
+    };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue({ item_id: 901, status: 'active' })
+    };
+    const StorefrontCatalogOverride = {
+      findOne: jest.fn().mockResolvedValue(existing)
+    };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = { transaction: jest.fn(async (callback) => callback(transaction)) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'StorefrontCatalogOverride') return StorefrontCatalogOverride;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'gallery-commit-test', sequelize });
+
+    const result = await itemRepository.commitStorefrontCatalogGallery(901, {
+      storefront_image_gallery: [
+        { path: 'storefront/b.webp', url: '/uploads/storefront/b.webp' },
+        { path: 'storefront/a.webp', url: '/uploads/storefront/a.webp' }
+      ]
+    }, {
+      expectedGalleryKeys: ['storefront/a.webp', 'storefront/b.webp']
+    });
+
+    expect(Item.findOne).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ item_id: 901 }),
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    }));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      storefront_image_path: 'storefront/b.webp',
+      storefront_image_gallery: [
+        expect.objectContaining({
+          path: 'storefront/b.webp',
+          original_path: 'storefront/b-original.jpg',
+          classification: 'ai',
+          source: expect.objectContaining({ type: 'ai', provider: 'openai' }),
+          is_primary: true,
+          sort_order: 0
+        }),
+        expect.objectContaining({
+          path: 'storefront/a.webp',
+          original_path: 'storefront/a-original.jpg',
+          classification: 'manual',
+          source: expect.objectContaining({ type: 'registry', provider: 'catalog', attribution_label: 'Catalog' }),
+          is_primary: false,
+          sort_order: 1
+        })
+      ]
+    }), { transaction });
+    expect(result.previousGallery[0].original_path).toBe('storefront/a-original.jpg');
+    expect(result.committedGallery.map((entry) => entry.path)).toEqual([
+      'storefront/b.webp',
+      'storefront/a.webp'
+    ]);
+  });
+
+  it('rejects a stale empty gallery base before writing anything', async () => {
+    const update = jest.fn().mockResolvedValue();
+    const existing = {
+      item_id: 902,
+      storefront_image_path: 'storefront/current.webp',
+      storefront_image_url: '/uploads/storefront/current.webp',
+      storefront_image_gallery: [{
+        path: 'storefront/current.webp',
+        url: '/uploads/storefront/current.webp',
+        is_primary: true,
+        sort_order: 0
+      }],
+      update
+    };
+    const Item = { findOne: jest.fn().mockResolvedValue({ item_id: 902, status: 'active' }) };
+    const StorefrontCatalogOverride = { findOne: jest.fn().mockResolvedValue(existing) };
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const sequelize = { transaction: jest.fn(async (callback) => callback(transaction)) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'StorefrontCatalogOverride') return StorefrontCatalogOverride;
+      if (name === 'sequelize') return sequelize;
+      return {};
+    });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'gallery-stale-test', sequelize });
+
+    await expect(itemRepository.commitStorefrontCatalogGallery(902, {
+      storefront_image_gallery: []
+    }, {
+      expectedGalleryKeys: []
+    })).rejects.toMatchObject({ code: 'CONFLICT', statusCode: 409 });
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('maps list payload for product compositions in getItems', async () => {
     const ProductComposition = {};
     const ItemFolder = {};
@@ -2376,7 +2500,8 @@ describe('inventory itemRepository', () => {
           is_active: true,
           parent_id: null,
           item_count: 2,
-          secondary_item_count: 0
+          secondary_item_count: 0,
+          sort_order: 0
         },
         {
           folder_id: 2,
@@ -2386,7 +2511,8 @@ describe('inventory itemRepository', () => {
           is_active: false,
           parent_id: null,
           item_count: 0,
-          secondary_item_count: 0
+          secondary_item_count: 0,
+          sort_order: 0
         }
     ]);
   });
@@ -2465,6 +2591,7 @@ describe('inventory itemRepository', () => {
       parent_id: null,
       show_in_pos_filter: true,
       is_active: true,
+      sort_order: 0,
       message: 'Inventory folder "Dry Goods" created successfully'
     });
 
@@ -2494,9 +2621,35 @@ describe('inventory itemRepository', () => {
 
     await expect(itemRepository.createFolder('Mains')).resolves.toMatchObject({ folder_id: 18, name: 'Mains' });
     expect(ItemFolder.findAll).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ is_active: true, deleted_at: null })
+      where: expect.objectContaining({ deleted_at: null })
     }));
     expect(inactiveFolder.is_active).toBe(false);
+  });
+
+  it('reorders every current category atomically', async () => {
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const ItemFolder = {
+      findAll: jest.fn().mockResolvedValue([{ folder_id: 1 }, { folder_id: 2 }, { folder_id: 3 }]),
+      update: jest.fn().mockResolvedValue([1])
+    };
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => (name === 'ItemFolder' ? ItemFolder : {}));
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize: { transaction: jest.fn().mockResolvedValue(transaction) } });
+
+    await expect(itemRepository.reorderFolders([3, 1, 2])).resolves.toEqual({ success: true, folder_ids: [3, 1, 2] });
+    expect(ItemFolder.update).toHaveBeenNthCalledWith(1, { sort_order: 0 }, { where: { folder_id: 3 }, transaction });
+    expect(ItemFolder.update).toHaveBeenNthCalledWith(3, { sort_order: 2 }, { where: { folder_id: 2 }, transaction });
+    expect(transaction.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a stale category reorder without writing partial positions', async () => {
+    const transaction = { LOCK: { UPDATE: 'UPDATE' }, commit: jest.fn(), rollback: jest.fn(), finished: false };
+    const ItemFolder = { findAll: jest.fn().mockResolvedValue([{ folder_id: 1 }, { folder_id: 2 }]), update: jest.fn() };
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => (name === 'ItemFolder' ? ItemFolder : {}));
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize: { transaction: jest.fn().mockResolvedValue(transaction) } });
+
+    await expect(itemRepository.reorderFolders([2])).rejects.toMatchObject({ statusCode: 409, code: 'CATEGORY_ORDER_STALE' });
+    expect(ItemFolder.update).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalledTimes(1);
   });
 
   it('deletes an unassigned folder without altering item records', async () => {

@@ -765,7 +765,7 @@ describe('pos use-cases application result contract', () => {
 
         const result = await useCase({
             itemId: 202,
-            payload: { pos_visible: true },
+            payload: { pos_visible: true, location_id: 7 },
             user: { is_master_admin: false, permissions: ['items:edit'] }
         });
 
@@ -775,6 +775,10 @@ describe('pos use-cases application result contract', () => {
         expect(result.error.details).toMatchObject({
             reason_code: 'POS_READINESS_INCOMPLETE',
             missing_requirements: expect.any(Array)
+        });
+        expect(getCatalogReadinessByItemId).toHaveBeenCalledWith(202, {
+            forcedPosVisible: true,
+            locationId: 7
         });
         expect(upsertCatalogOverride).not.toHaveBeenCalled();
     });

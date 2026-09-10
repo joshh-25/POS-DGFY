@@ -1,4 +1,5 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { createRequire } from 'node:module';
 import { compareTenantSyncFailures } from '../scripts/check-tenant-schema-sync-regressions.js';
 import {
   assertTenantSchemaMutationModeAllowed,
@@ -12,13 +13,63 @@ import {
   REQUIRED_TENANT_SCHEMA_INDEXES,
   REQUIRED_TENANT_SCHEMA_TABLES,
   buildTenantSchemaEnumRepairSql,
+  backfillItemFolderSortOrder,
   repairItemFolderCategoryLifecycleSchema,
   repairPosParkedSaleOriginOwnership,
   normalizeTenantSchemaTableRepairSql,
   resolveTenantSchemaRepairCollation
 } from '../scripts/sync-tenant-schemas.js';
 
+const require = createRequire(import.meta.url);
+const itemFolderSortOrderMigration = require('../../dgfy-migration-runner/migrations/20260910000001-add-item-folder-sort-order.cjs');
+
 describe('tenant schema sync script contracts', () => {
+  it('registers the persisted category display order for every tenant database', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.item_folders).toHaveProperty('sort_order');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.item_folders.sort_order.sql)
+      .toContain('`sort_order` INTEGER NOT NULL DEFAULT 0');
+  });
+
+  it('backfills existing category order deterministically', async () => {
+    const connection = {
+      query: jest.fn()
+        .mockResolvedValueOnce([[{ folder_id: 8 }, { folder_id: 3 }], {}])
+        .mockResolvedValue([[], {}])
+    };
+
+    await backfillItemFolderSortOrder(connection, 'sku_tenant_test');
+
+    expect(connection.query).toHaveBeenNthCalledWith(
+      2,
+      'UPDATE `sku_tenant_test`.`item_folders` SET `sort_order` = ? WHERE `folder_id` = ?',
+      [0, 8]
+    );
+    expect(connection.query).toHaveBeenNthCalledWith(
+      3,
+      'UPDATE `sku_tenant_test`.`item_folders` SET `sort_order` = ? WHERE `folder_id` = ?',
+      [1, 3]
+    );
+  });
+
+  it('does not reset an existing custom category order when the migration reruns', async () => {
+    const queries = [];
+    const query = jest.fn(async (sql, options = {}) => {
+      queries.push(sql);
+      if (sql === 'SELECT DATABASE() AS dbName') return [[{ dbName: 'sku_landlord' }], {}];
+      if (sql.includes('information_schema.tables')) {
+        const tableName = options.replacements?.[1];
+        return [[{ count: tableName === 'item_folders' ? 1 : 0 }], {}];
+      }
+      if (sql.includes('information_schema.columns')) return [[{ count: 1 }], {}];
+      throw new Error(`Unexpected migration query: ${sql}`);
+    });
+
+    await itemFolderSortOrderMigration.up({ sequelize: { query } }, { QueryTypes: { UPDATE: 'UPDATE' } });
+
+    expect(queries.some((sql) => /^UPDATE /i.test(sql))).toBe(false);
+    expect(queries.some((sql) => sql.includes('ORDER BY name ASC'))).toBe(false);
+  });
+
   it('publishes a stable checksum for the complete tenant capability registry', () => {
     expect(getTenantSchemaCapabilityChecksum()).toMatch(/^[a-f0-9]{64}$/);
     expect(getTenantSchemaCapabilityChecksum()).toBe(getTenantSchemaCapabilityChecksum());

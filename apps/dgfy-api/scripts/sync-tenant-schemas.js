@@ -159,6 +159,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         })
     }),
     item_folders: Object.freeze({
+        sort_order: Object.freeze({
+            sql: "ALTER TABLE `item_folders` ADD COLUMN `sort_order` INTEGER NOT NULL DEFAULT 0"
+        }),
         is_active: Object.freeze({
             sql: "ALTER TABLE `item_folders` ADD COLUMN `is_active` TINYINT(1) NOT NULL DEFAULT 1 AFTER `show_in_pos_filter`"
         }),
@@ -2323,6 +2326,19 @@ export async function repairItemFolderCategoryLifecycleSchema(connection, tenant
     }
 }
 
+export async function backfillItemFolderSortOrder(connection, tenantDb) {
+    const safeTenantDb = quoteIdentifier(tenantDb);
+    const [folders] = await connection.query(
+        `SELECT folder_id FROM ${safeTenantDb}.\`item_folders\` WHERE deleted_at IS NULL ORDER BY name ASC, folder_id ASC`
+    );
+    for (let index = 0; index < folders.length; index += 1) {
+        await connection.query(
+            `UPDATE ${safeTenantDb}.\`item_folders\` SET \`sort_order\` = ? WHERE \`folder_id\` = ?`,
+            [index, folders[index].folder_id]
+        );
+    }
+}
+
 // Existing parked sales predate the shared-queue handoff columns. Preserve their
 // creator/shift identity before a future cashier claims the sale and the current
 // ownership fields move to the new cashier/shift.
@@ -2462,7 +2478,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-07.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-08.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
@@ -2862,6 +2878,11 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                         for (const repair of columnRepairSql) {
                             await useTenantDb();
                             await connection.query(repair.sql);
+                        }
+                        if (missingColumns.some((entry) => (
+                            entry.table === 'item_folders' && entry.column === 'sort_order'
+                        ))) {
+                            await backfillItemFolderSortOrder(connection, tenant.db_name);
                         }
                         await repairItemFolderCategoryLifecycleSchema(connection, tenant.db_name);
                         if (missingColumns.some((entry) => (

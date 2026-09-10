@@ -20125,7 +20125,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   ADR 0081 Decision 6's base-aware bump-level rule per `(base, head)` pair; wired into
   `shared-changed-paths.yml` + `scripts/pr-checks.js`; ships advisory (non-blocking) per ADR 0081
   Decision 9.
-- Status: planned.
+- Status: in_progress.
 - Dependencies: Phase 273 / ADR 0081 (Decisions 6 and 9 specifically); #1560 (filed, not started).
 - Acceptance and validation evidence: not yet started. Expected at implementation: a script test
   suite covering each `(base, head)` bump-level mode from ADR 0081 Decision 6, plus a live advisory
@@ -20142,7 +20142,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   verdict (`.agents/skills/pr-reviewer/SKILL.md`); `implement` gains its own version-bump obligation
   in `.agents/skills/implement/SKILL.md`, matching ADR 0081 Decision 6's "whoever's PR changes an
   app bumps that app's version" rule.
-- Status: planned.
+- Status: completed.
 - Dependencies: Phase 273 / ADR 0081 Decision 6; Phase 274 (#1560, the check this proposal builds
   on). Not yet filed as a GitHub issue — per epic #1548's own candidate slate, graduates
   wave-at-a-time (`docs/process/ISSUE-TAXONOMY.md`'s deferred-decomposition rule).
@@ -22100,3 +22100,431 @@ content differs from what was implemented and tested under the "303" label.
   the scoping and add a cross-check command), `.agents/skills/promoter/SKILL.md` (floor-step
   paraphrase corrected to state the list is scoped), issue #1740.
 - Next eligible phase: 306.
+
+## Phase 306 - Split-payment inventory preflight before tender acceptance
+
+- Initiative/release: POS split payment and Inventory consistency / current release.
+- Objective and scope: validate every stock-bearing direct item, recipe ingredient, and linked
+  modifier SKU before a split-payment session is created and again before its first allocation.
+  FIFO ledger drift and insufficient stock prevent tender acceptance, with a cashier-facing
+  message confirming that no payment was accepted. Final checkout retains its locked inventory
+  validation and stock issue.
+- Status: completed.
+- Dependencies: ADR 0029 Inventory ownership; ADR 0040 FIFO valuation; ADR 0063 split tender;
+  `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+- Acceptance and validation evidence: `node --check` passed for all changed API source files;
+  `posSplitPayment.usecases.test.js` passed 31/31; targeted migrated-database FIFO preflight and
+  final-checkout reconciliation tests passed with no transaction, movement, or stock mutation on
+  the preflight failure.
+- Completion date: 2026-09-07.
+- Contracts/files: `apps/dgfy-api/src/services/stockMovementService.js`, Inventory stock command
+  service and contract, POS checkout and split-payment use cases, their focused tests,
+  `docs/compliance/impact-declarations/2026-09-07-pos-split-inventory-preflight.md`, and
+  `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+- Next eligible phase: 308.
+
+## Phase 307 - Standalone mobile POS item-option bootstrap parity
+
+- Initiative/release: standalone native cashier offline parity / current release.
+- Objective and scope: enrich `GET /mobile-pos/bootstrap/catalog` with the
+  existing authoritative F&B modifier assignment snapshot and tenant-scoped
+  active Services option groups. Service assignments are loaded in one batch,
+  and add-on groups remain hidden when the service disables add-ons. This is an
+  additive `mobile-pos.v1` response extension; checkout remains authoritative
+  and continues to validate selections, availability, and server-owned prices.
+- Status: completed.
+- Dependencies: existing F&B modifier catalog includes, Services option-group
+  repository, Services quote validation, and mobile POS checkout replay.
+- Acceptance and validation evidence: focused mobile catalog-bootstrap and
+  transport Jest suites pass (11 tests); the native consumer validates the
+  nested snapshot and sends `line_modifiers` plus `selected_option_ids` for
+  server revalidation.
+- Completion date: 2026-09-07.
+- Contracts/files: mobile POS catalog bootstrap use case and composition,
+  Services option repository batch query,
+  `apps/dgfy-api/tests/mobilePosCatalogBootstrap.usecases.test.js`, and
+  `docs/api/specification.md`.
+- Next eligible phase: 308.
+
+## Phase 308 - POS Items on-demand HD image source contract
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: define one pure POS catalog resolver that returns the
+  lightweight thumbnail, on-demand optimized large image, ordered deduplicated
+  gallery, and medium/thumbnail fallbacks from existing Catalog and Storefront
+  image fields. POS-specific image overrides retain precedence. This phase does
+  not add the clickable viewer, request the HD asset, upload another image, or
+  persist an image copy in POS.
+- Status: completed.
+- Dependencies: ADR 0029 Catalog/Storefront ownership boundaries, ADR 0067
+  Chrome 80 browser floor, existing optimized image variants, and the POS
+  service-worker `/uploads/` cache bypass.
+- Acceptance and validation evidence: focused POS utility tests cover POS
+  override precedence, Storefront gallery ordering, duplicate suppression,
+  large-to-original-to-medium-to-thumbnail fallback order, and missing images;
+  POS production build, architecture check, compliance check, and diff check
+  pass.
+- Completion date: 2026-09-08.
+- Contracts/files: `resolvePosCatalogPreviewGallery` in
+  `packages/web-core/src/features/pos/utils/posCheckoutTerminalUtils.js`, its
+  focused utility tests, `apps/dgfy-pos/public/sw.js`, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-hd-preview-source-contract.md`.
+- Next eligible phase: 309.
+
+## Phase 309 - POS Items on-demand HD image viewer
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: make each POS Items thumbnail keyboard-accessible and
+  open an on-demand full-size viewer backed by Phase 308's existing server URL
+  contract. The responsive viewer supports close, Escape, previous/next image,
+  gallery thumbnail selection, three zoom levels, body-scroll locking, and
+  per-image fallback without eagerly loading inactive HD images.
+- Status: completed.
+- Dependencies: completed Phase 308 preview-source contract, ADR 0029
+  Catalog/Storefront ownership boundaries, ADR 0067 Chrome 80 browser floor,
+  and existing optimized image variants.
+- Acceptance and validation evidence: focused viewer behavior tests verify
+  on-demand active-image loading, ordered source fallback, gallery navigation,
+  zoom, and keyboard close; focused Phase 308 resolver tests and the POS
+  production build pass.
+- Completion date: 2026-09-08.
+- Contracts/files: `PosItemImageViewer.jsx`, its focused POS app behavior test,
+  POS Items integration in `TerminalOperationsWorkspace.jsx`, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-hd-image-viewer.md`.
+- Next eligible phase: 310.
+
+## Phase 310 - POS Items compact image viewer and price context
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: constrain the Phase 309 HD viewer to a smaller desktop
+  and APK-safe viewport, keep its header and controls visible, limit scrolling
+  to the image canvas, and show the selected item's formatted selling price in
+  the viewer header. Image ownership, loading, fallbacks, and persistence remain
+  unchanged.
+- Status: completed.
+- Dependencies: completed Phases 308 and 309, existing POS catalog selling-price
+  field, ADR 0029 ownership boundaries, and ADR 0067 Chrome 80 browser floor.
+- Acceptance and validation evidence: focused viewer behavior tests verify the
+  selling-price context alongside on-demand HD loading, fallbacks, gallery
+  navigation, zoom, and keyboard close; the POS production build passes.
+- Completion date: 2026-09-08.
+- Contracts/files: `PosItemImageViewer.jsx`, POS Items preview invocation in
+  `TerminalOperationsWorkspace.jsx`, the focused POS app behavior test, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-compact-image-viewer.md`.
+- Next eligible phase: 311.
+
+## Phase 311 - POS Items sharp HD source selection
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: distinguish a true POS image override from the backend's
+  Storefront-backed effective POS image using `pos_image_source`, so the viewer
+  selects the Storefront 1920px large variant instead of stretching a 144px POS
+  thumbnail. Preserve legacy payload compatibility when the source marker is
+  absent, and avoid transform compositing at the default 100% zoom. The black
+  viewer backdrop remains a lightweight translucent color with no blur filter.
+- Status: completed.
+- Dependencies: completed Phases 308-310, backend POS catalog image-source
+  marker, existing optimized Storefront variants, ADR 0029 ownership boundaries,
+  and ADR 0067 Chrome 80 browser floor.
+- Acceptance and validation evidence: focused resolver tests cover a backend-
+  shaped Storefront fallback whose POS fields point at a thumbnail and confirm
+  selection of the Storefront large variant; focused viewer tests confirm no
+  transform at 100% and explicit scaling only after zoom; POS build passes.
+- Completion date: 2026-09-08.
+- Contracts/files: POS image resolvers in `posCheckoutTerminalUtils.js`,
+  `PosItemImageViewer.jsx`, their focused tests, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-sharp-hd-source-selection.md`.
+- Next eligible phase: 312.
+
+## Phase 312 - POS Items image-viewer PR-readiness hardening
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: close the final audit gaps from Phases 308-311 by merging
+  duplicate primary gallery metadata instead of discarding HD variants,
+  supporting legacy path-only POS images, limiting zoom to real source pixels,
+  using the shared accessible dialog for focus trapping and restoration, and
+  preventing inactive gallery controls from falling back to full-size images.
+  Apply the required minor version increases to all three web-core consumers.
+- Status: completed.
+- Dependencies: completed Phases 308-311, shared dialog accessibility contract,
+  ADR 0029 ownership boundaries, ADR 0067 Chrome 80 browser floor, and ADR 0081
+  per-app version policy.
+- Acceptance and validation evidence: focused resolver tests cover HD metadata
+  merging and path-only records; focused viewer tests cover pixel-aware zoom,
+  focus containment/restoration, fallback, navigation, and close behavior; POS
+  production build, architecture, compliance, documentation, and app-version
+  checks pass.
+- Completion date: 2026-09-08.
+- Contracts/files: POS image resolvers, `PosItemImageViewer.jsx`, focused POS
+  tests, consuming app package manifests and lockfiles, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-image-viewer-pr-readiness.md`.
+- Next eligible phase: 313.
+
+## Phase 313 - Shared POS and Storefront category ordering
+
+- Initiative/release: POS catalog category management / current release.
+- Objective and scope: let tenant administrators rearrange category rows from
+  POS Items with pointer, touch, or keyboard input; persist the complete order
+  transactionally in Catalog-owned `item_folders.sort_order`; and render F&B
+  and services Storefront category controls in the same order while keeping the
+  synthetic All category first. Reordering is disabled while search is active,
+  failed saves restore the prior UI order, and newly created categories append.
+- Status: completed.
+- Dependencies: completed Phase 312, ADR 0029 Catalog ownership, ADR 0080
+  primary/secondary category identity rules, existing `categories:manage`
+  authorization, and tenant migration runner coverage.
+- Acceptance and validation evidence: additive migration applied to the local
+  development database and all 15 active local tenant databases; tenant schema
+  capability `2026-09-08.1` detects and repairs `item_folders.sort_order` with
+  deterministic one-time backfill; the public Storefront serializer preserves
+  primary and secondary category IDs and display order (verified against the
+  live 118-item Masu Cafe catalog); inventory repository/transport suites passed (118
+  tests); POS category interaction/contract suites passed (21 tests);
+  Storefront F&B/services ordering suites passed (20 tests); POS, Storefront,
+  and IMS production builds passed; architecture, compliance, documentation,
+  migration syntax, and per-app version gates passed. The Phase 313 corrective
+  audit now also excludes legacy `product_folder` text, heuristic labels, and
+  inactive/deleted primary folders from Storefront category controls while
+  retaining unassigned items in All; focused API and F&B/services model tests
+  cover that boundary.
+- Completion date: 2026-09-09.
+- Contracts/files: `item_folders.sort_order`, inventory folder repository/use
+  case/route, shared item service, POS category workspace, Storefront category
+  view models, focused tests, and Phase 313 compliance declaration.
+- Next eligible phase: 314.
+
+## Phase 314 - Category presentation and business-rule isolation
+
+- Initiative/release: POS catalog final audit / current release.
+- Objective and scope: isolate public active-category display from stored primary
+  IDs used by voucher pricing and inherited F&B modifiers; retain unassigned items.
+- Status: completed.
+- Dependencies: Phase 313; ADR 0029 and ADR 0080; existing F&B modifier contract.
+- Acceptance and validation evidence: the shared Storefront folder include keeps
+  inherited modifier associations and status fields; the repository mapper keeps
+  the stored primary ID for voucher/modifier inputs while public serialization
+  redacts inactive/deleted category fields. API repository/catalog tests passed
+  28/28, voucher/store use-case tests 81/81, dedicated F&B modifier tests 3/3,
+  resolver/primary-membership safeguards 6/6, and architecture, compliance,
+  documentation, and app-version gates passed. The legacy-only stock fallback
+  fixture now uses an explicit active folder, preserving its original coverage.
+- Completion date: 2026-09-09.
+- Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
+  storeRepository.js, storeUseCases.js, effectiveFnbModifierGroups.js and related tests.
+- Next eligible phase: 315.
+
+## Phase 315 - Category regression and synchronization closure
+
+- Initiative/release: POS catalog final audit / current release.
+- Objective and scope: repair the confirmed legacy-fixture test failure and verify
+  category order, secondary-only items, stale saves, and tenant isolation end to end.
+- Status: completed.
+- Dependencies: Phase 314.
+- Acceptance and validation evidence: the category reorder handler submits the
+  complete folder ID list, keeps the optimistic order after a successful save, and
+  reloads the authoritative tenant-scoped list after a rejected stale save. POS
+  rendered category behavior tests passed 16/16. Storefront F&B and services
+  model tests passed 24/24 and the full Storefront suite passed 218 files and
+  1,175 tests, covering secondary-only items, invalid IDs, colliding names,
+  inactive/deleted memberships, unique All membership, and persisted relative
+  order. API repository/category suites passed 96/96, including secondary sort
+  order and active/deleted filtering. The local public catalog payload and
+  rendered Storefront for Masu Cafe exposed the same eligible category order; a
+  second tenant had a distinct category set with no ID overlap. POS and
+  Storefront production builds plus architecture, compliance, documentation,
+  app-version, and diff checks passed. Authenticated live POS credentials were
+  unavailable, so no destructive browser reorder was attempted; the rendered
+  handler and API atomic reorder contract provide the mutation evidence.
+- Completion date: 2026-09-09.
+- Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
+  storeRepository.locationStockFallback.test.js, storeRepositorySecondaryCategories.test.js,
+  F&B/services view-model tests, TerminalOperationsWorkspace.jsx,
+  categoryPlacement.behavior.test.jsx, and local cross-app validation evidence.
+- Next eligible phase: 316.
+
+## Phase 316 - Image viewer rendered validation and final readiness
+
+- Initiative/release: POS catalog final audit / current release.
+- Objective and scope: verify viewer mobile/desktop layout, zoom/resize, focus,
+  network/storage behavior and affected application gates; fix only reproduced gaps.
+- Status: completed.
+- Dependencies: Phase 315; ADR 0067 and architecture governance rendered-proof rules.
+- Acceptance and validation evidence: the rendered POS viewer reproduced a stale
+  explicit-dimension gap after a narrow viewport change. `PosItemImageViewer.jsx`
+  now clears zoom and metrics on `resize`/`orientationchange`, then remeasures the
+  loaded image on the next animation frame (with a timer fallback). The focused
+  POS viewer suite passes 4/4 and the shared resolver/asset suites pass 23/23.
+  Authenticated local POS browser proof passed at desktop 1280x800, mobile
+  360x640, and landscape 640x360: the dialog stayed within the viewport, zoom
+  remained scrollable, resize cleared explicit dimensions, navigation moved from
+  image 1 of 3 to a distinct image 2 of 3, Escape closed and restored focus, and
+  close/reopen worked. The viewer requested one active HD image and three
+  thumbnails, added no localStorage keys, and produced no page errors, failed
+  requests, or viewer response errors. No production or tenant data was changed.
+  Physical iMin validation is excluded per user instruction.
+- Completion date: 2026-09-09.
+- Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
+  PosItemImageViewer.jsx, POS viewer tests, and local rendered validation artifacts.
+- Next eligible phase: 317.
+
+## Phase 317 - Add/Edit Item image draft consistency
+
+- Initiative/release: POS catalog item image management / current release.
+- Objective and scope: make Edit Item image changes transactional from the
+  operator's perspective. New files, removals, reordering, and Primary selection
+  remain local until Save Item; the save sends one validated gallery intent to the
+  asynchronous gallery worker so an upload cannot replace or duplicate the existing
+  gallery. Repeated file selections are deduplicated, stale concurrent edits are
+  rejected with a reopen message, and legacy append uploads retain their behavior.
+- Status: in_progress.
+- Reopened 2026-09-09: final audit found seven untested recovery/persistence
+  gaps. The prior implementation evidence below remains valid, but does not
+  establish complete-flow acceptance. Closure requires Phases 318-320 in the
+  [photo repair plan](POS_ITEM_PHOTO_REPAIR_PHASES_318_320.md).
+- Dependencies: Phase 316; existing storefront gallery API and image worker;
+  ADR 0029 catalog/storefront ownership boundaries; ADR 0067 browser floor.
+- Acceptance and validation evidence: POS draft-helper, Edit Item save-contract,
+  and carousel suites passed 3/3 each; POS app suite passed 4/4; API gallery
+  use-case and worker suites passed 41/41, including stale-edit rejection for
+  populated and empty galleries and atomic reorder/remove/Primary application;
+  POS production build passed;
+  changed-file lint, architecture, compliance, documentation, app-version, and
+  committed-diff checks passed. No database migration was required.
+- Completion date: prior completion recorded 2026-09-09; reopened the same day.
+- Contracts/files: `posEditImageDraft.js`, Edit Item image flow in
+  `TerminalOperationsWorkspace.jsx`, `storefrontCatalogService.js`, gallery-intent
+  transport/controller/worker/use-case code, and focused frontend/API tests.
+- Next eligible phase: 318.
+
+## Phase 318 - Safe item gallery persistence
+
+- Initiative/release: POS item photo repair / current release.
+- Objective and scope: atomic stale checking, commit-before-cleanup, and stored
+  metadata preservation across gallery writers; audit gaps G1, G2 and G4.
+- Status: completed.
+- Dependencies: Phase 317 implementation; ADR 0029 and ADR 0055.
+- Acceptance and validation evidence: `storefrontCatalogUseCases.test.js`,
+  `inventoryItemRepository.test.js`, `itemHandlers.transport.test.js`,
+  `catalogImageUploadWorker.test.js`, `storefrontCatalogImagePersistence.integration.test.js`,
+  and `storefrontCatalogGenerateImageUseCases.test.js` passed (6 suites, 162
+  tests); focused POS editor/inventory contract tests passed (2 files, 21
+  tests); changed API lint, architecture/controller-boundary, compliance/API
+  contract, docs/ADR, and `git diff --check` passed; POS, IMS, and Storefront
+  production builds passed. The covered tests include stale and empty-base
+  conflicts, metadata preservation, commit-before-cleanup, remove-all DB
+  failure, cleanup failure, and lifecycle metadata compatibility.
+- Completion date: 2026-09-09.
+- Contracts/files: gallery controllers/use cases, item repository, image workers,
+  storefrontCatalogService.js and their tests; exact paths in the linked plan.
+- Next eligible phase: 319.
+
+## Phase 319 - Item photo editor state and retry consistency
+
+- Initiative/release: POS item photo repair / current release.
+- Objective and scope: controlled Primary state, retained failed-save drafts,
+  AI gallery refresh and current Add Item retry selections; gaps G3, G5-G7.
+- Status: completed.
+- Dependencies: Phase 318; ADR 0067.
+- Acceptance and validation evidence: focused Phase 319 suite passed 8 files and
+  40 tests, covering controlled Primary identity, retained failed-save drafts,
+  upload retry/idempotency metadata, stale AI completion, Add recovery, and
+  uncertain-upload reconciliation. POS, IMS, and Storefront production builds
+  passed. Architecture, compliance/API-contract, documentation/ADR,
+  workspace-hygiene, app-version, and diff checks passed. Changed-file ESLint
+  has only the pre-existing React Compiler memoization errors in the large
+  TerminalOperationsWorkspace component; no new Phase 319 lint error was added.
+  The full IMS Vitest run had 2,316 passing tests and three pre-existing failures
+  in `posItemsModalViewport.contract.test.js`, whose obsolete contract still
+  expects removed modal classes and Escape/scroll-lock code; this Phase 319
+  change does not alter that portal contract. No database migration was required.
+  Authenticated browser proof and latency measurements remain Phase 320 acceptance
+  work; physical iMin validation is excluded.
+- Completion date: 2026-09-09.
+- Contracts/files: TerminalOperationsWorkspace.jsx, SelectedItemImageCarousel.jsx,
+  posEditImageDraft.js, preview store and their rendered tests.
+- Next eligible phase: 320.
+
+## Phase 320 - Item photo end-to-end validation and closure
+
+- Initiative/release: POS item photo repair / current release.
+- Objective and scope: prove all seven repairs through real handlers, worker and
+  persistence boundaries; local desktop/mobile interaction and latency evidence.
+- Status: completed.
+- Dependencies: Phases 318 and 319; architecture governance rendered-proof rules.
+- Acceptance and validation evidence: authenticated local Masu Cafe browser proof
+  passed at 360x640 and 1280x800 for Add Item 1/3/5-image selection, sixth-image
+  retention, contained scrolling, Escape close, body scroll lock, and no console,
+  page, unexpected request, or HTTP errors. Edit Item preserved the saved image,
+  appended distinct images, changed Primary, and discarded drafts on Cancel and
+  reopen. The affected API matrix passed 9 suites/173 tests, the focused rendered
+  frontend matrix passed 9 files/58 tests, the POS image viewer passed 4/4, and
+  the full IMS suite passed 358 files/2,319 tests. POS, IMS, and Storefront builds;
+  architecture, compliance/API-contract, docs/ADR, workspace-hygiene,
+  app-version, and diff gates passed. Targeted changed-API ESLint and POS/IMS app
+  lint had no errors. The full API lint's four bulk-image-import errors and the
+  optional imageLifecycleFullValidation v2-path assertion remain unrelated
+  baseline failures and are recorded in the plan. Runtime health reported
+  database/Redis/schema healthy with zero missing migrations/columns and the
+  bulk-image worker had zero tick failures. Draft selection made no image API
+  request and preview was available within the 50 ms browser assertion window;
+  carousel tests verify object-URL cleanup. No prior runtime timing baseline was
+  recorded, so no invented before/after number is claimed. No migration was
+  required.
+- Completion date: 2026-09-09.
+- Contracts/files: linked repair plan, API and rendered editor tests, local browser
+  artifacts and compliance declaration. Physical iMin validation excluded.
+- Next eligible phase: 321.
+
+## Phase 322 - POS item image reliability and responsiveness
+
+- Initiative/release: POS item image upload repair / current release.
+- Objective and scope: keep Add Item, Edit Item, Items, and Sell previews
+  attempt-scoped and usable while asynchronous image workers complete; deliver
+  verified POS thumbnails, bounded decoding/retries, safe refresh handoff,
+  tenant/session cleanup, and recovery without changing Storefront gallery
+  ownership or checkout behavior.
+- Status: in_progress.
+- Dependencies: Phase 321; ADR 0017 image acknowledgement and POS thumbnail
+  contract; ADR 0029 catalog ownership; ADR 0055 authorized catalog refresh;
+  ADR 0067 browser support baseline.
+- Acceptance and validation evidence: local authenticated browser checks covered
+  Add Item 1/3/5-image selection, sixth-image retention, Edit Item replacement
+  and cancel/reopen behavior, contained scrolling, preview latency, and no
+  page/request errors. Focused API image/gallery matrix passed 9 suites/173
+  tests; focused rendered frontend matrix passed 9 files/58 tests; POS, IMS,
+  and Storefront builds plus architecture, compliance/API-contract, docs,
+  workspace, app-version, and diff checks passed. Device/APK evidence remains
+  open as the plan records; physical iMin validation is excluded by user
+  instruction. No database migration was required for this phase.
+- Contracts/files: [POS image upload plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md),
+  `packages/web-core/src/features/pos/services/posPendingItemImagePreviewStore.js`,
+  POS item image components/services, catalog image worker/storage, focused
+  frontend/API tests, and the Phase 322 compliance declarations.
+- Next eligible phase: 323.
+
+## Phase 323 - Recoverable bulk POS image packages
+
+- Initiative/release: POS catalog bulk image upload / current release.
+- Objective and scope: provide one resumable ZIP plus CSV workflow for up to 500
+  existing POS items with byte-bounded transfer, strict mapping and archive
+  validation, durable Redis-backed processing, per-file status, failed-only
+  retry, tenant isolation, and non-blocking POS progress. The workflow never
+  creates items or writes Storefront image/gallery fields.
+- Status: in_progress.
+- Dependencies: Phase 322 acceptance; ADR 0017 recoverable bulk package and
+  client-derived variant contracts; production shared Redis and worker-accessible
+  persistent storage; existing `items:edit` authorization and import feature flag.
+- Acceptance and validation evidence: manifest, storage, worker, use-case, and
+  transport suites cover chunk hashes, resumable replay, ZIP traversal and
+  expansion limits, tenant/SKU mapping, lease recovery, concurrency fencing,
+  idempotent completion, failure retention, and failed-only retry. POS build and
+  focused shared/API tests passed; local tenant schema report in read-only mode
+  returned `total=15, ok=15, failed=0` before migration rollout review. The
+  automated gates pass, while APK interaction/memory/request-count evidence and
+  production Redis/storage verification remain open. No migration was executed
+  locally for this phase.
+- Contracts/files: [POS image upload plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md),
+  `apps/dgfy-api/src/modules/pos/{controllers,domain,repositories,usecases}/*`,
+  bulk image worker/storage, shared bulk upload services, focused API/POS tests,
+  and ADR 0017's bulk-package amendment.
+- Next eligible phase: 324.

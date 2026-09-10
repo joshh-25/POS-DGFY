@@ -42,6 +42,10 @@ export const fetchPosCatalogPage = async (params = {}) => {
     if (getBrowserSessionSnapshot().generation !== session.generation) throw new Error('Catalog session changed.');
     const payload = response.data?.data || {};
     const items = Array.isArray(payload.items) ? payload.items : [];
+    // Paged POS catalog reads are the primary data refresh used by Items.
+    // Run the same worker reconciliation used by the unpaged catalog path so
+    // Edit Item previews are replaced as soon as the background job completes.
+    void reconcilePosImageUploads(items);
     return {
         items,
         pagination: payload.pagination || { page: 1, page_size: 15, total: 0, total_pages: 1 }

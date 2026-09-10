@@ -49,6 +49,9 @@ describe('posRepository catalog image mapping', () => {
               {
                 path: 'storefront/cheese-sauce.png',
                 url: '/uploads/storefront/cheese-sauce.png',
+                variants: {
+                  pos_thumbnail_url: '/uploads/storefront/cheese-sauce-pos-thumb.webp'
+                },
                 is_primary: true,
                 sort_order: 0
               }
@@ -90,6 +93,9 @@ describe('posRepository catalog image mapping', () => {
     expect(result[0]).toEqual(expect.objectContaining({
       item_id: 101,
       pos_image_url: '/uploads/storefront/cheese-sauce.png',
+      pos_image_variants: expect.objectContaining({
+        pos_thumbnail_url: '/uploads/storefront/cheese-sauce-pos-thumb.webp'
+      }),
       storefront_image_url: '/uploads/storefront/cheese-sauce.png',
       primary_barcode: {
         item_barcode_id: 501,
@@ -197,6 +203,10 @@ describe('posRepository catalog image mapping', () => {
               {
                 path: 'storefront/new-iced-latte.png',
                 url: '/uploads/storefront/new-iced-latte.png',
+                variants: {
+                  pos_thumbnail_url: '/uploads/storefront/new-iced-latte-pos-thumb.webp',
+                  thumbnail_url: '/uploads/storefront/new-iced-latte-thumb.webp'
+                },
                 is_primary: true,
                 sort_order: 0
               }
@@ -229,6 +239,8 @@ describe('posRepository catalog image mapping', () => {
       // unaffected by which image POS chooses to display.
       storefront_image_url: '/uploads/storefront/new-iced-latte.png'
     }));
+    expect(result[0].storefront_image_variants.pos_thumbnail_url)
+      .toBe('/uploads/storefront/new-iced-latte-pos-thumb.webp');
   });
 
   it('prefers a working POS-specific override image over the Storefront fallback in getCatalogReadinessByItemId (#871)', async () => {

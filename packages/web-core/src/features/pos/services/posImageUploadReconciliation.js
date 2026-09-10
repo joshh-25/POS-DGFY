@@ -2,7 +2,7 @@ import { getStorefrontCatalogImageUploadStatus } from '../../../services/storefr
 import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
 import {
   getPendingPosItemImagePreviews, completePendingPosItemImagePreview,
-  markPendingPosItemImagePreviewFailed
+  bindPendingPosItemImagePreviewJob, markPendingPosItemImagePreviewFailed
 } from './posPendingItemImagePreviewStore.js';
 
 // Invoked by successful authorized catalog reads, not a per-item polling timer.
@@ -10,13 +10,21 @@ const active = new Map();
 export const reconcilePosImageUploads = async (catalog, readStatus = getStorefrontCatalogImageUploadStatus) => {
   for (const item of catalog) {
     const pending = getPendingPosItemImagePreviews()[String(item.item_id)];
-    if (!pending?.jobId || ['ready', 'failed'].includes(pending.status)) continue;
+    if (!pending || ['ready', 'failed'].includes(pending.status)) continue;
     const key = pending.attemptId;
-    const identity = { itemId: item.item_id, attemptId: key, jobId: pending.jobId };
     try {
       if (!active.has(key)) active.set(key, Promise.resolve().then(() => readStatus(item.item_id)));
       const status = await active.get(key);
-      if (status?.job_id !== pending.jobId) continue;
+      const statusJobId = String(status?.job_id || '').trim();
+      if (!statusJobId || (pending.jobId && statusJobId !== pending.jobId)) continue;
+      // A network failure can leave the client without the job ID even though
+      // the server accepted the request. A normal authorized catalog read is
+      // the reconciliation boundary: bind the returned status job before
+      // applying its terminal result, so retries cannot duplicate the upload.
+      if (!pending.jobId) {
+        bindPendingPosItemImagePreviewJob({ itemId: item.item_id, attemptId: key, jobId: statusJobId });
+      }
+      const identity = { itemId: item.item_id, attemptId: key, jobId: statusJobId };
       if (status.status === 'failed') {
         markPendingPosItemImagePreviewFailed(identity);
       } else if (status.status === 'completed' && status.image_url

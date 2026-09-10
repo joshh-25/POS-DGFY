@@ -84,14 +84,19 @@ export const advanceAssetImageFallback = (event, candidates = []) => {
   const baseHref = image.ownerDocument?.baseURI || (typeof window !== 'undefined' ? window.location.href : '');
   const currentUrl = toComparableAssetUrl(image.currentSrc || image.src, baseHref);
 
-  while (candidateIndex < fallbackCandidates.length) {
-    const candidate = fallbackCandidates[candidateIndex];
-    candidateIndex += 1;
-    if (image.dataset) image.dataset.assetFallbackIndex = String(candidateIndex);
-    if (toComparableAssetUrl(candidate, baseHref) === currentUrl) continue;
-    image.src = candidate;
-    return true;
-  }
+    while (candidateIndex < fallbackCandidates.length) {
+        const candidate = fallbackCandidates[candidateIndex];
+        candidateIndex += 1;
+        if (image.dataset) image.dataset.assetFallbackIndex = String(candidateIndex);
+        if (toComparableAssetUrl(candidate, baseHref) === currentUrl) continue;
+        // A responsive `<img>` can keep selecting a failed `srcSet` candidate
+        // even after `src` is replaced. Remove the responsive hint before
+        // advancing so the explicit fallback URL is the one the browser loads.
+        if (typeof image.removeAttribute === 'function') image.removeAttribute('srcset');
+        if ('srcset' in image) image.srcset = '';
+        image.src = candidate;
+        return true;
+    }
 
   return false;
 };

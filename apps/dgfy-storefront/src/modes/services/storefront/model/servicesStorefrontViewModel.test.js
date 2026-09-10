@@ -26,6 +26,52 @@ const baseService = (overrides = {}) => ({
 });
 
 describe('getServicesStorefrontViewModel — secondary-category grouping fan-out', () => {
+  it('orders category groups by the shared catalog sort order', () => {
+    const result = getServicesStorefrontViewModel([
+      baseService({ item_id: 1, folder_id: 100, folder_name: 'Laundry', folder_sort_order: 9 }),
+      baseService({ item_id: 2, folder_id: 200, folder_name: 'Pressing', folder_sort_order: 1 }),
+      baseService({ item_id: 3, folder_id: 300, folder_name: 'Alterations', folder_sort_order: 5 })
+    ]);
+    expect(result.serviceGroups.map((group) => group.categoryIdentity)).toEqual(['folder:200', 'folder:300', 'folder:100']);
+  });
+
+  it('keeps a secondary-only service available in All while using only its valid secondary category', () => {
+    const result = getServicesStorefrontViewModel([
+      baseService({
+        item_id: 10,
+        folder_id: null,
+        folder_name: 'Legacy Services',
+        secondary_categories: [
+          { folder_id: 200, folder_name: 'Laundry', sort_order: 4 },
+          { folder_id: 0, folder_name: 'Invalid ID', sort_order: 1 },
+          { folder_id: 'not-a-number', folder_name: 'Invalid ID', sort_order: 2 },
+          { folder_id: 201, folder_name: '   ', sort_order: 3 }
+        ]
+      })
+    ]);
+
+    expect(result.allServices.map((item) => item.item_id)).toEqual([10]);
+    expect(result.totalServices).toBe(1);
+    expect(result.serviceGroups).toHaveLength(1);
+    expect(result.serviceGroups[0]).toMatchObject({
+      categoryIdentity: 'folder:200',
+      categoryKey: 'laundry'
+    });
+    expect(result.serviceGroups[0].items.map((item) => item.item_id)).toEqual([10]);
+    expect(result.serviceGroups[0].items[0].categorySortOrder).toBe(4);
+  });
+
+  it('keeps every service exactly once in All when primary and secondary memberships coexist', () => {
+    const result = getServicesStorefrontViewModel([
+      baseService({ item_id: 11, folder_id: 100, folder_name: 'Laundry', secondary_categories: [{ folder_id: 200, folder_name: 'Pressing' }] }),
+      baseService({ item_id: 12, folder_id: null, folder_name: '', secondary_categories: [{ folder_id: 201, folder_name: 'Alterations' }] }),
+      baseService({ item_id: 13, folder_id: 101, folder_name: 'Laundry' })
+    ]);
+
+    expect(result.allServices.map((item) => item.item_id)).toEqual([11, 12, 13]);
+    expect(new Set(result.allServices.map((item) => item.item_id)).size).toBe(3);
+  });
+
   it('renders a primary-only service exactly once, in its primary category', () => {
     const result = getServicesStorefrontViewModel([
       baseService({ item_id: 1, folder_id: 100, folder_name: 'Laundry' })
@@ -183,17 +229,14 @@ describe('getServicesStorefrontViewModel — secondary-category grouping fan-out
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it('falls back to name-based identity only for a genuinely ID-less category', () => {
-    // No folder_id at all -- the category resolved from service_detail.service_category, not a
-    // real primary folder. Two such items whose resolved category matches still group together,
-    // unchanged from pre-Phase-289 behavior.
+  it('keeps unassigned services under All without creating an inferred category', () => {
     const result = getServicesStorefrontViewModel([
-      baseService({ item_id: 8, folder_id: null, folder_name: '', service_detail: { service_category: 'wellness' } }),
+      baseService({ item_id: 8, folder_id: null, folder_name: 'Legacy Services', service_detail: { service_category: 'wellness' } }),
       baseService({ item_id: 9, folder_id: null, folder_name: '', service_detail: { service_category: 'wellness' } })
     ]);
 
-    expect(result.serviceGroups).toHaveLength(1);
-    expect(result.serviceGroups[0].categoryIdentity).toBe('name:wellness');
-    expect(result.serviceGroups[0].items.map((item) => item.item_id).sort()).toEqual([8, 9]);
+    expect(result.allServices.map((item) => item.item_id)).toEqual([8, 9]);
+    expect(result.totalServices).toBe(2);
+    expect(result.serviceGroups).toEqual([]);
   });
 });
