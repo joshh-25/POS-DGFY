@@ -150,7 +150,7 @@ const CatalogPageSizeControl = React.memo(({ value = null, options = [], onChang
 });
 CatalogPageSizeControl.displayName = 'CatalogPageSizeControl';
 
-const CatalogPageJumpControl = React.memo(({ currentPage = 1, totalPages = 1, onChange = () => {} }) => {
+const CatalogPageJumpControl = React.memo(({ currentPage = 1, totalPages = 1, onChange = () => {}, hideLabels = false }) => {
     const [inputValue, setInputValue] = React.useState(String(currentPage));
     const safeTotalPages = Math.max(1, Number(totalPages) || 1);
 
@@ -181,7 +181,7 @@ const CatalogPageJumpControl = React.memo(({ currentPage = 1, totalPages = 1, on
                 if (!event.currentTarget.contains(event.relatedTarget)) commitPageJump();
             }}
         >
-            <label htmlFor="pos-catalog-page-jump" className="whitespace-nowrap">Go to</label>
+            {!hideLabels && <label htmlFor="pos-catalog-page-jump" className="whitespace-nowrap">Go to</label>}
             <input
                 id="pos-catalog-page-jump"
                 type="text"
@@ -192,7 +192,7 @@ const CatalogPageJumpControl = React.memo(({ currentPage = 1, totalPages = 1, on
                  aria-label="Go to catalog page"
                 className="h-8 w-14 rounded-lg border border-slate-300 bg-white px-2 text-center text-[11px] font-semibold text-slate-900 outline-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-blue-100"
             />
-            <span className="whitespace-nowrap">Page</span>
+            {!hideLabels && <span className="whitespace-nowrap">Page</span>}
         </form>
     );
 });
@@ -496,6 +496,10 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
     const { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow } = historyRefundWorkflow || {};
     const catalogPageNumbers = getCatalogPageNumbers(catalogPage, totalCatalogPages);
     const hasManyCatalogPages = totalCatalogPages > 5;
+    const isCompactTabletCatalogPagination = IS_DGFY_POS_SURFACE && isTabletViewport;
+    const drawerDialogButtonClassName = isCompactTabletCatalogPagination
+        ? 'min-h-11 w-full min-w-0 whitespace-nowrap px-3 sm:w-auto sm:flex-1'
+        : '';
     const handleCloseDiscountModal = () => {
         closeDiscountModal();
     };
@@ -790,7 +794,9 @@ return (
                         data-catalog-page-size={catalogPageSize}
                         data-catalog-text-scale={catalogGridLayout.textSizeScale}
                         style={{
-                            gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${catalogGridLayout.minimumCardWidth}px), 1fr))`,
+                            gridTemplateColumns: IS_DGFY_POS_SURFACE && isTabletViewport
+                                ? `repeat(${catalogGridLayout.columns}, minmax(0, 1fr))`
+                                : `repeat(auto-fill, minmax(min(100%, ${catalogGridLayout.minimumCardWidth}px), 1fr))`,
                             gridAutoRows: `${catalogGridLayout.cardHeight}px`,
                             gap: `${CATALOG_GRID_GAP_PX}px`
                         }}
@@ -814,8 +820,8 @@ return (
                                 : resolvedImageSources;
                             const { src: posImageSrc } = imageSources;
                             const hasImage = Boolean(posImageSrc);
-                            const catalogCardMediaClassName = `${IS_DGFY_POS_SURFACE ? 'mb-0' : 'mb-1'} ${IS_DGFY_POS_SURFACE && !isTabletViewport ? 'sm:flex sm:min-h-0' : ''} max-sm:mb-0 max-sm:h-full max-sm:min-h-0 ${IS_DGFY_POS_SURFACE && !isTabletViewport ? 'max-sm:w-[128px]' : 'max-sm:w-auto'} max-sm:min-w-0 max-sm:flex-none max-sm:shrink-0 max-sm:self-stretch ${IS_DGFY_POS_SURFACE && !isTabletViewport ? '' : 'max-sm:aspect-square'}`;
-                            const catalogCardImageFrameClassName = `${catalogCardImageWrapClassName} relative ${IS_DGFY_POS_SURFACE && !isTabletViewport ? '' : 'max-sm:aspect-square'} max-sm:box-border max-sm:h-full max-sm:w-full max-sm:flex-none`;
+                            const catalogCardMediaClassName = `${IS_DGFY_POS_SURFACE ? 'mb-0' : 'mb-1'} ${IS_DGFY_POS_SURFACE ? 'sm:flex sm:min-h-0' : ''} max-sm:mb-0 max-sm:h-full max-sm:min-h-0 ${IS_DGFY_POS_SURFACE ? 'max-sm:w-[128px]' : 'max-sm:w-auto'} max-sm:min-w-0 max-sm:flex-none max-sm:shrink-0 max-sm:self-stretch ${IS_DGFY_POS_SURFACE ? '' : 'max-sm:aspect-square'}`;
+                            const catalogCardImageFrameClassName = `${catalogCardImageWrapClassName} relative ${IS_DGFY_POS_SURFACE ? '' : 'max-sm:aspect-square'} max-sm:box-border max-sm:h-full max-sm:w-full max-sm:flex-none`;
                             const cartQuantityForItem = safeCart
                                 .filter((line) => line.item_id === item.item_id)
                                 .reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
@@ -823,12 +829,8 @@ return (
                             const isLoadingServiceOptions = serviceOptionsLoadingItemId === Number(item.item_id);
                             const stockColorClassName = getCatalogStockColorClassName(item, lowStockDisplayThreshold);
                             const catalogCardCaptionClassName = !hasImage
-                                ? (isTabletViewport
-                                    ? 'flex min-w-0 min-h-[2.5rem] flex-col items-start justify-center p-1 text-left text-[10px] leading-tight'
-                                    : 'flex min-w-0 min-h-[2.5rem] flex-col items-start justify-center p-1 text-left text-[12px] leading-tight')
-                                : (isTabletViewport
-                                    ? 'flex min-w-0 flex-col items-start gap-0 p-1 text-[10px] leading-tight'
-                                    : 'flex min-w-0 flex-col items-start gap-0.5 p-1 min-h-[2.5rem] text-[12px] leading-tight');
+                                ? 'flex min-w-0 min-h-[2.5rem] flex-col items-start justify-center p-1 text-left text-[12px] leading-tight'
+                                : 'flex min-w-0 flex-col items-start gap-0.5 p-1 min-h-[2.5rem] text-[12px] leading-tight';
                             return (
                                 <div
                                     key={item.item_id}
@@ -1097,7 +1099,9 @@ return (
                         data-testid="pos-catalog-footer"
                         className="relative z-10 mt-auto flex min-h-[56px] w-full shrink-0 items-center border-t border-slate-200 bg-white px-3 py-3 shadow-[0_-1px_0_rgba(148,163,184,0.14)] max-sm:min-h-0 max-sm:py-2"
                     >
-                        <div className="grid w-full min-w-0 items-center gap-x-3 gap-y-2 max-sm:gap-y-1 sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto_auto] max-sm:grid-cols-[minmax(0,1fr)_auto]">
+                        <div className={`grid w-full min-w-0 items-center gap-x-3 gap-y-2 max-sm:gap-y-1 ${isCompactTabletCatalogPagination
+                            ? 'sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto]'
+                            : 'sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto_auto]'} max-sm:grid-cols-[minmax(0,1fr)_auto]`}>
                             <p className="whitespace-nowrap text-[11px] font-semibold text-[#334155]">
                                 Showing {visibleCatalogRange.start}-{visibleCatalogRange.end} of {catalogForDisplay.length || 0} items
                             </p>
@@ -1118,7 +1122,7 @@ return (
                                 >
                                     <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
                                 </Button>
-                                {catalogPageNumbers.map((page) => {
+                                {!isCompactTabletCatalogPagination && catalogPageNumbers.map((page) => {
                                     const isCurrentPage = catalogPage === page;
                                     return (
                                         <Button
@@ -1138,6 +1142,14 @@ return (
                                         </Button>
                                     );
                                 })}
+                                {isCompactTabletCatalogPagination && (
+                                    <CatalogPageJumpControl
+                                        currentPage={catalogPage}
+                                        totalPages={totalCatalogPages}
+                                        onChange={handleCatalogPageChange}
+                                        hideLabels
+                                    />
+                                )}
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -1159,13 +1171,15 @@ return (
                                     showPageSuffix
                                 />
                             </div>
-                            <div className="hidden sm:inline-flex">
-                                <CatalogPageJumpControl
-                                    currentPage={catalogPage}
-                                    totalPages={totalCatalogPages}
-                                    onChange={handleCatalogPageChange}
-                                />
-                            </div>
+                            {!isCompactTabletCatalogPagination && (
+                                <div className="hidden sm:inline-flex">
+                                    <CatalogPageJumpControl
+                                        currentPage={catalogPage}
+                                        totalPages={totalCatalogPages}
+                                        onChange={handleCatalogPageChange}
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
             </section>
@@ -1822,6 +1836,7 @@ return (
                             variant="outline"
                             onClick={() => setDrawerAuthorizationModalOpen(false)}
                             disabled={drawerAuthorizationSubmitting}
+                            className={drawerDialogButtonClassName}
                         >
                             Cancel
                         </Button>
@@ -1830,7 +1845,7 @@ return (
                             form="pos-drawer-authorization-form"
                             disabled={drawerAuthorizationSubmitting}
                             aria-busy={drawerAuthorizationSubmitting}
-                            className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+                            className={`${drawerDialogButtonClassName} bg-[#1A4E8D] text-white hover:bg-[#143F73]`}
                             data-testid="pos-drawer-authorize-submit"
                         >
                             {drawerAuthorizationSubmitting ? 'Authorizing…' : 'Authorize & Open Drawer'}

@@ -457,18 +457,14 @@ export default function POSCheckoutTerminal({
         selectedEmployeeCreditOption,
         splitPaymentSession
     });
-    const catalogCardClassName = IS_DGFY_POS_SURFACE && isTabletViewport
-        ? 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-        : IS_DGFY_POS_SURFACE
+    const catalogCardClassName = IS_DGFY_POS_SURFACE
             ? 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-1 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:w-full max-sm:flex-row max-sm:px-2 max-sm:pt-2 max-sm:pb-2 sm:grid sm:grid-rows-[minmax(0,1fr)_auto]'
             : isTabletViewport
                 ? 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
                 : 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:w-full max-sm:flex-row max-sm:p-2 md:p-1.5';
-    const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletViewport
-        ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
-        : IS_DGFY_POS_SURFACE
+    const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE
             ? 'flex h-full w-full shrink-0 items-center justify-center overflow-hidden rounded-md max-sm:h-full max-sm:w-full max-sm:flex-none max-sm:self-start'
-        : isTabletViewport
+            : isTabletViewport
                 ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
                 : 'flex h-24 w-full shrink-0 items-center justify-center overflow-hidden rounded-md max-sm:h-full max-sm:w-full max-sm:flex-none max-sm:self-start md:h-16 xl:h-24';
     const folderButtonClassName = isTabletViewport
