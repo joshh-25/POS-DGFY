@@ -50,6 +50,33 @@ const STATUS_CONFIG = {
     failed: { label: 'Failed', color: 'text-red-600 bg-red-50 border-red-200', icon: XCircle },
 };
 
+const getTenantRegistrationAction = (tenant) => {
+    if (tenant?.registration_action && typeof tenant.registration_action === 'object') {
+        return {
+            action: tenant.registration_action.allowed === true
+                ? (tenant.registration_action.action || 'reconcile')
+                : (tenant.registration_action.action === 'setting_up' ? 'setting_up' : 'reconcile'),
+            helperText: tenant.registration_action.helper_text || 'Registration state does not allow this action.'
+        };
+    }
+
+    // Keep the UI safe during a rolling deploy where the older API does not
+    // return registration_action yet. Unknown or missing application state is
+    // never treated as approval-eligible.
+    if (tenant?.status !== 'pending') return null;
+    const application = tenant.registrationApplication;
+    if (application?.review_status === 'pending' && application?.provisioning_status === 'not_started') {
+        return { action: 'approve', helperText: 'Approve the pending public registration.' };
+    }
+    if (application?.review_status === 'approved' && application?.provisioning_status === 'failed') {
+        return { action: 'retry', helperText: 'Retry the failed tenant setup.' };
+    }
+    if (application?.review_status === 'approved' && application?.provisioning_status === 'in_progress') {
+        return { action: 'setting_up', helperText: 'Company setup is already in progress.' };
+    }
+    return { action: 'reconcile', helperText: 'No pending public registration is available for approval.' };
+};
+
 const COMPLIANCE_MODE_LABELS = {
     non_compliant_active: 'Non-compliant',
     compliant_pending: 'Compliant (Pending)',
@@ -889,6 +916,7 @@ export default function TenantManager() {
             if (!normalized.isGlobalCandidate) {
                 toast.error(`Failed to approve: ${normalized.message}`);
             }
+            loadTenants();
         } finally {
             setActionLoading(null);
         }
@@ -904,6 +932,7 @@ export default function TenantManager() {
         } catch (err) {
             const normalized = normalizeApiError(err);
             if (!normalized.isGlobalCandidate) toast.error(`Failed to retry setup: ${normalized.message}`);
+            loadTenants();
         } finally { setActionLoading(null); }
     };
 
@@ -925,6 +954,7 @@ export default function TenantManager() {
             if (!normalized.isGlobalCandidate) {
                 toast.error(`Failed to reject: ${normalized.message}`);
             }
+            loadTenants();
         } finally {
             setActionLoading(null);
         }
@@ -1608,6 +1638,7 @@ export default function TenantManager() {
                         const statusConfig = STATUS_CONFIG[tenant.status] || STATUS_CONFIG.inactive;
                         const StatusIcon = statusConfig.icon;
                         const isProcessing = actionLoading === tenant.id;
+                        const registrationAction = getTenantRegistrationAction(tenant);
                         const capabilities = getTenantCapabilities(tenant);
                         const storefrontReadiness = capabilities.storefront_readiness || {};
                         const storefrontPublishable = storefrontReadiness.publishable === true;
@@ -1916,7 +1947,26 @@ export default function TenantManager() {
                                     <div className="w-full xl:w-auto xl:min-w-[320px] xl:max-w-[380px]">
                                         {tenant.status === 'pending' ? (
                                             <div className="flex items-center gap-2">
-                                                {tenant.registrationApplication?.review_status === 'approved' && tenant.registrationApplication?.provisioning_status === 'failed' ? <Button
+                                                {registrationAction?.action === 'approve' ? <>
+                                                <Button
+                                                    onClick={() => handleApprove(tenant.id)}
+                                                    disabled={isProcessing}
+                                                    className="bg-green-600 hover:bg-green-700"
+                                                    size="sm"
+                                                >
+                                                    {isProcessing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4 mr-1" />Approve</>}
+                                                </Button>
+                                                <Button
+                                                    onClick={() => handleReject(tenant.id)}
+                                                    disabled={isProcessing}
+                                                    variant="outline"
+                                                    className="border-red-300 text-red-600 hover:bg-red-50"
+                                                    size="sm"
+                                                >
+                                                    <X className="w-4 h-4 mr-1" />
+                                                    Reject
+                                                </Button>
+                                                </> : registrationAction?.action === 'retry' ? <Button
                                                     onClick={() => handleRetryProvisioning(tenant.id)}
                                                     disabled={isProcessing}
                                                     className="bg-green-600 hover:bg-green-700"
@@ -1930,24 +1980,12 @@ export default function TenantManager() {
                                                             Retry setup
                                                         </>
                                                     )}
-                                                </Button> : <Button
-                                                    onClick={() => handleApprove(tenant.id)}
-                                                    disabled={isProcessing}
-                                                    className="bg-green-600 hover:bg-green-700"
-                                                    size="sm"
-                                                >
-                                                    {isProcessing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4 mr-1" />Approve</>}
-                                                </Button>}
-                                                {!(tenant.registrationApplication?.review_status === 'approved' && tenant.registrationApplication?.provisioning_status === 'failed') && <Button
-                                                    onClick={() => handleReject(tenant.id)}
-                                                    disabled={isProcessing}
-                                                    variant="outline"
-                                                    className="border-red-300 text-red-600 hover:bg-red-50"
-                                                    size="sm"
-                                                >
-                                                    <X className="w-4 h-4 mr-1" />
-                                                    Reject
-                                                </Button>}
+                                                </Button> : (
+                                                    <div className="flex items-center gap-2 text-sm text-slate-500" role="status">
+                                                        <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                                        <span>{registrationAction?.helperText || 'Registration state does not allow approval.'}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className="space-y-2">
