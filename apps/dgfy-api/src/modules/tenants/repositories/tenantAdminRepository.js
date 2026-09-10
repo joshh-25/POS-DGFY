@@ -67,7 +67,7 @@ export const tenantAdminRepository = {
                 'compliance_activated_at',
                 'compliance_policy_version'
             ],
-            include: [{ model: CompanyRegistrationApplication, as: 'registrationApplication', required: false, attributes: ['id', 'review_status', 'provisioning_status'] }]
+            include: [{ model: CompanyRegistrationApplication, as: 'registrationApplication', required: false, attributes: ['id', 'review_status', 'provisioning_status', 'updatedAt'] }]
         });
     },
     updateTenant(tenant, payload, options = {}) {
