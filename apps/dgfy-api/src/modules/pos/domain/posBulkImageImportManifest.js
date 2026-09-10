@@ -30,9 +30,11 @@ export const parsePosBulkImageImportManifest = (csv) => {
     const filenames = new Set();
     return records.map(([sku, filename, replace], index) => {
         const row = index + 2;
+        // eslint-disable-next-line no-control-regex -- intentional: reject control characters in SKU input
         if (!sku || sku.length > 180 || /[\u0000-\u001f\u007f]/u.test(sku)) {
             throw new Error(`Invalid SKU on CSV row ${row}`);
         }
+        // eslint-disable-next-line no-control-regex -- intentional: reject control characters in filename input
         if (!filename || filename.length > 180 || /[\\/:\u0000-\u001f\u007f]/u.test(filename)
             || filename.endsWith('.') || filename !== filename.trim()
             || !POS_BULK_IMAGE_IMPORT_ALLOWED_EXTENSIONS.includes(path.extname(filename).toLowerCase())) {
