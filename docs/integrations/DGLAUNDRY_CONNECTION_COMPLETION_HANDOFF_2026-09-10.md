@@ -15,16 +15,32 @@ It is a contract handoff. It does not grant access to DGLaundry, its database,
 its credentials, or Surebizcorp infrastructure, and it does not authorize
 provider activation by itself.
 
-## Immutable target values
+## Document authority
 
-| Surface | Required value |
-| --- | --- |
-| Staff origin | `https://laundry.surebizcorp.com` |
-| OIDC callback | `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback` |
-| DGLaundry partner base | `https://laundry.surebizcorp.com` |
-| Customer storefront pattern | `https://dgfy.ph/tenant-store/<approved-handle>` |
-| DGLaundry partner health | `GET /api/v1/integrations/dgfy/health` |
-| Contract versions | `external-runtime-v0.1`, `laundry-mode-v1` |
+For the 2026-09-10 connection-completion review, this file is the current
+provider-action checklist. It supersedes the operational guidance in
+[DGLAUNDRY_SUREBIZCORP_PROVIDER_HANDOFF.md](./DGLAUNDRY_SUREBIZCORP_PROVIDER_HANDOFF.md),
+[DGLAUNDRY_STOREFRONT_ORDERS_HANDOFF.md](./DGLAUNDRY_STOREFRONT_ORDERS_HANDOFF.md),
+[DGLAUNDRY_BOOKING_PAYMENTS_HANDOFF.md](./DGLAUNDRY_BOOKING_PAYMENTS_HANDOFF.md),
+and [DGLAUNDRY_CONNECTION_COMPLETION_UPDATE_2026-09-10.md](./DGLAUNDRY_CONNECTION_COMPLETION_UPDATE_2026-09-10.md).
+Those documents remain historical context only; they must not be used to infer
+provider readiness or authorize activation.
+
+## Target values and contract identifiers (ratification required)
+
+| Surface | Required value | Authority/status |
+| --- | --- | --- |
+| Staff origin | `https://laundry.surebizcorp.com` | Fixed integration target |
+| OIDC callback | `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback` | Fixed integration target |
+| DGLaundry partner base | `https://laundry.surebizcorp.com` | Fixed integration target |
+| Customer storefront pattern | `https://dgfy.ph/tenant-store/<approved-handle>` | Fixed integration target |
+| DGLaundry partner health | `GET /api/v1/integrations/dgfy/health` | Fixed integration target |
+| Contract versions | `external-runtime-v0.1`, `laundry-mode-v1` | Proposed identifiers; not yet emitted or validated by the DGFY runtime; ratification is tracked in [issue #519](https://github.com/Sieitzz/dgfy-platform/issues/519) |
+
+The URL values are fixed integration targets. The version strings are contract
+proposals from the DGLaundry manifest, not current DGFY constants. Do not treat
+this handoff or the fixture as runtime authority until issue #519 is accepted
+and the provider implementation emits and validates the ratified values.
 
 Do not substitute `laundry.dgfy.ph`, an IP address, an HTTP URL, a trailing
 slash, or `skupervisor.surebizcorp.com`.
@@ -42,10 +58,10 @@ schema head is `075_mock_provider_credentials.sql`. The immutable image
 digests and deployment verification record are in the DGLaundry release
 manifest; provider qualification remains pending.
 
-The provider can run the black-box contract manifest and fixtures from
-`tests/fixtures/dgfy/connection-contract.json` without importing DGLaundry
-runtime source or a database. The manifest defines all required event types,
-signature components, exact URLs, negative cases, and the six acceptance
+The provider can run the neutral, secret-free contract fixture checked into this
+repository at `tests/fixtures/dgfy/connection-contract.json` without importing
+DGLaundry runtime source or a database. The manifest defines all required event
+types, signature components, exact URLs, negative cases, and the six acceptance
 suites. Public keys and fingerprints may be exchanged; private keys, tokens,
 passwords, and full signed payloads must remain in the approved secret channel.
 
@@ -58,7 +74,7 @@ the corresponding public PEM files are in
 | Purpose | Key ID | Public PEM | SHA-256 public-key fingerprint |
 | --- | --- | --- | --- |
 | DGFY partner request verification (P-256) | `dgfy-partner-p256-20260910` | [`dgfy-partner-p256-20260910.pub`](./dglaundry-public-keys/dgfy-partner-p256-20260910.pub) | `913bfd2594af5fa8f4b5924f801fa357102654ead2e8acc8edb61afa8b7f7d03` |
-| DGLaundry event verification (Ed25519) | `dglaundry-events-ed25519-20260910` | [`dglaundry-events-ed25519-20260910.pub`](./dglaundry-public-keys/dglaundry-events-ed25519.pub) | `4a9d9cb1a524dc25cc7e5a5afafd0ba12308f76dec51ce2f5dba40cd476a554e` |
+| DGLaundry event verification (Ed25519) | `dglaundry-events-ed25519-20260910` | [`dglaundry-events-ed25519-20260910.pub`](./dglaundry-public-keys/dglaundry-events-ed25519-20260910.pub) | `4a9d9cb1a524dc25cc7e5a5afafd0ba12308f76dec51ce2f5dba40cd476a554e` |
 | Machine client assertions (RSA) | `dglaundry-machine-rsa-20260910` | [`dglaundry-machine-rsa-20260910.pub`](./dglaundry-public-keys/dglaundry-machine-rsa-20260910.pub) | `261b7de775689cf72c8cf5aef56f84b575fd2f8dd48c5eeb09f5714928f661a2` |
 
 ## Required provider work

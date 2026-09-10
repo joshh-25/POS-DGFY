@@ -1,0 +1,71 @@
+{
+  "manifestVersion": "1.0.0",
+  "contractVersion": "external-runtime-v0.1",
+  "laundryModeVersion": "laundry-mode-v1",
+  "applicationOrigin": "https://laundry.surebizcorp.com",
+  "callback": "https://laundry.surebizcorp.com/api/v1/session/dgfy/callback",
+  "partnerBaseUrl": "https://laundry.surebizcorp.com",
+  "storefrontPattern": "https://dgfy.ph/tenant-store/<approved-handle>",
+  "signatureProfiles": {
+    "providerRequest": {
+      "algorithm": "ecdsa-p256-sha256",
+      "tag": "dgfy-external-runtime-v1",
+      "components": [
+        "@method",
+        "@target-uri",
+        "content-digest",
+        "content-type",
+        "authorization",
+        "idempotency-key",
+        "x-dgfy-app-id",
+        "x-dgfy-contract-version",
+        "date"
+      ]
+    },
+    "laundryEvent": {
+      "algorithm": "ed25519",
+      "tag": "dglaundry-dgfy-v1",
+      "components": [
+        "@method",
+        "@authority",
+        "@path",
+        "content-digest",
+        "content-type"
+      ]
+    }
+  },
+  "eventTypes": {
+    "providerToLaundry": [
+      "dgfy.company.access_changed.v1",
+      "dgfy.company.ownership_changed.v1",
+      "dgfy.company.suspended.v1",
+      "dgfy.company.mapping_changed.v1",
+      "dgfy.company.connection_activated.v1",
+      "dgfy.company.access_snapshot.v1",
+      "dgfy.laundry_order.snapshot.v1",
+      "dgfy.laundry_order.submitted.v1",
+      "dgfy.laundry_order.updated.v1",
+      "dgfy.laundry_order.payment_status_changed.v1",
+      "dgfy.laundry_order.cancelled.v1",
+      "dgfy.laundry_order.receipt_confirmed.v1"
+    ],
+    "laundryToProvider": [
+      "dglaundry.laundry_catalog.published.v1",
+      "dglaundry.laundry_branch.availability_changed.v1",
+      "dglaundry.laundry_order.accepted.v1",
+      "dglaundry.laundry_order.rejected.v1",
+      "dglaundry.laundry_order.service_progressed.v1",
+      "dglaundry.laundry_order.status_changed.v1",
+      "dglaundry.laundry_order.fulfillment_changed.v1"
+    ]
+  },
+  "acceptanceSuites": [
+    "identity-and-access",
+    "signed-transport",
+    "business-lifecycle",
+    "persistence-and-restart",
+    "browser-and-sse",
+    "backup-and-rollback"
+  ],
+  "secretPolicy": "Public keys and fingerprints only; never place tokens, passwords, or private keys in this manifest."
+}

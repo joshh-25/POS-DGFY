@@ -1,4 +1,17 @@
+---
+status: provider_action_required
+authority_level: provider_status_update
+owner: dgfy-platform integration owners
+last_reviewed: 2026-09-10
+applies_to: laundry.surebizcorp.com
+topic: dglaundry_connection_completion_update_2026_09_10
+---
+
 # DGLaundry deployment update
+
+This is a provider-facing status update, not a separate contract authority. The
+current provider-action checklist is
+[`DGLAUNDRY_CONNECTION_COMPLETION_HANDOFF_2026-09-10.md`](./DGLAUNDRY_CONNECTION_COMPLETION_HANDOFF_2026-09-10.md).
 
 `@patterueldev` — the DGLaundry-side package and connection-pending deployment
 are ready for provider qualification.
