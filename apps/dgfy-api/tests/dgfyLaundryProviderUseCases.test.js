@@ -3,8 +3,8 @@ import { jest } from '@jest/globals';
 
 const account = { id: 'account-1', email: 'owner@example.test', first_name: 'Demo', last_name: 'Owner' };
 const companies = [
-    { company_id: 'company-a', company_name: 'Laundry A', membership_id: 11, membership_status: 'accepted', role: 'admin', business_mode: 'laundry', runtime_owner: 'dglaundry', dgfy_storefront: true, ims: false, pos: false, operations_url: 'https://laundry.dgfy.ph', status: 'active' },
-    { company_id: 'company-b', company_name: 'Laundry B', membership_id: 12, membership_status: 'accepted', role: 'staff', business_mode: 'laundry', runtime_owner: 'dglaundry', dgfy_storefront: true, ims: false, pos: false, operations_url: 'https://laundry.dgfy.ph', status: 'active' }
+    { company_id: 'company-a', company_name: 'Laundry A', membership_id: 11, membership_status: 'accepted', role: 'admin', business_mode: 'laundry', runtime_owner: 'dglaundry', dgfy_storefront: true, ims: false, pos: false, operations_url: 'https://laundry.surebizcorp.com', status: 'active' },
+    { company_id: 'company-b', company_name: 'Laundry B', membership_id: 12, membership_status: 'accepted', role: 'staff', business_mode: 'laundry', runtime_owner: 'dglaundry', dgfy_storefront: true, ims: false, pos: false, operations_url: 'https://laundry.surebizcorp.com', status: 'active' }
 ];
 
 const makeRepository = () => ({
@@ -32,7 +32,7 @@ describe('DGLaundry provider foundation use cases', () => {
     it('returns the fixed DGLaundry operations origin and records the launch audit', async () => {
         const repository = makeRepository();
         const useCases = buildDgfyLaundryProviderUseCases({ repository });
-        await expect(useCases.launch({ dgfyAccount: account, companyId: 'company-a', branchId: 'branch-a' })).resolves.toMatchObject({ url: 'https://laundry.dgfy.ph', company: { company_id: 'company-a' } });
+        await expect(useCases.launch({ dgfyAccount: account, companyId: 'company-a', branchId: 'branch-a' })).resolves.toMatchObject({ url: 'https://laundry.surebizcorp.com', company: { company_id: 'company-a' } });
         expect(repository.audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'laundry_operations_launch', companyId: 'company-a' }));
     });
 
