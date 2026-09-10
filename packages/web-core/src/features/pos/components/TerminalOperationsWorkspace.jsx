@@ -67,6 +67,7 @@ import CSVImportModal from '@/components/items/CSVImportModal.jsx';
 import { resolveStorefrontItemUrl, resolveStorefrontTenantUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
+import { acquireModalScrollLock } from '@/components/ui/dialog';
 import {
   Dialog,
   DialogContent,
@@ -109,7 +110,9 @@ import { persistPosItemBarcode } from '../utils/posItemBarcodePersistence.js';
 import { useItemImageGenerationPoll } from '../hooks/useItemImageGenerationPoll.js';
 import {
   bindPendingPosItemImagePreviewJob,
+  getPendingPosItemImagePreviews,
   markPendingPosItemImagePreviewFailed,
+  markPendingPosItemImagePreviewUncertain,
   stagePendingPosItemImagePreview
 } from '../services/posPendingItemImagePreviewStore.js';
 import {
@@ -123,6 +126,9 @@ import {
 import {
   buildEditGalleryIntent,
   dedupeImageFiles,
+  getImageFileSelectionKey,
+  getPendingGalleryEntryKey,
+  getSavedGalleryEntryKey,
   getGallerySignature
 } from '../utils/posEditImageDraft.js';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
@@ -183,6 +189,11 @@ import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
 import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
+
+const isAmbiguousImageUploadError = (error) => (
+  !error?.response
+  && Boolean(error?.request || /network|timeout|fetch/i.test(String(error?.message || '')))
+);
 
 const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const POS_ITEMS_PAGE_SIZE = 15;
@@ -2177,9 +2188,10 @@ function ItemsWorkspace({
   const [persistingEditAssets, setPersistingEditAssets] = useState(false);
   const [selectedEditImageFiles, setSelectedEditImageFiles] = useState([]);
   const [isEditImageDragActive, setIsEditImageDragActive] = useState(false);
-  const [selectedEditPrimaryFile, setSelectedEditPrimaryFile] = useState(null);
+  const [selectedEditPrimaryKey, setSelectedEditPrimaryKey] = useState('');
   const [editGalleryBase, setEditGalleryBase] = useState([]);
   const [editGalleryDraft, setEditGalleryDraft] = useState([]);
+  const editSessionRef = useRef({ id: 0, itemId: null });
   // generatingEditImage covers the POST that queues the job; pollingEditImage
   // covers the wait for a terminal status afterwards — split so the button
   // label can tell the operator which stage it's actually in.
@@ -2454,6 +2466,14 @@ function ItemsWorkspace({
     [editingItemId, editingItemSnapshot, sortedItems]
   );
 
+  const selectedEditPrimaryFile = useMemo(() => (
+    selectedEditImageFiles.find((file) => getPendingGalleryEntryKey(file) === selectedEditPrimaryKey) || null
+  ), [selectedEditImageFiles, selectedEditPrimaryKey]);
+  const editPrimaryEntryKey = selectedEditPrimaryKey
+    || (editGalleryDraft[0] ? getSavedGalleryEntryKey(editGalleryDraft[0], 0) : '');
+  const hasUnsavedEditImages = selectedEditImageFiles.length > 0
+    || getGallerySignature(editGalleryDraft) !== getGallerySignature(editGalleryBase);
+
   // Real, already-persisted item id backing the open edit modal, or 0 when
   // there isn't one. This modal only ever opens for an item found in
   // sortedItems (activeEditItem above), so in practice this is always > 0
@@ -2602,6 +2622,7 @@ function ItemsWorkspace({
     const filesToUpload = normalizedFiles.slice(0, availableSlots);
     if (!itemId || filesToUpload.length === 0) {
       return {
+        accepted: false,
         message: normalizedFiles.length > 0
           ? 'Remove an existing image before uploading another one.'
           : '',
@@ -2610,38 +2631,78 @@ function ItemsWorkspace({
       };
     }
     const skippedCount = normalizedFiles.length - filesToUpload.length;
+    const fileKeys = filesToUpload.map(getImageFileSelectionKey);
+    const galleryIntent = buildEditGalleryIntent({
+      baseGallery,
+      draftGallery: galleryDraft,
+      pendingFiles: filesToUpload,
+      pendingPrimaryFile
+    });
+    const intentMatches = (pending) => (
+      pending?.fileKeys?.length === fileKeys.length
+      && pending.fileKeys.every((key, index) => key === fileKeys[index])
+      && JSON.stringify(pending.galleryIntent || {}) === JSON.stringify(galleryIntent)
+    );
+    const existingAttempt = getPendingPosItemImagePreviews()[String(itemId)];
+    if (['uploading', 'processing'].includes(existingAttempt?.status)) {
+      return intentMatches(existingAttempt)
+        ? {
+          accepted: true,
+          alreadyAccepted: true,
+          message: '',
+          jobId: existingAttempt.jobId || null,
+          files: filesToUpload
+        }
+        : {
+          accepted: false,
+          requiresReconciliation: true,
+          message: 'An earlier image upload is still being processed. Refresh the item before changing or retrying its gallery.',
+          jobId: existingAttempt.jobId || null,
+          files: []
+        };
+    }
+    if (existingAttempt?.status === 'uncertain') {
+      return {
+        accepted: false,
+        requiresReconciliation: true,
+        message: 'The image upload result is uncertain. Refresh the item before retrying so it is not uploaded twice.',
+        jobId: null,
+        files: []
+      };
+    }
 
     const imageAttemptId = stagePendingPosItemImagePreview({
       itemId,
-      file: filesToUpload[0]
+      file: filesToUpload[0],
+      fileKeys,
+      galleryIntent
     });
     try {
       // Edit always uses the gallery endpoint. The singular endpoint replaces
       // the item's gallery, so using it for one newly-added photo silently
       // deleted every existing photo.
       const queued = await queueStorefrontCatalogImages(itemId, filesToUpload, {
-        galleryIntent: buildEditGalleryIntent({
-          baseGallery,
-          draftGallery: galleryDraft,
-          pendingFiles: filesToUpload,
-          pendingPrimaryFile
-        })
+        galleryIntent
       });
       if (queued?.job_id && imageAttemptId) {
         bindPendingPosItemImagePreviewJob({
           itemId,
           attemptId: imageAttemptId,
-          jobId: queued.job_id
+          jobId: queued.job_id,
+          fileKeys,
+          galleryIntent
         });
       } else if (imageAttemptId) {
         markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
         return {
+          accepted: false,
           message: 'Image upload was not accepted. The preview is kept so you can retry.',
           jobId: null,
           files: []
         };
       }
       return {
+        accepted: true,
         message: skippedCount > 0
           ? `Only ${filesToUpload.length} image${filesToUpload.length === 1 ? '' : 's'} uploaded; the item gallery limit is ${STOREFRONT_ITEM_IMAGE_MAX_COUNT}.`
           : '',
@@ -2649,11 +2710,20 @@ function ItemsWorkspace({
         files: filesToUpload
       };
     } catch (error) {
+      const ambiguous = isAmbiguousImageUploadError(error);
       if (imageAttemptId) {
-        markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
+        if (ambiguous) {
+          markPendingPosItemImagePreviewUncertain({ itemId, attemptId: imageAttemptId });
+        } else {
+          markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
+        }
       }
       return {
-        message: error?.response?.data?.message || 'Image upload failed. The preview is kept so you can retry.',
+        accepted: false,
+        requiresReconciliation: ambiguous,
+        message: ambiguous
+          ? 'The image upload result is uncertain. Refresh the item before retrying so it is not uploaded twice.'
+          : error?.response?.data?.message || 'Image upload failed. The preview is kept so you can retry.',
         jobId: null,
         files: []
       };
@@ -2669,6 +2739,10 @@ function ItemsWorkspace({
       if (canManageServiceCatalog) setEditingServiceItem(item);
       return;
     }
+    editSessionRef.current = {
+      id: editSessionRef.current.id + 1,
+      itemId: Number(item?.item_id || 0)
+    };
     const savedFolderId = Number(item?.folder_id || 0);
     const savedFolderName = String(item?.folder?.name || item?.product_folder || '').trim();
     const matchedActiveCategory = savedFolderId > 0
@@ -2704,11 +2778,15 @@ function ItemsWorkspace({
     setEditGalleryDraft(initialEditGallery);
     setSelectedEditImageFiles([]);
     setIsEditImageDragActive(false);
-    setSelectedEditPrimaryFile(null);
+    setSelectedEditPrimaryKey('');
   };
 
   const closeEdit = ({ force = false } = {}) => {
-    if (!force && (savingItem || persistingEditAssets || generatingEditImage || pollingEditImage)) return;
+    if (!force && (savingItem || persistingEditAssets)) return;
+    editSessionRef.current = {
+      id: editSessionRef.current.id + 1,
+      itemId: null
+    };
     cancelImageGenerationPoll();
     setEditingItemId(null);
     setEditingItemSnapshot(null);
@@ -2716,7 +2794,7 @@ function ItemsWorkspace({
     setPersistingEditAssets(false);
     setSelectedEditImageFiles([]);
     setIsEditImageDragActive(false);
-    setSelectedEditPrimaryFile(null);
+    setSelectedEditPrimaryKey('');
     setEditGalleryBase([]);
     setEditGalleryDraft([]);
     setGeneratingEditImage(false);
@@ -2769,6 +2847,28 @@ function ItemsWorkspace({
     setExternalQrScannerOpen(false);
     if (force) setPendingCreateRecovery(null);
   };
+
+  useEffect(() => {
+    if (!showCreateModal && !activeEditItem) return undefined;
+    const releaseScrollLock = acquireModalScrollLock();
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (showCreateModal && !creatingItem && !postCreateSaving) {
+        event.preventDefault();
+        closeCreate();
+        return;
+      }
+      if (activeEditItem && !savingItem && !persistingEditAssets) {
+        event.preventDefault();
+        closeEdit();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      releaseScrollLock();
+    };
+  }, [activeEditItem, creatingItem, persistingEditAssets, postCreateSaving, savingItem, showCreateModal]);
 
   const parseMoneyValue = (rawValue) => Number(String(rawValue || '').trim());
 
@@ -2901,9 +3001,20 @@ function ItemsWorkspace({
           pendingPrimaryFile: selectedEditPrimaryFile
         });
         imageUploadMessage = imageUploadResult.message;
+        if (!imageUploadResult.accepted) {
+          const recoveryMessage = imageUploadResult.requiresReconciliation
+            ? imageUploadMessage
+            : `Item details were saved, but the images still need attention. ${imageUploadMessage}`;
+          toast.warning(recoveryMessage);
+          return;
+        }
       } else if (getGallerySignature(editGalleryDraft) !== getGallerySignature(editGalleryBase)) {
         editSaveStage = 'images';
-        await updateStorefrontCatalogGallery(editItemId, editGalleryDraft);
+        await updateStorefrontCatalogGallery(editItemId, editGalleryDraft, {
+          expectedGalleryKeys: editGalleryBase
+            .map((entry) => entry?.path || entry?.url)
+            .filter(Boolean)
+        });
       }
       editSaveStage = 'refresh';
       closeEdit({ force: true });
@@ -3079,7 +3190,6 @@ function ItemsWorkspace({
     // Selection is local-only. The worker starts after Save Item, matching Add
     // Item and allowing the operator to replace the preview before committing.
     setSelectedEditImageFiles((current) => [...current, ...filesToAdd]);
-    setSelectedEditPrimaryFile(null);
   };
 
   const handleEditImageDrop = async (event) => {
@@ -3122,18 +3232,18 @@ function ItemsWorkspace({
 
   const handleRemoveSelectedEditImageFile = (imageIndex) => {
     const removedFile = selectedEditImageFiles[imageIndex];
-    if (removedFile === selectedEditPrimaryFile) {
-      setSelectedEditPrimaryFile(null);
+    if (removedFile && getPendingGalleryEntryKey(removedFile) === selectedEditPrimaryKey) {
+      setSelectedEditPrimaryKey('');
     }
     setSelectedEditImageFiles((current) => current.filter((_, index) => index !== imageIndex));
   };
 
   const handleSetPendingEditPrimary = (file) => {
-    setSelectedEditPrimaryFile(file || null);
+    setSelectedEditPrimaryKey(file ? getPendingGalleryEntryKey(file) : '');
   };
 
   const handleSetSavedEditPrimary = (imageIndex) => {
-    setSelectedEditPrimaryFile(null);
+    setSelectedEditPrimaryKey('');
     setEditGalleryDraft((current) => {
       const normalizedImageIndex = Number.parseInt(imageIndex, 10);
       if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex < 0 || normalizedImageIndex >= current.length) return current;
@@ -3163,17 +3273,39 @@ function ItemsWorkspace({
   const handleGenerateEditImage = async (item) => {
     const itemId = item?.item_id;
     if (!itemId) return;
+    if (hasUnsavedEditImages) {
+      toast.info('Save or discard your pending image changes before generating an AI image.');
+      return;
+    }
+    const sessionId = editSessionRef.current.id;
+    const isCurrentEditSession = () => (
+      editSessionRef.current.id === sessionId
+      && Number(editSessionRef.current.itemId) === Number(itemId)
+    );
 
     setGeneratingEditImage(true);
     try {
       await generateStorefrontCatalogImage(itemId);
+      if (!isCurrentEditSession()) return;
       setGeneratingEditImage(false);
       setPollingEditImage(true);
 
       const result = await pollItemImageGeneration(itemId);
-      if (result.status === 'cancelled') return; // modal closed mid-poll — no toast for an item no longer in view
+      if (!isCurrentEditSession() || result.status === 'cancelled') return; // modal closed or switched mid-poll
       if (result.status === 'completed') {
-        await loadItems();
+        const refreshedItems = await loadItems();
+        if (!isCurrentEditSession()) return;
+        const refreshedItem = Array.isArray(refreshedItems)
+          ? refreshedItems.find((entry) => Number(entry?.item_id) === Number(itemId))
+          : null;
+        if (refreshedItem) {
+          const refreshedGallery = normalizeStorefrontItemGallery(refreshedItem);
+          setEditingItemSnapshot(refreshedItem);
+          setEditGalleryBase(refreshedGallery);
+          setEditGalleryDraft(refreshedGallery);
+          setSelectedEditImageFiles([]);
+          setSelectedEditPrimaryKey('');
+        }
         notifyPosCatalogUpdated();
         toast.success(`Image generated for ${item.name}.`);
       } else if (result.status === 'failed') {
@@ -3182,10 +3314,13 @@ function ItemsWorkspace({
         toast.error(`Still working on ${item.name}'s image — check back in a bit.`);
       }
     } catch (error) {
+      if (!isCurrentEditSession()) return;
       toast.error(error?.response?.data?.message || 'Failed to queue image generation');
     } finally {
-      setGeneratingEditImage(false);
-      setPollingEditImage(false);
+      if (isCurrentEditSession()) {
+        setGeneratingEditImage(false);
+        setPollingEditImage(false);
+      }
     }
   };
 
@@ -3202,6 +3337,7 @@ function ItemsWorkspace({
   }) => {
 
     const failedStages = [];
+    let imageUploadAmbiguous = false;
     let barcodeCode = String(requestedBarcodeCode || '').trim();
 
     const runStage = async (key, label, action) => {
@@ -3209,6 +3345,14 @@ function ItemsWorkspace({
       try {
         return await action();
       } catch (error) {
+        if (key === 'storefront_images' && imageAttemptId) {
+          imageUploadAmbiguous = isAmbiguousImageUploadError(error);
+          if (imageUploadAmbiguous) {
+            markPendingPosItemImagePreviewUncertain({ itemId, attemptId: imageAttemptId });
+          } else {
+            markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
+          }
+        }
         failedStages.push({
           key,
           label,
@@ -3238,9 +3382,10 @@ function ItemsWorkspace({
         bindPendingPosItemImagePreviewJob({
           itemId,
           attemptId: imageAttemptId,
-          jobId: imageUploadJob.job_id
+          jobId: imageUploadJob.job_id,
+          fileKeys: Array.isArray(imageFiles) ? imageFiles.map(getImageFileSelectionKey) : []
         });
-      } else if (imageAttemptId) {
+      } else if (imageAttemptId && !imageUploadAmbiguous) {
         markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
       }
     } else if (externalProductCode) {
@@ -3411,10 +3556,27 @@ function ItemsWorkspace({
       setPostCreateSaving(true);
       if (pendingCreateRecovery?.itemId) {
         const recoveryName = pendingCreateRecovery.name || name;
+        const failedImageStage = pendingCreateRecovery.failedStages
+          .some((stage) => stage.key === 'storefront_images');
+        const pendingRecoveryImageAttempt = failedImageStage
+          ? getPendingPosItemImagePreviews()[String(pendingCreateRecovery.itemId)]
+          : null;
+        if (pendingRecoveryImageAttempt && ['uploading', 'processing', 'uncertain'].includes(pendingRecoveryImageAttempt.status)) {
+          toast.warning('The previous image upload is still being reconciled. Refresh the catalog before retrying so it is not duplicated.');
+          return;
+        }
+        const recoveryImageFiles = failedImageStage ? selectedImageFiles : [];
         const recoveryItemPatch = { ...payload };
         delete recoveryItemPatch.manufacturer_barcode;
         delete recoveryItemPatch.internal_barcode;
         delete recoveryItemPatch.create_category_name;
+        const recoveryImageAttemptId = failedImageStage && recoveryImageFiles[0]
+          ? stagePendingPosItemImagePreview({
+            itemId: pendingCreateRecovery.itemId,
+            file: recoveryImageFiles[0],
+            fileKeys: recoveryImageFiles.map(getImageFileSelectionKey)
+          })
+          : null;
         await updateItem(pendingCreateRecovery.itemId, recoveryItemPatch);
         const retryStageKeys = new Set([
           ...pendingCreateRecovery.failedStages.map((stage) => stage.key),
@@ -3424,13 +3586,13 @@ function ItemsWorkspace({
         const result = await runPostCreateStages({
           itemId: pendingCreateRecovery.itemId,
           itemName: recoveryName,
-          imageFiles: pendingCreateRecovery.imageFiles || [],
+          imageFiles: recoveryImageFiles,
           externalProductCode: pendingCreateRecovery.externalProductCode || '',
           requestedBarcodeCode: pendingCreateRecovery.requestedBarcodeCode || '',
           posAlwaysAvailable: createForm.pos_always_available === true,
           posBestSellerMode: createForm.pos_best_seller_mode,
           retryStageKeys,
-          imageAttemptId: pendingCreateRecovery.imageAttemptId || null
+          imageAttemptId: recoveryImageAttemptId
         });
         await finalizeCreatedItem({
           barcode: result.barcodeCode,
@@ -3455,7 +3617,11 @@ function ItemsWorkspace({
       }
 
       const imageAttemptId = selectedImageFiles[0]
-        ? stagePendingPosItemImagePreview({ itemId, file: selectedImageFiles[0] })
+        ? stagePendingPosItemImagePreview({
+          itemId,
+          file: selectedImageFiles[0],
+          fileKeys: selectedImageFiles.map(getImageFileSelectionKey)
+        })
         : null;
 
       const result = await runPostCreateStages({
@@ -4054,7 +4220,7 @@ function ItemsWorkspace({
           onDrop={(event) => event.preventDefault()}
         >
           <div
-            className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="pos-items-modal-panel relative flex h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Header */}
@@ -4081,7 +4247,7 @@ function ItemsWorkspace({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
+            <div className="pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
               <section className="mb-5 space-y-3 rounded-xl border border-blue-200 bg-blue-50/70 p-4" aria-labelledby="pos-external-barcode-heading">
                 <div className="flex items-start gap-3">
                   <div className="rounded-lg bg-white p-2 text-blue-700 shadow-sm">
@@ -4523,7 +4689,7 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="shrink-0 bg-[#0F172A] px-5 py-3 sm:px-6 flex justify-end gap-2.5">
+            <div className="pos-items-modal-footer shrink-0 bg-[#0F172A] px-5 py-3 sm:px-6 flex justify-end gap-2.5">
               <Button
                 type="button"
                 variant="outline"
@@ -4564,7 +4730,7 @@ function ItemsWorkspace({
           onDrop={(event) => event.preventDefault()}
         >
           <div
-            className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="pos-items-modal-panel relative flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Header */}
@@ -4589,7 +4755,7 @@ function ItemsWorkspace({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 space-y-4 sm:space-y-5">
+            <div className="pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 space-y-4 sm:space-y-5">
               {/* Top Horizontal Row: 3 Toggle Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
                 {/* Toggle Card 1: Always Available */}
@@ -4729,6 +4895,7 @@ function ItemsWorkspace({
                             itemName={editForm.name || activeEditItem?.name || 'Item'}
                             disabled={savingItem || persistingEditAssets}
                             showPrimaryToggle
+                            primaryEntryKey={editPrimaryEntryKey}
                             onRemove={handleRemoveSelectedEditImageFile}
                             onSetPendingPrimary={handleSetPendingEditPrimary}
                             onSetSavedPrimary={handleSetSavedEditPrimary}
@@ -4740,10 +4907,12 @@ function ItemsWorkspace({
                               type="button"
                               variant="outline"
                               onClick={() => handleGenerateEditImage(activeEditItem)}
-                              disabled={savingItem || persistingEditAssets || generatingEditImage || pollingEditImage}
+                              disabled={savingItem || persistingEditAssets || generatingEditImage || pollingEditImage || hasUnsavedEditImages}
                               className="w-full rounded-xl"
                               title={
-                                editGallery.length > 0
+                                hasUnsavedEditImages
+                                  ? 'Save or discard your pending image changes before generating an AI image.'
+                                  : editGallery.length > 0
                                   ? 'Generate a new AI photo, replacing the current one.'
                                   : 'Generate an AI photo for this item (watermarked).'
                               }
@@ -5043,7 +5212,7 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="shrink-0 bg-white border-t border-slate-200/80 px-5 py-3.5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="pos-items-modal-footer shrink-0 bg-white border-t border-slate-200/80 px-5 py-3.5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-600 w-full sm:w-auto">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
                   <ShieldCheck className="h-4 w-4" aria-hidden="true" />

@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import logger from '../../../config/logger.js';
+import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { validateComposition as validateCompositionDependency, invalidateDependencyGraphCache } from '../../../services/compositionValidationService.js';
 import { getAllSettingsUseCase } from '../../settings/index.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
@@ -409,6 +410,154 @@ const buildStorefrontImageGallery = ({ primaryPath = null, primaryUrl = null, ga
         }
         : null;
     return enrichedPrimary ? [enrichedPrimary, ...rest] : rest;
+};
+
+const galleryEntryAliases = (entry = {}) => [...new Set([
+    String(entry?.path || '').trim(),
+    String(entry?.url || '').trim()
+].filter(Boolean))];
+
+const galleryIdentity = (entry = {}) => galleryEntryAliases(entry)[0] || null;
+
+const normalizeStorefrontCatalogGalleryForCommit = (override = null) => {
+    const gallery = normalizeStorefrontImageGallery(override?.storefront_image_gallery || []);
+    const primaryPath = String(override?.storefront_image_path || '').trim() || null;
+    const primaryUrl = String(override?.storefront_image_url || '').trim() || null;
+    const primaryIndex = gallery.findIndex((entry) => (
+        (primaryPath && entry.path === primaryPath)
+        || (primaryUrl && entry.url === primaryUrl)
+    ));
+    const ordered = primaryIndex >= 0
+        ? [gallery[primaryIndex], ...gallery.filter((_, index) => index !== primaryIndex)]
+        : (primaryPath || primaryUrl)
+            ? [{ path: primaryPath, url: primaryUrl }, ...gallery]
+            : gallery;
+
+    return ordered.map((entry, index) => ({
+        ...entry,
+        is_primary: index === 0,
+        sort_order: index
+    }));
+};
+
+const createStorefrontGalleryConflict = (expectedGalleryKeys, actualGallery) => new DomainError(
+    DomainErrorCode.CONFLICT,
+    'The item images changed while you were editing. Reopen the item and try again.',
+    {
+        statusCode: 409,
+        details: {
+            reason_code: 'STOREFRONT_GALLERY_STALE',
+            expected_gallery_keys: expectedGalleryKeys,
+            actual_gallery_keys: actualGallery.map(galleryIdentity).filter(Boolean)
+        }
+    }
+);
+
+const createStorefrontGalleryValidationError = (message, details = {}) => new DomainError(
+    DomainErrorCode.VALIDATION_FAILED,
+    message,
+    { statusCode: 422, details }
+);
+
+const resolveRequestedStorefrontGallery = ({
+    currentGallery,
+    requestedGallery,
+    allowNewEntries = false,
+    allowedNewEntries = []
+}) => {
+    const aliasesToCurrentIndex = new Map();
+    currentGallery.forEach((entry, index) => {
+        galleryEntryAliases(entry).forEach((alias) => {
+            const previous = aliasesToCurrentIndex.get(alias);
+            if (previous !== undefined && previous !== index) {
+                throw createStorefrontGalleryValidationError(
+                    'The saved storefront gallery contains duplicate image identities.',
+                    { reason_code: 'STOREFRONT_GALLERY_DUPLICATE_IDENTITY' }
+                );
+            }
+            aliasesToCurrentIndex.set(alias, index);
+        });
+    });
+
+    const aliasesToAllowedNew = new Map();
+    (Array.isArray(allowedNewEntries) ? allowedNewEntries : []).forEach((entry) => {
+        galleryEntryAliases(entry).forEach((alias) => aliasesToAllowedNew.set(alias, entry));
+    });
+
+    const selectedCurrentIndexes = new Set();
+    const selectedNewAliases = new Set();
+    const nextGallery = [];
+    (Array.isArray(requestedGallery) ? requestedGallery : []).forEach((entry) => {
+        const aliases = galleryEntryAliases(entry);
+        if (aliases.length === 0) {
+            throw createStorefrontGalleryValidationError('Each storefront gallery image must include a path or URL.');
+        }
+
+        const currentMatches = [...new Set(
+            aliases
+                .map((alias) => aliasesToCurrentIndex.get(alias))
+                .filter((index) => index !== undefined)
+        )];
+        if (currentMatches.length > 1) {
+            throw createStorefrontGalleryValidationError(
+                'A storefront gallery image path and URL refer to different saved images.',
+                { reason_code: 'STOREFRONT_GALLERY_IDENTITY_MISMATCH' }
+            );
+        }
+
+        if (currentMatches.length === 1) {
+            const currentIndex = currentMatches[0];
+            if (selectedCurrentIndexes.has(currentIndex)) {
+                throw createStorefrontGalleryValidationError(
+                    'Storefront gallery images cannot be duplicated.',
+                    { reason_code: 'STOREFRONT_GALLERY_DUPLICATE_IDENTITY' }
+                );
+            }
+            selectedCurrentIndexes.add(currentIndex);
+            nextGallery.push(currentGallery[currentIndex]);
+            return;
+        }
+
+        if (!allowNewEntries) {
+            throw createStorefrontGalleryValidationError(
+                'Gallery updates can only reorder or remove existing storefront images.',
+                { reason_code: 'STOREFRONT_GALLERY_UNKNOWN_IMAGE' }
+            );
+        }
+
+        const allowedMatches = [...new Set(
+            aliases.map((alias) => aliasesToAllowedNew.get(alias)).filter(Boolean)
+        )];
+        if (allowedMatches.length === 0 || allowedMatches.length > 1) {
+            throw createStorefrontGalleryValidationError(
+                'The storefront gallery references an image that was not uploaded for this item.',
+                { reason_code: 'STOREFRONT_GALLERY_UNKNOWN_IMAGE' }
+            );
+        }
+
+        const newEntry = allowedMatches[0];
+        const newAliases = galleryEntryAliases(newEntry);
+        if (newAliases.some((alias) => selectedNewAliases.has(alias))) {
+            throw createStorefrontGalleryValidationError(
+                'Storefront gallery images cannot be duplicated.',
+                { reason_code: 'STOREFRONT_GALLERY_DUPLICATE_IDENTITY' }
+            );
+        }
+        newAliases.forEach((alias) => selectedNewAliases.add(alias));
+        nextGallery.push({
+            ...newEntry,
+            variants: entry?.variants || newEntry?.variants || null,
+            original_path: entry?.original_path || newEntry?.original_path || null,
+            classification: entry?.classification || newEntry?.classification || null,
+            source: entry?.source || newEntry?.source || null
+        });
+    });
+
+    return nextGallery.map((entry, index) => ({
+        ...entry,
+        is_primary: index === 0,
+        sort_order: index
+    }));
 };
 
 const getCachedSettingsForTenant = async () => {
@@ -3233,6 +3382,9 @@ export const itemRepository = {
 
         const candidatePath = payload.storefront_image_path ?? (existing?.storefront_image_path ?? null);
         const candidateUrl = payload.storefront_image_url ?? (existing?.storefront_image_url ?? null);
+        const explicitImageLifecycle = payload.image_lifecycle && typeof payload.image_lifecycle === 'object'
+            ? payload.image_lifecycle
+            : null;
 
         // A gallery payload comes from the catalog image pipeline after every
         // file has already been optimized and stored. Running the single-image
@@ -3270,10 +3422,18 @@ export const itemRepository = {
                 : (existing?.storefront_visible ?? defaultEnvelope?.storefront_visible ?? true),
             storefront_image_path: finalImagePath,
             storefront_image_url: finalImageUrl,
-            image_fingerprint: imageLifecycleResult?.image_fingerprint ?? (existing?.image_fingerprint ?? null),
-            optimization_version: imageLifecycleResult?.optimization_version ?? (existing?.optimization_version ?? null),
-            processing_status: imageLifecycleResult?.processing_status ?? (existing?.processing_status ?? null),
-            variant_metadata: imageLifecycleResult?.variant_metadata ?? (existing?.variant_metadata ?? null),
+            image_fingerprint: imageLifecycleResult?.image_fingerprint
+                ?? explicitImageLifecycle?.image_fingerprint
+                ?? (existing?.image_fingerprint ?? null),
+            optimization_version: imageLifecycleResult?.optimization_version
+                ?? explicitImageLifecycle?.optimization_version
+                ?? (existing?.optimization_version ?? null),
+            processing_status: imageLifecycleResult?.processing_status
+                ?? explicitImageLifecycle?.processing_status
+                ?? (existing?.processing_status ?? null),
+            variant_metadata: imageLifecycleResult?.variant_metadata
+                ?? explicitImageLifecycle?.variant_metadata
+                ?? (existing?.variant_metadata ?? null),
             storefront_image_gallery: hasOwn(payload, 'storefront_image_gallery')
                 ? buildStorefrontImageGallery({
                     primaryPath: finalImagePath,
@@ -3325,7 +3485,126 @@ export const itemRepository = {
         if (typeof options.keepVisible === 'boolean') {
             payload.storefront_visible = options.keepVisible;
         }
+        const imageLifecycle = imageData.imageLifecycle || options.imageLifecycle;
+        if (imageLifecycle && typeof imageLifecycle === 'object') {
+            payload.image_lifecycle = imageLifecycle;
+        }
+        // Gallery writes that provide a base snapshot use the transaction-owned
+        // commit path. Keep the legacy direct update available for callers that
+        // predate the gallery intent contract and for schema-compatible fallbacks.
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        if (typeof this.commitStorefrontCatalogGallery === 'function'
+            && sequelize && typeof sequelize.transaction === 'function'
+            && Object.prototype.hasOwnProperty.call(options, 'expectedGalleryKeys')) {
+            const commit = await this.commitStorefrontCatalogGallery(itemId, payload, {
+                expectedGalleryKeys: options.expectedGalleryKeys,
+                allowNewEntries: options.allowNewEntries === true,
+                allowedNewEntries: options.allowedNewEntries || []
+            });
+            return commit.data;
+        }
         return this.upsertStorefrontCatalogOverride(itemId, payload, options);
+    },
+    /**
+     * Atomically apply a complete storefront gallery intent.
+     *
+     * The tenant item row is the lock anchor, so an absent override row is
+     * serialized just like an existing override. The gallery is reread and
+     * compared while that lock is held; file cleanup is deliberately left to
+     * the caller after this transaction returns successfully.
+     */
+    async commitStorefrontCatalogGallery(itemId, payload = {}, options = {}) {
+        const Item = dbStore.get('Item');
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        if (!Item || !sequelize || typeof sequelize.transaction !== 'function') {
+            throw new Error('Storefront gallery transactions are unavailable');
+        }
+
+        let commitResult;
+        await sequelize.transaction(async (transaction) => {
+            const lockedItem = await findVisibleItemById(Item, itemId, {
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!lockedItem) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    `Item ${itemId} was not found`,
+                    { statusCode: 404 }
+                );
+            }
+
+            const existing = await this.findStorefrontCatalogOverrideByItemId(itemId, { transaction });
+            const previousGallery = normalizeStorefrontCatalogGalleryForCommit(existing);
+            const expectedProvided = Object.prototype.hasOwnProperty.call(options, 'expectedGalleryKeys');
+            const expectedGalleryKeys = options.expectedGalleryKeys;
+            if (expectedProvided && !Array.isArray(expectedGalleryKeys)) {
+                throw createStorefrontGalleryValidationError(
+                    'expected_gallery_keys must be an array when provided.',
+                    { reason_code: 'STOREFRONT_GALLERY_EXPECTED_BASE_INVALID' }
+                );
+            }
+            if (expectedProvided && expectedGalleryKeys.some((key) => !String(key || '').trim())) {
+                throw createStorefrontGalleryValidationError(
+                    'expected_gallery_keys cannot contain empty identities.',
+                    { reason_code: 'STOREFRONT_GALLERY_EXPECTED_BASE_INVALID' }
+                );
+            }
+
+            if (expectedProvided) {
+                const aliasesToCurrentIndex = new Map();
+                previousGallery.forEach((entry, index) => {
+                    galleryEntryAliases(entry).forEach((alias) => aliasesToCurrentIndex.set(alias, index));
+                });
+                const expectedIndexes = expectedGalleryKeys.map((key) => aliasesToCurrentIndex.get(String(key || '').trim()));
+                const currentIndexes = previousGallery.map((_, index) => index);
+                if (expectedIndexes.length !== currentIndexes.length
+                    || expectedIndexes.some((index, position) => index !== currentIndexes[position])) {
+                    throw createStorefrontGalleryConflict(expectedGalleryKeys, previousGallery);
+                }
+            }
+
+            const requestedGallery = Array.isArray(payload.storefront_image_gallery)
+                ? payload.storefront_image_gallery
+                : [];
+            const nextGallery = resolveRequestedStorefrontGallery({
+                currentGallery: previousGallery,
+                requestedGallery,
+                allowNewEntries: options.allowNewEntries === true,
+                allowedNewEntries: options.allowedNewEntries || []
+            });
+            if (nextGallery.length > 5) {
+                throw createStorefrontGalleryValidationError(
+                    'Item image gallery is limited to 5 images per item.',
+                    { reason_code: 'STOREFRONT_GALLERY_LIMIT_EXCEEDED', max_images: 5 }
+                );
+            }
+
+            const primary = nextGallery[0] || null;
+            const nextPayload = {
+                ...(typeof payload.storefront_visible === 'boolean'
+                    ? { storefront_visible: payload.storefront_visible }
+                    : {}),
+                storefront_image_path: primary?.path || null,
+                storefront_image_url: primary?.url || null,
+                storefront_image_gallery: nextGallery,
+                ...(payload.image_lifecycle && typeof payload.image_lifecycle === 'object'
+                    ? { image_lifecycle: payload.image_lifecycle }
+                    : {})
+            };
+            const data = nextGallery.length > 0
+                ? await this.upsertStorefrontCatalogOverride(itemId, nextPayload, { transaction })
+                : await this.clearStorefrontCatalogImage(itemId, { transaction });
+
+            commitResult = {
+                data,
+                previousGallery,
+                committedGallery: nextGallery,
+                item: lockedItem
+            };
+        });
+
+        return commitResult;
     },
     async clearStorefrontCatalogImage(itemId, options = {}) {
         const existing = await this.findStorefrontCatalogOverrideByItemId(itemId, options);

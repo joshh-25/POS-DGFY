@@ -1,11 +1,10 @@
-const FIELD_SEPARATOR = '\u001f';
+import {
+  getImageFileSelectionKey,
+  getPendingGalleryEntryKey,
+  getSavedGalleryEntryKey
+} from '../../../../Components/items/imageGalleryIdentity.js';
 
-export const getImageFileSelectionKey = (file) => [
-  String(file?.name || '').trim(),
-  Number(file?.size || 0),
-  Number(file?.lastModified || 0),
-  String(file?.type || '').trim().toLowerCase()
-].join(FIELD_SEPARATOR);
+export { getImageFileSelectionKey, getPendingGalleryEntryKey, getSavedGalleryEntryKey };
 
 export const dedupeImageFiles = (files = [], existingFiles = []) => {
   const seen = new Set((Array.isArray(existingFiles) ? existingFiles : [])
@@ -26,6 +25,12 @@ export const getGalleryEntryAliases = (entry = {}) => [...new Set([
   String(entry?.url || '').trim()
 ].filter(Boolean))];
 
+/**
+ * Stable identities shared by the POS editor and its carousel. The identity
+ * is based on the persisted asset alias or the file's immutable selection
+ * tuple, so removing/reordering another entry cannot silently change which
+ * image is Primary.
+ */
 export const getGallerySignature = (gallery = []) => (Array.isArray(gallery) ? gallery : [])
   .map((entry) => getGalleryEntryAliases(entry)[0] || '')
   .join('\u001e');

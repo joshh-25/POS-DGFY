@@ -75,8 +75,12 @@ export const getStorefrontCatalogImageUploadStatus = async (itemId) => {
   return response.data.data;
 };
 
-export const updateStorefrontCatalogGallery = async (itemId, gallery = []) => {
-  const response = await api.patch(`/items/${itemId}/storefront-images/gallery`, { gallery });
+export const updateStorefrontCatalogGallery = async (itemId, gallery = [], options = {}) => {
+  const payload = { gallery };
+  if (Array.isArray(options?.expectedGalleryKeys)) {
+    payload.expected_gallery_keys = options.expectedGalleryKeys;
+  }
+  const response = await api.patch(`/items/${itemId}/storefront-images/gallery`, payload);
   return response.data.data;
 };
 

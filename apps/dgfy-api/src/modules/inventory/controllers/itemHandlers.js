@@ -1195,10 +1195,33 @@ export const uploadBulkStorefrontCatalogImages = async (req, res, next) => {
 export const updateStorefrontCatalogGallery = async (req, res, next) => {
   try {
     const itemId = req.validatedParams?.item_id || req.params.item_id;
+    const payload = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+      ? req.body
+      : null;
+    const gallery = payload?.gallery ?? payload?.storefront_image_gallery;
+    if (!payload || !Array.isArray(gallery) || gallery.length > 5) {
+      return res.status(422).json({
+        success: false,
+        message: 'Gallery must be an array containing at most 5 images.',
+        error_code: 'VALIDATION_FAILED',
+        request_id: requestId(req, res),
+        timestamp: timestamp()
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'expected_gallery_keys')
+      && !Array.isArray(payload.expected_gallery_keys)) {
+      return res.status(422).json({
+        success: false,
+        message: 'expected_gallery_keys must be an array when provided.',
+        error_code: 'VALIDATION_FAILED',
+        request_id: requestId(req, res),
+        timestamp: timestamp()
+      });
+    }
     const result = await runInventoryUseCase(
       () => updateStorefrontCatalogGalleryUseCase({
         itemId,
-        payload: req.body,
+        payload,
         user: req.user
       }),
       'Failed to update storefront catalog image gallery'

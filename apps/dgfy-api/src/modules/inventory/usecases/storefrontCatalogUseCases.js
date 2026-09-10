@@ -14,6 +14,7 @@ import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVi
 import logger from '../../../config/logger.js';
 import { resolveEffectivePermissions } from '../../../utils/userPermissions.js';
 import { requireItemImageGenerationConfig } from '../../../config/itemImageFeature.js';
+import { OPTIMIZATION_VERSION_V2 } from '../contracts/imageLifecycleContract.js';
 
 const PERMISSION_EDIT_ITEMS = 'items:edit';
 export const STOREFRONT_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
@@ -200,6 +201,94 @@ const normalizeExistingStorefrontGallery = (override = {}) => {
     : [{ path: primaryPath, url: primaryUrl }, ...gallery];
 
   return normalizeStoredGalleryEntries(nextGallery);
+};
+
+const getGalleryEntryKey = (entry) => String(entry?.path || entry?.url || '').trim() || null;
+
+const getGalleryKeys = (gallery = []) => (Array.isArray(gallery) ? gallery : [])
+  .map(getGalleryEntryKey)
+  .filter(Boolean);
+
+// Catalog image storage has already produced the responsive asset before the
+// gallery transaction starts. Carry its lifecycle state into the override
+// row without invoking the optimizer a second time (which could create a
+// duplicate asset). The lifecycle version is the persisted image contract
+// version; the asset manifest version remains owned by imageAssetStorage.
+const buildStoredImageLifecycle = (stored = null) => {
+  if (!stored?.path || !stored?.image_variants) return null;
+  return {
+    optimization_version: OPTIMIZATION_VERSION_V2,
+    processing_status: 'optimized',
+    variant_metadata: {
+      pos_thumbnail: stored.variants?.pos_thumbnail || null,
+      thumbnail: stored.variants?.thumbnail || null,
+      catalog_card: stored.variants?.medium || null,
+      checkout: stored.variants?.thumbnail || null,
+      preview: stored.variants?.large || null,
+      formats: stored.format_variants || null,
+      placeholder: stored.placeholder || null
+    },
+    image_variants: stored.image_variants
+  };
+};
+
+const hasOwn = (value, key) => Boolean(value) && Object.prototype.hasOwnProperty.call(value, key);
+
+const persistStorefrontGallery = async ({
+  itemRepository,
+  itemId,
+  gallery,
+  expectedGalleryKeys,
+  keepVisible,
+  imageLifecycle = null,
+  allowNewEntries = false,
+  allowedNewEntries = []
+}) => {
+  if (typeof itemRepository.commitStorefrontCatalogGallery === 'function') {
+    const payload = {
+      storefront_image_gallery: Array.isArray(gallery) ? gallery : []
+    };
+    if (typeof keepVisible === 'boolean') payload.storefront_visible = keepVisible;
+    if (imageLifecycle && typeof imageLifecycle === 'object') {
+      payload.image_lifecycle = imageLifecycle;
+    }
+    const options = {
+      allowNewEntries,
+      allowedNewEntries
+    };
+    if (expectedGalleryKeys !== undefined) options.expectedGalleryKeys = expectedGalleryKeys;
+    return itemRepository.commitStorefrontCatalogGallery(itemId, payload, options);
+  }
+
+  const primary = Array.isArray(gallery) ? gallery[0] || null : null;
+  const data = await itemRepository.updateStorefrontCatalogImage(itemId, {
+    path: primary?.path || null,
+    url: primary?.url || null,
+    gallery: Array.isArray(gallery) ? gallery : []
+  }, {
+    ...(typeof keepVisible === 'boolean' ? { keepVisible } : {}),
+    ...(imageLifecycle && typeof imageLifecycle === 'object' ? { imageLifecycle } : {})
+  });
+  return { data, committedGallery: Array.isArray(gallery) ? gallery : [] };
+};
+
+const removeCommittedGalleryAssets = async ({ imageStorage, paths = [], itemId, reason }) => {
+  const uniquePaths = [...new Set((Array.isArray(paths) ? paths : []).filter(Boolean))];
+  await Promise.all(uniquePaths.map(async (path) => {
+    try {
+      await imageStorage.remove({ path });
+    } catch (error) {
+      // A committed database update remains successful when best-effort file
+      // cleanup fails; the existing cleanup handling can retry this path.
+      logger.warn('[StorefrontCatalogUseCases] Failed to remove an omitted gallery asset after commit', {
+        event_type: 'storefront_catalog_image_cleanup_failed',
+        item_id: itemId,
+        path,
+        reason: reason || 'gallery_commit_cleanup',
+        error: error?.message || 'unknown'
+      });
+    }
+  }));
 };
 
 const storefrontReadinessError = ({ item, itemId, cause = null }) => new DomainError(
@@ -499,35 +588,40 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
         imageClientConversionScope: gate.scope
       });
 
-      const data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {
+      const uploadedEntry = {
         path: stored.path,
         url: stored.url,
-        gallery: [{
-          path: stored.path,
-          url: stored.url,
-          variants: stored.image_variants || null,
-          original_path: stored.original?.path || null,
-          classification: stored.classification || null,
-          source: provenance && typeof provenance === 'object'
-            ? provenance
-            : { type: 'manual_upload' }
-        }]
-      }, {
-        keepVisible: effective?.storefront_visible !== false
+        variants: stored.image_variants || null,
+        original_path: stored.original?.path || null,
+        classification: stored.classification || null,
+        source: provenance && typeof provenance === 'object'
+          ? provenance
+          : { type: 'manual_upload' }
+      };
+      const commit = await persistStorefrontGallery({
+        itemRepository,
+        itemId: normalizedItemId,
+        gallery: [uploadedEntry],
+        expectedGalleryKeys: getGalleryKeys(normalizeExistingStorefrontGallery(existing)),
+        keepVisible: effective?.storefront_visible !== false,
+        imageLifecycle: buildStoredImageLifecycle(stored),
+        allowNewEntries: true,
+        allowedNewEntries: [uploadedEntry]
       });
+      const data = commit.data;
       storedCommitted = true;
 
-      if (existing?.storefront_image_path && existing.storefront_image_path !== stored.path) {
-        try {
-          await imageStorage.remove({ path: existing.storefront_image_path });
-        } catch (cleanupError) {
-          logger.warn('[StorefrontCatalogUseCases] Failed to remove previous storefront catalog image after replacement', {
-            event_type: 'storefront_catalog_image_cleanup_failed',
-            item_id: normalizedItemId,
-            reason: cleanupError?.message || 'unknown'
-          });
-        }
-      }
+      const previousGallery = Array.isArray(commit.previousGallery)
+        ? commit.previousGallery
+        : normalizeExistingStorefrontGallery(existing);
+      await removeCommittedGalleryAssets({
+        imageStorage,
+        itemId: normalizedItemId,
+        reason: 'single_image_replacement',
+        paths: previousGallery
+          .map((entry) => entry.path)
+          .filter((path) => path && path !== stored.path)
+      });
 
       const response = toSerializable(data);
       response.storefront_image_variants = stored.image_variants || null;
@@ -744,16 +838,28 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
         }).filter(Boolean))
         : normalizeStoredGalleryEntries([...existingGallery, ...storedGalleryEntries]);
       const primary = gallery[0] || null;
-      let data;
+      const primaryStored = storedImages.find((stored) => (
+        (primary?.path && stored.path === primary.path)
+        || (primary?.url && stored.url === primary.url)
+      ));
+      let commit;
       try {
-        data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {
-          path: primary?.path || null,
-          url: primary?.url || null,
-          gallery
-        }, {
-          keepVisible: effective?.storefront_visible !== false
+        commit = await persistStorefrontGallery({
+          itemRepository,
+          itemId: normalizedItemId,
+          gallery,
+          expectedGalleryKeys: hasGalleryIntent
+            ? galleryIntent.base_keys.map((key) => String(key || '').trim()).filter(Boolean)
+          : getGalleryKeys(existingGallery),
+          keepVisible: effective?.storefront_visible !== false,
+          imageLifecycle: buildStoredImageLifecycle(primaryStored),
+          allowNewEntries: true,
+          allowedNewEntries: storedGalleryEntries
         });
       } catch (error) {
+        if (error?.statusCode === 409
+          || error?.code === DomainErrorCode.CONFLICT
+          || error?.code === DomainErrorCode.VALIDATION_FAILED) throw error;
         throw buildStorefrontImageFailure({
           error,
           code: DomainErrorCode.STOREFRONT_IMAGE_PERSIST_FAILED,
@@ -764,16 +870,20 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
           user
         });
       }
+      const data = commit.data;
       storedCommitted = true;
 
-      if (hasGalleryIntent) {
-        const requestedPaths = new Set(gallery.map((entry) => entry.path).filter(Boolean));
-        const removedPaths = [
-          existing?.storefront_image_path,
-          ...existingGallery.map((entry) => entry.path)
-        ].filter((path) => path && !requestedPaths.has(path));
-        await Promise.all([...new Set(removedPaths)].map((path) => imageStorage.remove({ path })));
-      }
+      const committedGallery = Array.isArray(commit.committedGallery) ? commit.committedGallery : gallery;
+      const committedPaths = new Set(committedGallery.map((entry) => entry.path).filter(Boolean));
+      const previousGallery = Array.isArray(commit.previousGallery) ? commit.previousGallery : existingGallery;
+      await removeCommittedGalleryAssets({
+        imageStorage,
+        itemId: normalizedItemId,
+        reason: 'gallery_edit_commit',
+        paths: previousGallery
+          .map((entry) => entry.path)
+          .filter((path) => path && !committedPaths.has(path))
+      });
 
       const response = toSerializable(data);
       response.storefront_image_variants = primary?.variants || null;
@@ -990,12 +1100,25 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
             imageClientConversionState: gate.mode,
             imageClientConversionScope: gate.scope
           });
-          const updated = await itemRepository.updateStorefrontCatalogImage(item.item_id, {
+          const uploadedEntry = {
             path: stored.path,
-            url: stored.url
-          }, {
-            keepVisible: effectiveVisible
+            url: stored.url,
+            variants: stored.image_variants || null,
+            original_path: stored.original?.path || null,
+            classification: stored.classification || null,
+            source: { type: 'manual_upload' }
+          };
+          const commit = await persistStorefrontGallery({
+            itemRepository,
+            itemId: item.item_id,
+            gallery: [uploadedEntry],
+            expectedGalleryKeys: getGalleryKeys(normalizeExistingStorefrontGallery(existing)),
+            keepVisible: effectiveVisible,
+            imageLifecycle: buildStoredImageLifecycle(stored),
+            allowNewEntries: true,
+            allowedNewEntries: [uploadedEntry]
           });
+          const updated = commit.data;
           storedCommitted = true;
 
           await writeCatalogAudit({
@@ -1013,13 +1136,17 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
             }
           });
 
-          if (existing?.storefront_image_path && existing.storefront_image_path !== stored.path) {
-            try {
-              await imageStorage.remove({ path: existing.storefront_image_path });
-            } catch {
-              // Best-effort cleanup of replaced image.
-            }
-          }
+          const previousGallery = Array.isArray(commit.previousGallery)
+            ? commit.previousGallery
+            : normalizeExistingStorefrontGallery(existing);
+          await removeCommittedGalleryAssets({
+            imageStorage,
+            itemId: item.item_id,
+            reason: 'bulk_single_image_replacement',
+            paths: previousGallery
+              .map((entry) => entry.path)
+              .filter((path) => path && path !== stored.path)
+          });
 
           summary.uploaded += 1;
           for (const file of groupFiles) {
@@ -1091,13 +1218,78 @@ export const buildUpdateStorefrontCatalogGalleryUseCase = ({ itemRepository, ima
     const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
     const existingGallery = normalizeExistingStorefrontGallery(existing);
     const requestedGallery = normalizeGalleryPayloadEntries(payload.gallery || payload.storefront_image_gallery || []);
+    const hasExpectedGalleryBase = hasOwn(payload, 'expected_gallery_keys');
+    if (hasExpectedGalleryBase && !Array.isArray(payload.expected_gallery_keys)) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'expected_gallery_keys must be an array when provided.',
+        { statusCode: 422, details: { reason_code: 'STOREFRONT_GALLERY_EXPECTED_BASE_INVALID' } }
+      );
+    }
+    const expectedGalleryKeys = hasExpectedGalleryBase
+      ? payload.expected_gallery_keys.map((key) => String(key || '').trim())
+      : undefined;
+    if (hasExpectedGalleryBase && expectedGalleryKeys.some((key) => !key)) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'expected_gallery_keys cannot contain empty identities.',
+        { statusCode: 422, details: { reason_code: 'STOREFRONT_GALLERY_EXPECTED_BASE_INVALID' } }
+      );
+    }
+
+    if (typeof itemRepository.commitStorefrontCatalogGallery === 'function') {
+      const commit = await persistStorefrontGallery({
+        itemRepository,
+        itemId: normalizedItemId,
+        gallery: requestedGallery,
+        expectedGalleryKeys,
+        allowNewEntries: false
+      });
+      const previousGallery = Array.isArray(commit.previousGallery) ? commit.previousGallery : existingGallery;
+      const committedGallery = Array.isArray(commit.committedGallery) ? commit.committedGallery : requestedGallery;
+      const committedPaths = new Set(committedGallery.map((entry) => entry.path).filter(Boolean));
+      await removeCommittedGalleryAssets({
+        imageStorage,
+        itemId: normalizedItemId,
+        reason: 'saved_gallery_edit_commit',
+        paths: previousGallery
+          .map((entry) => entry.path)
+          .filter((path) => path && !committedPaths.has(path))
+      });
+
+      await writeCatalogAudit({
+        itemRepository,
+        user,
+        item,
+        entityType: 'item_catalog_image',
+        eventType: requestedGallery.length > 0 ? 'item_catalog_gallery_updated' : 'item_catalog_images_deleted',
+        action: requestedGallery.length > 0 ? 'UPDATE' : 'DELETE',
+        changes: {
+          previous_image_count: previousGallery.length,
+          image_count: committedGallery.length,
+          removed_count: previousGallery.filter((entry) => (
+            entry.path && !committedPaths.has(entry.path)
+          )).length,
+          primary_image_changed: (previousGallery[0]?.path || previousGallery[0]?.url || null)
+            !== (committedGallery[0]?.path || committedGallery[0]?.url || null)
+        }
+      });
+
+      return toSerializable(commit.data);
+    }
+
     if (requestedGallery.length === 0) {
       const paths = [
         existing?.storefront_image_path,
         ...existingGallery.map((entry) => entry.path)
       ].filter(Boolean);
-      await Promise.all([...new Set(paths)].map((path) => imageStorage.remove({ path })));
       const data = await itemRepository.clearStorefrontCatalogImage(normalizedItemId);
+      await removeCommittedGalleryAssets({
+        imageStorage,
+        itemId: normalizedItemId,
+        reason: 'saved_gallery_clear_legacy_fallback',
+        paths
+      });
       await writeCatalogAudit({
         itemRepository,
         user,
@@ -1132,7 +1324,12 @@ export const buildUpdateStorefrontCatalogGalleryUseCase = ({ itemRepository, ima
       existing?.storefront_image_path,
       ...existingGallery.map((entry) => entry.path)
     ].filter((path) => path && !requestedPaths.has(path));
-    await Promise.all([...new Set(removedPaths)].map((path) => imageStorage.remove({ path })));
+    await removeCommittedGalleryAssets({
+      imageStorage,
+      itemId: normalizedItemId,
+      reason: 'saved_gallery_edit_legacy_fallback',
+      paths: removedPaths
+    });
 
     await writeCatalogAudit({
       itemRepository,
@@ -1173,6 +1370,36 @@ export const buildDeleteStorefrontCatalogGalleryImageUseCase = ({ itemRepository
 
     const removed = existingGallery[normalizedImageIndex];
     const nextGallery = normalizeStoredGalleryEntries(existingGallery.filter((_, index) => index !== normalizedImageIndex));
+    if (typeof itemRepository.commitStorefrontCatalogGallery === 'function') {
+      const commit = await persistStorefrontGallery({
+        itemRepository,
+        itemId: normalizedItemId,
+        gallery: nextGallery,
+        expectedGalleryKeys: getGalleryKeys(existingGallery),
+        allowNewEntries: false
+      });
+      await removeCommittedGalleryAssets({
+        imageStorage,
+        itemId: normalizedItemId,
+        reason: 'single_gallery_delete_commit',
+        paths: [removed?.path]
+      });
+      const item = await itemRepository.getItemById(normalizedItemId);
+      await writeCatalogAudit({
+        itemRepository,
+        user,
+        item,
+        entityType: 'item_catalog_image',
+        eventType: 'item_catalog_image_deleted',
+        action: 'DELETE',
+        changes: {
+          image_index: normalizedImageIndex,
+          remaining_image_count: Array.isArray(commit.committedGallery) ? commit.committedGallery.length : nextGallery.length
+        }
+      });
+      return toSerializable(commit.data);
+    }
+
     const primary = nextGallery[0] || null;
     const data = nextGallery.length > 0
       ? await itemRepository.upsertStorefrontCatalogOverride(normalizedItemId, {
@@ -1183,7 +1410,12 @@ export const buildDeleteStorefrontCatalogGalleryImageUseCase = ({ itemRepository
       : await itemRepository.clearStorefrontCatalogImage(normalizedItemId);
 
     if (removed?.path) {
-      await imageStorage.remove({ path: removed.path });
+      await removeCommittedGalleryAssets({
+        imageStorage,
+        itemId: normalizedItemId,
+        reason: 'single_gallery_delete_legacy_fallback',
+        paths: [removed.path]
+      });
     }
 
     const item = await itemRepository.getItemById(normalizedItemId);
@@ -1218,9 +1450,40 @@ export const buildDeleteStorefrontCatalogImageUseCase = ({ itemRepository, image
       existing?.storefront_image_path,
       ...existingGallery.map((entry) => entry.path)
     ].filter(Boolean);
-    await Promise.all([...new Set(paths)].map((path) => imageStorage.remove({ path })));
+    if (typeof itemRepository.commitStorefrontCatalogGallery === 'function') {
+      const commit = await persistStorefrontGallery({
+        itemRepository,
+        itemId: normalizedItemId,
+        gallery: [],
+        expectedGalleryKeys: getGalleryKeys(existingGallery),
+        allowNewEntries: false
+      });
+      await removeCommittedGalleryAssets({
+        imageStorage,
+        itemId: normalizedItemId,
+        reason: 'gallery_clear_commit',
+        paths
+      });
+      const item = await itemRepository.getItemById(normalizedItemId);
+      await writeCatalogAudit({
+        itemRepository,
+        user,
+        item,
+        entityType: 'item_catalog_image',
+        eventType: 'item_catalog_images_deleted',
+        action: 'DELETE',
+        changes: { deleted_count: existingGallery.length || (existing?.storefront_image_path ? 1 : 0) }
+      });
+      return toSerializable(commit.data);
+    }
 
     const data = await itemRepository.clearStorefrontCatalogImage(normalizedItemId);
+    await removeCommittedGalleryAssets({
+      imageStorage,
+      itemId: normalizedItemId,
+      reason: 'gallery_clear_legacy_fallback',
+      paths
+    });
     const item = await itemRepository.getItemById(normalizedItemId);
     await writeCatalogAudit({
       itemRepository,

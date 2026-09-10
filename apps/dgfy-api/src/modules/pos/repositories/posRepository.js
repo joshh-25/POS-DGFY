@@ -629,9 +629,39 @@ const resolvePosDisplayImage = ({ override, storefrontImage }) => {
     return {
         path,
         url,
-        variants: deriveImageAssetVariantUrls({ storedPath: path, storedUrl: url }),
+        variants: override?.pos_image_path || override?.pos_image_url
+            ? deriveImageAssetVariantUrls({ storedPath: path, storedUrl: url })
+            : deriveStorefrontImageVariants(storefrontImage),
         source
     };
+};
+
+const resolvePrimaryStorefrontGalleryEntry = (storefrontImage) => {
+    const gallery = parseJsonLoosely(storefrontImage?.storefront_image_gallery);
+    if (!Array.isArray(gallery) || gallery.length === 0) {
+        return null;
+    }
+
+    const primaryPath = String(storefrontImage?.storefront_image_path || '').trim();
+    const primaryUrl = String(storefrontImage?.storefront_image_url || '').trim();
+    return gallery.find((entry) => entry?.is_primary === true)
+        || gallery.find((entry) => (
+            (primaryPath && String(entry?.path || '').trim() === primaryPath)
+            || (primaryUrl && String(entry?.url || '').trim() === primaryUrl)
+        ))
+        || gallery[0]
+        || null;
+};
+
+const deriveStorefrontImageVariants = (storefrontImage) => {
+    const derived = deriveImageAssetVariantUrls({
+        storedPath: storefrontImage?.storefront_image_path || null,
+        storedUrl: storefrontImage?.storefront_image_url || null
+    });
+    const explicit = resolvePrimaryStorefrontGalleryEntry(storefrontImage)?.variants;
+    return explicit && typeof explicit === 'object' && !Array.isArray(explicit)
+        ? { ...derived, ...explicit }
+        : derived;
 };
 
 const loadPrimaryBarcodeMap = async (itemIds = [], options = {}) => {
@@ -727,10 +757,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
                 pos_image_source: posDisplayImage.source,
                 storefront_image_path: storefrontImage?.storefront_image_path || null,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
-                storefront_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: storefrontImage?.storefront_image_path || null,
-                    storedUrl: storefrontImage?.storefront_image_url || null
-                }),
+                storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
                 storefront_image_gallery: storefrontImage?.storefront_image_gallery || null,
                 ...(options.includePrimaryBarcode === true
                     ? { primary_barcode: primaryBarcodeMap.get(Number(item.item_id)) || null }
@@ -4655,10 +4682,7 @@ export const posRepository = {
                 pos_image_variants: posDisplayImage.variants,
                 pos_image_source: posDisplayImage.source,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
-                storefront_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: storefrontImage?.storefront_image_path || null,
-                    storedUrl: storefrontImage?.storefront_image_url || null
-                }),
+                storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
                 pos_readiness: readiness
             }
         };
@@ -4908,10 +4932,7 @@ export const posRepository = {
                 pos_image_variants: posDisplayImage.variants,
                 pos_image_source: posDisplayImage.source,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
-                storefront_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: storefrontImage?.storefront_image_path || null,
-                    storedUrl: storefrontImage?.storefront_image_url || null
-                }),
+                storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
                 has_override: Boolean(override),
                 pos_readiness: readiness,
                 catalog_setup_recommendation: recommendation
@@ -4984,10 +5005,7 @@ export const posRepository = {
             pos_image_variants: posDisplayImage.variants,
             storefront_image_path: storefrontImage?.storefront_image_path || null,
             storefront_image_url: storefrontImage?.storefront_image_url || null,
-            storefront_image_variants: deriveImageAssetVariantUrls({
-                storedPath: storefrontImage?.storefront_image_path || null,
-                storedUrl: storefrontImage?.storefront_image_url || null
-            }),
+            storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
             storefront_image_gallery: storefrontImage?.storefront_image_gallery || null,
             pos_readiness: readiness,
             catalog_setup_recommendation: recommendation
