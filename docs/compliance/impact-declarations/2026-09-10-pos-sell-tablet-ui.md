@@ -51,6 +51,8 @@ tablet presentation-only change.
 - Seven focused POS/web-core test files passed: 98 tests.
 - Atomic catalog/pagination batch is limited to the catalog source, catalog
   contract tests, and the compact tablet pagination/drawer layout contracts.
+- Atomic controls/layout batch is limited to the current-sale controls, tablet
+  takeout notes, sidebar logo crop, and their focused contracts.
 - `npm run lint` passed in `apps/dgfy-pos`.
 - `npm run build` passed in `apps/dgfy-pos`.
 - Local tablet shell smoke at `1024x600` found the `DGFY POS` page, nonblank

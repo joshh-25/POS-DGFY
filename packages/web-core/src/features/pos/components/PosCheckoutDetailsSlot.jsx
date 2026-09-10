@@ -27,6 +27,7 @@ export function PosCheckoutDetailsSlot({
   setServicesNotes,
   paymentTypeField = null,
   buttonLayout = false,
+  isTabletViewport = false,
   disabled = false
 }) {
   const checkoutDetailsOwner = presentationBundle?.slots?.checkoutDetails;
@@ -51,6 +52,7 @@ export function PosCheckoutDetailsSlot({
             setKitchenNotes={setKitchenNotes}
             paymentTypeField={paymentTypeField}
             buttonLayout={buttonLayout}
+            isTabletViewport={isTabletViewport}
             disabled={disabled}
           />
         )}

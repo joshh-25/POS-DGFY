@@ -101,6 +101,36 @@ describe('PosCurrentSaleActions', () => {
     expect(onOpenCashDrawer).toHaveBeenCalledOnce();
   });
 
+  it('uses the PC parked-sale grouping on tablet while keeping larger touch targets', () => {
+    const presentationBundle = resolvePosPresentationBundle(resolvePosWorkflow('retail'));
+
+    render(
+      <PosCurrentSaleActions
+        presentationBundle={presentationBundle}
+        onCheckout={vi.fn()}
+        onPrintOrder={vi.fn()}
+        onOpenCashDrawer={vi.fn()}
+        onParkSale={vi.fn()}
+        onSplitPayment={vi.fn()}
+        printerAvailable
+        showParkedSaleControls
+        tabletLayout
+      />
+    );
+
+    const actionGrid = screen.getByTestId('pos-current-sale-actions');
+    expect(actionGrid.className).toContain('grid-cols-6');
+    expect(actionGrid.className).toContain('dgfy-pos-tablet-action-grid');
+    expect(screen.getByRole('button', { name: 'Print Order' }).className).toContain('order-1 col-span-3');
+    expect(screen.getByRole('button', { name: 'Checkout' }).className).toContain('order-2 col-span-3');
+    expect(screen.getByTestId('pos-park-sale-button').className).toContain('order-3 col-span-2');
+    expect(screen.getByTestId('pos-open-cash-drawer-button').className).toContain('order-3 col-span-2');
+    expect(screen.getByTestId('pos-current-sale-split-payment').className).toContain('order-3 col-span-2');
+    expect(screen.getByTestId('pos-open-cash-drawer-button').getAttribute('aria-label')).toBe('Open Cash Drawer');
+    expect(screen.getByText('Open Cash Drawer')).toBeDefined();
+    expect(screen.getByText('Open Cash Drawer').className).toContain('whitespace-nowrap');
+  });
+
   it('falls back to the Services-safe action set when the bundle is missing', () => {
     render(
       <PosCurrentSaleActions

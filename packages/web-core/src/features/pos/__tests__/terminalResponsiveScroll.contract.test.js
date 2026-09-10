@@ -375,5 +375,9 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalSidebarContent).toContain('isCollapsed = false');
     expect(terminalSidebarContent).toContain('collapsed={isCollapsed}');
     expect(terminalSidebarContent).toContain('title={collapsed ? label : undefined}');
+    expect(terminalSidebarContent).toContain('className="h-8 w-7 object-cover object-left"');
+    expect(workflowPanelContent).toContain('isTabletViewport = false');
+    expect(workflowPanelContent).toContain("orderMethod === 'takeout' && isTabletViewport ? 'col-span-full '");
+    expect(posCheckoutContent).toContain('isTabletViewport={isTabletViewport}');
   });
 });
