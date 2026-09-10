@@ -24,10 +24,13 @@ const getRegisteredTerminalHeaders = (terminalId = '') => {
 };
 
 const coordinateCatalogRead = createCatalogReadCoordinator();
-export const fetchPosCatalog = async (params = {}) => {
+export const fetchPosCatalog = async (params = {}, requestConfig = {}) => {
     const session = getBrowserSessionSnapshot();
     const key = JSON.stringify([session.companyToken, session.generation, Object.entries(params).sort()]);
-    const response = await coordinateCatalogRead(key, () => api.get('/pos/catalog', { params }));
+    const response = await coordinateCatalogRead(key, () => api.get('/pos/catalog', {
+        ...requestConfig,
+        params
+    }));
     if (getBrowserSessionSnapshot().generation !== session.generation) throw new Error('Catalog session changed.');
     void reconcilePosImageUploads(response.data?.data || []);
     return response.data?.data || [];

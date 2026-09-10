@@ -494,6 +494,16 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         voidingTransactionId
     } = viewModel;
     const { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow } = historyRefundWorkflow || {};
+    const cartQuantityByItemId = React.useMemo(() => {
+        const quantities = new Map();
+        (Array.isArray(safeCart) ? safeCart : []).forEach((line) => {
+            const itemId = Number(line?.item_id);
+            if (!Number.isFinite(itemId)) return;
+            const currentQuantity = quantities.get(itemId) || 0;
+            quantities.set(itemId, currentQuantity + (Number(line.quantity) || 0));
+        });
+        return quantities;
+    }, [safeCart]);
     const catalogPageNumbers = getCatalogPageNumbers(catalogPage, totalCatalogPages);
     const hasManyCatalogPages = totalCatalogPages > 5;
     const handleCloseDiscountModal = () => {
@@ -816,9 +826,7 @@ return (
                             const hasImage = Boolean(posImageSrc);
                             const catalogCardMediaClassName = `${IS_DGFY_POS_SURFACE ? 'mb-0' : 'mb-1'} ${IS_DGFY_POS_SURFACE && !isTabletViewport ? 'sm:flex sm:min-h-0' : ''} max-sm:mb-0 max-sm:h-full max-sm:min-h-0 ${IS_DGFY_POS_SURFACE && !isTabletViewport ? 'max-sm:w-[128px]' : 'max-sm:w-auto'} max-sm:min-w-0 max-sm:flex-none max-sm:shrink-0 max-sm:self-stretch ${IS_DGFY_POS_SURFACE && !isTabletViewport ? '' : 'max-sm:aspect-square'}`;
                             const catalogCardImageFrameClassName = `${catalogCardImageWrapClassName} relative ${IS_DGFY_POS_SURFACE && !isTabletViewport ? '' : 'max-sm:aspect-square'} max-sm:box-border max-sm:h-full max-sm:w-full max-sm:flex-none`;
-                            const cartQuantityForItem = safeCart
-                                .filter((line) => line.item_id === item.item_id)
-                                .reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
+                            const cartQuantityForItem = cartQuantityByItemId.get(Number(item.item_id)) || 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
                             const isLoadingServiceOptions = serviceOptionsLoadingItemId === Number(item.item_id);
                             const stockColorClassName = getCatalogStockColorClassName(item, lowStockDisplayThreshold);
