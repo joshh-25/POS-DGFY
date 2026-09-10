@@ -9,6 +9,7 @@ const {
   ENTRY_FILE_BY_APP,
   computeAppReachableModules,
   auditReachabilitySafety,
+  resolveAppReachabilityVerdict,
 } = require('./resolve-web-core-reachability');
 
 // #1695, Phase 303 -- shadow-mode reachability oracle. Fixtures are plain filesystem trees (no git
@@ -402,6 +403,168 @@ test('auditReachabilitySafety: aliasScanDirs also covers an unresolved alias in 
     const auditWithAppScan = auditReachabilitySafety(root, REACHABILITY_SCOPE_DIRS, [...REACHABILITY_SCOPE_DIRS, 'apps/dgfy-ims']);
     assert.equal(auditWithAppScan.safe, false);
     assert.ok(auditWithAppScan.violations.some((v) => v.pattern === 'unresolved-internal-alias' && v.file === 'apps/dgfy-ims/src/badAlias.js'));
+  } finally {
+    cleanup(root);
+  }
+});
+
+// --- #1809 (Phase 324): resolveAppReachabilityVerdict() -- the shared, GATING oracle -----------
+//
+// Supersedes check-app-version-bump.js's old shadow-mode-only computeReachabilityShadowVerdict
+// (removed). Its own dedicated fixture below reproduces the concrete multi-scope-package bug this
+// issue fixes: computeReachabilityShadowVerdict derived `relevantChangedFiles` from ONE dependency
+// package (`entry.reason.slice('fan-out:'.length)`, itself set by detectChangedApps()'s
+// `depPackages.find()` picking whichever package had a changed file FIRST in package.json key
+// order) -- a real changed file under the OTHER scoped package was silently dropped from
+// consideration entirely. resolveAppReachabilityVerdict() takes an app's FULL changed-file list and
+// scopes internally against the whole REACHABILITY_SCOPE_DIRS union, so this can no longer happen.
+
+function alwaysExists() {
+  return true;
+}
+
+function neverExists() {
+  return false;
+}
+
+test('resolveAppReachabilityVerdict (#1809 regression): a reachable file under packages/shared-constants is still found even when an unreachable packages/web-core file changed in the same diff', async () => {
+  const root = makeTempRepo('reachability-multi-scope-package-');
+  try {
+    writeFiles(root, {
+      // dgfy-ims's entry reaches a shared-constants file, but never the web-core file below --
+      // mirrors the real repo's package.json key order (pos-receipt, shared-constants, web-core),
+      // where a naive `depPackages.find()` pick would have landed on packages/web-core here, since
+      // it's a real dependency too and this fixture puts a changed file under both.
+      'apps/dgfy-ims/src/main.jsx': "import '../../../packages/shared-constants/src/reachableFromIms.js';\n",
+      'packages/shared-constants/src/reachableFromIms.js': 'export default {};\n',
+      'packages/web-core/src/unreachableFromIms.js': 'export default {};\n',
+    });
+
+    const changedFiles = [
+      'packages/web-core/src/unreachableFromIms.js',
+      'packages/shared-constants/src/reachableFromIms.js',
+    ];
+
+    const verdict = await resolveAppReachabilityVerdict(root, 'dgfy-ims', changedFiles, { fileExistsAtRef: alwaysExists });
+    assert.equal(verdict.applicable, true);
+    assert.equal(verdict.safetyNetPassed, true);
+    // Both scoped files must have been considered -- not just whichever package a naive
+    // single-package scope would have picked.
+    assert.deepEqual(
+      [...verdict.relevantChangedFiles].sort(),
+      ['packages/shared-constants/src/reachableFromIms.js', 'packages/web-core/src/unreachableFromIms.js'],
+    );
+    assert.equal(verdict.changed, true);
+    assert.equal(verdict.code, 'reachable');
+    assert.deepEqual(verdict.hitFiles, ['packages/shared-constants/src/reachableFromIms.js']);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('resolveAppReachabilityVerdict: not applicable when no changed file falls under packages/web-core or packages/shared-constants', async () => {
+  const root = makeTempRepo('reachability-verdict-no-scope-change-');
+  try {
+    pr1689Fixture(root);
+    const verdict = await resolveAppReachabilityVerdict(root, 'dgfy-ims', ['apps/dgfy-ims/src/main.jsx'], { fileExistsAtRef: alwaysExists });
+    assert.equal(verdict.applicable, false);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('resolveAppReachabilityVerdict: not applicable for a backend app (no known bundler entry)', async () => {
+  const root = makeTempRepo('reachability-verdict-backend-');
+  try {
+    pr1689Fixture(root);
+    const verdict = await resolveAppReachabilityVerdict(root, 'dgfy-api', ['packages/shared-constants/index.js'], { fileExistsAtRef: alwaysExists });
+    assert.equal(verdict.applicable, false);
+    assert.match(verdict.reason, /no known bundler entry/);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('resolveAppReachabilityVerdict: a genuinely unreachable changed file resolves "not-reachable" (the PR #1689 shape)', async () => {
+  const root = makeTempRepo('reachability-verdict-not-reachable-');
+  try {
+    pr1689Fixture(root);
+    const changedFiles = ['packages/web-core/src/services/storefrontCatalogService.js'];
+    const verdict = await resolveAppReachabilityVerdict(root, 'dgfy-storefront', changedFiles, { fileExistsAtRef: alwaysExists });
+    assert.equal(verdict.applicable, true);
+    assert.equal(verdict.safetyNetPassed, true);
+    assert.equal(verdict.changed, false);
+    assert.equal(verdict.code, 'not-reachable');
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('resolveAppReachabilityVerdict: a changed file that no longer exists at the head ref is conservatively counted as changed (deletion fail-closed)', async () => {
+  const root = makeTempRepo('reachability-verdict-deleted-');
+  try {
+    pr1689Fixture(root);
+    // The file is deleted from the working tree between base and head -- fileExistsAtRef mirrors
+    // that by reporting it as absent at headGitRef, exactly what a real deletion looks like from
+    // this module's caller-injected git-ref check.
+    const changedFiles = ['packages/web-core/src/services/storefrontCatalogService.js'];
+    fs.rmSync(path.join(root, changedFiles[0]));
+
+    const verdict = await resolveAppReachabilityVerdict(root, 'dgfy-storefront', changedFiles, { fileExistsAtRef: neverExists });
+    assert.equal(verdict.applicable, true);
+    assert.equal(verdict.changed, true);
+    assert.equal(verdict.code, 'deleted-file-fail-closed');
+    assert.deepEqual(verdict.hitFiles, changedFiles);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('resolveAppReachabilityVerdict: a safety-net violation falls back to conservative "changed"', async () => {
+  const root = makeTempRepo('reachability-verdict-safety-net-');
+  try {
+    pr1689Fixture(root);
+    writeFiles(root, {
+      'packages/web-core/src/riskyLoader.js': 'export function load(name) {\n  return import(name);\n}\n',
+    });
+    const changedFiles = ['packages/web-core/src/services/storefrontCatalogService.js'];
+    const verdict = await resolveAppReachabilityVerdict(root, 'dgfy-storefront', changedFiles, { fileExistsAtRef: alwaysExists });
+    assert.equal(verdict.applicable, true);
+    assert.equal(verdict.safetyNetPassed, false);
+    assert.equal(verdict.changed, true);
+    assert.equal(verdict.code, 'safety-net-tripped');
+    assert.ok(verdict.violations.length > 0);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('resolveAppReachabilityVerdict: an unexpected error (e.g. a missing entry file) is caught and degrades to conservative "changed", never throws', async () => {
+  const root = makeTempRepo('reachability-verdict-error-fail-closed-');
+  try {
+    // No apps/dgfy-ims/src/main.jsx written at all -- computeAppReachableModules() throws for a
+    // missing entry file; resolveAppReachabilityVerdict() must catch that and fail closed, not
+    // propagate it, matching the removed computeReachabilityShadowVerdict's own "never throws"
+    // contract (now centralized here so every consumer gets it for free).
+    writeFiles(root, { 'packages/web-core/src/reachable.js': 'export default {};\n' });
+    const verdict = await resolveAppReachabilityVerdict(root, 'dgfy-ims', ['packages/web-core/src/reachable.js'], { fileExistsAtRef: alwaysExists });
+    assert.equal(verdict.applicable, true);
+    assert.equal(verdict.changed, true);
+    assert.equal(verdict.code, 'reachability-error-fail-closed');
+    assert.equal(verdict.safetyNetPassed, false);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('resolveAppReachabilityVerdict: throws immediately when fileExistsAtRef is not a function (caller-programming-error, not a runtime data condition)', async () => {
+  const root = makeTempRepo('reachability-verdict-missing-callback-');
+  try {
+    pr1689Fixture(root);
+    await assert.rejects(
+      () => resolveAppReachabilityVerdict(root, 'dgfy-ims', ['packages/web-core/src/services/storefrontCatalogService.js'], {}),
+      /fileExistsAtRef is required/,
+    );
   } finally {
     cleanup(root);
   }
