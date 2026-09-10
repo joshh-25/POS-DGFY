@@ -793,3 +793,71 @@ gh release create release-$CANDIDATE_ID \
 The committed `docs/releases/notes/$CANDIDATE_ID.md` file stays authoritative regardless of what
 this Release shows — if the two ever disagree, re-run `gh release edit` from the committed file
 rather than editing the Release by hand.
+
+## Sync develop's version baselines from main (#1807)
+
+After the promotion parity gate and GitHub Release publication above, not before — this reads
+`origin/main` as the source of truth, so it only makes sense once `main` has actually deployed.
+Run on every ordinary promotion (both flows — nothing about this step is #1007-specific), whether
+or not this candidate itself involved a repair or hotfix; it's a periodic reconciliation, not a
+per-incident one:
+
+```bash
+git fetch origin develop main
+node scripts/sync-app-version-baselines.js --develop-ref origin/develop --main-ref origin/main
+```
+
+`[sync-app-version-baselines] No apps below main's baseline -- nothing to sync.` → done, nothing
+further to do. **Do not open an empty PR.** Otherwise, the report lists exactly the apps to raise
+and each one's target version (`main`'s current value — never higher, never a downgrade of one
+`develop` already leads on). Open one ordinary `develop`-base PR for those apps only — same clean-
+tree backstop as every other cut in this runbook, and the same `node -e` pattern the "Publish the
+GitHub Release" finalization step above already uses to drive a script's own exported function
+instead of hand-transcribing its output:
+
+```bash
+git status   # confirm clean before cutting -- an unnoticed diff here rides onto the sync PR
+SYNC_ID=$(date +%Y-%m-%d)
+git switch -c chore/release/sync-version-baselines-$SYNC_ID origin/develop
+node -e "
+const fs = require('fs');
+const { computeBaselineSync } = require('./scripts/sync-app-version-baselines');
+const result = computeBaselineSync({ developRef: 'origin/develop', mainRef: 'origin/main' });
+if (result.invalid.length > 0) {
+  console.error('Refusing to sync -- one or more app versions could not be read/parsed:', result.invalid);
+  process.exit(1);
+}
+for (const entry of result.needsSync) {
+  const pkgPath = \`apps/\${entry.app}/package.json\`;
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  pkg.version = entry.mainVersion;
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+  console.log(\`bumped \${entry.app}: \${entry.developVersion} -> \${entry.mainVersion}\`);
+}
+"
+git add apps/*/package.json
+git commit -m "chore(release): sync app version baselines from main"
+git push -u origin chore/release/sync-version-baselines-$SYNC_ID
+gh pr create --base develop --head chore/release/sync-version-baselines-$SYNC_ID \
+  --title "chore(release): sync app version baselines from main" \
+  --body "## Summary
+
+Raises develop's package.json version for every app where main's published version has moved
+past develop's current one (#1807). Additive only: no app is downgraded and no app develop
+already matches or leads is touched.
+
+<list the synced apps and their old -> new versions from the command output above>
+
+## Testing Evidence
+
+\`node scripts/sync-app-version-baselines.js --develop-ref origin/develop --main-ref origin/main\`
+re-run against this branch's HEAD reports every synced app now at or above main's baseline
+(\`upToDate\`, not \`needsSync\`)."
+# wait on pr-checks.yml, then:
+gh pr merge <N> --merge   # never --squash -- see ../SKILL.md
+```
+
+This step never builds, tags, or publishes anything — it only edits `apps/<app>/package.json`'s
+`version` field on `develop`, and carries no interaction with #1610 (the tag-immutability/
+candidate-identity conflict): see `scripts/sync-app-version-baselines.js`'s own header comment,
+and the PR this step ships in, for the full statement.
