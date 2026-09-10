@@ -27,7 +27,7 @@ import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.j
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
 const ORDER_SOURCE_LABELS = {
     in_store: 'In-Store',
@@ -426,7 +426,7 @@ export default function POSTransactionHistoryPanel({
                                                                     {row.discount.discount_type || row.discount_label_snapshot || 'Discount'}
                                                                     {row.discount.discount_rate != null ? ` (${money(row.discount.discount_rate)}%)` : ''}
                                                                 </div>
-                                                                <div className="text-[11px] text-rose-700">PHP {money(row.discount.discount_amount || row.discount_amount)}</div>
+                                                                <div className="text-[11px] text-rose-700">₱{money(row.discount.discount_amount || row.discount_amount)}</div>
                                                                 {row.discount.discount_type === 'voucher' ? (
                                                                     itemVoucherCode && (
                                                                         <div className="text-[11px] font-semibold text-emerald-700">Voucher: {itemVoucherCode}</div>
@@ -445,9 +445,9 @@ export default function POSTransactionHistoryPanel({
                                                         )}
                                                     </td>
                                                 )}
-                                                {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">PHP {money(row.vatable_sales)}</td>}
-                                                {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">PHP {money(row.vat_amount)}</td>}
-                                                <td className="px-4 py-4 text-right font-black text-[#1A4E8D]">PHP {money(row.total_amount)}</td>
+                                                {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">₱{money(row.vatable_sales)}</td>}
+                                                {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">₱{money(row.vat_amount)}</td>}
+                                                <td className="px-4 py-4 text-right font-black text-[#1A4E8D]">₱{money(row.total_amount)}</td>
                                                 <td className={`${isTabletViewport ? 'w-[15rem] min-w-[15rem]' : 'w-[10rem] min-w-[10rem]'} px-2 py-3 text-center`}>
                                                     <div className="flex flex-nowrap justify-center gap-2">
                                                         <Button
@@ -541,11 +541,11 @@ export default function POSTransactionHistoryPanel({
                                                             </div>
                                                             <div>
                                                                 <span className="font-semibold text-[#0F172A]">VATable Sales</span>
-                                                                <p className="mt-1">PHP {money(row.vatable_sales)}</p>
+                                                                <p className="mt-1">₱{money(row.vatable_sales)}</p>
                                                             </div>
                                                             <div>
                                                                 <span className="font-semibold text-[#0F172A]">VAT Amount (12%)</span>
-                                                                <p className="mt-1">PHP {money(row.vat_amount)}</p>
+                                                                <p className="mt-1">₱{money(row.vat_amount)}</p>
                                                             </div>
                                                             {isVoided ? (
                                                                 <div className="col-span-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800">

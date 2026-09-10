@@ -149,7 +149,7 @@ describe('DownpaymentSettingsPanel', () => {
         await user.click(screen.getByText(/Downpayment required/i));
         await user.click(screen.getByText('percentage'));
         await user.click(await screen.findByText(/Fixed amount/i));
-        await user.type(screen.getByLabelText(/Fixed amount \(PHP\)/i), '500');
+        await user.type(screen.getByLabelText(/Fixed amount \(₱\)/i), '500');
         await user.click(screen.getByRole('button', { name: /save/i }));
 
         await waitFor(() => expect(updateDownpaymentSettings).toHaveBeenCalledTimes(1));

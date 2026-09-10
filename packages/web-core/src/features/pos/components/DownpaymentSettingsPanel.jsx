@@ -16,6 +16,8 @@ import {
     validateDownpaymentForm
 } from '../utils/downpaymentSettingsForm.js';
 
+const formatDisplayMoney = (value) => `₱${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 // Phase 143 (#848). Modelled on AffiliatesWorkspacePanel.jsx: a self-contained tenant-settings
 // panel with its own fetch/save and its own permission gate, rendered as a tab inside
 // SettingsWorkspace (TerminalOperationsWorkspace.jsx). Reads/writes the already-shipped Phase 138
@@ -233,7 +235,7 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
                         </div>
                     ) : (
                         <div className="mt-3 space-y-1.5">
-                            <Label htmlFor="downpayment-fixed">Fixed amount (PHP)</Label>
+                            <Label htmlFor="downpayment-fixed">Fixed amount (₱)</Label>
                             <Input
                                 id="downpayment-fixed"
                                 type="number"
@@ -257,7 +259,7 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
 
                     {form.downpayment_type === 'percentage' && (
                         <div className="mt-3 space-y-1.5">
-                            <Label htmlFor="downpayment-min">Minimum downpayment (PHP)</Label>
+                            <Label htmlFor="downpayment-min">Minimum downpayment (₱)</Label>
                             <Input
                                 id="downpayment-min"
                                 type="number"
@@ -270,8 +272,8 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
                             />
                             <p className="text-xs text-slate-500">
                                 A floor under the percentage above, so a small order never produces a
-                                downpayment too small to be worth collecting online. E.g. 10% of PHP 500 is
-                                PHP 50 — with a PHP 100 minimum, that order captures PHP 100 instead.
+                                downpayment too small to be worth collecting online. E.g. 10% of ₱500 is
+                                ₱50 — with a ₱100 minimum, that order captures ₱100 instead.
                             </p>
                             {fieldErrorFor('min_downpayment_centavos') && (
                                 <p className="text-xs text-rose-600">{fieldErrorFor('min_downpayment_centavos')}</p>
@@ -295,7 +297,7 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
                     <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
                         <div className="flex items-center justify-between gap-3">
                             <Label htmlFor="downpayment-sample-total" className="text-xs text-slate-600">
-                                Preview on a sample order total (PHP)
+                                Preview on a sample order total (₱)
                             </Label>
                             <Input
                                 id="downpayment-sample-total"
@@ -313,7 +315,7 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
                                 <div className="mt-1 flex items-center justify-between text-sm">
                                     <span className="text-slate-600">Customer pays now</span>
                                     <span className="font-bold text-slate-900">
-                                        {Number(sampleTotalPesos) > 0 ? `PHP ${Number(sampleTotalPesos).toFixed(2)}` : '—'}
+                                        {Number(sampleTotalPesos) > 0 ? formatDisplayMoney(sampleTotalPesos) : '—'}
                                     </span>
                                 </div>
                             </div>
@@ -325,13 +327,13 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
                             <div className="mt-1 flex items-center justify-between text-sm">
                                 <span className="text-slate-600">Customer pays now</span>
                                 <span className="font-bold text-slate-900">
-                                    {preview.downpaymentAmountPesos !== null ? `PHP ${preview.downpaymentAmountPesos}` : '—'}
+                                    {preview.downpaymentAmountPesos !== null ? formatDisplayMoney(preview.downpaymentAmountPesos) : '—'}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between text-sm">
                                 <span className="text-slate-600">Balance on delivery</span>
                                 <span className="font-bold text-slate-900">
-                                    {preview.balanceDueAmountPesos !== null ? `PHP ${preview.balanceDueAmountPesos}` : '—'}
+                                    {preview.balanceDueAmountPesos !== null ? formatDisplayMoney(preview.balanceDueAmountPesos) : '—'}
                                 </span>
                             </div>
                         </div>

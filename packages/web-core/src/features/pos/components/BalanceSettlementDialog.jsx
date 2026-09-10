@@ -105,8 +105,8 @@ export default function BalanceSettlementDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-            <p className="font-semibold">Balance due: PHP {balanceDue.toFixed(2)}</p>
-            <p>Already paid: PHP {Number(order?.amount_paid || 0).toFixed(2)} of PHP {Number(order?.total_amount || 0).toFixed(2)}</p>
+            <p className="font-semibold">Balance due: ₱{balanceDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p>Already paid: ₱{Number(order?.amount_paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} of ₱{Number(order?.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </div>
           <div className="space-y-1.5">
             <Label>Payment method</Label>
@@ -142,7 +142,7 @@ export default function BalanceSettlementDialog({
                 onChange={(event) => onCashInputChange?.(event.target.value)}
                 disabled={saving}
               />
-              <p className="text-sm text-slate-600">Change: PHP {changeAmount.toFixed(2)}</p>
+              <p className="text-sm text-slate-600">Change: ₱{changeAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -209,8 +209,8 @@ export default function BalanceSettlementDialog({
                 />
                 <span>
                   {isCheque
-                    ? `I confirm the store received a cheque for PHP ${balanceDue.toFixed(2)}. This is recorded as a store-attested payment, not verified by DGFY, and is not confirmation that the cheque has cleared.`
-                    : `I confirm the store received PHP ${balanceDue.toFixed(2)} through its own account. This is recorded as a store-attested payment, not verified by DGFY.`}
+                    ? `I confirm the store received a cheque for ₱${balanceDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. This is recorded as a store-attested payment, not verified by DGFY, and is not confirmation that the cheque has cleared.`
+                    : `I confirm the store received ₱${balanceDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} through its own account. This is recorded as a store-attested payment, not verified by DGFY.`}
                 </span>
               </label>
             </div>

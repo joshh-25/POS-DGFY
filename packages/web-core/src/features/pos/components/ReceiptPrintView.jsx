@@ -2,7 +2,7 @@ import React from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { renderPosReceiptHtml } from '@sieitzz/pos-receipt';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const displayDiscountType = (value) => String(value || '').trim().toLowerCase() === 'manual'
     ? 'OTHER'
     : String(value || '').replace(/_/g, ' ').toUpperCase();
@@ -60,7 +60,7 @@ const resolveReceiptLineTotal = (line) => {
 const formatReceiptQuantity = (value) => {
     const quantity = Number(value || 0);
     if (!Number.isFinite(quantity)) return '0';
-    return Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(2);
+    return quantity.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 };
 
 const splitReceiptItemName = (value) => {
@@ -215,7 +215,7 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                             )}
                             {itemDiscountAmount > 0 && (
                                 <p className="mt-0.5 text-[9px] font-semibold leading-snug text-rose-700 print:text-[8px]">
-                                    Item discount: -PHP {money(itemDiscountAmount)}
+                                    Item discount: -₱{money(itemDiscountAmount)}
                                 </p>
                             )}
                             {modifiers.length > 0 && (

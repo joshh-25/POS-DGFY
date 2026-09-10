@@ -289,7 +289,8 @@ const SETTINGS_FIELD_LABELS = {
   'storefront_locations.primary_location': 'Primary Storefront Location'
 };
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const currencyLabel = (value) => String(value || '').toUpperCase() === 'PHP' ? '₱' : String(value || '₱');
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
@@ -667,8 +668,8 @@ function MerchantTenderReconciliationPanel({ shiftId, salesSummary = null, disab
       setObserved(Object.fromEntries(MERCHANT_TENDER_METHODS.map(({ key }) => [
         key,
         latestObserved?.[key] != null
-          ? String(Number(latestObserved[key]).toFixed(2))
-          : String(Number(data?.expected?.breakdown?.[key]?.amount || 0).toFixed(2))
+          ? Number(latestObserved[key]).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : Number(data?.expected?.breakdown?.[key]?.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       ])));
       setReviewNote(data?.latest_reconciliation?.review_note || '');
       setState({ loading: false, saving: false, data, error: '' });
@@ -728,16 +729,16 @@ function MerchantTenderReconciliationPanel({ shiftId, salesSummary = null, disab
                 {MERCHANT_TENDER_METHODS.map(({ key, label }) => (
                   <tr key={key} className="border-t border-blue-100">
                     <td className="py-2 font-bold text-slate-800">{label}</td>
-                    <td className="py-2">PHP {money(state.data?.expected?.breakdown?.[key]?.amount)}</td>
+                    <td className="py-2">₱{money(state.data?.expected?.breakdown?.[key]?.amount)}</td>
                     <td className="py-2"><Input aria-label={`${label} observed total`} type="number" min="0" step="0.01" className="h-8 w-32 bg-white text-[11px]" value={observed[key]} onChange={(event) => setObserved((previous) => ({ ...previous, [key]: event.target.value }))} disabled={state.saving || disabled} /></td>
-                    <td className={`py-2 text-right font-bold ${Math.abs(variances[key]) > 0.0001 ? 'text-amber-800' : 'text-emerald-700'}`}>PHP {money(variances[key])}</td>
+                  <td className={`py-2 text-right font-bold ${Math.abs(variances[key]) > 0.0001 ? 'text-amber-800' : 'text-emerald-700'}`}>₱{money(variances[key])}</td>
                   </tr>
                 ))}
                 <tr className="border-t border-blue-200 bg-white/60" data-testid="employee-credit-reconciliation-row">
                   <td className="py-2 font-bold text-slate-800">
                     Employee Credit <span className="block text-[10px] font-medium text-slate-500">Internal receivable · {employeeCreditCount} transaction{employeeCreditCount === 1 ? '' : 's'}</span>
                   </td>
-                  <td className="py-2 font-bold text-[#1A4E8D]">PHP {money(employeeCredit.amount)}</td>
+                  <td className="py-2 font-bold text-[#1A4E8D]">₱{money(employeeCredit.amount)}</td>
                   <td className="py-2 text-slate-500">Not applicable</td>
                   <td className="py-2 text-right text-slate-500">Not applicable</td>
                 </tr>
@@ -824,6 +825,7 @@ function ShiftControlsWorkspace({
   const activeShift = shiftState?.shift || null;
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
+  const displayCurrency = currencyLabel(terminalMeta?.pettyCashSymbol);
   const shiftCashierLabel = activeShift?.cashier?.username
     || activeShift?.cashier?.email
     || (activeShift?.cashier_id ? `Cashier #${activeShift.cashier_id}` : 'Current cashier');
@@ -973,25 +975,25 @@ function ShiftControlsWorkspace({
     {
       icon: CircleDollarSign,
       label: 'Opening/Petty Cash:',
-      value: `${terminalMeta.pettyCashSymbol} ${money(activeShift.opening_float_amount)}`,
+      value: `${displayCurrency}${money(activeShift.opening_float_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
     },
     {
       icon: Receipt,
       label: 'Total Sales (excluding opening cash):',
-      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.salesSummary?.total_amount)}`,
+      value: `${displayCurrency}${money(shiftState.salesSummary?.total_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-[#1A4E8D]'
     },
     {
       icon: Banknote,
       label: 'Expected Cash in Drawer:',
-      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.expected_cash_amount)}`,
+      value: `${displayCurrency}${money(shiftState.cashSummary?.expected_cash_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-emerald-700'
     },
     {
       icon: Banknote,
       label: 'Cash Sales:',
-      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.cash_sales_amount)}`,
+      value: `${displayCurrency}${money(shiftState.cashSummary?.cash_sales_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-emerald-700'
     },
     {
@@ -1276,7 +1278,7 @@ function ShiftControlsWorkspace({
           </p>
           {renderAdminBranchContext()}
           <div className="mt-4 space-y-3">
-            <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({displayCurrency})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1539,7 +1541,7 @@ function ShiftControlsWorkspace({
             No active shift is open. Start a shift here before using cashier-only actions.
           </p>
           <div className="mt-4 space-y-3">
-            <Label className="text-[12px] font-black text-[#0F172A]">Opening Cash ({terminalMeta.pettyCashSymbol})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Opening Cash ({displayCurrency})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1590,10 +1592,10 @@ function ShiftControlsWorkspace({
           <div className="mt-3 space-y-3">
             <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
               <span className="text-xs font-semibold text-slate-600">Total Sales (excluding opening cash)</span>
-              <span className="text-sm font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol} {money(shiftState.salesSummary?.total_amount)}</span>
+              <span className="text-sm font-black text-[#1A4E8D]">{displayCurrency}{money(shiftState.salesSummary?.total_amount)}</span>
             </div>
             <p className="text-xs text-slate-600">
-              Expected Cash in Drawer: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span>
+              Expected Cash in Drawer: <span className="font-semibold text-slate-900">{displayCurrency}{money(shiftState.cashSummary?.expected_cash_amount)}</span>
             </p>
             {canCloseDay ? (
               <MerchantTenderReconciliationPanel
@@ -1602,7 +1604,7 @@ function ShiftControlsWorkspace({
                 disabled={locked || !isOnline}
               />
             ) : null}
-            <Label className="text-[12px] font-black text-[#0F172A]">Closing Cash ({terminalMeta.pettyCashSymbol})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Closing Cash ({displayCurrency})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1685,7 +1687,7 @@ function ShiftControlsWorkspace({
               <option value="opening_adjustment">Opening Adjustment</option>
               <option value="closing_adjustment">Closing Adjustment</option>
             </select>
-            <Label className="text-[12px] font-black text-[#0F172A]">Amount ({terminalMeta.pettyCashSymbol})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Amount ({displayCurrency})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1734,7 +1736,7 @@ function ShiftControlsWorkspace({
       activeShift={activeShift}
       locked={locked}
       isOnline={isOnline}
-      currency={terminalMeta.pettyCashSymbol}
+      currency={displayCurrency}
     />
   );
 
@@ -3882,7 +3884,7 @@ function ItemsWorkspace({
                             <p className="mt-0.5 text-xs font-bold text-[#0F172A]">
                               {isServiceItem && item.cost_per_unit == null
                                 ? 'Not tracked'
-                                : <>PHP {money(profit)} <span className="text-[#2563EB]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</span></>}
+                                : <>₱{money(profit)} <span className="text-[#2563EB]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</span></>}
                             </p>
                           </div>
                         </div>
@@ -3900,7 +3902,7 @@ function ItemsWorkspace({
                               <div className="min-w-0 flex-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Price</p>
                                 <div className="mt-0.5 min-w-0 leading-none">
-                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-[#1A4E8D]">PHP</p>
+                                  <p className="text-[10px] font-bold tracking-[0.06em] text-[#1A4E8D]">₱</p>
                                   <p className="text-[0.95rem] font-black tracking-tight text-[#1A4E8D]">{money(item.default_sale_price)}</p>
                                 </div>
                               </div>
@@ -3914,7 +3916,7 @@ function ItemsWorkspace({
                               <div className="min-w-0 flex-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Cost</p>
                                 <div className="mt-0.5 min-w-0 leading-none">
-                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'OPTIONAL' : 'PHP'}</p>
+                                  <p className="text-[10px] font-bold tracking-[0.06em] text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'OPTIONAL' : '₱'}</p>
                                   <p className="text-[0.95rem] font-black tracking-tight text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'Not tracked' : money(item.cost_per_unit)}</p>
                                 </div>
                               </div>
@@ -3990,7 +3992,7 @@ function ItemsWorkspace({
 
       {showCreateModal && typeof document !== 'undefined' && createPortal((
         <div
-          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 backdrop-blur-none px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-create-modal-title"
@@ -4129,7 +4131,7 @@ function ItemsWorkspace({
                         {externalProductLookup.suggested_price ? (
                           <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                             <p className="font-semibold">
-                              Suggested selling price: PHP {Number(externalProductLookup.suggested_price.amount).toFixed(2)}
+                              Suggested selling price: ₱{Number(externalProductLookup.suggested_price.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                             <p>
                               {externalProductLookup.suggested_price.label} from Open Prices
@@ -4500,7 +4502,7 @@ function ItemsWorkspace({
 
       {activeEditItem && typeof document !== 'undefined' && createPortal((
         <div
-          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 backdrop-blur-none px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-edit-modal-title"
@@ -5014,7 +5016,7 @@ function ItemsWorkspace({
 
       {itemSaveInFlight && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-md transition-all duration-300"
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/70 px-4 backdrop-blur-none transition-all duration-300"
           role="status"
           aria-live="assertive"
           aria-label={itemWorkspacePresentation.savingAriaLabel}
@@ -5072,7 +5074,7 @@ function ItemsWorkspace({
 
       {savedMessage.name && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-4 py-6 animate-pos-overlay-fade-in"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-slate-950/70 backdrop-blur-none px-4 py-6 animate-pos-overlay-fade-in"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-saved-modal-title"
@@ -5133,7 +5135,7 @@ function ItemsWorkspace({
 
       {deleteConfirmItem && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-delete-confirm-modal-title"
@@ -5181,7 +5183,7 @@ function ItemsWorkspace({
 
       {deletedItemName && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-deleted-modal-title"
@@ -5411,7 +5413,7 @@ function CategoryManagementWorkspace() {
 
       {editor && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/70 px-3 py-3 backdrop-blur-none sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-category-editor-title"
@@ -5442,7 +5444,7 @@ function CategoryManagementWorkspace() {
 
       {pendingAction && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/70 px-3 py-3 backdrop-blur-none sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-category-action-title"
@@ -9791,6 +9793,11 @@ export default function TerminalOperationsWorkspace({
           <PosServicesOperationsWorkspace
             permissions={serviceOperationsPermissions}
             isOnline={isOnline}
+            settlementContext={{
+              shiftId: shiftState?.shift?.pos_terminal_shift_id,
+              terminalId: activeTerminalId,
+              locationId: shiftState?.shift?.location_id || operatingLocationId
+            }}
           />
         </div>
       );

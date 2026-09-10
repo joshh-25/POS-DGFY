@@ -49,6 +49,8 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(workflowSource).toContain('formatParkedSaleDisplayName(parkedSale)');
         expect(terminalRenderSource).toContain('data-testid="pos-park-sale-name-dialog"');
         expect(terminalRenderSource).toContain('Customer / Order Name');
+        expect(terminalRenderSource).toContain('flex-row gap-2 border-0 px-5 !pt-1 pb-3 sm:justify-end');
+        expect(terminalRenderSource).toContain('className="min-w-0 flex-1"');
         expect(workflowSource).toContain('parked_sale_name: parkedSaleName');
         expect(dialogSource).not.toContain('row?.park_reference ||');
     });

@@ -52,4 +52,14 @@ describe('item Senior/PWD discount eligibility controls', () => {
     expect(checkoutTerminal).toContain('line_ref: lineRef');
     expect(checkoutWorkflow).toContain('senior_pwd_discount_eligible: line.senior_pwd_discount_eligible === true');
   });
+
+  it('uses the catalog image resolver for eligible discount items', () => {
+    const discountWorkspace = readFrontendFile('src/features/pos/components/POSDiscountWorkspace.jsx');
+
+    expect(discountWorkspace).toContain("String(item?.item_id ?? '') === String(line?.item_id ?? '')");
+    expect(discountWorkspace).toContain('resolvePosCatalogImageSources(catalogItem || line)');
+    expect(discountWorkspace).toContain('const discountThumbSources = resolvedSrc');
+    expect(discountWorkspace).toContain('<ResponsiveImage sources={discountThumbSources}');
+    expect(discountWorkspace).not.toContain('advanceAssetImageFallback(event, imageFallbackCandidates)');
+  });
 });

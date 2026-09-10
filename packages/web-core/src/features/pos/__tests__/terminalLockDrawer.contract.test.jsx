@@ -107,10 +107,11 @@ describe('TerminalLockDrawer contract', () => {
     const onSubmit = vi.fn();
     render(<TerminalLockDrawer {...buildProps({ onSubmit })} />);
 
-    const textSizeControl = screen.getByRole('combobox', { name: 'POS text size' });
+    const textSizeControl = screen.getByRole('button', { name: 'POS text size: Normal (100%)' });
     expect(textSizeControl.closest('form')).toBeNull();
 
-    fireEvent.change(textSizeControl, { target: { value: 'large' } });
+    fireEvent.click(textSizeControl);
+    fireEvent.click(screen.getByRole('option', { name: 'Large (115%)' }));
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

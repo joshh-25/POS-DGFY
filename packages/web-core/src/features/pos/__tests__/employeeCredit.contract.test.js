@@ -73,6 +73,8 @@ describe('Employee Credit POS contract', () => {
     expect(employeeCreditPaymentContent).not.toContain('Select an employee. Eligibility is validated automatically');
     expect(employeeCreditPaymentContent).not.toContain('Eligible. This sale will be added to the employee outstanding balance.');
     expect(employeeCreditPaymentContent).not.toContain('Full Employee Credit payment only.');
+    expect(employeeCreditPaymentContent).not.toContain('<UserRound');
+    expect(employeeCreditPaymentContent).not.toContain('>Employee Credit</p>');
     expect(employeeCreditPaymentContent).not.toContain('available credit');
     expect(employeeCreditPaymentContent).not.toContain('placeholder="Employee account code"');
     expect(employeeCreditPaymentContent).not.toContain("'Verify'");

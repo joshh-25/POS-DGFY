@@ -395,7 +395,7 @@ export default function TerminalPageLayout({
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
     : 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y';
   const workspaceContentClassName = isCheckoutWorkspaceMode
-    ? 'grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden p-2'
+    ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`
     : 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2';
   const workspaceSectionClassName = isCheckoutWorkspaceMode
     ? 'h-full min-h-0 min-w-0 max-w-full overflow-hidden transition'
@@ -688,10 +688,27 @@ export default function TerminalPageLayout({
               <Menu className="h-6 w-6" />
             </button>
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-3">
-                <h1 className="min-w-0 truncate text-[18px] font-black tracking-tight text-[#0F172A] lg:text-[22px]">
-                  {activeHeaderTitle}
-                </h1>
+              <div className="flex min-w-0 items-center gap-2 lg:gap-3">
+                <div className="min-w-0 flex-1">
+                  <h1 className="min-w-0 truncate text-[18px] font-black leading-tight tracking-tight text-[#0F172A] lg:text-[22px]">
+                    {activeHeaderTitle}
+                  </h1>
+                  <div
+                    className="mt-0.5 flex min-w-0 items-center gap-1.5 leading-none sm:hidden"
+                    data-testid="pos-mobile-terminal-indicator"
+                    role="status"
+                    aria-label={`Terminal ${normalizedActiveTerminalId || 'COUNTER-01'} is ${isOnline ? 'online' : 'offline'}`}
+                  >
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} aria-hidden="true" />
+                    <span className="min-w-0 truncate text-[10px] font-extrabold text-slate-700">
+                      {normalizedActiveTerminalId || 'COUNTER-01'}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-slate-300" aria-hidden="true">•</span>
+                    <span className={`shrink-0 text-[9px] font-black uppercase tracking-wide ${isOnline ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {isOnline ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+                </div>
                 <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs sm:flex">
                   <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                   <span className="text-[11px] font-extrabold text-slate-800">
@@ -705,14 +722,15 @@ export default function TerminalPageLayout({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-            <div
-              data-testid="pos-header-park-slot"
-              className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10"
-            />
             <PosTextSizeControl
               id="pos-text-size-header"
               value={posTextSize}
               onChange={onPosTextSizeChange}
+              desktopLabeled
+            />
+            <div
+              data-testid="pos-header-park-slot"
+              className="relative flex h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5"
             />
             {renderNotificationButton(compactBellClassName, 20)}
             {renderNotificationButton(desktopBellClassName, 24)}
@@ -817,7 +835,7 @@ export default function TerminalPageLayout({
 
       {isFloatingSidebarLayout && mobileNavOpen && (
         <div className={overlayContainerClassName}>
-          <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
+          <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-none" onClick={() => setMobileNavOpen(false)} />
           <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto p-3 shadow-2xl shadow-slate-950/20" style={{ background: 'var(--pos-shell-sidebar, #FFFFFF)' }}>
             <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
               <img
@@ -1049,7 +1067,7 @@ export default function TerminalPageLayout({
         <div
           aria-hidden="true"
           data-testid="pos-terminal-lock-backdrop"
-          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-md"
+          className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-none"
         />
       ) : null}
 

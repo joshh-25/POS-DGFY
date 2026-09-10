@@ -53,7 +53,7 @@ describe('EmployeeCreditManagementPanel Repay All flow', () => {
     await user.click(screen.getByRole('button', { name: 'Repay all' }));
 
     expect(screen.getByRole('heading', { name: 'Repay Employee Credit in full?' })).toBeTruthy();
-    expect(screen.getByText(/full repayment of PHP 125\.00/)).toBeTruthy();
+    expect(screen.getByText(/full repayment of ₱125\.00/)).toBeTruthy();
     const dialog = screen.getByRole('dialog');
 
     await user.click(within(dialog).getByRole('button', { name: 'Repay all' }));

@@ -63,7 +63,7 @@ describe('POS audit workspace contract', () => {
                 cashier_name: 'cashier-seven'
             }
         }, [{ location_id: 1, name: 'Space Bar - Iloilo Main Branch' }])).toEqual([
-            'Applied Other discount PHP 25.00 to order #44',
+            'Applied Other discount ₱25.00 to order #44',
             'Authorized by manager-nine',
             'Cashier: cashier-seven'
         ]);
@@ -86,7 +86,7 @@ describe('POS audit workspace contract', () => {
         }, [{ location_id: 1, name: 'Space Bar - Iloilo Main Branch' }])).toEqual([
             'Park reference: PARK-DD47A99010AD',
             'Items: 2',
-            'Total: PHP 175.00',
+            'Total: ₱175.00',
             'Terminal: JOHN-01',
             'Shift: 82',
             'Location: Space Bar - Iloilo Main Branch'
@@ -247,8 +247,8 @@ describe('POS audit workspace contract', () => {
                 }
             }
         })).toEqual([
-            'Changed cost for Chicken Meal from PHP 45.00 to PHP 52.50',
-            'Changed sale price for Chicken Meal from PHP 90.00 to PHP 99.00'
+            'Changed cost for Chicken Meal from ₱45.00 to ₱52.50',
+            'Changed sale price for Chicken Meal from ₱90.00 to ₱99.00'
         ]);
         expect(formatAuditEventLabel({
             entity_type: 'item_catalog_image',

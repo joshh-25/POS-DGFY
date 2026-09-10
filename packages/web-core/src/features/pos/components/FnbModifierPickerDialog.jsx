@@ -150,7 +150,7 @@ export default function FnbModifierPickerDialog({
                             </span>
                             <span className="text-xs font-bold text-blue-700">
                               {Number(option.price_delta)
-                                ? `+₱${Number(option.price_delta).toFixed(2)} each`
+                                ? `+₱${Number(option.price_delta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each`
                                 : "Included"}
                             </span>
                           </label>

@@ -20,6 +20,10 @@ describe('discount quantity and employee dropdown UI contracts', () => {
         expect(discountWorkspace).toContain('Number.isInteger(requestedQuantity) && requestedQuantity > 0');
         expect(discountWorkspace).toContain("['.', ',', 'e', 'E', '+', '-'].includes(event.key)");
         expect(discountWorkspace).toContain('disabled={cartQuantity === 0}');
+        expect(discountWorkspace).toContain('data-testid={`pos-discount-quantity-stepper-${lineRef}`}');
+        expect(discountWorkspace).toContain('Decrease discount quantity for ${line.item_name}');
+        expect(discountWorkspace).toContain('Increase discount quantity for ${line.item_name}');
+        expect(discountWorkspace).toContain('const adjustDiscountQuantity = (lineRef, currentQuantity, cartQuantity, delta) => {');
         expect(discountWorkspace).toContain("'No whole units'");
         expect(discountWorkspace).not.toContain('min="0.001"');
         expect(discountWorkspace).not.toContain('step="0.001"');

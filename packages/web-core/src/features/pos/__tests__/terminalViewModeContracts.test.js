@@ -336,7 +336,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageLayoutContent).not.toContain('sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 backdrop-blur');
     expect(terminalPageLayoutContent).toContain('className={`${workspacePaneClassName} ${lockedSurfaceClassName}`}');
     expect(terminalPageLayoutContent).toContain('data-testid="pos-terminal-lock-backdrop"');
-    expect(terminalPageLayoutContent).toContain('bg-slate-950/35 backdrop-blur-md');
+    expect(terminalPageLayoutContent).toContain('bg-slate-950/70 backdrop-blur-none');
   });
 
   it('remounts the POS layout after terminal unlock for Safari and PWA rendering', () => {

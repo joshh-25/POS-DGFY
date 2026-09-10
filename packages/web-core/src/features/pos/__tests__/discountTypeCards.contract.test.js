@@ -38,7 +38,7 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(checkoutRenderContent).toContain("{ value: 'employee', label: 'Employee'");
     expect(checkoutRenderContent).toContain("{ value: 'promo', label: 'Promo'");
     expect(checkoutRenderContent).toContain("{ value: 'voucher', label: 'Voucher'");
-    expect(checkoutRenderContent).toContain("{ value: 'manual', label: 'Other'");
+    expect(checkoutRenderContent).toContain("{ value: 'manual', label: 'Others'");
     expect(discountModalContent).toContain('role="tablist"');
     expect(discountModalContent).toContain('role="tab"');
     expect(discountModalContent).toContain('aria-selected={active}');
@@ -101,21 +101,55 @@ describe('Apply Discount type-card navigation contract', () => {
     expect(discountModalContent).toContain('PIN not configured');
   });
 
-  it('keeps approval controls on one responsive row and hides the duplicate preview when embedded', () => {
+  it('clears the active checkout discount when its type card is clicked again', () => {
+    expect(checkoutDialogContent).toContain('const handleCheckoutDiscountTypeClick = (discountType) => {');
+    expect(checkoutDialogContent).toContain('if (selectedDiscountType === discountType) {');
+    expect(checkoutDialogContent).toContain('clearAppliedDiscount();');
+    expect(checkoutDialogContent).toContain('onClick={() => handleCheckoutDiscountTypeClick(option.value)}');
+  });
+
+  it('matches the compact discount wireframe and hides the duplicate preview when embedded', () => {
     expect(discountModalContent).toContain('<div className="grid gap-2.5 sm:grid-cols-2">');
+    expect(discountModalContent).toContain('<select value={discountDraft.method}');
     expect(discountModalContent).toContain('<div className="space-y-1 sm:col-span-2">');
     expect(discountModalContent).toContain('data-testid="pos-discount-preview-summary"');
     expect(discountModalContent).toContain('{!embedded && (');
   });
 
-  it('renders Customer Name before Eligible Items on tablet and restores desktop placement', () => {
-    const workspaceCustomerNameIndex = discountWorkspaceContent.indexOf('>Customer Name <');
-    const workspaceEligibleItemsIndex = discountWorkspaceContent.indexOf('>Eligible Items</');
+  it('uses the ice-blue selection accents and POS-primary apply action', () => {
+    expect(discountModalContent).toContain('border-blue-200 bg-blue-50/50');
+    expect(discountModalContent).toContain('accent-[#1A4E8D]');
+    expect(discountModalContent).toContain('bg-[#EFF7FF]');
+    expect(discountModalContent).toContain('bg-[#1A4E8D]');
+    expect(discountModalContent).toContain('hover:bg-[#143F73]');
+    expect(discountModalContent).not.toContain('hover:shadow-[0_4px_12px_rgba(26,78,141,0.25)]');
+    expect(discountModalContent).toContain('inline-flex items-center gap-1">');
+    expect(discountModalContent).not.toContain('inline-flex items-center gap-1 rounded-lg border');
+    expect(discountModalContent).toContain('border border-[#B9D8F4] bg-[#EFF7FF]');
+    expect(discountModalContent).toContain('p-0 text-center text-sm font-black leading-[1]');
+    expect(discountModalContent).toContain('<Minus className="h-3 w-3"');
+    expect(discountModalContent).toContain('<Plus className="h-3 w-3"');
+    expect(discountModalContent).toContain('hover:bg-[#DCEEFF]');
+    expect(discountModalContent).not.toContain('bg-emerald-600');
+    expect(discountModalContent).not.toContain('bg-teal-50');
+  });
 
-    expect(workspaceCustomerNameIndex).toBeGreaterThan(-1);
-    expect(workspaceCustomerNameIndex).toBeLessThan(workspaceEligibleItemsIndex);
+  it('keeps statutory discount headers in one desktop row and preserves tablet placement', () => {
+    expect(discountWorkspaceContent).toContain('data-testid="pos-discount-identity-header"');
+    expect(discountWorkspaceContent).toContain('isDesktopIdentityHeader');
+    expect(discountWorkspaceContent).toContain('lg:top-[5px]');
+    expect(discountWorkspaceContent).toContain('lg:-mb-[5px]');
+    expect(discountWorkspaceContent).toContain('lg:gap-y-0');
+    expect(discountWorkspaceContent).toContain('grid grid-cols-2 gap-2.5 pl-1');
+    expect(discountWorkspaceContent).toContain('border-r border-slate-200 pr-4');
+    expect(discountWorkspaceContent).toContain('lg:hidden');
+    expect(discountWorkspaceContent).toContain('lg:space-y-0');
+    expect(discountWorkspaceContent).not.toContain('lg:before:top-');
+    expect(discountWorkspaceContent).toContain('text-[11px] font-extrabold leading-[14px] text-slate-500');
+    expect(discountWorkspaceContent).toContain('text-[11px] font-extrabold leading-[14px] text-[#0F172A]');
     expect(discountWorkspaceContent).toContain('isTabletViewport && discountDraft.type && discountDraft.type !== \'employee\'');
-    expect(discountWorkspaceContent).toContain('!isTabletViewport && discountDraft.type && discountDraft.type !== \'employee\'');
+    expect(discountWorkspaceContent).toContain('!isTabletViewport && (');
+    expect(discountWorkspaceContent).toContain("discountDraft.type && discountDraft.type !== 'employee'");
     expect(checkoutViewContent).toContain('<POSDiscountWorkspace viewModel={viewModel} onCancel={handleCloseDiscountModal} />');
   });
 

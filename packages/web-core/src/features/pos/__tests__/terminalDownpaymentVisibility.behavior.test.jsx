@@ -65,9 +65,9 @@ describe('POS downpayment visibility (Phase 144, #824)', () => {
     renderQueue([DOWNPAYMENT_ORDER]);
 
     expect(screen.getByText('Downpayment')).toBeTruthy();
-    expect(screen.getByText(/PHP 200\.00/)).toBeTruthy();
+    expect(screen.getByText(/₱200\.00/)).toBeTruthy();
     expect(screen.getByText('Balance due')).toBeTruthy();
-    expect(screen.getByText(/PHP 800\.00/)).toBeTruthy();
+    expect(screen.getByText(/₱800\.00/)).toBeTruthy();
   });
 
   // The balance is always collected in person (ADR 0069 clause 2 [binding]); only the wording
@@ -99,9 +99,9 @@ describe('POS downpayment visibility (Phase 144, #824)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /reject/i }));
 
-    const dialogCopy = screen.getByText(/DGFY will request a refund of the PHP 200\.00 downpayment/i);
+    const dialogCopy = screen.getByText(/DGFY will request a refund of the ₱200\.00 downpayment/i);
     expect(dialogCopy).toBeTruthy();
-    expect(dialogCopy.textContent).toContain('PHP 800.00 balance was never charged');
+    expect(dialogCopy.textContent).toContain('₱800.00 balance was never charged');
     // A store-side reject always refunds, even under a non-refundable policy -- so this dialog
     // must never suggest the customer's deposit is being kept.
     expect(dialogCopy.textContent).not.toMatch(/forfeit/i);

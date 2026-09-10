@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 
-const money = (value, currency = 'PHP') => `${currency} ${Number(value || 0).toFixed(2)}`;
+const money = (value, currency = '₱') => `${String(currency).toUpperCase() === 'PHP' ? '₱' : currency}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const normalize = (value) => String(value || '').trim().toLowerCase();
 
 const resolveWorkflow = (transaction = {}) => {
