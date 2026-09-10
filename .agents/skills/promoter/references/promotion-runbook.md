@@ -823,19 +823,56 @@ git status   # confirm clean before cutting -- an unnoticed diff here rides onto
 # earlier in this runbook's branch-cut section (either flow) and persists for the rest of this
 # shell session -- same convention $TARGET_REF/$TARGET_SHA already rely on in the compliance
 # preflight block above.
-SYNC_ID="${CANDIDATE_ID:?candidate ID required -- set earlier in this runbook's branch-cut section}"
+SYNC_ID="${CANDIDATE_ID:?candidate ID required -- set earlier in the branch-cut section above}"
 
 # Rerun guard: check for an existing sync PR for this candidate before cutting a new branch --
 # without this, a stale local branch surviving past a prior run's post-merge remote deletion would
 # make `git switch -c` below fail outright and silently skip the reconciliation instead of either
 # reusing or correctly re-proposing it.
-EXISTING_SYNC_PR=$(gh pr list --head "chore/release/sync-version-baselines-$SYNC_ID" --state all --json number --jq '.[0].number // empty')
-if [ -n "$EXISTING_SYNC_PR" ]; then
-  echo "A sync PR already exists for candidate $SYNC_ID (#$EXISTING_SYNC_PR) -- check its state (open: wait on it; merged/closed: this candidate is already synced, nothing further to do here) rather than opening a second one." >&2
+#
+# Classify explicitly on `state`/`mergedAt` -- do not treat "a PR exists" as "already synced"
+# (#1813 RF-3): an OPEN PR means wait, don't duplicate; a MERGED one means done; a CLOSED-but-
+# unmerged one means its version changes never reached `develop` and must never be silently read
+# as synced -- retry instead, since recomputing computeBaselineSync() from live refs is always
+# safe to redo. The lookup itself is wrapped in its own failure check (`if ! VAR=$(...)`) so a
+# GitHub/API error (auth, rate limit, network) stops the run instead of `$SYNC_PR_JSON` coming back
+# empty and being misread as "no existing PR, safe to create" -- the exact silent-fallthrough gap
+# the prior version of this guard had.
+if ! SYNC_PR_JSON=$(gh pr list --head "chore/release/sync-version-baselines-$SYNC_ID" --state all --json number,state,mergedAt --jq '.[0] // empty'); then
+  echo "ERROR: gh pr list failed while checking for an existing sync PR for candidate $SYNC_ID -- stopping rather than risking a duplicate PR. Investigate (auth/rate-limit/network) and re-run this step." >&2
+  exit 1
+fi
+
+if [ -z "$SYNC_PR_JSON" ]; then
+  SYNC_PR_ACTION=create
 else
-  git branch -D "chore/release/sync-version-baselines-$SYNC_ID" 2>/dev/null || true   # drop a stale local branch from an earlier interrupted attempt, if any
-  git switch -c "chore/release/sync-version-baselines-$SYNC_ID" origin/develop
-  node -e "
+  SYNC_PR_NUMBER=$(echo "$SYNC_PR_JSON" | jq -r '.number')
+  SYNC_PR_STATE=$(echo "$SYNC_PR_JSON" | jq -r '.state')
+  SYNC_PR_MERGED_AT=$(echo "$SYNC_PR_JSON" | jq -r '.mergedAt')
+  if [ "$SYNC_PR_STATE" = "OPEN" ]; then
+    SYNC_PR_ACTION=wait
+  elif [ "$SYNC_PR_MERGED_AT" != "null" ]; then
+    SYNC_PR_ACTION=skip
+  else
+    SYNC_PR_ACTION=retry   # CLOSED, mergedAt null -- closed without merging, never synced
+  fi
+fi
+
+case "$SYNC_PR_ACTION" in
+  wait)
+    echo "An OPEN sync PR already exists for candidate $SYNC_ID (#$SYNC_PR_NUMBER) -- wait on it, do not open a second one." >&2
+    ;;
+  skip)
+    echo "Candidate $SYNC_ID's sync PR (#$SYNC_PR_NUMBER) is already merged -- already synced, nothing further to do here." >&2
+    ;;
+  retry|create)
+    if [ "$SYNC_PR_ACTION" = retry ]; then
+      echo "Candidate $SYNC_ID's prior sync PR (#$SYNC_PR_NUMBER) was closed without merging -- its version changes never reached develop. Retrying." >&2
+      git push origin --delete "chore/release/sync-version-baselines-$SYNC_ID" 2>/dev/null || true   # drop the dead remote branch, if it still exists
+    fi
+    git branch -D "chore/release/sync-version-baselines-$SYNC_ID" 2>/dev/null || true   # drop a stale local branch from an earlier interrupted attempt, if any
+    git switch -c "chore/release/sync-version-baselines-$SYNC_ID" origin/develop
+    node -e "
 const fs = require('fs');
 const { computeBaselineSync } = require('./scripts/sync-app-version-baselines');
 const result = computeBaselineSync({ developRef: 'origin/develop', mainRef: 'origin/main' });
@@ -851,12 +888,12 @@ for (const entry of result.needsSync) {
   console.log(\`bumped \${entry.app}: \${entry.developVersion} -> \${entry.mainVersion}\`);
 }
 "
-  git add apps/*/package.json
-  git commit -m "chore(release): sync app version baselines from main"
-  git push -u origin "chore/release/sync-version-baselines-$SYNC_ID"
-  gh pr create --base develop --head "chore/release/sync-version-baselines-$SYNC_ID" \
-    --title "chore(release): sync app version baselines from main" \
-    --body "## Summary
+    git add apps/*/package.json
+    git commit -m "chore(release): sync app version baselines from main"
+    git push -u origin "chore/release/sync-version-baselines-$SYNC_ID"
+    gh pr create --base develop --head "chore/release/sync-version-baselines-$SYNC_ID" \
+      --title "chore(release): sync app version baselines from main" \
+      --body "## Summary
 
 Raises develop's package.json version for every app where main's published version has moved
 past develop's current one (#1807). Additive only: no app is downgraded and no app develop
@@ -869,9 +906,10 @@ already matches or leads is touched.
 \`node scripts/sync-app-version-baselines.js --develop-ref origin/develop --main-ref origin/main\`
 re-run against this branch's HEAD reports every synced app now at or above main's baseline
 (\`upToDate\`, not \`needsSync\`)."
-  # wait on pr-checks.yml, then:
-  gh pr merge <N> --merge   # never --squash -- see ../SKILL.md
-fi
+    # wait on pr-checks.yml, then:
+    gh pr merge <N> --merge   # never --squash -- see ../SKILL.md
+    ;;
+esac
 ```
 
 This step never builds, tags, or publishes anything — it only edits `apps/<app>/package.json`'s
