@@ -20142,7 +20142,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   verdict (`.agents/skills/pr-reviewer/SKILL.md`); `implement` gains its own version-bump obligation
   in `.agents/skills/implement/SKILL.md`, matching ADR 0081 Decision 6's "whoever's PR changes an
   app bumps that app's version" rule.
-- Status: planned.
+- Status: completed.
 - Dependencies: Phase 273 / ADR 0081 Decision 6; Phase 274 (#1560, the check this proposal builds
   on). Not yet filed as a GitHub issue — per epic #1548's own candidate slate, graduates
   wave-at-a-time (`docs/process/ISSUE-TAXONOMY.md`'s deferred-decomposition rule).
@@ -22376,7 +22376,11 @@ content differs from what was implemented and tested under the "303" label.
   asynchronous gallery worker so an upload cannot replace or duplicate the existing
   gallery. Repeated file selections are deduplicated, stale concurrent edits are
   rejected with a reopen message, and legacy append uploads retain their behavior.
-- Status: completed.
+- Status: in_progress.
+- Reopened 2026-09-09: final audit found seven untested recovery/persistence
+  gaps. The prior implementation evidence below remains valid, but does not
+  establish complete-flow acceptance. Closure requires Phases 318-320 in the
+  [photo repair plan](POS_ITEM_PHOTO_REPAIR_PHASES_318_320.md).
 - Dependencies: Phase 316; existing storefront gallery API and image worker;
   ADR 0029 catalog/storefront ownership boundaries; ADR 0067 browser floor.
 - Acceptance and validation evidence: POS draft-helper, Edit Item save-contract,
@@ -22386,8 +22390,87 @@ content differs from what was implemented and tested under the "303" label.
   POS production build passed;
   changed-file lint, architecture, compliance, documentation, app-version, and
   committed-diff checks passed. No database migration was required.
-- Completion date: 2026-09-09.
+- Completion date: prior completion recorded 2026-09-09; reopened the same day.
 - Contracts/files: `posEditImageDraft.js`, Edit Item image flow in
   `TerminalOperationsWorkspace.jsx`, `storefrontCatalogService.js`, gallery-intent
   transport/controller/worker/use-case code, and focused frontend/API tests.
 - Next eligible phase: 318.
+
+## Phase 318 - Safe item gallery persistence
+
+- Initiative/release: POS item photo repair / current release.
+- Objective and scope: atomic stale checking, commit-before-cleanup, and stored
+  metadata preservation across gallery writers; audit gaps G1, G2 and G4.
+- Status: completed.
+- Dependencies: Phase 317 implementation; ADR 0029 and ADR 0055.
+- Acceptance and validation evidence: `storefrontCatalogUseCases.test.js`,
+  `inventoryItemRepository.test.js`, `itemHandlers.transport.test.js`,
+  `catalogImageUploadWorker.test.js`, `storefrontCatalogImagePersistence.integration.test.js`,
+  and `storefrontCatalogGenerateImageUseCases.test.js` passed (6 suites, 162
+  tests); focused POS editor/inventory contract tests passed (2 files, 21
+  tests); changed API lint, architecture/controller-boundary, compliance/API
+  contract, docs/ADR, and `git diff --check` passed; POS, IMS, and Storefront
+  production builds passed. The covered tests include stale and empty-base
+  conflicts, metadata preservation, commit-before-cleanup, remove-all DB
+  failure, cleanup failure, and lifecycle metadata compatibility.
+- Completion date: 2026-09-09.
+- Contracts/files: gallery controllers/use cases, item repository, image workers,
+  storefrontCatalogService.js and their tests; exact paths in the linked plan.
+- Next eligible phase: 319.
+
+## Phase 319 - Item photo editor state and retry consistency
+
+- Initiative/release: POS item photo repair / current release.
+- Objective and scope: controlled Primary state, retained failed-save drafts,
+  AI gallery refresh and current Add Item retry selections; gaps G3, G5-G7.
+- Status: completed.
+- Dependencies: Phase 318; ADR 0067.
+- Acceptance and validation evidence: focused Phase 319 suite passed 8 files and
+  40 tests, covering controlled Primary identity, retained failed-save drafts,
+  upload retry/idempotency metadata, stale AI completion, Add recovery, and
+  uncertain-upload reconciliation. POS, IMS, and Storefront production builds
+  passed. Architecture, compliance/API-contract, documentation/ADR,
+  workspace-hygiene, app-version, and diff checks passed. Changed-file ESLint
+  has only the pre-existing React Compiler memoization errors in the large
+  TerminalOperationsWorkspace component; no new Phase 319 lint error was added.
+  The full IMS Vitest run had 2,316 passing tests and three pre-existing failures
+  in `posItemsModalViewport.contract.test.js`, whose obsolete contract still
+  expects removed modal classes and Escape/scroll-lock code; this Phase 319
+  change does not alter that portal contract. No database migration was required.
+  Authenticated browser proof and latency measurements remain Phase 320 acceptance
+  work; physical iMin validation is excluded.
+- Completion date: 2026-09-09.
+- Contracts/files: TerminalOperationsWorkspace.jsx, SelectedItemImageCarousel.jsx,
+  posEditImageDraft.js, preview store and their rendered tests.
+- Next eligible phase: 320.
+
+## Phase 320 - Item photo end-to-end validation and closure
+
+- Initiative/release: POS item photo repair / current release.
+- Objective and scope: prove all seven repairs through real handlers, worker and
+  persistence boundaries; local desktop/mobile interaction and latency evidence.
+- Status: completed.
+- Dependencies: Phases 318 and 319; architecture governance rendered-proof rules.
+- Acceptance and validation evidence: authenticated local Masu Cafe browser proof
+  passed at 360x640 and 1280x800 for Add Item 1/3/5-image selection, sixth-image
+  retention, contained scrolling, Escape close, body scroll lock, and no console,
+  page, unexpected request, or HTTP errors. Edit Item preserved the saved image,
+  appended distinct images, changed Primary, and discarded drafts on Cancel and
+  reopen. The affected API matrix passed 9 suites/173 tests, the focused rendered
+  frontend matrix passed 9 files/58 tests, the POS image viewer passed 4/4, and
+  the full IMS suite passed 358 files/2,319 tests. POS, IMS, and Storefront builds;
+  architecture, compliance/API-contract, docs/ADR, workspace-hygiene,
+  app-version, and diff gates passed. Targeted changed-API ESLint and POS/IMS app
+  lint had no errors. The full API lint's four bulk-image-import errors and the
+  optional imageLifecycleFullValidation v2-path assertion remain unrelated
+  baseline failures and are recorded in the plan. Runtime health reported
+  database/Redis/schema healthy with zero missing migrations/columns and the
+  bulk-image worker had zero tick failures. Draft selection made no image API
+  request and preview was available within the 50 ms browser assertion window;
+  carousel tests verify object-URL cleanup. No prior runtime timing baseline was
+  recorded, so no invented before/after number is claimed. No migration was
+  required.
+- Completion date: 2026-09-09.
+- Contracts/files: linked repair plan, API and rendered editor tests, local browser
+  artifacts and compliance declaration. Physical iMin validation excluded.
+- Next eligible phase: 321.
