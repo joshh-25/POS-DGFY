@@ -110,12 +110,12 @@ describe('POS balance settlement action (Phase 148, #825)', () => {
 
   it('bases the dialog on the balance due, not the order total', () => {
     // The bug this pins: computing change off total_amount -- which is what the Collect Cash
-    // dialog correctly does for its own flow -- would show PHP 0.00 change on PHP 1000 tendered
-    // against an PHP 800 balance, shorting the customer PHP 200 at the counter.
+    // dialog correctly does for its own flow -- would show ₱0.00 change on ₱1000 tendered
+    // against a ₱800 balance, shorting the customer ₱200 at the counter.
     renderDialog({ cashInput: '1000' });
 
-    expect(screen.getByText(/Balance due: PHP 800\.00/)).toBeTruthy();
-    expect(screen.getByText(/Change: PHP 200\.00/)).toBeTruthy();
+    expect(screen.getByText(/Balance due: ₱800\.00/)).toBeTruthy();
+    expect(screen.getByText(/Change: ₱200\.00/)).toBeTruthy();
   });
 
   it('lets a cash settlement be submitted without any extra attestation', () => {

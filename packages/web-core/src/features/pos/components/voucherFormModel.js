@@ -90,7 +90,7 @@ export const percentStringToBps = (value) => {
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : NaN;
 };
 
-export const peso = (centavos) => `PHP ${(Number(centavos || 0) / 100).toFixed(2)}`;
+export const peso = (centavos) => `₱${(Number(centavos || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // #1334/Phase 245: `free_delivery` added alongside the three item-benefit classes so the Vouchers
 // list can label a delivery campaign's benefit cell instead of rendering it blank.

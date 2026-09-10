@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, Loader2, ScanLine, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { acquireModalScrollLock } from '@/components/ui/dialog';
+
+const FOCUSABLE_SELECTOR = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const getCameraStartupError = (error) => {
   if (error?.name === 'NotAllowedError') {
@@ -22,6 +25,7 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
   const detectedRef = useRef(false);
   const onDetectedRef = useRef(onDetected);
   const closeButtonRef = useRef(null);
+  const modalRef = useRef(null);
   const [cameraRequested, setCameraRequested] = useState(false);
   const [starting, setStarting] = useState(false);
   const [scanError, setScanError] = useState('');
@@ -36,14 +40,36 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
   useEffect(() => {
     if (!open) return undefined;
     const previouslyFocusedElement = document.activeElement;
+    const releaseScrollLock = acquireModalScrollLock();
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onOpenChange(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onOpenChange(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = Array.from(modalRef.current?.querySelectorAll(FOCUSABLE_SELECTOR) || []);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!modalRef.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     window.requestAnimationFrame(() => closeButtonRef.current?.focus());
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      releaseScrollLock();
       previouslyFocusedElement?.focus?.();
     };
   }, [onOpenChange, open]);
@@ -161,6 +187,8 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
 
   return createPortal((
     <div
+      ref={modalRef}
+      data-dialog-root="true"
       className="pos-mobile-no-focus-zoom fixed inset-0 z-[10050] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
@@ -168,10 +196,10 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
       onClick={() => onOpenChange(false)}
     >
       <div
-        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+        className="pos-items-modal-panel pos-items-modal-panel--auto relative flex w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-slate-200 p-6 pr-16">
+        <div className="shrink-0 border-b border-slate-200 p-6 pr-16">
           <h2 id="product-barcode-scanner-title" className="flex items-center gap-2 text-xl font-bold text-slate-900">
             <ScanLine className="h-5 w-5 text-blue-700" aria-hidden="true" />
             Scan Product Barcode
@@ -190,7 +218,7 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
           </button>
         </div>
 
-        <div className="space-y-3 px-5 py-4 sm:px-6">
+        <div className="pos-items-modal-scroll-region flex-1 space-y-3 px-5 py-4 sm:px-6">
           <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-slate-950">
             <video
               ref={videoRef}
@@ -238,7 +266,7 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
           )}
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-slate-200 p-4">
+        <div className="pos-items-modal-footer flex shrink-0 justify-end gap-3 border-t border-slate-200 px-4 pt-4">
           <Button
             type="button"
             onClick={() => {

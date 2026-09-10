@@ -74,6 +74,7 @@ describe('assetUrl utilities', () => {
     const image = {
       currentSrc: 'https://pos.example.test/uploads/item/thumb.webp',
       src: 'https://pos.example.test/uploads/item/thumb.webp',
+      srcset: 'https://pos.example.test/uploads/item/thumb.webp 400w',
       dataset: {},
       ownerDocument: { baseURI: 'https://pos.example.test/' }
     };
@@ -84,6 +85,7 @@ describe('assetUrl utilities', () => {
       '/uploads/company-icon.png'
     ])).toBe(true);
     expect(image.src).toBe('/uploads/item/large.webp');
+    expect(image.srcset).toBe('');
 
     image.currentSrc = 'https://pos.example.test/uploads/item/large.webp';
     expect(advanceAssetImageFallback(event, [

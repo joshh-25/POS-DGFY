@@ -168,7 +168,9 @@ export function ServiceOptionsModal({
                             )}
                             {priceAdj !== 0 && (
                               <span className={priceAdj > 0 ? 'text-emerald-700 font-bold' : 'text-slate-500'}>
-                                {priceAdj > 0 ? `+₱${priceAdj.toFixed(2)}` : `-₱${Math.abs(priceAdj).toFixed(2)}`}
+                                {priceAdj > 0
+                                  ? `+₱${priceAdj.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                  : `-₱${Math.abs(priceAdj).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                               </span>
                             )}
                           </div>
@@ -193,7 +195,7 @@ export function ServiceOptionsModal({
             <div className="text-right">
               <p className="text-slate-500 text-[11px]">Final Quote Price</p>
               <p className="font-extrabold text-blue-700 text-sm mt-0.5">
-                ₱{totalPrice.toFixed(2)}
+                ₱{totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
           </div>

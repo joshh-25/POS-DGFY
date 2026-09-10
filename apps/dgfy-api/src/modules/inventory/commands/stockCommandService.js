@@ -1,4 +1,4 @@
-import { createStockMovement } from '../../../services/stockMovementService.js';
+import { createStockMovement, validateStockIssueAvailability as validateStockIssue } from '../../../services/stockMovementService.js';
 import { assertStockCommandServiceContract, StockCommandServiceNamedCommands } from '../contracts/stockCommandService.contract.js';
 
 const withMovementDefaults = (movementData = {}, defaults = {}) => ({
@@ -17,6 +17,10 @@ export const issueStockForPosSale = (movementData, userId, transaction = null) =
     userId,
     transaction
   )
+);
+
+export const validateStockIssueAvailability = (movementData, userId, transaction = null) => (
+  validateStockIssue(movementData, userId, transaction)
 );
 
 export const issueStockForOnlineFulfillment = (movementData, userId, transaction = null) => (
@@ -122,6 +126,7 @@ export { createStockMovement };
 
 const stockCommandService = {
   issueStockForPosSale,
+  validateStockIssueAvailability,
   issueStockForOnlineFulfillment,
   issueStockForDispatch,
   returnStockForVoidedSale,

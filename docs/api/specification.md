@@ -2406,7 +2406,7 @@ permission per entry.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/mobile-pos/bootstrap/catalog` | Return the validated POS catalog snapshot, including authoritative `updated_at` item versions. |
+| `GET` | `/mobile-pos/bootstrap/catalog` | Return the validated POS catalog snapshot, including authoritative `updated_at` item versions, F&B `fnb_modifier_groups`, and assigned active Services `service_option_groups`. |
 | `GET` | `/mobile-pos/bootstrap/settings` | Return cached cashier/POS configuration for offline operation. |
 | `GET` | `/mobile-pos/bootstrap/device-policy` | Return device/session policy used by the standalone native runtime. |
 | `GET` | `/mobile-pos/sync/transactions` | Return the ordered transaction checkpoint used to reconcile local History. |
@@ -2418,6 +2418,15 @@ permission per entry.
 | `POST` | `/mobile-pos/sync/shifts` | Replay shift and cash-drawer ledger actions. |
 | `POST` | `/mobile-pos/sync/hardware-events` | Acknowledge auditable native hardware events. |
 | `POST` | `/mobile-pos/sync/checkpoint` | Acknowledge a completed sync checkpoint. |
+
+The catalog bootstrap resolves option definitions in one tenant-scoped batch.
+F&B groups preserve their POS/location availability and assignment metadata.
+Service groups contain active assigned options; add-on groups are omitted when
+the service item's `addons_enabled` flag is false. Clients may cache these
+fields for offline selection, but checkout remains authoritative: replayed
+lines send `line_modifiers` and `selected_option_ids`, and the server validates
+current assignment, required/min/max limits, availability, sold-out state, and
+server-owned price deltas before accepting the sale.
 
 Every refund batch entry includes a stable `client_mutation_id` and the
 transaction's expected `status`, `payment_status`, and `updated_at` version.

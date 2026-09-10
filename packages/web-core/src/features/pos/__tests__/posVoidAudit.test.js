@@ -42,7 +42,7 @@ describe('POS void audit display helpers', () => {
         expect(resolvePosVoidFinancialOutcomeLabel(transaction)).toBe(
             'Cash refund and a linked cash-drawer event are still required.'
         );
-        expect(resolvePosVoidFinancialOutcomeAmount(transaction)).toBe('PHP 125.00');
+        expect(resolvePosVoidFinancialOutcomeAmount(transaction)).toBe('₱125.00');
     });
 
     it('falls back to the latest adjustment outcome and handles no-refund outcomes', () => {

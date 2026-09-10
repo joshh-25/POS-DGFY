@@ -20,7 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { FULFILLMENT_STATUS_LABELS, ORDER_METHOD_LABELS, PAYMENT_TYPE_LABELS, resolveAppliedVouchers } from './orderFulfillmentUi.js';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const formatDateTime = (value) => {
   if (!value) return '-';
@@ -61,7 +61,7 @@ const resolveLineName = (line) => String(
 const formatQuantity = (value) => {
   const quantity = Number(value || 0);
   if (!Number.isFinite(quantity)) return '0';
-  return Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(2);
+  return quantity.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 };
 
 const normalizePaymentStatus = (value) => {
@@ -220,8 +220,8 @@ export default function OnlineOrderDetailsModal({
                           <tr key={line?.line_id || `${line?.item_id || 'item'}-${index}`}>
                             <td className="py-2 pr-2 font-semibold text-slate-900">{resolveLineName(line)}</td>
                             <td className="px-2 py-2 text-right tabular-nums text-slate-700">{formatQuantity(resolveQuantity(line))}</td>
-                            <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-slate-700">PHP {money(resolveUnitPrice(line))}</td>
-                            <td className="whitespace-nowrap py-2 pl-2 text-right font-black tabular-nums text-slate-950">PHP {money(resolveLineSubtotal(line))}</td>
+                            <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-slate-700">₱{money(resolveUnitPrice(line))}</td>
+                            <td className="whitespace-nowrap py-2 pl-2 text-right font-black tabular-nums text-slate-950">₱{money(resolveLineSubtotal(line))}</td>
                           </tr>
                         ))}
                         {lines.length === 0 && (
@@ -268,7 +268,7 @@ export default function OnlineOrderDetailsModal({
                         <DetailRow label="Delivery Status" value={DELIVERY_JOB_STATUS_LABELS[deliveryJob?.status] || deliveryJob?.status || 'Pending Dispatch'} />
                         <DetailRow label="Address" value={order.delivery_address || '-'} />
                         <DetailRow label="Contact" value={order.customer_phone || '-'} />
-                        <DetailRow label="Delivery Fee" value={`PHP ${money(order.delivery_fee)}`} />
+                        <DetailRow label="Delivery Fee" value={`₱${money(order.delivery_fee)}`} />
                         {deliveryVoucherLabel && <DetailRow label="Delivery Voucher" value={deliveryVoucherLabel} valueClassName="text-emerald-700" />}
                         {assignedRider && <DetailRow label="Assigned Rider" value={assignedRider} />}
                       </dl>
@@ -287,19 +287,19 @@ export default function OnlineOrderDetailsModal({
                     <DetailRow label="Order Number" value={orderNumber} />
                     <DetailRow label="Mode" value={orderMethod} />
                     <DetailRow label="Tracking PIN" value={order.tracking_pin || '-'} />
-                    <DetailRow label="Original Subtotal" value={`PHP ${money(order.subtotal_amount)}`} />
-                    {Number(order.discount_amount || 0) > 0 && <DetailRow label="Discount" value={`-PHP ${money(order.discount_amount)}`} valueClassName="text-rose-600" />}
+                    <DetailRow label="Original Subtotal" value={`₱${money(order.subtotal_amount)}`} />
+                    {Number(order.discount_amount || 0) > 0 && <DetailRow label="Discount" value={`-₱${money(order.discount_amount)}`} valueClassName="text-rose-600" />}
                     {discount?.promo_code && <DetailRow label="Promo Code" value={discount.promo_code} />}
                     {discount?.discount_type && <DetailRow label="Discount Type" value={humanizeDiscountType(discount.discount_type)} />}
                     {order.discount_rate_snapshot != null && <DetailRow label="Discount Rate" value={`${Number(order.discount_rate_snapshot).toFixed(2)}%`} />}
                     {order.payment_provider && <DetailRow label="Payment Provider" value={humanize(order.payment_provider)} />}
                     {order.payment_reference && <DetailRow label="Payment Reference" value={order.payment_reference} />}
-                    <DetailRow label="DGFY Convenience Fee" value={`PHP ${money(order.service_fee_amount)}`} />
-                    <DetailRow label="Delivery Fee" value={`PHP ${money(order.delivery_fee)}`} />
+                    <DetailRow label="DGFY Convenience Fee" value={`₱${money(order.service_fee_amount)}`} />
+                    <DetailRow label="Delivery Fee" value={`₱${money(order.delivery_fee)}`} />
                   </dl>
                   <div className="mt-2.5 flex items-end justify-between gap-2.5 border-t border-slate-200 pt-2">
                     <span className="text-xs font-black text-slate-950">Total Amount</span>
-                    <span className="text-lg font-black tabular-nums text-[#1A4E8D] sm:text-xl">PHP {money(totalAmount)}</span>
+                    <span className="text-lg font-black tabular-nums text-[#1A4E8D] sm:text-xl">₱{money(totalAmount)}</span>
                   </div>
                 </section>
               </div>

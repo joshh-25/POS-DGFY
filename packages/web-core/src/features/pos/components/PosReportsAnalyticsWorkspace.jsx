@@ -88,7 +88,7 @@ const ORDER_METHOD_LABELS = {
   delivery: 'Delivery'
 };
 
-const money = (value, currencySymbol = 'PHP') => `${currencySymbol} ${Number(value || 0).toFixed(2)}`;
+const money = (value, currencySymbol = '₱') => `${String(currencySymbol).toUpperCase() === 'PHP' ? '₱' : currencySymbol}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const percent = (value) => `${Number(value || 0).toFixed(1)}%`;
 const displayDiscountType = (value) => String(value || '').trim().toLowerCase() === 'manual'
   ? 'Other'
@@ -284,7 +284,7 @@ function PosReportsAnalyticsWorkspace({
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const currencySymbol = terminalMeta?.pettyCashSymbol || 'PHP';
+  const currencySymbol = String(terminalMeta?.pettyCashSymbol || '₱').toUpperCase() === 'PHP' ? '₱' : (terminalMeta?.pettyCashSymbol || '₱');
   const normalizedDateRange = useMemo(() => ({
     dateFrom: normalizeReportDateInput(dateRange.dateFrom),
     dateTo: normalizeReportDateInput(dateRange.dateTo)
@@ -435,7 +435,7 @@ function PosReportsAnalyticsWorkspace({
       <tr>
         <td>${escapeHtml(item.item_name)}</td>
         <td>${escapeHtml(item.sku_code || '-')}</td>
-        <td style="text-align:right">${Number(item.quantity || 0).toFixed(2)}</td>
+        <td style="text-align:right">${Number(item.quantity || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
         <td style="text-align:right">${escapeHtml(money(item.net_sales, currencySymbol))}</td>
         <td style="text-align:right">${escapeHtml(money(item.pos_profit_loss, currencySymbol))}</td>
       </tr>
@@ -1065,7 +1065,7 @@ function PosReportsAnalyticsWorkspace({
                 { key: 'item_name', label: 'Item' },
                 { key: 'sku_code', label: 'SKU' },
                 { key: 'category', label: 'Category' },
-                { key: 'quantity', label: 'Qty', align: 'right', render: (row) => Number(row.quantity || 0).toFixed(2) },
+                { key: 'quantity', label: 'Qty', align: 'right', render: (row) => Number(row.quantity || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) },
                 { key: 'net_sales', label: 'Net Sales', align: 'right', render: (row) => money(row.net_sales, currencySymbol) },
                 { key: 'cogs', label: 'COGS', align: 'right', render: (row) => money(row.cogs, currencySymbol) },
                 { key: 'pos_profit_loss', label: 'POS Profit/Loss', align: 'right', render: (row) => (

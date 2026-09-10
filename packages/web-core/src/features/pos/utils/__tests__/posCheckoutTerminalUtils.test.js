@@ -16,6 +16,7 @@ import {
     normalizePromoCode,
     resolveEmployeeDiscountCreditPreference,
     resolvePosCatalogImageSources,
+    resolvePosCatalogPreviewGallery,
     rowMatchesHistoryFilters,
     round4,
     sanitizeQuantityInput,
@@ -35,6 +36,7 @@ describe('POS checkout terminal pure utilities', () => {
         expect(getCartLineSubtotal({ quantity: 2, sale_price: 150 })).toBe(300);
         expect(getCartLineSubtotal({ quantity: 1.25, sale_price: 90 })).toBe(112.5);
         expect(formatQuantity(2.5)).toBe('2.5');
+        expect(formatQuantity(1000)).toBe('1,000');
         expect(formatQuantity('invalid')).toBe('0');
         expect(sanitizeQuantityInput('1a.2.3', true)).toBe('1.23');
         expect(sanitizeQuantityInput('1a.2', false)).toBe('12');
@@ -277,7 +279,48 @@ describe('POS checkout terminal pure utilities', () => {
         expect(imageSources.src).toBe('https://cdn.example.test/pos-thumb.jpg');
         expect(imageSources.srcSet).toBeUndefined();
         expect(imageSources.thumbnailFallbackSrc).toBe('https://cdn.example.test/thumb.jpg');
+        expect(imageSources.mobileSrc).toBe('https://cdn.example.test/thumb.jpg');
         expect(imageSources.configuredLargeSrc).toBe('https://cdn.example.test/large.jpg');
+
+        const posImageSources = resolvePosCatalogImageSources({
+            pos_image_url: 'https://cdn.example.test/pos-large.jpg',
+            pos_image_variants: {
+                thumbnail_url: 'https://cdn.example.test/pos-thumb.jpg',
+                medium_url: 'https://cdn.example.test/pos-medium.jpg',
+                large_url: 'https://cdn.example.test/pos-large.jpg'
+            },
+            storefront_image_variants: {
+                thumbnail_url: null,
+                medium_url: null,
+                large_url: null
+            }
+        });
+        expect(posImageSources.src).toBe('https://cdn.example.test/pos-thumb.jpg');
+        expect(posImageSources.configuredLargeSrc).toBe('https://cdn.example.test/pos-large.jpg');
+
+        const galleryImageSources = resolvePosCatalogImageSources({
+            storefront_image_gallery: JSON.stringify([
+                {
+                    url: '/uploads/missing-primary/large.webp',
+                    variants: {
+                        thumbnail_url: '/uploads/missing-primary/thumb.webp',
+                        medium_url: '/uploads/missing-primary/medium.webp',
+                        large_url: '/uploads/missing-primary/large.webp'
+                    }
+                },
+                {
+                    url: '/uploads/available-gallery/large.webp',
+                    variants: {
+                        thumbnail_url: '/uploads/available-gallery/thumb.webp',
+                        medium_url: '/uploads/available-gallery/medium.webp',
+                        large_url: '/uploads/available-gallery/large.webp'
+                    }
+                }
+            ])
+        });
+        expect(galleryImageSources.src).toBe('/uploads/missing-primary/thumb.webp');
+        expect(galleryImageSources.fallbackSrcs).toContain('/uploads/available-gallery/thumb.webp');
+
         expect(inferReceiptContract({ invoice_number: 'NFS-000001' })).toEqual({
             document_type: 'non_fiscal_slip',
             label: 'NON-FISCAL SLIP'
@@ -342,5 +385,198 @@ describe('POS checkout terminal pure utilities', () => {
         expect(flatPosUrlOnly.srcSet).toBeUndefined();
         expect(flatPosUrlOnly.avifSrcSet).toBeUndefined();
         expect(flatPosUrlOnly.webpSrcSet).toBeUndefined();
+        expect(flatPosUrlOnly.fallbackSrcs).toEqual([
+            'https://cdn.example.test/storefront/large.jpg',
+            'https://cdn.example.test/storefront/medium.jpg',
+            'https://cdn.example.test/storefront/thumb.jpg'
+        ]);
+
+        const stalePosOverride = resolvePosCatalogImageSources({
+            pos_image_url: '/uploads/pos/missing-large.webp',
+            pos_image_variants: {
+                thumbnail_url: '/uploads/pos/missing-thumb.webp'
+            },
+            storefront_image_url: '/uploads/storefront/primary-large.webp',
+            storefront_image_variants: {
+                large_url: '/uploads/storefront/primary-large.webp',
+                thumbnail_url: '/uploads/storefront/primary-thumb.webp'
+            },
+            storefront_image_gallery: [{
+                url: '/uploads/storefront/secondary-large.webp',
+                variants: {
+                    medium_url: '/uploads/storefront/secondary-medium.webp'
+                }
+            }]
+        });
+        expect(stalePosOverride.fallbackSrcs).toEqual([
+            '/uploads/storefront/primary-large.webp',
+            '/uploads/storefront/primary-thumb.webp',
+            '/uploads/storefront/secondary-medium.webp',
+            '/uploads/storefront/secondary-large.webp'
+        ]);
+    });
+
+    it('resolves an ordered on-demand POS item preview gallery without duplicate images', () => {
+        const sources = resolvePosCatalogPreviewGallery({
+            storefront_image_url: '/uploads/items/primary/large.jpg',
+            storefront_image_variants: {
+                pos_thumbnail_url: '/uploads/items/primary/pos-thumbnail.jpg',
+                medium_url: '/uploads/items/primary/medium.jpg',
+                large_url: '/uploads/items/primary/large.jpg'
+            },
+            storefront_image_gallery: JSON.stringify([
+                {
+                    url: '/uploads/items/primary/large.jpg',
+                    variants: {
+                        pos_thumbnail_url: '/uploads/items/primary/pos-thumbnail.jpg',
+                        large_url: '/uploads/items/primary/large.jpg'
+                    }
+                },
+                {
+                    path: 'items/second/original.jpg',
+                    variants: {
+                        thumbnail_url: 'items/second/thumbnail.jpg',
+                        medium_url: 'items/second/medium.jpg',
+                        large_url: 'items/second/large.jpg'
+                    }
+                }
+            ])
+        });
+
+        expect(sources.gallery).toHaveLength(2);
+        expect(sources.thumbnailSrc).toContain('/uploads/items/primary/pos-thumbnail.jpg');
+        expect(sources.previewSrc).toContain('/uploads/items/primary/large.jpg');
+        expect(sources.gallery[1]).toMatchObject({
+            isPrimary: false
+        });
+        expect(sources.gallery[1].thumbnailSrc).toContain('/uploads/items/second/thumbnail.jpg');
+        expect(sources.gallery[1].previewSrc).toContain('/uploads/items/second/large.jpg');
+        expect(sources.gallery[1].previewFallbacks[0]).toContain('/uploads/items/second/original.jpg');
+    });
+
+    it('keeps a POS image override isolated and handles missing preview images', () => {
+        const overridden = resolvePosCatalogPreviewGallery({
+            pos_image_url: 'https://cdn.example.test/pos/original.jpg',
+            pos_image_variants: {
+                thumbnail_url: 'https://cdn.example.test/pos/thumb.jpg',
+                medium_url: 'https://cdn.example.test/pos/medium.jpg',
+                large_url: 'https://cdn.example.test/pos/large.jpg'
+            },
+            storefront_image_gallery: [{ url: 'https://cdn.example.test/storefront/image.jpg' }]
+        });
+
+        expect(overridden.gallery).toHaveLength(1);
+        expect(overridden.thumbnailSrc).toBe('https://cdn.example.test/pos/thumb.jpg');
+        expect(overridden.previewSrc).toBe('https://cdn.example.test/pos/large.jpg');
+        expect(overridden.previewFallbacks).toEqual([
+            'https://cdn.example.test/pos/original.jpg',
+            'https://cdn.example.test/pos/medium.jpg',
+            'https://cdn.example.test/pos/thumb.jpg'
+        ]);
+        expect(resolvePosCatalogPreviewGallery({})).toEqual({
+            thumbnailSrc: '',
+            previewSrc: '',
+            previewFallbacks: [],
+            gallery: []
+        });
+    });
+
+    it('uses the Storefront HD gallery when POS display fields contain a Storefront fallback', () => {
+        const sources = resolvePosCatalogPreviewGallery({
+            pos_image_source: 'storefront',
+            pos_image_url: '/uploads/items/meal/pos-thumb.webp',
+            pos_image_variants: {
+                pos_thumbnail_url: '/uploads/items/meal/pos-thumb.webp',
+                thumbnail_url: '/uploads/items/meal/pos-thumb.webp',
+                medium_url: '/uploads/items/meal/pos-thumb.webp',
+                large_url: '/uploads/items/meal/pos-thumb.webp'
+            },
+            storefront_image_url: '/uploads/items/meal/large.webp',
+            storefront_image_variants: {
+                thumbnail_url: '/uploads/items/meal/thumbnail.webp',
+                medium_url: '/uploads/items/meal/medium.webp',
+                large_url: '/uploads/items/meal/large.webp'
+            },
+            storefront_image_gallery: [{
+                url: '/uploads/items/meal/large.webp',
+                variants: {
+                    thumbnail_url: '/uploads/items/meal/thumbnail.webp',
+                    medium_url: '/uploads/items/meal/medium.webp',
+                    large_url: '/uploads/items/meal/large.webp'
+                }
+            }]
+        });
+
+        expect(sources.thumbnailSrc).toContain('/uploads/items/meal/thumbnail.webp');
+        expect(sources.previewSrc).toContain('/uploads/items/meal/large.webp');
+        expect(sources.previewSrc).not.toContain('pos-thumb');
+    });
+
+    it('merges duplicate primary gallery metadata and supports a legacy POS path', () => {
+        const storefront = resolvePosCatalogPreviewGallery({
+            storefront_image_url: '/uploads/items/meal/original.jpg',
+            storefront_image_gallery: [{
+                url: '/uploads/items/meal/original.jpg',
+                variants: {
+                    thumbnail_url: '/uploads/items/meal/thumbnail.webp',
+                    large_url: '/uploads/items/meal/large.webp'
+                }
+            }]
+        });
+        expect(storefront.gallery).toHaveLength(1);
+        expect(storefront.thumbnailSrc).toContain('/uploads/items/meal/thumbnail.webp');
+        expect(storefront.previewSrc).toContain('/uploads/items/meal/large.webp');
+
+        const pathOnly = resolvePosCatalogPreviewGallery({ pos_image_path: 'pos/legacy-photo.jpg' });
+        expect(pathOnly.gallery).toHaveLength(1);
+        expect(pathOnly.previewSrc).toContain('/uploads/pos/legacy-photo.jpg');
+        expect(pathOnly.thumbnailSrc).toBe('');
+    });
+
+    it('removes regenerated gallery duplicates linked by the original source path', () => {
+        const sources = resolvePosCatalogPreviewGallery({
+            storefront_image_url: '/uploads/items/processed/current-large.jpg',
+            storefront_image_variants: {
+                thumbnail_url: '/uploads/items/processed/current-thumb.jpg',
+                large_url: '/uploads/items/processed/current-large.jpg'
+            },
+            storefront_image_gallery: [{
+                path: '/uploads/items/processed/current-large.jpg',
+                original_path: 'originals/items/source-one/original.jpg',
+                variants: {
+                    thumbnail_url: '/uploads/items/old/source-one-thumb.jpg',
+                    large_url: '/uploads/items/old/source-one-large.jpg'
+                }
+            }, {
+                path: '/uploads/items/old/source-one-large.jpg',
+                original_path: 'originals/items/source-one/original.jpg',
+                variants: {
+                    thumbnail_url: '/uploads/items/old/source-one-thumb.jpg',
+                    large_url: '/uploads/items/old/source-one-large.jpg'
+                }
+            }, {
+                path: '/uploads/items/source-two-large.jpg',
+                original_path: 'originals/items/source-two/original.jpg',
+                variants: {
+                    thumbnail_url: '/uploads/items/source-two-thumb.jpg',
+                    large_url: '/uploads/items/source-two-large.jpg'
+                }
+            }, {
+                path: '/uploads/items/source-three-large.jpg',
+                original_path: 'originals/items/source-three/original.jpg',
+                variants: {
+                    thumbnail_url: '/uploads/items/source-three-thumb.jpg',
+                    large_url: '/uploads/items/source-three-large.jpg'
+                }
+            }]
+        });
+
+        expect(sources.gallery).toHaveLength(3);
+        expect(sources.gallery.map((entry) => entry.previewSrc)).toEqual([
+            '/uploads/items/processed/current-large.jpg',
+            '/uploads/items/source-two-large.jpg',
+            '/uploads/items/source-three-large.jpg'
+        ]);
+        expect(sources.gallery[0].thumbnailSrc).toBe('/uploads/items/processed/current-thumb.jpg');
     });
 });

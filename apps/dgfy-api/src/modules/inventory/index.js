@@ -24,6 +24,7 @@ import { buildReplaceItemSuppliersUseCase } from './usecases/replaceItemSupplier
 import { buildGetFoldersUseCase } from './usecases/getFoldersUseCase.js';
 import { buildCreateFolderUseCase } from './usecases/createFolderUseCase.js';
 import { buildUpdateFolderUseCase } from './usecases/updateFolderUseCase.js';
+import { buildReorderFoldersUseCase } from './usecases/reorderFoldersUseCase.js';
 import { buildDeleteFolderUseCase } from './usecases/deleteFolderUseCase.js';
 import { buildListItemFoldersUseCase } from './usecases/listItemFoldersUseCase.js';
 import { buildReplaceItemFoldersUseCase } from './usecases/replaceItemFoldersUseCase.js';
@@ -110,6 +111,7 @@ export const replaceItemSuppliersUseCase = buildReplaceItemSuppliersUseCase({ it
 export const getFoldersUseCase = buildGetFoldersUseCase({ itemRepository });
 export const createFolderUseCase = buildCreateFolderUseCase({ itemRepository });
 export const updateFolderUseCase = buildUpdateFolderUseCase({ itemRepository });
+export const reorderFoldersUseCase = buildReorderFoldersUseCase({ itemRepository });
 export const deleteFolderUseCase = buildDeleteFolderUseCase({ itemRepository });
 export const listItemFoldersUseCase = buildListItemFoldersUseCase({ itemRepository });
 export const replaceItemFoldersUseCase = buildReplaceItemFoldersUseCase({ itemRepository });

@@ -10,12 +10,12 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const formatQuantity = (value) => {
   const quantity = Number(value || 0);
   if (!Number.isFinite(quantity)) return '0';
-  return Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(2);
+  return quantity.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 };
 
 export default function BillRequestDialog({ open = false, draft = null, onClose }) {
@@ -51,7 +51,7 @@ export default function BillRequestDialog({ open = false, draft = null, onClose 
               >
                 <span className="min-w-0 truncate font-semibold text-slate-900">{line.itemName || 'Item'}</span>
                 <span className="tabular-nums text-slate-600">{formatQuantity(line.quantity)}</span>
-                <span className="text-right font-bold tabular-nums text-slate-900">PHP {money(line.unitPrice)}</span>
+                <span className="text-right font-bold tabular-nums text-slate-900">₱{money(line.unitPrice)}</span>
               </div>
             ))}
             {lines.length === 0 && (
@@ -61,7 +61,7 @@ export default function BillRequestDialog({ open = false, draft = null, onClose 
 
           <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-300 pt-3">
             <span className="font-black text-slate-900">Overall price</span>
-            <span className="text-lg font-black tabular-nums text-[#1A4E8D]">PHP {money(draft?.total)}</span>
+            <span className="text-lg font-black tabular-nums text-[#1A4E8D]">₱{money(draft?.total)}</span>
           </div>
         </div>
 

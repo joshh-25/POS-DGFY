@@ -20,6 +20,8 @@ describe('POS Current Sale item options contract', () => {
     expect(checkoutContent).toContain('if (!sessionLocked) setItemOptionsLineKey(lineKey);');
     expect(checkoutContent).toContain('event.stopPropagation();');
     expect(checkoutContent).toContain('Tap item to customize');
+    expect(checkoutContent).toContain('border border-blue-300 bg-clip-padding bg-slate-50 p-2.5');
+    expect(checkoutContent).toContain('hover:border-blue-400 hover:bg-blue-50');
     expect(checkoutContent).not.toContain('pos-item-note-trigger-');
     expect(checkoutContent).not.toContain('Choose modifiers');
     expect(checkoutContent).not.toContain('Modifiers:');

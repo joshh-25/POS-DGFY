@@ -110,4 +110,26 @@ describe('ProductQrScannerModal re-arm', () => {
     expect(scanButton.textContent).toContain('Scan');
     expect(scanButton.disabled).toBe(false);
   });
+
+  it('owns scrolling and keyboard focus until it closes', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    document.body.style.overflow = 'scroll';
+    const { rerender } = render(
+      <ProductQrScannerModal open onOpenChange={vi.fn()} onDetected={vi.fn()} />
+    );
+
+    expect(document.body.style.overflow).toBe('hidden');
+    const closeButton = screen.getByRole('button', { name: 'Close product barcode scanner' });
+    const modalButtons = screen.getByRole('dialog').querySelectorAll('button:not([disabled])');
+    modalButtons[modalButtons.length - 1].focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(document.activeElement).toBe(closeButton);
+
+    rerender(<ProductQrScannerModal open={false} onOpenChange={vi.fn()} onDetected={vi.fn()} />);
+    expect(document.body.style.overflow).toBe('scroll');
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
 });

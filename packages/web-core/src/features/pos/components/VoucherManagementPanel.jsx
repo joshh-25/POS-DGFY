@@ -882,7 +882,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                       </div>
                       {form.deliveryWaiverMode === 'partial' && (
                         <div className="space-y-1">
-                          <Label className="text-xs font-semibold text-[#0F172A]">Waive up to (PHP) <span className="text-rose-600" aria-hidden="true">*</span></Label>
+                          <Label className="text-xs font-semibold text-[#0F172A]">Waive up to (₱) <span className="text-rose-600" aria-hidden="true">*</span></Label>
                           <Input type="number" min="0.01" step="0.01" className="h-8 text-xs" value={form.deliveryAmountOffPesos}
                             onChange={(e) => setForm((current) => ({ ...current, deliveryAmountOffPesos: e.target.value }))} />
                           <FieldError message={fieldErrors.delivery_amount_off_centavos} />
@@ -926,7 +926,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                         <FieldError message={fieldErrors.percent_off_bps} />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs font-semibold text-[#0F172A]">Max discount cap (PHP, optional)</Label>
+                        <Label className="text-xs font-semibold text-[#0F172A]">Max discount cap (₱, optional)</Label>
                         <Input type="number" min="0" step="1" className="h-8 text-xs" value={form.maxDiscountPesos}
                           onChange={(e) => setForm((current) => ({ ...current, maxDiscountPesos: e.target.value }))} />
                       </div>
@@ -934,7 +934,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                   )}
                   {form.benefitClass === 'amount_off' && (
                     <div className="space-y-1">
-                      <Label className="text-xs font-semibold text-[#0F172A]">Amount off (PHP) <span className="text-rose-600" aria-hidden="true">*</span></Label>
+                      <Label className="text-xs font-semibold text-[#0F172A]">Amount off (₱) <span className="text-rose-600" aria-hidden="true">*</span></Label>
                       <Input type="number" min="0.01" step="0.01" className="h-8 text-xs" value={form.amountOffPesos}
                         onChange={(e) => setForm((current) => ({ ...current, amountOffPesos: e.target.value }))} />
                       <FieldError message={fieldErrors.amount_off_centavos} />
@@ -942,7 +942,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                   )}
                   {form.benefitClass === 'fixed_price' && form.fixedPriceSource === 'single' && (
                     <div className="space-y-1">
-                      <Label className="text-xs font-semibold text-[#0F172A]">Fixed price (PHP) <span className="text-rose-600" aria-hidden="true">*</span></Label>
+                      <Label className="text-xs font-semibold text-[#0F172A]">Fixed price (₱) <span className="text-rose-600" aria-hidden="true">*</span></Label>
                       <Input type="number" min="0" step="0.01" className="h-8 text-xs" value={form.fixedUnitPricePesos}
                         onChange={(e) => setForm((current) => ({ ...current, fixedUnitPricePesos: e.target.value }))} />
                       <FieldError message={fieldErrors.fixed_unit_price_centavos} />
@@ -1067,7 +1067,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">
-                      {isDeliveryCampaign ? 'Minimum item subtotal (PHP, optional)' : 'Min spend (PHP, optional)'}
+                      {isDeliveryCampaign ? 'Minimum item subtotal (₱, optional)' : 'Min spend (₱, optional)'}
                     </Label>
                     <Input type="number" min="0" step="1" className="h-8 text-xs" value={form.minSpendPesos}
                       onChange={(e) => setForm((current) => ({ ...current, minSpendPesos: e.target.value }))} />
@@ -1107,7 +1107,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-[#0F172A]">
-                      {isDeliveryCampaign ? 'Campaign budget (PHP, optional)' : 'Max total discount budget (PHP, optional)'}
+                      {isDeliveryCampaign ? 'Campaign budget (₱, optional)' : 'Max total discount budget (₱, optional)'}
                     </Label>
                     <Input type="number" min="0" step="1" className="h-8 text-xs" value={form.maxTotalDiscountPesos}
                       onChange={(e) => setForm((current) => ({ ...current, maxTotalDiscountPesos: e.target.value }))} />

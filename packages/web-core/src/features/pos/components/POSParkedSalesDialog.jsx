@@ -12,7 +12,7 @@ import {
 import { cancelPosParkedSale, claimPosParkedSale, fetchPosParkedSales } from '../services/posService.js';
 import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const formatDateTime = (value) => {
     if (!value) return 'Unknown time';
@@ -238,7 +238,7 @@ export default function POSParkedSalesDialog({
                                                         {status}
                                                     </span>
                                                 </div>
-                                                <p className="mt-1 text-xs text-slate-500">{formatDateTime(row?.created_at)} · {Number(row?.line_count || lines.length)} line{Number(row?.line_count || lines.length) === 1 ? '' : 's'} · PHP {money(row?.total_amount)}</p>
+                                                <p className="mt-1 text-xs text-slate-500">{formatDateTime(row?.created_at)} · {Number(row?.line_count || lines.length).toLocaleString('en-US')} line{Number(row?.line_count || lines.length) === 1 ? '' : 's'} · ₱{money(row?.total_amount)}</p>
                                                 <p className="mt-2 line-clamp-2 text-sm font-medium text-slate-700">{linePreview || 'No line preview available.'}</p>
                                             </div>
                                             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">

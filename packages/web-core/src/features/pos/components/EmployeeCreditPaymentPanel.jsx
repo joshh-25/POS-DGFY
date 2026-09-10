@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertCircle, Check, ChevronsUpDown, Loader2, RefreshCw, Search, UserRound } from 'lucide-react';
+import { AlertCircle, Check, ChevronsUpDown, Loader2, RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Command,
@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/command';
 import { fetchEmployeeCreditCheckoutOptions } from '../services/employeeCreditService.js';
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function EmployeeCreditPaymentPanel({
     selectedEmployee,
@@ -158,15 +158,6 @@ export default function EmployeeCreditPaymentPanel({
     return (
         <div className="space-y-3.5">
             <div className="space-y-3 rounded-xl border border-blue-100 bg-[#F8FAFC] p-3.5">
-                <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-200/80 bg-blue-100/70 text-blue-700">
-                        <UserRound className="h-5 w-5" />
-                    </div>
-                    <div>
-                        <p className="text-[13px] font-bold text-[#1A4E8D]">Employee Credit</p>
-                    </div>
-                </div>
-
                 <div ref={employeePickerRef} className="relative">
                     <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Select Employee</p>
                     <div className="relative">
@@ -259,7 +250,7 @@ export default function EmployeeCreditPaymentPanel({
                                                                 {option.employee_code} · {option.branch_name}
                                                             </span>
                                                             <span className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-bold text-slate-600">
-                                                                <span>Outstanding: PHP {money(option.outstanding_balance ?? option.current_balance)}</span>
+                                                                <span>Outstanding: ₱{money(option.outstanding_balance ?? option.current_balance)}</span>
                                                                 <span>Open tab</span>
                                                             </span>
                                                         </span>
@@ -296,16 +287,16 @@ export default function EmployeeCreditPaymentPanel({
                         </div>
                         <div className="flex justify-between gap-3">
                             <span className="font-semibold text-slate-600">Current outstanding</span>
-                            <span className="font-extrabold text-slate-900">PHP {money(currentOutstanding)}</span>
+                            <span className="font-extrabold text-slate-900">₱{money(currentOutstanding)}</span>
                         </div>
                         <div className="flex justify-between gap-3">
                             <span className="font-semibold text-slate-600">Charge amount</span>
-                            <span className="font-extrabold text-slate-900">PHP {money(totalDue)}</span>
+                            <span className="font-extrabold text-slate-900">₱{money(totalDue)}</span>
                         </div>
                         {isVerified ? (
                             <div className="flex justify-between gap-3 border-t border-slate-100 pt-2">
                                 <span className="font-semibold text-slate-600">Outstanding after sale</span>
-                                <span className="font-extrabold text-slate-900">PHP {money(outstandingAfterSale)}</span>
+                                <span className="font-extrabold text-slate-900">₱{money(outstandingAfterSale)}</span>
                             </div>
                         ) : null}
                     </div>

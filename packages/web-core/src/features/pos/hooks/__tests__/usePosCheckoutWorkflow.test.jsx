@@ -205,6 +205,10 @@ describe('usePosCheckoutWorkflow', () => {
         }));
         expect(createPosCheckout.mock.calls[0][0].idempotency_key).toEqual(expect.any(String));
         expect(props.setCart).toHaveBeenCalledWith([]);
+        expect(props.setPaymentType).toHaveBeenCalledWith('cash');
+        expect(props.setTableNumber).toHaveBeenCalledWith('');
+        expect(props.resetEmployeeCredit).toHaveBeenCalled();
+        expect(props.setSplitPaymentSession).toHaveBeenCalledWith(null);
         expect(props.setLastReceipt).toHaveBeenCalledWith(transaction);
         expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(false);
         expect(props.onCheckoutCompleted).toHaveBeenCalledWith(transaction);
@@ -399,7 +403,7 @@ describe('usePosCheckoutWorkflow', () => {
             printReceipt: vi.fn().mockResolvedValue({ success: true }),
             openDrawer: vi.fn()
         };
-        const { result } = renderCheckout({
+        const { result, props } = renderCheckout({
             posHardware,
             splitPaymentSession: { pos_payment_session_id: 91, remaining_amount: 0 }
         });
@@ -413,6 +417,8 @@ describe('usePosCheckoutWorkflow', () => {
             openDrawerAfterPrint: true,
             reason: 'split_checkout_auto_print'
         })));
+        expect(props.setPaymentType).toHaveBeenCalledWith('cash');
+        expect(props.setSplitPaymentSession).toHaveBeenCalledWith(null);
         expect(posHardware.openDrawer).not.toHaveBeenCalled();
     });
 

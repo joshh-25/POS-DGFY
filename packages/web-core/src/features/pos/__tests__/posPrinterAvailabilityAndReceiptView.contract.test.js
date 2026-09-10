@@ -25,6 +25,9 @@ describe('POS printer availability and post-checkout receipt view', () => {
         const viewSource = read('../components/POSCheckoutTerminalView.jsx');
         expect(source).toContain('const isPrinterAvailable = posHardware.isPrinterAvailable;');
         expect(source).toContain('const isOrderPrinterAvailable = posHardware.isOrderPrinterAvailable;');
+        expect(source).toContain('cashDrawerAvailable={cashDrawerAvailable}');
+        expect(currentSaleActionsSource).toContain('disabled={cashDrawerDisabled}');
+        expect(currentSaleActionsSource).toContain('data-testid="pos-open-cash-drawer-button"');
         expect(source).toContain('printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isOrderPrinterAvailable}');
         expect(currentSaleActionsSource).toContain('disabled={printOrderDisabled}');
         expect(source).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isOrderPrinterAvailable}');
@@ -66,5 +69,8 @@ describe('POS printer availability and post-checkout receipt view', () => {
         expect(workflowSource).toContain('openDrawerAfterPrint: shouldOpenDrawer');
         expect(workflowSource).toContain('billRequest: true');
         expect(workflowSource).toContain('idempotencyKey');
+        expect(source).toContain('id="pos-drawer-authorization-form"');
+        expect(source).toContain('type="submit"');
+        expect(source).toContain('form="pos-drawer-authorization-form"');
     });
 });

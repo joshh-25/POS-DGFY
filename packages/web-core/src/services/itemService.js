@@ -176,6 +176,11 @@ export const updateFolder = async (folderId, payload) => {
   return response.data.data;
 };
 
+export const reorderFolders = async (folderIds) => {
+  const response = await api.put('/items/folders/order', { folder_ids: folderIds });
+  return response.data.data;
+};
+
 export const deleteFolder = async (folderId, payload = {}) => {
   const response = await api.delete(`/items/folders/${folderId}`, { data: payload });
   return response.data;

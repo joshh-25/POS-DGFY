@@ -255,6 +255,7 @@ export default function ItemFormModal({
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [showCreateSupplierDialog, setShowCreateSupplierDialog] = useState(false);
   const [selectedStorefrontImageFiles, setSelectedStorefrontImageFiles] = useState([]);
+  const [isStorefrontImageDragActive, setIsStorefrontImageDragActive] = useState(false);
   const [createSupplierTargetRow, setCreateSupplierTargetRow] = useState(null);
   const [creatingSupplier, setCreatingSupplier] = useState(false);
   const [newSupplierForm, setNewSupplierForm] = useState({
@@ -628,6 +629,7 @@ export default function ItemFormModal({
       setLastSuggestedSku('');
       setMarginPercent('');
       setSelectedStorefrontImageFiles([]);
+      setIsStorefrontImageDragActive(false);
       setExternalBarcode('');
       setExternalProductLookup(null);
       setAcceptedExternalProduct(null);
@@ -708,6 +710,7 @@ export default function ItemFormModal({
       setLastSuggestedSku('');
       setMarginPercent('');
       setSelectedStorefrontImageFiles([]);
+      setIsStorefrontImageDragActive(false);
       setExternalBarcode('');
       setExternalProductLookup(null);
       setAcceptedExternalProduct(null);
@@ -741,6 +744,43 @@ export default function ItemFormModal({
 
   const removeSelectedStorefrontImageFile = (imageIndex) => {
     setSelectedStorefrontImageFiles((files) => files.filter((_, index) => index !== imageIndex));
+  };
+
+  const handleStorefrontImageDrop = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsStorefrontImageDragActive(false);
+
+    const droppedFiles = Array.from(event.dataTransfer?.files || []);
+    const imageFiles = droppedFiles.filter((file) => file.type?.startsWith('image/'));
+    if (droppedFiles.length > imageFiles.length) {
+      toast.error('Only image files can be added as item images.');
+    }
+    if (imageFiles.length > 0) {
+      handleSelectStorefrontImageFiles(imageFiles);
+      return;
+    }
+
+    const droppedUrl = String(event.dataTransfer?.getData('text/uri-list') || '')
+      .split(/\r?\n/)
+      .find((value) => value && !value.startsWith('#'));
+    if (!droppedUrl || !/^https?:\/\//i.test(droppedUrl)) {
+      toast.error('Drop an image file or drag an image directly from a browser page.');
+      return;
+    }
+
+    try {
+      const response = await fetch(droppedUrl);
+      if (!response.ok) throw new Error(`Image request failed with ${response.status}`);
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('Dropped URL is not an image');
+      const urlName = new URL(droppedUrl).pathname.split('/').pop() || 'dragged-item-image';
+      const extension = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+      const filename = urlName.includes('.') ? urlName : `${urlName}.${extension}`;
+      handleSelectStorefrontImageFiles([new File([blob], filename, { type: blob.type })]);
+    } catch {
+      toast.error('Chrome blocked access to that image. Save it to your device, then drag the saved file here.');
+    }
   };
 
   useEffect(() => {
@@ -1328,7 +1368,11 @@ export default function ItemFormModal({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="pos-mobile-no-focus-zoom wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0">
+        <DialogContent
+          className="pos-mobile-no-focus-zoom wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => event.preventDefault()}
+        >
           <DialogHeader className="flex-shrink-0">
             <div className="flex items-start justify-between gap-4">
               <DialogTitle className="wizard-title flex items-center gap-2">
@@ -2096,9 +2140,27 @@ export default function ItemFormModal({
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div
+                  data-testid="item-image-drop-zone"
+                  className={`space-y-3 rounded-lg border-2 border-dashed p-4 transition-colors ${isStorefrontImageDragActive ? 'border-teal-500 bg-teal-50' : 'border-slate-300 bg-slate-50'}`}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setIsStorefrontImageDragActive(true);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'copy';
+                    setIsStorefrontImageDragActive(true);
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget)) {
+                      setIsStorefrontImageDragActive(false);
+                    }
+                  }}
+                  onDrop={handleStorefrontImageDrop}
+                >
                   <p className="text-sm text-slate-500">
-                    Choose item images now. They will be uploaded after the item is saved.
+                    Drag item images here, or choose them from your device. They will be uploaded after the item is saved.
                   </p>
                   <label className="inline-flex cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
                     Choose Item Images

@@ -64,7 +64,7 @@ const RECEIPT_PAPER_OPTIONS = [
     { value: '57mm', label: '57mm (2 1/4 in)' }
 ];
 
-const money = (value) => Number(value || 0).toFixed(2);
+const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toValidPercentage = (value) => {
     const numeric = Number(value);
@@ -1612,7 +1612,7 @@ export default function POSCheckoutTerminal({
             const result = await closePosDay(null, { dayClosePin: zReadingClosePin });
             setZReadingCloseConfirmOpen(false);
             toast.success(
-                `Z-reading generated: ${result?.summary?.transaction_count || 0} sale(s), PHP ${money(result?.summary?.total_amount)}`
+                `Z-reading generated: ${Number(result?.summary?.transaction_count || 0).toLocaleString('en-US')} sale(s), ₱${money(result?.summary?.total_amount)}`
             );
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Failed to generate Z-reading');
@@ -2048,11 +2048,11 @@ export default function POSCheckoutTerminal({
                                 </p>
                                 <div className="mt-auto flex items-end justify-between gap-3 pt-2 text-xs text-slate-600">
                                     <span className="min-w-0 flex-1 font-medium bg-gradient-to-r from-teal-700 to-emerald-600 bg-clip-text text-transparent">
-                                        {isServiceItem ? 'Service sale' : (isAlwaysAvailable ? 'Always available' : `Stock: ${Number(item.current_stock || 0).toFixed(2)}`)}
+                                        {isServiceItem ? 'Service sale' : (isAlwaysAvailable ? 'Always available' : `Stock: ${Number(item.current_stock || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`)}
                                     </span>
                                     <span className="shrink-0 font-semibold text-slate-700">
                                         {Number(item.default_sale_price || 0) > 0
-                                            ? `Price: PHP ${money(item.default_sale_price)}`
+                                            ? `Price: ₱${money(item.default_sale_price)}`
                                             : 'Price not set'}
                                     </span>
                                 </div>
@@ -2158,7 +2158,7 @@ export default function POSCheckoutTerminal({
                             </p>
                             {restaurantServiceChargeAmount > 0 && (
                                 <p className="mt-1">
-                                    Restaurant service charge: PHP {money(restaurantServiceChargeAmount)}.
+                                    Restaurant service charge: ₱{money(restaurantServiceChargeAmount)}.
                                 </p>
                             )}
                         </div>
@@ -2170,7 +2170,7 @@ export default function POSCheckoutTerminal({
                         const lineKey = getLineKey(line);
                         const modifierSnapshots = resolveModifierSnapshot(line);
                         return (
-                        <div key={lineKey} className="border border-slate-200 rounded-lg p-3">
+                        <div key={lineKey} className="relative box-border w-full min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-clip-padding bg-white p-3">
                             <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2.5 min-w-0">
                                     <CartItemThumbnail catalog={catalog} line={line} />
@@ -2345,7 +2345,7 @@ export default function POSCheckoutTerminal({
                             )}
                             <div className="flex justify-between items-center mt-2">
                                 <span className="text-xs text-slate-500">
-                                    Subtotal: PHP {money(Number(line.quantity) * Number(line.sale_price))}
+                                    Subtotal: ₱{money(Number(line.quantity) * Number(line.sale_price))}
                                 </span>
                                 <button
                                     type="button"
@@ -2434,7 +2434,7 @@ export default function POSCheckoutTerminal({
                         </span>
                     ) : manualDiscountAmount > 0 ? (
                         <span className="mt-1 block text-[11px] text-slate-500">
-                            Manual discount applied: {money(manualDiscountRate)}% / PHP {money(manualDiscountAmount)}.
+                            Manual discount applied: {money(manualDiscountRate)}% / ₱{money(manualDiscountAmount)}.
                         </span>
                     ) : (
                         <span className="mt-1 block text-[11px] text-slate-500">
@@ -2446,46 +2446,46 @@ export default function POSCheckoutTerminal({
                 <div className="text-sm border-t border-slate-200 bg-slate-50 rounded-xl p-3 space-y-1 mb-3">
                     <div className="flex justify-between">
                         <span className="text-slate-600">Items Subtotal</span>
-                        <span className="font-medium">PHP {money(cartSubtotal)}</span>
+                        <span className="font-medium">₱{money(cartSubtotal)}</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="text-slate-600">
                             Discount{selectedDiscount ? ` (${selectedDiscount.name})` : ''}
                         </span>
-                        <span className="font-medium text-rose-600">- PHP {money(calculatedDiscountAmount)}</span>
+                        <span className="font-medium text-rose-600">- ₱{money(calculatedDiscountAmount)}</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="text-slate-600">Net Items</span>
-                        <span className="font-medium">PHP {money(netItemsTotal)}</span>
+                        <span className="font-medium">₱{money(netItemsTotal)}</span>
                     </div>
                     {restaurantServiceChargeAmount > 0 && (
                         <div className="flex justify-between">
                             <span className="text-slate-600">
                                 {normalizedFnbContext?.restaurant_service_charge?.label || 'Restaurant service charge'}
                             </span>
-                            <span className="font-medium text-slate-900">+ PHP {money(restaurantServiceChargeAmount)}</span>
+                        <span className="font-medium text-slate-900">+ ₱{money(restaurantServiceChargeAmount)}</span>
                         </div>
                     )}
                     <div className="border-t border-dashed border-slate-200 my-2" />
                     <div className="flex justify-between">
                         <span className="text-slate-600">VATable Sales</span>
-                        <span className="font-medium">PHP {money(vatBreakdown.vatableSales)}</span>
+                        <span className="font-medium">₱{money(vatBreakdown.vatableSales)}</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="text-slate-600">VAT Amount (12%)</span>
-                        <span className="font-medium">PHP {money(vatBreakdown.vatAmount)}</span>
+                        <span className="font-medium">₱{money(vatBreakdown.vatAmount)}</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="text-slate-600">VAT Exempt Sales</span>
-                        <span className="font-medium">PHP {money(vatBreakdown.vatExemptSales)}</span>
+                        <span className="font-medium">₱{money(vatBreakdown.vatExemptSales)}</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="text-slate-600">Zero Rated Sales</span>
-                        <span className="font-medium">PHP {money(vatBreakdown.zeroRatedSales)}</span>
+                        <span className="font-medium">₱{money(vatBreakdown.zeroRatedSales)}</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="font-semibold text-slate-900">Total</span>
-                        <span className="text-lg font-bold text-slate-900">PHP {money(cartTotal)}</span>
+                        <span className="text-lg font-bold text-slate-900">₱{money(cartTotal)}</span>
                     </div>
                 </div>
 

@@ -130,7 +130,7 @@ const inspectExistingManifest = async (relativePath) => {
         const expectedPaths = isResponsiveV2
             ? [
                 manifest?.placeholder?.path,
-                ...['avif', 'webp'].flatMap((format) => ['thumbnail', 'medium', 'large']
+                ...['avif', 'webp'].flatMap((format) => ['pos_thumbnail', 'thumbnail', 'medium', 'large']
                     .map((variant) => manifest?.formats?.[format]?.[variant]?.path))
             ].filter(Boolean)
             : [];

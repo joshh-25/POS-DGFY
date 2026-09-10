@@ -208,7 +208,7 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
 
         expect(paymentInput.value).toBe('50');
         expect(confirmButton.disabled).toBe(true);
-        expect(within(paymentSummary).getByText('PHP 50.00').textContent).toBe('PHP 50.00');
+        expect(within(paymentSummary).getByText('₱50.00').textContent).toBe('₱50.00');
         expect(terminalRender).toHaveBeenCalledTimes(1);
         expect(viewModel.setCustomerPaymentAmountInput).not.toHaveBeenCalled();
         expect(viewModel.setCustomerPaymentAmountAutoFilled).not.toHaveBeenCalled();
@@ -216,7 +216,7 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
 
         fireEvent.change(paymentInput, { target: { value: '150' } });
         expect(confirmButton.disabled).toBe(false);
-        expect(within(paymentSummary).getByText('PHP 50.00').textContent).toBe('PHP 50.00');
+        expect(within(paymentSummary).getByText('₱50.00').textContent).toBe('₱50.00');
         expect(terminalRender).toHaveBeenCalledTimes(1);
         expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
 
@@ -263,7 +263,7 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         const gcashButton = screen.getByRole('button', { name: 'GCash' });
         expect(paymentButtons.querySelectorAll('button')).toHaveLength(6);
         expect(paymentButtons.className).toContain('grid-cols-6');
-        expect(paymentButtons.className).toContain('min-w-[720px]');
+        expect(paymentButtons.className).toContain('min-w-[768px]');
         expect(cashButton.className).toContain('bg-amber-100');
         expect(cashButton.getAttribute('aria-pressed')).toBe('true');
         expect(gcashButton.className).toContain('text-[#0F172A]');
@@ -279,6 +279,31 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         expect(screen.getByRole('button', { name: 'Cash' }).getAttribute('aria-pressed')).toBe('false');
         expect(screen.getByRole('button', { name: 'GCash' }).className).toContain('bg-blue-100');
         expect(screen.getByRole('button', { name: 'GCash' }).getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('clears the selected discount when its type button is clicked again', () => {
+        const clearAppliedDiscount = vi.fn();
+        const { rerender } = render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            appliedDiscount: { type: 'employee' },
+            calculatedDiscountAmount: 15,
+            checkoutDiscountLabel: 'Employee Discount',
+            clearAppliedDiscount
+        })} />);
+
+        const employeeButton = screen.getByRole('button', { name: 'Employee' });
+        expect(employeeButton.getAttribute('aria-pressed')).toBe('true');
+
+        fireEvent.click(employeeButton);
+
+        expect(clearAppliedDiscount).toHaveBeenCalledOnce();
+
+        rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            appliedDiscount: null,
+            clearAppliedDiscount
+        })} />);
+
+        expect(screen.getByRole('button', { name: 'Employee' }).getAttribute('aria-pressed')).toBe('false');
+        expect(screen.getByRole('button', { name: 'Senior Citizen' }).getAttribute('aria-pressed')).toBe('false');
     });
 
     it('keeps every tablet payment method color visible and strengthens only the selected button', () => {
@@ -369,16 +394,18 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         expect(summarySection.className).toContain('border-b');
         expect(summarySection.className).not.toContain('sticky');
         expect(summarySection.className).not.toContain('pb-3');
-        expect(paymentSummary.className).toContain('rounded-none');
-        expect(paymentSummary.className).toContain('border-x-0');
-        expect(paymentSummary.className).toContain('border-t-0');
+        expect(paymentSummary.className).toContain('rounded-xl');
+        expect(paymentSummary.className).toContain('border border-emerald-200');
+        expect(paymentSummary.className).not.toContain('rounded-none');
+        expect(paymentSummary.className).not.toContain('border-x-0');
+        expect(paymentSummary.className).not.toContain('border-t-0');
         expect(screen.queryByText('Payment Summary')).toBeNull();
         expect(within(paymentSummary).getByText('Order Total')).toBeDefined();
-        expect(within(paymentSummary).getByText('- PHP 20.00')).toBeDefined();
+        expect(within(paymentSummary).getByText('- ₱20.00')).toBeDefined();
         expect(within(paymentSummary).getByText('Payment Received')).toBeDefined();
-        expect(within(paymentSummary).getByText('PHP 150.00')).toBeDefined();
+        expect(within(paymentSummary).getByText('₱150.00')).toBeDefined();
         expect(within(paymentSummary).getByText('Change')).toBeDefined();
-        expect(within(paymentSummary).getByText('PHP 50.00')).toBeDefined();
+        expect(within(paymentSummary).getByText('₱50.00')).toBeDefined();
     });
 
     it('shows VAT Removed in the totals only for Senior Citizen or PWD', () => {
@@ -390,7 +417,7 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
 
         const vatRemoved = screen.getByTestId('pos-checkout-vat-removed');
         expect(within(vatRemoved).getByText('VAT Removed')).toBeDefined();
-        expect(within(vatRemoved).getByText('PHP 12.00')).toBeDefined();
+        expect(within(vatRemoved).getByText('₱12.00')).toBeDefined();
 
         rerender(<POSCheckoutConfirmDialog viewModel={createViewModel({
             discountDraft: { type: 'employee' },
@@ -442,9 +469,9 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         fireEvent.click(screen.getByTestId('pos-checkout-view-order-summary'));
         expect(screen.getByTestId('pos-checkout-order-summary-modal')).toBeDefined();
         expect(screen.getByTestId('pos-checkout-order-summary-panel').textContent).toContain('Brewed Coffee');
-        expect(screen.getByTestId('pos-checkout-order-summary-panel').textContent).toContain('PHP 180.00');
-        expect(screen.getByTestId('pos-checkout-order-summary-modal').textContent).toContain('Service ChargePHP 12.00');
-        expect(screen.getByTestId('pos-checkout-order-summary-modal').textContent).toContain('Total AmountPHP 180.00');
+        expect(screen.getByTestId('pos-checkout-order-summary-panel').textContent).toContain('₱180.00');
+        expect(screen.getByTestId('pos-checkout-order-summary-modal').textContent).toContain('Service Charge₱12.00');
+        expect(screen.getByTestId('pos-checkout-order-summary-modal').textContent).toContain('Total Amount₱180.00');
         expect(screen.getByRole('heading', { name: 'Checkout Tab' })).toBeDefined();
 
         fireEvent.click(screen.getByRole('button', { name: 'Close Order Summary' }));

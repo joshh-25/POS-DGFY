@@ -47,7 +47,16 @@ const buildCatalogRow = (overrides = {}) => ({
     category: 'product',
     product_type: 'finished_goods',
     product_folder: overrides.product_folder ?? 'Primary Folder',
-    folder_id: overrides.folder_id ?? 1,
+    folder_id: Object.hasOwn(overrides, 'folder_id') ? overrides.folder_id : 1,
+    folder: Object.hasOwn(overrides, 'folder')
+        ? overrides.folder
+        : {
+            folder_id: Object.hasOwn(overrides, 'folder_id') ? overrides.folder_id : 1,
+            name: overrides.product_folder ?? 'Primary Folder',
+            sort_order: overrides.folder_sort_order ?? 0,
+            is_active: overrides.folder_is_active ?? true,
+            deleted_at: overrides.folder_deleted_at ?? null
+        },
     unit_of_measure: 'pc',
     current_stock: overrides.current_stock ?? 7,
     default_sale_price: 25,
@@ -79,8 +88,8 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
             { item_id: 101, folder_id: 5, sort_order: 0 }
         ]);
         itemFolderFindAllMock.mockResolvedValue([
-            { folder_id: 5, name: 'Seasonal' },
-            { folder_id: 6, name: 'Clearance' }
+            { folder_id: 5, name: 'Seasonal', sort_order: 4, is_active: true, deleted_at: null },
+            { folder_id: 6, name: 'Clearance', sort_order: 2, is_active: true, deleted_at: null }
         ]);
 
         const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
@@ -91,11 +100,11 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
         const item100 = result.find((row) => row.item_id === 100);
         const item101 = result.find((row) => row.item_id === 101);
         expect(item100.secondary_categories).toEqual([
-            { folder_id: 5, folder_name: 'Seasonal' },
-            { folder_id: 6, folder_name: 'Clearance' }
+            { folder_id: 5, folder_name: 'Seasonal', sort_order: 4 },
+            { folder_id: 6, folder_name: 'Clearance', sort_order: 2 }
         ]);
         expect(item101.secondary_categories).toEqual([
-            { folder_id: 5, folder_name: 'Seasonal' }
+            { folder_id: 5, folder_name: 'Seasonal', sort_order: 4 }
         ]);
         // Primary projection (ADR 0080 Decision 1) stays exactly what it was before this phase.
         expect(item100.folder_id).toBe(1);
@@ -111,6 +120,71 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
         expect(result).toHaveLength(1);
         expect(result[0].secondary_categories).toEqual([]);
         expect(itemFolderFindAllMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps an unassigned item public without turning legacy product_folder text into a category', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({
+            item_id: 201,
+            folder_id: null,
+            folder: null,
+            product_folder: 'Masu Cafe'
+        })]);
+        listItemFolderMembershipsMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toMatchObject({ folder_id: null, folder_name: null, folder_sort_order: null });
+    });
+
+    it('keeps the stored primary ID and modifier source available while hiding an inactive primary category', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({
+            item_id: 202,
+            folder_id: 22,
+            folder_is_active: false,
+            folder_deleted_at: '2026-09-09T00:00:00.000Z',
+            product_folder: 'Retired Category'
+        })]);
+        listItemFolderMembershipsMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
+        expect(result[0]).toMatchObject({ folder_id: 22, folder_name: null, folder_sort_order: null });
+        expect(itemFindAllMock.mock.calls[0][0].include).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                as: 'folder',
+                attributes: expect.arrayContaining(['is_active', 'deleted_at'])
+            })
+        ]));
+    });
+
+    it('hides a soft-deleted primary category even if its active flag is stale', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({
+            item_id: 203,
+            folder_id: 23,
+            folder_is_active: true,
+            folder_deleted_at: '2026-09-09T00:00:00.000Z',
+            product_folder: 'Deleted Category'
+        })]);
+        listItemFolderMembershipsMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
+        expect(result[0]).toMatchObject({ folder_id: 23, folder_name: null, folder_sort_order: null });
+    });
+
+    it('keeps the stored primary ID for business rules when the folder association is missing', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({
+            item_id: 204,
+            folder_id: 24,
+            folder: undefined,
+            product_folder: 'Missing Category'
+        })]);
+        listItemFolderMembershipsMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
+
+        expect(result[0]).toMatchObject({ folder_id: 24, folder_name: null, folder_sort_order: null });
     });
 
     it('fails open (empty array, no throw) when the membership lookup errors -- an additive projection must never break the public catalog', async () => {
@@ -198,7 +272,7 @@ describe('storeRepository.listStoreCatalog secondary category projection (#1318,
         const result = await storeRepository.listStoreCatalog({ search: '', limit: 60, location_id: null });
 
         expect(result[0].secondary_categories).toEqual([
-            { folder_id: 20, folder_name: 'Still Active' }
+            { folder_id: 20, folder_name: 'Still Active', sort_order: 0 }
         ]);
     });
 });

@@ -22,8 +22,8 @@ describe('BillRequestDialog', () => {
     expect(screen.getByRole('heading', { name: 'Bill Request' })).toBeDefined();
     expect(screen.getByText('Cake')).toBeDefined();
     expect(screen.getByText('2')).toBeDefined();
-    expect(screen.getByText('PHP 200.00')).toBeDefined();
-    expect(screen.getByText('PHP 400.00')).toBeDefined();
+    expect(screen.getByText('₱200.00')).toBeDefined();
+    expect(screen.getByText('₱400.00')).toBeDefined();
     expect(screen.getByText('Overall price')).toBeDefined();
     expect(screen.getByText(/no payment has been recorded/i)).toBeDefined();
     expect(screen.queryByText(/total payment/i)).toBeNull();

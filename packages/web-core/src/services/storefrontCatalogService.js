@@ -59,10 +59,13 @@ export const queueStorefrontCatalogImage = async (itemId, file) => {
   return response.data.data;
 };
 
-export const queueStorefrontCatalogImages = async (itemId, files = []) => {
+export const queueStorefrontCatalogImages = async (itemId, files = [], options = {}) => {
   const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
   const formData = new FormData();
   normalizedFiles.forEach((file) => formData.append('images', file));
+  if (options?.galleryIntent && typeof options.galleryIntent === 'object') {
+    formData.append('gallery_intent', JSON.stringify(options.galleryIntent));
+  }
   const response = await api.post(`/items/${itemId}/storefront-images/async`, formData);
   return response.data.data;
 };
@@ -72,8 +75,12 @@ export const getStorefrontCatalogImageUploadStatus = async (itemId) => {
   return response.data.data;
 };
 
-export const updateStorefrontCatalogGallery = async (itemId, gallery = []) => {
-  const response = await api.patch(`/items/${itemId}/storefront-images/gallery`, { gallery });
+export const updateStorefrontCatalogGallery = async (itemId, gallery = [], options = {}) => {
+  const payload = { gallery };
+  if (Array.isArray(options?.expectedGalleryKeys)) {
+    payload.expected_gallery_keys = options.expectedGalleryKeys;
+  }
+  const response = await api.patch(`/items/${itemId}/storefront-images/gallery`, payload);
   return response.data.data;
 };
 

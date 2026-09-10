@@ -201,6 +201,12 @@ body {
   touch-action: pan-y;
 }
 
+/* Catalog pagination owns the available width; keep the scrollbar from
+   reserving an extra card column when the catalog becomes scrollable. */
+.dgfy-pos-catalog-scroll {
+  scrollbar-gutter: auto;
+}
+
 .dgfy-pos-scroll-region:hover,
 .dgfy-pos-scroll-region:focus-within,
 .dgfy-pos-scroll-region:active {
@@ -280,6 +286,38 @@ body {
     background: #64748b;
     background-clip: padding-box;
   }
+
+  /* The current-sale surface has an overflow-hidden wrapper around its item
+     list. Repeat the scrollbar contract on the nested region so the visible
+     scrollbar remains discoverable only during interaction. */
+  .dgfy-pos-current-sale-scroll-surface .dgfy-pos-scroll-region {
+    scrollbar-color: transparent transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .dgfy-pos-current-sale-scroll-surface .dgfy-pos-scroll-region:hover,
+  .dgfy-pos-current-sale-scroll-surface .dgfy-pos-scroll-region:focus-within,
+  .dgfy-pos-current-sale-scroll-surface .dgfy-pos-scroll-region:active {
+    scrollbar-color: #94a3b8 transparent;
+  }
+
+  .dgfy-pos-current-sale-scroll-surface .dgfy-pos-scroll-region::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .dgfy-pos-current-sale-scroll-surface .dgfy-pos-scroll-region::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    background-clip: padding-box;
+  }
+
+  .dgfy-pos-current-sale-scroll-surface .dgfy-pos-scroll-region:hover::-webkit-scrollbar-thumb,
+  .dgfy-pos-current-sale-scroll-surface .dgfy-pos-scroll-region:focus-within::-webkit-scrollbar-thumb,
+  .dgfy-pos-current-sale-scroll-surface .dgfy-pos-scroll-region:active::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    background-clip: padding-box;
+  }
 }
 
 /* Portrait tablets need two comfortable action columns so labels such as
@@ -297,6 +335,36 @@ body {
   .dgfy-pos-tablet-action-grid > button > span {
     font-size: 0.75rem;
     line-height: 1.2;
+  }
+}
+
+/* Keep the checkout confirmation sheet reachable on short mobile viewports.
+   The text-size setting is included because larger POS typography changes the
+   usable content height without changing the dialog's ownership. */
+@media (max-width: 639.98px) {
+  .pos-checkout-mobile-sheet {
+    height: calc(100dvh - 3rem);
+    max-height: calc(100dvh - 3rem);
+    transition: height 280ms cubic-bezier(0.16, 1, 0.3, 1), max-height 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  body[data-pos-text-size] .pos-checkout-confirm-dialog {
+    height: calc(100dvh - 9rem + 10px);
+    max-height: calc(100dvh - 9rem + 10px);
+  }
+
+  body[data-pos-text-size] .pos-checkout-mobile-sheet-expanded {
+    height: calc(100dvh - 3rem);
+    max-height: calc(100dvh - 3rem);
+    overflow-y: auto;
+  }
+
+  body[data-pos-text-size] .pos-checkout-mobile-scroll-locked {
+    overflow-y: hidden;
+  }
+
+  body[data-pos-text-size] .pos-checkout-mobile-scroll-expanded {
+    overflow-y: auto;
   }
 }
 
@@ -338,7 +406,11 @@ body {
   --pos-shell-sidebar-text: #0f172a;
   --pos-shell-sidebar-muted: #64748b;
   --pos-shell-sidebar-card: #f8fafc;
-  --pos-shell-shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
+  --pos-shell-shadow: 0 1px 4px rgba(15, 23, 42, 0.035);
+  --pos-surface-shadow: 0 2px 8px rgba(15, 23, 42, 0.035);
+  --pos-elevated-shadow: 0 4px 12px rgba(15, 23, 42, 0.055);
+  --pos-overlay-shadow: 0 10px 24px rgba(15, 23, 42, 0.09);
+  --pos-control-focus-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.42);
   height: 100vh;
   min-height: 0;
   background: var(--pos-shell-bg);
@@ -367,6 +439,34 @@ body.dgfy-pos-document-scroll-lock {
   background: var(--pos-shell-panel-strong);
   border-color: var(--pos-shell-border);
   box-shadow: var(--pos-shell-shadow);
+}
+
+/* Keep elevation quiet and consistent across the POS surface. The body scope
+   also covers dialogs rendered through portals while the POS is mounted. */
+:is(.dgfy-pos-shell, body:has(.dgfy-pos-shell)) :where([class~="shadow-xs"], [class~="shadow-sm"]) {
+  box-shadow: var(--pos-surface-shadow);
+}
+
+:is(.dgfy-pos-shell, body:has(.dgfy-pos-shell)) :where([class~="shadow-md"], [class~="shadow-lg"]) {
+  box-shadow: var(--pos-elevated-shadow);
+}
+
+:is(.dgfy-pos-shell, body:has(.dgfy-pos-shell)) :where([class~="shadow-xl"], [class~="shadow-2xl"]) {
+  box-shadow: var(--pos-overlay-shadow);
+}
+
+:is(.dgfy-pos-shell, body:has(.dgfy-pos-shell)) :where(
+  [class*="shadow-["]:not([class~="shadow-none"]):not([class*="shadow-[0_-1px_0"])
+) {
+  box-shadow: var(--pos-elevated-shadow);
+}
+
+:is(.dgfy-pos-shell, body:has(.dgfy-pos-shell)) :where(input, textarea, select):focus,
+:is(.dgfy-pos-shell, body:has(.dgfy-pos-shell)) :where(button, [role="button"], a, summary):focus-visible {
+  border-color: #93c5fd;
+  box-shadow: var(--pos-control-focus-shadow);
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .dgfy-pos-terminal-badge {
@@ -831,6 +931,44 @@ html.dgfy-imin-performance [class~="transition-all"] {
   touch-action: pan-y;
   padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
   scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/*
+ * POS Items custom modals cannot rely on dynamic viewport units because the
+ * iMin wrapper supports Chrome 80. Keep the vh declaration first so older
+ * WebViews retain a real constraint, then let newer browsers refine it with
+ * dvh as the software keyboard and browser chrome change the visual viewport.
+ */
+.pos-items-modal-panel {
+  height: calc(100vh - 1.5rem);
+  height: calc(100dvh - 1.5rem);
+  max-height: calc(100vh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem);
+}
+
+.pos-items-modal-panel--auto {
+  height: auto;
+}
+
+.pos-items-modal-scroll-region {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.pos-items-modal-footer {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .pos-items-modal-panel {
+    height: auto;
+    max-height: calc(100vh - 3rem);
+    max-height: calc(100dvh - 3rem);
+  }
 }
 
 @media print {

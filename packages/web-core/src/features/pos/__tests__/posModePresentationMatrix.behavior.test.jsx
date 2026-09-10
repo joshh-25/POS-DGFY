@@ -19,7 +19,7 @@ const PROFILE_CASES = Object.freeze([
     bundleKey: 'fnb',
     detailsTestId: 'fnb-workflow-panel',
     heading: null,
-    visibleLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)'],
+    visibleLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (Global)'],
     hiddenLabels: ['Visit Method', 'Client Name', 'Provider / Employee', 'Resource / Room']
   }),
   Object.freeze({
@@ -30,7 +30,7 @@ const PROFILE_CASES = Object.freeze([
     detailsTestId: 'counter-workflow-panel',
     heading: null,
     visibleLabels: ['Walk-in'],
-    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)', 'Visit Method', 'Client Name']
+    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (Global)', 'Visit Method', 'Client Name']
   }),
   Object.freeze({
     name: 'Services',
@@ -40,7 +40,7 @@ const PROFILE_CASES = Object.freeze([
     detailsTestId: 'services-workflow-panel',
     heading: 'Service details',
     visibleLabels: ['Visit Method', 'Client Name', 'Provider / Employee', 'Resource / Room', 'Service Notes'],
-    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)', 'Parked Sales', 'Park & New Sale']
+    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (Global)', 'Parked Sales', 'Park & New Sale']
   }),
   Object.freeze({
     name: 'generic Counter',
@@ -50,7 +50,7 @@ const PROFILE_CASES = Object.freeze([
     detailsTestId: 'counter-workflow-panel',
     heading: null,
     visibleLabels: ['Walk-in'],
-    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (global)', 'Visit Method', 'Client Name']
+    hiddenLabels: ['Dine In', 'Table # (Optional)', 'Order Notes (Global)', 'Visit Method', 'Client Name']
   })
 ]);
 
@@ -152,7 +152,7 @@ describe('POS mode presentation matrix', () => {
     renderProfile(PROFILE_CASES[2]);
     expect(await screen.findByTestId('services-workflow-panel', {}, { timeout: 5000 })).toBeDefined();
     expect(screen.queryByTestId('fnb-workflow-panel')).toBeNull();
-    expect(screen.queryByText('Order Notes (global)')).toBeNull();
+    expect(screen.queryByText('Order Notes (Global)')).toBeNull();
     expect(screen.queryByText('Parked Sales')).toBeNull();
   });
 });

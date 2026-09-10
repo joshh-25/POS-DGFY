@@ -409,3 +409,19 @@ transactions; shift reading counts can instead represent allocation entries.
 Category filtering selects transactions containing matching items; this card uses
 their whole-transaction tender amounts. Compare readings only with aligned date,
 location, terminal, cashier, shift, and void/refund scope.
+
+## Phase 305 inventory preflight
+
+Creating a split-payment session performs a read-only Inventory availability
+preflight before the session is persisted and before any Cash, GCash, or other
+tender allocation can be accepted. The preflight evaluates the same inventory
+issues as final checkout: stock-bearing sale lines, recipe ingredients, and
+stock-linked modifier SKUs, aggregated by item and location.
+
+If recorded location stock cannot be issued from the available FIFO batches,
+session creation fails with `INVENTORY_LEDGER_RECONCILIATION_REQUIRED` and tells
+the cashier that no payment was accepted. It creates no payment session,
+allocation, sale, or stock movement. Final checkout still locks and revalidates
+inventory immediately before issuing stock, so stock changes after preflight
+remain protected. Inventory remains the owner of stock and FIFO rules; POS only
+requests the validation through the Inventory command contract.
