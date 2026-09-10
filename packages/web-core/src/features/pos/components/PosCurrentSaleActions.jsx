@@ -32,7 +32,13 @@ export function PosCurrentSaleActions({
   const parkHandler = onParkAndNewSale || onParkSale;
   const isParkLoading = parkLoading || parkSaleLoading;
   const resolvedParkLabel = activeParkedSale ? 'Update Parked Sale' : (parkSaleLabel || 'Park');
-  const compactParkedLayout = hasParkedSaleControls && !tabletLayout;
+  const cashDrawerLabel = drawerOpening ? 'Opening...' : 'Open Cash Drawer';
+  const cashDrawerLabelClassName = tabletLayout
+    ? 'w-full min-w-0 whitespace-nowrap text-center text-[10px] font-extrabold leading-none tracking-[-0.02em]'
+    : 'w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs';
+  // Keep the parked-sale action grouping identical on tablet and PC. Tablet
+  // only changes the touch target sizing through the responsive class below.
+  const compactParkedLayout = hasParkedSaleControls;
   const gridClassName = compactParkedLayout ? 'grid-cols-6' : 'grid-cols-2 sm:grid-cols-2';
   const checkoutActionClassName = compactParkedLayout ? 'order-2 col-span-3' : '';
   const printActionClassName = compactParkedLayout ? 'order-1 col-span-3' : '';
@@ -86,6 +92,7 @@ export function PosCurrentSaleActions({
       <Button
         type="button"
         data-testid="pos-open-cash-drawer-button"
+        aria-label={tabletLayout ? cashDrawerLabel : undefined}
         variant="outline"
         onClick={onOpenCashDrawer}
         disabled={cashDrawerDisabled}
@@ -93,7 +100,7 @@ export function PosCurrentSaleActions({
         className={`${bottomActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center`}
       >
         <Banknote size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">{drawerOpening ? 'Opening...' : 'Open Cash Drawer'}</span>
+        <span className={cashDrawerLabelClassName}>{cashDrawerLabel}</span>
       </Button>
       <Button
         type="button"

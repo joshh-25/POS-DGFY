@@ -25,15 +25,13 @@ describe('standalone POS catalog card presentation', () => {
         expect(source).toContain('relative flex flex-1 min-w-0 flex-col gap-1 p-1.5 sm:hidden');
         expect(source).toContain('flex min-w-0 flex-col items-start gap-0.5 pr-14');
         expect(source).toContain("'flex min-w-0 min-h-[2.5rem] flex-col items-start justify-center p-1 text-left text-[12px] leading-tight'");
-        expect(source).toContain("'flex min-w-0 min-h-[2.5rem] flex-col items-start justify-center p-1 text-left text-[10px] leading-tight'");
         expect(source).toContain("${!hasImage ? 'pt-px pb-1' : ''}");
         expect(source).toContain('absolute bottom-1.5 right-1.5 flex shrink-0 items-center gap-1');
         expect(source).not.toContain("'flex min-w-0 min-h-[2.5rem] items-center justify-center p-1 text-center text-[12px] leading-tight'");
         expect(source).not.toContain("'flex min-w-0 min-h-[2.5rem] items-center justify-center p-1 text-center text-[10px] leading-tight'");
         expect(source).toContain("'flex min-w-0 flex-col items-start gap-0.5 p-1 min-h-[2.5rem] text-[12px] leading-tight'");
-        expect(source).toContain("'flex min-w-0 flex-col items-start gap-0 p-1 text-[10px] leading-tight'");
         expect(source).not.toContain("'mt-auto flex min-w-0 flex-col items-start gap-0.5 p-1 text-[12px] leading-tight'");
-        expect(source).not.toContain("'mt-auto flex min-w-0 flex-col items-start gap-0 p-1 text-[10px] leading-tight'");
+        expect(source).not.toContain('isTabletViewport\n                                    ?');
         expect(source).toContain("? `₱${money(item.default_sale_price)}`");
         expect(source).toContain(": 'Not set'");
     });
@@ -50,6 +48,7 @@ describe('standalone POS catalog card presentation', () => {
         const terminalSource = read('packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx');
 
         expect(viewSource).toContain('gridAutoRows: `${catalogGridLayout.cardHeight}px`');
+        expect(viewSource).toContain('`repeat(${catalogGridLayout.columns}, minmax(0, 1fr))`');
         expect(viewSource).not.toContain("? 'max-content'");
         expect(viewSource).toContain("sm:flex sm:min-h-0");
         expect(terminalSource).toContain('sm:grid sm:grid-rows-[minmax(0,1fr)_auto]');
