@@ -22474,3 +22474,57 @@ content differs from what was implemented and tested under the "303" label.
 - Contracts/files: linked repair plan, API and rendered editor tests, local browser
   artifacts and compliance declaration. Physical iMin validation excluded.
 - Next eligible phase: 321.
+
+## Phase 322 - POS item image reliability and responsiveness
+
+- Initiative/release: POS item image upload repair / current release.
+- Objective and scope: keep Add Item, Edit Item, Items, and Sell previews
+  attempt-scoped and usable while asynchronous image workers complete; deliver
+  verified POS thumbnails, bounded decoding/retries, safe refresh handoff,
+  tenant/session cleanup, and recovery without changing Storefront gallery
+  ownership or checkout behavior.
+- Status: in_progress.
+- Dependencies: Phase 321; ADR 0017 image acknowledgement and POS thumbnail
+  contract; ADR 0029 catalog ownership; ADR 0055 authorized catalog refresh;
+  ADR 0067 browser support baseline.
+- Acceptance and validation evidence: local authenticated browser checks covered
+  Add Item 1/3/5-image selection, sixth-image retention, Edit Item replacement
+  and cancel/reopen behavior, contained scrolling, preview latency, and no
+  page/request errors. Focused API image/gallery matrix passed 9 suites/173
+  tests; focused rendered frontend matrix passed 9 files/58 tests; POS, IMS,
+  and Storefront builds plus architecture, compliance/API-contract, docs,
+  workspace, app-version, and diff checks passed. Device/APK evidence remains
+  open as the plan records; physical iMin validation is excluded by user
+  instruction. No database migration was required for this phase.
+- Contracts/files: [POS image upload plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md),
+  `packages/web-core/src/features/pos/services/posPendingItemImagePreviewStore.js`,
+  POS item image components/services, catalog image worker/storage, focused
+  frontend/API tests, and the Phase 322 compliance declarations.
+- Next eligible phase: 323.
+
+## Phase 323 - Recoverable bulk POS image packages
+
+- Initiative/release: POS catalog bulk image upload / current release.
+- Objective and scope: provide one resumable ZIP plus CSV workflow for up to 500
+  existing POS items with byte-bounded transfer, strict mapping and archive
+  validation, durable Redis-backed processing, per-file status, failed-only
+  retry, tenant isolation, and non-blocking POS progress. The workflow never
+  creates items or writes Storefront image/gallery fields.
+- Status: in_progress.
+- Dependencies: Phase 322 acceptance; ADR 0017 recoverable bulk package and
+  client-derived variant contracts; production shared Redis and worker-accessible
+  persistent storage; existing `items:edit` authorization and import feature flag.
+- Acceptance and validation evidence: manifest, storage, worker, use-case, and
+  transport suites cover chunk hashes, resumable replay, ZIP traversal and
+  expansion limits, tenant/SKU mapping, lease recovery, concurrency fencing,
+  idempotent completion, failure retention, and failed-only retry. POS build and
+  focused shared/API tests passed; local tenant schema report in read-only mode
+  returned `total=15, ok=15, failed=0` before migration rollout review. The
+  automated gates pass, while APK interaction/memory/request-count evidence and
+  production Redis/storage verification remain open. No migration was executed
+  locally for this phase.
+- Contracts/files: [POS image upload plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md),
+  `apps/dgfy-api/src/modules/pos/{controllers,domain,repositories,usecases}/*`,
+  bulk image worker/storage, shared bulk upload services, focused API/POS tests,
+  and ADR 0017's bulk-package amendment.
+- Next eligible phase: 324.

@@ -18,12 +18,12 @@ persisted 144px POS thumbnail only after it loads successfully. Then complete th
 500-image ZIP + CSV upload workflow without blocking normal POS interaction.
 
 This is a recorded implementation plan, not completion evidence. The current
-execution phase is **289, reopened for corrective work**. **Phase 290 is planned**
-for bulk-upload delivery; the next unallocated local phase is **291**. The
+execution phase is **322, reopened for corrective work**. **Phase 323 is planned**
+for bulk-upload delivery; the next unallocated local phase is **324**. The
 [Implementation Phase Ledger](IMPLEMENTATION_PHASE_LEDGER.md) remains the source
 of truth. Recheck its tip before starting new work, particularly after a merge.
 Do not renumber historical phases. Letters below identify work packages inside
-289 and 290, not a second phase-numbering sequence.
+322 and 323, not a second phase-numbering sequence.
 
 The user has requested this plan be saved. This documentation change does not
 implement application code, run data migrations, or authorize deployment.
@@ -84,7 +84,7 @@ Resolve these contract gaps explicitly, not silently:
   polling. Bulk-job progress is a separate proposed contract to document.
 - ADR 0017's historical bulk file/ingress limits do not establish a safe ZIP
   upload limit. Freeze archive, expanded-byte, per-image, and transfer limits
-  against actual middleware and ingress configuration in 290-A.
+  against actual middleware and ingress configuration in 323-A.
 - Do not put image or ZIP bytes in Redis, localStorage, or a new service-worker
   cache. Local preview blobs are temporary, not durable asset storage.
 - Do not publish item data through SSE or bypass location/terminal grants using
@@ -110,14 +110,14 @@ has repaired them. Reproduce them against the working tree at implementation tim
 | Generic invalidations and multiple refresh triggers can repeatedly load the catalog. | [Catalog refresh helper](../../packages/web-core/src/features/pos/utils/posCatalogRefresh.js), Items workspace, Sell view | Coalesce authorized reads; retain UI state and unchanged item references. |
 | Sequential HTTP batches are not the approved recoverable ZIP workflow; jobs/status can be lost or overwritten. | [Catalog service](../../packages/web-core/src/services/posCatalogService.js), [upload worker](../../apps/dgfy-api/src/workers/catalogImageUploadWorker.js), [status store](../../apps/dgfy-api/src/workers/catalogImageUploadStatusStore.js) | Durable per-job/per-file lifecycle, recovery, safe transport, bounded execution. |
 
-## Phase 289 - Correct single-item image reliability and responsiveness
+## Phase 322 - Correct single-item image reliability and responsiveness
 
 **Status:** in_progress, reopened; existing partial implementation is present.
 **Owner:** POS frontend/backend implementer; QA owns independent validation.
 **Dependency:** existing Phase 288 baseline, authoritative contracts above, and
 preservation of unrelated working-tree changes.
 
-### 289-A - Reproduce failures and freeze the repair contract
+### 322-A - Reproduce failures and freeze the repair contract
 
 - Inputs: audit entry points above and existing frontend/backend image tests.
 - Work: add executable regressions for old-job/new-preview overlap, failed
@@ -133,9 +133,9 @@ preservation of unrelated working-tree changes.
   - [ ] Contract changes and schema impact are identified before application edits.
 - Risk: a green existing test suite can conceal the observed races.
 
-### 289-B - Unify preview identity and safe image handoff
+### 322-B - Unify preview identity and safe image handoff
 
-- Owner: frontend implementer. Depends on 289-A.
+- Owner: frontend implementer. Depends on 322-A.
 - Work: assign an upload-attempt identity before any asynchronous operation and
   scope it to tenant, authenticated session, and item (draft identity until a new
   item is created). Binding and clearing must compare the same attempt. Both
@@ -154,9 +154,9 @@ preservation of unrelated working-tree changes.
   - [ ] Reload discards transient previews safely and reconciles persisted state.
 - Risk: independent screen lifecycles and a save that returns after navigation.
 
-### 289-C - Deliver real 144px POS thumbnails
+### 322-C - Deliver real 144px POS thumbnails
 
-- Owner: backend/frontend implementer. Depends on 289-A; integrates with 289-B.
+- Owner: backend/frontend implementer. Depends on 322-A; integrates with 322-B.
 - Work: expose the actual generated POS thumbnail metadata and use it consistently
   in Items and Sell. Generate a POS-specific variant without forcing unrelated
   Storefront variants through the POS path. Use a 144x144 delivery canvas that
@@ -175,9 +175,9 @@ preservation of unrelated working-tree changes.
   - [ ] Storefront image URLs, gallery order, visibility, and variants are unchanged.
 - Risk: legacy asset metadata and shared ownership; no automatic destructive backfill.
 
-### 289-D - Bound browser work and catalog refreshes
+### 322-D - Bound browser work and catalog refreshes
 
-- Owner: frontend implementer. Depends on 289-B and 289-C.
+- Owner: frontend implementer. Depends on 322-B and 322-C.
 - Work: decode each selected image once for the shared preview, validate source
   byte/pixel limits, prefer supported off-main-thread processing, and provide a
   bounded fallback for supported WebViews. Cancel remaining decode work after
@@ -194,9 +194,9 @@ preservation of unrelated working-tree changes.
   - [ ] Image updates do not clear operational POS state or remount every card.
 - Risk: full-source fallback decoding still costs memory; cap it and measure it.
 
-### 289-E - Single-item acceptance and ledger closure
+### 322-E - Single-item acceptance and ledger closure
 
-- Owner: QA with frontend/backend implementer. Depends on 289-B through 289-D.
+- Owner: QA with frontend/backend implementer. Depends on 322-B through 322-D.
 - Inputs: local signed-in POS, controlled image fixtures, browser diagnostics,
   and the target APK device/WebView for the device acceptance gate.
 - Exit gate:
@@ -209,29 +209,29 @@ preservation of unrelated working-tree changes.
   - [ ] Attach commands/results, asset dimensions/requests, screenshots/traces,
     device details, measured timings, and residual risks to the closure record.
 
-Do not mark Phase 289 completed until every required gate above passes. If the
+Do not mark Phase 322 completed until every required gate above passes. If the
 APK is unavailable, record `environment-access` as the missing evidence and keep
 device acceptance open; desktop results do not substitute for it.
 
-## Phase 290 - Recoverable 500-image ZIP + CSV upload
+## Phase 323 - Recoverable 500-image ZIP + CSV upload
 
-**Status:** in progress; work packages 290-A through 290-D are implemented and
-290-E automated closure is complete. Actual APK evidence remains open.
+**Status:** in progress; work packages 323-A through 323-D are implemented and
+323-E automated closure is complete. Actual APK evidence remains open.
 **Owner:** backend implementer for transport/worker; frontend implementer for POS
 workflow; QA for recovery, security, and performance evidence.
-**Dependency:** Phase 289 acceptance for integrated delivery. Contract discovery
-in 290-A may run alongside Phase 289; bulk delivery must not bypass its exit gate.
+**Dependency:** Phase 322 acceptance for integrated delivery. Contract discovery
+in 323-A may run alongside Phase 322; bulk delivery must not bypass its exit gate.
 
-### Phase 290 transport and lifecycle candidate (2026-09-05)
+### Phase 323 transport and lifecycle candidate (2026-09-05)
 
-290-A through 290-D are now implemented locally. Redis is available at
+323-A through 323-D are now implemented locally. Redis is available at
 127.0.0.1:6379 with append-only persistence for local development; production must
 provide its own durable shared Redis and worker-accessible persistent storage.
 Manifest, storage, worker, catalog, and frontend tests cover the frozen contract.
 Real Redis probes verify idempotent creation, chunk/final archive handling, reliable
 dequeue/recovery, fencing, global concurrency, item exclusion, acknowledgement,
 failure retention, and atomic failed-only retry. Phase closure still requires the
-actual APK performance evidence specified in 290-E; automated evidence does not
+actual APK performance evidence specified in 323-E; automated evidence does not
 substitute for it.
 
 The approved workflow uses one ZIP plus one UTF-8 CSV manifest. The manifest has
@@ -274,7 +274,7 @@ item/version so an older bulk task cannot replace a newer accepted upload. Compl
 files are not reprocessed by retry. Disabling new submissions does not stop already
 accepted jobs. Storefront fields and assets are never read as write targets.
 
-### 290-A - Freeze bulk limits, persistence, and mapping contract
+### 323-A - Freeze bulk limits, persistence, and mapping contract
 
 - Inputs: existing upload middleware, ingress limits, Redis configuration, worker
   topology, filesystem lifecycle, SKU matching rules, permissions, and fixtures.
@@ -298,9 +298,9 @@ accepted jobs. Storefront fields and assets are never read as write targets.
   - [ ] Loss/expiry semantics are honest; no silent in-memory production fallback.
 - Risk: queue metadata without surviving files is not a recoverable upload.
 
-### 290-B - Safe upload transport and archive validation
+### 323-B - Safe upload transport and archive validation
 
-- Owner: backend implementer. Depends on 290-A and Phase 289 acceptance.
+- Owner: backend implementer. Depends on 323-A and Phase 322 acceptance.
 - Work: stage bounded upload chunks on disk with progress/resume identity, enforce
   server-side authorization and limits, validate CSV mappings and image signatures,
   and inspect archives safely before work is accepted. Reject traversal paths,
@@ -317,9 +317,9 @@ accepted jobs. Storefront fields and assets are never read as write targets.
   - [ ] No success acknowledgement precedes the agreed persistence boundary.
 - Risk: timeout or lost acknowledgement after acceptance; idempotent replay is required.
 
-### 290-C - Durable processing and per-file recovery
+### 323-C - Durable processing and per-file recovery
 
-- Owner: backend implementer. Depends on 290-B.
+- Owner: backend implementer. Depends on 323-B.
 - Work: use persistent Redis-backed job state/queue with acknowledged ownership,
   recoverable leases, bounded attempts, and retry backoff. Begin with a global
   ceiling of two active image-processing tasks, enforce tenant fairness/backpressure,
@@ -338,9 +338,9 @@ accepted jobs. Storefront fields and assets are never read as write targets.
     associations; processing and memory stay within the agreed global budget.
 - Risk: at-least-once processing requires idempotent effects, not an "exactly once" claim.
 
-### 290-D - POS progress, results, and responsive catalog integration
+### 323-D - POS progress, results, and responsive catalog integration
 
-- Owner: frontend implementer. Depends on 290-B and 290-C.
+- Owner: frontend implementer. Depends on 323-B and 323-C.
 - Work: provide one POS upload workflow with separate transfer/processing progress,
   per-file failure reasons, completed/skipped/failed totals, and retry-failed action.
   Recover job status after navigation/reload using authenticated job identity, not
@@ -360,9 +360,9 @@ accepted jobs. Storefront fields and assets are never read as write targets.
   - [ ] Scrolling and ordinary POS input remain usable while progress changes.
 - Risk: unbounded result lists and refresh bursts can negate worker-side improvements.
 
-### 290-E - Security, recovery, APK performance, and final closure
+### 323-E - Security, recovery, APK performance, and final closure
 
-- Owner: QA with backend/frontend implementer. Depends on 290-D and all prior gates.
+- Owner: QA with backend/frontend implementer. Depends on 323-D and all prior gates.
 - Work: run the validation matrix below with bounded local processing, not 500
   concurrent HTTP/image operations. Capture before/after evidence using the same
   device, dataset, network profile, and interactions.
@@ -403,12 +403,12 @@ released; repeated upload/navigation cycles leave no growing retained preview/jo
 collection. Capture heap/resource trends across at least ten cycles and record
 the measured peak. Stop repeated 404 loops at the retry budget, show no overlapping
 identical catalog reads, and keep only page-bounded images mounted. Freeze numerical
-worker/heap budgets in 290-A after measuring the available environment.
+worker/heap budgets in 323-A after measuring the available environment.
 
 Required checks at implementation closure:
 
 - Executable frontend preview/renderer/refresh tests, including the failures from
-  289-A. Shared frontend tests run from `apps/dgfy-ims`, per ADR 0071.
+  322-A. Shared frontend tests run from `apps/dgfy-ims`, per ADR 0071.
 - Backend storage, catalog serialization, worker/status, validation, restart,
   idempotency, and tenant-isolation tests; real Redis integration, not mocks alone.
 - POS build and all other builds affected by shared-code changes, plus Storefront
@@ -422,7 +422,7 @@ Required checks at implementation closure:
 
 Deliver the single-item repair before exposing bulk upload. Keep new bulk entry
 points disabled until persistence and acceptance gates pass; select the flag/config
-name using existing conventions during 290-A. Disabling new bulk submissions must
+name using existing conventions during 323-A. Disabling new bulk submissions must
 not discard accepted jobs or remove access to their results. Retain the proven
 single-item path. Deployment and production operations require a separate request.
 
@@ -435,10 +435,10 @@ database migration is executed merely to record the plan.
 Open prerequisites are scoped, not reasons to stop independent work:
 
 - `environment-access`: actual APK device and repeatable performance setup are
-  required for 289-E/290-E; local race regressions can proceed independently.
+  required for 322-E/323-E; local race regressions can proceed independently.
 - `missing-design` / `external-dependency`: production-equivalent Redis persistence,
   worker/storage topology, ingress/chunk limits, and retention must be verified in
-  290-A before bulk delivery is considered implementation-ready.
+  323-A before bulk delivery is considered implementation-ready.
 - `missing-data`: representative authorized image fixtures and sizes are required
   to set realistic expanded-byte, pixel, and memory limits.
 
@@ -446,10 +446,10 @@ Open prerequisites are scoped, not reasons to stop independent work:
 
 On 2026-09-05, `npm run check:architecture` passed (54 modules / 561 code files;
 94 controller files). This is architecture baseline evidence only, not upload
-correctness or APK performance proof. The earlier Phase 289 completion claim is
+correctness or APK performance proof. The earlier Phase 322 completion claim is
 withdrawn in the ledger with its historical test/build claims preserved as history.
 
-### Phase 289 implementation handoff - 2026-09-05
+### Phase 322 implementation handoff - 2026-09-05
 
 The local corrective implementation is ready for user acceptance testing:
 
@@ -462,7 +462,7 @@ The local corrective implementation is ready for user acceptance testing:
   Recovery resubmits only failed image stages, avoiding duplicate accepted uploads.
 - ADR 0017's 2026-09-05 amendment records the POS-only delivery contract and
   event/read-driven status reconciliation; no per-item polling loop is added.
-- No database migration, destructive backfill, commit, deployment, or Phase 290
+- No database migration, destructive backfill, commit, deployment, or Phase 323
   bulk implementation was performed in this corrective pass.
 
 Automated evidence (local, not browser/device acceptance):
@@ -487,13 +487,13 @@ The user reported the visible upload test as successful on 2026-09-05. The test
 surface/device details and measured timings were not supplied, so this is recorded
 as user acceptance feedback rather than verified APK performance evidence.
 
-Current execution: **Phase 290-E in progress**. Phase 289 remains in progress only
+Current execution: **Phase 323-E in progress**. Phase 322 remains in progress only
 for its named device-evidence gate; its corrective code path is user-accepted.
 The combined exit checkboxes above remain open where rendered/device evidence is
-required; implementation readiness is not phase closure. Phase 290 is in progress
-and depends on 289 acceptance. The next unallocated phase remains **291**.
+required; implementation readiness is not phase closure. Phase 323 is in progress
+and depends on 322 acceptance. The next unallocated phase remains **324**.
 
-290-B completion update (2026-09-05): raw packages and extracted originals now stage
+323-B completion update (2026-09-05): raw packages and extracted originals now stage
 under private `apps/dgfy-api/storage/pos-image-imports`, outside the public uploads
 tree. UUID/path containment, exclusive chunk creation, durable file flushes, chunk
 index/count/size bounds, flat ZIP entry rules, expansion limits, and partial-file
@@ -502,9 +502,9 @@ tenant-scoped status routes are wired behind the item-edit permission and featur
 flag. A real local Redis probe passed create, chunk verification, archive assembly,
 manifest/SKU mapping, enqueue, and status; the focused manifest/storage suites pass
 19 tests, the unauthenticated live route returned 401, and API health remained 200.
-290-B is complete; processing delivery is recorded in the 290-C update below.
+323-B is complete; processing delivery is recorded in the 323-C update below.
 
-290-C completion (2026-09-05): the Redis queue now uses a processing list and fenced
+323-C completion (2026-09-05): the Redis queue now uses a processing list and fenced
 acknowledgement instead of destructive dequeue. Startup recovery requeues abandoned
 tasks, global Redis slots cap processing at two files, per-item leases serialize bulk
 and interactive POS image changes, latest-version checks supersede stale jobs, and
@@ -515,9 +515,9 @@ acknowledgement, and concurrent retry (`1` accepted, `1` rejected). No merchant
 catalog data was mutated for this verification. The isolated worker suite proves
 the successful tenant-context commit contract,
 fenced acknowledgement, catalog event, terminal staging cleanup, and stale-version
-supersession. 290-C is complete.
+supersession. 323-C is complete.
 
-290-D completion (2026-09-05): POS Items now accepts exactly one ZIP package and
+323-D completion (2026-09-05): POS Items now accepts exactly one ZIP package and
 one CSV manifest, uploads sequential 6 MiB chunks with per-chunk SHA-256, displays
 non-blocking upload/processing totals, retrieves every paginated per-file result,
 shows failed details, and offers failed-only retry. Browser memory remains bounded
@@ -526,9 +526,9 @@ same `items:edit` permission as its endpoints, refreshes Items/Sell through the
 existing catalog notification path, and does not change Storefront behavior. Nine
 focused POS files pass 39 tests, the POS production build passes (with the existing
 large-chunk warning), API/POS health return 200, and no browser automation ran.
-290-D is complete; 290-E remains.
+323-D is complete; 323-E remains.
 
-290-E automated closure update (2026-09-05): disabling the feature now rejects
+323-E automated closure update (2026-09-05): disabling the feature now rejects
 only new session creation; accepted uploads, result reads, completion, retries, and
 worker draining remain available. Reselecting the same ZIP/CSV package derives a
 stable idempotency key from bounded metadata plus the manifest, so uploaded chunks
@@ -539,9 +539,9 @@ shared POS suites pass 40 tests, POS/IMS/Storefront production builds pass,
 architecture and documentation checks pass, and the compliance declaration is
 recorded. The existing large-bundle build warnings remain. Browser automation was
 not run at the user's request. APK interaction, memory, and request-count evidence
-is the only Phase 290-E gate still open.
+is the only Phase 323-E gate still open.
 
-### Phase 290 operating instructions
+### Phase 323 operating instructions
 
 - Local development requires Redis at `127.0.0.1:6379`, `REDIS_URL`, append-only
   persistence, and `POS_BULK_IMAGE_IMPORT_ENABLED=true`. Production must use a

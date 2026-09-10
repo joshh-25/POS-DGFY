@@ -213,7 +213,7 @@ cache as a substitute for the persisted catalog asset.
 
 ## Amendments (2026-09-05) - POS thumbnail delivery and safe preview handoff
 
-For Phase 289, new `pos-catalog` assets use a 144x144 WebP delivery image
+For Phase 322, new `pos-catalog` assets use a 144x144 WebP delivery image
 (aspect-preserving center crop) as their primary public URL. This supersedes the
 large-primary and three-size defaults only for that asset surface. Storefront
 catalog and settings retain their existing primary URLs, responsive variants,
@@ -234,12 +234,12 @@ Preview decoding is serialized and bounded, leases protect active blob consumers
 and logout/tenant changes invalidate pending attempts. Image versions have at most
 three automatic retries after the initial request, followed by explicit manual
 retry. These changes do not relax the durable Redis production requirement above;
-multi-process recovery and bulk transport remain Phase 290 prerequisites.
+multi-process recovery and bulk transport remain Phase 323 prerequisites.
 
 ## Amendments (2026-09-05) - Recoverable POS bulk image packages
 
 The legacy synchronous `POST /api/v1/pos/catalog-overrides/images/bulk` batches are
-not the 500-image delivery contract. The Phase 290 POS-only workflow accepts one
+not the 500-image delivery contract. The Phase 323 POS-only workflow accepts one
 ZIP and one CSV manifest through resumable, hash-verified chunks. Archive bytes and
 extracted images live on the persistent uploads volume; Redis contains only
 tenant-scoped lifecycle metadata, leases, attempts, and per-file results. A job is
@@ -256,6 +256,7 @@ fencing. Retry queues failed files only; completed results are idempotent. Bulk 
 jobs write only POS catalog image fields/assets and cannot change Storefront image,
 gallery, variant, ordering, or visibility state. Scaling from the current single
 API host requires worker-accessible shared durable file/object storage first.
+
 ## Amendments (2026-09-06)
 
 AVIF encoding is deprecated and disabled by default in the image upload pipeline as of Phase 296
