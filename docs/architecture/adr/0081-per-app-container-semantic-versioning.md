@@ -451,6 +451,37 @@ version increments happen) is unaffected and continues to apply as general guida
 superseding ADR, per ADR 0039 — decided by Pat, 2026-09-09. Full detail: issue #1770,
 `Sieitzz/dgfy-mobile#195`, `dgfy-mobile/docs/VERSIONING.md`.
 
+### 2026-09-10 — Decision 9's blocking flag never carried Decision 6's own base split forward; `check:app-versions` blocking is now base-aware, not global
+
+Filed and found as #1774 (epic #1548). #1592 (Phase 283, 2026-09-05) flipped
+`check:app-versions`' `BLOCKING` toggle `true` for every base — `develop`, `staging`, and `main`
+alike. PR #1773 hit the consequence directly: three apps unbumped on a `develop`-base PR, blocked
+from merging for a requirement that, per Decision 6's own mode table, was never meant to bind
+`develop` at that strictness. Decision 6 already treats `develop` as the least-restrictive tier
+(`'any-increase'` mode, "non-blocking by design" per the mode table's own framing) precisely because
+`develop -> staging`'s minor-floor bump requirement supersedes whatever an individual `develop` PR
+did or didn't bump — Decision 9's own blocking flag, introduced separately, never carried that same
+base distinction forward when it was armed. That's the gap this amendment closes: not a new
+decision about bump *levels* (Decision 6's mode table is unchanged), but a correction to *whether
+the check blocks at all*, which Decision 9 conflated with "trust the check enough to ever block"
+instead of "block on every base uniformly."
+
+**Resolution:** `scripts/lib/version-bump-gate-toggle.js` now exports `resolveBlocking(base, head)`
+— blocking only when `base` is `staging` or `main` (a promotion leg or a hotfix), advisory on
+`develop` — in place of the flat `BLOCKING` constant both consuming surfaces
+(`scripts/pr-checks.js`, `.github/workflows/shared-changed-paths.yml`) used to read directly.
+`BLOCKING` itself remains exported as a global kill switch. Deliberately not derived from
+`resolveMode(base, head)`: a `release/*` head into `main` resolves to the same `'any-increase'` mode
+`develop` gets, so a `resolveMode(...) !== 'any-increase'` proxy would silently leave the
+release-to-`main` leg advisory — exactly the case that must stay blocking. Full rationale, the
+correctness hazard found and avoided, and both consuming surfaces' re-verification:
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching 2026-09-10 dated entry.
+
+`[default]` tier (Decision 9 is `[default]`-tagged; this amendment corrects how Decision 9 is
+implemented, not Decision 6's own mode table, which is unchanged) — decided by Pat, 2026-09-10. Full
+detail: issue #1774, `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching entry,
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s updated status line.
+
 ## Alternatives considered
 
 - **Build each frontend once and inject environment config at container start**, so one digest

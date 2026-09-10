@@ -1558,3 +1558,69 @@ continuous sweep on `develop`, then present on both branches) — see
 `docs/compliance/request-time-preflight-protocol.md`'s matching entry for the verified detail.
 
 PR: (this PR). Closes #1700.
+
+### 2026-09-10: `check:app-versions` blocking made base-aware — advisory on `develop`, blocking on every promotion leg (#1774, epic #1548)
+
+The 2026-09-05 entry above (#1592, Phase 283) flipped `check:app-versions`' `BLOCKING` toggle `true`
+**globally** — every base (`develop`, `staging`, `main`) failed CI on an insufficient app version
+bump. PR #1773 hit exactly this: three apps unbumped on a `develop`-base PR, blocked from merging.
+
+**What changed:** `scripts/lib/version-bump-gate-toggle.js` now exports `resolveBlocking(base,
+head)` in place of the flat `BLOCKING` constant as the value both consuming surfaces
+(`scripts/pr-checks.js`'s `runChecks()`, and `.github/workflows/shared-changed-paths.yml`'s "Load
+check:app-versions gate toggle" step) actually pass through — blocking only when `base` is
+`staging` or `main` (a promotion leg or a hotfix), advisory on `develop`. `BLOCKING` itself stays
+exported as a global kill switch — flipping it `false` still forces every base advisory in one
+edit.
+
+**Why:** Pat's call, quoted in #1774 — `develop` PRs should not be blocked on this. `develop ->
+staging`'s own minor-floor bump requirement (ADR 0081 Decision 6) supersedes whatever an individual
+`develop` PR did or didn't bump, so blocking it there enforces a requirement that becomes irrelevant
+at promotion time while needlessly blocking contributors. Decision 6's own mode table already
+treats `develop` as the least-restrictive tier ("non-blocking by design") — Decision 9's blocking
+flag never carried that same base split forward when it was introduced; #1592's global flip is the
+bug this entry reverts, base-aware rather than wholesale.
+
+**A real correctness hazard was found and avoided, not assumed away.** The obvious shortcut —
+derive blocking from `check-app-version-bump.js`'s own `resolveMode(base, head) !==
+'any-increase'` — is wrong: a `release/*` head into `main` resolves to mode `'any-increase'`, the
+*same* value `develop` gets, so that proxy would read `false` (advisory) for exactly the
+release-to-`main` leg #1774 requires to stay blocking. `resolveBlocking()` does not derive from
+`resolveMode()` at all — every real blocking case (`to-staging/* -> staging`, `fix/staging/* ->
+staging`, `release/* -> main`, a plain hotfix branch into `main`) reduces to "base is `staging` or
+`main`," which needs no head-pattern classification. This also avoids requiring
+`check-app-version-bump.js` (and its transitive `madge` dependency) from the toggle module, keeping
+`shared-changed-paths.yml`'s toggle-load step dependency-free as designed (see that workflow's own
+"Install root dependencies" step, which now still runs only after the toggle step).
+
+**Both consuming surfaces re-verified, not assumed symmetric:**
+
+- `scripts/pr-checks.js` — `scripts/pr-checks.test.js` now asserts the call site derives its
+  `blocking` argument from `resolveBlocking(options.base, options.headRefName)`: a `develop`-base
+  fixture with a failing bump check produces `'warn'`, a `staging`-base fixture (`to-staging/*`
+  head) with the same failing check produces `'fail'`.
+- `.github/workflows/shared-changed-paths.yml` — the "Load check:app-versions gate toggle" step now
+  threads `github.base_ref`/`github.head_ref` through to `resolveBlocking()` instead of reading a
+  flat boolean.
+- `scripts/lib/version-bump-gate-toggle.test.js` (new) unit-covers `resolveBlocking()` directly:
+  `develop` (any head) advisory; `staging`/`main` blocking for every real head shape; an
+  unrecognized base defaults to advisory.
+- **Not yet done as of this PR, tracked as a required follow-up:** a live throwaway PR per base
+  pattern (`develop`; `to-staging/* -> staging`; `fix/staging/* -> staging`; `release/* -> main`; a
+  plain hotfix branch `-> main`), each with a deliberately unbumped app change, observing both
+  `shared-changed-paths.yml`'s check run and `scripts/pr-checks.js`'s local output, closed without
+  merging. This requires opening/closing multiple throwaway PRs against live CI, out of scope for
+  this PR to do unattended — the reviewer or promoter should run this before the next promotion
+  leg exercises the blocking path for real.
+
+**What did not change:** ADR 0081 Decision 6's mode table (`resolveMode()`'s bump-*level*
+requirements are untouched); `check-app-version-bump.js`'s check logic;
+`scripts/check-version-bump-flip-readiness.js` (a separate, one-time-use mechanism from #1569's
+original rollout).
+
+This is a `[default]`-tier procedure amendment under ADR 0039, matching ADR 0081 Decision 9's own
+`[default]` tag — no `[binding]` clause of this policy or of ADR 0081 is changed by this entry. See
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "`check:app-versions` flip-readiness" entry and ADR
+0081's own 2026-09-10 Amendment, kept in sync with this one.
+
+PR: (this PR). Closes #1774. Refs #1592, #1548.
