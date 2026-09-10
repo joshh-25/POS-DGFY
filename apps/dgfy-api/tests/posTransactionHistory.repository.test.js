@@ -7,7 +7,9 @@ const discountFindAll = jest.fn();
 const sequelize = {
     cast: jest.fn((column, type) => ({ kind: 'cast', column, type })),
     col: jest.fn((name) => ({ kind: 'column', name })),
+    escape: jest.fn((value) => `'${String(value).replace(/'/g, "''")}'`),
     fn: jest.fn((name, ...args) => ({ kind: 'function', name, args })),
+    literal: jest.fn((value) => ({ kind: 'literal', value })),
     where: jest.fn((left, right) => ({ kind: 'where', left, right }))
 };
 const models = {
@@ -34,7 +36,9 @@ describe('POS transaction history repository query', () => {
         discountFindAll.mockReset().mockResolvedValue([{ transaction_id: 11 }]);
         sequelize.cast.mockClear();
         sequelize.col.mockClear();
+        sequelize.escape.mockClear();
         sequelize.fn.mockClear();
+        sequelize.literal.mockClear();
         sequelize.where.mockClear();
     });
 
@@ -81,13 +85,15 @@ describe('POS transaction history repository query', () => {
         ));
         expect(paymentClause[Op.or]).toEqual(expect.arrayContaining([
             { payment_type: 'employee_credit' },
-            expect.objectContaining({ kind: 'where' })
+            expect.objectContaining({ kind: 'literal' })
         ]));
-        expect(sequelize.fn).toHaveBeenCalledWith(
-            'JSON_CONTAINS',
-            expect.objectContaining({ kind: 'column', name: 'PosTransaction.payment_breakdown' }),
-            JSON.stringify({ payment_type: 'employee_credit' })
-        );
+        const paymentPredicate = options.where[Op.and].find(
+            (clause) => clause[Op.or]?.some((entry) => entry?.payment_type === 'employee_credit')
+        )[Op.or].find((entry) => entry?.kind === 'literal');
+        expect(paymentPredicate.value).toContain('JSON_SEARCH');
+        expect(paymentPredicate.value).toContain("'one', 'employee_credit'");
+        expect(paymentPredicate.value).toContain('JSON_EXTRACT');
+        expect(paymentPredicate.value).toContain('DECIMAL(18, 4)) > 0');
         expect(options.where.payment_type).toBeUndefined();
         expect(options.limit).toBe(20);
         expect(options.offset).toBe(20);
@@ -100,7 +106,7 @@ describe('POS transaction history repository query', () => {
         ]));
     });
 
-    it('generates a valid MySQL JSON_CONTAINS expression for split-payment filters', async () => {
+    it('generates a valid MariaDB positive-allocation expression for split-payment filters', async () => {
         const realSequelize = new Sequelize('dgfy_sql_generation', 'root', '', {
             dialect: 'mysql',
             logging: false
@@ -122,8 +128,12 @@ describe('POS transaction history repository query', () => {
                 model: queryModel
             });
 
-            expect(sql).toContain("JSON_CONTAINS(`PosTransaction`.`payment_breakdown`, '{\\\"payment_type\\\":\\\"card\\\"}') = 1");
-            expect(sql).not.toContain("'$$'");
+            expect(sql).toContain('JSON_SEARCH');
+            expect(sql).toContain('COALESCE(`PosTransaction`.`payment_breakdown`, JSON_ARRAY())');
+            expect(sql).toContain('JSON_EXTRACT');
+            expect(sql).toContain("'one', 'card'");
+            expect(sql).toContain('DECIMAL(18, 4)) > 0');
+            expect(sql).not.toContain('JSON_TABLE');
         } finally {
             models.PosTransaction.sequelize = sequelize;
             await realSequelize.close();

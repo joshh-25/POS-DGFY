@@ -92,17 +92,33 @@ const buildTransactionPaymentTypeWhere = (sequelize, paymentType) => {
     const normalized = normalizePaymentType(paymentType);
     if (!normalized) return null;
 
+    // Normalized payment_breakdown values can include zero-value placeholder
+    // rows for supported tenders, so a cash-only transaction can still contain
+    // a zero-value GCash row. Match only positive allocations for split-tender
+    // history/report filters.
+    const escapedPaymentType = typeof sequelize.escape === 'function'
+        ? sequelize.escape(normalized)
+        : `'${normalized.replace(/'/g, "''")}'`;
+    const paymentBreakdownExpression = 'COALESCE(`PosTransaction`.`payment_breakdown`, JSON_ARRAY())';
+    // MariaDB 10.4 does not support JSON_TABLE. JSON_SEARCH gives us the
+    // matching allocation path, which is then rewritten from payment_type to
+    // amount so zero-value placeholder rows cannot satisfy the filter.
+    const positiveBreakdownPayment = sequelize.literal(`
+        JSON_SEARCH(${paymentBreakdownExpression}, 'one', ${escapedPaymentType}, NULL, '$[*].payment_type') IS NOT NULL
+        AND CAST(JSON_UNQUOTE(JSON_EXTRACT(
+            ${paymentBreakdownExpression},
+            REPLACE(
+                JSON_UNQUOTE(JSON_SEARCH(${paymentBreakdownExpression}, 'one', ${escapedPaymentType}, NULL, '$[*].payment_type')),
+                '.payment_type',
+                '.amount'
+            )
+        )) AS DECIMAL(18, 4)) > 0
+    `);
+
     return {
         [Op.or]: [
             { payment_type: normalized },
-            sequelize.where(
-                sequelize.fn(
-                    'JSON_CONTAINS',
-                    sequelize.col('PosTransaction.payment_breakdown'),
-                    JSON.stringify({ payment_type: normalized })
-                ),
-                1
-            )
+            positiveBreakdownPayment
         ]
     };
 };
