@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-09-06
 declaration_id: 2026-09-06-pos-development-integration
 classification: major
-surfaces: pos,terminal,payments,settings,compliance
+surfaces: pos,terminal,payments,settings,compliance,inventory
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.06
 verification_evidence: 176 API tests; POS build; architecture and ADR checks; three local migrations and schema post-checks

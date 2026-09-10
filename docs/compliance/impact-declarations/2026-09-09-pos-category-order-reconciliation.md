@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-09-09
 declaration_id: 2026-09-09-pos-category-order-reconciliation
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,inventory,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.09
 verification_evidence: POS category reorder behavior tests,Storefront F&B/services category-order tests,inventory repository reorder tests,live public Storefront category-order smoke,architecture check,compliance check,documentation check,git diff check

@@ -5,7 +5,7 @@ last_reviewed: 2026-09-05
 related_adr: docs/architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md
 declaration_id: 2026-09-05-pos-items-sku-suggestion-performance
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,inventory,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.05
 verification_evidence: focused SKU and viewport suites,10000-row local computation benchmark,POS IMS and Storefront production builds,npm run check:architecture,npm run lint:docs,git diff --check

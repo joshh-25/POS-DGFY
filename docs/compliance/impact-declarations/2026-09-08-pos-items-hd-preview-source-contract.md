@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-09-08
 declaration_id: 2026-09-08-pos-items-hd-preview-source-contract
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,inventory,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
 verification_evidence: focused POS catalog image resolver tests,POS production build,architecture check,compliance check,git diff --check

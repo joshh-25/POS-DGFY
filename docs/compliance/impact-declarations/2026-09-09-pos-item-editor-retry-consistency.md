@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-09-10
 declaration_id: 2026-09-09-pos-item-editor-retry-consistency
 classification: major
-surfaces: pos,terminal,inventory
+surfaces: pos,terminal,inventory,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.09
 verification_evidence: focused Phase 319 rendered/contract tests, POS/IMS/Storefront production builds, architecture/compliance/docs/version/diff gates
