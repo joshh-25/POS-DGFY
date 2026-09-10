@@ -91,10 +91,23 @@ const unique = (values) => [...new Set(values)];
 // verbatim, minus the --staged mode (handled separately here, at the runCheck
 // level, since --staged also changes what "changed files" and "head version"
 // mean -- not just which ref anchors the diff).
-function resolveBaseGitRef(repoRoot, { baseBranchName } = {}) {
+function resolveBaseGitRef(repoRoot, { baseBranchName, headBranchName } = {}) {
     const branch = baseBranchName !== undefined ? baseBranchName : process.env.GITHUB_BASE_REF;
+    const head = headBranchName !== undefined ? headBranchName : process.env.GITHUB_HEAD_REF;
     if (branch) {
         runCommand(`git fetch --no-tags --prune --depth=200 origin ${branch}`, { cwd: repoRoot, allowFail: true });
+        // For promotion into staging (to-staging/* -> staging) or main (release/* -> main), we want
+        // to compare directly against the target branch tip (origin/staging or origin/main), matching
+        // ADR 0081 Decision 6 ("at least one minor above staging's current version" / "increase vs main").
+        // A merge-base against an older cut point would misread cherry-picked staging repairs as new candidate changes.
+        if (branch === 'staging' && head && PROMOTION_HEAD_PREFIX_BY_BASE.staging.test(head)) {
+            const stagingRef = runCommand(`git rev-parse --verify origin/${branch}`, { cwd: repoRoot, allowFail: true });
+            if (stagingRef) return stagingRef;
+        }
+        if (branch === 'main' && head && PROMOTION_HEAD_PREFIX_BY_BASE.main.test(head)) {
+            const mainRef = runCommand(`git rev-parse --verify origin/${branch}`, { cwd: repoRoot, allowFail: true });
+            if (mainRef) return mainRef;
+        }
         const mergeBase = runCommand(`git merge-base HEAD origin/${branch}`, { cwd: repoRoot, allowFail: true });
         if (mergeBase) return mergeBase;
     }
@@ -385,7 +398,7 @@ function runCheck(options = {}) {
     const headGitRef = options.headGitRef !== undefined ? options.headGitRef : (staged ? '' : 'HEAD');
     let baseGitRef = options.baseGitRef;
     if (baseGitRef === undefined) {
-        baseGitRef = staged ? 'HEAD' : resolveBaseGitRef(repoRoot, { baseBranchName });
+        baseGitRef = staged ? 'HEAD' : resolveBaseGitRef(repoRoot, { baseBranchName, headBranchName });
     }
 
     if (!baseGitRef) {
@@ -395,7 +408,7 @@ function runCheck(options = {}) {
     const changedFiles = options.changedFiles !== undefined
         ? options.changedFiles
         : splitLines(runCommand(
-            staged ? 'git diff --cached --name-only' : `git diff --name-only ${baseGitRef}...${headGitRef}`,
+            staged ? 'git diff --cached --name-only' : `git diff --name-only ${baseGitRef}..${headGitRef}`,
             { cwd: repoRoot, allowFail: true },
         ));
 
@@ -444,7 +457,13 @@ function runCheck(options = {}) {
  * single source of truth for that already.
  *
  * `changedFiles` may be supplied directly (tests); by default this diffs
- * baseGitRef...headGitRef the same three-dot merge-base way runCheck() does. A
+ * baseGitRef..headGitRef (two-dot) directly between the two branch tips. #1802:
+ * this previously used a three-dot merge-base diff (baseGitRef...headGitRef),
+ * which diffed from git merge-base base head to head. When staging repairs or
+ * hotfixes are cherry-picked back to develop, the git merge-base remains before
+ * those repairs, falsely flagging backported (content-identical) apps as changed
+ * and demanding an unnecessary minor bump. Two-dot diff directly measures tree
+ * content divergence between the two refs. A
  * failure computing that diff (unresolvable ref, shallow history, etc.) must never
  * silently read as "zero files changed" -- that would degrade to a false "floor
  * clear" on exactly the gate a promotion depends on -- so it's surfaced as its own
@@ -457,7 +476,7 @@ function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedFiles: 
         changedFiles = changedFilesOverride;
     } else {
         try {
-            changedFiles = splitLines(runCommand(`git diff --name-only ${baseGitRef}...${headGitRef}`, { cwd: repoRoot }));
+            changedFiles = splitLines(runCommand(`git diff --name-only ${baseGitRef}..${headGitRef}`, { cwd: repoRoot }));
         } catch (error) {
             changedFiles = [];
             diffError = error.message || String(error);

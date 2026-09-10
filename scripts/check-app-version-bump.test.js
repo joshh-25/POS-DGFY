@@ -299,6 +299,62 @@ test('staging <- to-staging/*: an unchanged app is left untouched (pass, not eva
     }
 });
 
+test('staging <- to-staging/* (#1802): backported staging repairs do not fail runCheck in minor-floor mode', () => {
+    const root = makeGitRepo();
+    runGit(root, ['checkout', '-b', 'staging']);
+    writeFiles(root, baseFixture({
+        'dgfy-api': '1.12.0',
+        'dgfy-storefront': '1.11.0',
+    }));
+    commitAll(root, 'initial staging commit');
+    runGit(root, ['checkout', '-b', 'develop']);
+    runGit(root, ['checkout', 'staging']);
+
+    // Staging repair: dgfy-api gets a fix and patch bump 1.12.0 -> 1.12.1
+    writeFiles(root, {
+        'apps/dgfy-api/src/index.js': 'module.exports = { repaired: true };\n',
+        'apps/dgfy-api/package.json': pkgJson('1.12.1', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+    });
+    const stagingRepairSha = commitAll(root, 'fix(staging): repair dgfy-api');
+
+    // Develop cherry-picks the repair
+    runGit(root, ['checkout', 'develop']);
+    runGit(root, ['cherry-pick', '-x', stagingRepairSha]);
+
+    // Develop also updates storefront with minor bump
+    writeFiles(root, {
+        'apps/dgfy-storefront/src/index.js': 'module.exports = { feature: true };\n',
+        'apps/dgfy-storefront/package.json': pkgJson('1.12.0', {
+            '@sieitzz/shared-constants': 'file:../../packages/shared-constants',
+            '@sieitzz/web-core': 'file:../../packages/web-core',
+        }),
+    });
+    commitAll(root, 'feat(storefront): feature');
+
+    // Cut to-staging branch from develop
+    runGit(root, ['checkout', '-b', 'to-staging/2026-09-10-02']);
+
+    // Set up origin/staging remote tracking ref in the local repo so resolveBaseGitRef finds origin/staging
+    runGit(root, ['update-ref', 'refs/remotes/origin/staging', runGit(root, ['rev-parse', 'staging'])]);
+
+    try {
+        const result = runCheck({
+            repoRoot: root,
+            baseBranchName: 'staging',
+            headBranchName: 'to-staging/2026-09-10-02',
+            headGitRef: 'HEAD',
+        });
+        assert.equal(result.mode, 'minor-floor');
+        assert.equal(result.ok, true);
+        assert.equal(result.appResults.length, 1);
+        assert.equal(result.appResults[0].app, 'dgfy-storefront');
+        assert.equal(result.appResults[0].ok, true);
+        assert.equal(findApp(result, 'dgfy-api'), undefined);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
 // --- staging mode: any other head -> patch-only -----------------------------
 
 test('staging <- fix/staging/*: a minor bump fails patch-only', () => {
@@ -636,6 +692,63 @@ test('--floor: a diff that cannot be computed surfaces diffError, never a silent
         assert.deepEqual(result.belowFloor, []);
         assert.deepEqual(result.invalid, []);
         assert.deepEqual(result.unchanged, []);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+// #1802: a staging repair cherry-picked back to develop (per the #1611 backport rule)
+// results in identical file trees for the repaired app between staging and develop,
+// but leaves git merge-base at the earlier cut point. A three-dot diff (staging...develop)
+// falsely flagged the cherry-picked commits on develop as changes, reporting the app
+// as below the minor floor. Two-dot diff (staging..develop) correctly observes that the
+// app is content-identical between staging and develop, placing it in `unchanged`.
+test('--floor (#1802 regression): backported staging repairs do not falsely flag apps as below floor', () => {
+    const root = makeGitRepo();
+    runGit(root, ['checkout', '-b', 'staging']);
+    writeFiles(root, baseFixture({
+        'dgfy-api': '1.12.0',
+        'dgfy-storefront': '1.11.0',
+    }));
+    commitAll(root, 'initial cut on staging');
+    runGit(root, ['checkout', '-b', 'develop']);
+    runGit(root, ['checkout', 'staging']);
+
+    // Staging repair: dgfy-api gets a fix and patch bump 1.12.0 -> 1.12.1
+    writeFiles(root, {
+        'apps/dgfy-api/src/index.js': 'module.exports = { repaired: true };\n',
+        'apps/dgfy-api/package.json': pkgJson('1.12.1', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+    });
+    const stagingRepairSha = commitAll(root, 'fix(staging): repair dgfy-api');
+
+    // Switch to develop and cherry-pick the repair (simulating #1611 backport)
+    runGit(root, ['checkout', '-q', 'develop']);
+    runGit(root, ['cherry-pick', '-x', stagingRepairSha]);
+
+    // Develop also gets a real feature change and minor bump for storefront: 1.11.0 -> 1.12.0
+    writeFiles(root, {
+        'apps/dgfy-storefront/src/index.js': 'module.exports = { newFeature: true };\n',
+        'apps/dgfy-storefront/package.json': pkgJson('1.12.0', {
+            '@sieitzz/shared-constants': 'file:../../packages/shared-constants',
+            '@sieitzz/web-core': 'file:../../packages/web-core',
+        }),
+    });
+    commitAll(root, 'feat(storefront): new feature on develop');
+
+    try {
+        const result = runFloor({ repoRoot: root, baseGitRef: 'staging', headGitRef: 'develop' });
+        assert.equal(result.diffError, null);
+        assert.deepEqual(result.belowFloor, []);
+        assert.deepEqual(result.invalid, []);
+
+        // dgfy-api must be recognized as unchanged -- its files are byte-for-byte identical
+        // between staging and develop despite the divergence in git commit history.
+        assert.ok(result.unchanged.includes('dgfy-api'));
+
+        // dgfy-storefront changed and satisfies the minor floor (1.11.0 -> 1.12.0)
+        assert.deepEqual(result.results.map((entry) => entry.app), ['dgfy-storefront']);
+        assert.equal(result.results[0].belowFloor, false);
+        assert.equal(result.results[0].floorTarget, '1.12.0');
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
