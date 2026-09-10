@@ -3553,6 +3553,12 @@ export const posRepository = {
             include: buildTransactionInclude()
         };
 
+        // Client-side printer audit confirmation only needs transaction
+        // identity and receipt-contract metadata. Allow that path to avoid
+        // loading every line, discount, delivery, F&B, and user association.
+        if (Array.isArray(options.attributes)) queryOptions.attributes = options.attributes;
+        if (options.include === false) delete queryOptions.include;
+
         if (options.transaction) {
             queryOptions.transaction = options.transaction;
             if (options.lock) {

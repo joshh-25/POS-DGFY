@@ -113,6 +113,19 @@ describe('buildPrintPosReceiptUseCase — client-delegated printing', () => {
         });
         expect(result.data.receipt_contract).toBeDefined();
 
+        expect(posRepository.getTransactionById).toHaveBeenCalledWith(42, expect.objectContaining({
+            include: false,
+            attributes: expect.arrayContaining([
+                'pos_transaction_id',
+                'invoice_number',
+                'total_amount',
+                'document_type',
+                'document_context',
+                'special_instructions'
+            ])
+        }));
+        expect(mockGetAllSettingsUseCase).not.toHaveBeenCalled();
+
         expect(posRepository.createAuditLog).toHaveBeenCalledTimes(1);
         const [auditCall] = posRepository.createAuditLog.mock.calls;
         expect(auditCall[0].changes.driver_id).toBe('imin_native');
