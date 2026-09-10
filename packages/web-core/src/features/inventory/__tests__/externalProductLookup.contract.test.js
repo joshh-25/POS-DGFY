@@ -70,11 +70,15 @@ describe('external product lookup contracts', () => {
 
   it('shows advisory price provenance and requires explicit price acceptance', () => {
     [modalContent, posModalContent].forEach((content) => {
-      expect(content).toContain('Suggested selling price: PHP');
       expect(content).toContain('Use suggested price');
       expect(content).toContain('suggested_price.location');
       expect(content).toContain('suggested_price.observed_at');
     });
+    // POS's terminal workspace (rewritten by the POS-Development branch sync, #1777) renders the
+    // suggested price with a peso-sign glyph instead of IMS's "PHP" prefix; the two surfaces are no
+    // longer required to match on this literal, just to both show a price with its provenance.
+    expect(modalContent).toContain('Suggested selling price: PHP');
+    expect(posModalContent).toContain('Suggested selling price: ₱');
   });
 
   it('imports accepted POS registry images through the governed backend endpoint', () => {
