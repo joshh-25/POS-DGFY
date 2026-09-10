@@ -131,6 +131,28 @@ describe('PosCurrentSaleActions', () => {
     expect(screen.getByText('Open Cash Drawer').className).toContain('whitespace-nowrap');
   });
 
+  it('keeps the tablet cash-drawer accessible name aligned with its loading label', () => {
+    const presentationBundle = resolvePosPresentationBundle(resolvePosWorkflow('retail'));
+
+    render(
+      <PosCurrentSaleActions
+        presentationBundle={presentationBundle}
+        onCheckout={vi.fn()}
+        onPrintOrder={vi.fn()}
+        onOpenCashDrawer={vi.fn()}
+        printerAvailable
+        tabletLayout
+        drawerOpening
+        cashDrawerDisabled
+      />
+    );
+
+    const drawerButton = screen.getByTestId('pos-open-cash-drawer-button');
+    expect(drawerButton.disabled).toBe(true);
+    expect(drawerButton.getAttribute('aria-label')).toBe('Opening...');
+    expect(screen.getByText('Opening...')).toBeDefined();
+  });
+
   it('falls back to the Services-safe action set when the bundle is missing', () => {
     render(
       <PosCurrentSaleActions
