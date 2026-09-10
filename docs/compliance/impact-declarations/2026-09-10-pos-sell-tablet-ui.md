@@ -11,8 +11,8 @@ verification_evidence: focused POS tablet-sell contract suite (98 tests),POS lin
 rollback_note: Revert the atomic tablet-sell UI commits and this declaration. The changes are presentation, layout, focus, and test coverage only; no API, database, migration, payment calculation, checkout payload, permission, or hardware-command behavior is changed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-10T17:50:00+08:00
-preflight_request_ref: NOT-EXECUTED-POS-SELL-TABLET-UI-20260910
+preflight_run_at: 2026-09-10T12:55:22.736Z
+preflight_request_ref: PREFLIGHT-34479163803-2026-09-10-POS-SELL-TABLET-UI
 ---
 
 # POS Sell Tablet UI
