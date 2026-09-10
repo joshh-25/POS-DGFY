@@ -336,7 +336,8 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('Primary storefront image updated for');
     expect(itemsPageSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
     expect(itemsPageSource).toContain('parseStorefrontImageGallery');
-    expect(itemsPageSource).toContain('updateStorefrontCatalogGallery(itemId, nextGallery)');
+    expect(itemsPageSource).toContain('updateStorefrontCatalogGallery(itemId, nextGallery, {');
+    expect(itemsPageSource).toContain('expectedGalleryKeys: current.map');
     expect(itemsPageSource).toContain('Failed to upload item image');
     expect(itemsPageSource).toContain('STOREFRONT_ITEM_IMAGE_SINGLE_SOURCE_MAX_BYTES = 100 * 1024 * 1024');
     expect(itemsPageSource).toContain('STOREFRONT_ITEM_IMAGE_GALLERY_MAX_BYTES = 10 * 1024 * 1024');

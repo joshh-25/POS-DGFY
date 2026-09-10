@@ -13,7 +13,8 @@ describe('POS create-item image upload completes without blocking on optimizatio
     const handler = workspace.slice(handlerStart, handlerEnd);
 
     it('stages the first selected image as an immediate local catalog preview', () => {
-        expect(workspace).toContain('stagePendingPosItemImagePreview({ itemId, file: selectedImageFiles[0] })');
+        expect(workspace).toContain('file: selectedImageFiles[0],');
+        expect(workspace).toContain('fileKeys: selectedImageFiles.map(getImageFileSelectionKey)');
     });
 
     it('binds the accepted background job to the local preview', () => {

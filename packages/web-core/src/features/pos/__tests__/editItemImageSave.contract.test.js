@@ -24,8 +24,9 @@ describe('POS edit-item image save flow', () => {
     expect(uploadHandler).toContain('setSelectedEditImageFiles((current) => [...current, ...filesToAdd]);');
     expect(uploadHandler).not.toContain('queueEditImageFiles');
     expect(saveHandler).toContain('const imageUploadResult = await queueEditImageFiles({');
-    expect(workspace).toContain('galleryIntent: buildEditGalleryIntent');
-    expect(saveHandler).toContain('updateStorefrontCatalogGallery(editItemId, editGalleryDraft)');
+    expect(workspace).toContain('const galleryIntent = buildEditGalleryIntent({');
+    expect(saveHandler).toContain('updateStorefrontCatalogGallery(editItemId, editGalleryDraft, {');
+    expect(saveHandler).toContain('expectedGalleryKeys: editGalleryBase');
     expect(workspace).toContain('const imageAttemptId = stagePendingPosItemImagePreview({');
     expect(workspace).toContain('bindPendingPosItemImagePreviewJob({');
     expect(workspace).toContain('markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId })');
@@ -38,6 +39,9 @@ describe('POS edit-item image save flow', () => {
     expect(workspace).toContain("{savingItem || persistingEditAssets ? 'Saving...' : 'Save Item'}");
     expect(workspace).toContain('<SelectedItemImageCarousel');
     expect(workspace).toContain('multiple');
+    expect(workspace).toContain('primaryEntryKey={editPrimaryEntryKey}');
+    expect(saveHandler).toContain('if (!imageUploadResult.accepted)');
+    expect(saveHandler).toContain('Item details were saved, but the images still need attention.');
   });
 
   it('renders selected previews until Save Item queues the worker job', () => {

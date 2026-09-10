@@ -3,6 +3,8 @@ import {
   buildEditGalleryIntent,
   buildFinalEditGallery,
   dedupeImageFiles,
+  getPendingGalleryEntryKey,
+  getSavedGalleryEntryKey,
   getGallerySignature
 } from '../posEditImageDraft.js';
 
@@ -16,6 +18,14 @@ describe('POS edit image draft helpers', () => {
 
     expect(dedupeImageFiles([first, duplicate, second])).toEqual([first, second]);
     expect(dedupeImageFiles([duplicate], [first])).toEqual([]);
+  });
+
+  it('keeps saved and pending identities stable when another entry is removed', () => {
+    const file = new File(['same'], 'dish.png', { type: 'image/png', lastModified: 7 });
+    const savedEntry = saved('dish.webp');
+
+    expect(getPendingGalleryEntryKey(file)).toBe(getPendingGalleryEntryKey(file));
+    expect(getSavedGalleryEntryKey(savedEntry, 0)).toBe(getSavedGalleryEntryKey(savedEntry, 1));
   });
 
   it('serializes saved and pending entries with the pending primary first', () => {

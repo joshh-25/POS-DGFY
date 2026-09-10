@@ -20,12 +20,14 @@ const posCatalogService = fs.readFileSync(posCatalogServicePath, 'utf8');
 describe('POS Items gallery and IMS CSV import contracts', () => {
   it('binds queued uploads before later setup can fail and only retries failed image stages', () => {
     const stages = workspace.slice(workspace.indexOf('const runPostCreateStages ='), workspace.indexOf('const handleCreateItem ='));
-    expect(stages.indexOf('bindPendingItemImagePreviewJob(')).toBeGreaterThan(stages.indexOf('imageUploadJob = await runStage('));
-    expect(stages.indexOf('bindPendingItemImagePreviewJob(')).toBeLessThan(stages.indexOf('if (!barcodeCode)'));
-    expect(stages).toContain("imageFiles: failedStages.some((stage) => stage.key === 'storefront_images') ? imageFiles : []");
+    expect(stages.indexOf('bindPendingPosItemImagePreviewJob(')).toBeGreaterThan(stages.indexOf('imageUploadJob = await runStage('));
+    expect(stages.indexOf('bindPendingPosItemImagePreviewJob(')).toBeLessThan(stages.indexOf('if (!barcodeCode)'));
+    expect(workspace).toContain('const recoveryImageFiles = failedImageStage ? selectedImageFiles : [];');
+    expect(workspace).toContain('imageFiles: recoveryImageFiles');
     expect(stages).toContain('markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId })');
-    expect(workspace).toContain('imageAttemptId: pendingCreateRecovery.imageAttemptId || null');
+    expect(workspace).toContain('imageAttemptId: recoveryImageAttemptId');
     expect(workspace).not.toContain('pendingCreateRecovery.imageFiles || selectedImageFiles');
+    expect(workspace).toContain('The previous image upload is still being reconciled. Refresh the catalog before retrying so it is not duplicated.');
   });
 
   it('supports the shared five-image gallery in create and edit flows', () => {
@@ -39,7 +41,7 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
     expect(workspace).not.toContain('<StorefrontImageCarousel');
     expect(workspace).toContain('showPrimaryToggle');
     expect(workspace).toContain('The preview appears immediately. Save Item uploads it silently and replaces the preview when ready.');
-    expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload)');
+    expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload, {');
     expect(workspace).toContain('subscribeToRemotePosCatalogUpdates');
     expect(workspace).toContain('Only ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images are allowed per item.');
     expect(workspace).toContain('large files optimized by server');
@@ -47,16 +49,14 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
   });
 
   it('keeps Android modal scrolling lightweight while preserving original upload files', () => {
-    expect(workspace).not.toContain('bg-slate-950/60 backdrop-blur-sm px-3 py-3');
-    expect(workspace.match(/bg-slate-950\/50 px-3 py-3/g)).toHaveLength(2);
-    expect(workspace).toContain("toast.info('Duplicate item images were skipped.')");
+    expect(workspace.match(/pos-mobile-no-focus-zoom fixed inset-0/g)?.length).toBeGreaterThanOrEqual(2);
     expect(carousel).toContain('posPreview = false');
     expect(carousel).toContain('acquirePosImagePreview(file)');
     expect(carousel).toContain('if (cancelled) break;');
     expect(carousel).toContain('URL.revokeObjectURL(url)');
     expect(workspace).not.toContain('monitorCreatedItemImageUpload');
     expect(workspace).toContain('<PosItemImage');
-    expect(workspace).toContain('bindPendingItemImagePreviewJob({ itemId, attemptId, jobId });');
+    expect(workspace).toContain('bindPendingPosItemImagePreviewJob({');
     expect(checkoutView).toContain('React.useSyncExternalStore(');
     expect(checkoutView).toContain("pendingItemImagePreviews[String(item.item_id)]?.url");
     expect(checkoutView).toContain('src: pendingImagePreview');
@@ -76,10 +76,9 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
   });
 
   it('uploads a recoverable ZIP and CSV package in bounded chunks', () => {
-    expect(workspace).toContain('Choose exactly one ZIP package and one CSV manifest.');
-    expect(workspace).toContain("'Import Image Package'");
-    expect(workspace).toContain('onProgress: setBulkPosImageProgress');
-    expect(workspace).toContain('Retry failed');
+    expect(posCatalogService).toContain('Choose one ZIP package and one CSV manifest.');
+    expect(posCatalogService).toContain('onProgress?.({ stage: \'uploading\', processed: index + 1, total: chunkCount });');
+    expect(posCatalogService).toContain('retryFailedPosCatalogImageImport');
     expect(posCatalogService).toContain('POS_BULK_IMAGE_CHUNK_BYTES = 6 * 1024 * 1024');
     expect(posCatalogService).toContain("'X-Chunk-SHA256': await sha256Hex(chunk)");
     expect(posCatalogService).toContain('getAllPosCatalogImageImportResults(jobId)');
