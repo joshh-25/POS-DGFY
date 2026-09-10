@@ -53,6 +53,8 @@ tablet presentation-only change.
   contract tests, and the compact tablet pagination/drawer layout contracts.
 - Atomic controls/layout batch is limited to the current-sale controls, tablet
   takeout notes, sidebar logo crop, and their focused contracts.
+- Atomic focus batch is limited to the Order Preview title focus and
+  keyboard-visible close-button focus contract.
 - `npm run lint` passed in `apps/dgfy-pos`.
 - `npm run build` passed in `apps/dgfy-pos`.
 - Local tablet shell smoke at `1024x600` found the `DGFY POS` page, nonblank

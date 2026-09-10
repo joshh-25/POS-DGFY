@@ -530,6 +530,10 @@ describe('POS terminal view-mode contracts', () => {
 
   it('keeps history receipt modal close action in the header and print action in the footer', () => {
     expect(posCheckoutTerminalReceiptDialogsContent).toContain('aria-label="Close receipt preview"');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('autoFocus');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('tabIndex={-1}');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('focus:outline-none');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('focus-visible:ring-2');
     expect(posCheckoutTerminalReceiptDialogsContent).toContain("onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}");
     expect(posCheckoutTerminalReceiptDialogsContent).toContain("{receiptPrinting ? 'Printing...' : 'Print'}");
     expect(posCheckoutTerminalContent).toContain('<POSCheckoutTerminalReceiptDialogs');
