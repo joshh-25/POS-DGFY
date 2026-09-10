@@ -23,6 +23,7 @@ const __dirname = path.dirname(__filename);
 // that must exist only until their 144px POS derivatives are committed.
 const STORAGE_ROOT = path.resolve(__dirname, '../../../../storage/pos-image-imports');
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// eslint-disable-next-line no-control-regex -- intentional: reject control characters in a safe flat filename
 const SAFE_FLAT_FILENAME_PATTERN = /^[^<>:"/\\|?*\u0000-\u001f]+$/;
 const MAX_CHUNKS = Math.ceil(POS_BULK_IMAGE_IMPORT_MAX_ARCHIVE_BYTES / (6 * 1024 * 1024));
 
@@ -196,7 +197,7 @@ export const createPosBulkImageImportStorage = ({ root = STORAGE_ROOT } = {}) =>
 
             try {
                 await new Promise((resolve, reject) => {
-                    const fail = (error) => { try { zipFile.close(); } catch {} reject(error); };
+                    const fail = (error) => { try { zipFile.close(); } catch { /* best-effort close; ignore failure */ } reject(error); };
                     zipFile.once('error', fail);
                     zipFile.once('end', resolve);
                     zipFile.on('entry', async (entry) => {
