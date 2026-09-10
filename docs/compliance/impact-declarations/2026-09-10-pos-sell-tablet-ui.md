@@ -55,6 +55,8 @@ tablet presentation-only change.
   takeout notes, sidebar logo crop, and their focused contracts.
 - Atomic focus batch is limited to the Order Preview title focus and
   keyboard-visible close-button focus contract.
+- The companion feature record documents the complete included and excluded
+  file scope for the branch delivery.
 - `npm run lint` passed in `apps/dgfy-pos`.
 - `npm run build` passed in `apps/dgfy-pos`.
 - Local tablet shell smoke at `1024x600` found the `DGFY POS` page, nonblank
