@@ -22580,3 +22580,15 @@ content differs from what was implemented and tested under the "303" label.
   `packages/web-core/src/features/pos/utils/posPaymentMethods.js`, and
   `docs/compliance/impact-declarations/2026-09-10-pos-history-payment-filter.md`.
 - Next eligible phase: 325.
+
+## Phase 325 - Tenant Manager registration action guard
+
+- Initiative/release: platform-admin tenant lifecycle reliability / current release.
+- Objective and scope: close the approval-action gap where a pending tenant without a pending public registration application still renders Approve, causing the API error `This tenant is not a pending public registration application.` The landlord tenant list now supplies a server-computed registration action, and Tenant Manager renders only lifecycle-valid approval/retry controls.
+- Mechanically: `buildTenantRegistrationAction` maps the existing application review/provisioning states to `approve`, `retry`, `setting_up`, or `reconcile`; an approved `in_progress` attempt is retryable only after the existing ten-minute timeout. The UI fails closed during mixed-version rollout, refreshes after failed lifecycle requests, and leaves the existing backend atomic approval/retry predicates unchanged.
+- Status: completed.
+- Dependencies: existing company registration application and provisioning lifecycle; no schema migration.
+- Acceptance and validation evidence: `npm test -- --runTestsByPath tests/listTenants.usecase.test.js` (3/3), `npm test -- --run packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx` (4/4), `npm run lint` in `apps/dgfy-api` (0 errors; existing warnings), `npm run lint` in `apps/dgfy-ims` (0 errors; existing warnings), `npm run build` in `apps/dgfy-ims` (pass), and `git diff --check` (pass). The broader `adminTenantLifecycle.integration.test.js` remains blocked by its pre-existing mocked `emailService.js` `verifyConnection` export mismatch before tests execute.
+- Completion date: 2026-09-10.
+- Contracts/files: `apps/dgfy-api/src/modules/tenants/usecases/tenantRegistrationActionPolicy.js`, `apps/dgfy-api/src/modules/tenants/usecases/listTenantsUseCase.js`, `apps/dgfy-api/src/modules/tenants/repositories/tenantAdminRepository.js`, `apps/dgfy-api/tests/listTenants.usecase.test.js`, `apps/dgfy-ims/Pages/admin/TenantManager.jsx`, `packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx`, `docs/api/specification.md`, `docs/features/PLATFORM_ADMIN_AND_QA_INVOICING.md`, `docs/compliance/impact-declarations/2026-09-10-admin-tenant-approval-action-guard.md`.
+- Next eligible phase: 326.

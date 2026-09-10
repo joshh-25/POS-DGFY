@@ -6225,6 +6225,18 @@ List all tenant registrations with their status.
         "helper_text": "Select non-compliant POS access or move the tenant into compliant pending mode.",
         "options": ["non_compliant", "compliant"]
       },
+      "registrationApplication": {
+        "id": "application-uuid",
+        "review_status": "pending",
+        "provisioning_status": "not_started",
+        "updatedAt": "2026-09-10T00:00:00.000Z"
+      },
+      "registration_action": {
+        "action": "approve",
+        "allowed": true,
+        "label": "Approve",
+        "helper_text": "Approve the pending public registration."
+      },
       "can_force_non_compliant": false,
       "force_non_compliant_block_reason": "Compliance mode has not been selected yet.",
       "capabilities": {
@@ -6255,6 +6267,7 @@ List all tenant registrations with their status.
 - `plan_policy`: explains whether `effective_plan` came from stored metadata (`stored_plan`) or registered-tenant premium capability normalization (`registered_tenant_premium_capable`).
 - `capabilities`: active tenants include platform-admin capability settings. Missing tenant-local capability settings default to `ims_enabled=true`, `pos_enabled=true`, `storefront_visible=false`, and `customer_access_mode=catalog`.
 - `capabilities.storefront_readiness`: indicates whether public Storefront visibility can publish through an active primary storefront location with valid coordinates.
+- `registration_action`: authoritative next action for a pending tenant's linked public registration. `approve` is returned only for `pending/not_started`; `retry` is returned for failed provisioning or an approved `in_progress` attempt older than the existing ten-minute retry window; `setting_up` and `reconcile` are non-actionable states. The approval and retry endpoints remain authoritative and continue to enforce these transitions atomically.
 
 ### PATCH /admin/tenants/:id/capabilities
 Update platform-admin capability controls for an active tenant.
