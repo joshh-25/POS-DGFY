@@ -144,9 +144,17 @@ own precedent check, `scripts/check-pos-receipt-version-bump.js`.
    evidence of a #1007 expedited promotion or a main hotfix, not a defect — the gate documents the
    fact, it does not forbid it.
 9. `[default]` The PR-time version-bump check (issue #1560; base-aware — it applies the level rule
-   from Decision 6 according to the PR's `(base, head)` pair) lands advisory first and flips to
-   blocking only in a later, dedicated phase, once enough clean-run evidence exists — matching this
-   repo's own established pattern (Phase 272, #1550/#1551).
+   from Decision 6 according to the PR's `(base, head)` pair) is **blocking on a `staging`/`main`-base
+   PR** (a promotion leg or hotfix) **and advisory on a `develop`-base PR** —
+   `develop -> staging`'s own minor-floor bump (Decision 6) already supersedes whatever an
+   individual `develop` PR did or didn't bump, so blocking a `develop`-base PR at PR time would
+   enforce a requirement that becomes irrelevant at promotion time while needlessly blocking
+   contributors. Historically: shipped advisory on every base first, matching this repo's own
+   established advisory-to-blocking rollout pattern (Phase 272, #1550/#1551); flipped to blocking on
+   every base by #1592 (epic #1548, Phase 283, 2026-09-05) once enough clean-run evidence existed;
+   then narrowed to this base-aware split by #1774 (2026-09-10) once the global flip was found to
+   block `develop`-base PRs on exactly the requirement promotion already supersedes — see the
+   2026-09-10 Amendments entry below for the full record.
 10. `[snapshot]` Known accepted gap, not solved by this ADR: two PRs opened in parallel that each
     bump the same app to the same next version can both pass the (equality-based or increase-based)
     check and merge without conflict, since there is no push-triggered check on `develop`.
@@ -180,10 +188,14 @@ own precedent check, `scripts/check-pos-receipt-version-bump.js`.
 - **Sentry (#633) and the PWA update toast (#276) gain a real version to key off**, once they wire
   up to Decision 5's format — this ADR only hands them the format as a comment; consuming it is
   explicitly out of scope here (Decision 5).
-- **The PR-time enforcement check (#1560) ships advisory, not blocking**, in the same spirit as this
-  repo's existing advisory-to-blocking rollout pattern (Phase 272, #1550/#1551) — a version-bump
-  omission is visible but non-fatal to a PR until Decision 9's later blocking flip, tracked as epic
-  #1548's Wave 2 (planned Phase 276).
+- **The PR-time enforcement check (#1560) is blocking on a `staging`/`main`-base PR, advisory on a
+  `develop`-base PR** (Decision 9) — a `develop`-base version-bump omission is visible but
+  non-fatal, since `develop -> staging`'s own minor-floor bump (Decision 6) is what actually
+  enforces the requirement at promotion time. Historically: shipped advisory on every base first, in
+  the same spirit as this repo's existing advisory-to-blocking rollout pattern (Phase 272,
+  #1550/#1551); flipped to blocking on every base by #1592 (epic #1548, Phase 283, 2026-09-05); then
+  narrowed to the current base-aware split by #1774 (2026-09-10, epic #1548) — see the 2026-09-10
+  Amendments entry below for the full record.
 - **The parallel-PR race (Decision 10) stays open** — two PRs racing to bump the same app to the
   same next version can both merge clean today. Closing it would need a push-triggered check on
   `develop`, which is new scope this ADR does not build.
