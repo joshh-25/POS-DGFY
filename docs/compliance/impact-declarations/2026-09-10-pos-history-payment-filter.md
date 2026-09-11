@@ -13,8 +13,8 @@ verification_evidence: POS transaction-history repository query tests,POS paymen
 rollback_note: Revert the positive-allocation payment-filter predicate and its regression test; no transaction, payment, or schema data is modified.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-10T18:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-POS-HISTORY-PAYMENT-FILTER-LOCAL-ONLY
+preflight_run_at: 2026-09-11T13:41:56.862Z
+preflight_request_ref: PREFLIGHT-34604460194-2026-09-10-POS-HISTORY-PAYMENT-FILTER
 ---
 
 # POS History positive payment-method filtering

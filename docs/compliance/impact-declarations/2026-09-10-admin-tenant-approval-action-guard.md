@@ -11,8 +11,8 @@ verification_evidence: list-tenants lifecycle-policy tests, TenantManager regist
 rollback_note: Revert the registration action policy, list response field, UI guard, tests, documentation, and this declaration together; tenant records and server approval validation remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-10T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-ADMIN-TENANT-APPROVAL-GUARD-LOCAL-ONLY
+preflight_run_at: 2026-09-11T13:41:56.860Z
+preflight_request_ref: PREFLIGHT-34604460194-2026-09-10-ADMIN-TENANT-APPROVAL-ACTION-GUARD
 ---
 
 # Admin tenant approval action guard
