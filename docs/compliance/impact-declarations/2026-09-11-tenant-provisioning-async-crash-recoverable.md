@@ -11,8 +11,8 @@ verification_evidence: node --check on every changed apps/dgfy-api .js file (6 f
 rollback_note: Revert this commit set. No migration, no schema change, no new persisted columns -- company_registration_applications.provisioning_status and its supporting CAS columns already existed and are unchanged, and the admin-user INSERT's ON DUPLICATE KEY UPDATE idempotency fix predates this PR (landed via #1824/PR #1828, independently of this PR, which now only adds a comment cross-referencing it). approveTenantUseCase.js's control flow reverts to a synchronous await; tenantModelFactory.js reverts to including the tenant clone's synthesized duplicate single-column unique indexes (reintroducing the duplicate-index issue this PR fixes, but that is pre-existing behavior, not a regression from reverting - every genuinely hand-authored composite/explicit index this PR is careful to preserve is untouched either way); the new tenantProvisioningReconciliationScheduler.js and its server.js wiring are removed; TenantManager.jsx's polling effect, its overlap guard, and the widened retry-gate UI are removed. No tenant, application, or admin-user row needs cleanup either way.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-11T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-1825-TENANT-PROVISIONING-ASYNC-CRASH-RECOVERABLE
+preflight_run_at: 2026-09-11T04:38:19.599Z
+preflight_request_ref: PREFLIGHT-34562650794-2026-09-11-TENANT-PROVISIONING-ASYNC-CRASH-RECOVERABLE
 ---
 
 # Tenant Provisioning Made Asynchronous and Crash-Recoverable (#1825)
