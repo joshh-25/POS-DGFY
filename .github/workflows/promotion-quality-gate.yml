@@ -1402,7 +1402,10 @@ jobs:
     # reasoning (F-3) -- same logic applies here.
     # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
-    timeout-minutes: 20
+    # #1844: measured setup is ~5m15s and the desktop sales journey is ~15m10s-15m30s on
+    # sieitz-lg. Keep the job envelope at 30m so setup, the 20m first-tripwire below, upload, and
+    # cleanup have margin without allowing an unbounded runner hang.
+    timeout-minutes: 30
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
@@ -1580,7 +1583,9 @@ jobs:
         working-directory: apps/dgfy-api
         run: npm run test:frontend-ims-pos-sales-e2e
         continue-on-error: true
-        timeout-minutes: 15
+        # #1844: the suite needs more than the old 15m budget on sieitz-lg; keep 20m as the first
+        # tripwire while the 30m job envelope above absorbs setup and post-test evidence handling.
+        timeout-minutes: 20
         env:
           NODE_ENV: development
           DB_HOST: 127.0.0.1
