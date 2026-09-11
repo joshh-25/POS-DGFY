@@ -22708,7 +22708,9 @@ content differs from what was implemented and tested under the "303" label.
   environment" is deferred to the next real promotion carrying a POS-only `packages/web-core`
   change, per the plan's own §5.3 -- this PR's own throwaway-branch live-CI verification (§5.2) was
   deferred, so this issue closes via `Refs #1809`, not `Closes #1809` (see the PR body for why).
-- Next eligible phase: 325.`r`n`r`n## Phase 325 - Manual planner-to-worker handoff workflow (#1842)
+- Next eligible phase: 325.
+
+## Phase 325 - Manual planner-to-worker handoff workflow (#1842)
 
 - Initiative/release: agent workflow and token-cost control / current release.
 - Objective and scope: add a planning-only `/planner` skill that writes a compact local
@@ -22737,5 +22739,4 @@ content differs from what was implemented and tested under the "303" label.
 - Acceptance and validation evidence: `npm test -- --runTestsByPath tests/listTenants.usecase.test.js` (3/3), `npm test -- --run packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx` (4/4), `npm run lint` in `apps/dgfy-api` (0 errors; existing warnings), `npm run lint` in `apps/dgfy-ims` (0 errors; existing warnings), `npm run build` in `apps/dgfy-ims` (pass), and `git diff --check` (pass). The broader `adminTenantLifecycle.integration.test.js` remains blocked by its pre-existing mocked `emailService.js` `verifyConnection` export mismatch before tests execute.
 - Completion date: 2026-09-10.
 - Contracts/files: `apps/dgfy-api/src/modules/tenants/usecases/tenantRegistrationActionPolicy.js`, `apps/dgfy-api/src/modules/tenants/usecases/listTenantsUseCase.js`, `apps/dgfy-api/src/modules/tenants/repositories/tenantAdminRepository.js`, `apps/dgfy-api/tests/listTenants.usecase.test.js`, `apps/dgfy-ims/Pages/admin/TenantManager.jsx`, `packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx`, `docs/api/specification.md`, `docs/features/PLATFORM_ADMIN_AND_QA_INVOICING.md`, `docs/compliance/impact-declarations/2026-09-10-admin-tenant-approval-action-guard.md`.
-- Next eligible phase: 326.
 - Next eligible phase: 326.
