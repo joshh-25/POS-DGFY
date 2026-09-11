@@ -569,30 +569,38 @@ export default function TenantManager() {
     // of tearing down and recreating the timer on every tenants-state update.
     const tenantsRef = useRef(tenants);
     tenantsRef.current = tenants;
-    // RF-4 (PR #1830 review): a slow response could otherwise still be in flight when the next
-    // 3s tick fires, letting two silent polls race and an older response overwrite a newer
-    // terminal status. pollInFlightRef skips starting a new tick while one is still pending;
-    // pollCancelledRef stops a tick (or a response already in flight) from doing anything once
-    // this effect has been cleaned up (statusFilter changed, or the component unmounted).
+    // RF-4/RF-6 (PR #1830 review, rounds 1 and 2): a slow response could otherwise still be in
+    // flight when the next 3s tick fires (RF-4), and a single shared "cancelled" boolean doesn't
+    // survive a statusFilter change cleanly (RF-6) - the next effect run resets it to false, so
+    // a response from the *previous* filter's poll that resolves after that reset would pass a
+    // naive "not cancelled" check and get applied against the new filter's tenant list.
+    //
+    // pollGenerationRef is a monotonically increasing counter, bumped every time this effect is
+    // cleaned up (statusFilter changed, or unmount) - never reset. Each effect run captures the
+    // generation value current *at that moment* as its own; a response is only applied if that
+    // captured generation still matches the ref's current value when the response arrives,
+    // which is false both after this same effect's own cleanup and after any subsequent effect's
+    // cleanup, so it never depends on which effect run bumped it. pollInFlightRef still skips
+    // starting a new tick while one is already pending.
     const pollInFlightRef = useRef(false);
-    const pollCancelledRef = useRef(false);
+    const pollGenerationRef = useRef(0);
     useEffect(() => {
-        pollCancelledRef.current = false;
+        const myGeneration = pollGenerationRef.current;
         const intervalId = setInterval(async () => {
-            if (pollInFlightRef.current || pollCancelledRef.current) return;
+            if (pollInFlightRef.current || pollGenerationRef.current !== myGeneration) return;
             const hasInProgress = tenantsRef.current.some(
                 (tenant) => tenant.registrationApplication?.provisioning_status === 'in_progress'
             );
             if (!hasInProgress) return;
             pollInFlightRef.current = true;
             try {
-                await loadTenants({ silent: true });
+                await loadTenants({ silent: true, pollGeneration: myGeneration });
             } finally {
                 pollInFlightRef.current = false;
             }
         }, 3000);
         return () => {
-            pollCancelledRef.current = true;
+            pollGenerationRef.current += 1;
             clearInterval(intervalId);
         };
     }, [statusFilter]);
@@ -621,16 +629,18 @@ export default function TenantManager() {
     // `silent: true` (issue #1825's provisioning-status poll below) skips the loading spinner
     // and the error banner so a background refresh never flickers the page - a failed silent
     // poll just tries again on the next tick instead of surfacing an error.
-    async function loadTenants({ silent = false } = {}) {
+    async function loadTenants({ silent = false, pollGeneration } = {}) {
         if (!silent) {
             setLoading(true);
             setError('');
         }
         try {
             const response = await adminService.getTenants(statusFilter);
-            // RF-4 (PR #1830 review): a silent poll response that resolves after its own effect
-            // was cleaned up (statusFilter changed, or unmount) is stale - never apply it.
-            if (silent && pollCancelledRef.current) return;
+            // RF-4/RF-6 (PR #1830 review): a silent poll response that resolves after its own
+            // effect was cleaned up (statusFilter changed, or unmount) is stale - never apply
+            // it. Compared against the current generation, not a boolean, so this is correct
+            // regardless of which later effect run did the bumping.
+            if (silent && pollGeneration !== undefined && pollGeneration !== pollGenerationRef.current) return;
             setTenants(response.data || []);
         } catch (err) {
             if (silent) {
