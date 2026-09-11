@@ -8,16 +8,20 @@ const require = createRequire(import.meta.url);
 // module loads, not only when a tenant happens to be provisioned. This test's own job is just to
 // confirm that guard actually fires on require (the manifest kills itself on a stale entry, per its
 // own comment) and that the shape it exposes is what tenantSchemaBootstrap.js expects.
+//
+// #1819: the manifest now lives in packages/tenant-bootstrap, a `file:` dependency of this app --
+// required here through apps/dgfy-api's own node_modules, the same as any other npm dependency
+// (no jest moduleNameMapper needed, unlike packages/web-core's cross-package-boundary case).
 describe('tenantBootstrapManifest', () => {
     it('loads without throwing and lists every configured migration path', () => {
-        const manifest = require('../../dgfy-migration-runner/src/tenantBootstrapManifest.cjs');
+        const manifest = require('@sieitzz/tenant-bootstrap');
 
         expect(manifest.TENANT_BOOTSTRAP_MIGRATIONS.length).toBeGreaterThan(0);
         expect(typeof manifest.applyTenantBootstrapMigrations).toBe('function');
     });
 
     it('applies every manifest entry\'s up() in order against a given queryInterface', async () => {
-        const manifest = require('../../dgfy-migration-runner/src/tenantBootstrapManifest.cjs');
+        const manifest = require('@sieitzz/tenant-bootstrap');
 
         const calls = [];
         // Every table already exists, and every column/index/etc already present -- both
