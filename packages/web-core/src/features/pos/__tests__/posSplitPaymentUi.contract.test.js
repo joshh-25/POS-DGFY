@@ -247,7 +247,9 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource.indexOf('} = usePosCheckoutWorkflow({')).toBeGreaterThan(financialWorkflowCallIndex);
         expect(splitWorkflowSource).toContain('const buildCheckoutSnapshot = (context = {}) => ({');
         expect(splitWorkflowSource).toContain('const checkoutSnapshot = useMemo');
-        requiredFinancialDeclarations.forEach((declaration) => {
+        expect(financialWorkflowSource).toContain('const safeCart = useMemo');
+        expect(financialWorkflowSource).toContain('Array.isArray(cart) ? cart : []');
+        requiredFinancialDeclarations.slice(1).forEach((declaration) => {
             expect(financialWorkflowSource).toContain(declaration);
         });
     });

@@ -22525,7 +22525,12 @@ content differs from what was implemented and tested under the "303" label.
   and Storefront builds plus architecture, compliance/API-contract, docs,
   workspace, app-version, and diff checks passed. Device/APK evidence remains
   open as the plan records; physical iMin validation is excluded by user
-  instruction. No database migration was required for this phase.
+  instruction. Phase 322-A's executable contract-freeze regressions passed
+  6 shared frontend test files / 21 tests, covering stale job versus newer preview,
+  failed catalog refresh retention, failed thumbnail handoff, and Items-to-Sell
+  renderer navigation. The recorded POS URL-selection, worker-processing,
+  cleanup, caller-boundary, and no-schema-impact contracts are in the linked
+  plan. No database migration was required for this phase.
 - Contracts/files: [POS image upload plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md),
   `packages/web-core/src/features/pos/services/posPendingItemImagePreviewStore.js`,
   POS item image components/services, catalog image worker/storage, focused

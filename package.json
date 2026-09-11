@@ -29,7 +29,7 @@
     "test:frontend:ims": "cd apps/dgfy-ims && npm test",
     "test:frontend:storefront": "cd apps/dgfy-storefront && npm test",
     "test:frontend:contracts": "cd apps/dgfy-ims && npx vitest run contract.test integration.test",
-    "test:frontend:contracts:storefront": "cd apps/dgfy-storefront && npx vitest run contract.test integration.test",
+    "test:frontend:contracts:storefront": "cd apps/dgfy-storefront && npx vitest run contract.test integration.test --pool=forks --maxWorkers=1 --fileParallelism=false",
     "test:backend": "cd apps/dgfy-api && npm test",
     "test:backend:matrix": "node scripts/run-backend-test-matrix.js",
     "test:backend:fast": "node scripts/run-backend-test-matrix.js --tier fast",
