@@ -1,0 +1,21 @@
+{
+  "name": "@sieitzz/tenant-bootstrap",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Phase 157 tenant-bootstrap migration manifest and the two migrations it applies, shared by apps/dgfy-api (runtime post-sync bootstrap) and apps/dgfy-migration-runner (sequelize-cli) so dgfy-api's Docker image never needs to reach into a sibling app at runtime (#1819).",
+  "main": "src/tenantBootstrapManifest.cjs",
+  "exports": {
+    ".": "./src/tenantBootstrapManifest.cjs",
+    "./migrations/*": "./migrations/*"
+  },
+  "files": [
+    "src",
+    "migrations",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sieitzz/dgfy-platform.git",
+    "directory": "packages/tenant-bootstrap"
+  }
+}

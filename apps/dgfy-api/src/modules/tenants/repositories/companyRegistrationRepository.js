@@ -102,6 +102,17 @@ export const companyRegistrationRepository = {
       return application.reload({ transaction });
     });
   },
+  // Issue #1825: the same staleness window markProvisioningStarted's own CAS already treats as
+  // retryable (an in_progress row untouched for 10+ minutes), surfaced here for the boot
+  // reconciler to find and mark `failed` -- see tenantProvisioningReconciliationScheduler.js.
+  findStaleInProgressApplications({ olderThanMs = 10 * 60 * 1000 } = {}) {
+    return CompanyRegistrationApplication.findAll({
+      where: {
+        provisioning_status: 'in_progress',
+        updatedAt: { [Op.lt]: new Date(Date.now() - olderThanMs) }
+      }
+    });
+  },
   async resubmit({ application, tenant, legalAcknowledgement, workflowMode, industryTag, transaction }) {
     const options = transactionOptions(transaction);
     const attemptNo = application.current_attempt_no + 1;

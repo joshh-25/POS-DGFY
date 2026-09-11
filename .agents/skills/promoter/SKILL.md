@@ -405,6 +405,41 @@ authorized via the PROD dispatch ask above — not a new deploy mutation, not a 
 not itself gated by the deploy-dispatch checkpoint. See the checkpoint table below for the explicit
 unattended classification and the reasoning for it.
 
+**Sync `develop`'s version baselines from `main` (#1807) — after the parity gate and Release
+publication above, not before.** Closes a gap neither the pre-cut floor step nor the per-fix
+backport obligation (#1611) actually covers: both only fire the moment something *touches* an
+app — a promotion that changes it, or a specific repair/hotfix backport — not on a recurring
+schedule. A backport that's missed, delayed, or only partially applied leaves `develop`'s
+source-tree version genuinely behind what `main` is already running, even though nothing about
+production safety depends on it (the floor step still forces the correct, larger leapfrogged bump
+the moment `develop` next actually touches that app — ADR 0081 Decision 6's own accepted
+consequence). This step is the periodic reconciliation those two mechanisms don't provide, run
+once per ordinary promotion, after `main` has already deployed:
+
+```bash
+node scripts/sync-app-version-baselines.js --develop-ref origin/develop --main-ref origin/main
+```
+
+Read-only, and a genuinely distinct concern from `check-app-version-bump.js --floor` (that script
+has had two recent regressions from scope creep, #1740/#1802 — this lives in its own script,
+`scripts/sync-app-version-baselines.js`, not a mode added there). Compares each of the five apps'
+`package.json` `version` at `origin/develop` against `origin/main` unconditionally (no
+changed-files scoping — there is no diff to scope against, only two absolute version numbers) and
+proposes nothing but a report. **Additive only, per app, never a downgrade**: an app where
+`develop`'s version is already `>=` `main`'s is left untouched and reported as such — this
+mechanism only ever raises `develop` to match `main`, never lowers it and never bumps an app
+`main` hasn't moved past. **No interaction with #1610** (the tag-immutability/candidate-identity
+conflict) — this step only ever edits a source-tree `package.json`, never builds or publishes an
+image, and never reads or writes the `org.dgfy-platform.candidate-source-sha` label #1610 is
+about; see the script's own header comment for the full statement.
+
+If (and only if) it reports at least one app below `main`'s baseline, open one ordinary
+`develop`-base PR raising exactly those apps' `package.json` `version` to match `main`'s current
+value — no new merge authority needed, same tier as the pre-cut floor bump PR above
+(`pr-reviewer`'s existing unattended-merge policy on `develop` already covers it). If it reports
+zero apps below baseline, there is nothing to do — do not open an empty PR. Full command sequence:
+`references/promotion-runbook.md`'s "Sync develop's version baselines from main" section.
+
 ## Expedited `develop → main` override (#1007)
 
 A second, narrow, phrase-gated exception to "never merge `main`" — parallel to, and independent of,
@@ -435,6 +470,7 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 | Dispatching `tenant-schema-report.yml` (any environment, including PROD) | Unattended — read-only, `--mode report` only, no write path exists |
 | Running `node scripts/check-image-version-parity.js` after `deploy-main.yml` (ADR 0081 Decision 8, #1588) | Unattended — read-only, `docker buildx imagetools inspect` only, no push |
 | Publishing the GitHub Release (`gh release create release-<candidate_id> ...`) after the promotion parity gate confirms the deploy (#1278, ADR 0082) | Unattended — this is a post-deploy **record** of a deploy Pat already authorized at the PROD dispatch ask, not a mutation of a deployed environment and not a second deploy dispatch. Do not confuse it with the `deploy-main.yml` dispatch row below, which stays an every-time ask |
+| Running `node scripts/sync-app-version-baselines.js` after the promotion parity gate / GitHub Release publication (#1807), and opening/merging the resulting sync PR into `develop` if any app is below `main`'s baseline | Unattended — read-only check; the sync PR is an ordinary `develop`-base PR, same tier as the pre-cut floor bump PR above. Never touches an app `develop` already matches or leads on |
 | Running `npm run preflight:runner` (Phase 233, #1365, H1) before the `deploy-main.yml` dispatch ask | Unattended — read-only (`gh api`/`curl`, self-cancelling `--canary` if used). An exit-`3` "flip required" result still requires logging the flip in the promotion PR before acting on it — that's a documentation step, not a new ask |
 | Running the compliance-preflight execute-and-resolve check (full-scan + stuck-handoff check) before cutting `to-staging/<candidate_id>` **or** `release/<label>` (#1648, 2026-09-06) | Unattended — read-only until it needs to resolve something; see "Frozen candidate and repair loop" and "Compliance preflight sweep" above |
 | Dispatching `compliance-preflight-sweep.yml` manually (backfill, or the declaration hasn't cleared automatically yet) | Unattended — runs against its own ephemeral CI-provisioned instance, no deployed environment touched. No longer auto-merges (#1295/#1374): a passing run pushes its reconciliation branch and attempts the PR, but a policy-blocked `gh pr create` finishes green-with-warning and hands off to a human/credentialed AI session instead — see "Frozen candidate and repair loop" / "Compliance preflight sweep" above. Dispatching itself is still unattended either way, same reasoning as `verify-deployment.yml`'s read-only classification |
@@ -490,4 +526,5 @@ This role owns no `Status` lane — a promotion PR isn't a per-issue card. `pr-r
 
 - `references/promotion-runbook.md` — the copy-pasteable command sequence for the default
   three-stage flow and the #1007-gated two-stage exception: pre-flight, branch cut, PR create,
-  checks, merge, deploy dispatch, verify dispatch.
+  checks, merge, deploy dispatch, verify dispatch, and the post-deploy version-baseline sync
+  (#1807).

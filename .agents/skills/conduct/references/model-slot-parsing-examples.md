@@ -6,7 +6,7 @@ match, not the reverse. Run the deterministic parser rather than parsing informa
 
 ```sh
 node scripts/conduct-model-slot.js "$WORKER_PLANNER" \
-  --known-clis claude,codex,opencode,gemini,droid,grok,cursor --default-cli claude
+  --known-clis claude,codex,opencode,gemini,droid,grok,cursor,antigravity --default-cli claude
 ```
 
 `--known-clis` is always the CLI-id roster read fresh from `orca skills get orchestration`'s
@@ -26,6 +26,7 @@ Planning policy examples from Conduct's invocation contract:
 | Input | Known CLIs | Default CLI | Result |
 |---|---|---|---|
 | `claude:claude-sonnet-5:high` | claude, codex, ... | claude | **Canonical.** `cli=claude`, `model=claude-sonnet-5`, `effort=high`. Segment 1 matches a known agent id. |
+| `agy:claude-sonnet-5:high` | claude, codex, antigravity, ... | claude | **Canonical, alias normalized.** `cli=antigravity` (not `agy`), `model=claude-sonnet-5`, `effort=high`. Segment 1 normalizes to a known agent id before the match. |
 | `claude-sonnet-5:high` | claude, codex, ... | claude | **Legacy.** `cli=claude` (inferred from orchestrator default), `model=claude-sonnet-5`, `effort=high`. The worked example from the issue: `claude-sonnet-5` is *not* a recognized CLI id (the CLI id is `claude`), so rule 3 doesn't match and this falls to legacy — not a special case, just what the general rule produces. |
 | `claude::high` | claude, codex, ... | claude | **Malformed.** Empty segment 2 (`model`) — rejected before dispatch, named exactly. |
 | `copilot:claude-sonnet-5:high` | claude, codex, opencode (no `copilot`) | claude | **Unavailable CLI.** 3 segments, so it can't fall back to legacy parsing (legacy is capped at 2 segments) — rejected before dispatch: "more than 2 segments" for the legacy path, since `copilot` isn't a known CLI id for the canonical path either. Never silently substituted for an available CLI. |
@@ -44,4 +45,27 @@ Planning policy examples from Conduct's invocation contract:
 `formatReportRow(slotName, parsed, origin)` in `scripts/conduct-model-slot.js` produces exactly
 the row shape in `SKILL.md` section 1.4 — canonical rows carry no legacy callout; legacy rows
 always carry the mandatory `(**legacy** — ... — verify)` suffix; a failed parse renders as an
-`**ERROR**` row rather than being silently dropped from the table.
+`**ERROR**` row rather than being silently dropped from the table. Rows include a `Strategy` cell
+(`in-session`, `orca-pty`, or `direct-cli`) once `resolveDispatchStrategy` has run; an uncomputed
+strategy uses `—` rather than the literal string `undefined`.
+
+## Dispatch strategy
+
+`resolveDispatchStrategy({ cli }, { coordinatorCli, launchPreferenceClis })` classifies a resolved
+slot in strict priority order — corrected 2026-09-11 (#1826), launch-preference support is checked
+**before** coordinator match, not after:
+
+1. `orca-pty` when Orca supports `--model`/`--effort` launch preferences for the CLI — even if `cli`
+   also happens to match the coordinator's own runtime. A coordinator already running the resolved
+   `cli` is never on its own a reason to skip external dispatch for a CLI Orca can launch with the
+   requested model (`claude`/`codex`/`cursor` today): in-session native-subagent dispatch does not
+   reliably honor a per-slot `--model` override.
+2. `in-session` only when `cli` matches the coordinator's own runtime **and** Orca has no
+   launch-preference support for it at all (`antigravity` today) — the one case where Tier 1's
+   "avoid a redundant external terminal" argument still holds, since there is no Tier 2 alternative.
+3. `direct-cli` when the CLI has no Orca launch-preference support and the coordinator isn't already
+   running it either — the fallback for `antigravity` from a `claude`/`codex` coordinator, for
+   example.
+
+If the CLI or launch-preference context is missing, the function returns an undefined strategy and
+an explicit reason rather than guessing.

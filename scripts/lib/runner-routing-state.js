@@ -11,7 +11,7 @@
 // deploy-main.yml/promotion-quality-gate.yml together -- check-runner-routing.js's Assertion 6
 // fails CI otherwise, by design. An emergency fallback flip must edit both, and must say so loudly
 // in its own failure message (see check-runner-routing.js's Assertion 6 message).
-const EXPECTED_ACTIVE_CLASS = 'hosted';
+const EXPECTED_ACTIVE_CLASS = 'self-hosted';
 
 /**
  * Derives the routing state actually present in the two PROD-facing workflow files' text, reusing

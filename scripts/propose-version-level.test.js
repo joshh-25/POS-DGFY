@@ -172,7 +172,7 @@ test('classifyVersionDelta: reports the highest differing component, or null whe
 
 // --- proposeVersionLevels: end-to-end against real git fixtures -----------------
 
-test('a lone feat commit proposes minor for the app it touches', () => {
+test('a lone feat commit proposes minor for the app it touches', async () => {
     const { root, baseGitRef } = setupRepo();
     try {
         const headGitRef = commitFiles(root, 'feat(pos): add split-tender checkout', {
@@ -184,7 +184,7 @@ test('a lone feat commit proposes minor for the app it touches', () => {
             }),
         });
 
-        const result = proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
         assert.equal(result.rows.length, 1);
         const pos = findRow(result, 'dgfy-pos');
         assert.equal(pos.proposedLevel, 'minor');
@@ -195,7 +195,7 @@ test('a lone feat commit proposes minor for the app it touches', () => {
     }
 });
 
-test('fix! proposes major', () => {
+test('fix! proposes major', async () => {
     const { root, baseGitRef } = setupRepo();
     try {
         const headGitRef = commitFiles(root, 'fix(api)!: drop the legacy /v1 auth header', {
@@ -203,7 +203,7 @@ test('fix! proposes major', () => {
             'apps/dgfy-api/package.json': pkgJson('2.0.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
         });
 
-        const result = proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
         const api = findRow(result, 'dgfy-api');
         assert.equal(api.proposedLevel, 'major');
     } finally {
@@ -211,7 +211,7 @@ test('fix! proposes major', () => {
     }
 });
 
-test('a BREAKING CHANGE footer proposes major even without a bang', () => {
+test('a BREAKING CHANGE footer proposes major even without a bang', async () => {
     const { root, baseGitRef } = setupRepo();
     try {
         const message = 'fix(api): tighten tenant validation\n\nBREAKING CHANGE: rejects tenants missing a schema\n';
@@ -220,7 +220,7 @@ test('a BREAKING CHANGE footer proposes major even without a bang', () => {
             'apps/dgfy-api/package.json': pkgJson('2.0.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
         });
 
-        const result = proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
         const api = findRow(result, 'dgfy-api');
         assert.equal(api.proposedLevel, 'major');
     } finally {
@@ -228,7 +228,7 @@ test('a BREAKING CHANGE footer proposes major even without a bang', () => {
     }
 });
 
-test('only chore/docs/test commits propose patch', () => {
+test('only chore/docs/test commits propose patch', async () => {
     const { root, baseGitRef } = setupRepo();
     try {
         commitFiles(root, 'chore(ims): bump a dev dependency', {
@@ -243,7 +243,7 @@ test('only chore/docs/test commits propose patch', () => {
             }),
         });
 
-        const result = proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
         const ims = findRow(result, 'dgfy-ims');
         assert.equal(ims.proposedLevel, 'patch');
         assert.equal(ims.attributedCommits, 2);
@@ -252,7 +252,7 @@ test('only chore/docs/test commits propose patch', () => {
     }
 });
 
-test('multiple commits touching one app take the highest proposed level', () => {
+test('multiple commits touching one app take the highest proposed level', async () => {
     const { root, baseGitRef } = setupRepo();
     try {
         commitFiles(root, 'chore(storefront): tidy up imports', {
@@ -269,7 +269,7 @@ test('multiple commits touching one app take the highest proposed level', () => 
             }),
         });
 
-        const result = proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
         const storefront = findRow(result, 'dgfy-storefront');
         // chore -> patch, feat -> minor, fix -> patch: highest of the three is minor.
         assert.equal(storefront.proposedLevel, 'minor');
@@ -279,7 +279,7 @@ test('multiple commits touching one app take the highest proposed level', () => 
     }
 });
 
-test('an app touched only via file: fan-out still gets a proposed level from the fan-out-triggering commit', () => {
+test('an app touched only via file: fan-out still gets a proposed level from the fan-out-triggering commit', async () => {
     const { root, baseGitRef } = setupRepo();
     try {
         // Only packages/web-core changes -- no commit touches apps/dgfy-ims/, apps/dgfy-pos/,
@@ -288,7 +288,7 @@ test('an app touched only via file: fan-out still gets a proposed level from the
             'packages/web-core/index.js': 'module.exports = { DateRangePicker: true };\n',
         });
 
-        const result = proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
         const appNames = result.rows.map((row) => row.app).sort();
         assert.deepEqual(appNames, ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']);
         for (const row of result.rows) {
@@ -301,14 +301,14 @@ test('an app touched only via file: fan-out still gets a proposed level from the
     }
 });
 
-test('no apps changed: empty table, and the CLI exits 0', () => {
+test('no apps changed: empty table, and the CLI exits 0', async () => {
     const { root, baseGitRef } = setupRepo();
     try {
         const headGitRef = commitFiles(root, 'docs: update the README', {
             'README.md': 'unrelated change\n',
         });
 
-        const result = proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
+        const result = await proposeVersionLevels({ repoRoot: root, baseGitRef, headGitRef });
         assert.deepEqual(result.rows, []);
 
         const cliPath = path.join(__dirname, 'propose-version-level.js');
@@ -320,6 +320,12 @@ test('no apps changed: empty table, and the CLI exits 0', () => {
     }
 });
 
-test('proposeVersionLevels requires --base', () => {
-    assert.throws(() => proposeVersionLevels({ repoRoot: process.cwd() }), /requires options\.baseGitRef/);
+test('proposeVersionLevels requires --base', async () => {
+    // #1809 (Phase 324): proposeVersionLevels() is now async -- its early `throw` (before any
+    // `await`) surfaces as a rejected Promise, not a synchronous throw, so this needs
+    // assert.rejects rather than assert.throws. Same assertion, mechanical migration only.
+    await assert.rejects(
+        () => proposeVersionLevels({ repoRoot: process.cwd() }),
+        /requires options\.baseGitRef/,
+    );
 });
