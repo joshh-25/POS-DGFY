@@ -159,7 +159,17 @@ export const getTenantModels = (sequelize) => {
         // Part A: Safe hook cloning — strip hooks from the options spread so that any hook
         // referencing the global `db` import does not accidentally query the Landlord database.
         // Hooks are re-applied explicitly below after model definition.
-        const { hooks: originalHooks = {}, ...safeOptions } = originalModel.options;
+        //
+        // Part D (issue #1825): also strip `indexes`/`uniqueKeys` from the options spread.
+        // On the landlord connection, Sequelize's define() already normalized any column-level
+        // `unique: true` into a synthesized `options.indexes` entry (and `options.uniqueKeys`).
+        // `originalModel.rawAttributes` below still carries that same `unique: true` per column,
+        // so passing both here makes Sequelize process the same unique constraint twice on the
+        // fresh tenant connection — once from rawAttributes, once from the inherited indexes/
+        // uniqueKeys — emitting duplicate indexes (e.g. `username`/`username_2`) on every newly
+        // provisioned tenant. rawAttributes alone is sufficient; Sequelize regenerates a single,
+        // correct index per unique column from that.
+        const { hooks: originalHooks = {}, indexes: _originalIndexes, uniqueKeys: _originalUniqueKeys, ...safeOptions } = originalModel.options;
 
         models[name] = sequelize.define(
             originalModel.name,
