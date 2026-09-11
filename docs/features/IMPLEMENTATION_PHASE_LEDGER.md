@@ -22674,3 +22674,23 @@ content differs from what was implemented and tested under the "303" label.
   change, per the plan's own §5.3 -- this PR's own throwaway-branch live-CI verification (§5.2) was
   deferred, so this issue closes via `Refs #1809`, not `Closes #1809` (see the PR body for why).
 - Next eligible phase: 325.
+
+## Phase 325 - Manual planner-to-worker handoff workflow (#1842)
+
+- Initiative/release: agent workflow and token-cost control / current release.
+- Objective and scope: add a planning-only `/planner` skill that writes a compact local
+  `.tmp/plan-<issue>.md` handoff, extend `/implement` to validate and consume it, and let
+  `/pr-reviewer` use the handoff when available. The human remains the coordinator; no new
+  dispatcher or replacement for `/conduct` is introduced.
+- Status: completed.
+- Dependencies: canonical agent-surface layout (#442), existing `/pm`, `/implement`, and
+  `/pr-reviewer` role contracts, and the issue/epic taxonomy.
+- Acceptance and validation evidence: `npm run check:agent-surfaces`, the skill creator validator,
+  `npm run lint:docs`, `npm run check:architecture`, `git diff --check`, and pre-commit compliance/
+  whitespace gates all pass. The planner contract covers the normal, refresh, ambiguity, epic, and
+  Worker/Reviewer fallback paths; no runtime application surface or deployment path is changed.
+- Completion date: 2026-09-11.
+- Contracts/files: `.agents/skills/planner/`, `.claude/skills/planner/`, the canonical
+  Worker/Reviewer/PM role definitions, `AGENTS.md`, `scripts/check-agent-surfaces.js`, and this
+  phase ledger entry.
+- Next eligible phase: 326.

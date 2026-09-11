@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Plan, implement, commit, and open a PR for a scoped engineering task on dgfy-platform — the Worker/Implementer role from issue #331/#436. Use this whenever the user asks for a change to ship as a PR (a fix, a small feature, a workflow edit, a doc correction) and wants it carried from plan through an opened pull request without re-explaining this repo's git/PR/compliance conventions each time. This skill never merges and never touches a deployed environment — it stops and asks before either.
+description: Plan, implement, commit, and open a PR for a scoped engineering task on dgfy-platform — the Worker/Implementer role from issue #331/#436. Use this whenever the user asks for a change to ship as a PR (a fix, a small feature, a workflow edit, a doc correction) and wants it carried from plan through an opened pull request without re-explaining this repo's git/PR/compliance conventions each time. Accepts an optional local `/planner` handoff via `@.tmp/plan-<issue>.md`. This skill never merges and never touches a deployed environment — it stops and asks before either.
 ---
 
 # Worker/Implementer
@@ -13,6 +13,26 @@ Plan → implement → commit → PR, for one scoped task at a time on `dgfy-pla
 own, decided before this skill existed and not reopened here: it does not merge its own PR, and it
 does not touch a deployed environment (no deploy dispatch, no SSH mutation). Both are always a
 human's call — see the checkpoint policy below for the full boundary.
+
+## Planner handoff input
+
+An invocation may include a repository-relative path in the form
+`/implement @.tmp/plan-<issue>.md`. When present, read and validate that artifact before branching
+or planning further. It must use the `dgfy-planner-handoff/v1` schema, identify the same open issue
+being implemented, and have `status: ready`. A missing, malformed, `needs-decision`, or materially
+stale/conflicting handoff is a hard stop: report the discrepancy and return to `/planner` or the
+operator instead of silently replanning around it.
+
+The handoff is a planning snapshot, not a replacement for the issue or authoritative repository
+documentation. Re-validate the issue and relevant docs at implementation time; those sources win
+over the artifact if they changed, and the Worker must surface the conflict before editing. The
+artifact's `planning_head` is provenance, not an automatic failure when the current checkout has
+advanced.
+
+For an artifact-backed PR, add a compact `## Plan Handoff` section to the PR body containing the
+issue number, artifact path, planning head, scope summary, and acceptance summary. The local `.tmp`
+file is ignored and must never be force-added merely to make it available to a reviewer. If no
+planner artifact is supplied, the existing Worker workflow remains unchanged.
 
 ## Checkpoint policy — stop and ask before proceeding
 
@@ -108,7 +128,8 @@ of these triggers actually firing (or correctly not firing) in practice.
    *before* the PR exists, so it lands in the initial body instead, per above.
 5. **Open the PR** against `develop`, following `docs/ai/PR.md`'s body format (`## Summary` +
    `## Testing Evidence` at minimum), linking the issue with `Closes #N` or `Refs #N` per
-   `docs/process/ISSUE-TAXONOMY.md`'s linkage rule. Then set the board card to `For Review` — see
+   `docs/process/ISSUE-TAXONOMY.md`'s linkage rule. For an artifact-backed PR, include the compact
+   `## Plan Handoff` provenance section described above. Then set the board card to `For Review` — see
    "Board transitions" below.
    When the formatter validates the active session, put its `Opened by (..., worker)` output first
    under `## Summary`; otherwise omit the attribution line.

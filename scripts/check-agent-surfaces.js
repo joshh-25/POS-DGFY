@@ -37,6 +37,7 @@ const ROLE_SHIMS = {
   promoter: ['.claude/skills/promoter/SKILL.md'],
   'incident-responder': ['.claude/skills/incident-responder/SKILL.md'],
   notes: ['.claude/skills/notes/SKILL.md'],
+  planner: ['.claude/skills/planner/SKILL.md'],
 };
 
 const SHIM_LINE_CAP = 25;
