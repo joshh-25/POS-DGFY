@@ -53,3 +53,12 @@ session must refresh the plan after the issue decision is resolved.
 
 This role is distinct from `/pm`: `/pm` files/shapes issues and manages project state; `/planner`
 turns an existing issue/epic into a local implementation contract.
+
+## Manual handoff input
+
+When a session resumes from `/handoff`, accept `/planner <issue-or-epic-number> @.tmp/handoff-<...>.md`.
+Validate the `dgfy-handoff/v1` schema, confirm the issue or epic and `role: planner`, and use the
+artifact only as a snapshot of prior progress. Re-read the live issue and authoritative docs; they
+win over the artifact. A missing, malformed, mismatched, or ambiguous handoff is a hard stop with
+an instruction to rerun `/handoff` or resume without the artifact. Without a handoff artifact, the
+existing planner workflow is unchanged.

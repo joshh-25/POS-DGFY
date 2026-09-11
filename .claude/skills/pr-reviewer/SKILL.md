@@ -1,7 +1,7 @@
 ---
 name: pr-reviewer
 description: Audit an open dgfy-platform PR and post the fixed-format review verdict — dispatches to the pr-reviewer subagent so the isolated, read-mostly review context stays intact.
-argument-hint: "[PR number]"
+argument-hint: "[PR number] [optional @.tmp/handoff-<...>.md]"
 context: fork
 agent: pr-reviewer
 background: false
