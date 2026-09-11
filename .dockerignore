@@ -25,6 +25,7 @@
 /packages/*
 !/packages/pos-receipt
 !/packages/shared-constants
+!/packages/tenant-bootstrap
 !/packages/web-core
 /artifacts
 /nginx

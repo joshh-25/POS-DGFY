@@ -151,8 +151,17 @@ function classifyVersionDelta(baseVersionRaw, headVersionRaw) {
  * Returns { baseGitRef, headGitRef, mode, rows }, rows: [{
  *   app, reason, proposedLevel, attributedCommits, actualBumpLevel, mode, modeSatisfied
  * }]. rows is [] when no app changed in range.
+ *
+ * Async since #1809 (Phase 324): check-app-version-bump.js's runCheck() (called below) is now
+ * async, since it narrows through resolve-web-core-reachability.js's reachability oracle. This
+ * script's own `detectChangedApps()` call (immediately below, line 168 pre-#1809) stays UNCHANGED
+ * and unnarrowed, deliberately -- #1592 set this same precedent for its own sibling flip ("do not
+ * touch scripts/propose-version-level.js"); this is a pure `await`/signature-follow migration, not
+ * a logic change. See #1809's own residual-gap list: pr-reviewer's "Version level" audit could show
+ * a proposed level for an app the now-narrowed runCheck() correctly excludes -- named, not fixed
+ * here.
  */
-function proposeVersionLevels(options = {}) {
+async function proposeVersionLevels(options = {}) {
     const repoRoot = options.repoRoot || REPO_ROOT;
     const baseGitRef = options.baseGitRef;
     const headGitRef = options.headGitRef || 'HEAD';
@@ -171,7 +180,7 @@ function proposeVersionLevels(options = {}) {
     // baseGitRef, headGitRef, and changedFiles as above, so its own internal
     // detectChangedApps() call is guaranteed to land on the same changed-app set
     // computed just above (identical inputs, identical pure function).
-    const bumpCheck = runCheck({
+    const bumpCheck = await runCheck({
         repoRoot,
         baseGitRef,
         headGitRef,
@@ -252,7 +261,7 @@ function parseArgs(argv) {
     };
 }
 
-function main() {
+async function main() {
     const { baseGitRef, headGitRef } = parseArgs(process.argv.slice(2));
     if (!baseGitRef) {
         console.error('[propose-version-level] --base <ref> is required (--head defaults to HEAD).');
@@ -260,13 +269,18 @@ function main() {
         return;
     }
 
-    const result = proposeVersionLevels({ repoRoot: REPO_ROOT, baseGitRef, headGitRef });
+    const result = await proposeVersionLevels({ repoRoot: REPO_ROOT, baseGitRef, headGitRef });
     printTable(result);
     // Advisory only -- this script never fails the build on its own, see header.
     process.exitCode = 0;
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+    main().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+    });
+}
 
 module.exports = {
     LEVEL_RANK,

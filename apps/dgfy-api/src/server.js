@@ -51,6 +51,10 @@ import {
   stopStorefrontDiscoveryIndexReconciliationScheduler
 } from './services/storefrontDiscoveryIndexService.js';
 import {
+  startTenantProvisioningReconciliationScheduler,
+  stopTenantProvisioningReconciliationScheduler
+} from './schedulers/tenantProvisioningReconciliationScheduler.js';
+import {
   startGeoInventoryWorker,
   stopGeoInventoryWorker
 } from './workers/geoInventoryWorker.js';
@@ -977,6 +981,7 @@ const startServer = async () => {
     scheduleSchemaIndexAudit();
     scheduleBillingFunnelAudit();
     startStorefrontDiscoveryIndexReconciliationScheduler();
+    startTenantProvisioningReconciliationScheduler();
     startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
     startCatalogImageUploadWorker();
@@ -1065,6 +1070,7 @@ const startServer = async () => {
         billingFunnelAuditInterval = null;
       }
       stopStorefrontDiscoveryIndexReconciliationScheduler();
+      stopTenantProvisioningReconciliationScheduler();
       stopStorefrontDomainMaintenanceScheduler();
       stopGeoInventoryWorker();
       if (MENU_IMPORT_BATCH_ENABLED) {

@@ -159,13 +159,42 @@ export const getTenantModels = (sequelize) => {
         // Part A: Safe hook cloning — strip hooks from the options spread so that any hook
         // referencing the global `db` import does not accidentally query the Landlord database.
         // Hooks are re-applied explicitly below after model definition.
-        const { hooks: originalHooks = {}, ...safeOptions } = originalModel.options;
+        //
+        // Part D (issue #1825, corrected per PR #1830 review RF-1): on the landlord connection,
+        // Sequelize's define() already normalized any column-level `unique: true` into a
+        // synthesized single-column entry in `options.indexes` (and a matching `options.uniqueKeys`
+        // entry). `originalModel.rawAttributes` below still carries that same `unique: true` per
+        // column, so passing both makes Sequelize process the same unique constraint twice on the
+        // fresh tenant connection - once from rawAttributes, once from the inherited indexes -
+        // emitting duplicate indexes (e.g. `username`/`username_2`) on every newly provisioned
+        // tenant.
+        //
+        // The first version of this fix stripped `options.indexes` wholesale, which also dropped
+        // every genuinely hand-authored composite/explicit index (Item, Employee, StoreCustomer,
+        // PosPaymentSession, etc. all declare their own `indexes: [...]` block - none of that is
+        // Sequelize-synthesized, and none of it duplicates anything in rawAttributes). Only drop
+        // the specific entries that are an exact single-column duplicate of a rawAttributes unique
+        // shorthand; every other index (composite, non-unique, or unique-but-not-attribute-level)
+        // survives untouched. `uniqueKeys` is always Sequelize-synthesized (no model hand-authors
+        // it - confirmed by grep), never hand-authored, so it is still safely stripped wholesale:
+        // define() below regenerates it correctly from rawAttributes plus the filtered indexes.
+        const { hooks: originalHooks = {}, indexes: originalIndexes, uniqueKeys: _originalUniqueKeys, ...safeOptions } = originalModel.options;
+        const safeIndexes = Array.isArray(originalIndexes)
+            ? originalIndexes.filter((index) => {
+                const isSingleColumnUnique = index?.unique === true && Array.isArray(index.fields) && index.fields.length === 1;
+                if (!isSingleColumnUnique) return true;
+                const [fieldName] = index.fields;
+                const isDuplicateOfAttributeShorthand = originalModel.rawAttributes?.[fieldName]?.unique === true;
+                return !isDuplicateOfAttributeShorthand;
+            })
+            : originalIndexes;
 
         models[name] = sequelize.define(
             originalModel.name,
             originalModel.rawAttributes,
             {
                 ...safeOptions,
+                indexes: safeIndexes,
                 sequelize // Bind to new tenant instance
             }
         );

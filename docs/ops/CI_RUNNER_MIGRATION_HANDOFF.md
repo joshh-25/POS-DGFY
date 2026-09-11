@@ -5,6 +5,76 @@ Living doc, not scoped to a single PR — promoted out of `.github/` on
 this doc's own original 2026-08-01 decision. Keep it updated; don't delete it
 on the next flip.
 
+## Status as of 2026-09-10 — reverted to self-hosted again (GHA billing exhausted, #1810)
+
+GitHub Actions billing/spending-limit failed again — same signature as the 2026-08-13 entry below:
+run `34486564964`, job `102909346817`, failing with *"recent account payments have failed or your
+spending limit needs to be increased."* This is the **second live recurrence** of this exact failure
+mode, and is now evidence logged against #1609 (the still-open ask for a single-switch emergency-
+mode mechanism instead of a manual comment/uncomment flip) — no such mechanism was built for this
+flip either; this reversion used the same manual comment/uncomment pattern as 2026-08-13 and the
+direct reverse of the 2026-09-02 Wave 3 entry below.
+
+**What flipped, with real counts — corrected from both the issue's own stated counts and this doc's
+own prior "14-site" tally, both of which are stale.** Issue #1810 claimed `deploy-main.yml` needed 7
+sites (6 per-job + 1 input default) and `promotion-quality-gate.yml` needed 9 ("verify live"); the
+2026-09-02 Wave 3 entry below claimed 6+8=14 sites total. **Live grep against this worktree at flip
+time found 2 sites in `deploy-main.yml` and 12 sites in `promotion-quality-gate.yml` — 14 total,
+coincidentally the same sum as the Wave 3 entry's tally, but with a materially different per-file
+split:**
+
+| File | Issue #1810 claimed | Wave 3 entry claimed | Live count (this flip) |
+|---|---|---|---|
+| `deploy-main.yml` | 7 (6 jobs + 1 input default) | 6 | **2** |
+| `promotion-quality-gate.yml` | 9 | 8 | **12** |
+
+- **`deploy-main.yml` — 2 sites, not 6+1.** The 6 jobs the issue names (`dgfy-api`,
+  `dgfy-migration-runner`, `frontend-ims-prod`, `frontend-pos-prod`, `frontend-storefront-prod`,
+  `publish`) do not carry their own `runs-on:`/`runner_labels_json:` literal — each is a
+  reusable-workflow caller that forwards `runner_labels_json: ${{ inputs.runner_labels_json }}`
+  straight through with no independent fallback, so they inherit entirely from the single
+  `workflow_dispatch` input default. The only 2 real sites: that input default (L46-47), and the
+  `resolve-build-plan` job's own inline `runs-on:` (L281-282, fallback label `sieitz-lg`, not
+  `sieitz-runner` — preserved as-is) — a site the issue never mentioned at all.
+- **`promotion-quality-gate.yml` — 12 sites, not 9, not 8.** 1 shared input-default site (the
+  `&runner_labels_input` anchor) plus 11 job-level sites. Both the issue's list and the Wave 3
+  entry's own tally omit two jobs entirely — `frontend-ims-pos-sales-e2e-quality` and
+  `frontend-budgets-quality` — and both collapse what are actually **three separate jobs**
+  (`repository-dependency-quality`, `repository-ci-contracts-quality`, `repository-docs-quality`)
+  into one imagined `repository-quality` job that does not exist under that name.
+
+This proves the doc's own "flip procedure" warning (re-derive live, don't trust a stale doc's line
+numbers) true of **site counts**, not just line numbers — the count drifted between 2026-09-02 and
+today because jobs were added to `promotion-quality-gate.yml` (and `deploy-main.yml`'s 6 per-job
+pairs were already consolidated into the single delegated input by Wave 3 itself) without this doc
+being updated. Cite the live grep, not this doc's own prior number, on the next flip too.
+
+**The 2 non-pair edits:**
+
+- `scripts/lib/runner-routing-state.js`'s `EXPECTED_ACTIVE_CLASS`: `'hosted'` → `'self-hosted'`, in
+  the same commit as the 14 site flips (its own file-header warning: the constant and every site
+  must move together or `check-runner-routing.js`'s Assertion 6 fails by design).
+- `deploy-main.yml:243`'s `guard-branch` preflight `--class both` argument is **retained, not
+  reverted** to `--class self-hosted`. `--class` only controls which probes execute; the active
+  class used for the flip-required decision is derived independently from the workflow files' own
+  live content, never from `--class`. Narrowing to `--class self-hosted` would permanently mark
+  hosted `not_probed`, blinding the preflight to hosted recovering and regressing #1365's own
+  acceptance criterion that hosted-unavailability "fails clearly and permits only the documented,
+  logged fallback strategy." A stale comment at L176 describing the active class as "hosted
+  (post-flip)" was also reworded to reflect self-hosted as active again — **this is itself a repeat
+  of the same site-count-drift lesson above**: a routing comment, not just a doc, had gone stale
+  between flips and needed a live re-check rather than being trusted at face value.
+
+**Verification:** `npm run check:runner-routing` — **OK**. All 12 non-exempt sites carry a
+commented, opposite-class alternate directly above their active line; the 3 anchor exceptions
+(`guard-branch`, `gate`, `report-advisory-failures`) are unchanged; the `dgfy-api-quality` ↔
+`salvage-api-evidence` co-location invariant holds; neither file targets DEV/STAGING; every
+non-exempt site's active class matches `EXPECTED_ACTIVE_CLASS` (`"self-hosted"`); `NON_HOSTED_FILES`
+and `verify-deployment.yml` carry no hosted runner literal.
+
+Refs #1810, Refs #1609. Direct precedents: the 2026-09-02 Wave 3 entry below (the flip this reverses)
+and the 2026-08-13 entry further below (the same billing-exhaustion failure mode, first occurrence).
+
 ## Status as of 2026-09-03 — sparse-checkout permanently poisoned the shared `_work` (#1528)
 
 `deploy-main.yml`'s `guard-branch` job (permanently self-hosted, one of the three anchor
