@@ -1,6 +1,6 @@
 {
   "name": "@dgfy/dgfy-migration-runner",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "Standalone Sequelize migration runner for dgfy-platform, extracted from backend's migration domain",
   "type": "module",
   "scripts": {
@@ -19,6 +19,7 @@
   "license": "ISC",
   "dependencies": {
     "@sieitzz/shared-constants": "file:../../packages/shared-constants",
+    "@sieitzz/tenant-bootstrap": "file:../../packages/tenant-bootstrap",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.6.1",
     "mysql2": "^3.6.5",
