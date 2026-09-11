@@ -5,7 +5,15 @@ const RECEIPT_COLUMNS = 42;
 const IMIN_ASYNC_RESULT_EVENT = 'dgfy:imin-command-result';
 const IMIN_ASYNC_COMMAND_TIMEOUT_MS = 30_000;
 
-const money = (value) => `₱${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Keep physical iMin receipts ASCII-safe. The built-in printer and ESC/POS Bluetooth
+// fallback do not reliably render the Unicode peso glyph, so the browser/UI preview
+// remains unchanged while hardware output uses an explicit PHP label.
+const HARDWARE_CURRENCY_PREFIX = 'PHP ';
+const formatCurrencyAmount = (value) => Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+});
+const money = (value) => `${HARDWARE_CURRENCY_PREFIX}${formatCurrencyAmount(value)}`;
 
 const safeText = (value, fallback = '') => {
     const text = String(value ?? fallback).replace(/\s+/g, ' ').trim();
@@ -375,7 +383,7 @@ const formatDiscountLabel = (transaction) => {
 
 const negativeMoney = (value) => {
     const amount = roundCurrency(value);
-    return amount > 0 ? `-₱${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : money(0);
+    return amount > 0 ? `-${HARDWARE_CURRENCY_PREFIX}${formatCurrencyAmount(amount)}` : money(0);
 };
 
 const parseArrayMetadata = (value) => {
