@@ -21,6 +21,7 @@ COPY apps/dgfy-api/package*.json ./
 # host copy of these files is untouched and still needs 2 hops.
 RUN sed -i 's#\.\./\.\./packages/#../packages/#g' package.json package-lock.json
 COPY packages/shared-constants /packages/shared-constants
+COPY packages/tenant-bootstrap /packages/tenant-bootstrap
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
 
 FROM node:22-alpine AS runtime
@@ -42,6 +43,7 @@ RUN apk add --no-cache curl tini su-exec \
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY packages/shared-constants /packages/shared-constants
+COPY packages/tenant-bootstrap /packages/tenant-bootstrap
 COPY apps/dgfy-api/package*.json ./
 COPY apps/dgfy-api/src ./src
 COPY apps/dgfy-api/assets ./assets

@@ -102,17 +102,38 @@
     },
     {
       "tree": "apps/dgfy-api",
-      "package": "body-parser",
-      "severity": "moderate",
-      "reason": "Transitive via express; fixAvailable only through express@5.2.1. See the express entry above; tracked in #1444.",
-      "reviewBy": "2026-10-15"
-    },
-    {
-      "tree": "apps/dgfy-api",
       "package": "qs",
       "severity": "moderate",
       "reason": "Transitive via express/body-parser; fixAvailable only through express@5.2.1. See the express entry above; tracked in #1444.",
       "reviewBy": "2026-10-15"
+    },
+    {
+      "tree": "apps/dgfy-api",
+      "package": "csv-parse",
+      "severity": "moderate",
+      "reason": "GHSA-8cw4-87c7-c6xx. npm audit's only fixAvailable path is csv-parse@7.0.2, a semver-major upgrade -- used in real business logic (supplierCSVService.js, csvImportService.js, posBulkImageImportManifest.js), out of proportion to bundle into a promotion repair. Tracked in #1786 (apps/dgfy-api: migrate csv-parse 6.x -> 7.x); remove this entry once that lands.",
+      "reviewBy": "2026-10-15"
+    },
+    {
+      "tree": "apps/dgfy-ims",
+      "package": "maplibre-gl",
+      "severity": "critical",
+      "reason": "GHSA-jrc7-96c5-q579 (CVSS 10, XSS sanitizer bypass). npm audit's only fixAvailable path is maplibre-gl@6.9.0, a semver-major upgrade with broad real usage across dgfy-storefront's tracking/discovery map UI and packages/web-core's shared MapPinPicker -- needs a dedicated migration with visual/functional QA, not a drive-by bump during a promotion repair. Tracked in #1787; given the severity this should be prioritized ahead of the moderate-severity suppressions above, not treated as equally low-urgency -- remove this entry once #1787 lands.",
+      "reviewBy": "2026-09-24"
+    },
+    {
+      "tree": "apps/dgfy-pos",
+      "package": "maplibre-gl",
+      "severity": "critical",
+      "reason": "Same finding as apps/dgfy-ims; see that entry. Tracked in #1787.",
+      "reviewBy": "2026-09-24"
+    },
+    {
+      "tree": "apps/dgfy-storefront",
+      "package": "maplibre-gl",
+      "severity": "critical",
+      "reason": "Same finding as apps/dgfy-ims; see that entry. Tracked in #1787.",
+      "reviewBy": "2026-09-24"
     },
     {
       "tree": "tests/frontend-cross-app",

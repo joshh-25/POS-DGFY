@@ -84,9 +84,26 @@ jobs:
       # (each PR only reads the canonical scope), so it was pure eviction
       # pressure against the repo's 10GB Actions cache quota -- see #412.
       - name: Build api image (no push)
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: infrastructure/docker/dgfy-api/Dockerfile
           push: false
+          load: true
+          tags: dgfy-api:pr-check
           cache-from: ${{ inputs.cache_from != '' && format('{0},scope=api', inputs.cache_from) || '' }}
+
+      # #1819: nothing else catches a runtime require the image doesn't actually ship -- not a
+      # build-time failure (dgfy-api has no real build step, see its own package.json), not the
+      # healthcheck (this path is request-triggered only, behind a dynamic import()), not the unit
+      # test (it resolves from the repo checkout, where the broken cross-app path used to work
+      # fine). Bypass tini/entrypoint.sh entirely (--entrypoint node) so this needs no
+      # DB_HOST/live MySQL connection or any other runtime env var -- it only proves the module
+      # graph the request-time seam depends on actually resolves inside the built image.
+      - name: Regression guard -- tenantSchemaBootstrap loads inside the built image (#1819)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint node dgfy-api:pr-check \
+            -e "import('./src/services/tenantSchemaBootstrap.js').then(() => { console.log('tenantSchemaBootstrap: OK'); process.exit(0); }).catch((err) => { console.error(err); process.exit(1); });"

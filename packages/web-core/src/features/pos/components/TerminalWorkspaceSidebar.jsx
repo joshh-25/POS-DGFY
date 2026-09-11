@@ -185,7 +185,7 @@ export default function TerminalWorkspaceSidebar({
             <img
               src={DGFY_POS_LOGO}
               alt="DGFY"
-              className="h-8 w-8 object-cover object-left"
+              className="h-8 w-7 object-cover object-left"
             />
           </div>
         )}

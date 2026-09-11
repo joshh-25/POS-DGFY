@@ -295,8 +295,8 @@ test('resolveActiveRouting: derives mixed when non-exempt sites disagree (incons
 });
 
 test('resolveActiveRouting: defaults to reading the two real workflow files off disk when no text is injected', () => {
-  // Phase 234 Wave 3 (live cutover) -- the real tree now derives hosted, matching EXPECTED_ACTIVE_CLASS.
-  assert.equal(resolveActiveRouting(), 'hosted');
+  // Issue #1810 -- the real tree now derives self-hosted, matching EXPECTED_ACTIVE_CLASS.
+  assert.equal(resolveActiveRouting(), 'self-hosted');
 });
 
 test('runPreflight with a mixed-derived activeRouting is never asked to run -- main() must exit 1 before calling it', () => {

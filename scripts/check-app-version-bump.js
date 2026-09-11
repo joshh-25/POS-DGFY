@@ -40,16 +40,11 @@
  *     couldn't be computed.
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
+const { execSync, execFileSync } = require('child_process');
 const path = require('path');
 
-const {
-    REACHABILITY_SCOPE_DIRS,
-    ENTRY_FILE_BY_APP,
-    computeAppReachableModules,
-    auditReachabilitySafety,
-} = require('./resolve-web-core-reachability');
+const { resolveAppReachabilityVerdict } = require('./resolve-web-core-reachability');
+const { resolveNarrowingEnabled } = require('./lib/web-core-reachability-gate-toggle');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -91,10 +86,23 @@ const unique = (values) => [...new Set(values)];
 // verbatim, minus the --staged mode (handled separately here, at the runCheck
 // level, since --staged also changes what "changed files" and "head version"
 // mean -- not just which ref anchors the diff).
-function resolveBaseGitRef(repoRoot, { baseBranchName } = {}) {
+function resolveBaseGitRef(repoRoot, { baseBranchName, headBranchName } = {}) {
     const branch = baseBranchName !== undefined ? baseBranchName : process.env.GITHUB_BASE_REF;
+    const head = headBranchName !== undefined ? headBranchName : process.env.GITHUB_HEAD_REF;
     if (branch) {
         runCommand(`git fetch --no-tags --prune --depth=200 origin ${branch}`, { cwd: repoRoot, allowFail: true });
+        // For promotion into staging (to-staging/* -> staging) or main (release/* -> main), we want
+        // to compare directly against the target branch tip (origin/staging or origin/main), matching
+        // ADR 0081 Decision 6 ("at least one minor above staging's current version" / "increase vs main").
+        // A merge-base against an older cut point would misread cherry-picked staging repairs as new candidate changes.
+        if (branch === 'staging' && head && PROMOTION_HEAD_PREFIX_BY_BASE.staging.test(head)) {
+            const stagingRef = runCommand(`git rev-parse --verify origin/${branch}`, { cwd: repoRoot, allowFail: true });
+            if (stagingRef) return stagingRef;
+        }
+        if (branch === 'main' && head && PROMOTION_HEAD_PREFIX_BY_BASE.main.test(head)) {
+            const mainRef = runCommand(`git rev-parse --verify origin/${branch}`, { cwd: repoRoot, allowFail: true });
+            if (mainRef) return mainRef;
+        }
         const mergeBase = runCommand(`git merge-base HEAD origin/${branch}`, { cwd: repoRoot, allowFail: true });
         if (mergeBase) return mergeBase;
     }
@@ -246,123 +254,77 @@ function detectChangedApps(repoRoot, headGitRef, changedFiles) {
     });
 }
 
-// --- Phase 303 (#1695): import-graph-aware reachability, SHADOW MODE ONLY --------------------
+// --- #1809 (Phase 324): import-graph-aware reachability, GATING ------------------------------
 //
-// detectChangedApps() above is UNCHANGED by this section -- it stays the sole source of the real,
-// gating "changed" verdict (directory containment, not reachability). Everything below is an
-// additive, log-only companion: for every app whose "changed: true" verdict came from a fan-out
-// package (never a direct apps/<app>/ change -- that verdict is unconditional and has nothing to
-// narrow), compute what the #1695 plan's reachability oracle WOULD have said, and print it
-// alongside the old verdict. This never feeds back into detectChangedApps()/runCheck()'s own `ok`/
-// `changed` results -- see runReachabilityShadowAudit()'s call site in main() for the isolation.
+// Supersedes Phase 303 (#1695)'s shadow-mode-only companion (computeReachabilityShadowVerdict /
+// runReachabilityShadowAudit, both removed) -- the reachability oracle now narrows the real,
+// gating "changed" verdict instead of merely logging alongside it. detectChangedApps() above stays
+// completely unchanged (still sync, still directory-level) -- it remains the candidate detector;
+// narrowing is a distinct, additive layer on top, same architectural shape #1695 already
+// established, just now gating instead of logging. See scripts/lib/web-core-reachability-gate-
+// toggle.js for the one-line rollback lever.
 //
 // A changed file that no longer exists at headGitRef (deleted between base and head) can never
 // appear in a reachability graph built from the working tree -- §3.4's conservative default
 // applies: treat it as an automatic "changed" rather than silently reading its absence from the
 // graph as "not reachable".
+//
+// #1817 review RF-1 (pr-reviewer): `relativePath` comes from a real PR's changed-file list --
+// attacker-controlled, since anyone opening a PR chooses what files (and filenames) it touches.
+// `resolveAppReachabilityVerdict()` now calls this via a caller-injected callback from BOTH
+// check-app-version-bump.js's own gating path AND resolve-frontend-build-triggers.js's live CI
+// path -- a shell-interpolated command string here would let a filename containing shell
+// metacharacters or command substitution execute arbitrary commands on the runner. `execFileSync`
+// with an argv array (never a shell) closes this off entirely: `${ref}:${relativePath}` is passed
+// as ONE argv element to `git cat-file` directly, never parsed by a shell, so no metacharacter in
+// either half of that string can break out of the argument boundary.
 function fileExistsAtRef(repoRoot, ref, relativePath) {
     try {
-        execSync(`git cat-file -e ${ref}:${relativePath}`, { cwd: repoRoot, stdio: 'ignore' });
+        execFileSync('git', ['cat-file', '-e', `${ref}:${relativePath}`], { cwd: repoRoot, stdio: 'ignore' });
         return true;
     } catch {
         return false;
     }
 }
 
-// Pure-ish (one git call for deletion checks) per-app shadow verdict. `entry` is one of
-// detectChangedApps()'s own returned objects (already filtered to `changed: true` by the caller);
-// `changedFiles` is the same list runCheck() already computed. Never throws -- any unexpected
-// failure degrades to the same conservative "changed" the old verdict already reached, logged as
-// its own code so a shadow-mode disagreement is never silently swallowed as agreement.
-async function computeReachabilityShadowVerdict(repoRoot, headGitRef, entry, changedFiles) {
-    if (!entry.reason.startsWith('fan-out:')) {
-        return { applicable: false, reason: 'not-fan-out-triggered (direct app change -- nothing to narrow)' };
-    }
+// Calls the unchanged, sync detectChangedApps() first, then for every returned entry with
+// `changed: true && reason.startsWith('fan-out:')`, asks the shared oracle
+// (resolve-web-core-reachability.js's resolveAppReachabilityVerdict()) whether the change is
+// actually reachable from that app's real bundler entry. If the toggle is off, or the verdict is
+// `!applicable` (a direct app change, a backend app, or no scoped-package change at all), the
+// entry is kept exactly as detectChangedApps() returned it -- conservative, matching today's
+// behavior. Otherwise the entry's `changed`/`reason` are narrowed to the oracle's verdict (kept
+// available as `entry.verdict` for the printers below), and `reason` becomes
+// `'fan-out-not-reachable'` when the oracle clears it, so a caller reading `reason` alone can still
+// tell a genuinely-narrowed-away entry apart from a directly-changed one.
+async function detectChangedAppsNarrowed(repoRoot, headGitRef, changedFiles) {
+    const entries = detectChangedApps(repoRoot, headGitRef, changedFiles);
+    if (!resolveNarrowingEnabled()) return entries;
 
-    const fanOutPackage = entry.reason.slice('fan-out:'.length);
-    const entryFile = ENTRY_FILE_BY_APP[entry.app];
-    if (!entryFile) {
-        return { applicable: false, reason: `no known bundler entry for ${entry.app} (backend app -- Node module resolution, out of scope per the #1695 plan's §3.5)` };
-    }
-
-    try {
-        const scopeDirs = REACHABILITY_SCOPE_DIRS.filter((dir) => fs.existsSync(path.join(repoRoot, dir)));
-        // RF-2 (PR #1708 review): the safety-net audit must also cover this app's own source tree
-        // and packages/pos-receipt, not just packages/web-core/packages/shared-constants -- a
-        // self-referential `@/...`/`@sieitzz/...` alias this module can't resolve can appear in
-        // either. See resolve-web-core-reachability.js's ALIAS_EDGE_SCAN_DIRS header comment.
-        const aliasScanDirs = [...scopeDirs, 'packages/pos-receipt', `apps/${entry.app}`]
-            .filter((dir) => fs.existsSync(path.join(repoRoot, dir)));
-        const audit = auditReachabilitySafety(repoRoot, scopeDirs, aliasScanDirs);
-        if (!audit.safe) {
-            return {
-                applicable: true,
-                changed: true,
-                code: 'safety-net-tripped',
-                safetyNetPassed: false,
-                violations: audit.violations,
-                detail: `safety net found ${audit.violations.length} disqualifying pattern(s) in ${aliasScanDirs.join(', ')} -- falling back to conservative "changed" (matches the old verdict)`,
-            };
-        }
-
-        const reachable = await computeAppReachableModules(repoRoot, entryFile);
-        const relevantChangedFiles = changedFiles.filter((file) => file.startsWith(`${fanOutPackage}/`));
-        const reachableHits = relevantChangedFiles.filter((file) => reachable.has(file));
-        // §3.4: a file deleted between base and head can never appear in a graph built from HEAD's
-        // working tree -- its absence there must not be silently read as "not reachable, therefore
-        // not obligating a bump". Tracked separately from reachableHits so the two are
-        // distinguishable in the printed code/detail, not folded into one ambiguous "reachable".
-        const deletedHits = relevantChangedFiles.filter((file) => !reachable.has(file) && !fileExistsAtRef(repoRoot, headGitRef, file));
-        const changed = reachableHits.length > 0 || deletedHits.length > 0;
-        const code = reachableHits.length > 0 ? 'reachable' : (deletedHits.length > 0 ? 'deleted-file-fail-closed' : 'not-reachable');
-
-        return {
-            applicable: true,
-            changed,
-            code,
-            safetyNetPassed: true,
-            reachableCount: reachable.size,
-            hitFiles: [...reachableHits, ...deletedHits],
-            detail: changed
-                ? `${reachableHits.length > 0 ? `reachability hit: ${reachableHits.slice(0, 3).join(', ')}${reachableHits.length > 3 ? ', ...' : ''}` : ''}`
-                  + `${reachableHits.length > 0 && deletedHits.length > 0 ? '; ' : ''}`
-                  + `${deletedHits.length > 0 ? `${deletedHits.length} deleted file(s) can't be checked for reachability, conservatively counted as changed: ${deletedHits.slice(0, 3).join(', ')}${deletedHits.length > 3 ? ', ...' : ''}` : ''}`
-                : `none of ${relevantChangedFiles.length} changed file(s) under ${fanOutPackage} are reachable from ${entryFile} (${reachable.size} web-core/shared-constants modules reachable in total)`,
-        };
-    } catch (error) {
-        return {
-            applicable: true,
-            changed: true,
-            code: 'shadow-error-fail-closed',
-            safetyNetPassed: false,
-            detail: `reachability shadow computation threw unexpectedly (${error.message}) -- falling back to conservative "changed" (matches the old verdict)`,
-        };
-    }
-}
-
-// LOG-ONLY: prints the old directory-level verdict and the new reachability verdict side by side
-// for every fan-out-triggered changed app, plus whether the safety-net audit passed. Never mutates
-// `result`, never throws past its own boundary (see main()'s try/catch around this call), and has
-// zero influence on process.exitCode -- CI still gates on the OLD verdict only.
-async function runReachabilityShadowAudit(result) {
-    if (result.skipped || result.appResults.length === 0) return;
-
-    for (const entry of result.appResults) {
-        if (!entry.reason.startsWith('fan-out:')) continue;
-
-        const shadow = await computeReachabilityShadowVerdict(result.repoRoot, result.headGitRef, entry, result.changedFiles);
-        if (!shadow.applicable) {
-            console.log(`[check:app-versions] [SHADOW] ${entry.app}: old=changed (${entry.reason}) new=n/a -- ${shadow.reason}`);
+    const narrowed = [];
+    for (const entry of entries) {
+        if (!entry.changed || !entry.reason.startsWith('fan-out:')) {
+            narrowed.push(entry);
             continue;
         }
 
-        const agreement = shadow.changed === entry.changed ? 'AGREE' : 'DISAGREE';
-        console.log(
-            `[check:app-versions] [SHADOW] ${entry.app}: old=changed (${entry.reason}) `
-            + `new=${shadow.changed ? 'changed' : 'unchanged'} (${shadow.code}) `
-            + `safety-net=${shadow.safetyNetPassed ? 'PASS' : 'FAIL'} agreement=${agreement} -- ${shadow.detail}`,
-        );
+        const verdict = await resolveAppReachabilityVerdict(repoRoot, entry.app, changedFiles, {
+            fileExistsAtRef: (file) => fileExistsAtRef(repoRoot, headGitRef, file),
+        });
+
+        if (!verdict.applicable) {
+            narrowed.push(entry);
+            continue;
+        }
+
+        narrowed.push({
+            ...entry,
+            changed: verdict.changed,
+            reason: verdict.changed ? entry.reason : 'fan-out-not-reachable',
+            verdict,
+        });
     }
+    return narrowed;
 }
 
 /**
@@ -375,8 +337,11 @@ async function runReachabilityShadowAudit(result) {
  *     or 'HEAD' / '' for --staged) -- override lets tests skip remote resolution
  *   - changedFiles (default: computed via `git diff --name-only`) -- override lets
  *     tests skip building a real diff
+ *
+ * Async since #1809 (Phase 324): the changed-app set now narrows through
+ * detectChangedAppsNarrowed()'s reachability oracle before the bump requirement is evaluated.
  */
-function runCheck(options = {}) {
+async function runCheck(options = {}) {
     const repoRoot = options.repoRoot || REPO_ROOT;
     const staged = Boolean(options.staged);
     const baseBranchName = options.baseBranchName !== undefined ? options.baseBranchName : process.env.GITHUB_BASE_REF;
@@ -385,7 +350,7 @@ function runCheck(options = {}) {
     const headGitRef = options.headGitRef !== undefined ? options.headGitRef : (staged ? '' : 'HEAD');
     let baseGitRef = options.baseGitRef;
     if (baseGitRef === undefined) {
-        baseGitRef = staged ? 'HEAD' : resolveBaseGitRef(repoRoot, { baseBranchName });
+        baseGitRef = staged ? 'HEAD' : resolveBaseGitRef(repoRoot, { baseBranchName, headBranchName });
     }
 
     if (!baseGitRef) {
@@ -395,15 +360,16 @@ function runCheck(options = {}) {
     const changedFiles = options.changedFiles !== undefined
         ? options.changedFiles
         : splitLines(runCommand(
-            staged ? 'git diff --cached --name-only' : `git diff --name-only ${baseGitRef}...${headGitRef}`,
+            staged ? 'git diff --cached --name-only' : `git diff --name-only ${baseGitRef}..${headGitRef}`,
             { cwd: repoRoot, allowFail: true },
         ));
 
     const mode = resolveMode(baseBranchName, headBranchName);
-    const changedApps = detectChangedApps(repoRoot, headGitRef, changedFiles).filter((entry) => entry.changed);
+    const narrowedEntries = await detectChangedAppsNarrowed(repoRoot, headGitRef, changedFiles);
+    const changedApps = narrowedEntries.filter((entry) => entry.changed);
 
     if (changedApps.length === 0) {
-        return { ok: true, skipped: true, reason: 'no-app-changed', mode, baseGitRef, headGitRef, repoRoot, changedFiles, appResults: [] };
+        return { ok: true, skipped: true, reason: 'no-app-changed', mode, baseGitRef, headGitRef, repoRoot, changedFiles, appResults: [], narrowedEntries };
     }
 
     const appResults = changedApps.map((entry) => {
@@ -423,6 +389,7 @@ function runCheck(options = {}) {
         repoRoot,
         changedFiles,
         appResults,
+        narrowedEntries,
     };
 }
 
@@ -444,29 +411,39 @@ function runCheck(options = {}) {
  * single source of truth for that already.
  *
  * `changedFiles` may be supplied directly (tests); by default this diffs
- * baseGitRef...headGitRef the same three-dot merge-base way runCheck() does. A
+ * baseGitRef..headGitRef (two-dot) directly between the two branch tips. #1802:
+ * this previously used a three-dot merge-base diff (baseGitRef...headGitRef),
+ * which diffed from git merge-base base head to head. When staging repairs or
+ * hotfixes are cherry-picked back to develop, the git merge-base remains before
+ * those repairs, falsely flagging backported (content-identical) apps as changed
+ * and demanding an unnecessary minor bump. Two-dot diff directly measures tree
+ * content divergence between the two refs. A
  * failure computing that diff (unresolvable ref, shallow history, etc.) must never
  * silently read as "zero files changed" -- that would degrade to a false "floor
  * clear" on exactly the gate a promotion depends on -- so it's surfaced as its own
  * `diffError` instead of an empty change set.
+ *
+ * Async since #1809 (Phase 324): narrowed through the same detectChangedAppsNarrowed() reachability
+ * oracle runCheck() uses -- this is the change that actually prevents a false-positive-fan-out app
+ * (e.g. dgfy-storefront on a POS-only packages/web-core change) from being force-bumped ahead of a
+ * promotion cut, the exact incident #1809 cites as motivation (its plan doc §1.3).
  */
-function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedFiles: changedFilesOverride }) {
+async function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedFiles: changedFilesOverride }) {
     let changedFiles;
     let diffError = null;
     if (changedFilesOverride !== undefined) {
         changedFiles = changedFilesOverride;
     } else {
         try {
-            changedFiles = splitLines(runCommand(`git diff --name-only ${baseGitRef}...${headGitRef}`, { cwd: repoRoot }));
+            changedFiles = splitLines(runCommand(`git diff --name-only ${baseGitRef}..${headGitRef}`, { cwd: repoRoot }));
         } catch (error) {
             changedFiles = [];
             diffError = error.message || String(error);
         }
     }
 
-    const changedApps = diffError
-        ? []
-        : detectChangedApps(repoRoot, headGitRef, changedFiles).filter((entry) => entry.changed);
+    const narrowedEntries = diffError ? [] : await detectChangedAppsNarrowed(repoRoot, headGitRef, changedFiles);
+    const changedApps = diffError ? [] : narrowedEntries.filter((entry) => entry.changed);
 
     const results = changedApps.map(({ app, appDir, reason }) => {
         const baseVersionRaw = readVersionAt(repoRoot, baseGitRef, appDir);
@@ -503,17 +480,30 @@ function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedFiles: 
         results,
         belowFloor: results.filter((entry) => entry.belowFloor),
         invalid: results.filter((entry) => entry.unparseable),
-        // #1740: apps skipped because nothing in them changed -- informational only,
-        // never gates the exit code.
+        // #1740: apps skipped because nothing in them changed -- informational only, never gates
+        // the exit code. #1809: also covers an app that WAS directory-level fan-out-changed but got
+        // narrowed away by the reachability oracle (no floor obligation either way) -- exactly the
+        // §1.3 incident this flip fixes.
         unchanged: diffError ? [] : APPS.filter((app) => !changedApps.some((entry) => entry.app === app)),
         changedFiles,
         diffError,
+        narrowedEntries,
     };
 }
 
 // --- CLI ---------------------------------------------------------------------
 
 function printCheckResult(result) {
+    // #1809 (Phase 324): one line per app the reachability oracle actually narrowed (whether it
+    // stayed "changed" or got cleared) -- printed BEFORE the skip check below so this reasoning is
+    // still visible even when every fan-out app got narrowed away and there's nothing left to
+    // report as changed. Supersedes the old Phase 303 [SHADOW] lines with the real decision.
+    for (const entry of result.narrowedEntries || []) {
+        if (entry.verdict) {
+            console.log(`[check:app-versions] [REACHABILITY] ${entry.app}: ${entry.verdict.detail}`);
+        }
+    }
+
     if (result.skipped) {
         const message = result.reason === 'no-base-ref'
             ? 'No base ref resolvable -- skipping (not a PR context).'
@@ -540,6 +530,13 @@ function printFloorResult(result) {
     if (result.diffError) {
         console.error(`[check:app-versions --floor] Could not compute the changed-file diff between the given refs -- treat as FAILED, not a clean floor pass: ${result.diffError}`);
         return;
+    }
+
+    // #1809 (Phase 324): see printCheckResult()'s own comment -- same reasoning, same source.
+    for (const entry of result.narrowedEntries || []) {
+        if (entry.verdict) {
+            console.log(`[check:app-versions --floor] [REACHABILITY] ${entry.app}: ${entry.verdict.detail}`);
+        }
     }
 
     // #1740: report scope before verdict, so a promoter reading this output can see
@@ -592,24 +589,13 @@ async function main() {
             return;
         }
 
-        const result = runFloor({ repoRoot: REPO_ROOT, baseGitRef, headGitRef });
+        const result = await runFloor({ repoRoot: REPO_ROOT, baseGitRef, headGitRef });
         printFloorResult(result);
         process.exitCode = (result.diffError || result.belowFloor.length > 0 || result.invalid.length > 0) ? 1 : 0;
         return;
     }
 
-    const result = runCheck({ repoRoot: REPO_ROOT, staged: argv.includes('--staged') });
-
-    // Phase 303 (#1695), LOG-ONLY: computed and printed BEFORE the old verdict below so both
-    // appear together in the run's own output, but wrapped so nothing it does -- including a bug
-    // in the reachability walk itself -- can ever change process.exitCode. CI still gates on
-    // `result.ok` alone, exactly as it did before this shadow step existed.
-    try {
-        await runReachabilityShadowAudit(result);
-    } catch (error) {
-        console.error(`[check:app-versions] [SHADOW] audit threw unexpectedly (log-only, does not affect the gating verdict): ${error.message}`);
-    }
-
+    const result = await runCheck({ repoRoot: REPO_ROOT, staged: argv.includes('--staged') });
     printCheckResult(result);
     process.exitCode = result.ok ? 0 : 1;
 }
@@ -633,10 +619,10 @@ module.exports = {
     detectChangedApps,
     runCheck,
     runFloor,
-    // Phase 303 (#1695) shadow-mode exports -- kept separate from the functions above (which stay
-    // untouched, sync, zero-behavior-change) so tests can exercise the reachability shadow step in
-    // isolation without going through the CLI.
+    // #1809 (Phase 324) gating-mode exports -- fileExistsAtRef is reused by
+    // resolve-frontend-build-triggers.js (don't re-implement a third copy); detectChangedAppsNarrowed
+    // is exported so tests can exercise the narrowing layer in isolation without going through the
+    // CLI or duplicating runCheck()/runFloor()'s own version-bump-evaluation logic.
     fileExistsAtRef,
-    computeReachabilityShadowVerdict,
-    runReachabilityShadowAudit,
+    detectChangedAppsNarrowed,
 };

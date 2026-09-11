@@ -9,6 +9,7 @@ export function FnbWorkflowPanel({
   setKitchenNotes,
   paymentTypeField = null,
   buttonLayout = false,
+  isTabletViewport = false,
   disabled = false
 }) {
   const orderMethods = [
@@ -76,7 +77,7 @@ export function FnbWorkflowPanel({
       )}
 
       {(orderMethod === 'dine_in' || orderMethod === 'takeout') && setKitchenNotes && (
-        <label className="block text-[11px] font-bold text-slate-600">
+        <label className={`${orderMethod === 'takeout' && isTabletViewport ? 'col-span-full ' : ''}block text-[11px] font-bold text-slate-600`}>
           Order Notes (Global)
           <input
             type="text"

@@ -11,8 +11,8 @@ verification_evidence: focused API gallery/use-case/repository/worker tests,stor
 rollback_note: Revert the Phase 318 gallery commit, stale-base transport, and post-commit cleanup changes together; existing catalog records and image assets remain available and no migration is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-09T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-318-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-09-POS-ITEM-GALLERY-ATOMIC-PERSISTENCE
 ---
 
 # POS item gallery atomic persistence

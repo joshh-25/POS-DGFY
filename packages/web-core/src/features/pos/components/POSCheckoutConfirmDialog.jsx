@@ -330,6 +330,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                 servicesNotes={servicesNotes}
                                 setServicesNotes={setServicesNotes}
                                 buttonLayout={true}
+                                isTabletViewport={isTabletViewport}
                                 disabled={posActionsBlocked || checkoutLoading}
                             />
                         </Suspense>

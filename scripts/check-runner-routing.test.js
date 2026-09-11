@@ -216,30 +216,29 @@ jobs:
 // Integration: the real workflow files, as they exist on disk, must pass end to end. This is the
 // test that actually catches a future edit silently inverting or degrading the scaffold -- the
 // fixture-based tests above only prove the checker's own logic is sound.
-test('checkRunnerRouting: the real workflow files pass with zero problems (Phase 234 Wave 3: EXPECTED_ACTIVE_CLASS === hosted)', () => {
+test('checkRunnerRouting: the real workflow files pass with zero problems (EXPECTED_ACTIVE_CLASS === self-hosted)', () => {
   const problems = checkRunnerRouting(readRealWorkflowInputs());
   assert.deepEqual(problems, []);
 });
 
 // --- Phase 234 (#1365) Wave 1: Assertion 6 (F-1, AC-6) -- active class must equal EXPECTED_ACTIVE_CLASS ---
-// Phase 234 Wave 3 (live cutover): EXPECTED_ACTIVE_CLASS flipped to 'hosted' -- these fixtures
-// flip with it rather than re-deriving a since-retired 'self-hosted is the baseline' assumption.
+// Issue #1810: EXPECTED_ACTIVE_CLASS flipped back to 'self-hosted' (GHA billing exhausted)
 
-test('checkActiveClassMatchesExpected: EXPECTED_ACTIVE_CLASS is hosted (Wave 3 live cutover)', () => {
-  assert.equal(EXPECTED_ACTIVE_CLASS, 'hosted');
+test('checkActiveClassMatchesExpected: EXPECTED_ACTIVE_CLASS is self-hosted', () => {
+  assert.equal(EXPECTED_ACTIVE_CLASS, 'self-hosted');
 });
 
 test('checkActiveClassMatchesExpected: every site matching the constant reports no problems', () => {
   const jobClassesByFile = new Map([
-    ['deploy-main.yml', new Map([['job-a', true], ['guard-branch', false]])],
-    ['promotion-quality-gate.yml', new Map([['dgfy-api-quality', true], ['gate', false]])]
+    ['deploy-main.yml', new Map([['job-a', false], ['guard-branch', false]])],
+    ['promotion-quality-gate.yml', new Map([['dgfy-api-quality', false], ['gate', false]])]
   ]);
   assert.deepEqual(checkActiveClassMatchesExpected(jobClassesByFile), []);
 });
 
-test('checkActiveClassMatchesExpected: a non-exempt self-hosted site is a problem naming the constant and both files', () => {
+test('checkActiveClassMatchesExpected: a non-exempt hosted site is a problem naming the constant and both files', () => {
   const jobClassesByFile = new Map([
-    ['deploy-main.yml', new Map([['job-a', false]])],
+    ['deploy-main.yml', new Map([['job-a', true]])],
     ['promotion-quality-gate.yml', new Map()]
   ]);
   const problems = checkActiveClassMatchesExpected(jobClassesByFile);
@@ -314,20 +313,19 @@ function buildFixture({ jobAHosted, jobBHosted, apiQualityHosted, salvageHosted,
   return { deployMainText, qualityGateText };
 }
 
-// Phase 234 Wave 3: EXPECTED_ACTIVE_CLASS is now 'hosted' (the live cutover) -- the baseline
-// fixture is the hosted-active state, and "inversion" now means a stray self-hosted-active site.
+// Issue #1810: EXPECTED_ACTIVE_CLASS is now 'self-hosted' -- baseline fixture is self-hosted-active
 const BASELINE_FIXTURE_ARGS = {
-  jobAHosted: true, jobBHosted: true, apiQualityHosted: true, salvageHosted: true, inputDefaultHosted: true
+  jobAHosted: false, jobBHosted: false, apiQualityHosted: false, salvageHosted: false, inputDefaultHosted: false
 };
 
-test('F-1 baseline fixture (all hosted active, matching EXPECTED_ACTIVE_CLASS): checkRunnerRouting reports zero problems', () => {
+test('F-1 baseline fixture (all self-hosted active, matching EXPECTED_ACTIVE_CLASS): checkRunnerRouting reports zero problems', () => {
   const problems = checkRunnerRouting(buildFixture(BASELINE_FIXTURE_ARGS));
   assert.deepEqual(problems, []);
 });
 
-test('F-1 full inversion (every non-exempt site self-hosted-active): Assertion 6 now catches what used to pass silently', () => {
+test('F-1 full inversion (every non-exempt site hosted-active): Assertion 6 now catches what used to pass silently', () => {
   const problems = checkRunnerRouting(buildFixture({
-    jobAHosted: false, jobBHosted: false, apiQualityHosted: false, salvageHosted: false, inputDefaultHosted: false
+    jobAHosted: true, jobBHosted: true, apiQualityHosted: true, salvageHosted: true, inputDefaultHosted: true
   }));
   // Co-location (F-2) and pairing (Assertions 1-3) still pass -- every flipped site is still
   // correctly paired with an opposite-class commented alternate, and dgfy-api-quality/
@@ -336,9 +334,9 @@ test('F-1 full inversion (every non-exempt site self-hosted-active): Assertion 6
   for (const problem of problems) assert.match(problem, /EXPECTED_ACTIVE_CLASS/);
 });
 
-test('F-1 single-site inversion (only job-a flipped): Assertion 6 catches the one silently-inverted site', () => {
+test('F-1 single-site inversion (only job-a flipped to hosted): Assertion 6 catches the one silently-inverted site', () => {
   const problems = checkRunnerRouting(buildFixture({
-    ...BASELINE_FIXTURE_ARGS, jobAHosted: false
+    ...BASELINE_FIXTURE_ARGS, jobAHosted: true
   }));
   assert.equal(problems.length, 1);
   assert.match(problems[0], /"job-a"/);
@@ -347,7 +345,7 @@ test('F-1 single-site inversion (only job-a flipped): Assertion 6 catches the on
 
 test('F-1 anchor untouched: everything else inverted, guard-branch/gate stay self-hosted and are never flagged', () => {
   const problems = checkRunnerRouting(buildFixture({
-    jobAHosted: false, jobBHosted: false, apiQualityHosted: false, salvageHosted: false, inputDefaultHosted: false
+    jobAHosted: true, jobBHosted: true, apiQualityHosted: true, salvageHosted: true, inputDefaultHosted: true
   }));
   assert.ok(problems.length > 0);
   for (const problem of problems) {
@@ -473,10 +471,10 @@ test('checkFile: a delegating job with no input default site anywhere in the fil
   assert.match(problems[0], /delegates its runner class/);
 });
 
-test('checkRunnerRouting: deploy-main.yml\'s real 6 build/publish jobs all delegate to its own runner_labels_json input and resolve hosted', () => {
+test('checkRunnerRouting: deploy-main.yml\'s real 6 build/publish jobs all delegate to its own runner_labels_json input and resolve self-hosted', () => {
   const { deployMainText } = readRealWorkflowInputs();
   const { jobClasses } = checkFile('deploy-main.yml', deployMainText);
   for (const job of ['dgfy-api', 'dgfy-migration-runner', 'frontend-ims-prod', 'frontend-pos-prod', 'frontend-storefront-prod', 'publish']) {
-    assert.equal(jobClasses.get(job), true, `${job} should resolve hosted via the delegated input`);
+    assert.equal(jobClasses.get(job), false, `${job} should resolve self-hosted via the delegated input`);
   }
 });

@@ -320,24 +320,6 @@ body {
   }
 }
 
-/* Portrait tablets need two comfortable action columns so labels such as
- * "Open Cash Drawer" remain comfortable touch targets. */
-@media (min-width: 640px) and (max-width: 1023.98px) {
-  .dgfy-pos-tablet-action-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dgfy-pos-tablet-action-grid > button {
-    min-height: 54px;
-    padding: 0.5rem;
-  }
-
-  .dgfy-pos-tablet-action-grid > button > span {
-    font-size: 0.75rem;
-    line-height: 1.2;
-  }
-}
-
 /* Keep the checkout confirmation sheet reachable on short mobile viewports.
    The text-size setting is included because larger POS typography changes the
    usable content height without changing the dialog's ownership. */
@@ -368,14 +350,9 @@ body {
   }
 }
 
-/* Portrait tablets need two comfortable action columns. The parked-sale
- * variant otherwise switches to three columns at the `sm` breakpoint, which
- * leaves labels such as "Open Cash Drawer" compressed into narrow targets. */
+/* Tablet action buttons retain larger touch targets while reusing the same
+ * parked-sale grouping and ordering as the PC layout. */
 @media (min-width: 640px) and (max-width: 1023.98px) {
-  .dgfy-pos-tablet-action-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .dgfy-pos-tablet-action-grid > button {
     min-height: 54px;
     padding: 0.5rem;

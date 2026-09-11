@@ -91,12 +91,17 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     timeout-minutes: 5
     outputs:
-      frontend_ims: ${{ steps.filter.outputs.frontend_ims }}
-      frontend_pos: ${{ steps.filter.outputs.frontend_pos }}
-      frontend_storefront: ${{ steps.filter.outputs.frontend_storefront }}
-      dgfy_api: ${{ steps.filter.outputs.dgfy_api }}
-      migration_runner: ${{ steps.filter.outputs.migration_runner }}
-      android: ${{ steps.filter.outputs.android }}
+      # #1809 (Phase 324): each frontend output now prefers the "Narrow frontend build triggers..."
+      # step's reachability-aware verdict, falling back to the "Detect changed paths" step's own
+      # directory-level one when validate_pr_metadata is false (that step never runs) or the diff
+      # wasn't available (that step's own fallback branch, see its `if` condition below). Same
+      # `a && b || c` ternary idiom already established in this repo (e.g. pr-checks.yml:254).
+      frontend_ims: ${{ inputs.validate_pr_metadata && steps.frontend_reachability.outputs.frontend_ims || steps.filter.outputs.frontend_ims }}
+      frontend_pos: ${{ inputs.validate_pr_metadata && steps.frontend_reachability.outputs.frontend_pos || steps.filter.outputs.frontend_pos }}
+      frontend_storefront: ${{ inputs.validate_pr_metadata && steps.frontend_reachability.outputs.frontend_storefront || steps.filter.outputs.frontend_storefront }}
+      dgfy_api: ${{ steps.filter.outputs.dgfy_api }}           # unchanged -- no web-core/shared-constants pattern to narrow
+      migration_runner: ${{ steps.filter.outputs.migration_runner }}  # unchanged, same reason
+      android: ${{ steps.filter.outputs.android }}             # unchanged, same reason
     steps:
       # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
       # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
@@ -175,6 +180,10 @@ jobs:
             DGFY_API=true
             MIGRATION_RUNNER=true
             ANDROID=true
+            # #1809: no usable diff -- the "Narrow frontend build triggers..." step below can't
+            # narrow what it can't diff, so it must keep this step's own fail-safe "build
+            # everything" verdict for the three frontend outputs rather than attempting to narrow.
+            DIFF_AVAILABLE=false
           else
             FILES="$(git diff --name-only "${BASE_SHA}" HEAD)"
 
@@ -193,6 +202,10 @@ jobs:
             # depend on packages/pos-receipt (dgfy-storefront doesn't -- see
             # its package.json). All three share the reusable deploy-frontend.yml
             # workflow, so a change there invalidates all three, not just one.
+            #
+            # dgfy-api and dgfy-migration-runner similarly both depend on
+            # packages/tenant-bootstrap (#1819) -- a change there alone must still
+            # trigger both backend image builds, not neither.
             FRONTEND_IMS=false
             FRONTEND_POS=false
             FRONTEND_STOREFRONT=false
@@ -202,9 +215,13 @@ jobs:
             matches '^(apps/dgfy-ims/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-ims/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)' && FRONTEND_IMS=true || true
             matches '^(apps/dgfy-pos/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-pos/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_POS=true || true
             matches '^(apps/dgfy-storefront/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-storefront/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_STOREFRONT=true || true
-            matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)' && DGFY_API=true || true
-            matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)' && MIGRATION_RUNNER=true || true
+            matches '^(apps/dgfy-api/|packages/shared-constants/|packages/tenant-bootstrap/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)' && DGFY_API=true || true
+            matches '^(apps/dgfy-migration-runner/|packages/tenant-bootstrap/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)' && MIGRATION_RUNNER=true || true
             matches '^(apps/dgfy-android-bridge/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
+
+            # #1809: a real diff was computable -- the "Narrow frontend build triggers..." step
+            # below can re-derive it from BASE_SHA/HEAD itself.
+            DIFF_AVAILABLE=true
           fi
 
           {
@@ -214,6 +231,12 @@ jobs:
             echo "dgfy_api=${DGFY_API}"
             echo "migration_runner=${MIGRATION_RUNNER}"
             echo "android=${ANDROID}"
+            # #1809 (Phase 324): consumed by the "Narrow frontend build triggers..." step below --
+            # diff_available tells it whether a real diff exists to narrow at all, base_sha gives it
+            # the same base ref this step just resolved (push mode's own BASE_SHA input, or the
+            # merge-base computed above for PR mode) rather than re-resolving it a second time.
+            echo "diff_available=${DIFF_AVAILABLE}"
+            echo "base_sha=${BASE_SHA}"
           } >> "$GITHUB_OUTPUT"
 
           {
@@ -240,6 +263,59 @@ jobs:
             echo ""
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # #1809 (Phase 324): moved here from immediately before "Enforce pos-receipt package version
+      # bump..." -- this step now serves TWO consumers (the reachability-narrowing step below, AND
+      # the version-bump/pos-receipt checks further down), not just the latter. npm ci only runs
+      # once for both.
+      - name: Set up Node
+        if: inputs.validate_pr_metadata
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # #1695 (Phase 303) / #1809 (Phase 324): check-app-version-bump.js and
+      # resolve-frontend-build-triggers.js both transitively require the root devDependency `madge`
+      # (via scripts/resolve-web-core-reachability.js's reachability oracle) -- unlike every other
+      # script folded into this job (see the workflow header's "dependency-free plain node... no
+      # npm install" note), that require() fails outright ("Cannot find module 'madge'") without
+      # root node_modules present. Installing here, immediately before the first step that actually
+      # needs it, keeps that dependency-free property true for every other step in this job.
+      # --ignore-scripts: nothing here needs postinstall side effects, only madge's own module
+      # resolution at require() time. RF-1, PR #1708 review. Moved here (from immediately before
+      # "Enforce per-app version bump...") by #1809 so it serves both this job's version-bump check
+      # AND the reachability-narrowing step immediately below, instead of running twice.
+      - name: Install root dependencies (for the reachability oracle's madge import)
+        if: inputs.validate_pr_metadata
+        run: npm ci --ignore-scripts
+
+      # #1809 (Phase 324), item 2: narrows the "Detect changed paths" step's own directory-level
+      # frontend_ims/frontend_pos/frontend_storefront verdicts by web-core/shared-constants
+      # reachability, via the same shared oracle item 1's check-app-version-bump.js flip uses
+      # (scripts/resolve-web-core-reachability.js's resolveAppReachabilityVerdict()). Deliberately a
+      # NEW, later step rather than an edit to "Detect changed paths"'s own bash regex -- that
+      # regex is also the correct fallback for the currently-dead validate_pr_metadata: false /
+      # push-mode path, and touching it risks that path silently regressing with no live caller to
+      # catch it. This step instead only overrides the job's own frontend_* outputs (see the
+      # `outputs:` block above) when Node/reachability is actually available.
+      - name: Narrow frontend build triggers via web-core/shared-constants reachability
+        id: frontend_reachability
+        if: inputs.validate_pr_metadata
+        env:
+          DIFF_AVAILABLE: ${{ steps.filter.outputs.diff_available }}
+          BASE_SHA: ${{ steps.filter.outputs.base_sha }}
+          FALLBACK_IMS: ${{ steps.filter.outputs.frontend_ims }}
+          FALLBACK_POS: ${{ steps.filter.outputs.frontend_pos }}
+          FALLBACK_STOREFRONT: ${{ steps.filter.outputs.frontend_storefront }}
+        run: |
+          set -euo pipefail
+          if [ "${DIFF_AVAILABLE}" != "true" ]; then
+            # No usable diff (new branch / force-push) -- keep the filter step's own fail-safe
+            # "build everything" verdict rather than attempting to narrow it.
+            { echo "frontend_ims=${FALLBACK_IMS}"; echo "frontend_pos=${FALLBACK_POS}"; echo "frontend_storefront=${FALLBACK_STOREFRONT}"; } >> "$GITHUB_OUTPUT"
+          else
+            node scripts/resolve-frontend-build-triggers.js --base "${BASE_SHA}" --head HEAD
+          fi
 
       - name: Validate PR title format
         if: inputs.validate_pr_metadata
@@ -270,12 +346,6 @@ jobs:
             echo "::warning::PR body must contain '## Testing Evidence' section"
             exit 1
           fi
-
-      - name: Set up Node
-        if: inputs.validate_pr_metadata
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
 
       # This step exited 127 ("node: command not found") on every run before
       # the setup-node step above was added -- continue-on-error swallowed
@@ -308,18 +378,6 @@ jobs:
           GITHUB_HEAD_REF: ${{ github.head_ref }}
         run: |
           echo "continue_on_error=$(node -e "console.log(require('./scripts/lib/version-bump-gate-toggle').resolveBlocking(process.env.GITHUB_BASE_REF, process.env.GITHUB_HEAD_REF) ? 'false' : 'true')")" >> "$GITHUB_OUTPUT"
-
-      # #1695 (Phase 303): check-app-version-bump.js now transitively requires the root
-      # devDependency `madge` (via scripts/resolve-web-core-reachability.js's shadow-mode
-      # reachability audit) -- unlike every other script folded into this job (see the workflow
-      # header's "dependency-free plain node... no npm install" note), that one require() fails
-      # outright ("Cannot find module 'madge'") without root node_modules present. Installing here,
-      # immediately before the one step that actually needs it, keeps that dependency-free property
-      # true for every other step in this job. --ignore-scripts: nothing here needs postinstall side
-      # effects, only madge's own module resolution at require() time. RF-1, PR #1708 review.
-      - name: Install root dependencies (for check-app-version-bump.js's madge import)
-        if: inputs.validate_pr_metadata
-        run: npm ci --ignore-scripts
 
       # #1560 (#1548 Wave 1): per-app container SemVer bump check -- generalizes the
       # pos-receipt check above to all five deployable apps, with a real semver-increase

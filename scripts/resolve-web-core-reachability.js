@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Static reachability oracle for `packages/web-core` (and `packages/shared-constants`) -- #1695,
- * Phase 303 (shadow-mode, zero behavior change). Full investigation and design:
- * the #1695 plan doc (`computeAppReachableModules`/`auditReachabilitySafety`, §3.2-3.4).
+ * Static reachability oracle for `packages/web-core` (and `packages/shared-constants`) -- originally
+ * built #1695 (Phase 303) as a shadow-mode, log-only check; **now live-gating as of #1809 (Phase
+ * 324)**. Full investigation and design: the #1695 plan doc
+ * (`computeAppReachableModules`/`auditReachabilitySafety`, §3.2-3.4).
  *
  * `check-app-version-bump.js`'s `detectChangedApps()` marks an app "changed" whenever ANY changed
  * file falls under a `file:`-dependency package directory -- directory containment, not reachability.
@@ -14,9 +15,19 @@
  *
  * This module answers, for one app's real bundler entry point, "does this app's own module graph
  * actually reach file Y" -- a real reachability oracle, not a substitute for the directory check.
- * `check-app-version-bump.js` wires this in LOG-ONLY (shadow) mode: it computes and prints this
- * verdict alongside the existing directory-level one but keeps gating on the OLD verdict only.
- * Nothing here changes CI outcomes by itself.
+ * As of #1809 (Phase 324), `resolveAppReachabilityVerdict()` below is a **live gating oracle**, not
+ * a shadow-mode log line -- it has exactly two consumers, both calling through the same shared
+ * function so a fix here fixes both at once:
+ *   - `check-app-version-bump.js`'s `detectChangedAppsNarrowed()` uses the verdict to narrow which
+ *     apps `runCheck()`/`runFloor()` actually gate the version-bump requirement on.
+ *   - `resolve-frontend-build-triggers.js` uses the same verdict to narrow which frontend apps'
+ *     Docker build/lint CI jobs actually run for a given PR.
+ * Both consumers are fail-closed by construction: `resolveAppReachabilityVerdict()` never throws
+ * past its one caller-programming-error precondition (a missing `fileExistsAtRef`) -- any internal
+ * failure (a missing entry file, a `madge()` parse error, a tripped `auditReachabilitySafety()`
+ * check, a file deleted between base and head) degrades to the conservative `'changed'`/`'reachable'`
+ * verdict a pre-#1809 caller would have reached, never to a false "skip this app" negative. See the
+ * `resolveAppReachabilityVerdict` entry under `Exports:` below for the full verdict-code list.
  *
  * Built on `madge` (new devDependency) rather than a hand-rolled AST walker -- madge already
  * handles ESM static imports and dynamic `import()` natively. The #1695 plan's own audit (repo-wide
@@ -36,10 +47,17 @@
  *
  * Reachability is always computed against the literal on-disk working tree under `repoRoot` (via
  * `fs`/`madge`, not `git show <ref>:path`) -- this matches `headGitRef === 'HEAD'`, the overwhelming
- * common case for a real PR-check invocation. For `--staged` mode (index vs. working tree can
- * differ if there are further unstaged edits on top of what's staged), this is a documented,
- * harmless simplification: shadow-mode output never gates anything, so a rare index/working-tree
- * mismatch here can, at worst, make one shadow-mode log line slightly stale -- never a false gate.
+ * common case for a real PR-check invocation. For `--staged` mode (`check-app-version-bump.js
+ * --staged`'s pre-commit path, `headGitRef === ''`; index vs. working tree can differ if there are
+ * further unstaged edits on top of what's staged), this is a documented, accepted limitation, now
+ * that #1809/Phase 324 made this oracle's verdict live-gating rather than shadow-mode-only: a rare
+ * index/working-tree mismatch here means the graph walk can run against a slightly different tree
+ * than the one actually staged. In practice this only miscomputes reachability for a file whose own
+ * further-unstaged edits would change an import/export edge on the path between an app's entry point
+ * and a changed `packages/web-core`/`packages/shared-constants` file -- a narrow edge case -- and any
+ * resulting error still degrades to the conservative `'changed'` verdict per this module's own
+ * fail-closed contract (see `resolveAppReachabilityVerdict` below), never to a false "skip this app"
+ * negative. Revisit if `--staged` mode's real-world gating impact ever needs tightening.
  *
  * Exports:
  *   computeAppReachableModules(repoRoot, entryFile) -> Promise<Set<repo-relative path>>
@@ -59,12 +77,38 @@
  *     risky file in the diff itself. `violations` is never empty when `safe` is false, and always
  *     empty when `safe` is true.
  *
- * A single `node scripts/check-app-version-bump.js` invocation calls `computeAppReachableModules`
- * once per fan-out-triggered app (up to 3 times, for `dgfy-ims`/`dgfy-pos`/`dgfy-storefront` -- the
- * only apps with a real bundler entry point; `dgfy-api`/`dgfy-migration-runner` are backend, Node
- * module resolution rather than a bundler graph, explicitly out of scope per the plan's §3.5). Only
- * one real `madge()` parse runs per process for all of those calls combined -- see
- * `buildUnionGraph()`'s cache below -- not three separate parses.
+ *   resolveAppReachabilityVerdict(repoRoot, app, changedFiles, { fileExistsAtRef }) -> Promise<verdict>
+ *     #1809, Phase 324: the single shared oracle both `check-app-version-bump.js` (gating
+ *     `runCheck()`/`runFloor()`) and `resolve-frontend-build-triggers.js` (gating the CI
+ *     build-trigger filter) call through -- one place that fixes the pre-#1809 shadow-mode bug
+ *     where reachability was only ever checked against ONE of an app's REACHABILITY_SCOPE_DIRS
+ *     dependency packages (whichever `depPackages.find()` happened to pick first), silently
+ *     dropping a real changed file under the OTHER scoped package from consideration entirely.
+ *     Here, `changedFiles` is the app's full changed-file list (not pre-filtered to one package) --
+ *     this function does its own filtering against the full `REACHABILITY_SCOPE_DIRS` union.
+ *     `fileExistsAtRef` is a REQUIRED, caller-injected `(relativePath) => boolean` -- this module
+ *     deliberately has no git-ref awareness of its own (see above); a caller that omits it gets a
+ *     thrown error immediately, not a silently-less-safe default (a caller-programming-error, not a
+ *     runtime data condition -- this is the one thing this function does NOT catch and fail closed
+ *     on). Every other failure mode (missing entry file, a `madge()` parse error, anything
+ *     unexpected) is caught internally and degrades to the same conservative "changed" verdict a
+ *     pre-#1809 caller would have reached -- this function never throws once past that one
+ *     precondition check, mirroring the old (now-removed) `computeReachabilityShadowVerdict`'s own
+ *     "never throws" contract so every consumer gets that safety net for free instead of
+ *     re-implementing it.
+ *     Returns `{ applicable: false, reason }` when there's no known bundler entry for `app`
+ *     (backend app) or no changed file falls under `REACHABILITY_SCOPE_DIRS` at all. Otherwise
+ *     `{ applicable: true, changed, code, safetyNetPassed, relevantChangedFiles, detail, ... }`
+ *     where `code` is one of `'reachable'`, `'not-reachable'`, `'deleted-file-fail-closed'`,
+ *     `'safety-net-tripped'`, or `'reachability-error-fail-closed'`.
+ *
+ * A single check-app-version-bump.js/resolve-frontend-build-triggers.js invocation calls
+ * `computeAppReachableModules` once per fan-out-triggered app (up to 3 times, for
+ * `dgfy-ims`/`dgfy-pos`/`dgfy-storefront` -- the only apps with a real bundler entry point;
+ * `dgfy-api`/`dgfy-migration-runner` are backend, Node module resolution rather than a bundler
+ * graph, explicitly out of scope per the plan's §3.5). Only one real `madge()` parse runs per
+ * process for all of those calls combined -- see `buildUnionGraph()`'s cache below -- not three
+ * separate parses.
  */
 
 const fs = require('node:fs');
@@ -522,9 +566,88 @@ function auditReachabilitySafety(repoRoot, packageDirs, aliasScanDirs = packageD
   return { safe: violations.length === 0, violations };
 }
 
+// #1809, Phase 324: the shared reachability oracle -- see the file header for the full contract.
+// Supersedes check-app-version-bump.js's old shadow-mode-only `computeReachabilityShadowVerdict`
+// (which derived `relevantChangedFiles` from a single pre-picked fan-out package, the bug this
+// function fixes by scoping against the full REACHABILITY_SCOPE_DIRS union instead).
+async function resolveAppReachabilityVerdict(repoRoot, app, changedFiles, { fileExistsAtRef } = {}) {
+  if (typeof fileExistsAtRef !== 'function') {
+    throw new Error('resolveAppReachabilityVerdict: fileExistsAtRef is required (deletion handling needs git-ref context this module does not have)');
+  }
+
+  const entryFile = ENTRY_FILE_BY_APP[app];
+  if (!entryFile) {
+    return { applicable: false, reason: `no known bundler entry for ${app} (backend app -- out of scope)` };
+  }
+
+  const relevantChangedFiles = changedFiles.filter((file) =>
+    REACHABILITY_SCOPE_DIRS.some((dir) => file.startsWith(`${dir}/`)));
+  if (relevantChangedFiles.length === 0) {
+    return { applicable: false, reason: 'no changed file under packages/web-core or packages/shared-constants' };
+  }
+
+  try {
+    const scopeDirs = REACHABILITY_SCOPE_DIRS.filter((dir) => fs.existsSync(path.join(repoRoot, dir)));
+    // RF-2 (PR #1708 review, carried forward here): the safety-net audit must also cover this
+    // app's own source tree and packages/pos-receipt, not just the scoped packages themselves --
+    // a self-referential `@/...`/`@sieitzz/...` alias this module can't resolve can appear in
+    // either. See ALIAS_EDGE_SCAN_DIRS's own header comment above.
+    const aliasScanDirs = [...new Set([...scopeDirs, 'packages/pos-receipt', `apps/${app}`])]
+      .filter((dir) => fs.existsSync(path.join(repoRoot, dir)));
+    const audit = auditReachabilitySafety(repoRoot, scopeDirs, aliasScanDirs);
+    if (!audit.safe) {
+      return {
+        applicable: true,
+        changed: true,
+        code: 'safety-net-tripped',
+        safetyNetPassed: false,
+        violations: audit.violations,
+        relevantChangedFiles,
+        detail: `safety net found ${audit.violations.length} disqualifying pattern(s) in ${aliasScanDirs.join(', ')} -- falling back to conservative "changed"`,
+      };
+    }
+
+    const reachable = await computeAppReachableModules(repoRoot, entryFile);
+    const reachableHits = relevantChangedFiles.filter((file) => reachable.has(file));
+    // §3.4: a file deleted between base and head can never appear in a graph built from HEAD's
+    // working tree -- its absence there must not be silently read as "not reachable, therefore not
+    // obligating a bump".
+    const deletedHits = relevantChangedFiles.filter((file) => !reachable.has(file) && !fileExistsAtRef(file));
+    const changed = reachableHits.length > 0 || deletedHits.length > 0;
+
+    return {
+      applicable: true,
+      changed,
+      code: reachableHits.length > 0 ? 'reachable' : (deletedHits.length > 0 ? 'deleted-file-fail-closed' : 'not-reachable'),
+      safetyNetPassed: true,
+      reachableCount: reachable.size,
+      relevantChangedFiles,
+      hitFiles: [...reachableHits, ...deletedHits],
+      detail: changed
+        ? `${reachableHits.length > 0 ? `reachability hit: ${reachableHits.slice(0, 3).join(', ')}${reachableHits.length > 3 ? ', ...' : ''}` : ''}`
+          + `${reachableHits.length > 0 && deletedHits.length > 0 ? '; ' : ''}`
+          + `${deletedHits.length > 0 ? `${deletedHits.length} deleted file(s) can't be checked for reachability, conservatively counted as changed: ${deletedHits.slice(0, 3).join(', ')}${deletedHits.length > 3 ? ', ...' : ''}` : ''}`
+        : `none of ${relevantChangedFiles.length} changed file(s) under ${REACHABILITY_SCOPE_DIRS.join('/')} are reachable from ${entryFile} (${reachable.size} scoped modules reachable in total)`,
+    };
+  } catch (error) {
+    // Never let an unexpected failure (a missing entry file, a madge parse error, ...) propagate
+    // past this function -- degrade to the same conservative "changed" a pre-#1809 caller would
+    // have reached. See the file header's contract for this function.
+    return {
+      applicable: true,
+      changed: true,
+      code: 'reachability-error-fail-closed',
+      safetyNetPassed: false,
+      relevantChangedFiles,
+      detail: `reachability computation threw unexpectedly (${error.message}) -- falling back to conservative "changed"`,
+    };
+  }
+}
+
 module.exports = {
   REACHABILITY_SCOPE_DIRS,
   ENTRY_FILE_BY_APP,
   computeAppReachableModules,
   auditReachabilitySafety,
+  resolveAppReachabilityVerdict,
 };

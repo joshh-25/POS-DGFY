@@ -22559,13 +22559,156 @@ content differs from what was implemented and tested under the "303" label.
   and ADR 0017's bulk-package amendment.
 - Next eligible phase: 324.
 
-## Phase 324 - POS History positive payment-method filtering
+## Phase 324 - Flip the web-core reachability oracle from shadow-mode to gating, extend it to PR-check path filtering (#1809)
 
-- Initiative/release: POS split-tender history and reporting correctness / current release.
+- Initiative/release: CI-tooling correctness (standalone issue, epic #1548) / current release
+  process.
+- Objective and scope: closes #1809 -- flips Phase 304 (#1695)'s shadow-mode-only reachability
+  oracle to actually gate `check-app-version-bump.js`'s changed-app verdict, in **both** the per-PR
+  path (`runCheck()`) and the pre-cut promotion-floor path (`runFloor()`), and extends the same
+  shared oracle to narrow `shared-changed-paths.yml`'s `frontend_ims`/`frontend_pos`/
+  `frontend_storefront` build-trigger filter. The issue's own DoD named only `runCheck()`, but the
+  issue's own "Fresh evidence" section (candidate `2026-09-10-02`) traced back to a `runFloor()`
+  bug specifically: `dgfy-storefront` was force-bumped to the minor floor (1.11.6 -> 1.12.0) ahead
+  of cutting `to-staging/2026-09-10-02` purely because an unrelated `apps/dgfy-pos`/`apps/dgfy-ims`
+  change under `packages/web-core` tripped the directory-level fan-out check -- `dgfy-storefront`'s
+  own bundle never reached the changed file. Flipping only `runCheck()` would have left that exact
+  incident fully reproducible on the next promotion, so this phase's scope was widened to cover
+  `runFloor()` too (both call through one new shared function, not two parallel reimplementations).
+  A second, independent bug was found during re-verification (not just re-confirmation of #1695's
+  existing shadow evidence): the old shadow computation derived `relevantChangedFiles` from only
+  ONE of an app's `REACHABILITY_SCOPE_DIRS` dependency packages (whichever `detectChangedApps()`'s
+  `depPackages.find()` happened to pick first in `package.json` key order) -- a real changed file
+  under the OTHER scoped package (`packages/web-core` vs. `packages/shared-constants`) was silently
+  dropped from consideration entirely. Harmless while log-only; a real false-negative risk once
+  gating went live. Fixed as part of this same flip, not left latent.
+- Mechanically: extracted `resolveAppReachabilityVerdict(repoRoot, app, changedFiles, {
+  fileExistsAtRef })` into `scripts/resolve-web-core-reachability.js` -- the single shared oracle
+  both consumers below call through, scoped against the FULL `REACHABILITY_SCOPE_DIRS` union (the
+  multi-scope-package bug fix), never throwing past its one caller-programming-error precondition
+  (a missing `fileExistsAtRef` callback) -- every other failure (a missing entry file, a `madge`
+  parse error) is caught internally and degrades to the same conservative "changed" a pre-#1809
+  caller would have reached, centralizing the old `computeReachabilityShadowVerdict`'s "never
+  throws" contract in one place instead of every consumer re-implementing it.
+  `scripts/check-app-version-bump.js`: deleted the shadow-only `computeReachabilityShadowVerdict`/
+  `runReachabilityShadowAudit`; added `detectChangedAppsNarrowed()` (async), which calls the
+  unchanged, sync `detectChangedApps()` first and then narrows every `fan-out:`-triggered entry
+  through the shared oracle -- gated by a new one-line rollback lever,
+  `scripts/lib/web-core-reachability-gate-toggle.js` (mirrors #1569/#1592's own
+  `version-bump-gate-toggle.js` pattern), currently `NARROWING_ENABLED = true`. `runCheck()` and
+  `runFloor()` are now `async function`s that filter through `detectChangedAppsNarrowed()` instead
+  of the raw `detectChangedApps()`; both return objects gain an additive `narrowedEntries` field so
+  `printCheckResult()`/`printFloorResult()` can print one `[REACHABILITY]` line per narrowed entry
+  (including one that got narrowed all the way to "unchanged" -- the case that matters most for
+  visibility, since it's exactly what the `2026-09-10-02` incident needed to be legible) --
+  replacing the old `[SHADOW]` log lines with the real decision, not a parallel computation.
+  `scripts/propose-version-level.js`'s own `proposeVersionLevels()` and `main()` became `async` to
+  follow `runCheck()`'s new signature (a pure mechanical `await` migration, isolated as its own
+  commit); its own separate `detectChangedApps()` call (line 168) stays deliberately unnarrowed,
+  same precedent #1592 set for this file's own prior sibling flip -- named as a residual gap below,
+  not fixed here. New `scripts/resolve-frontend-build-triggers.js`: a thin orchestration layer
+  (mirrors `check-app-version-bump.js`/`resolve-build-skip-plan.js`'s own shape) over the shared
+  oracle plus a `UNCONDITIONAL_TRIGGER_PATTERNS` table that is the exact non-web-core-scope portion
+  of `shared-changed-paths.yml`'s own per-app bash regex, kept as the single JS source of truth for
+  the `validate_pr_metadata: true` path (that workflow's bash regex stays the deliberate,
+  documented fallback for the currently-dead `validate_pr_metadata: false`/push-mode path).
+  `.github/workflows/shared-changed-paths.yml`: the existing "Detect changed paths" step is
+  byte-for-byte unchanged except two new output lines (`diff_available`, `base_sha`); "Set up Node"
+  and "Install root dependencies" moved earlier (now serving two consumers, not one); a new
+  "Narrow frontend build triggers via web-core/shared-constants reachability" step calls the new
+  script when a diff is available, else keeps the filter step's own fail-safe "build everything"
+  verdict; the job's `frontend_ims`/`frontend_pos`/`frontend_storefront` outputs now prefer that
+  step's verdict via the same `a && b || c` ternary idiom already established elsewhere in this repo
+  (e.g. `pr-checks.yml:254`). `dgfy_api`/`migration_runner`/`android` outputs are untouched -- none
+  of their trigger patterns reference `packages/web-core`/`packages/shared-constants`.
+- Status: completed.
+- Dependencies: Phase 304 (#1695)'s shadow-mode oracle and its own stated evidence bar. Re-verified
+  at implementation time (not just Phase 304's original evidence, per #1592's own "re-confirm at
+  implementation time" discipline): 4 live CI runs across 2 feature branches since PR #1708 merged
+  (34478388194, 34475546389, 34464477521, 34431497157), 8 total shadow verdicts, 100% agreement
+  with ground truth (every `DISAGREE` correctly narrowed a real false positive away from
+  `dgfy-storefront`, every `AGREE` confirmed a real reachable change; `safety-net=PASS` in all 8
+  samples), plus the `2026-09-10-02` incident itself as independent real-world confirmation of the
+  same failure mode from the opposite direction. No dedicated readiness-counting script exists for
+  this check (unlike #1592's `check-version-bump-flip-readiness.js`) -- not built here, out of this
+  issue's DoD; the realistic qualifying-PR population is small enough that a manual sample,
+  repeated close to implementation time, was judged proportionate.
+- Acceptance and validation evidence: `node --check` on every changed/new `.js` file (9 files, all
+  OK -- no build step applies, scripts/`.github/workflows`-only). `node --test` on every
+  changed/new test file: `scripts/resolve-web-core-reachability.test.js` (26/26 -- adds the
+  multi-scope-package regression test plus full `resolveAppReachabilityVerdict()` coverage:
+  not-applicable/no-scope-change, not-applicable/backend-app, not-reachable, deleted-file
+  fail-closed, safety-net-tripped, an unexpected-error fail-closed case, and the
+  missing-`fileExistsAtRef`-callback throw); `scripts/check-app-version-bump.test.js` (31/31 -- all
+  24 pre-existing tests pass byte-for-byte unchanged behind the new `await`/`async` migration
+  (confirmed: `baseFixture()`'s placeholder apps, with no real `main.jsx`, deterministically hit the
+  new `reachability-error-fail-closed` path, reproducing the exact old conservative verdict those
+  tests already asserted), plus 7 new tests driven through the real
+  `detectChangedApps()`-\>`detectChangedAppsNarrowed()` path -- a real reachability hit, the PR
+  #1689/`dgfy-storefront`-not-reachable shape, the deleted-file fail-closed shape, a safety-net
+  trip, a direct-change untouched case, a backend-app untouched case, and a dedicated
+  `runFloor()`-specific regression test reproducing the `2026-09-10-02` incident shape verbatim (an
+  app below floor purely via directory-level fan-out, with no real reachability, no longer appears
+  in `belowFloor`)); `scripts/propose-version-level.test.js` (15/15, unchanged assertions --
+  8 call sites mechanically migrated to `await`/`async`, one `assert.throws`-\>`assert.rejects`
+  conversion for the now-async early-throw case); `scripts/resolve-frontend-build-triggers.test.js`
+  (10/10, new -- unconditional triggers for each app shape, the reachability-narrowed case reusing
+  the PR #1689 shape, safety-net-trip fallback, deletion fail-closed, no-relevant-change);
+  `scripts/lib/web-core-reachability-gate-toggle.test.js` (2/2, new, minimal per the toggle's own
+  single-consumer/single-behavior surface). `scripts/resolve-build-skip-plan.test.js` re-run
+  unmodified (24/24) confirming its own, deliberately-wider reuse of shared helpers is unaffected,
+  per the plan's explicit "do not touch" scope (item 3's re-audit: no code change warranted there,
+  full reasoning in the PR body). `npm run check:architecture` (OK, 54 modules/569 files + 95
+  controllers). `npm run check:adr` (OK, 89 ADRs -- no amendment needed: this flip changes a
+  mechanism's correctness, not ADR 0081 Decision 6's enforced meaning, same `[snapshot]`-equivalent
+  classification Phase 305/#1740's own floor-scoping fix used). `npm run check:compliance` (no
+  compliance-sensitive changes detected -- `scripts/`/`.github/workflows/` is not a classified
+  surface, per Phase 304/#1592's own precedent). `package-lock.json` confirmed untouched -- no new
+  dependency (`madge` already a devDependency since Phase 304); `package.json` itself was touched
+  only to register the two new test files' `test:*` scripts and add them to the
+  `test:development-to-production` chain, matching this repo's existing per-test-file convention.
+  Live smoke test against the real repo at HEAD (not just fixtures):
+  `node scripts/resolve-frontend-build-triggers.js --base HEAD~5 --head HEAD` correctly reported
+  `dgfy-storefront` triggering (`unconditional` -- the real, recent storefront version-bump commits)
+  and `dgfy-ims`/`dgfy-pos` not triggering (`no-relevant-change`). One pre-existing, unrelated test
+  failure was found and isolated, not introduced by this phase:
+  `scripts/pr-checks.test.js`'s "PATH_FILTERS stay verbatim in sync with shared-changed-paths.yml"
+  fails on a clean `origin/develop` checkout too (confirmed via a temporary `git stash`
+  isolation) -- `scripts/pr-checks.js`'s own ported `PATH_FILTERS.frontend_ims` is missing the
+  `pr-frontend-lint-checks` workflow-file alternative the real bash regex has, an existing drift
+  this phase's own workflow edits did not touch and do not fix (out of this issue's scope; worth its
+  own follow-up issue).
+- Completion date: 2026-09-11.
+- Contracts/files: `scripts/resolve-web-core-reachability.js` (`resolveAppReachabilityVerdict`
+  added), `scripts/resolve-web-core-reachability.test.js` (regression + full coverage added),
+  `scripts/check-app-version-bump.js` (`computeReachabilityShadowVerdict`/
+  `runReachabilityShadowAudit` removed; `detectChangedAppsNarrowed` added; `runCheck`/`runFloor` now
+  async and gating), `scripts/check-app-version-bump.test.js` (24 pre-existing tests migrated to
+  `await`, 7 tests replaced), `scripts/lib/web-core-reachability-gate-toggle.js` (new) +
+  `.test.js` (new), `scripts/propose-version-level.js`/`.test.js` (async migration only, no logic
+  change), `scripts/resolve-frontend-build-triggers.js` (new) + `.test.js` (new),
+  `.github/workflows/shared-changed-paths.yml` (step reorder + new narrowing step + job-output
+  ternaries), `package.json` (new `test:*` scripts + chain entries, no new dependency), issue #1809,
+  epic #1548. No ADR or `docs/ops/RELEASE_CANDIDATE_POLICY.md` amendment -- neither document
+  described the shadow-mode oracle in enforceable terms, and this flip changes a mechanism's
+  correctness (a directory-level false positive) rather than any `[binding]`/`[default]` clause's
+  meaning, matching Phase 305/#1740's own classification for its sibling `runFloor()` fix. Named
+  residual gaps, not fixed here (full reasoning in the PR body): (1) `propose-version-level.js`'s
+  own unnarrowed `detectChangedApps()` usage, matching #1592's own precedent for this file; (2)
+  `packages/pos-receipt` fan-out stays fully unnarrowed in both consumers, the `REACHABILITY_SCOPE_DIRS`
+  boundary from Phase 304 unchanged; (3) `resolve-build-skip-plan.js`'s outcome 3/4 content-diff
+  stays directory-level, deliberately (needs to catch Dockerfile-only changes too); (4) the
+  safety-net fail-closed path has zero live-fire confirmation in production (100% PASS in every
+  real sample found); (5) full live confirmation of "rebuilds only the reachable app at every
+  environment" is deferred to the next real promotion carrying a POS-only `packages/web-core`
+  change, per the plan's own §5.3 -- this PR's own throwaway-branch live-CI verification (§5.2) was
+  deferred, so this issue closes via `Refs #1809`, not `Closes #1809` (see the PR body for why).
+### Concurrent POS History positive payment-method filtering initiative
+
 - Objective and scope: exclude zero-value normalized tender placeholders from
   History and analytics payment-method filters while retaining valid single-tender
   and split-tender matches before pagination.
-- Status: completed.
+- Status: completed (2026-09-10).
 - Dependencies: existing POS split-payment history/report contract; ADR 0063;
   MySQL 8 JSON column support.
 - Acceptance and validation evidence: the repository payment predicate preserves
@@ -22574,12 +22717,11 @@ content differs from what was implemented and tested under the "303" label.
   2/2, existing POS payment-method tests passed 2/2, changed API lint passed,
   architecture guardrails passed, compliance and documentation checks passed, and
   `git diff --check` passed. No transaction, payment, or schema data was modified.
-- Completion date: 2026-09-10.
 - Contracts/files: `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
   `apps/dgfy-api/tests/posTransactionHistory.repository.test.js`,
   `packages/web-core/src/features/pos/utils/posPaymentMethods.js`, and
   `docs/compliance/impact-declarations/2026-09-10-pos-history-payment-filter.md`.
-- Next eligible phase: 325.
+- Next eligible phase: 326.
 
 ## Phase 325 - Tenant Manager registration action guard
 

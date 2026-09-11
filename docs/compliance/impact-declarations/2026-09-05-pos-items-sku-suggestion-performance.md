@@ -12,8 +12,8 @@ verification_evidence: focused SKU and viewport suites,10000-row local computati
 rollback_note: Revert the client-side SKU index and return to the existing scan; no stored data, migration, or external operation is involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T10:25:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-294-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-05-POS-ITEMS-SKU-SUGGESTION-PERFORMANCE
 ---
 
 # POS Items SKU suggestion performance (Phase 294)

@@ -15,8 +15,11 @@ import PosDrawerHandoffEvent from '../src/models/PosDrawerHandoffEvent.js';
 import PosTransaction from '../src/models/PosTransaction.js';
 
 const require = createRequire(import.meta.url);
+// #1819: apps/dgfy-migration-runner/migrations/20260824000001-...cjs is now a thin re-export shim
+// (see its own header comment) -- read the real migration source from packages/tenant-bootstrap
+// instead, or this test would assert against the shim's 2 lines rather than the actual DDL.
 const migrationSource = require('fs').readFileSync(
-    require.resolve('../../dgfy-migration-runner/migrations/20260824000001-create-pos-cashier-attendance-operator-sessions.cjs'),
+    require.resolve('@sieitzz/tenant-bootstrap/migrations/20260824000001-create-pos-cashier-attendance-operator-sessions.cjs'),
     'utf8'
 );
 

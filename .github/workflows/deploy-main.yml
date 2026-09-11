@@ -43,8 +43,8 @@ on:
           commit to main. See docs/ops/CI_RUNNER_MIGRATION_HANDOFF.md's Phase 234 entry.
         required: false
         type: string
-        # default: '["sieitz-runner"]'
-        default: '["ubuntu-latest"]'
+        # default: '["ubuntu-latest"]'
+        default: '["sieitz-runner"]'
       candidate_source_sha_api:
         description: >-
           ADR 0081 Decision 8 candidate source identity, PER APP (#1610 amendment; originally one
@@ -173,9 +173,10 @@ jobs:
 
       # Phase 233 (#1365), Wave 2 H2 / Phase 234 Wave 3 (live cutover): runs the same pre-dispatch
       # preflight scripts/ci-runner-preflight.js exposes to `promoter` (H1). Probes --class both
-      # (F-4), not a single class: the active class is now hosted (post-flip), but single-class
-      # probing can never produce the informative mixed-state exit code once both classes are
-      # legitimately in play (activeRouting is derived from the file itself, not passed here).
+      # (F-4), not a single class: the active class is self-hosted again as of 2026-09-10's revert
+      # (#1810), but single-class probing can never produce the informative mixed-state exit code
+      # once both classes are legitimately in play (activeRouting is derived from the file itself,
+      # not passed here).
       # guard-branch is the deliberate anchor for this (Wave 1 Sec 1.4): it always runs, and every
       # downstream job carries `needs: guard-branch`, so a failure here stops the whole dispatch
       # before any build starts -- "hosted-runner unavailability fails clearly and permits only the
@@ -278,8 +279,8 @@ jobs:
   resolve-build-plan:
     needs: guard-branch
     if: needs.guard-branch.result == 'success'
-    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
-    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 10
     outputs:
       should_build_dgfy_api: ${{ steps.resolve.outputs.should_build_dgfy_api }}

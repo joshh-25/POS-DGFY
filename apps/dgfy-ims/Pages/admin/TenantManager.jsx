@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Building2,
@@ -588,6 +588,50 @@ export default function TenantManager() {
         loadTenants();
     }, [statusFilter]);
 
+    // Issue #1825: approve/retry now return as soon as provisioning is durably claimed, not once
+    // it finishes - the UI has to poll for the outcome instead of learning it from the original
+    // request's response. Poll only while at least one currently-loaded tenant is actually
+    // in_progress, and refresh silently so the poll itself never causes a loading flicker. A ref
+    // (not `tenants` as an effect dependency) keeps this to one interval per statusFilter instead
+    // of tearing down and recreating the timer on every tenants-state update.
+    const tenantsRef = useRef(tenants);
+    tenantsRef.current = tenants;
+    // RF-4/RF-6 (PR #1830 review, rounds 1 and 2): a slow response could otherwise still be in
+    // flight when the next 3s tick fires (RF-4), and a single shared "cancelled" boolean doesn't
+    // survive a statusFilter change cleanly (RF-6) - the next effect run resets it to false, so
+    // a response from the *previous* filter's poll that resolves after that reset would pass a
+    // naive "not cancelled" check and get applied against the new filter's tenant list.
+    //
+    // pollGenerationRef is a monotonically increasing counter, bumped every time this effect is
+    // cleaned up (statusFilter changed, or unmount) - never reset. Each effect run captures the
+    // generation value current *at that moment* as its own; a response is only applied if that
+    // captured generation still matches the ref's current value when the response arrives,
+    // which is false both after this same effect's own cleanup and after any subsequent effect's
+    // cleanup, so it never depends on which effect run bumped it. pollInFlightRef still skips
+    // starting a new tick while one is already pending.
+    const pollInFlightRef = useRef(false);
+    const pollGenerationRef = useRef(0);
+    useEffect(() => {
+        const myGeneration = pollGenerationRef.current;
+        const intervalId = setInterval(async () => {
+            if (pollInFlightRef.current || pollGenerationRef.current !== myGeneration) return;
+            const hasInProgress = tenantsRef.current.some(
+                (tenant) => tenant.registrationApplication?.provisioning_status === 'in_progress'
+            );
+            if (!hasInProgress) return;
+            pollInFlightRef.current = true;
+            try {
+                await loadTenants({ silent: true, pollGeneration: myGeneration });
+            } finally {
+                pollInFlightRef.current = false;
+            }
+        }, 3000);
+        return () => {
+            pollGenerationRef.current += 1;
+            clearInterval(intervalId);
+        };
+    }, [statusFilter]);
+
     // Store Template application (issue #178 Phase 17): loaded once, not
     // per-status-filter change - the published template catalog doesn't
     // depend on which tenants are currently shown. Failure here is
@@ -609,17 +653,31 @@ export default function TenantManager() {
         return () => { cancelled = true; };
     }, []);
 
-    async function loadTenants() {
-        setLoading(true);
-        setError('');
+    // `silent: true` (issue #1825's provisioning-status poll below) skips the loading spinner
+    // and the error banner so a background refresh never flickers the page - a failed silent
+    // poll just tries again on the next tick instead of surfacing an error.
+    async function loadTenants({ silent = false, pollGeneration } = {}) {
+        if (!silent) {
+            setLoading(true);
+            setError('');
+        }
         try {
             const response = await adminService.getTenants(statusFilter);
+            // RF-4/RF-6 (PR #1830 review): a silent poll response that resolves after its own
+            // effect was cleaned up (statusFilter changed, or unmount) is stale - never apply
+            // it. Compared against the current generation, not a boolean, so this is correct
+            // regardless of which later effect run did the bumping.
+            if (silent && pollGeneration !== undefined && pollGeneration !== pollGenerationRef.current) return;
             setTenants(response.data || []);
         } catch (err) {
-            setError('Failed to load tenants');
-            console.error(err);
+            if (silent) {
+                console.error('[TenantManager] Silent provisioning-status poll failed', err);
+            } else {
+                setError('Failed to load tenants');
+                console.error(err);
+            }
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }
 
@@ -900,17 +958,20 @@ export default function TenantManager() {
     };
 
     const handleApprove = async (tenantId) => {
-        if (!confirm('Approve this company? This will create their database and send them login credentials.')) {
+        // Issue #1825: provisioning (database creation + seeding) now runs in the background -
+        // this request only durably claims it and returns. The polling effect above picks up the
+        // outcome once provisioning_status leaves in_progress.
+        if (!confirm('Approve this company? Their database will be created and login credentials sent in the background - this page will show progress.')) {
             return;
         }
         setActionLoading(tenantId);
         try {
             await adminService.approveTenant(tenantId);
             loadTenants();
-            if (confirm('Company approved. Create its QA landlord invoice now? Choosing No keeps invoice creation available later.')) {
+            if (confirm('Approval accepted; provisioning is running in the background. Create its QA landlord invoice now? Choosing No keeps invoice creation available later.')) {
                 navigate('/admin/invoices');
             }
-            toast.success('Tenant approved successfully');
+            toast.success('Approval accepted - provisioning is running in the background.');
         } catch (err) {
             const normalized = normalizeApiError(err);
             if (!normalized.isGlobalCandidate) {
@@ -923,12 +984,12 @@ export default function TenantManager() {
     };
 
     const handleRetryProvisioning = async (tenantId) => {
-        if (!confirm('Retry this approved company setup? The system will reuse the existing registration and avoid duplicate memberships.')) return;
+        if (!confirm('Retry this approved company setup? The system will reuse the existing registration and avoid duplicate memberships. Provisioning will run in the background - this page will show progress.')) return;
         setActionLoading(tenantId);
         try {
             await adminService.retryTenantProvisioning(tenantId);
             loadTenants();
-            toast.success('Company setup retry completed.');
+            toast.success('Retry accepted - provisioning is running in the background.');
         } catch (err) {
             const normalized = normalizeApiError(err);
             if (!normalized.isGlobalCandidate) toast.error(`Failed to retry setup: ${normalized.message}`);
@@ -1637,8 +1698,16 @@ export default function TenantManager() {
                     visibleTenants.map(tenant => {
                         const statusConfig = STATUS_CONFIG[tenant.status] || STATUS_CONFIG.inactive;
                         const StatusIcon = statusConfig.icon;
-                        const isProcessing = actionLoading === tenant.id;
+                        // Issue #1825: the approve/retry request itself now resolves almost
+                        // instantly (202), so actionLoading alone no longer reflects whether
+                        // provisioning is actually still running - fold in the polled
+                        // provisioning_status too, so the button stays disabled/spinning for the
+                        // full background duration, not just the initial request.
+                        const isProcessing = actionLoading === tenant.id
+                            || tenant.registrationApplication?.provisioning_status === 'in_progress';
                         const registrationAction = getTenantRegistrationAction(tenant);
+                        const provisioningFailed = tenant.registrationApplication?.review_status === 'approved'
+                            && tenant.registrationApplication?.provisioning_status === 'failed';
                         const capabilities = getTenantCapabilities(tenant);
                         const storefrontReadiness = capabilities.storefront_readiness || {};
                         const storefrontPublishable = storefrontReadiness.publishable === true;
@@ -1945,16 +2014,45 @@ export default function TenantManager() {
 
                                     {/* Actions */}
                                     <div className="w-full xl:w-auto xl:min-w-[320px] xl:max-w-[380px]">
-                                        {tenant.status === 'pending' ? (
+                                        {/* Issue #1825: also enter this branch for an 'active' tenant with
+                                            failed provisioning - the crash-window edge case where the process
+                                            died between provisionTenant's own status='active' update and this
+                                            use case recording founder membership/outcome. Without this, that
+                                            tenant fell through to the generic active-tenant actions below with
+                                            no way to retry at all - silently stuck exactly as issue #1825's
+                                            acceptance criteria says never to leave it. */}
+                                        {tenant.status === 'pending' || provisioningFailed ? (
                                             <div className="flex items-center gap-2">
-                                                {registrationAction?.action === 'approve' ? <>
+                                                {(registrationAction?.action === 'retry' || provisioningFailed) ? <Button
+                                                    onClick={() => handleRetryProvisioning(tenant.id)}
+                                                    disabled={isProcessing}
+                                                    className="bg-green-600 hover:bg-green-700"
+                                                    size="sm"
+                                                >
+                                                    {isProcessing ? (
+                                                        <>
+                                                            <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                                                            Provisioning…
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Check className="w-4 h-4 mr-1" />
+                                                            Retry setup
+                                                        </>
+                                                    )}
+                                                </Button> : registrationAction?.action === 'approve' ? <>
                                                 <Button
                                                     onClick={() => handleApprove(tenant.id)}
                                                     disabled={isProcessing}
                                                     className="bg-green-600 hover:bg-green-700"
                                                     size="sm"
                                                 >
-                                                    {isProcessing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4 mr-1" />Approve</>}
+                                                    {isProcessing ? (
+                                                        <>
+                                                            <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                                                            Provisioning…
+                                                        </>
+                                                    ) : <><Check className="w-4 h-4 mr-1" />Approve</>}
                                                 </Button>
                                                 <Button
                                                     onClick={() => handleReject(tenant.id)}
@@ -1966,21 +2064,8 @@ export default function TenantManager() {
                                                     <X className="w-4 h-4 mr-1" />
                                                     Reject
                                                 </Button>
-                                                </> : registrationAction?.action === 'retry' ? <Button
-                                                    onClick={() => handleRetryProvisioning(tenant.id)}
-                                                    disabled={isProcessing}
-                                                    className="bg-green-600 hover:bg-green-700"
-                                                    size="sm"
-                                                >
-                                                    {isProcessing ? (
-                                                        <RefreshCw className="w-4 h-4 animate-spin" />
-                                                    ) : (
-                                                        <>
-                                                            <Check className="w-4 h-4 mr-1" />
-                                                            Retry setup
-                                                        </>
-                                                    )}
-                                                </Button> : (
+                                                </>
+                                                : (
                                                     <div className="flex items-center gap-2 text-sm text-slate-500" role="status">
                                                         <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
                                                         <span>{registrationAction?.helperText || 'Registration state does not allow approval.'}</span>

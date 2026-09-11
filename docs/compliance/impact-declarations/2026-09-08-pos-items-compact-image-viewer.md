@@ -11,8 +11,8 @@ verification_evidence: focused POS image viewer behavior tests,POS production bu
 rollback_note: Revert the viewer size constraints and selling-price display; image and catalog persistence remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-08T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-310-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-08-POS-ITEMS-COMPACT-IMAGE-VIEWER
 ---
 
 # POS Items compact image viewer and price context

@@ -11,8 +11,8 @@ verification_evidence: focused POS image resolver tests including regenerated-ga
 rollback_note: Revert Phase 312 image resolution, dialog, zoom, and app-version changes; stored catalog images and data remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-08T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-312-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-08-POS-ITEMS-IMAGE-VIEWER-PR-READINESS
 ---
 
 # POS Items image-viewer PR-readiness hardening

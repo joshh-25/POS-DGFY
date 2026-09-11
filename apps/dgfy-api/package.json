@@ -1,6 +1,6 @@
 {
   "name": "sku-inventory-manager-backend",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "description": "Backend API for SKU Inventory Manager",
   "type": "module",
   "main": "src/server.js",
@@ -89,6 +89,7 @@
     "@napi-rs/canvas": "^0.1.80",
     "@sentry/node": "^10.63.0",
     "@sieitzz/shared-constants": "file:../../packages/shared-constants",
+    "@sieitzz/tenant-bootstrap": "file:../../packages/tenant-bootstrap",
     "archiver": "^8.0.0",
     "axios": "^1.19.0",
     "bcryptjs": "^2.4.3",

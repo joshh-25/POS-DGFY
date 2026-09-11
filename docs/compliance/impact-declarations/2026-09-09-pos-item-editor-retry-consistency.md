@@ -11,8 +11,8 @@ verification_evidence: focused Phase 319 rendered/contract tests, POS/IMS/Storef
 rollback_note: Revert the Phase 319 editor identity, retry reconciliation, AI refresh, and Add recovery changes together; existing persisted item galleries and image jobs remain unchanged and no migration is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-09T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-319-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.309Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-09-POS-ITEM-EDITOR-RETRY-CONSISTENCY
 ---
 
 # POS item editor state and retry consistency (Phase 319)

@@ -793,3 +793,140 @@ gh release create release-$CANDIDATE_ID \
 The committed `docs/releases/notes/$CANDIDATE_ID.md` file stays authoritative regardless of what
 this Release shows — if the two ever disagree, re-run `gh release edit` from the committed file
 rather than editing the Release by hand.
+
+## Sync develop's version baselines from main (#1807)
+
+After the promotion parity gate and GitHub Release publication above, not before — this reads
+`origin/main` as the source of truth, so it only makes sense once `main` has actually deployed.
+Run on every ordinary promotion (both flows — nothing about this step is #1007-specific), whether
+or not this candidate itself involved a repair or hotfix; it's a periodic reconciliation, not a
+per-incident one:
+
+```bash
+git fetch origin develop main
+node scripts/sync-app-version-baselines.js --develop-ref origin/develop --main-ref origin/main
+```
+
+`[sync-app-version-baselines] No apps below main's baseline -- nothing to sync.` → done, nothing
+further to do. **Do not open an empty PR.** Otherwise, the report lists exactly the apps to raise
+and each one's target version (`main`'s current value — never higher, never a downgrade of one
+`develop` already leads on). Open one ordinary `develop`-base PR for those apps only — same clean-
+tree backstop as every other cut in this runbook, and the same `node -e` pattern the "Publish the
+GitHub Release" finalization step above already uses to drive a script's own exported function
+instead of hand-transcribing its output:
+
+```bash
+git status   # confirm clean before cutting -- an unnoticed diff here rides onto the sync PR
+# SYNC_ID is the candidate ID, not the calendar day (#1807 RF-2, PR #1813 review) -- a bare
+# `date +%Y-%m-%d` collides across two same-day promotions, and gives no way to distinguish a
+# genuine rerun for the SAME candidate from a second, unrelated one. $CANDIDATE_ID is already set
+# earlier in this runbook's branch-cut section (either flow) and persists for the rest of this
+# shell session -- same convention $TARGET_REF/$TARGET_SHA already rely on in the compliance
+# preflight block above.
+SYNC_ID="${CANDIDATE_ID:?candidate ID required -- set earlier in the branch-cut section above}"
+TARGET_SYNC_BRANCH="chore/release/sync-version-baselines-$SYNC_ID"
+
+# Rerun guard: check for an existing sync PR for this candidate before cutting a new branch --
+# without this, a stale local branch surviving past a prior run's post-merge remote deletion would
+# make `git switch -c` below fail outright and silently skip the reconciliation instead of either
+# reusing or correctly re-proposing it.
+#
+# Classify explicitly on `state`/`mergedAt` -- do not treat "a PR exists" as "already synced"
+# (#1813 RF-3): an OPEN PR means wait, don't duplicate; a MERGED one means done; a CLOSED-but-
+# unmerged one means its version changes never reached `develop` and must never be silently read
+# as synced -- retry instead, since recomputing computeBaselineSync() from live refs is always
+# safe to redo. The lookup itself is wrapped in its own failure check (`if ! VAR=$(...)`) so a
+# GitHub/API error (auth, rate limit, network) stops the run instead of `$SYNC_PR_JSON` coming back
+# empty and being misread as "no existing PR, safe to create" -- the exact silent-fallthrough gap
+# the prior version of this guard had.
+if ! SYNC_PR_JSON=$(gh pr list --head "$TARGET_SYNC_BRANCH" --state all --json number,state,mergedAt --jq '.[0] // empty'); then
+  echo "ERROR: gh pr list failed while checking for an existing sync PR for candidate $SYNC_ID -- stopping rather than risking a duplicate PR. Investigate (auth/rate-limit/network) and re-run this step." >&2
+  exit 1
+fi
+
+if [ -z "$SYNC_PR_JSON" ]; then
+  SYNC_PR_ACTION=create
+else
+  SYNC_PR_NUMBER=$(echo "$SYNC_PR_JSON" | jq -r '.number')
+  SYNC_PR_STATE=$(echo "$SYNC_PR_JSON" | jq -r '.state')
+  SYNC_PR_MERGED_AT=$(echo "$SYNC_PR_JSON" | jq -r '.mergedAt')
+  if [ "$SYNC_PR_STATE" = "OPEN" ]; then
+    SYNC_PR_ACTION=wait
+  elif [ "$SYNC_PR_MERGED_AT" != "null" ]; then
+    SYNC_PR_ACTION=skip
+  else
+    SYNC_PR_ACTION=retry   # CLOSED, mergedAt null -- closed without merging, never synced
+  fi
+fi
+
+case "$SYNC_PR_ACTION" in
+  wait)
+    echo "An OPEN sync PR already exists for candidate $SYNC_ID (#$SYNC_PR_NUMBER) -- wait on it, do not open a second one." >&2
+    ;;
+  skip)
+    echo "Candidate $SYNC_ID's sync PR (#$SYNC_PR_NUMBER) is already merged -- already synced, nothing further to do here." >&2
+    ;;
+  retry|create)
+    if [ "$SYNC_PR_ACTION" = retry ]; then
+      echo "Candidate $SYNC_ID's prior sync PR (#$SYNC_PR_NUMBER) was closed without merging -- its version changes never reached develop. Retrying." >&2
+      git push origin --delete "$TARGET_SYNC_BRANCH" 2>/dev/null || true   # drop the dead remote branch, if it still exists
+    fi
+    # Drop a stale local branch from an earlier interrupted attempt, if any (#1813 RF-4). Never
+    # swallow a real deletion failure: `git branch -D` refuses to delete the branch that's
+    # currently checked out, and the old `|| true` here silently ate that refusal -- the
+    # following `git switch -c` then failed too (a branch of that name already existed), silently
+    # skipping the required reconciliation. Detach to `origin/develop` first when we're actually
+    # on the stale branch -- safe, since `git status` at the top of this block already confirmed a
+    # clean working tree -- then delete for real, failing loudly if it still can't be removed
+    # (e.g. checked out in another worktree, which a local detach can't fix).
+    if [ "$(git branch --show-current)" = "$TARGET_SYNC_BRANCH" ]; then
+      git switch --detach origin/develop
+    fi
+    if git rev-parse --verify --quiet "$TARGET_SYNC_BRANCH" >/dev/null; then
+      git branch -D "$TARGET_SYNC_BRANCH" || { echo "ERROR: could not delete stale local branch $TARGET_SYNC_BRANCH -- resolve manually (check for another worktree/checkout using it) before retrying this step." >&2; exit 1; }
+    fi
+    git switch -c "$TARGET_SYNC_BRANCH" origin/develop
+    node -e "
+const fs = require('fs');
+const { computeBaselineSync } = require('./scripts/sync-app-version-baselines');
+const result = computeBaselineSync({ developRef: 'origin/develop', mainRef: 'origin/main' });
+if (result.invalid.length > 0) {
+  console.error('Refusing to sync -- one or more app versions could not be read/parsed:', result.invalid);
+  process.exit(1);
+}
+for (const entry of result.needsSync) {
+  const pkgPath = \`apps/\${entry.app}/package.json\`;
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  pkg.version = entry.mainVersion;
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+  console.log(\`bumped \${entry.app}: \${entry.developVersion} -> \${entry.mainVersion}\`);
+}
+"
+    git add apps/*/package.json
+    git commit -m "chore(release): sync app version baselines from main"
+    git push -u origin "$TARGET_SYNC_BRANCH"
+    gh pr create --base develop --head "$TARGET_SYNC_BRANCH" \
+      --title "chore(release): sync app version baselines from main" \
+      --body "## Summary
+
+Raises develop's package.json version for every app where main's published version has moved
+past develop's current one (#1807). Additive only: no app is downgraded and no app develop
+already matches or leads is touched.
+
+<list the synced apps and their old -> new versions from the command output above>
+
+## Testing Evidence
+
+\`node scripts/sync-app-version-baselines.js --develop-ref origin/develop --main-ref origin/main\`
+re-run against this branch's HEAD reports every synced app now at or above main's baseline
+(\`upToDate\`, not \`needsSync\`)."
+    # wait on pr-checks.yml, then:
+    gh pr merge <N> --merge   # never --squash -- see ../SKILL.md
+    ;;
+esac
+```
+
+This step never builds, tags, or publishes anything — it only edits `apps/<app>/package.json`'s
+`version` field on `develop`, and carries no interaction with #1610 (the tag-immutability/
+candidate-identity conflict): see `scripts/sync-app-version-baselines.js`'s own header comment,
+and the PR this step ships in, for the full statement.

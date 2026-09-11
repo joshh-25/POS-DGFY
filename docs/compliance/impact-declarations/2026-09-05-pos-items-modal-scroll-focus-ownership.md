@@ -12,8 +12,8 @@ verification_evidence: focused shared Dialog Product Scanner and Items modal sui
 rollback_note: Revert the shared lock ownership and scanner focus changes; no persisted data, migration, or external operation is involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-05T10:10:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-293-LOCAL-ONLY
+preflight_run_at: 2026-09-10T09:13:34.307Z
+preflight_request_ref: PREFLIGHT-34459098510-2026-09-05-POS-ITEMS-MODAL-SCROLL-FOCUS-OWNERSHIP
 ---
 
 # POS Items modal scroll and focus ownership (Phase 293)
