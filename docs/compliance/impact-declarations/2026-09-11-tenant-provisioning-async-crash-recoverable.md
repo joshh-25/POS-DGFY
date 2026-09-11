@@ -7,8 +7,8 @@ classification: regulatory
 surfaces: tenant-registration,admin,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.11
-verification_evidence: node --check on every changed apps/dgfy-api .js file (5 files + 1 new),npm run build:skupervisor (succeeded),npm run check:architecture (54 modules / 569 files OK; 95 controller files OK),node scripts/check-app-version-bump.js --floor (dgfy-api 1.12.3->1.12.4, dgfy-ims 1.11.0->1.11.1),apps/dgfy-api/tests/tenantProvisioning.test.js + tenantProvisioningAdminUserId.test.js + approveTenantUseCase.storeTemplateKey.test.js + tenantProvisioning.storefrontBootstrap.test.js + tenantProvisioningStoreProfileProvenance.test.js (30 of 32 passed; the 2 failures are pre-existing and unrelated -- both are in the "atomic cleanup on failure" suite and fail before reaching any changed code, on a real MySQL connection attempt this sandbox has no credentials for, not on anything this PR touches)
-rollback_note: Revert this commit set. No migration, no schema change, no new persisted columns -- company_registration_applications.provisioning_status and its supporting CAS columns already existed and are unchanged. approveTenantUseCase.js's control flow reverts to a synchronous await; tenantProvisioningService.js's admin-user INSERT reverts to unconditional (drops the ON DUPLICATE KEY UPDATE clause); tenantModelFactory.js reverts to spreading the tenant clone's indexes/uniqueKeys as before (reintroducing the duplicate-index issue this PR also fixes, but that is pre-existing behavior, not a regression from reverting); the new tenantProvisioningReconciliationScheduler.js and its server.js wiring are removed; TenantManager.jsx's polling effect and widened retry-gate UI are removed. No tenant, application, or admin-user row needs cleanup either way.
+verification_evidence: node --check on every changed apps/dgfy-api .js file (6 files + 1 new),npm run build:skupervisor (succeeded, twice, before and after the RF-4 fix),npm run check:architecture (54 modules / 569 files OK; 95 controller files OK),node scripts/propose-version-level.js + check:app-versions (dgfy-api 1.12.4->1.13.0 minor - matches proposed level; dgfy-ims 1.11.0->1.11.1 patch - satisfies any-increase mode),apps/dgfy-api/tests/tenantProvisioning.test.js + tenantProvisioningAdminUserId.test.js + approveTenantUseCase.storeTemplateKey.test.js + tenantProvisioning.storefrontBootstrap.test.js + tenantProvisioningStoreProfileProvenance.test.js + tenantProvisioning.retryIdempotency.test.js (30 of 34 passed; the 4 failures are pre-existing/environmental, not caused by this PR - 2 are in the pre-existing "atomic cleanup on failure" suite and 2 are in the #1824-landed retryIdempotency suite, which its own file header documents as deliberately exercising real MySQL rather than a mock; all 4 fail on a real DB connection attempt this sandbox has no credentials for, before reaching any code this PR touches),pr-reviewer (Codex GPT-5.6 Luna) round 1 posted BLOCK with 2 blockers (RF-1: tenantModelFactory stripped all explicit indexes, not just synthesized duplicates; RF-2: branch conflicted with develop after #1828 landed the same admin-insert idempotency fix independently) and 3 should-fix/nit findings - all 5 addressed: RF-1 fixed with a surgical single-column-duplicate-only filter, RF-2 resolved by rebasing onto develop and taking develop's strictly-better LAST_INSERT_ID(user_id) fix over this PR's own weaker user_id=user_id version, RF-3 (version level) by bumping dgfy-api to the proposed minor level, RF-4 (polling overlap) with an in-flight/cancelled guard, RF-5 (stale ims lockfile) by re-syncing it
+rollback_note: Revert this commit set. No migration, no schema change, no new persisted columns -- company_registration_applications.provisioning_status and its supporting CAS columns already existed and are unchanged, and the admin-user INSERT's ON DUPLICATE KEY UPDATE idempotency fix predates this PR (landed via #1824/PR #1828, independently of this PR, which now only adds a comment cross-referencing it). approveTenantUseCase.js's control flow reverts to a synchronous await; tenantModelFactory.js reverts to including the tenant clone's synthesized duplicate single-column unique indexes (reintroducing the duplicate-index issue this PR fixes, but that is pre-existing behavior, not a regression from reverting - every genuinely hand-authored composite/explicit index this PR is careful to preserve is untouched either way); the new tenantProvisioningReconciliationScheduler.js and its server.js wiring are removed; TenantManager.jsx's polling effect, its overlap guard, and the widened retry-gate UI are removed. No tenant, application, or admin-user row needs cleanup either way.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-09-11T00:00:00Z
@@ -45,10 +45,12 @@ match any pattern in `COMPLIANCE_SENSITIVE_RULES` — only the frontend file doe
    `markProvisioningStarted`'s own CAS (unchanged) remains the real authority on whether a given
    retry is actually valid; this gate only decides whether the request is shaped like a legitimate
    attempt.
-2. **`apps/dgfy-api/src/services/tenantProvisioningService.js`** — the admin-user seed `INSERT`
-   gains `ON DUPLICATE KEY UPDATE user_id = user_id`, making a re-run against an already-seeded
-   tenant database a no-op instead of throwing `ER_DUP_ENTRY`. No new data is written; no existing
-   admin-user row's data changes on a re-run.
+2. **`apps/dgfy-api/src/services/tenantProvisioningService.js`** — the admin-user seed `INSERT`'s
+   idempotency fix (`ON DUPLICATE KEY UPDATE user_id = LAST_INSERT_ID(user_id)`, making a re-run
+   against an already-seeded tenant database a no-op instead of throwing `ER_DUP_ENTRY`) landed
+   independently via #1824/PR #1828 while this PR was in progress — this PR now only carries a
+   comment cross-referencing that fix for the #1825 crash-recovery context it also serves. No
+   functional change to this file from this PR.
 3. **`apps/dgfy-api/src/modules/tenants/repositories/companyRegistrationRepository.js`** — adds one
    read-only query method, `findStaleInProgressApplications`, reusing the same 10-minute staleness
    threshold `markProvisioningStarted`'s existing retry CAS already treats as stale.
@@ -118,10 +120,14 @@ no running backend):
   `preflight_run_at`/`preflight_request_ref` before this candidate reaches `main`, per
   `docs/compliance/request-time-preflight-protocol.md`.
 - The duplicate-unique-index fix (`tenantModelFactory.js`) is a plausible, code-read-derived fix
-  (confirmed against Sequelize's `define()`/model-options flow) but has not been empirically
-  verified against a real freshly-provisioned tenant database (no MySQL available in this
-  sandbox). A reviewer with a live environment should provision a scratch tenant and confirm
-  `SHOW INDEX FROM users` no longer shows `username_2`/`email_2`/`invitation_token_2` duplicates.
+  (confirmed against Sequelize's `define()`/model-options flow, and against a live Sequelize
+  runtime metadata check during PR review that confirmed the corrected filter's precision) but
+  has not been empirically verified against a real freshly-provisioned tenant database (no MySQL
+  available in this sandbox). A reviewer with a live environment should provision a scratch
+  tenant and confirm `SHOW INDEX FROM users` no longer shows `username_2`/`email_2`/
+  `invitation_token_2` duplicates, and that `Item`/`Employee`/`StoreCustomer`/`PosPaymentSession`
+  (and any other tenant model with its own `indexes:` block) retain every one of their real
+  explicit indexes.
 - The crash-and-resume scenario (acceptance criterion 4: re-running provisioning against a
   partially-built tenant database converges) is exercised by the existing Jest suites' mocked
   paths but not against a real MySQL instance mid-`sync()`. A reviewer with a live environment
