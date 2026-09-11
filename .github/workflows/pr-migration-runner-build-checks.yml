@@ -102,10 +102,25 @@ jobs:
       # was pure eviction pressure against the repo's 10GB Actions cache
       # quota -- see #412.
       - name: Build migration-runner image (no push)
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: infrastructure/docker/dgfy-migration-runner/Dockerfile
           platforms: ${{ inputs.platforms }}
           push: false
+          load: ${{ !contains(inputs.platforms, ',') }}
+          tags: dgfy-migration-runner:pr-check
           cache-from: ${{ inputs.cache_from != '' && format('{0},scope=migration-runner', inputs.cache_from) || '' }}
+
+      # #1819: proves the apps/dgfy-migration-runner/migrations/2026082400000{1,2}-*.cjs shims
+      # actually resolve @sieitzz/tenant-bootstrap at runtime inside the built image, not just from
+      # the repo checkout. Skipped on the opt-in dual-arch check above (`load: true` cannot load a
+      # multi-platform manifest list into the local daemon).
+      - if: ${{ !contains(inputs.platforms, ',') }}
+        name: Regression guard -- tenant-bootstrap migration shims load inside the built image (#1819)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint node dgfy-migration-runner:pr-check \
+            -e "require('./migrations/20260824000001-create-pos-cashier-attendance-operator-sessions.cjs'); require('./migrations/20260824000002-add-pos-attendance-idempotency.cjs'); console.log('tenant-bootstrap shims: OK');"
