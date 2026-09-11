@@ -52,13 +52,20 @@ strategy uses `—` rather than the literal string `undefined`.
 ## Dispatch strategy
 
 `resolveDispatchStrategy({ cli }, { coordinatorCli, launchPreferenceClis })` classifies a resolved
-slot in strict priority order:
+slot in strict priority order — corrected 2026-09-11 (#1826), launch-preference support is checked
+**before** coordinator match, not after:
 
-1. `in-session` when `cli` matches the coordinator's own runtime, even if it is not in
-   `launchPreferenceClis`.
-2. `orca-pty` when Orca supports `--model`/`--effort` launch preferences for the CLI.
-3. `direct-cli` when the CLI is valid but has no Orca launch-preference support, such as
-   `antigravity` today.
+1. `orca-pty` when Orca supports `--model`/`--effort` launch preferences for the CLI — even if `cli`
+   also happens to match the coordinator's own runtime. A coordinator already running the resolved
+   `cli` is never on its own a reason to skip external dispatch for a CLI Orca can launch with the
+   requested model (`claude`/`codex`/`cursor` today): in-session native-subagent dispatch does not
+   reliably honor a per-slot `--model` override.
+2. `in-session` only when `cli` matches the coordinator's own runtime **and** Orca has no
+   launch-preference support for it at all (`antigravity` today) — the one case where Tier 1's
+   "avoid a redundant external terminal" argument still holds, since there is no Tier 2 alternative.
+3. `direct-cli` when the CLI has no Orca launch-preference support and the coordinator isn't already
+   running it either — the fallback for `antigravity` from a `claude`/`codex` coordinator, for
+   example.
 
 If the CLI or launch-preference context is missing, the function returns an undefined strategy and
 an explicit reason rather than guessing.

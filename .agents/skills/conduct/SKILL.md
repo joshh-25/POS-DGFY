@@ -77,25 +77,42 @@ whole run stops first.
 Once a slot's `cli` passes the availability gate above, classify **how** it actually dispatches —
 `scripts/conduct-model-slot.js`'s `resolveDispatchStrategy`, never re-derived informally:
 
-1. **Tier 1 — in-session.** The resolved `cli` matches the *conducting* session's own runtime
-   (section 1.3's mapping, reused here as `coordinatorCli`). Execute the role inside the current
-   coordinator session instead of spawning an external terminal — inline in the turn, or via a
-   native subagent (e.g. a Claude Code subagent, or the equivalent mechanism for the coordinator's
-   own runtime) scoped to the target worktree. No `worker-start` call happens at all for this slot.
-2. **Tier 2 — supervised Orca PTY dispatch (the standard path).** The resolved `cli` doesn't match
-   the coordinator's own runtime, and Orca's `worker-start` supports `--model`/`--effort` launch
-   preferences for it (currently `claude`, `codex`, `cursor` — read fresh from the loaded
-   orchestration guide each run, the same discipline section 1.2 already requires for the known-CLI
-   roster itself; don't treat this list as fixed). Dispatch exactly as sections 1.7–1.8 already
-   describe.
-3. **Tier 3 — direct-CLI headless fallback.** The resolved `cli` doesn't match the coordinator and
-   Orca has no launch-preference support for it (e.g. `antigravity` today). The coordinator runs
-   the agent's own CLI directly, non-interactively, inside the target worktree — see the recipes
-   and handoff mechanics in section 1.5's "Tier 3: Direct-CLI dispatch" subsection.
+1. **Tier 2 — supervised Orca PTY dispatch (checked first; the standard path whenever it applies).**
+   Orca's `worker-start` supports `--model`/`--effort` launch preferences for the resolved `cli`
+   (currently `claude`, `codex`, `cursor` — read fresh from the loaded orchestration guide each run,
+   the same discipline section 1.2 already requires for the known-CLI roster itself; don't treat
+   this list as fixed). Dispatch exactly as sections 1.7–1.8 already describe — **regardless of
+   whether the resolved `cli` also happens to match the coordinator's own runtime.** A coordinator
+   already running the resolved `cli` is not, by itself, a reason to skip external dispatch: see the
+   #1826 correction below.
+2. **Tier 1 — in-session.** Only reached when Orca has **no** launch-preference support at all for
+   the resolved `cli` (today: `antigravity`) *and* the resolved `cli` matches the *conducting*
+   session's own runtime (section 1.3's mapping, reused here as `coordinatorCli`). Execute the role
+   inside the current coordinator session instead of spawning an external terminal — inline in the
+   turn, or via a native subagent (e.g. a Claude Code subagent, or the equivalent mechanism for the
+   coordinator's own runtime) scoped to the target worktree. No `worker-start` call happens at all
+   for this slot.
+3. **Tier 3 — direct-CLI headless fallback.** Orca has no launch-preference support for the resolved
+   `cli`, and the coordinator isn't already running it either (so Tier 1 isn't available). The
+   coordinator runs the agent's own CLI directly, non-interactively, inside the target worktree —
+   see the recipes and handoff mechanics in section 1.5's "Tier 3: Direct-CLI dispatch" subsection.
 
-Tier 1 is checked **before** Tier 2/3 — a coordinator already running the resolved `cli` always
-executes in-session, regardless of whether that CLI would otherwise need Tier 3. This is a strict
-priority order, not three independent conditions to weigh.
+This is a strict priority order (Tier 2, then Tier 1, then Tier 3), not three independent
+conditions to weigh — Tier 2's launch-preference check is evaluated **before** any coordinator-match
+check, precisely so a launch-preference-capable `cli` never falls through to Tier 1 just because the
+coordinator happens to already be that CLI.
+
+**Corrected 2026-09-11 (#1826).** The original design (#1811) checked coordinator match first and
+treated it as sufficient justification for Tier 1 on its own — "spawning an external PTY terminal is
+redundant" — for *any* matching CLI, `claude`/`codex`/`cursor` included. That was wrong in practice:
+a Claude (or Codex) coordinator's native in-session subagent dispatch does not reliably honor a
+per-slot `--model` override — it runs at whatever model the *coordinating* session itself happens to
+be running, silently discarding the configured slot model. Orca's external `worker-start` does honor
+`--model`/`--effort` correctly. So the only CLI where Tier 1's "coordinator is redundant with an
+external terminal" argument still holds is one Orca cannot dispatch externally at all — today, only
+`antigravity`. The only reason to ever choose in-session execution is a CLI unsupported by Orca's
+launch-preference dispatch; for every supported CLI, external Orca dispatch is preferred even when
+the coordinator is already running that exact CLI.
 
 ## 1.3 Legacy CLI inference
 
@@ -126,7 +143,11 @@ Every slot, every run, before any `worker-start` call — produced by
 |---|---|---|---|---|---|
 | WORKER_PLANNER | claude | claude-sonnet-5 | high | orca-pty | env (canonical) |
 | WORKER_BUILDER | antigravity | <model> | medium | direct-cli | invocation override (canonical) |
-| REVIEWER | claude | claude-sonnet-5 | high | in-session | env (canonical) — coordinator is already running claude |
+| REVIEWER | antigravity | <model> | high | in-session | env (canonical) — Orca has no launch-preference support for antigravity, and the coordinator is already running it |
+
+Note: a slot resolving to `claude`/`codex`/`cursor` is **never** `in-session`, even when the
+coordinator happens to already be running that same CLI (#1826) — it always shows `orca-pty`. Only
+a CLI Orca cannot dispatch externally at all (today, `antigravity`) can resolve to `in-session`.
 
 `Source` always names one of: `env` / `invocation override` / `fallback (slot unset)`, each
 tagged `(canonical)` or `(legacy — CLI inferred from <basis>)`. A legacy row is never silently
@@ -189,7 +210,13 @@ calibration still apply.
 For `/conduct pr-reviewer <PR>` with an explicit Reviewer model/provider override, the conducting
 session remains the Builder/feedback owner by default. Conduct dispatches only the Reviewer to its
 own review worktree; it does not create a separate Builder worker or Builder worktree. This is the
-expected shape when a Codex session asks Claude to review a PR authored by the current session.
+expected shape when a Codex session asks Claude to review a PR authored by the current session —
+that's a genuine Tier 2 dispatch (Reviewer `cli` differs from the coordinator's), unaffected by
+#1826; the "no separate Builder worktree" behavior here is about avoiding a redundant Builder, not
+about which tier the Reviewer itself runs under. The Reviewer only resolves to Tier 1 in-session
+when its `cli` matches the coordinator's own runtime *and* Orca has no launch-preference support for
+it (today: an `antigravity` coordinator reviewing its own worktree's PR) — for `claude`/`codex`/
+`cursor`, a same-CLI Reviewer still dispatches externally via Tier 2, per the correction above.
 
 The conducting session must be on the PR's branch/worktree, or must have an explicitly selected
 PR worktree, before it edits feedback. On `BLOCK` or actionable feedback, the conducting session
