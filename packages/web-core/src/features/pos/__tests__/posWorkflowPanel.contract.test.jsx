@@ -139,4 +139,34 @@ describe('POS Workflow Panels Contract', () => {
     );
     expect(desktopView.container.querySelector('label').className).not.toContain('col-span-full');
   });
+
+  it('collapses optional table and kitchen details after an item is added', () => {
+    const panelProps = {
+      orderMethod: 'dine_in',
+      setOrderMethod: vi.fn(),
+      tableNumber: 'T-10',
+      kitchenNotes: 'No spice',
+      setKitchenNotes: vi.fn(),
+      buttonLayout: true
+    };
+    const { rerender } = render(<FnbWorkflowPanel key="cart-0" {...panelProps} cartItemCount={0} />);
+
+    expect(screen.getByText('Table # (Optional)')).toBeDefined();
+    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
+
+    rerender(<FnbWorkflowPanel key="cart-1" {...panelProps} cartItemCount={1} />);
+
+    expect(screen.getByTestId('pos-checkout-order-method-buttons')).toBeDefined();
+    expect(screen.queryByText('Table # (Optional)')).toBeNull();
+    expect(screen.queryByText('Order Notes (Global)')).toBeNull();
+
+    const detailsToggle = screen.getByRole('button', { name: 'Edit table & notes' });
+    expect(detailsToggle.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(detailsToggle);
+
+    expect(screen.getByText('Table # (Optional)')).toBeDefined();
+    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
+    expect(detailsToggle.getAttribute('aria-expanded')).toBe('true');
+  });
 });

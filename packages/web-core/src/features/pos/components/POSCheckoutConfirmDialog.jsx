@@ -332,6 +332,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                 buttonLayout={true}
                                 isTabletViewport={isTabletViewport}
                                 disabled={posActionsBlocked || checkoutLoading}
+                                cartItemCount={safeCart.length}
                             />
                         </Suspense>
                     </div>

@@ -28,7 +28,8 @@ export function PosCheckoutDetailsSlot({
   paymentTypeField = null,
   buttonLayout = false,
   isTabletViewport = false,
-  disabled = false
+  disabled = false,
+  cartItemCount = 0
 }) {
   const checkoutDetailsOwner = presentationBundle?.slots?.checkoutDetails;
   const heading = presentationBundle?.labels?.checkoutDetailsHeading || 'Order details';
@@ -44,6 +45,7 @@ export function PosCheckoutDetailsSlot({
       <Suspense fallback={null}>
         {checkoutDetailsOwner === POS_PRESENTATION_SLOT_OWNERS.FNB && (
           <FnbWorkflowPanel
+            key={`fnb-details-${cartItemCount}`}
             orderMethod={orderMethod}
             setOrderMethod={setOrderMethod}
             tableNumber={tableNumber}
@@ -54,6 +56,7 @@ export function PosCheckoutDetailsSlot({
             buttonLayout={buttonLayout}
             isTabletViewport={isTabletViewport}
             disabled={disabled}
+            cartItemCount={cartItemCount}
           />
         )}
         {checkoutDetailsOwner === POS_PRESENTATION_SLOT_OWNERS.SERVICES && (
