@@ -172,6 +172,9 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
 - **Planner/Handoff** — reads an existing open issue or epic and writes a local implementation
   handoff for a separate Worker session; it does not file issues, change board state, or orchestrate
   other agents. @.agents/skills/planner/SKILL.md
+- **Manual Handoff** — on explicit operator request, snapshots a planning, implementation, or
+  review session into an ignored local artifact for a separate AI session; it never self-triggers,
+  launches another agent, or enters an orchestration loop. @.agents/skills/handoff/SKILL.md
 - **PR Reviewer** (#366/#441) — audits an open PR, posts one verdict comment with concrete proposed
   fixes, auto-merges only on `develop`/`staging` with a clean `APPROVE`, never on `main`.
   @.agents/skills/pr-reviewer/SKILL.md
