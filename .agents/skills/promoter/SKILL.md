@@ -422,7 +422,14 @@ candidate may be awaiting production separately. For each extracted issue:
    retry instruction; do not silently continue as though it shipped.
 
 Issues named in the release note but not currently open and `For Prod` are skipped and reported.
-Issues in `For Prod` but absent from this candidate's `## Included` section are left untouched.
+Issues in `For Prod` but absent from this candidate's `## Included` section are left untouched. After
+the candidate issue set is extracted, enumerate every current `For Prod` item with
+`gh project item-list 10 --owner Sieitzz --format json --limit 2000` and compare its issue number
+with that set. Report every unmatched item as an **out-of-bundle/orphan requiring manual
+reconciliation** — including the case where the release-note bullet names only `PR #N` — and never
+close or advance it as part of this candidate. This explicit cross-check prevents the
+release-note inventory rule from silently losing a `Refs` issue whose bullet contains no issue
+number.
 
 **Sync `develop`'s version baselines from `main` (#1807) — after the parity gate and Release
 publication above, not before.** Closes a gap neither the pre-cut floor step nor the per-fix

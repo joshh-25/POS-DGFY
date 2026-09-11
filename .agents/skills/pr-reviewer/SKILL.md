@@ -143,7 +143,9 @@ behavior are unchanged.
 ## Output — one PR comment, fixed shape
 
 Post via `gh pr comment <N> --body-file <file>`. Exactly one `## Review` comment per run, so a
-Worker (or a human) can parse it mechanically:
+Worker (or a human) can parse it mechanically. The acceptance-gate failure comment and the
+`## Board transition warning` comment described below are deliberate, distinctly-headed
+operational exceptions; they do not replace or duplicate the single `## Review` verdict:
 
 ```markdown
 ## Review — <APPROVE | BLOCK | COMMENT>
