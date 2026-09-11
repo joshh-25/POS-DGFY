@@ -11,8 +11,8 @@ verification_evidence: focused POS/web-core contract suites,POS lint,POS product
 rollback_note: Revert the Phase 322-A contract-test and documentation changes together with this declaration. The changes add coverage and test-runner isolation only; no API, database, migration, payment, permission, or runtime behavior changes are introduced.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-11T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-POS-PHASE-322-A-CONTRACT-COVERAGE-LOCAL-ONLY
+preflight_run_at: 2026-09-11T13:41:56.863Z
+preflight_request_ref: PREFLIGHT-34604460194-2026-09-11-POS-PHASE-322-A-CONTRACT-COVERAGE
 ---
 
 # POS Phase 322-A contract coverage
