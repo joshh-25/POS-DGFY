@@ -22761,3 +22761,26 @@ content differs from what was implemented and tested under the "303" label.
   `scripts/check-agent-surfaces.js`, and this phase ledger entry. No ADR or application runtime
   surface changed.
 - Next eligible phase: 327.
+
+## Phase 327 - Establish a five-run measurement window for promotion IMS/POS sales E2E (#1844)
+
+- Initiative/release: CI quality-gate trust / current release.
+- Objective and scope: temporarily raise the `frontend-ims-pos-sales-e2e-quality` job envelope from
+  20 to 200 minutes and its `run_ims_pos_sales_e2e` step budget from 15 to 150 minutes, a 10x
+  measurement window. Bound the command itself with a 140-minute salvage timeout so a hung process
+  reaches artifact upload, cleanup, and outcome reporting. Observe five fresh completed runs, record
+  the peak job/step/setup timings, then reduce the bounds to the measured peak plus explicit
+  setup/upload/cleanup margin. Preserve the existing advisory disposition; #1749 owns any later
+  advisory-to-blocking decision.
+- Status: in_progress.
+- Dependencies: #1712's promotion E2E job, #1749's separate blocking-flip track, and the
+  `promotion-quality-gate.yml`/`scripts/check-pr-quality-workflow.js` reporting contract.
+- Acceptance and validation evidence: static workflow contract checks and the 41-test
+  `scripts/check-pr-quality-workflow.test.js` suite pass on the implementation branch. Five fresh
+  post-change `workflow_dispatch` or `release/* -> main` promotion runs must reach artifact upload,
+  cleanup, and `record_outcomes`, including when the command-level salvage timeout fires; their peak
+  timings must be recorded before the temporary bounds are optimized.
+- Contracts/files: `.github/workflows/promotion-quality-gate.yml` target job and step timeout,
+  command-level salvage wrapper, and comments; `scripts/check-pr-quality-workflow.js` remains
+  unchanged; five-run timing evidence; this ledger entry.
+- Next eligible phase: 328 after Phase 327 completion.

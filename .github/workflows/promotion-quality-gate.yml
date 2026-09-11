@@ -1402,7 +1402,13 @@ jobs:
     # reasoning (F-3) -- same logic applies here.
     # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
-    timeout-minutes: 20
+    # #1844 measurement window: the original 20m job / 15m step budgets cancelled the first live
+    # run before its evidence chain completed. Use a temporary 10x window (200m job / 150m step)
+    # across five fresh runs, then reduce both budgets to the observed peak plus setup/upload/cleanup
+    # margin. The E2E command has its own 140m salvage tripwire so a hung process reaches the
+    # advisory artifact/outcome chain before this final runner safety net. This remains below GitHub
+    # Actions' 360m step/job limit.
+    timeout-minutes: 200
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
@@ -1578,9 +1584,26 @@ jobs:
         id: run_ims_pos_sales_e2e
         if: steps.wait_services.outcome == 'success'
         working-directory: apps/dgfy-api
-        run: npm run test:frontend-ims-pos-sales-e2e
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=60s 8400s npm run test:frontend-ims-pos-sales-e2e
+          status=$?
+          if [ "$status" -eq 124 ] || [ "$status" -eq 137 ] || [ "$status" -eq 143 ]; then
+            echo "::warning::IMS/POS sales E2E exceeded the controlled 140-minute timeout; salvaging artifacts and outcome reporting."
+            {
+              echo "## IMS/POS sales E2E timeout salvage"
+              echo
+              echo "The E2E process exceeded the controlled 140-minute timeout and was terminated."
+              echo "The step remains advisory; downstream artifact upload, cleanup, and outcome reporting will continue."
+              echo "Raw exit status: $status"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
         continue-on-error: true
-        timeout-minutes: 15
+        # #1844 measurement window: the command-level 140m salvage tripwire fires before this
+        # temporary 150m GitHub step ceiling. Five fresh runs establish the peak before either
+        # budget is optimized; the 200m job envelope covers setup and post-test evidence.
+        timeout-minutes: 150
         env:
           NODE_ENV: development
           DB_HOST: 127.0.0.1
