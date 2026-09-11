@@ -50,6 +50,33 @@ const STATUS_CONFIG = {
     failed: { label: 'Failed', color: 'text-red-600 bg-red-50 border-red-200', icon: XCircle },
 };
 
+const getTenantRegistrationAction = (tenant) => {
+    if (tenant?.registration_action && typeof tenant.registration_action === 'object') {
+        return {
+            action: tenant.registration_action.allowed === true
+                ? (tenant.registration_action.action || 'reconcile')
+                : (tenant.registration_action.action === 'setting_up' ? 'setting_up' : 'reconcile'),
+            helperText: tenant.registration_action.helper_text || 'Registration state does not allow this action.'
+        };
+    }
+
+    // Keep the UI safe during a rolling deploy where the older API does not
+    // return registration_action yet. Unknown or missing application state is
+    // never treated as approval-eligible.
+    if (tenant?.status !== 'pending') return null;
+    const application = tenant.registrationApplication;
+    if (application?.review_status === 'pending' && application?.provisioning_status === 'not_started') {
+        return { action: 'approve', helperText: 'Approve the pending public registration.' };
+    }
+    if (application?.review_status === 'approved' && application?.provisioning_status === 'failed') {
+        return { action: 'retry', helperText: 'Retry the failed tenant setup.' };
+    }
+    if (application?.review_status === 'approved' && application?.provisioning_status === 'in_progress') {
+        return { action: 'setting_up', helperText: 'Company setup is already in progress.' };
+    }
+    return { action: 'reconcile', helperText: 'No pending public registration is available for approval.' };
+};
+
 const COMPLIANCE_MODE_LABELS = {
     non_compliant_active: 'Non-compliant',
     compliant_pending: 'Compliant (Pending)',
@@ -950,6 +977,7 @@ export default function TenantManager() {
             if (!normalized.isGlobalCandidate) {
                 toast.error(`Failed to approve: ${normalized.message}`);
             }
+            loadTenants();
         } finally {
             setActionLoading(null);
         }
@@ -965,6 +993,7 @@ export default function TenantManager() {
         } catch (err) {
             const normalized = normalizeApiError(err);
             if (!normalized.isGlobalCandidate) toast.error(`Failed to retry setup: ${normalized.message}`);
+            loadTenants();
         } finally { setActionLoading(null); }
     };
 
@@ -986,6 +1015,7 @@ export default function TenantManager() {
             if (!normalized.isGlobalCandidate) {
                 toast.error(`Failed to reject: ${normalized.message}`);
             }
+            loadTenants();
         } finally {
             setActionLoading(null);
         }
@@ -1673,8 +1703,10 @@ export default function TenantManager() {
                         // provisioning is actually still running - fold in the polled
                         // provisioning_status too, so the button stays disabled/spinning for the
                         // full background duration, not just the initial request.
+                        const registrationAction = getTenantRegistrationAction(tenant);
+                        const provisioningInProgress = tenant.registrationApplication?.provisioning_status === 'in_progress';
                         const isProcessing = actionLoading === tenant.id
-                            || tenant.registrationApplication?.provisioning_status === 'in_progress';
+                            || (provisioningInProgress && registrationAction?.action !== 'retry');
                         const provisioningFailed = tenant.registrationApplication?.review_status === 'approved'
                             && tenant.registrationApplication?.provisioning_status === 'failed';
                         const capabilities = getTenantCapabilities(tenant);
@@ -1992,7 +2024,7 @@ export default function TenantManager() {
                                             acceptance criteria says never to leave it. */}
                                         {tenant.status === 'pending' || provisioningFailed ? (
                                             <div className="flex items-center gap-2">
-                                                {provisioningFailed ? <Button
+                                                {(registrationAction?.action === 'retry' || provisioningFailed) ? <Button
                                                     onClick={() => handleRetryProvisioning(tenant.id)}
                                                     disabled={isProcessing}
                                                     className="bg-green-600 hover:bg-green-700"
@@ -2009,7 +2041,8 @@ export default function TenantManager() {
                                                             Retry setup
                                                         </>
                                                     )}
-                                                </Button> : <Button
+                                                </Button> : registrationAction?.action === 'approve' ? <>
+                                                <Button
                                                     onClick={() => handleApprove(tenant.id)}
                                                     disabled={isProcessing}
                                                     className="bg-green-600 hover:bg-green-700"
@@ -2021,8 +2054,8 @@ export default function TenantManager() {
                                                             Provisioning…
                                                         </>
                                                     ) : <><Check className="w-4 h-4 mr-1" />Approve</>}
-                                                </Button>}
-                                                {tenant.status === 'pending' && !provisioningFailed && <Button
+                                                </Button>
+                                                <Button
                                                     onClick={() => handleReject(tenant.id)}
                                                     disabled={isProcessing}
                                                     variant="outline"
@@ -2031,7 +2064,14 @@ export default function TenantManager() {
                                                 >
                                                     <X className="w-4 h-4 mr-1" />
                                                     Reject
-                                                </Button>}
+                                                </Button>
+                                                </>
+                                                : (
+                                                    <div className="flex items-center gap-2 text-sm text-slate-500" role="status">
+                                                        <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                                        <span>{registrationAction?.helperText || 'Registration state does not allow approval.'}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className="space-y-2">

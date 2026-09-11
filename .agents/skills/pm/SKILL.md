@@ -15,6 +15,10 @@ filing: managing existing tickets — fields, parenting, status — is equally i
 Reviewer, Promoter, or Observer finding work outside its own current scope hands off here rather
 than improvising a `gh issue create`; see `AGENTS.md`'s "Role handoffs and composite instructions".
 
+This role is distinct from `/planner`. `/pm` is allowed to file and maintain GitHub issues and
+board state; `/planner` only turns an existing open issue or epic into a local implementation
+handoff and must not perform those mutations.
+
 **Operating procedure is `docs/process/ISSUE-TAXONOMY.md`, by reference, not restated here.** That
 doc is the authoritative decision record for what an epic is, the three orthogonal axes (epic /
 iteration / milestone), the one-parent-only rule, and depth limits. Read it before any nontrivial

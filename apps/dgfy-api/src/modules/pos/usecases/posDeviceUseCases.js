@@ -273,7 +273,7 @@ const buildBusinessSettings = (settings = {}) => ({
     profile_image_url: settings?.storefront_profile_image_url?.value || ''
 });
 
-const buildReceiptPayload = async ({ transaction, settings }) => {
+const resolveReceiptContract = (transaction) => {
     const transactionMetadata = parseJsonObject(transaction?.special_instructions);
     const receiptContract = transactionMetadata?.receipt_contract && typeof transactionMetadata.receipt_contract === 'object'
         ? transactionMetadata.receipt_contract
@@ -283,6 +283,14 @@ const buildReceiptPayload = async ({ transaction, settings }) => {
             document_context: transaction?.document_context || 'non_fiscal'
         };
 
+    return {
+        version: String(receiptContract?.version || '2026.04.08').trim(),
+        document_type: String(receiptContract?.document_type || transaction?.document_type || 'non_fiscal_slip').trim(),
+        document_context: String(receiptContract?.document_context || transaction?.document_context || 'non_fiscal').trim()
+    };
+};
+
+const buildReceiptPayload = async ({ transaction, settings }) => {
     // Only the receipt gets a logo -- shift summaries and Z-readings (the other
     // buildBusinessSettings callers) stay text-only rather than paying the sharp
     // encoding cost on every print of something that isn't a customer-facing
@@ -290,11 +298,7 @@ const buildReceiptPayload = async ({ transaction, settings }) => {
     const logoRaster = await resolveReceiptLogoRaster({ settings });
 
     return {
-        receipt_contract: {
-            version: String(receiptContract?.version || '2026.04.08').trim(),
-            document_type: String(receiptContract?.document_type || transaction?.document_type || 'non_fiscal_slip').trim(),
-            document_context: String(receiptContract?.document_context || transaction?.document_context || 'non_fiscal').trim()
-        },
+        receipt_contract: resolveReceiptContract(transaction),
         business: { ...buildBusinessSettings(settings), logo_raster: logoRaster },
         transaction: {
             pos_transaction_id: transaction?.pos_transaction_id || null,
@@ -525,7 +529,22 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
                 );
             }
 
-            const transaction = toSerializable(await posRepository.getTransactionById(transactionId));
+            const transaction = toSerializable(await posRepository.getTransactionById(
+                transactionId,
+                clientDriverId
+                    ? {
+                        include: false,
+                        attributes: [
+                            'pos_transaction_id',
+                            'invoice_number',
+                            'total_amount',
+                            'document_type',
+                            'document_context',
+                            'special_instructions'
+                        ]
+                    }
+                    : undefined
+            ));
             if (!transaction) {
                 throw new DomainError(
                     DomainErrorCode.RESOURCE_NOT_FOUND,
@@ -534,8 +553,18 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
                 );
             }
 
-            const allSettings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
-            const receipt = { ...await buildReceiptPayload({ transaction, settings: allSettings }), paper_width: paperWidth };
+            const receipt = clientDriverId
+                ? {
+                    receipt_contract: resolveReceiptContract(transaction),
+                    paper_width: paperWidth
+                }
+                : {
+                    ...await buildReceiptPayload({
+                        transaction,
+                        settings: unwrapApplicationResultOrThrow(await getAllSettingsUseCase())
+                    }),
+                    paper_width: paperWidth
+                };
             const bridgeResponse = clientDriverId
                 ? {
                     ok: clientResult?.success !== false,

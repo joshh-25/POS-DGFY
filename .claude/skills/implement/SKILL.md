@@ -1,5 +1,6 @@
 ---
 name: implement
+argument-hint: "[optional @.tmp/plan-<issue>.md]"
 description: Plan, implement, commit, and open a PR for a scoped engineering task on dgfy-platform — the Worker/Implementer role from issue #331/#436. Use this whenever the user asks for a change to ship as a PR (a fix, a small feature, a workflow edit, a doc correction) and wants it carried from plan through an opened pull request without re-explaining this repo's git/PR/compliance conventions each time. This skill never merges and never touches a deployed environment — it stops and asks before either.
 ---
 
