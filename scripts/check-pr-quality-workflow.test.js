@@ -309,10 +309,16 @@ const CORRECT_BLOCKING_JOB_BUILDERS = {
     'frontend-budgets-quality',
     ['checkout', 'check_frontend_budgets'],
     { coeAt: ['checkout'] }
+  ),
+  // #1856: the post-install executable check is intentionally blocking within the advisory E2E job.
+  'frontend-ims-pos-sales-e2e-quality': () => buildJobWithNamedSteps(
+    'frontend-ims-pos-sales-e2e-quality',
+    ['checkout', 'verify_playwright_install', 'run_ims_pos_sales_e2e'],
+    { coeAt: ['checkout', 'run_ims_pos_sales_e2e'] }
   )
 };
 
-test('checkStepLevelAdvisory: the 20 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
+test('checkStepLevelAdvisory: the 21 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
   const text = buildAdvisoryWorkflow(CORRECT_BLOCKING_JOB_BUILDERS);
   assert.deepEqual(checkStepLevelAdvisory(text), []);
 });
