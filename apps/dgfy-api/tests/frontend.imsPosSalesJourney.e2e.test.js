@@ -181,6 +181,14 @@ const terminateProcessTree = async (proc) => {
     backendShutdownExpected = true;
   }
 
+  const exited = new Promise((resolve) => {
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      resolve();
+      return;
+    }
+    proc.once('close', resolve);
+  });
+
   if (process.platform === 'win32') {
     await new Promise((resolve) => {
       const killer = spawn('taskkill', ['/PID', String(proc.pid), '/T', '/F'], {
@@ -189,10 +197,28 @@ const terminateProcessTree = async (proc) => {
       killer.on('exit', () => resolve());
       killer.on('error', () => resolve());
     });
+    await exited;
     return;
   }
 
-  proc.kill('SIGTERM');
+  try {
+    process.kill(-proc.pid, 'SIGTERM');
+  } catch (error) {
+    if (error?.code !== 'ESRCH') throw error;
+  }
+
+  const exitedAfterTerm = await Promise.race([
+    exited.then(() => true),
+    delay(5000).then(() => false)
+  ]);
+  if (exitedAfterTerm) return;
+
+  try {
+    process.kill(-proc.pid, 'SIGKILL');
+  } catch (error) {
+    if (error?.code !== 'ESRCH') throw error;
+  }
+  await exited;
 };
 
 const parseProfileObject = (raw) => {
@@ -559,6 +585,7 @@ const startFrontendServer = async () => {
   frontendProc = spawn(command, args, {
     cwd: frontendDir,
     stdio: 'pipe',
+    detached: process.platform !== 'win32',
     env: {
       ...process.env,
       VITE_API_URL: '/api/v1',
@@ -600,6 +627,7 @@ const startBackendServer = async () => {
   backendProc = spawn(command, args, {
     cwd: backendDir,
     stdio: 'pipe',
+    detached: process.platform !== 'win32',
     env: {
       ...process.env,
       PORT: String(BACKEND_PORT),
@@ -2010,27 +2038,39 @@ const exportSalesCsvFromDialog = async (page) => {
   return uiConfirmed;
 };
 
+const cleanupStartedProcesses = async () => {
+  const cleanupTasks = [];
+  if (!backendWasAlreadyRunning) cleanupTasks.push(terminateProcessTree(backendProc));
+  if (!frontendWasAlreadyRunning) cleanupTasks.push(terminateProcessTree(frontendProc));
+  await Promise.all(cleanupTasks);
+};
+
 beforeAll(async () => {
   if (!RUN_BROWSER_E2E) return;
 
-  await ensureArtifactRoot();
-  await startBackendServer();
-  await ensureBrowserE2EUser();
-  await seedJourneyPrerequisites();
-  await startFrontendServer();
-  const browserLauncher = resolveBrowserLauncher(BROWSER_E2E_ENGINE);
-  browser = await browserLauncher.launch({ headless: process.env.BROWSER_E2E_HEADLESS !== 'false' });
+  try {
+    await ensureArtifactRoot();
+    await startBackendServer();
+    await ensureBrowserE2EUser();
+    await seedJourneyPrerequisites();
+    await startFrontendServer();
+    const browserLauncher = resolveBrowserLauncher(BROWSER_E2E_ENGINE);
+    browser = await browserLauncher.launch({ headless: process.env.BROWSER_E2E_HEADLESS !== 'false' });
+  } catch (error) {
+    await cleanupStartedProcesses().catch((cleanupError) => {
+      console.warn(`[frontend.imsPosSalesJourney.e2e] Setup cleanup failed: ${cleanupError.message}`);
+    });
+    throw error;
+  }
 }, 240000);
 
 afterAll(async () => {
   if (!RUN_BROWSER_E2E) return;
 
-  if (browser) await browser.close();
-  if (!backendWasAlreadyRunning) {
-    await terminateProcessTree(backendProc);
-  }
-  if (!frontendWasAlreadyRunning) {
-    await terminateProcessTree(frontendProc);
+  try {
+    if (browser) await browser.close();
+  } finally {
+    await cleanupStartedProcesses();
   }
 }, 60000);
 
