@@ -146,22 +146,10 @@ jobs:
           RUNNER_LIGHT_JSON: *runner_light
           RUNNER_HEAVY_JSON: *runner_heavy
         run: |
-          HOSTED_JSON='["ubuntu-latest"]'
-          case "$BASE_REF" in
-            main)
-              case "$HEAD_REF" in
-                release/*|hotfix/*|fix/*)
-                  echo "light=$HOSTED_JSON" >> "$GITHUB_OUTPUT"
-                  echo "heavy=$HOSTED_JSON" >> "$GITHUB_OUTPUT"
-                  echo "base=$BASE_REF head=$HEAD_REF matches release/*|hotfix/*|fix/*-into-main -- routing build-checks to GitHub-hosted runners"
-                  exit 0
-                  ;;
-              esac
-              ;;
-          esac
+          # #1810: GHA billing exhausted -- staying self-hosted even for release/*|hotfix/*|fix/* into main
           echo "light=$RUNNER_LIGHT_JSON" >> "$GITHUB_OUTPUT"
           echo "heavy=$RUNNER_HEAVY_JSON" >> "$GITHUB_OUTPUT"
-          echo "base=$BASE_REF head=$HEAD_REF does not match release/*|hotfix/*|fix/*-into-main -- staying self-hosted"
+          echo "base=$BASE_REF head=$HEAD_REF staying self-hosted"
 
   dgfy-api-build-check:
     needs: [changes, route-build-checks]
