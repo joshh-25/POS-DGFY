@@ -1703,9 +1703,10 @@ export default function TenantManager() {
                         // provisioning is actually still running - fold in the polled
                         // provisioning_status too, so the button stays disabled/spinning for the
                         // full background duration, not just the initial request.
-                        const isProcessing = actionLoading === tenant.id
-                            || tenant.registrationApplication?.provisioning_status === 'in_progress';
                         const registrationAction = getTenantRegistrationAction(tenant);
+                        const provisioningInProgress = tenant.registrationApplication?.provisioning_status === 'in_progress';
+                        const isProcessing = actionLoading === tenant.id
+                            || (provisioningInProgress && registrationAction?.action !== 'retry');
                         const provisioningFailed = tenant.registrationApplication?.review_status === 'approved'
                             && tenant.registrationApplication?.provisioning_status === 'failed';
                         const capabilities = getTenantCapabilities(tenant);

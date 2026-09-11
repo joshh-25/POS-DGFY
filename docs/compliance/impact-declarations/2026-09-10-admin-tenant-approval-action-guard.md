@@ -38,4 +38,5 @@ Regulatory, because the Tenant Manager controls a platform-admin approval path f
 
 - Pending tenants without a linked public registration no longer render Approve or Reject actions.
 - Pending public registrations render Approve and Reject; failed or stale approved provisioning renders Retry setup; fresh setup renders an in-progress message.
+- A stale provisioning descriptor remains retryable even while its last server status is `in_progress`; the UI disables only fresh in-progress attempts.
 - Focused Jest and Vitest suites pass, IMS production build passes, and lint reports no new errors.
