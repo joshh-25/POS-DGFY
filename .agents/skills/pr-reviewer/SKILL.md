@@ -123,6 +123,19 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    (#725 RF-2).
 9. **Scope** — does the diff match what the linked issue actually asked for; name any file that
    looks unrelated to the stated scope rather than silently reviewing it as if it belonged.
+10. **Planner handoff, when present** — if the PR body contains `## Plan Handoff` and identifies a
+    local `.tmp/plan-<issue>.md` that exists in the current worktree, read the handoff and compare
+    its scope and acceptance criteria with the issue and diff. A missing ignored local artifact is
+    not a finding; the PR body, linked issue, diff, and authoritative docs remain sufficient.
+
+## Manual session handoff input
+
+An explicit `/handoff` may resume this role with `/pr-reviewer <PR> @.tmp/handoff-<...>.md`. Validate
+the `dgfy-handoff/v1` schema, confirm `role: reviewer`, and confirm the PR identity matches the
+live PR. Use the artifact only to recover prior review context; the live PR, issue, diff, and
+authoritative docs remain the source of truth. A missing, malformed, mismatched, or ambiguous
+handoff is a hard stop when supplied. Without one, the existing reviewer workflow and fallback
+behavior are unchanged.
 
 ## Output — one PR comment, fixed shape
 

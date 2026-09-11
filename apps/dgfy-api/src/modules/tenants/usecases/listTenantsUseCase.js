@@ -1,6 +1,7 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { resolveTenantEffectivePlan } from './tenantPlanPolicy.js';
+import { buildTenantRegistrationAction } from './tenantRegistrationActionPolicy.js';
 
 const FORCE_NON_COMPLIANT_ALLOWED_STATES = new Set(['compliant_pending', 'compliant_active']);
 
@@ -97,6 +98,7 @@ const enrichTenant = (tenant, capabilities = null) => {
         plan_policy: effectivePlan !== baseTenant.plan ? 'registered_tenant_premium_capable' : 'stored_plan',
         capabilities,
         admin_compliance_mode_action: adminComplianceModeAction,
+        registration_action: buildTenantRegistrationAction(baseTenant),
         ...eligibility
     };
 };

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Manual Handoff"
+  short_description: "Snapshot a session for safe manual continuation"
+  default_prompt: "Use $handoff to snapshot this session for a manually requested AI handoff."
+policy:
+  allow_implicit_invocation: false
