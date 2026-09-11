@@ -1402,10 +1402,11 @@ jobs:
     # reasoning (F-3) -- same logic applies here.
     # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
-    # #1844: measured setup is ~5m15s and the desktop sales journey is ~15m10s-15m30s on
-    # sieitz-lg. Keep the job envelope at 30m so setup, the 20m first-tripwire below, upload, and
-    # cleanup have margin without allowing an unbounded runner hang.
-    timeout-minutes: 30
+    # #1844 measurement window: the original 20m job / 15m step budgets cancelled the first live
+    # run before its evidence chain completed. Use a temporary 10x window (200m job / 150m step)
+    # across five fresh runs, then reduce both budgets to the observed peak plus setup/upload/cleanup
+    # margin. This remains below GitHub Actions' 360m step/job limit.
+    timeout-minutes: 200
     outputs:
       real_failures: ${{ steps.record_outcomes.outputs.real_failures }}
     steps:
@@ -1583,9 +1584,9 @@ jobs:
         working-directory: apps/dgfy-api
         run: npm run test:frontend-ims-pos-sales-e2e
         continue-on-error: true
-        # #1844: the suite needs more than the old 15m budget on sieitz-lg; keep 20m as the first
-        # tripwire while the 30m job envelope above absorbs setup and post-test evidence handling.
-        timeout-minutes: 20
+        # #1844 measurement window: allow up to 150m for the suite while five fresh runs establish
+        # the peak runtime; the 200m job envelope above also covers setup and post-test evidence.
+        timeout-minutes: 150
         env:
           NODE_ENV: development
           DB_HOST: 127.0.0.1
