@@ -569,16 +569,32 @@ export default function TenantManager() {
     // of tearing down and recreating the timer on every tenants-state update.
     const tenantsRef = useRef(tenants);
     tenantsRef.current = tenants;
+    // RF-4 (PR #1830 review): a slow response could otherwise still be in flight when the next
+    // 3s tick fires, letting two silent polls race and an older response overwrite a newer
+    // terminal status. pollInFlightRef skips starting a new tick while one is still pending;
+    // pollCancelledRef stops a tick (or a response already in flight) from doing anything once
+    // this effect has been cleaned up (statusFilter changed, or the component unmounted).
+    const pollInFlightRef = useRef(false);
+    const pollCancelledRef = useRef(false);
     useEffect(() => {
-        const intervalId = setInterval(() => {
+        pollCancelledRef.current = false;
+        const intervalId = setInterval(async () => {
+            if (pollInFlightRef.current || pollCancelledRef.current) return;
             const hasInProgress = tenantsRef.current.some(
                 (tenant) => tenant.registrationApplication?.provisioning_status === 'in_progress'
             );
-            if (hasInProgress) {
-                loadTenants({ silent: true });
+            if (!hasInProgress) return;
+            pollInFlightRef.current = true;
+            try {
+                await loadTenants({ silent: true });
+            } finally {
+                pollInFlightRef.current = false;
             }
         }, 3000);
-        return () => clearInterval(intervalId);
+        return () => {
+            pollCancelledRef.current = true;
+            clearInterval(intervalId);
+        };
     }, [statusFilter]);
 
     // Store Template application (issue #178 Phase 17): loaded once, not
@@ -612,6 +628,9 @@ export default function TenantManager() {
         }
         try {
             const response = await adminService.getTenants(statusFilter);
+            // RF-4 (PR #1830 review): a silent poll response that resolves after its own effect
+            // was cleaned up (statusFilter changed, or unmount) is stale - never apply it.
+            if (silent && pollCancelledRef.current) return;
             setTenants(response.data || []);
         } catch (err) {
             if (silent) {
