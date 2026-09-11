@@ -169,6 +169,9 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   touches a deployed environment. @.agents/skills/implement/SKILL.md
 - **Planner/PM** (#367/#439) — files and shapes GitHub issues, maintains the DGFY Project board.
   @.agents/skills/pm/SKILL.md
+- **Planner/Handoff** — reads an existing open issue or epic and writes a local implementation
+  handoff for a separate Worker session; it does not file issues, change board state, or orchestrate
+  other agents. @.agents/skills/planner/SKILL.md
 - **PR Reviewer** (#366/#441) — audits an open PR, posts one verdict comment with concrete proposed
   fixes, auto-merges only on `develop`/`staging` with a clean `APPROVE`, never on `main`.
   @.agents/skills/pr-reviewer/SKILL.md
