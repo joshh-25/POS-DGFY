@@ -532,17 +532,19 @@ export const provisionTenant = async (options) => {
             logger.info(`[Provisioning] Schema synced successfully`);
 
             // 4. Seed Admin User
+            //
+            // #1824: a retry against a partially-seeded tenant DB (the realistic case for
+            // #1825's crash-recovery path too, since markProvisioningStarted's atomic
+            // conditional UPDATE already blocks concurrent retries from reaching this point
+            // simultaneously) must not re-throw ER_DUP_ENTRY on the unique
+            // username/email/invitation_token constraints. The ON DUPLICATE KEY UPDATE clause
+            // below is a no-op on the duplicate branch -- it deliberately does NOT touch
+            // password_hash/permissions/etc, it exists only so LAST_INSERT_ID(user_id) resolves
+            // to the existing row's id (MySQL only auto-populates insertId on the inserted
+            // branch of an ON DUPLICATE KEY UPDATE unless the UPDATE clause explicitly
+            // re-assigns the AUTO_INCREMENT column this way).
             logger.info(`[Provisioning] Seeding Admin User...`);
             const adminDefaultPermissions = JSON.stringify(DEFAULT_ROLE_PERMISSIONS.admin || []);
-            // #1824: a retry against a partially-seeded tenant DB (the realistic case, since
-            // markProvisioningStarted's atomic conditional UPDATE already blocks concurrent
-            // retries from reaching this point simultaneously) must not re-throw ER_DUP_ENTRY on
-            // the unique username/email/invitation_token constraints. The ON DUPLICATE KEY UPDATE
-            // clause below is a no-op on the duplicate branch -- it deliberately does NOT touch
-            // password_hash/permissions/etc, it exists only so LAST_INSERT_ID(user_id) resolves to
-            // the existing row's id (MySQL only auto-populates insertId on the inserted branch of
-            // an ON DUPLICATE KEY UPDATE unless the UPDATE clause explicitly re-assigns the
-            // AUTO_INCREMENT column this way).
             const [adminInsertResult, adminInsertMetadata] = await tenantSequelize.query(
                 `INSERT INTO users (username, email, phone_number, password_hash, role, is_active, is_master_admin, permissions, created_at, updated_at)
                  VALUES (?, ?, ?, ?, 'admin', 1, 1, ?, NOW(), NOW())
