@@ -47,6 +47,13 @@ COPY apps/dgfy-api/src ./src
 COPY apps/dgfy-api/assets ./assets
 COPY apps/dgfy-api/scripts ./scripts
 
+# apps/dgfy-api/src/services/tenantSchemaBootstrap.js requires the tenant-bootstrap manifest out of
+# the sibling migration-runner app; from /app/src/services/ the three ../ hops land on the container
+# root, so the destination must be /dgfy-migration-runner/..., not a path under /app.
+# Interim: superseded by #1819's structural fix. Remove these two lines when that lands.
+COPY apps/dgfy-migration-runner/src/tenantBootstrapManifest.cjs /dgfy-migration-runner/src/tenantBootstrapManifest.cjs
+COPY apps/dgfy-migration-runner/migrations /dgfy-migration-runner/migrations
+
 RUN mkdir -p uploads/temp storage/temp-ai-exports logs \
  && chown -R app:app /app
 
