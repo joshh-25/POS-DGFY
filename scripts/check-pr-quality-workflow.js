@@ -374,7 +374,11 @@ const BLOCKING_STEP_IDS = {
   'repository-dependency-quality': ['run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts'],
   'repository-ci-contracts-quality': ['validate_pr_quality_workflow', 'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep'],
   'repository-docs-quality': ['run_docs_lint', 'check_whitespace'],
-  'frontend-budgets-quality': ['check_frontend_budgets']
+  'frontend-budgets-quality': ['check_frontend_budgets'],
+  // #1856: a swallowed or partial Playwright install must fail before the browser E2E suite can
+  // produce a misleading launch error. The quality job remains advisory at the job level, but this
+  // deterministic environment check is intentionally blocking within that job.
+  'frontend-ims-pos-sales-e2e-quality': ['verify_playwright_install']
 };
 
 // #1431 Phase C/D (2026-09-03): two of the 16 gates in gate-release-local.js's CI_ENFORCED_GATES
