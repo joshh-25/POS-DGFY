@@ -22708,27 +22708,26 @@ content differs from what was implemented and tested under the "303" label.
   environment" is deferred to the next real promotion carrying a POS-only `packages/web-core`
   change, per the plan's own §5.3 -- this PR's own throwaway-branch live-CI verification (§5.2) was
   deferred, so this issue closes via `Refs #1809`, not `Closes #1809` (see the PR body for why).
-### Concurrent POS History positive payment-method filtering initiative
+- Next eligible phase: 325.`r`n`r`n## Phase 325 - Manual planner-to-worker handoff workflow (#1842)
 
-- Objective and scope: exclude zero-value normalized tender placeholders from
-  History and analytics payment-method filters while retaining valid single-tender
-  and split-tender matches before pagination.
-- Status: completed (2026-09-10).
-- Dependencies: existing POS split-payment history/report contract; ADR 0063;
-  MySQL 8 JSON column support.
-- Acceptance and validation evidence: the repository payment predicate preserves
-  the top-level legacy payment-type fallback and uses a qualified MariaDB
-  `JSON_SEARCH`/`JSON_EXTRACT` check requiring a positive allocation; query-generation tests passed
-  2/2, existing POS payment-method tests passed 2/2, changed API lint passed,
-  architecture guardrails passed, compliance and documentation checks passed, and
-  `git diff --check` passed. No transaction, payment, or schema data was modified.
-- Contracts/files: `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
-  `apps/dgfy-api/tests/posTransactionHistory.repository.test.js`,
-  `packages/web-core/src/features/pos/utils/posPaymentMethods.js`, and
-  `docs/compliance/impact-declarations/2026-09-10-pos-history-payment-filter.md`.
-- Next eligible phase: 326.
+- Initiative/release: agent workflow and token-cost control / current release.
+- Objective and scope: add a planning-only `/planner` skill that writes a compact local
+  `.tmp/plan-<issue>.md` handoff, extend `/implement` to validate and consume it, and let
+  `/pr-reviewer` use the handoff when available. The human remains the coordinator; no new
+  dispatcher or replacement for `/conduct` is introduced.
+- Status: completed.
+- Dependencies: canonical agent-surface layout (#442), existing `/pm`, `/implement`, and
+  `/pr-reviewer` role contracts, and the issue/epic taxonomy.
+- Acceptance and validation evidence: `npm run check:agent-surfaces`, the skill creator validator,
+  `npm run lint:docs`, `npm run check:architecture`, `git diff --check`, and pre-commit compliance/
+  whitespace gates all pass. The planner contract covers the normal, refresh, ambiguity, epic, and
+  Worker/Reviewer fallback paths; no runtime application surface or deployment path is changed.
+- Completion date: 2026-09-11.
+- Contracts/files: `.agents/skills/planner/`, `.claude/skills/planner/`, the canonical
+  Worker/Reviewer/PM role definitions, `AGENTS.md`, `scripts/check-agent-surfaces.js`, and this
+  phase ledger entry.
 
-## Phase 325 - Tenant Manager registration action guard
+### Concurrent tenant-manager registration action guard initiative
 
 - Initiative/release: platform-admin tenant lifecycle reliability / current release.
 - Objective and scope: close the approval-action gap where a pending tenant without a pending public registration application still renders Approve, causing the API error `This tenant is not a pending public registration application.` The landlord tenant list now supplies a server-computed registration action, and Tenant Manager renders only lifecycle-valid approval/retry controls.
@@ -22738,4 +22737,5 @@ content differs from what was implemented and tested under the "303" label.
 - Acceptance and validation evidence: `npm test -- --runTestsByPath tests/listTenants.usecase.test.js` (3/3), `npm test -- --run packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx` (4/4), `npm run lint` in `apps/dgfy-api` (0 errors; existing warnings), `npm run lint` in `apps/dgfy-ims` (0 errors; existing warnings), `npm run build` in `apps/dgfy-ims` (pass), and `git diff --check` (pass). The broader `adminTenantLifecycle.integration.test.js` remains blocked by its pre-existing mocked `emailService.js` `verifyConnection` export mismatch before tests execute.
 - Completion date: 2026-09-10.
 - Contracts/files: `apps/dgfy-api/src/modules/tenants/usecases/tenantRegistrationActionPolicy.js`, `apps/dgfy-api/src/modules/tenants/usecases/listTenantsUseCase.js`, `apps/dgfy-api/src/modules/tenants/repositories/tenantAdminRepository.js`, `apps/dgfy-api/tests/listTenants.usecase.test.js`, `apps/dgfy-ims/Pages/admin/TenantManager.jsx`, `packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx`, `docs/api/specification.md`, `docs/features/PLATFORM_ADMIN_AND_QA_INVOICING.md`, `docs/compliance/impact-declarations/2026-09-10-admin-tenant-approval-action-guard.md`.
+- Next eligible phase: 326.
 - Next eligible phase: 326.
