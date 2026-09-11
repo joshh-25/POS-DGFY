@@ -22694,3 +22694,24 @@ content differs from what was implemented and tested under the "303" label.
   Worker/Reviewer/PM role definitions, `AGENTS.md`, `scripts/check-agent-surfaces.js`, and this
   phase ledger entry.
 - Next eligible phase: 326.
+
+## Phase 326 - Manual token-aware session handoff (#1847)
+
+- Initiative/release: agent workflow and token-cost control / current release.
+- Objective and scope: add an explicit-only `/handoff` skill that writes timestamped,
+  snapshot-only `dgfy-handoff/v1` artifacts for manual transfer to Codex, Claude, or Gemini;
+  extend planner, implementer, and reviewer contracts to consume matching handoff snapshots;
+  preserve the human-coordinated, non-orchestrated workflow.
+- Status: completed.
+- Dependencies: Phase 325; canonical agent-surface layout; existing planner, Worker, and Reviewer
+  role contracts; issue/PR taxonomy.
+- Acceptance and validation evidence: canonical skill validation, agent-surface validation,
+  documentation lint, architecture/compliance gates, whitespace validation, and manual checks for
+  dirty and clean worktrees, active PRs, interrupted work, explicit target runtimes, repeated
+  handoffs, and snapshot-only safety boundaries all passed.
+- Completion date: 2026-09-11.
+- Contracts/files: `.agents/skills/handoff/`, `.claude/skills/handoff/`,
+  `.agents/skills/{planner,implement,pr-reviewer}/SKILL.md`, `AGENTS.md`,
+  `scripts/check-agent-surfaces.js`, and this phase ledger entry. No ADR or application runtime
+  surface changed.
+- Next eligible phase: 327.
