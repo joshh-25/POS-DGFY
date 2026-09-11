@@ -22475,6 +22475,36 @@ content differs from what was implemented and tested under the "303" label.
   artifacts and compliance declaration. Physical iMin validation excluded.
 - Next eligible phase: 321.
 
+## Phase 321 - POS large-cart search and receipt-print responsiveness
+
+- Initiative/release: POS terminal large-cart performance / current release.
+- Objective and scope: reduce avoidable work when a cashier searches with more than
+  ten cart lines and reduce client-driver receipt audit latency while preserving
+  catalog results, financial totals, print outcomes, audit idempotency, and
+  iMin browser compatibility.
+- Status: completed.
+- Dependencies: Phase 320; ADR 0014 Storefront/POS cache and read-performance
+  contracts; ADR 0053 client-executed hardware audit contract; ADR 0067 browser
+  support baseline.
+- Acceptance and validation evidence: stale catalog requests are cancelled
+  with the existing sequence guard as fallback; catalog card quantity lookup
+  is linear per cart render; financial calculation stages are memoized by their
+  input snapshots; client-driver receipt audits fetch only identity and receipt
+  contract metadata and skip settings/logo rasterization while still awaiting
+  the required idempotent audit. Focused shared POS contracts passed 3 files /
+  15 tests; client-delegated receipt API tests passed 12/12; POS production
+  build passed; changed-file API/frontend lint and `git diff --check` passed.
+  No schema or database migration was required. The full API suite was not used
+  as a gate because it retains the unrelated baseline
+  `imageLifecycleFullValidation` v2-path fixture failure outside this phase.
+- Completion date: 2026-09-10.
+- Contracts/files: `usePosCatalogWorkflow.js`, `posService.js`,
+  `POSCheckoutTerminalView.jsx`, `usePosFinancialWorkflow.js`,
+  `posRepository.js`, `posDeviceUseCases.js`, and their focused contract/unit
+  tests. Performance behavior remains governed by ADR 0014 and hardware audit
+  behavior by ADR 0053.
+- Next eligible phase: 322.
+
 ## Phase 322 - POS item image reliability and responsiveness
 
 - Initiative/release: POS item image upload repair / current release.
@@ -22495,7 +22525,12 @@ content differs from what was implemented and tested under the "303" label.
   and Storefront builds plus architecture, compliance/API-contract, docs,
   workspace, app-version, and diff checks passed. Device/APK evidence remains
   open as the plan records; physical iMin validation is excluded by user
-  instruction. No database migration was required for this phase.
+  instruction. Phase 322-A's executable contract-freeze regressions passed
+  6 shared frontend test files / 21 tests, covering stale job versus newer preview,
+  failed catalog refresh retention, failed thumbnail handoff, and Items-to-Sell
+  renderer navigation. The recorded POS URL-selection, worker-processing,
+  cleanup, caller-boundary, and no-schema-impact contracts are in the linked
+  plan. No database migration was required for this phase.
 - Contracts/files: [POS image upload plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md),
   `packages/web-core/src/features/pos/services/posPendingItemImagePreviewStore.js`,
   POS item image components/services, catalog image worker/storage, focused
@@ -22693,6 +22728,17 @@ content differs from what was implemented and tested under the "303" label.
 - Contracts/files: `.agents/skills/planner/`, `.claude/skills/planner/`, the canonical
   Worker/Reviewer/PM role definitions, `AGENTS.md`, `scripts/check-agent-surfaces.js`, and this
   phase ledger entry.
+
+### Concurrent tenant-manager registration action guard initiative
+
+- Initiative/release: platform-admin tenant lifecycle reliability / current release.
+- Objective and scope: close the approval-action gap where a pending tenant without a pending public registration application still renders Approve, causing the API error `This tenant is not a pending public registration application.` The landlord tenant list now supplies a server-computed registration action, and Tenant Manager renders only lifecycle-valid approval/retry controls.
+- Mechanically: `buildTenantRegistrationAction` maps the existing application review/provisioning states to `approve`, `retry`, `setting_up`, or `reconcile`; an approved `in_progress` attempt is retryable only after the existing ten-minute timeout. The UI fails closed during mixed-version rollout, refreshes after failed lifecycle requests, and leaves the existing backend atomic approval/retry predicates unchanged.
+- Status: completed.
+- Dependencies: existing company registration application and provisioning lifecycle; no schema migration.
+- Acceptance and validation evidence: `npm test -- --runTestsByPath tests/listTenants.usecase.test.js` (3/3), `npm test -- --run packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx` (4/4), `npm run lint` in `apps/dgfy-api` (0 errors; existing warnings), `npm run lint` in `apps/dgfy-ims` (0 errors; existing warnings), `npm run build` in `apps/dgfy-ims` (pass), and `git diff --check` (pass). The broader `adminTenantLifecycle.integration.test.js` remains blocked by its pre-existing mocked `emailService.js` `verifyConnection` export mismatch before tests execute.
+- Completion date: 2026-09-10.
+- Contracts/files: `apps/dgfy-api/src/modules/tenants/usecases/tenantRegistrationActionPolicy.js`, `apps/dgfy-api/src/modules/tenants/usecases/listTenantsUseCase.js`, `apps/dgfy-api/src/modules/tenants/repositories/tenantAdminRepository.js`, `apps/dgfy-api/tests/listTenants.usecase.test.js`, `apps/dgfy-ims/Pages/admin/TenantManager.jsx`, `packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx`, `docs/api/specification.md`, `docs/features/PLATFORM_ADMIN_AND_QA_INVOICING.md`, `docs/compliance/impact-declarations/2026-09-10-admin-tenant-approval-action-guard.md`.
 - Next eligible phase: 326.
 
 ## Phase 326 - Manual token-aware session handoff (#1847)

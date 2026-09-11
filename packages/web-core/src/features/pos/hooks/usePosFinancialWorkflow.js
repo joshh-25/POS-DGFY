@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { calculatePosItemDiscounts } from '../utils/posItemDiscount.js';
 import {
     calculateGovernedDiscount,
@@ -6,8 +6,6 @@ import {
     round4,
     VAT_RATE
 } from '../utils/posCheckoutTerminalUtils.js';
-
-const getSafeRows = (value) => (Array.isArray(value) ? value : []);
 
 /**
  * Owns the POS financial calculation graph. It deliberately does not build
@@ -35,20 +33,46 @@ export const usePosFinancialWorkflow = ({
 } = {}) => {
     const [customerPaymentAmountInputValue, setCustomerPaymentAmountInput] = useState(customerPaymentAmountInput);
     const [customerPaymentAmountAutoFilled, setCustomerPaymentAmountAutoFilled] = useState(false);
-    const safeCart = getSafeRows(cart);
-    const safeDiscountProfiles = getSafeRows(discountProfiles);
-    const safeEligibleDiscountItemIds = getSafeRows(eligibleDiscountItemIds);
+    // Keep normalized collection references stable so the calculation graph
+    // can skip work when unrelated terminal state (for example search input)
+    // changes. The input arrays are replaced only when their source changes.
+    /* eslint-disable react-hooks/preserve-manual-memoization -- These inputs are immutable React state snapshots; memoization avoids recalculating the cart financial graph on unrelated terminal renders. */
+    const safeCart = useMemo(() => (Array.isArray(cart) ? cart : []), [cart]);
+    const safeDiscountProfiles = useMemo(() => (Array.isArray(discountProfiles) ? discountProfiles : []), [discountProfiles]);
+    const safeEligibleDiscountItemIds = useMemo(() => (Array.isArray(eligibleDiscountItemIds) ? eligibleDiscountItemIds : []), [eligibleDiscountItemIds]);
+    const memoSafeAppliedDiscount = useMemo(() => (
+        safeAppliedDiscount && typeof safeAppliedDiscount === 'object'
+            ? {
+                ...safeAppliedDiscount,
+                eligible_item_ids: Array.isArray(safeAppliedDiscount.eligible_item_ids) ? safeAppliedDiscount.eligible_item_ids : [],
+                eligible_items: Array.isArray(safeAppliedDiscount.eligible_items) ? safeAppliedDiscount.eligible_items : [],
+                beneficiaries: Array.isArray(safeAppliedDiscount.beneficiaries) ? safeAppliedDiscount.beneficiaries : []
+            }
+            : null
+    ), [safeAppliedDiscount]);
 
-    const cartSubtotal = safeCart.reduce((sum, line) => sum + (Number(line.quantity) * Number(line.sale_price)), 0);
+    const cartSubtotal = useMemo(
+        () => safeCart.reduce((sum, line) => sum + (Number(line.quantity) * Number(line.sale_price)), 0),
+        [safeCart]
+    );
 
-    const itemDiscountTotals = calculatePosItemDiscounts(safeCart);
+    const itemDiscountTotals = useMemo(
+        () => calculatePosItemDiscounts(safeCart),
+        [safeCart]
+    );
 
-    const globalDiscountCart = safeCart.map((line, index) => ({
-        ...line,
-        global_discount_base_amount: itemDiscountTotals.lines[index]?.global_discount_base_amount
-    }));
+    const globalDiscountCart = useMemo(
+        () => safeCart.map((line, index) => ({
+            ...line,
+            global_discount_base_amount: itemDiscountTotals.lines[index]?.global_discount_base_amount
+        })),
+        [itemDiscountTotals.lines, safeCart]
+    );
 
-    const governedDiscountTotals = calculateGovernedDiscount(globalDiscountCart, safeAppliedDiscount);
+    const governedDiscountTotals = useMemo(
+        () => calculateGovernedDiscount(globalDiscountCart, memoSafeAppliedDiscount),
+        [globalDiscountCart, memoSafeAppliedDiscount]
+    );
 
     const selectedDiscount = safeDiscountProfiles.find((profile) => profile.name === selectedDiscountProfile) || null;
 
@@ -85,10 +109,23 @@ export const usePosFinancialWorkflow = ({
     const checkoutDiscountLabel = safeAppliedDiscount?.label
         || selectedDiscount?.name
         || (calculatedDiscountAmount > 0 ? 'Discount' : '');
-    const discountPreviewTotals = calculateGovernedDiscount(globalDiscountCart, {
-        ...discountDraft,
-        eligible_item_ids: safeEligibleDiscountItemIds
-    });
+    const memoDiscountDraft = useMemo(() => (
+        discountDraft && typeof discountDraft === 'object'
+            ? {
+                ...discountDraft,
+                eligible_item_ids: Array.isArray(discountDraft.eligible_item_ids) ? discountDraft.eligible_item_ids : [],
+                eligible_items: Array.isArray(discountDraft.eligible_items) ? discountDraft.eligible_items : [],
+                beneficiaries: Array.isArray(discountDraft.beneficiaries) ? discountDraft.beneficiaries : []
+            }
+            : {}
+    ), [discountDraft]);
+    const discountPreviewTotals = useMemo(
+        () => calculateGovernedDiscount(globalDiscountCart, {
+            ...memoDiscountDraft,
+            eligible_item_ids: safeEligibleDiscountItemIds
+        }),
+        [memoDiscountDraft, globalDiscountCart, safeEligibleDiscountItemIds]
+    );
 
     // POS currently has no separate service-fee input. Keep this as an
     // explicit field so the total formula and the checkout snapshot remain
@@ -105,22 +142,22 @@ export const usePosFinancialWorkflow = ({
         return round4(netItemsTotal * (rate / 100));
     })();
 
-    const vatBreakdown = (() => {
+    const vatBreakdown = useMemo(() => {
         const adjustedLines = safeCart.map((line, index) => {
             const itemLine = itemDiscountTotals.lines[index] || {};
             const base = Number(itemLine.global_discount_base_amount || 0);
             const governedLine = governedDiscountTotals.lines?.[index] || {};
-            const globalVatRemoved = safeAppliedDiscount
+            const globalVatRemoved = memoSafeAppliedDiscount
                 ? Number(governedLine.vat_removed || 0)
                 : 0;
-            const governedLineDiscount = safeAppliedDiscount
+            const governedLineDiscount = memoSafeAppliedDiscount
                 ? Number(governedLine.discount_amount || 0)
                 : (itemDiscountTotals.totalAmount > 0
                     ? round4((base / itemDiscountTotals.totalAmount) * globalDiscountAmount)
                     : 0);
             return {
                 vat_type: line.vat_type || 'vatable',
-                governed_vat_exempt: safeAppliedDiscount && Number(governedLine.vat_exempt_amount || 0) > 0,
+                governed_vat_exempt: memoSafeAppliedDiscount && Number(governedLine.vat_exempt_amount || 0) > 0,
                 gross: round4(Math.max(0, base - globalVatRemoved - governedLineDiscount))
             };
         });
@@ -156,7 +193,8 @@ export const usePosFinancialWorkflow = ({
         const vatableSales = round4(vatableGross / (1 + VAT_RATE));
         const vatAmount = round4(vatableGross - vatableSales);
         return { vatableSales, vatAmount, vatExemptSales, zeroRatedSales };
-    })();
+    }, [globalDiscountAmount, governedDiscountTotals, itemDiscountTotals, netItemsTotal, normalizedFnbContext, restaurantServiceChargeAmount, memoSafeAppliedDiscount, safeCart]);
+    /* eslint-enable react-hooks/preserve-manual-memoization */
 
     const cartTotal = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
     const effectiveCustomerPaymentAmountInput = checkoutConfirmModalOpen && customerPaymentAmountAutoFilled
