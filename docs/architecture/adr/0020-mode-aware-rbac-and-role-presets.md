@@ -51,6 +51,23 @@ This decision follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUN
 
 ## Amendments
 
+### 2026-09-12 — Tenant staff capability catalog and assignment contract
+
+Issue #1459 adds an additive tenant `staff_roles` catalog with JSON capabilities and links a user
+to one active staff role without changing the legacy `users.role`/`users.permissions` contract.
+Effective permissions keep explicit non-empty `users.permissions` authoritative, then use an active
+staff-role capability list, then preserve the existing compatibility-role defaults and cashier
+floor/ceiling. Native clients consume `GET /api/v1/users/me/capabilities` and
+`GET /api/v1/users/me/assignments`; administrative role CRUD is exposed under
+`/api/v1/staff-roles` and remains protected by `users:manage`/`users:view`.
+
+The API is authoritative for narrow fulfillment actions: `orders:pack` can only pack an order
+assigned to the acting linked delivery person at a granted location, and `delivery_runs:act` can
+only dispatch an assigned delivery run. Broad `pos:transact` users retain existing behavior. Role
+assignment invalidates the tenant/user auth cache, and inactive/deleted accounts return the stable
+`ACCOUNT_DEACTIVATED` reason. This is an additive contract and does not introduce an architecture
+allowlist exception.
+
 ### 2026-08-21 — Production fallback is fail-closed
 
 Production now defaults `MODE_RBAC_GENERIC_FALLBACK_ENABLED` to `false`, and the production environment validator rejects an explicit truthy value. Non-production runtimes retain the compatibility default while tenant users are remapped. This amendment narrows the original compatibility default for hosted production without changing the mode-native permission contract.
