@@ -151,7 +151,7 @@ import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
-import resolveAssetUrl, { advanceAssetImageFallback } from '@/src/utils/assetUrl.js';
+import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
 import { resolvePosCatalogImageSources, resolvePosCatalogPreviewGallery } from '../utils/posCheckoutTerminalUtils.js';
 import PosItemImageViewer from './PosItemImageViewer.jsx';
@@ -4025,13 +4025,11 @@ function ItemsWorkspace({
                           width={288}
                           height={288}
                           className="absolute h-full w-full object-cover"
-                          onError={(event) => {
-                            if (advanceAssetImageFallback(event, [
-                              imageSources.configuredLargeSrc,
-                              ...(imageSources.fallbackSrcs || [])
-                            ])) return;
-                            event.currentTarget.hidden = true;
-                          }}
+                          hideOnError
+                          fallbackSrcs={[
+                            imageSources.configuredLargeSrc,
+                            ...(imageSources.fallbackSrcs || [])
+                          ]}
                         />
                       ) : null}
                     </button>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { resolveNextAssetImageFallback } from '../../utils/assetUrl.js';
 
 // Shared presentational shell for a responsive `<picture>`/`<img>` pair. No data
 // resolution happens here -- callers pass a `sources` object already built by
@@ -16,13 +17,30 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
   loading = 'lazy',
   decoding = 'async',
   fetchPriority,
+  fallbackSrcs = [],
+  hideOnError = false,
+  hidden: callerHidden,
   onError,
   ...imageProps
 }) {
   const placeholder = sources.placeholderSrc || sources.placeholderUrl || '';
-  const [failedResponsiveSourceKey, setFailedResponsiveSourceKey] = React.useState(null);
-  const responsiveSourceKey = `${sources.src || ''}\u0000${sources.srcSet || ''}\u0000${sources.avifSrcSet || ''}\u0000${sources.webpSrcSet || ''}`;
-  const responsiveSourcesFailed = failedResponsiveSourceKey === responsiveSourceKey;
+  const fallbackKey = (Array.isArray(fallbackSrcs) ? fallbackSrcs : [fallbackSrcs])
+    .map((candidate) => String(candidate || '').trim())
+    .filter(Boolean)
+    .join('\u0000');
+  const normalizedFallbackSrcs = React.useMemo(() => (
+    fallbackKey ? fallbackKey.split('\u0000') : []
+  ), [fallbackKey]);
+  const responsiveSourceKey = `${sources.src || ''}\u0000${sources.srcSet || ''}\u0000${sources.avifSrcSet || ''}\u0000${sources.webpSrcSet || ''}\u0000${normalizedFallbackSrcs.join('\u0000')}`;
+  const [fallbackState, setFallbackState] = React.useState({ sourceKey: '', index: 0, sourcesFailed: false, imageFailed: false });
+  const stateForSource = fallbackState.sourceKey === responsiveSourceKey
+    ? fallbackState
+    : { sourceKey: responsiveSourceKey, index: 0, sourcesFailed: false, imageFailed: false };
+  const activeFallbackSrc = stateForSource.index > 0
+    ? normalizedFallbackSrcs[stateForSource.index - 1] || ''
+    : '';
+  const responsiveSourcesFailed = stateForSource.sourcesFailed || Boolean(activeFallbackSrc);
+  const imageSrc = activeFallbackSrc || sources.src;
 
   return (
     <picture style={{ display: 'contents' }}>
@@ -30,8 +48,9 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
       {!responsiveSourcesFailed && sources.webpSrcSet ? <source type="image/webp" srcSet={sources.webpSrcSet} sizes={sizes} /> : null}
       <img
         {...imageProps}
-        src={sources.src}
-        srcSet={sources.srcSet}
+        src={imageSrc}
+        hidden={hideOnError ? stateForSource.imageFailed : callerHidden}
+        srcSet={responsiveSourcesFailed ? undefined : sources.srcSet}
         sizes={sizes}
         width={width}
         height={height}
@@ -55,11 +74,20 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
           ...style
         }}
         onError={(event) => {
-          // Let React remove its own <source> nodes on the next render. Mutating
-          // the picture DOM here leaves React with stale child references and can
-          // trigger a removeChild NotFoundError during a later unmount/update.
-          setFailedResponsiveSourceKey(responsiveSourceKey);
-          onError?.(event);
+          const currentTarget = event.currentTarget;
+          const nextFallback = resolveNextAssetImageFallback({
+            currentUrl: currentTarget?.currentSrc || currentTarget?.src || imageSrc,
+            candidates: normalizedFallbackSrcs,
+            startIndex: stateForSource.index,
+            baseHref: currentTarget?.ownerDocument?.baseURI || ''
+          });
+          setFallbackState({
+            sourceKey: responsiveSourceKey,
+            index: nextFallback?.nextIndex || stateForSource.index,
+            sourcesFailed: true,
+            imageFailed: !nextFallback
+          });
+          if (!nextFallback) onError?.(event);
         }}
       />
     </picture>
