@@ -14,26 +14,47 @@ import { calculateRouteUseCase as defaultCalculateRouteUseCase } from '../../rou
 const ROAD_DISTANCE_TIMEOUT_MS = 600;
 
 // 6h TTL, 500-entry FIFO cap -- a delivery destination is unlikely to move within a session, and
-// GraphHopper is deterministic for the same rounded coordinate pair, so a coarse, long-lived cache
-// is safe and meaningfully cuts repeat-call latency/load.
+// GraphHopper is deterministic for the same coordinate tuple, so a long-lived cache meaningfully
+// cuts repeat-call latency/load without sharing results between materially different routes.
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 500;
 
-// Coordinates are rounded to 3 decimal degrees (~111m lat cells, ~109m lng cells at PH latitudes)
-// so nearby requests to the same destination share a cache entry.
-const round = (value) => Math.round(Number(value) * 1000) / 1000;
+// Phase 328: the cache identity is the complete route input. Do not round coordinates into a grid:
+// a nearby destination or a moved store origin can produce a materially different road distance.
+// JSON encoding keeps tenant/location delimiters collision-safe, while canonicalizing numeric
+// strings means equivalent API values share one entry. Missing identity/coordinates bypass caching
+// rather than allowing an "undefined" key to join unrelated requests.
+const toFiniteCoordinate = (value) => {
+    if (value === null || value === undefined || String(value).trim() === '') return null;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    return Object.is(numeric, -0) ? 0 : numeric;
+};
 
-// tenantId is a REQUIRED part of the cache key. location_id is a tenant-scoped auto-increment
-// integer (each tenant has its own database in this repo's multi-tenant model), NOT globally
-// unique -- a key without tenantId would let one tenant's cached distance leak into another
-// tenant's read for the same numeric location_id.
-const buildCacheKey = ({ tenantId, locationId, destLat, destLng }) =>
-    `${tenantId}:${locationId}:${round(destLat)}:${round(destLng)}`;
+const buildCacheKey = ({ tenantId, locationId, originLat, originLng, destLat, destLng }) => {
+    if (tenantId === null || tenantId === undefined || String(tenantId).trim() === '') return null;
+    if (locationId === null || locationId === undefined || String(locationId).trim() === '') return null;
+
+    const coordinates = [originLat, originLng, destLat, destLng].map(toFiniteCoordinate);
+    if (coordinates.some((coordinate) => coordinate === null)) return null;
+
+    return JSON.stringify([
+        String(tenantId).trim(),
+        String(locationId).trim(),
+        ...coordinates
+    ]);
+};
+
+const isCacheableDistance = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
 const readCache = (cache, key) => {
     const entry = cache.get(key);
     if (!entry) return null;
     if (Date.now() - entry.storedAt > CACHE_TTL_MS) {
+        cache.delete(key);
+        return null;
+    }
+    if (!isCacheableDistance(entry.value?.distanceMeters)) {
         cache.delete(key);
         return null;
     }
@@ -58,8 +79,8 @@ export const buildRoadDistanceProvider = ({
     const cache = new Map();
 
     const resolveRoadDistance = async ({ tenantId, locationId, originLat, originLng, destLat, destLng }) => {
-        const cacheKey = buildCacheKey({ tenantId, locationId, destLat, destLng });
-        const cached = readCache(cache, cacheKey);
+        const cacheKey = buildCacheKey({ tenantId, locationId, originLat, originLng, destLat, destLng });
+        const cached = cacheKey ? readCache(cache, cacheKey) : null;
         if (cached) return cached;
 
         try {
@@ -67,8 +88,12 @@ export const buildRoadDistanceProvider = ({
             if (!result.success) {
                 return { distanceMeters: null, source: 'unavailable' };
             }
-            const normalized = { distanceMeters: result.data.distance_meters, source: 'road' };
-            writeCache(cache, cacheKey)(normalized);
+            const distanceMeters = result.data?.distance_meters;
+            if (!isCacheableDistance(distanceMeters)) {
+                return { distanceMeters: null, source: 'unavailable' };
+            }
+            const normalized = { distanceMeters, source: 'road' };
+            if (cacheKey) writeCache(cache, cacheKey)(normalized);
             return normalized;
         } catch {
             // Belt-and-suspenders only -- calculateRouteUseCase already collapses every failure
