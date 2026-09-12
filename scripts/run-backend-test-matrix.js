@@ -325,8 +325,10 @@ function runSchemaPreflight(evidenceDir) {
 // including manual workflow_dispatch ones, and is absent for a local/non-CI invocation, where a
 // fixed 'local' segment is fine since a local invocation is inherently single-instance.
 function buildTemplateTenantDbName(targetSha) {
-  const runDiscriminator = safeName(process.env.GITHUB_RUN_ID || 'local');
-  return `test_tenant_template_${safeName(targetSha)}_${runDiscriminator}`;
+  // Keep the identifier within MySQL's 64-character limit even if the run ID grows beyond
+  // GitHub's current numeric length: 21-char prefix + 10-char SHA + separator + 31-char ID = 63.
+  const runDiscriminator = safeName(process.env.GITHUB_RUN_ID || 'local').slice(0, 31);
+  return `test_tenant_template_${safeName(targetSha).slice(0, 10)}_${runDiscriminator}`;
 }
 
 function provisionTemplateTenantDatabase(evidenceDir, targetSha) {
