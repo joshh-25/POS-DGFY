@@ -21,9 +21,9 @@ describe('iMin order-ticket and receipt identity formatting', () => {
         expect(output).toContain('BILL REQUEST');
         expect(output).toContain('2 x Cake');
         expect(output).toContain('Price');
-        expect(output).toContain('₱200.00');
+        expect(output).toContain('PHP 200.00');
         expect(output).toContain('Overall price');
-        expect(output).toContain('₱400.00');
+        expect(output).toContain('PHP 400.00');
         expect(output).toContain('No payment recorded');
     });
 

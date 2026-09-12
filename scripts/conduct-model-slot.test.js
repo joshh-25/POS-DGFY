@@ -194,7 +194,41 @@ test('resolveDispatchStrategy: no launch preference is Tier 3', () => {
 });
 
 test('resolveDispatchStrategy normalizes alias input independently', () => {
-  const result = resolveDispatchStrategy({ cli: 'agy' }, { coordinatorCli: 'antigravity' });
+  const result = resolveDispatchStrategy(
+    { cli: 'agy' },
+    { coordinatorCli: 'antigravity', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
+  );
+  assert.equal(result.strategy, 'in-session');
+});
+
+// #1826: the defect this guards against. A Claude coordinator resolving a slot to `claude` (or a
+// Codex coordinator resolving a slot to `codex`) must NOT fall back to in-session Tier 1 just
+// because the coordinator happens to already be that CLI -- in-session native-subagent dispatch
+// does not reliably honor a per-slot --model override (it inherits the coordinating session's own
+// model), so a configured "claude:claude-sonnet-5" slot would silently run as whatever model the
+// coordinator itself happens to be (e.g. Opus). Orca's external worker-start does honor --model,
+// so Tier 2 must win whenever Orca can dispatch the resolved cli at all.
+test('resolveDispatchStrategy: launch-preference support wins over coordinator match (Tier 2 over Tier 1) for claude', () => {
+  const result = resolveDispatchStrategy(
+    { cli: 'claude' },
+    { coordinatorCli: 'claude', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
+  );
+  assert.equal(result.strategy, 'orca-pty');
+});
+
+test('resolveDispatchStrategy: launch-preference support wins over coordinator match (Tier 2 over Tier 1) for codex', () => {
+  const result = resolveDispatchStrategy(
+    { cli: 'codex' },
+    { coordinatorCli: 'codex', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
+  );
+  assert.equal(result.strategy, 'orca-pty');
+});
+
+test('resolveDispatchStrategy: antigravity coordinator + antigravity slot still uses Tier 1 -- Orca has no launch-preference support for it, unaffected by the #1826 fix', () => {
+  const result = resolveDispatchStrategy(
+    { cli: 'antigravity' },
+    { coordinatorCli: 'antigravity', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
+  );
   assert.equal(result.strategy, 'in-session');
 });
 

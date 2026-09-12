@@ -494,6 +494,66 @@ implemented, not Decision 6's own mode table, which is unchanged) — decided by
 detail: issue #1774, `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching entry,
 `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s updated status line.
 
+### 2026-09-10 — Post-promotion `develop` version-baseline sync, a new mechanism this ADR did not
+previously cover (#1807, epic #1548)
+
+Filed as #1807: an app several promotions never touch stays on `develop` at whatever version it
+had the last time it *was* touched, even after a repair or hotfix later advances it further on
+`staging`/`main`. Decision 6's floor step and the per-fix backport obligation (#1611) are both
+best-effort, per-touch mechanisms — neither is a periodic reconciliation — so a backport that's
+missed, delayed, or only partially applied can leave `develop`'s source-tree version genuinely
+behind what `main` is already running. Production safety is unaffected either way: the floor step
+already forces the correct, larger leapfrogged bump the moment `develop` next actually touches
+that app (Decision 6's own `[snapshot]` sub-clause on accepted numeric overlap between channels).
+This is a source-tree honesty problem, not a safety gap.
+
+**Resolution: `scripts/sync-app-version-baselines.js` (new), run once per ordinary promotion, after
+`main` has deployed and the parity gate/GitHub Release step (Decision 8) completes.** Compares each
+of the five apps' `package.json` `version` on `origin/develop` against `origin/main`; where
+`main`'s version is a real semver increase over `develop`'s, the promoter opens one ordinary
+`develop`-base PR (`chore(release): sync app version baselines from main`) raising exactly those
+apps to match `main`'s current value. **Additive only, per app, never a downgrade** — an app where
+`develop`'s version is already `>=` `main`'s is left untouched; this mechanism never lowers a
+version and never bumps an app `main` hasn't moved past. Full procedure:
+`.agents/skills/promoter/references/promotion-runbook.md`'s "Sync develop's version baselines from
+main" section; full script design and constraints: the script's own header comment.
+
+**Deliberately a new, separate script, not a mode added to `check-app-version-bump.js`.** That
+script's `--floor` mode has had two recent regressions from scope creep (#1740, #1802) — floor
+enforcement (a minimum bump required for an app a promotion is actively touching, scoped to
+changed files, compared against `staging`) and baseline reconciliation (an unconditional
+comparison of two absolute version numbers against `main`, with no changed-files scoping at all)
+are genuinely distinct concerns. The new script reuses that script's exported `APPS`/
+`readVersionAt`/`parseVersion`/`compareVersionTuples` rather than re-deriving them a second time —
+the same one-directional, read-only reuse pattern `resolve-build-skip-plan.js` already established
+for its own sibling concern (the 2026-09-05 Amendment above).
+
+**No clause change; no interaction with #1610.** This does not modify Decision 6's bump-level
+rules, Decision 7's tag-immutability guard, or Decision 8's per-app candidate-source-identity
+resolution (the #1610 conflict) — the sync mechanism only ever edits a source-tree `package.json`
+`version` field on `develop`, after `main` has already deployed, and never builds, tags, or
+publishes an image. It does not read or write the `org.dgfy-platform.candidate-source-sha` label
+#1610 is about, so it cannot trip Decision 7's guard (nothing here ever pushes an image tag to
+collide with) and cannot affect the parity gate's per-app comparison. A version this script writes
+is still governed by Decision 6's ordinary bump-mode rules the next time it's actually published
+— this script creates, removes, and shortcuts none of those checks.
+
+`[default]` tier — corrected 2026-09-10 (PR #1813 review, RF-1) from an earlier version of this
+entry that mislabeled it `[snapshot]`. This Amendment adds a new, recurring rollout procedure — run
+`scripts/sync-app-version-baselines.js` once per ordinary promotion, and open and merge a sync PR
+whenever it reports drift — not a point-in-time description of current state. Per ADR 0039's own
+tier table, `[snapshot]` is "documentation, never a constraint" whose "staleness is not a
+violation"; a standing "do this every promotion" obligation is squarely the `[default]` tier's own
+example category ("rollout sequencing"), not `[snapshot]`. **Decisions 6, 7, and 8's own text and
+tier are unchanged by this Amendment** — their substance is not modified (see "No clause change; no
+interaction with #1610" above); this Amendment adds one new `[default]`-tier obligation alongside
+them, via ADR 0039's own amendment path for a `default`-tier change ("append to the ADR in the same
+PR that implements the change... normal code review is sufficient," no superseding ADR needed).
+`status: amended` (front matter, already set) and this dated Amendment block together are exactly
+what that path requires — nothing added "anyway"; it's the mechanism itself. Full detail:
+`scripts/sync-app-version-baselines.js` (+ its test file),
+`.agents/skills/promoter/SKILL.md`/`references/promotion-runbook.md`, issue #1807.
+
 ## Alternatives considered
 
 - **Build each frontend once and inject environment config at container start**, so one digest
@@ -545,6 +605,9 @@ detail: issue #1774, `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching entry,
 - #495 (epic #492) — owns the per-service `IMAGE_TAG` compose split, `:latest` retirement/pinning,
   and rollback; this ADR documents the tag contract #495 must honor but does not implement it.
 - Phase 272, #1550, #1551 — the advisory-to-blocking rollout precedent Decision 9 follows.
+- #1807 — the post-promotion `develop` version-baseline sync mechanism added by this ADR's
+  2026-09-10 Amendment above; `[default]` tier (a recurring rollout procedure, not a point-in-time
+  snapshot), no change to Decisions 6-8's own text or tier, no interaction with #1610.
 - `scripts/check-pos-receipt-version-bump.js` — the existing single-package version-bump precedent
   this ADR's scheme deliberately does not fold `packages/pos-receipt` into.
 - Sieitzz/dgfy-mobile#78, #79 — the sibling repo's versioning policy cited for pattern reuse in

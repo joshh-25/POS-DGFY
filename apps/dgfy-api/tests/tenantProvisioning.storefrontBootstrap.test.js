@@ -29,8 +29,8 @@ jest.unstable_mockModule('../src/services/landlordService.js', () => ({
 }));
 
 // #1071/#1124: previously unmocked, this test reached all the way into
-// tenantSchemaBootstrap.js's real Phase 157 migration imports (via
-// apps/dgfy-migration-runner's manifest) -- under `Sequelize.prototype.query` mocked to always
+// tenantSchemaBootstrap.js's real Phase 157 migration imports (via the tenant-bootstrap
+// manifest, packages/tenant-bootstrap since #1819) -- under `Sequelize.prototype.query` mocked to always
 // resolve `[[]]`, `showAllTables()` came back empty, so the strict "table must already exist"
 // migration always threw. This test's own point is the seed/discovery-bootstrap side effects, not
 // tenant-bootstrap schema mechanics (which have their own coverage --

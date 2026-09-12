@@ -71,36 +71,47 @@ function parseModelSlot(value, { knownClis, defaultCli } = {}) {
 }
 
 // Classifies how an already-resolved slot is dispatched across Conduct's three execution tiers.
+//
+// #1826: Orca launch-preference support (Tier 2) is checked BEFORE coordinator match (Tier 1) --
+// not the other way around. A coordinator already running the resolved `cli` is not sufficient by
+// itself to justify in-session dispatch when Orca can dispatch that exact `cli` externally with the
+// requested model/effort (true today for claude/codex/cursor): Claude's (and Codex's) native
+// in-session subagent dispatch does not reliably honor a per-slot --model override -- it inherits
+// the coordinating session's own model -- while Orca's external worker-start does. Tier 1 remains
+// correct, and is the ONLY viable option, when Orca has no launch-preference support at all for the
+// resolved cli (today: antigravity) and the coordinator happens to already be running it.
 function resolveDispatchStrategy({ cli } = {}, { coordinatorCli, launchPreferenceClis } = {}) {
   const normalizedCli = normalizeCliAlias(cli);
   if (!normalizedCli) {
     return { strategy: undefined, reason: 'no cli given -- cannot classify strategy' };
   }
 
+  if (!Array.isArray(launchPreferenceClis)) {
+    return {
+      strategy: undefined,
+      reason: 'launchPreferenceClis not supplied -- cannot distinguish Tier 2 (orca-pty) from Tier 1/3 fallback',
+    };
+  }
+  const launchPrefSet = new Set(launchPreferenceClis.map(normalizeCliAlias));
+  if (launchPrefSet.has(normalizedCli)) {
+    return {
+      strategy: 'orca-pty',
+      reason: `Orca worker-start supports launch preferences for "${normalizedCli}" -- Tier 2, standard supervised dispatch (preferred over in-session even when the coordinator already runs "${normalizedCli}", since in-session native-subagent dispatch does not reliably honor a per-slot model override)`,
+    };
+  }
+
   const normalizedCoordinatorCli = coordinatorCli ? normalizeCliAlias(coordinatorCli) : undefined;
   if (normalizedCoordinatorCli && normalizedCli === normalizedCoordinatorCli) {
     return {
       strategy: 'in-session',
-      reason: `coordinator's own runtime already matches resolved cli "${normalizedCli}" -- Tier 1, no external dispatch`,
+      reason: `Orca has no launch-preference support for "${normalizedCli}" and the coordinator's own runtime already matches it -- Tier 1, no external dispatch possible`,
     };
   }
 
-  if (!Array.isArray(launchPreferenceClis)) {
-    return {
-      strategy: undefined,
-      reason: 'launchPreferenceClis not supplied -- cannot distinguish Tier 2 (orca-pty) from Tier 3 (direct-cli)',
-    };
-  }
-  const launchPrefSet = new Set(launchPreferenceClis.map(normalizeCliAlias));
-  return launchPrefSet.has(normalizedCli)
-    ? {
-        strategy: 'orca-pty',
-        reason: `Orca worker-start supports launch preferences for "${normalizedCli}" -- Tier 2, standard supervised dispatch`,
-      }
-    : {
-        strategy: 'direct-cli',
-        reason: `Orca has no launch-preference support for "${normalizedCli}" -- Tier 3, direct-CLI headless fallback`,
-      };
+  return {
+    strategy: 'direct-cli',
+    reason: `Orca has no launch-preference support for "${normalizedCli}" -- Tier 3, direct-CLI headless fallback`,
+  };
 }
 
 function formatReportRow(slotName, parsed, origin) {

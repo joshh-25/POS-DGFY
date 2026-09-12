@@ -17,9 +17,12 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 // .cjs, required rather than imported -- matches how the migrations themselves are authored
-// (Sequelize CLI's standard module.exports shape) and how tenantProvisioningService.js already
-// reached into apps/dgfy-migration-runner before this seam existed.
-const { applyTenantBootstrapMigrations } = require('../../../dgfy-migration-runner/src/tenantBootstrapManifest.cjs');
+// (Sequelize CLI's standard module.exports shape). #1819: sourced from the shared
+// packages/tenant-bootstrap package (a real npm `file:` dependency, shipped into this app's
+// Docker image like packages/shared-constants already is) instead of reaching across into the
+// sibling apps/dgfy-migration-runner app at runtime -- that cross-app path does not exist inside
+// the built image, which is exactly what broke tenant approval (#1819).
+const { applyTenantBootstrapMigrations } = require('@sieitzz/tenant-bootstrap');
 
 /**
  * Brings a freshly-`sync()`'d tenant database up to the schema shape `provisionTenant` needs.

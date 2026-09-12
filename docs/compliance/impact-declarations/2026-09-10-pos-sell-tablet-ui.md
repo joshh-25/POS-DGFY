@@ -1,13 +1,13 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-09-10
+last_reviewed: 2026-09-11
 declaration_id: 2026-09-10-pos-sell-tablet-ui
 classification: major
 surfaces: pos,terminal
 reason_codes_impacted: NONE
 policy_version: 2026.09.10
-verification_evidence: focused POS tablet-sell contract suite (98 tests),POS lint,POS production build,tablet shell smoke at 1024x600,docs and ADR lint,git diff check
+verification_evidence: focused POS tablet-sell contract suite (including optional-details collapse regression),POS lint,POS production build,tablet shell smoke at 1024x600,docs and ADR lint,git diff check
 rollback_note: Revert the atomic tablet-sell UI commits and this declaration. The changes are presentation, layout, focus, and test coverage only; no API, database, migration, payment calculation, checkout payload, permission, or hardware-command behavior is changed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -66,6 +66,15 @@ tablet presentation-only change.
 - The authenticated browser flow was login-gated in the local smoke session;
   the affected authenticated render states are covered by the static and
   component contract tests.
+
+## Optional Checkout Details Follow-up
+
+When a POS cart contains items, the tablet checkout keeps the order-method
+buttons visible and collapses the optional table and global-notes fields behind
+an explicit edit control. Existing values remain available and the fields are
+expanded automatically before items are added. This is a presentation-only
+change; checkout payloads, payment calculations, and persistence contracts are
+unchanged.
 
 ## Preflight Reconciliation
 

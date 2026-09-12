@@ -22475,6 +22475,36 @@ content differs from what was implemented and tested under the "303" label.
   artifacts and compliance declaration. Physical iMin validation excluded.
 - Next eligible phase: 321.
 
+## Phase 321 - POS large-cart search and receipt-print responsiveness
+
+- Initiative/release: POS terminal large-cart performance / current release.
+- Objective and scope: reduce avoidable work when a cashier searches with more than
+  ten cart lines and reduce client-driver receipt audit latency while preserving
+  catalog results, financial totals, print outcomes, audit idempotency, and
+  iMin browser compatibility.
+- Status: completed.
+- Dependencies: Phase 320; ADR 0014 Storefront/POS cache and read-performance
+  contracts; ADR 0053 client-executed hardware audit contract; ADR 0067 browser
+  support baseline.
+- Acceptance and validation evidence: stale catalog requests are cancelled
+  with the existing sequence guard as fallback; catalog card quantity lookup
+  is linear per cart render; financial calculation stages are memoized by their
+  input snapshots; client-driver receipt audits fetch only identity and receipt
+  contract metadata and skip settings/logo rasterization while still awaiting
+  the required idempotent audit. Focused shared POS contracts passed 3 files /
+  15 tests; client-delegated receipt API tests passed 12/12; POS production
+  build passed; changed-file API/frontend lint and `git diff --check` passed.
+  No schema or database migration was required. The full API suite was not used
+  as a gate because it retains the unrelated baseline
+  `imageLifecycleFullValidation` v2-path fixture failure outside this phase.
+- Completion date: 2026-09-10.
+- Contracts/files: `usePosCatalogWorkflow.js`, `posService.js`,
+  `POSCheckoutTerminalView.jsx`, `usePosFinancialWorkflow.js`,
+  `posRepository.js`, `posDeviceUseCases.js`, and their focused contract/unit
+  tests. Performance behavior remains governed by ADR 0014 and hardware audit
+  behavior by ADR 0053.
+- Next eligible phase: 322.
+
 ## Phase 322 - POS item image reliability and responsiveness
 
 - Initiative/release: POS item image upload repair / current release.
@@ -22495,7 +22525,12 @@ content differs from what was implemented and tested under the "303" label.
   and Storefront builds plus architecture, compliance/API-contract, docs,
   workspace, app-version, and diff checks passed. Device/APK evidence remains
   open as the plan records; physical iMin validation is excluded by user
-  instruction. No database migration was required for this phase.
+  instruction. Phase 322-A's executable contract-freeze regressions passed
+  6 shared frontend test files / 21 tests, covering stale job versus newer preview,
+  failed catalog refresh retention, failed thumbnail handoff, and Items-to-Sell
+  renderer navigation. The recorded POS URL-selection, worker-processing,
+  cleanup, caller-boundary, and no-schema-impact contracts are in the linked
+  plan. No database migration was required for this phase.
 - Contracts/files: [POS image upload plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md),
   `packages/web-core/src/features/pos/services/posPendingItemImagePreviewStore.js`,
   POS item image components/services, catalog image worker/storage, focused
@@ -22674,3 +22709,78 @@ content differs from what was implemented and tested under the "303" label.
   change, per the plan's own §5.3 -- this PR's own throwaway-branch live-CI verification (§5.2) was
   deferred, so this issue closes via `Refs #1809`, not `Closes #1809` (see the PR body for why).
 - Next eligible phase: 325.
+
+## Phase 325 - Manual planner-to-worker handoff workflow (#1842)
+
+- Initiative/release: agent workflow and token-cost control / current release.
+- Objective and scope: add a planning-only `/planner` skill that writes a compact local
+  `.tmp/plan-<issue>.md` handoff, extend `/implement` to validate and consume it, and let
+  `/pr-reviewer` use the handoff when available. The human remains the coordinator; no new
+  dispatcher or replacement for `/conduct` is introduced.
+- Status: completed.
+- Dependencies: canonical agent-surface layout (#442), existing `/pm`, `/implement`, and
+  `/pr-reviewer` role contracts, and the issue/epic taxonomy.
+- Acceptance and validation evidence: `npm run check:agent-surfaces`, the skill creator validator,
+  `npm run lint:docs`, `npm run check:architecture`, `git diff --check`, and pre-commit compliance/
+  whitespace gates all pass. The planner contract covers the normal, refresh, ambiguity, epic, and
+  Worker/Reviewer fallback paths; no runtime application surface or deployment path is changed.
+- Completion date: 2026-09-11.
+- Contracts/files: `.agents/skills/planner/`, `.claude/skills/planner/`, the canonical
+  Worker/Reviewer/PM role definitions, `AGENTS.md`, `scripts/check-agent-surfaces.js`, and this
+  phase ledger entry.
+
+### Concurrent tenant-manager registration action guard initiative
+
+- Initiative/release: platform-admin tenant lifecycle reliability / current release.
+- Objective and scope: close the approval-action gap where a pending tenant without a pending public registration application still renders Approve, causing the API error `This tenant is not a pending public registration application.` The landlord tenant list now supplies a server-computed registration action, and Tenant Manager renders only lifecycle-valid approval/retry controls.
+- Mechanically: `buildTenantRegistrationAction` maps the existing application review/provisioning states to `approve`, `retry`, `setting_up`, or `reconcile`; an approved `in_progress` attempt is retryable only after the existing ten-minute timeout. The UI fails closed during mixed-version rollout, refreshes after failed lifecycle requests, and leaves the existing backend atomic approval/retry predicates unchanged.
+- Status: completed.
+- Dependencies: existing company registration application and provisioning lifecycle; no schema migration.
+- Acceptance and validation evidence: `npm test -- --runTestsByPath tests/listTenants.usecase.test.js` (3/3), `npm test -- --run packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx` (4/4), `npm run lint` in `apps/dgfy-api` (0 errors; existing warnings), `npm run lint` in `apps/dgfy-ims` (0 errors; existing warnings), `npm run build` in `apps/dgfy-ims` (pass), and `git diff --check` (pass). The broader `adminTenantLifecycle.integration.test.js` remains blocked by its pre-existing mocked `emailService.js` `verifyConnection` export mismatch before tests execute.
+- Completion date: 2026-09-10.
+- Contracts/files: `apps/dgfy-api/src/modules/tenants/usecases/tenantRegistrationActionPolicy.js`, `apps/dgfy-api/src/modules/tenants/usecases/listTenantsUseCase.js`, `apps/dgfy-api/src/modules/tenants/repositories/tenantAdminRepository.js`, `apps/dgfy-api/tests/listTenants.usecase.test.js`, `apps/dgfy-ims/Pages/admin/TenantManager.jsx`, `packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx`, `docs/api/specification.md`, `docs/features/PLATFORM_ADMIN_AND_QA_INVOICING.md`, `docs/compliance/impact-declarations/2026-09-10-admin-tenant-approval-action-guard.md`.
+- Next eligible phase: 326.
+
+## Phase 326 - Manual token-aware session handoff (#1847)
+
+- Initiative/release: agent workflow and token-cost control / current release.
+- Objective and scope: add an explicit-only `/handoff` skill that writes timestamped,
+  snapshot-only `dgfy-handoff/v1` artifacts for manual transfer to Codex, Claude, or Gemini;
+  extend planner, implementer, and reviewer contracts to consume matching handoff snapshots;
+  preserve the human-coordinated, non-orchestrated workflow.
+- Status: completed.
+- Dependencies: Phase 325; canonical agent-surface layout; existing planner, Worker, and Reviewer
+  role contracts; issue/PR taxonomy.
+- Acceptance and validation evidence: canonical skill validation, agent-surface validation,
+  documentation lint, architecture/compliance gates, whitespace validation, and manual checks for
+  dirty and clean worktrees, active PRs, interrupted work, explicit target runtimes, repeated
+  handoffs, and snapshot-only safety boundaries all passed.
+- Completion date: 2026-09-11.
+- Contracts/files: `.agents/skills/handoff/`, `.claude/skills/handoff/`,
+  `.agents/skills/{planner,implement,pr-reviewer}/SKILL.md`, `AGENTS.md`,
+  `scripts/check-agent-surfaces.js`, and this phase ledger entry. No ADR or application runtime
+  surface changed.
+- Next eligible phase: 327.
+
+## Phase 327 - Establish a five-run measurement window for promotion IMS/POS sales E2E (#1844)
+
+- Initiative/release: CI quality-gate trust / current release.
+- Objective and scope: temporarily raise the `frontend-ims-pos-sales-e2e-quality` job envelope from
+  20 to 200 minutes and its `run_ims_pos_sales_e2e` step budget from 15 to 150 minutes, a 10x
+  measurement window. Bound the command itself with a 140-minute salvage timeout so a hung process
+  reaches artifact upload, cleanup, and outcome reporting. Observe five fresh completed runs, record
+  the peak job/step/setup timings, then reduce the bounds to the measured peak plus explicit
+  setup/upload/cleanup margin. Preserve the existing advisory disposition; #1749 owns any later
+  advisory-to-blocking decision.
+- Status: in_progress.
+- Dependencies: #1712's promotion E2E job, #1749's separate blocking-flip track, and the
+  `promotion-quality-gate.yml`/`scripts/check-pr-quality-workflow.js` reporting contract.
+- Acceptance and validation evidence: static workflow contract checks and the 41-test
+  `scripts/check-pr-quality-workflow.test.js` suite pass on the implementation branch. Five fresh
+  post-change `workflow_dispatch` or `release/* -> main` promotion runs must reach artifact upload,
+  cleanup, and `record_outcomes`, including when the command-level salvage timeout fires; their peak
+  timings must be recorded before the temporary bounds are optimized.
+- Contracts/files: `.github/workflows/promotion-quality-gate.yml` target job and step timeout,
+  command-level salvage wrapper, and comments; `scripts/check-pr-quality-workflow.js` remains
+  unchanged; five-run timing evidence; this ledger entry.
+- Next eligible phase: 328 after Phase 327 completion.

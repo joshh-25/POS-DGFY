@@ -115,6 +115,7 @@ export const usePosCatalogWorkflow = ({
     const catalogRefreshDebounceRef = useRef(null);
     const catalogRequestInFlightKeyRef = useRef('');
     const catalogRequestSequenceRef = useRef(0);
+    const catalogRequestAbortControllerRef = useRef(null);
     const catalogReadRerunRef = useRef(false);
     const loadCatalogRef = useRef(null);
     const catalogSectionRef = useRef(null);
@@ -164,6 +165,8 @@ export const usePosCatalogWorkflow = ({
 
     useEffect(() => {
         if (!sessionLocked) return;
+        catalogRequestAbortControllerRef.current?.abort();
+        catalogRequestAbortControllerRef.current = null;
         catalogRequestInFlightKeyRef.current = '';
         catalogRequestSequenceRef.current += 1;
         catalogHasLoadedRef.current = false;
@@ -208,6 +211,13 @@ export const usePosCatalogWorkflow = ({
             catalogReadRerunRef.current = true;
             return;
         }
+        catalogRequestAbortControllerRef.current?.abort?.();
+        // AbortController is available in supported iMin WebViews, but keep
+        // the sequence guard as the compatibility fallback for older shells.
+        const requestAbortController = typeof AbortController === 'function'
+            ? new AbortController()
+            : null;
+        catalogRequestAbortControllerRef.current = requestAbortController;
         catalogRequestInFlightKeyRef.current = requestKey;
         const requestSequence = catalogRequestSequenceRef.current + 1;
         catalogRequestSequenceRef.current = requestSequence;
@@ -216,7 +226,10 @@ export const usePosCatalogWorkflow = ({
         setCatalogRefreshing(!isInitialLoad);
         setCatalogError('');
         try {
-            const data = await fetchPosCatalog(buildCatalogRequestParams(deferredSearch, selectedLocationId));
+            const data = await fetchPosCatalog(
+                buildCatalogRequestParams(deferredSearch, selectedLocationId),
+                requestAbortController ? { signal: requestAbortController.signal } : undefined
+            );
             if (catalogRequestSequenceRef.current !== requestSequence) return;
             setCatalog((previous) => preserveCatalogRows(previous, data || []));
             if (!deferredSearch) {
@@ -224,6 +237,7 @@ export const usePosCatalogWorkflow = ({
             }
         } catch (error) {
             if (catalogRequestSequenceRef.current !== requestSequence) return;
+            if (requestAbortController?.signal?.aborted || error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return;
             const offlineSnapshot = loadOfflinePosSnapshot(offlineSnapshotScope);
             if (!error?.response && offlineSnapshot?.catalog?.length) {
                 setCatalog(offlineSnapshot.catalog);
@@ -250,6 +264,9 @@ export const usePosCatalogWorkflow = ({
             }
             if (catalogRequestInFlightKeyRef.current === requestKey) {
                 catalogRequestInFlightKeyRef.current = '';
+                if (catalogRequestAbortControllerRef.current === requestAbortController) {
+                    catalogRequestAbortControllerRef.current = null;
+                }
                 if (catalogReadRerunRef.current) {
                     catalogReadRerunRef.current = false;
                     void loadCatalogRef.current?.();
@@ -259,6 +276,8 @@ export const usePosCatalogWorkflow = ({
     }, [canViewHistory, deferredSearch, offlineSnapshotScope, saveCatalogSnapshot, selectedLocationId, sessionLocked, setLowStockDisplayThreshold, setReceiptSettings]);
     loadCatalogRef.current = loadCatalog;
     useEffect(() => () => {
+        catalogRequestAbortControllerRef.current?.abort?.();
+        catalogRequestAbortControllerRef.current = null;
         catalogRequestSequenceRef.current++;
         catalogReadRerunRef.current = false;
         loadCatalogRef.current = null;

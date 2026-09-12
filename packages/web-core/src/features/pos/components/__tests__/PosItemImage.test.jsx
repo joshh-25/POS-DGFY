@@ -38,6 +38,41 @@ describe('shared Items / Sell image renderer', () => {
     expect(container.querySelector('img').getAttribute('src')).toBe('/uploads/new144.webp');
   });
 
+  it('keeps the accepted preview across Items-to-Sell navigation while processing continues', () => {
+    const attemptId = stagePendingPosItemImagePreview({ itemId: 22, url: 'blob:preview' });
+    bindPendingPosItemImagePreviewJob({ itemId: 22, attemptId, jobId: 'job' });
+
+    const itemsView = render(<PosItemImage item={item} alt="meal" />);
+    expect(itemsView.container.querySelector('img').getAttribute('src')).toBe('blob:preview');
+
+    itemsView.unmount();
+    const sellView = render(<PosItemImage item={item} alt="meal" />);
+
+    expect(sellView.container.querySelector('img').getAttribute('src')).toBe('blob:preview');
+    expect(sellView.container.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('keeps the last persisted thumbnail visible when a replacement thumbnail fails before handoff', () => {
+    const persistedItem = {
+      item_id: 22,
+      pos_image_url: '/uploads/old.webp',
+      pos_image_variants: { pos_thumbnail_url: '/uploads/old144.webp' }
+    };
+    const replacementItem = {
+      ...persistedItem,
+      pos_image_url: '/uploads/new.webp',
+      pos_image_variants: { pos_thumbnail_url: '/uploads/new144.webp' }
+    };
+    const { container, rerender } = render(<PosItemImage item={persistedItem} alt="meal" />);
+    fireEvent.load(container.querySelector('img[src="/uploads/old144.webp"]'));
+
+    rerender(<PosItemImage item={replacementItem} alt="meal" />);
+    fireEvent.error(container.querySelector('img[src="/uploads/new144.webp"]'));
+
+    expect(container.querySelector('img[src="/uploads/old144.webp"]')).not.toBeNull();
+    expect(container.querySelector('img[src="/uploads/new144.webp"]')).toBeNull();
+  });
+
   it('stops after three automatic retries and a new URL is visible without a hidden DOM flag', () => {
     const { container, rerender } = render(<PosItemImage item={item} alt="meal" />);
     for (const delay of [1000, 2000, 4000]) {

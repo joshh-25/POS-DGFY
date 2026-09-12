@@ -202,6 +202,10 @@ jobs:
             # depend on packages/pos-receipt (dgfy-storefront doesn't -- see
             # its package.json). All three share the reusable deploy-frontend.yml
             # workflow, so a change there invalidates all three, not just one.
+            #
+            # dgfy-api and dgfy-migration-runner similarly both depend on
+            # packages/tenant-bootstrap (#1819) -- a change there alone must still
+            # trigger both backend image builds, not neither.
             FRONTEND_IMS=false
             FRONTEND_POS=false
             FRONTEND_STOREFRONT=false
@@ -211,8 +215,8 @@ jobs:
             matches '^(apps/dgfy-ims/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-ims/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)' && FRONTEND_IMS=true || true
             matches '^(apps/dgfy-pos/|packages/pos-receipt/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-pos/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_POS=true || true
             matches '^(apps/dgfy-storefront/|packages/shared-constants/|packages/web-core/|infrastructure/docker/dgfy-storefront/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND_STOREFRONT=true || true
-            matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)' && DGFY_API=true || true
-            matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)' && MIGRATION_RUNNER=true || true
+            matches '^(apps/dgfy-api/|packages/shared-constants/|packages/tenant-bootstrap/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)' && DGFY_API=true || true
+            matches '^(apps/dgfy-migration-runner/|packages/tenant-bootstrap/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)' && MIGRATION_RUNNER=true || true
             matches '^(apps/dgfy-android-bridge/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
 
             # #1809: a real diff was computable -- the "Narrow frontend build triggers..." step

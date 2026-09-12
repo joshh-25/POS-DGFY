@@ -169,13 +169,20 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   touches a deployed environment. @.agents/skills/implement/SKILL.md
 - **Planner/PM** (#367/#439) — files and shapes GitHub issues, maintains the DGFY Project board.
   @.agents/skills/pm/SKILL.md
+- **Planner/Handoff** — reads an existing open issue or epic and writes a local implementation
+  handoff for a separate Worker session; it does not file issues, change board state, or orchestrate
+  other agents. @.agents/skills/planner/SKILL.md
+- **Manual Handoff** — on explicit operator request, snapshots a planning, implementation, or
+  review session into an ignored local artifact for a separate AI session; it never self-triggers,
+  launches another agent, or enters an orchestration loop. @.agents/skills/handoff/SKILL.md
 - **PR Reviewer** (#366/#441) — audits an open PR, posts one verdict comment with concrete proposed
   fixes, auto-merges only on `develop`/`staging` with a clean `APPROVE`, never on `main`.
   @.agents/skills/pr-reviewer/SKILL.md
 - **Observer** (#368) — ingests Sentry error/performance signals, triages against a noise policy,
   files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
 - **Verifier/QA** (#331/#536) — verifies a merged, deployed change against a live environment,
-  then flips `For QA` to `Done` or `Failed`. @.agents/skills/verifier/SKILL.md
+  then flips `For QA` to `For Prod` or `Failed` — `Done` now happens later, at `promoter`'s
+  post-production confirmation. @.agents/skills/verifier/SKILL.md
 - **Promoter/Release** (#331/#512) — runs a frozen-candidate `develop → staging → main` promotion
   end to end, observes the candidate, and coordinates code-level repairs on `staging`
   (default again since #1404, 2026-09-02, reversing ADR 0074/#980's 2026-08-25 two-stage default; a

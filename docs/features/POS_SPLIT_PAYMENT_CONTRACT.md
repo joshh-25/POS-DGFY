@@ -398,9 +398,10 @@ shift attribution and records the actual refund actor/shift separately.
 ## Payment-filter reporting (#1623)
 
 History and analytics payment filters include a transaction when its primary
-method or immutable completion breakdown contains the requested method. Filtering
-occurs before database pagination. History and report rows display every recorded
-positive tender method, including secondary methods.
+method or immutable completion breakdown contains a positive allocation for the
+requested method. Normalized zero-value placeholder rows do not qualify.
+Filtering occurs before database pagination. History and report rows display
+every recorded positive tender method, including secondary methods.
 
 Total Sales retains the existing sale-level calculation for matching transactions.
 The additional selected-method Collected card sums that method's applied amounts

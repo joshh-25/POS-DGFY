@@ -127,11 +127,67 @@ preservation of unrelated working-tree changes.
 - Readiness: ready for local investigation. Actual-device access is not required
   to reproduce state-machine races.
 - Exit gate:
-  - [ ] Each confirmed failure has a failing behavioral regression or a precise
+  - [x] Each confirmed failure has a behavioral regression or a precise
     reproduction with observed state; source-text assertions are not the proof.
-  - [ ] Preview, persisted asset, failure, and cleanup transitions are specified.
-  - [ ] Contract changes and schema impact are identified before application edits.
+  - [x] Preview, persisted asset, failure, and cleanup transitions are specified.
+  - [x] Contract changes and schema impact are identified before application edits.
 - Risk: a green existing test suite can conceal the observed races.
+
+#### Phase 322-A completion evidence — 2026-09-10
+
+Phase 322-A is complete. The executable regression set now covers the four
+named state-machine boundaries:
+
+- Old-job/new-preview overlap: a late bind, completion, or clear for the old
+  attempt leaves the newer preview and its null job binding unchanged.
+- Failed catalog refresh: after an authorized catalog read succeeds, a later
+  refresh failure retains the last catalog rows and exposes the refresh error;
+  it does not blank the current POS catalog.
+- Failed thumbnail handoff: a failed replacement thumbnail keeps the last
+  loaded persisted thumbnail visible, while the failed candidate is retired
+  from the rendered handoff. The existing bounded retry regression continues to
+  verify the finite retry budget and manual retry state.
+- Items-to-Sell navigation: an accepted preview remains available after the
+  first renderer unmounts and the second renderer mounts while the worker is
+  still processing. Authentication logout/session scope reset remains the
+  cleanup boundary.
+
+Current POS URL and processing contract, recorded before 322-B changes:
+
+1. `resolvePosCatalogImageSources(item).src` selects the POS thumbnail variant
+   first, then the generic thumbnail variant, then the configured POS/Storefront
+   image URL. A pending POS attempt takes precedence in the shared POS renderer;
+   a completed attempt swaps to the authorized persisted thumbnail only after
+   that candidate loads successfully.
+2. Add/Edit Item queues through the existing catalog image API and receives a
+   worker `job_id`. The POS pending-preview store transitions from `uploading`
+   to `processing`; authorized catalog reads trigger status reconciliation. A
+   completed status must match the catalog image version before the persisted
+   POS thumbnail is accepted. Failed status or failed reads retain the local
+   preview for reconciliation/retry and do not claim durable success.
+3. Preview resources are reference-counted and released when the attempt is
+   cleared, expires, or the tenant/session is reset. Storefront gallery
+   ownership, rendering callers, and image variants are not changed by this
+   phase.
+
+POS-only callers were kept separate from Storefront callers before any shared
+helper change: the POS queue/reconciliation paths are in
+`TerminalOperationsWorkspace.jsx`, `posService.js`,
+`posPendingItemImagePreviewStore.js`, `posImageUploadReconciliation.js`,
+`usePosCatalogWorkflow.js`, and `PosItemImage.jsx`. No Storefront component or
+Storefront-only image helper was edited.
+
+No schema or migration impact was identified. The phase uses the existing item
+image URL/variant fields and asynchronous catalog-image job/status contract;
+no file under `apps/dgfy-migration-runner/migrations/` changed.
+
+Focused validation from `apps/dgfy-ims`:
+
+`npm test -- --run ../../packages/web-core/src/features/pos/services/__tests__/posPendingItemImagePreviewStore.test.js ../../packages/web-core/src/features/pos/services/__tests__/posImageUploadReconciliation.test.js ../../packages/web-core/src/features/pos/services/__tests__/posCatalogReadCoordinator.test.js ../../packages/web-core/src/features/pos/services/__tests__/posImagePreview.test.js ../../packages/web-core/src/features/pos/components/__tests__/PosItemImage.test.jsx ../../packages/web-core/src/features/pos/hooks/__tests__/usePosCatalogWorkflow.test.jsx`
+
+Result: 6 test files and 21 tests passed. No application runtime code,
+database data, deployment, commit, push, or PR was performed. Phase 322 remains
+`in_progress`; the next eligible implementation slice is 322-B.
 
 ### 322-B - Unify preview identity and safe image handoff
 
