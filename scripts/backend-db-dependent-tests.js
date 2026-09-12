@@ -74,6 +74,8 @@ module.exports = [
   'tests/storefrontPrimaryLocation.discovery.integration.test.js',
   'tests/supertest_security.test.js',
   'tests/tenantModelFactory.contract.test.js',
+  // #1824: real, deliberately unmocked MySQL round trip for retry idempotency coverage.
+  'tests/tenantProvisioning.retryIdempotency.test.js',
   'tests/tenantProvisioning.test.js',
   'tests/tenantProvisioningAdminUserId.test.js',
   // #1071/#1124: the real end-to-end coverage for the post-sync tenant-bootstrap seam (the
