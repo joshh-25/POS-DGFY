@@ -63,7 +63,10 @@ export const verifyDglaundryEventSignature = ({ headers = {}, method = 'POST', a
     const nonceKey = `${parsed.keyId}:${parsed.nonce}`;
     for (const [entry, expiresAt] of seenNonces) if (expiresAt <= now) seenNonces.delete(entry);
     if (seenNonces.has(nonceKey)) return { ok: false, code: 'DGLAUNDRY_SIGNATURE_REPLAY' };
-    seenNonces.set(nonceKey, parsed.expires * 1000);
+    // Keep the expiry in the same epoch-second unit used by the pruning clock.
+    // Storing milliseconds here would prevent expired entries from ever being
+    // evicted and would grow the in-memory replay cache without bound.
+    seenNonces.set(nonceKey, parsed.expires);
     return { ok: true, keyId: parsed.keyId };
   }
 

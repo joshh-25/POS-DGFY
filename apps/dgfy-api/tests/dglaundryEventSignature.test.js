@@ -1,9 +1,11 @@
 import { verifyDglaundryEventSignature } from '../src/modules/dgfyLaundryOrders/services/dglaundryEventSignature.js';
 import crypto from 'node:crypto';
+import { jest } from '@jest/globals';
 
 const originalEnvironment = { ...process.env };
 
 afterEach(() => {
+  jest.restoreAllMocks();
   for (const key of Object.keys(process.env)) {
     if (!(key in originalEnvironment)) delete process.env[key];
   }
@@ -71,5 +73,45 @@ describe('DGLaundry event signature verification', () => {
     };
     expect(verifyDglaundryEventSignature(input)).toEqual({ ok: true, keyId: 'dglaundry' });
     expect(verifyDglaundryEventSignature(input)).toEqual({ ok: false, code: 'DGLAUNDRY_SIGNATURE_REPLAY' });
+  });
+
+  it('evicts expired nonces before accepting a reused nonce', () => {
+    process.env.NODE_ENV = 'staging';
+    process.env.DGLAUNDRY_SIGNATURE_PROFILE = 'http-message-signatures-v1';
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
+    process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' });
+    const body = JSON.stringify({ type: 'dglaundry.laundry_order.counter_registered.v1', id: 'event-expiry' });
+    const sign = ({ nowSeconds, expires, nonce }) => {
+      const digest = `sha-256=:${crypto.createHash('sha256').update(body).digest('base64')}:`;
+      const signatureParams = `("@method" "@authority" "@path" "content-digest" "content-type");created=${nowSeconds};expires=${expires};nonce="${nonce}";keyid="dglaundry";alg="ed25519";tag="dglaundry-dgfy-v1"`;
+      const signatureBase = [
+        '"@method": POST',
+        '"@authority": api.dgfy.ph',
+        '"@path": /api/v1/integrations/dglaundry/events',
+        `"content-digest": ${digest}`,
+        '"content-type": application/cloudevents+json',
+        `"@signature-params": ${signatureParams}`
+      ].join('\n');
+      const signature = crypto.sign(null, Buffer.from(signatureBase), privateKey).toString('base64');
+      return {
+        headers: {
+          'signature-input': `sig1=${signatureParams}`,
+          signature: `sig1=:${signature}:`,
+          'content-digest': digest,
+          'content-type': 'application/cloudevents+json'
+        },
+        method: 'POST',
+        authority: 'api.dgfy.ph',
+        path: '/api/v1/integrations/dglaundry/events',
+        rawBody: body
+      };
+    };
+
+    const start = Math.floor(Date.now() / 1000);
+    const nonce = 'expires-once';
+    expect(verifyDglaundryEventSignature(sign({ nowSeconds: start, expires: start + 1, nonce }))).toEqual({ ok: true, keyId: 'dglaundry' });
+
+    jest.spyOn(Date, 'now').mockReturnValue((start + 2) * 1000);
+    expect(verifyDglaundryEventSignature(sign({ nowSeconds: start + 2, expires: start + 300, nonce }))).toEqual({ ok: true, keyId: 'dglaundry' });
   });
 });
