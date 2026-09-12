@@ -22773,3 +22773,38 @@ content differs from what was implemented and tested under the "303" label.
   finite-result cache identity/collision policy), and Phase 329 (zero-radius persistence/defaults and
   distance-boundary rollout behavior).
 - Next eligible phase: 327.
+
+## Phase 327 - Delivery-fee minimum increment and finite-result validation
+
+- Initiative/release: customer delivery pricing hardening / current release.
+- Objective and scope: close the Phase 326 sub-meter increment gap by enforcing a one-meter minimum
+  (`0.001` km) in the shared constants package, API validator, calculated-config normalizer, shared
+  serializer, POS settings card, and IMS settings screen. Harden the pure policy against zero-meter
+  conversion and non-finite or invalid integer results. Preserve valid-input pricing, fallback
+  behavior, and `DELIVERY_FEE_CALC_VERSION`; do not write tenant data or add a migration.
+- Status: completed.
+- Dependencies: Phase 326 contract freeze; Phases 235-237 delivery-fee policy and wiring; ADR 0066
+  (voucher-sale price resolution), ADR 0078 (customer delivery-fee modes), and the existing shared
+  settings/package boundaries.
+- Acceptance and validation evidence: targeted API policy/config/validator and checkout fallback
+  tests passed (7 suites/136 tests); shared serializer, POS behavior, and Phase 327 contract tests
+  passed (3 files/21 tests); API/IMS lint and all three frontend builds passed; architecture,
+  docs/ADR, compliance, workspace-hygiene, and diff checks passed. The full API suite was also
+  exercised and isolated two pre-existing failures outside this phase: the image lifecycle test
+  still expects a legacy `-v2-` path while the implementation emits `-v3-`, and the admin tenant
+  lifecycle integration cannot load its missing mocked `verifyConnection` export. Neither failure
+  touches delivery pricing or was changed here.
+- Completion date: 2026-09-12.
+- Contracts/files: `packages/shared-constants/src/deliveryFee.js` and its package export;
+  `apps/dgfy-api/src/modules/deliveryPricing/domain/deliveryFeePolicy.js`;
+  `apps/dgfy-api/src/modules/deliveryPricing/domain/deliveryFeeConfig.js`;
+  `apps/dgfy-api/src/validators/settingsValidator.js`;
+  `packages/web-core/src/features/settings/deliveryFeeConfig.js`;
+  `packages/web-core/src/features/pos/components/PosDeliveryPricingSettingsCard.jsx`;
+  `apps/dgfy-ims/Pages/Settings.jsx`; Phase 327 API/frontend tests, module README, and compliance
+  declaration.
+- Migration: none required; this is validation and finite-result hardening over existing settings
+  columns and valid formula math.
+- Residual/deferred scope: Phase 328 (origin-aware finite-result cache identity and destination
+  collision policy) and Phase 329 (zero-radius persistence/defaults and map/checkout boundary).
+- Next eligible phase: 328.
