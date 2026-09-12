@@ -13,6 +13,9 @@ import { resolveWorkflowCapabilitySettings } from '../../shared/utils/workflowCa
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import logger from '../../../config/logger.js';
+import { PERMISSIONS } from '../../../config/permissions.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
+import { assertStaffAssignment } from '../../staff/index.js';
 import {
     applyDeliveryPersonnelAssignment,
     findOperationReplayEntry,
@@ -1159,6 +1162,17 @@ export const buildDispatchDeliveryRunUseCase = ({
                     { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
                 );
             }
+            // Preserve broad POS behavior while requiring a live run assignment for the
+            // narrower delivery_runs:act capability.
+            const hasPermissionContext = Array.isArray(user?.permissions)
+                || Object.prototype.hasOwnProperty.call(user || {}, 'role')
+                || Object.prototype.hasOwnProperty.call(user || {}, 'is_master_admin')
+                || user?.staffRole !== undefined;
+            const hasBroadPosTransaction = !hasPermissionContext
+                || hasEffectivePermission(user, PERMISSIONS.POS.actions.TRANSACT_POS);
+            if (!hasBroadPosTransaction) {
+                await assertStaffAssignment({ user, resourceType: 'delivery_run', resourceId: runId, transaction });
+            }
             if (run.location_id != null) {
                 await resolveLocationScope({
                     requestedLocationId: run.location_id,
@@ -1220,13 +1234,13 @@ export const buildDispatchDeliveryRunUseCase = ({
 
             // Precondition 6: one open-shift check for the whole run.
             const runLocationId = parsePositiveInt(run.location_id);
-            const activeShift = await assertOpenShiftForPosMutation({
+            const activeShift = hasBroadPosTransaction ? await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId,
                 locationId: runLocationId,
                 transaction,
                 lock: true
-            });
+            }) : null;
 
             // Fan-out: classify every member (read-only) before writing anything for it.
             const dispatched = [];

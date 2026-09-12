@@ -33,6 +33,11 @@ const SURFACE_MIN_CLASSIFICATION = Object.freeze({
 
 const COMPLIANCE_SENSITIVE_RULES = [
   {
+    pattern: /^apps\/dgfy-api\/src\/(modules\/staff\/|routes\/staffRoles\.js$|routes\/users\.js$|middleware\/auth\.js$|config\/permissions\.js$|utils\/userPermissions\.js$|services\/(authService|dgfyTenantSessionService|userService)\.js$)/,
+    surfaces: ['pos', 'settings'],
+    minimumClassification: 'major'
+  },
+  {
     pattern: /^apps\/dgfy-api\/src\/modules\/pos\//,
     surfaces: ['pos', 'terminal'],
     minimumClassification: 'major'

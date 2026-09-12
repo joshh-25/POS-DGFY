@@ -1,5 +1,6 @@
 import sequelize from '../config/database.js';
 import User from './User.js';
+import StaffRole from './StaffRole.js';
 import Item from './Item.js';
 import Supplier from './Supplier.js';
 import PurchaseOrder from './PurchaseOrder.js';
@@ -465,6 +466,9 @@ DgfyAffiliateCategoryRate.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tena
 // evidence; reads filter directly on tenant_id/enrollment_id instead of an include.
 
 // User associations
+User.belongsTo(StaffRole, { foreignKey: 'staff_role_id', as: 'staffRole', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+StaffRole.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+StaffRole.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
 User.hasMany(PurchaseOrder, { foreignKey: 'created_by', as: 'createdPurchaseOrders' });
 User.hasMany(JobOrder, { foreignKey: 'responsible_user', as: 'jobOrders' });
@@ -718,6 +722,7 @@ DeliveryPersonnel.hasMany(DeliveryJob, { foreignKey: 'delivery_personnel_id', as
 DeliveryPersonnel.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 DeliveryPersonnel.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser' });
 DeliveryPersonnel.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser' });
+DeliveryPersonnel.belongsTo(User, { foreignKey: 'user_id', as: 'user', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 DeliveryRun.hasMany(DeliveryJob, { foreignKey: 'delivery_run_id', as: 'deliveryJobs' });
 DeliveryJob.belongsTo(DeliveryRun, { foreignKey: 'delivery_run_id', as: 'deliveryRun', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 DeliveryRun.hasMany(DeliveryRunPersonnel, { foreignKey: 'delivery_run_id', as: 'personnel' });
@@ -1132,6 +1137,7 @@ const db = {
   sequelize,
   Sequelize: sequelize.Sequelize,
   User,
+  StaffRole,
   Item,
   Supplier,
   PurchaseOrder,
@@ -1355,6 +1361,7 @@ export default db;
 export {
   sequelize,
   User,
+  StaffRole,
   Item,
   Supplier,
   PurchaseOrder,
