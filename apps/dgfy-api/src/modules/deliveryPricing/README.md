@@ -38,6 +38,12 @@ real, priced breakdown rather than always returning the flat `store_delivery_fee
   a non-finite or invalid integer result. Existing valid configurations keep the same formula and
   `DELIVERY_FEE_CALC_VERSION` remains 1; no tenant data or schema change is required.
 
+- Phase 328 road-distance cache hardening: cache identity now includes the tenant, location, full
+  origin, and full destination coordinate tuple. Coarse three-decimal destination bucketing is
+  removed, missing route identity bypasses caching, and only finite non-negative successful
+  distances can be stored or reused. The existing timeout, TTL, FIFO cap, and unavailable fallback
+  remain unchanged; no migration or data repair is required.
+
 ## Phase 326 — contract freeze and confirmed gaps (2026-09-12)
 
 Phase 326 is a diagnostic and contract-freeze phase. It adds regression witnesses and records the
@@ -58,8 +64,8 @@ The contracts frozen for the delivery-fee flow are:
 5. A road-distance cache entry is valid only for the same tenant, location, origin, and destination
    coordinate. Only finite successful distances may be reused.
 
-The following gaps were reproduced by the Phase 326 tests. Phase 327 closes the increment gap; the
-remaining cache and radius gaps are deferred to later phases:
+The following gaps were reproduced by the Phase 326 tests. Phase 327 closes the increment gap and
+Phase 328 closes the cache identity/collision gaps; the radius gap remains deferred:
 
 - `PosTenantSetupModal` and `OnboardingSetupModal` use a truthiness fallback that changes an input
   radius of `0` to `5` before saving.
@@ -86,8 +92,7 @@ policy converts increments to whole meters. These constraints explain why the lo
 can contain no zero radius while the zero-radius witness remains reachable through the UI/API
 contract.
 
-Phase 328 owns origin-aware, finite-result cache keys and collision policy; Phase 329 owns
-zero-radius persistence/defaults and the map/checkout distance-boundary behavior.
+Phase 329 owns zero-radius persistence/defaults and the map/checkout distance-boundary behavior.
 
 ## Phase 327 — minimum increment and finite-result validation (2026-09-12)
 
@@ -98,9 +103,21 @@ division and throws `NON_FINITE_RESULT` instead of returning `NaN` or `Infinity`
 otherwise invalid result is ever reached. Valid formula inputs retain the existing integer-centavo
 calculation, fallback behavior, and algorithm version; no migration or data repair is required.
 
-The remaining Phase 326 gaps are intentionally deferred: Phase 328 addresses origin-aware cache
-identity and destination collision policy, and Phase 329 addresses zero-radius persistence and the
-map/checkout distance boundary.
+The remaining Phase 326 gap is intentionally deferred to Phase 329, which addresses zero-radius
+persistence and the map/checkout distance boundary.
+
+## Phase 328 — origin-aware road-distance cache identity (2026-09-12)
+
+Phase 328 replaces the provider's coarse destination-cell cache key with a collision-safe JSON tuple
+of `tenantId`, `locationId`, `originLat`, `originLng`, `destLat`, and `destLng`. Coordinates are kept
+at their full finite numeric precision; equivalent numeric strings share an entry, while a moved
+origin or nearby destination is routed independently. Missing tenant/location identity or invalid
+coordinates bypasses the cache rather than using an ambiguous key.
+
+The provider now caches and reuses only finite, non-negative numeric road distances. Invalid success
+payloads are returned as the existing `source: 'unavailable'` fallback and are never retained. The
+600 ms timeout, six-hour TTL, 500-entry FIFO cap, and checkout fail-open behavior remain unchanged.
+No schema, migration, tenant data, or payment formula change is required.
 
 ## What's not here yet
 
