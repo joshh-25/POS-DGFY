@@ -8,6 +8,18 @@ import { getMapStyleUrl, rewriteOpenFreeMapUrl, shouldUseLocalTileProxy } from '
 
 const originalFetch = globalThis.fetch;
 
+const haversineMeters = (from, to) => {
+  const earthRadiusMeters = 6371000;
+  const toRadians = (degrees) => degrees * Math.PI / 180;
+  const deltaLat = toRadians(to[1] - from[1]);
+  const deltaLng = toRadians(to[0] - from[0]);
+  const lat1 = toRadians(from[1]);
+  const lat2 = toRadians(to[1]);
+  const a = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 const maplibreMocks = vi.hoisted(() => {
   const maps = [];
   const markers = [];
@@ -266,6 +278,38 @@ describe('MapPinPicker MapLibre behavior', () => {
     expect(await screen.findByLabelText(/Map location picker/i)).toBeTruthy();
     expect(screen.getByText(/No pin selected yet\./i)).toBeTruthy();
     expect(maplibreMocks.Marker).not.toHaveBeenCalled();
+  });
+
+  it('Phase 326 witness: renders the requested radius as a straight-line coverage preview', async () => {
+    const center = [122.5621, 10.7202];
+    render(<MapPinPicker latitude={center[1]} longitude={center[0]} deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await waitFor(() => {
+      const source = maplibreMocks.maps[0]?.getSource('delivery-radius');
+      expect(source?.data?.features).toHaveLength(1);
+    });
+
+    const coordinates = maplibreMocks.maps[0].getSource('delivery-radius').data.features[0].geometry.coordinates[0];
+    const distances = coordinates
+      .slice(0, -1)
+      .map((coordinate) => haversineMeters(center, coordinate));
+
+    expect(coordinates[0]).toEqual(coordinates[coordinates.length - 1]);
+    expect(Math.min(...distances)).toBeGreaterThan(4990);
+    expect(Math.max(...distances)).toBeLessThan(5010);
+    expect(screen.getByText(/Delivery coverage preview: 5\.00 km radius/i)).toBeTruthy();
+  });
+
+  it('Phase 326 witness: a zero-kilometer radius keeps the overlay empty and hidden', async () => {
+    render(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={0} onChange={vi.fn()} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]?.getSource('delivery-radius')).toBeTruthy());
+
+    expect(maplibreMocks.maps[0].getSource('delivery-radius').data).toEqual({
+      type: 'FeatureCollection',
+      features: []
+    });
+    expect(screen.queryByText(/Delivery coverage preview/i)).toBeNull();
   });
 
   it('keeps POS map tiles on OpenFreeMap when the POS host has no local tile proxy', () => {

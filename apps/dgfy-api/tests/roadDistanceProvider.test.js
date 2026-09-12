@@ -51,13 +51,29 @@ describe('buildRoadDistanceProvider', () => {
         await expect(resolveRoadDistance(baseCall)).resolves.toEqual({ distanceMeters: null, source: 'unavailable' });
     });
 
-    it('caches a successful result for the same tenant/location/destination cell -- the use case is invoked exactly once', async () => {
+    it('Phase 326 witness: nearby destination pins in one 3-decimal cell share a cached result', async () => {
         const calculateRouteUseCase = jest.fn().mockResolvedValue(ok({ distance_meters: 1500 }));
         const { resolveRoadDistance } = buildRoadDistanceProvider({ calculateRouteUseCase });
 
         const first = await resolveRoadDistance(baseCall);
         // A tiny jitter inside the same ~111m grid cell must still hit the cache.
         const second = await resolveRoadDistance({ ...baseCall, destLat: baseCall.destLat + 0.00001 });
+
+        expect(first).toEqual({ distanceMeters: 1500, source: 'road' });
+        expect(second).toEqual({ distanceMeters: 1500, source: 'road' });
+        expect(calculateRouteUseCase).toHaveBeenCalledTimes(1);
+    });
+
+    it('Phase 326 witness: changing the store origin while the destination is unchanged reuses the stale cached result', async () => {
+        const calculateRouteUseCase = jest.fn().mockResolvedValue(ok({ distance_meters: 1500 }));
+        const { resolveRoadDistance } = buildRoadDistanceProvider({ calculateRouteUseCase });
+
+        const first = await resolveRoadDistance(baseCall);
+        const second = await resolveRoadDistance({
+            ...baseCall,
+            originLat: baseCall.originLat + 0.1,
+            originLng: baseCall.originLng + 0.1
+        });
 
         expect(first).toEqual({ distanceMeters: 1500, source: 'road' });
         expect(second).toEqual({ distanceMeters: 1500, source: 'road' });
