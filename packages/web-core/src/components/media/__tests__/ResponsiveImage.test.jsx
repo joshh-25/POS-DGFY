@@ -150,4 +150,15 @@ describe('ResponsiveImage', () => {
     fireEvent.error(image);
     expect(image.hidden).toBe(true);
   });
+
+  it('preserves a caller-provided hidden state when fallback hiding is disabled', () => {
+    const { container } = render(
+      <ResponsiveImage
+        sources={{ src: 'https://cdn.example.test/thumb.jpg' }}
+        hidden
+      />
+    );
+
+    expect(container.querySelector('img').hidden).toBe(true);
+  });
 });

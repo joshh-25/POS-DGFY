@@ -19,15 +19,18 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
   fetchPriority,
   fallbackSrcs = [],
   hideOnError = false,
+  hidden: callerHidden,
   onError,
   ...imageProps
 }) {
   const placeholder = sources.placeholderSrc || sources.placeholderUrl || '';
+  const fallbackKey = (Array.isArray(fallbackSrcs) ? fallbackSrcs : [fallbackSrcs])
+    .map((candidate) => String(candidate || '').trim())
+    .filter(Boolean)
+    .join('\u0000');
   const normalizedFallbackSrcs = React.useMemo(() => (
-    (Array.isArray(fallbackSrcs) ? fallbackSrcs : [fallbackSrcs])
-      .map((candidate) => String(candidate || '').trim())
-      .filter(Boolean)
-  ), [fallbackSrcs]);
+    fallbackKey ? fallbackKey.split('\u0000') : []
+  ), [fallbackKey]);
   const responsiveSourceKey = `${sources.src || ''}\u0000${sources.srcSet || ''}\u0000${sources.avifSrcSet || ''}\u0000${sources.webpSrcSet || ''}\u0000${normalizedFallbackSrcs.join('\u0000')}`;
   const [fallbackState, setFallbackState] = React.useState({ sourceKey: '', index: 0, sourcesFailed: false, imageFailed: false });
   const stateForSource = fallbackState.sourceKey === responsiveSourceKey
@@ -46,7 +49,7 @@ export const ResponsiveImage = React.memo(function ResponsiveImage({
       <img
         {...imageProps}
         src={imageSrc}
-        hidden={hideOnError && stateForSource.imageFailed}
+        hidden={hideOnError ? stateForSource.imageFailed : callerHidden}
         srcSet={responsiveSourcesFailed ? undefined : sources.srcSet}
         sizes={sizes}
         width={width}
