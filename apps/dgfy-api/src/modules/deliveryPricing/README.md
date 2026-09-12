@@ -43,13 +43,18 @@ real, priced breakdown rather than always returning the flat `store_delivery_fee
   removed, missing route identity bypasses caching, and only finite non-negative successful
   distances can be stored or reused. The existing timeout, TTL, FIFO cap, and unavailable fallback
   remain unchanged; no migration or data repair is required.
+- Phase 329 radius and boundary hardening: a shared radius normalizer preserves an explicit `0` km
+  value across POS setup, onboarding, POS settings, and IMS settings while defaulting only missing
+  or unusable input. The POS coverage copy now reflects zero accurately; MapPinPicker keeps the
+  zero-radius overlay empty; and checkout continues to use road distance plus `max_distance_km`,
+  never the map preview radius. No migration or data repair is required.
 
 ## Phase 326 — contract freeze and confirmed gaps (2026-09-12)
 
-Phase 326 is a diagnostic and contract-freeze phase. It adds regression witnesses and records the
-current local saved-settings inventory; it does not change runtime behavior, write production data,
-or add a migration. The witnesses intentionally describe the current gaps so the follow-on fix
-phases can replace them with the corrected expectations.
+Phase 326 was a diagnostic and contract-freeze phase. It added regression witnesses and recorded
+the local saved-settings inventory; it did not change runtime behavior, write production data, or
+add a migration. Its witnesses captured the gaps at the time so the follow-on phases could replace
+them with corrected expectations.
 
 The contracts frozen for the delivery-fee flow are:
 
@@ -64,8 +69,8 @@ The contracts frozen for the delivery-fee flow are:
 5. A road-distance cache entry is valid only for the same tenant, location, origin, and destination
    coordinate. Only finite successful distances may be reused.
 
-The following gaps were reproduced by the Phase 326 tests. Phase 327 closes the increment gap and
-Phase 328 closes the cache identity/collision gaps; the radius gap remains deferred:
+The following gaps were reproduced by the Phase 326 tests. Phase 327 closes the increment gap,
+Phase 328 closes the cache identity/collision gaps, and Phase 329 closes the radius/default gap:
 
 - `PosTenantSetupModal` and `OnboardingSetupModal` use a truthiness fallback that changes an input
   radius of `0` to `5` before saving.
@@ -103,8 +108,7 @@ division and throws `NON_FINITE_RESULT` instead of returning `NaN` or `Infinity`
 otherwise invalid result is ever reached. Valid formula inputs retain the existing integer-centavo
 calculation, fallback behavior, and algorithm version; no migration or data repair is required.
 
-The remaining Phase 326 gap is intentionally deferred to Phase 329, which addresses zero-radius
-persistence and the map/checkout distance boundary.
+Phase 329 closes the remaining Phase 326 radius gap and records the map/checkout distance boundary.
 
 ## Phase 328 — origin-aware road-distance cache identity (2026-09-12)
 
@@ -118,6 +122,21 @@ The provider now caches and reuses only finite, non-negative numeric road distan
 payloads are returned as the existing `source: 'unavailable'` fallback and are never retained. The
 600 ms timeout, six-hour TTL, 500-entry FIFO cap, and checkout fail-open behavior remain unchanged.
 No schema, migration, tenant data, or payment formula change is required.
+
+## Phase 329 — zero-radius persistence and map/checkout boundary (2026-09-12)
+
+Phase 329 closes the remaining radius/default gap from the Phase 326 contract freeze. The shared
+`normalizeDeliveryRadiusKm` helper defaults only missing, blank, or unusable values to `5` km and
+preserves an explicit numeric or string `0`. POS setup, onboarding, POS settings, and IMS settings
+all use that helper before saving or rendering a location, so a merchant can intentionally disable
+the coverage preview without the form silently restoring five kilometers.
+
+`MapPinPicker` remains a straight-line/geodesic visualization: a zero or non-positive radius
+produces no polygon and no coverage copy. Checkout remains independent of that visualization. A
+known road distance is priced against the calculated fee's `max_distance_km` (exactly at the max
+is accepted; beyond it hard-blocks checkout), while an unavailable road distance keeps the existing
+fixed-fee fallback. No database migration, tenant-data repair, fee formula change, or new endpoint
+is required.
 
 ## What's not here yet
 

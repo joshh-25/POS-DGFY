@@ -22833,3 +22833,30 @@ content differs from what was implemented and tested under the "303" label.
   boundary behavior).
 - Completion date: 2026-09-12.
 - Next eligible phase: 329.
+
+## Phase 329 - Zero-radius persistence and map/checkout boundary
+
+- Initiative/release: customer delivery pricing hardening / current release.
+- Objective and scope: preserve an explicit zero-kilometer delivery radius through every location
+  create/update and settings path; default only missing or unusable radius input; keep the map
+  radius as a straight-line visualization; and keep checkout pricing and eligibility on the
+  road-distance plus `max_distance_km` contract.
+- Status: completed.
+- Dependencies: Phase 328 origin-aware road-distance cache identity; Phase 327 minimum-increment
+  and finite-result validation; Phase 326 delivery-fee, radius, and distance-boundary contract
+  freeze; ADR 0078 Decision 2 and the existing tenant-location API validator.
+- Acceptance and validation evidence: API location persistence/validation and checkout regression
+  tests passed (3 suites, 28 tests); shared map, radius-contract, onboarding, and POS terminal
+  tests passed (4 files, 53 tests); API and IMS lint passed with existing warnings only; all three
+  frontend production builds passed; architecture, docs/ADR, compliance, agent-surface,
+  workspace-hygiene, and whitespace checks passed.
+- Contracts/files: `packages/web-core/src/features/settings/deliveryRadius.js`, the POS setup,
+  onboarding, POS terminal-settings, and IMS settings location paths, the tenant-location use case,
+  MapPinPicker and checkout regression tests, the delivery-pricing module README, and the Phase 329
+  compliance declaration.
+- Migration: none required; the existing `tenant_locations.delivery_radius_km` column and API
+  contract already support `0..100` km at two-decimal precision, and checkout fee math is unchanged.
+- Residual/deferred scope: none for the customer delivery-pricing hardening track. Future delivery
+  features remain governed by the existing module README and ADR 0078 backlog boundaries.
+- Completion date: 2026-09-12.
+- Next eligible phase: 330.
