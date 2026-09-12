@@ -542,7 +542,7 @@ describe('MapPinPicker MapLibre behavior', () => {
     expect(screen.getByText(/cannot be expanded in this view/i)).toBeTruthy();
   });
 
-  it('Phase 326 witness: renders the requested radius as a straight-line coverage preview', async () => {
+  it('Phase 329: renders the requested radius as a straight-line coverage preview', async () => {
     const center = [122.5621, 10.7202];
     render(<MapPinPicker latitude={center[1]} longitude={center[0]} deliveryRadiusKm={5} onChange={vi.fn()} />);
 
@@ -562,10 +562,13 @@ describe('MapPinPicker MapLibre behavior', () => {
     expect(screen.getByText(/Delivery coverage preview: 5\.00 km radius/i)).toBeTruthy();
   });
 
-  it('Phase 326 witness: a zero-kilometer radius keeps the overlay empty and hidden', async () => {
-    render(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={0} onChange={vi.fn()} />);
+  it('Phase 329: a zero-kilometer radius keeps the overlay empty and hidden', async () => {
+    const { rerender } = render(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={vi.fn()} />);
 
     await waitFor(() => expect(maplibreMocks.maps[0]?.getSource('delivery-radius')).toBeTruthy());
+    expect(maplibreMocks.maps[0].getSource('delivery-radius').data.features).toHaveLength(1);
+
+    rerender(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={0} onChange={vi.fn()} />);
 
     expect(maplibreMocks.maps[0].getSource('delivery-radius').data).toEqual({
       type: 'FeatureCollection',

@@ -75,6 +75,7 @@ import {
   normalizeStorefrontBusinessHours,
   serializeStorefrontBusinessHours
 } from '../../../packages/web-core/src/features/settings/storefrontBusinessHours.js';
+import { normalizeDeliveryRadiusKm } from '../../../packages/web-core/src/features/settings/deliveryRadius.js';
 import StorefrontBusinessHoursScheduler from '../../../packages/web-core/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { evaluateFulfillmentLeadTime } from '../../../packages/web-core/src/features/settings/fulfillmentLeadTime.js';
 import resolveAssetUrl from '../../../packages/web-core/src/utils/assetUrl.js';
@@ -1604,7 +1605,7 @@ export default function Settings() {
       longitude: location?.longitude == null ? '' : String(location.longitude),
       pin_confirmed: pinConfirmed,
       location_version: String(location?.updated_at || ''),
-      delivery_radius_km: location?.delivery_radius_km == null ? '5' : String(location.delivery_radius_km),
+      delivery_radius_km: String(normalizeDeliveryRadiusKm(location?.delivery_radius_km)),
       current_wait_time_minutes: location?.current_wait_time_minutes == null ? '15' : String(location.current_wait_time_minutes),
       is_open: location?.is_open !== false,
       is_active: location?.is_active !== false,
@@ -1626,7 +1627,7 @@ export default function Settings() {
       address_line: String(locationForm.address_line || '').trim(),
       latitude: Number(locationForm.latitude),
       longitude: Number(locationForm.longitude),
-      delivery_radius_km: Number(locationForm.delivery_radius_km || 0),
+      delivery_radius_km: normalizeDeliveryRadiusKm(locationForm.delivery_radius_km),
       current_wait_time_minutes: Number(locationForm.current_wait_time_minutes || 0),
       is_open: locationForm.is_open === true,
       is_active: locationForm.is_active !== false,

@@ -17,6 +17,15 @@ const toNullableDayCount = (value) => {
     return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
 };
 
+// A zero-kilometer radius is an intentional tenant setting. Default only missing or unusable
+// values so internal callers retain the same zero-radius contract as the Joi request validator.
+const normalizeDeliveryRadiusKm = (value) => {
+    const raw = typeof value === 'string' ? value.trim() : value;
+    if (raw === '' || raw === null || raw === undefined) return 5;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 5;
+};
+
 const parseExpectedUpdateTimestamp = (payload = {}) => {
     const raw = payload.last_known_updated_at ?? payload.expected_updated_at ?? null;
     if (!raw) return null;
@@ -30,7 +39,7 @@ const normalizePayload = (payload = {}) => ({
     address_line: String(payload.address_line || '').trim(),
     latitude: Number(payload.latitude),
     longitude: Number(payload.longitude),
-    delivery_radius_km: Number(payload.delivery_radius_km ?? 5),
+    delivery_radius_km: normalizeDeliveryRadiusKm(payload.delivery_radius_km),
     is_open: payload.is_open !== false,
     is_active: payload.is_active !== false,
     is_primary_storefront: payload.is_primary_storefront === true,
