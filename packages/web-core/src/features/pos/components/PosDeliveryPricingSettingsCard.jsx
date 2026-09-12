@@ -8,6 +8,7 @@ import { getAllSettings, updateSettings } from '@/services/settingsService.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   DEFAULT_DELIVERY_FEE_CALC,
+  MIN_DELIVERY_INCREMENT_KM,
   normalizeDeliveryFeeCalcSettings,
   normalizeDeliveryFeeMode,
   serializeDeliveryFeeCalcForSave
@@ -251,8 +252,8 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
                 <Input
                   id="delivery-calc-increment-km"
                   type="number"
-                  min="0.0001"
-                  step="0.0001"
+                  min={String(MIN_DELIVERY_INCREMENT_KM)}
+                  step={String(MIN_DELIVERY_INCREMENT_KM)}
                   disabled={locked || saving}
                   value={form.storeDeliveryFeeCalc?.increment_km ?? ''}
                   onChange={(e) => updateCalcField('increment_km', e.target.value)}
@@ -275,7 +276,8 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
             </div>
             {calcIncomplete && (
               <p className="text-xs text-amber-700">
-                This formula is incomplete or invalid (max distance must be at least the included
+                This formula is incomplete or invalid (charge increment must be at least{' '}
+                {MIN_DELIVERY_INCREMENT_KM} km and max distance must be at least the included
                 distance) -- saving now will leave the previously stored formula, if any, unchanged.
               </p>
             )}

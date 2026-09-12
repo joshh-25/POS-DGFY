@@ -25,6 +25,8 @@
 // would let a tenant select a mode with no defined behavior anywhere, which is worse than simply
 // not offering it yet.
 
+import { MIN_DELIVERY_INCREMENT_KM } from '@sieitzz/shared-constants/deliveryFee';
+
 export const DELIVERY_FEE_MODES = Object.freeze(['fixed', 'calculated', 'free']);
 
 const DEFAULT_MODE = 'fixed';
@@ -49,7 +51,7 @@ const normalizeCalcBlob = (rawCalc) => {
     if (!isFiniteNumber(minFee) || minFee < 0) return null;
     if (!isFiniteNumber(includedKm) || includedKm < 0) return null;
     if (!isFiniteNumber(perKmRate) || perKmRate < 0) return null;
-    if (!isFiniteNumber(incrementKm) || incrementKm <= 0) return null;
+    if (!isFiniteNumber(incrementKm) || incrementKm < MIN_DELIVERY_INCREMENT_KM) return null;
     if (!isFiniteNumber(maxDistanceKm) || maxDistanceKm <= 0) return null;
     // A cap smaller than the distance the minimum fee already covers is not a valid formula --
     // fail toward null (an unusable calc, same as absent) rather than accept a formula that can

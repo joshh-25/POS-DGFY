@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_DELIVERY_FEE_CALC,
+  MIN_DELIVERY_INCREMENT_KM,
   normalizeDeliveryFeeCalcSettings,
   normalizeDeliveryFeeMode,
   serializeDeliveryFeeCalcForSave
@@ -77,9 +78,23 @@ describe('serializeDeliveryFeeCalcForSave', () => {
     expect(serializeDeliveryFeeCalcForSave({ ...validCalc, per_km_rate: '' })).toBeUndefined();
   });
 
-  it('returns undefined when increment_km or max_distance_km is zero (must be > 0)', () => {
+  it('returns undefined when increment_km or max_distance_km is below their allowed minimum', () => {
     expect(serializeDeliveryFeeCalcForSave({ ...validCalc, increment_km: '0' })).toBeUndefined();
+    expect(serializeDeliveryFeeCalcForSave({ ...validCalc, increment_km: '0.0009' })).toBeUndefined();
     expect(serializeDeliveryFeeCalcForSave({ ...validCalc, max_distance_km: '0' })).toBeUndefined();
+  });
+
+  it('accepts exactly the one-meter increment boundary', () => {
+    expect(serializeDeliveryFeeCalcForSave({
+      ...validCalc,
+      increment_km: String(MIN_DELIVERY_INCREMENT_KM)
+    })).toEqual({
+      min_fee: 50,
+      included_km: 3,
+      per_km_rate: 10,
+      increment_km: MIN_DELIVERY_INCREMENT_KM,
+      max_distance_km: 15
+    });
   });
 
   it('returns undefined when max_distance_km is less than included_km', () => {

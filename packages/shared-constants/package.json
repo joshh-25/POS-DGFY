@@ -56,6 +56,11 @@
     "./coverPhotoTransform": {
       "import": "./src/coverPhotoTransform.js",
       "default": "./src/coverPhotoTransform.js"
+    },
+    "./deliveryFee": {
+      "import": "./src/deliveryFee.js",
+      "default": "./src/deliveryFee.js"
+    }
     }
   },
   "files": [

@@ -6,6 +6,7 @@ import {
 } from '../modules/shared/utils/customerAccessPolicy.js';
 import { ORDER_METHOD_FEE_METHODS } from '../modules/shared/constants/orderMethods.js';
 import { DELIVERY_FEE_MODES } from '../modules/deliveryPricing/index.js';
+import { MIN_DELIVERY_INCREMENT_KM } from '@sieitzz/shared-constants/deliveryFee';
 
 const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -463,7 +464,9 @@ const storeDeliveryFeeCalcSchema = Joi.object({
   min_fee: Joi.number().min(0).precision(4).required(),
   included_km: Joi.number().min(0).precision(4).required(),
   per_km_rate: Joi.number().min(0).precision(4).required(),
-  increment_km: Joi.number().greater(0).precision(4).required(),
+  increment_km: Joi.number().min(MIN_DELIVERY_INCREMENT_KM).precision(4).required().messages({
+    'number.min': `Charge increment must be at least ${MIN_DELIVERY_INCREMENT_KM} km (1 meter)`
+  }),
   max_distance_km: Joi.number().greater(0).precision(4).min(Joi.ref('included_km')).required().messages({
     'number.min': 'Max distance must be greater than or equal to the included distance'
   })
