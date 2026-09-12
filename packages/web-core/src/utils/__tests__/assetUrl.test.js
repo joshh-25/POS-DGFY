@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  advanceAssetImageFallback,
+  resolveNextAssetImageFallback,
   resolveAppAssetUrl,
   resolveAssetOrigin,
   resolveAssetUrl,
@@ -70,34 +70,28 @@ describe('assetUrl utilities', () => {
     });
   });
 
-  it('advances through image fallbacks without retrying the current source', () => {
-    const image = {
-      currentSrc: 'https://pos.example.test/uploads/item/thumb.webp',
-      src: 'https://pos.example.test/uploads/item/thumb.webp',
-      srcset: 'https://pos.example.test/uploads/item/thumb.webp 400w',
-      dataset: {},
-      ownerDocument: { baseURI: 'https://pos.example.test/' }
-    };
-    const event = { currentTarget: image };
-
-    expect(advanceAssetImageFallback(event, [
+  it('resolves image fallbacks without mutating a DOM element', () => {
+    const candidates = [
       '/uploads/item/large.webp',
       '/uploads/company-icon.png'
-    ])).toBe(true);
-    expect(image.src).toBe('/uploads/item/large.webp');
-    expect(image.srcset).toBe('');
+    ];
 
-    image.currentSrc = 'https://pos.example.test/uploads/item/large.webp';
-    expect(advanceAssetImageFallback(event, [
-      '/uploads/item/large.webp',
-      '/uploads/company-icon.png'
-    ])).toBe(true);
-    expect(image.src).toBe('/uploads/company-icon.png');
-
-    image.currentSrc = 'https://pos.example.test/uploads/company-icon.png';
-    expect(advanceAssetImageFallback(event, [
-      '/uploads/item/large.webp',
-      '/uploads/company-icon.png'
-    ])).toBe(false);
+    expect(resolveNextAssetImageFallback({
+      currentUrl: 'https://pos.example.test/uploads/item/thumb.webp',
+      candidates,
+      baseHref: 'https://pos.example.test/'
+    })).toEqual({ src: '/uploads/item/large.webp', nextIndex: 1 });
+    expect(resolveNextAssetImageFallback({
+      currentUrl: 'https://pos.example.test/uploads/item/large.webp',
+      candidates,
+      startIndex: 1,
+      baseHref: 'https://pos.example.test/'
+    })).toEqual({ src: '/uploads/company-icon.png', nextIndex: 2 });
+    expect(resolveNextAssetImageFallback({
+      currentUrl: 'https://pos.example.test/uploads/company-icon.png',
+      candidates,
+      startIndex: 2,
+      baseHref: 'https://pos.example.test/'
+    })).toBeNull();
   });
 });
