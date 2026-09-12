@@ -48,6 +48,10 @@
     "./downpaymentDefaults": {
       "import": "./src/downpaymentDefaults.js",
       "default": "./src/downpaymentDefaults.js"
+    },
+    "./deliveryFee": {
+      "import": "./src/deliveryFee.js",
+      "default": "./src/deliveryFee.js"
     }
   },
   "files": [
