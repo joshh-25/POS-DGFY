@@ -51,21 +51,26 @@ describe('buildRoadDistanceProvider', () => {
         await expect(resolveRoadDistance(baseCall)).resolves.toEqual({ distanceMeters: null, source: 'unavailable' });
     });
 
-    it('Phase 326 witness: nearby destination pins in one 3-decimal cell share a cached result', async () => {
-        const calculateRouteUseCase = jest.fn().mockResolvedValue(ok({ distance_meters: 1500 }));
+    it('Phase 328 keeps nearby destination pins separate instead of sharing a coarse grid result', async () => {
+        const calculateRouteUseCase = jest.fn()
+            .mockResolvedValueOnce(ok({ distance_meters: 1500 }))
+            .mockResolvedValueOnce(ok({ distance_meters: 1900 }));
         const { resolveRoadDistance } = buildRoadDistanceProvider({ calculateRouteUseCase });
 
         const first = await resolveRoadDistance(baseCall);
-        // A tiny jitter inside the same ~111m grid cell must still hit the cache.
+        // A tiny jitter must be routed independently; the old three-decimal grid incorrectly
+        // reused the first route for this materially different destination.
         const second = await resolveRoadDistance({ ...baseCall, destLat: baseCall.destLat + 0.00001 });
 
         expect(first).toEqual({ distanceMeters: 1500, source: 'road' });
-        expect(second).toEqual({ distanceMeters: 1500, source: 'road' });
-        expect(calculateRouteUseCase).toHaveBeenCalledTimes(1);
+        expect(second).toEqual({ distanceMeters: 1900, source: 'road' });
+        expect(calculateRouteUseCase).toHaveBeenCalledTimes(2);
     });
 
-    it('Phase 326 witness: changing the store origin while the destination is unchanged reuses the stale cached result', async () => {
-        const calculateRouteUseCase = jest.fn().mockResolvedValue(ok({ distance_meters: 1500 }));
+    it('Phase 328 includes the store origin so moving the pin recalculates the route', async () => {
+        const calculateRouteUseCase = jest.fn()
+            .mockResolvedValueOnce(ok({ distance_meters: 1500 }))
+            .mockResolvedValueOnce(ok({ distance_meters: 2600 }));
         const { resolveRoadDistance } = buildRoadDistanceProvider({ calculateRouteUseCase });
 
         const first = await resolveRoadDistance(baseCall);
@@ -76,7 +81,19 @@ describe('buildRoadDistanceProvider', () => {
         });
 
         expect(first).toEqual({ distanceMeters: 1500, source: 'road' });
-        expect(second).toEqual({ distanceMeters: 1500, source: 'road' });
+        expect(second).toEqual({ distanceMeters: 2600, source: 'road' });
+        expect(calculateRouteUseCase).toHaveBeenCalledTimes(2);
+    });
+
+    it('caches the same complete route identity exactly once', async () => {
+        const calculateRouteUseCase = jest.fn().mockResolvedValue(ok({ distance_meters: 1500 }));
+        const { resolveRoadDistance } = buildRoadDistanceProvider({ calculateRouteUseCase });
+
+        const first = await resolveRoadDistance(baseCall);
+        const second = await resolveRoadDistance({ ...baseCall });
+
+        expect(first).toEqual({ distanceMeters: 1500, source: 'road' });
+        expect(second).toEqual(first);
         expect(calculateRouteUseCase).toHaveBeenCalledTimes(1);
     });
 
@@ -91,6 +108,34 @@ describe('buildRoadDistanceProvider', () => {
 
         expect(first).toEqual({ distanceMeters: null, source: 'unavailable' });
         expect(second).toEqual({ distanceMeters: 900, source: 'road' });
+        expect(calculateRouteUseCase).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([NaN, Infinity, -1, null, undefined])('does NOT cache an invalid successful distance: %p', async (distanceMeters) => {
+        const calculateRouteUseCase = jest.fn()
+            .mockResolvedValueOnce(ok({ distance_meters: distanceMeters }))
+            .mockResolvedValueOnce(ok({ distance_meters: 900 }));
+        const { resolveRoadDistance } = buildRoadDistanceProvider({ calculateRouteUseCase });
+
+        const first = await resolveRoadDistance(baseCall);
+        const second = await resolveRoadDistance(baseCall);
+
+        expect(first).toEqual({ distanceMeters: null, source: 'unavailable' });
+        expect(second).toEqual({ distanceMeters: 900, source: 'road' });
+        expect(calculateRouteUseCase).toHaveBeenCalledTimes(2);
+    });
+
+    it('bypasses caching when required tenant or location identity is missing', async () => {
+        const calculateRouteUseCase = jest.fn()
+            .mockResolvedValueOnce(ok({ distance_meters: 500 }))
+            .mockResolvedValueOnce(ok({ distance_meters: 700 }));
+        const { resolveRoadDistance } = buildRoadDistanceProvider({ calculateRouteUseCase });
+
+        const first = await resolveRoadDistance({ ...baseCall, tenantId: null });
+        const second = await resolveRoadDistance({ ...baseCall, tenantId: null });
+
+        expect(first).toEqual({ distanceMeters: 500, source: 'road' });
+        expect(second).toEqual({ distanceMeters: 700, source: 'road' });
         expect(calculateRouteUseCase).toHaveBeenCalledTimes(2);
     });
 
