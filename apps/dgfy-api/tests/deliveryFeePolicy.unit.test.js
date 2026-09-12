@@ -112,4 +112,22 @@ describe('computeCalculatedDeliveryFeeCentavos — edge behavior not covered by 
             expect(error.details).toBeDefined();
         }
     });
+
+    test('Phase 326 witness: the smallest accepted increment rounds to zero meters and produces non-finite math', () => {
+        // The validator and shared serializer currently admit 0.0001 km. The policy converts
+        // increments to whole meters, so this boundary value becomes 0 and exposes the
+        // divide-by-zero gap that Phase 327 will close.
+        const result = computeCalculatedDeliveryFeeCentavos({
+            distanceMeters: 3001,
+            config: {
+                ...REFERENCE_CONFIG,
+                increment_km: 0.0001
+            }
+        });
+
+        expect(result.outOfRange).toBe(false);
+        expect(result.feeCentavos).toBeNaN();
+        expect(result.billedKm).toBeNaN();
+        expect(result.incrementsCharged).toBeNaN();
+    });
 });
