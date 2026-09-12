@@ -10551,7 +10551,15 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     } }
                 );
             }
-            const hasBroadPosTransaction = hasEffectivePermission(user, PERMISSIONS.POS.actions.TRANSACT_POS);
+            // Older internal callers pass only user_id and rely on the route to have performed
+            // authorization. Preserve that compatibility while enforcing the contract whenever a
+            // request carries the authenticated permission context.
+            const hasPermissionContext = Array.isArray(user?.permissions)
+                || Object.prototype.hasOwnProperty.call(user || {}, 'role')
+                || Object.prototype.hasOwnProperty.call(user || {}, 'is_master_admin')
+                || user?.staffRole !== undefined;
+            const hasBroadPosTransaction = !hasPermissionContext
+                || hasEffectivePermission(user, PERMISSIONS.POS.actions.TRANSACT_POS);
             const activeShift = hasBroadPosTransaction ? await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId: actingUserId,

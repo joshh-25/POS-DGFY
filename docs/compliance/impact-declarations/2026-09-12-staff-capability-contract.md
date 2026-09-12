@@ -44,5 +44,7 @@ this declaration does not claim a live policy-engine result.
 
 - Contract tests cover catalog parity, explicit/staff-role/default precedence, cache invalidation,
   inactive-account response, assignment denial reasons, and broad-permission compatibility.
+- Follow-up verification confirms the assigned delivery-run guard is applied at dispatch time,
+  while run-personnel administration remains on the existing broad POS path.
 - Migration syntax and API architecture/compliance guardrails are run before PR creation.
 - No production deployment or live tenant qualification is claimed by this declaration.
