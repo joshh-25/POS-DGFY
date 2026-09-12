@@ -22808,3 +22808,28 @@ content differs from what was implemented and tested under the "303" label.
 - Residual/deferred scope: Phase 328 (origin-aware finite-result cache identity and destination
   collision policy) and Phase 329 (zero-radius persistence/defaults and map/checkout boundary).
 - Next eligible phase: 328.
+
+## Phase 328 - Origin-aware road-distance cache identity and collision policy
+
+- Initiative/release: customer delivery pricing hardening / current release.
+- Objective and scope: close the Phase 326 road-distance cache gaps by making cache identity include
+  tenant, location, origin, and destination coordinates; remove coarse destination-cell collisions;
+  bypass caching when required identity or coordinates are missing; and cache/reuse only finite,
+  non-negative successful road distances. Preserve the existing timeout, TTL, FIFO cap, unavailable
+  fallback, and checkout fail-open behavior. Do not change fee math, tenant data, schema, or add a
+  migration.
+- Status: completed.
+- Dependencies: Phase 327 validation hardening; Phase 326 cache contract; Phases 235-237 road-distance
+  adapter and checkout wiring; ADR 0078 Decision 2 and ADR 0034's modular delivery boundary.
+- Acceptance and validation evidence: the delivery-pricing regression set passed 8 suites/152 tests,
+  including `roadDistanceProvider.test.js` (16/16); API lint passed with zero errors and only
+  existing warnings; architecture, docs/ADR, compliance, agent-surface, workspace-hygiene,
+  node-syntax, and diff checks passed.
+- Contracts/files: `apps/dgfy-api/src/modules/deliveryPricing/repositories/roadDistanceProvider.js`,
+  `apps/dgfy-api/tests/roadDistanceProvider.test.js`, module README, and Phase 328 compliance
+  declaration.
+- Migration: none required; cache identity and response validation are in-process behavior only.
+- Residual/deferred scope: Phase 329 (zero-radius persistence/defaults and map/checkout distance
+  boundary behavior).
+- Completion date: 2026-09-12.
+- Next eligible phase: 329.
