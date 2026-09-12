@@ -150,6 +150,7 @@ import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonom
 import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
+import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
 import resolveAssetUrl, { advanceAssetImageFallback } from '@/src/utils/assetUrl.js';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
@@ -7136,7 +7137,7 @@ function SettingsWorkspace({
       latitude: String(location.latitude ?? ''),
       longitude: String(location.longitude ?? ''),
       location_version: String(location.updated_at || ''),
-      delivery_radius_km: String(location.delivery_radius_km ?? '5'),
+      delivery_radius_km: String(normalizeDeliveryRadiusKm(location.delivery_radius_km)),
       current_wait_time_minutes: String(location.current_wait_time_minutes ?? '15'),
       is_open: location.is_open !== false,
       is_active: location.is_active !== false,
@@ -7160,7 +7161,7 @@ function SettingsWorkspace({
       address_line: String(locationForm.address_line || '').trim(),
       latitude: Number(locationForm.latitude),
       longitude: Number(locationForm.longitude),
-      delivery_radius_km: Number(locationForm.delivery_radius_km || 0),
+      delivery_radius_km: normalizeDeliveryRadiusKm(locationForm.delivery_radius_km),
       current_wait_time_minutes: Number(locationForm.current_wait_time_minutes || 0),
       is_open: locationForm.is_open !== false,
       is_active: locationForm.is_active !== false,
@@ -9268,7 +9269,7 @@ function SettingsWorkspace({
 
                 <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 flex items-start gap-2 text-xs text-blue-800 font-medium">
                   <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
-                  <span>Delivery coverage preview: {locationForm.delivery_radius_km || 5.00} km radius around the pinned location.</span>
+                  <span>Delivery coverage preview: {normalizeDeliveryRadiusKm(locationForm.delivery_radius_km).toFixed(2)} km radius around the pinned location.</span>
                 </div>
               </div>
 

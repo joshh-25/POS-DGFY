@@ -23,6 +23,7 @@ import {
   normalizeStorefrontBusinessHours,
   serializeStorefrontBusinessHours
 } from '@/src/features/settings/storefrontBusinessHours.js';
+import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 
@@ -92,7 +93,7 @@ const createLocationDraft = (location = {}, companyName = '', options = {}) => (
   address_line: String(location?.address_line || '').trim(),
   latitude: location?.latitude ?? '',
   longitude: location?.longitude ?? '',
-  delivery_radius_km: Number(location?.delivery_radius_km ?? 5),
+  delivery_radius_km: normalizeDeliveryRadiusKm(location?.delivery_radius_km),
   supports_delivery: location?.supports_delivery !== false,
   supports_pickup: location?.supports_pickup !== false,
   is_primary_storefront: location?.is_primary_storefront === true || options.defaultPrimary === true,
@@ -456,7 +457,7 @@ export default function PosTenantSetupModal({
         address_line: addressLine,
         latitude,
         longitude,
-        delivery_radius_km: Number(locationDraft.delivery_radius_km) || 5,
+        delivery_radius_km: normalizeDeliveryRadiusKm(locationDraft.delivery_radius_km),
         is_active: locationDraft.is_active !== false,
         is_open: true,
         is_primary_storefront: locationDraft.is_primary_storefront === true || normalizedLocations.length === 0,

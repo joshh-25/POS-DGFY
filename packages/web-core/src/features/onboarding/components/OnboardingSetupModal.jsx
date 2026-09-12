@@ -24,6 +24,7 @@ import {
   normalizeStorefrontBusinessHours,
   serializeStorefrontBusinessHours
 } from '../../settings/storefrontBusinessHours.js';
+import { normalizeDeliveryRadiusKm } from '../../settings/deliveryRadius.js';
 import StorefrontBusinessHoursScheduler from '../../settings/StorefrontBusinessHoursScheduler.jsx';
 import {
   filterCustomerFacingPresets,
@@ -364,7 +365,7 @@ export default function OnboardingSetupModal({
             address_line: primary.address_line || '',
             latitude: primary.latitude ?? '',
             longitude: primary.longitude ?? '',
-            delivery_radius_km: primary.delivery_radius_km ?? 5,
+            delivery_radius_km: normalizeDeliveryRadiusKm(primary.delivery_radius_km),
             business_hours: normalizeStorefrontBusinessHours(savedBusinessHours)
           });
         })
@@ -478,7 +479,7 @@ export default function OnboardingSetupModal({
       address_line: String(locationForm.address_line || '').trim(),
       latitude: Number(locationForm.latitude),
       longitude: Number(locationForm.longitude),
-      delivery_radius_km: Number(locationForm.delivery_radius_km || 5),
+      delivery_radius_km: normalizeDeliveryRadiusKm(locationForm.delivery_radius_km),
       is_active: true,
       is_open: true,
       is_primary_storefront: true
