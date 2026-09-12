@@ -22740,3 +22740,36 @@ content differs from what was implemented and tested under the "303" label.
 - Completion date: 2026-09-10.
 - Contracts/files: `apps/dgfy-api/src/modules/tenants/usecases/tenantRegistrationActionPolicy.js`, `apps/dgfy-api/src/modules/tenants/usecases/listTenantsUseCase.js`, `apps/dgfy-api/src/modules/tenants/repositories/tenantAdminRepository.js`, `apps/dgfy-api/tests/listTenants.usecase.test.js`, `apps/dgfy-ims/Pages/admin/TenantManager.jsx`, `packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx`, `docs/api/specification.md`, `docs/features/PLATFORM_ADMIN_AND_QA_INVOICING.md`, `docs/compliance/impact-declarations/2026-09-10-admin-tenant-approval-action-guard.md`.
 - Next eligible phase: 326.
+
+## Phase 326 - Delivery-fee, radius, and distance-cache contract freeze
+
+- Initiative/release: customer delivery pricing hardening / current release.
+- Objective and scope: freeze the existing delivery-fee, radius, straight-line preview, road-distance,
+  fallback, max-distance, and cache-identity contracts; add regression witnesses for the four
+  confirmed gaps; and inventory the saved local delivery settings read-only. This phase is diagnostic
+  and documentation-only at runtime: it deliberately does not apply the Phase 327-329 fixes, write
+  tenant data, or add a migration.
+- Status: completed.
+- Dependencies: Phases 235-237 delivery-fee policy and road-distance wiring; ADR 0066 (voucher-sale
+  price resolution), ADR 0078 (customer delivery-fee modes), ADR 0034 (manual delivery-job
+  foundation), the existing tenant-location validator/model, and MapPinPicker.
+- Acceptance and validation evidence: API witnesses cover the accepted `0.0001 km` increment's
+  zero-meter/non-finite result, origin changes reusing the current cache entry, and three-decimal
+  destination-cell reuse. Shared frontend witnesses cover the POS/onboarding `0 -> 5 km` persistence
+  fallbacks; MapPinPicker tests verify the current five-kilometer straight-line polygon and the
+  zero-radius empty/hidden overlay. The local MariaDB inventory was read-only: 15 active tenants,
+  15 locations across 11 tenants, 14 locations at 5.00 km, one at 8.00 km, no persisted zero radius,
+  and no persisted calculated-fee mode/blob. Focused API tests passed 4 suites/67 tests, shared
+  frontend tests passed 3 files/39 tests, all three frontend production builds passed, and
+  architecture, docs/ADR, compliance, workspace-hygiene, lint (zero errors), and diff checks passed.
+  No migration is required.
+- Completion date: 2026-09-12.
+- Contracts/files: `apps/dgfy-api/tests/deliveryFeePolicy.unit.test.js`,
+  `apps/dgfy-api/tests/roadDistanceProvider.test.js`,
+  `packages/web-core/src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx`,
+  `packages/web-core/src/features/__tests__/deliveryRadiusPhase326.contract.test.js`,
+  `apps/dgfy-api/src/modules/deliveryPricing/README.md`, and the Phase 326 compliance declaration.
+- Deferred fixes: Phase 327 (minimum increment and finite fee validation), Phase 328 (origin-aware
+  finite-result cache identity/collision policy), and Phase 329 (zero-radius persistence/defaults and
+  distance-boundary rollout behavior).
+- Next eligible phase: 327.
