@@ -23,6 +23,9 @@ operations to the provider:
 
 All mutations require an idempotency key. The provider client supports the
 local HMAC fixture profile and fails closed in production unless the
-asymmetric HTTP Message Signature profile is configured. No DGLaundry
+asymmetric HTTP Message Signature profile is configured. In that profile,
+DGFY sends a short-lived bearer access token plus separate `Signature-Input`
+and `Signature` headers using the P-256 `dgfy-external-runtime-v1` profile;
+DGLaundry events use the Ed25519 `dglaundry-dgfy-v1` profile. No DGLaundry
 password, refresh token, private key, database credential, or runtime source
 is imported.
