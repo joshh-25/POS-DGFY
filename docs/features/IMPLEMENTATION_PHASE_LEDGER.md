@@ -22790,10 +22790,10 @@ content differs from what was implemented and tested under the "303" label.
   tests passed (7 suites/136 tests); shared serializer, POS behavior, and Phase 327 contract tests
   passed (3 files/21 tests); API/IMS lint and all three frontend builds passed; architecture,
   docs/ADR, compliance, workspace-hygiene, and diff checks passed. The full API suite was also
-  exercised and isolated two pre-existing failures outside this phase: the image lifecycle test
-  still expects a legacy `-v2-` path while the implementation emits `-v3-`, and the admin tenant
-  lifecycle integration cannot load its missing mocked `verifyConnection` export. Neither failure
-  touches delivery pricing or was changed here.
+  exercised and reported two unrelated failures outside this phase: the image lifecycle test still
+  expects a legacy `-v2-` path while the implementation emits `-v3-`, and the admin tenant lifecycle
+  integration cannot load its missing mocked `verifyConnection` export. Neither failure touches
+  delivery pricing or was changed here.
 - Completion date: 2026-09-12.
 - Contracts/files: `packages/shared-constants/src/deliveryFee.js` and its package export;
   `apps/dgfy-api/src/modules/deliveryPricing/domain/deliveryFeePolicy.js`;
