@@ -181,7 +181,8 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
 - **Observer** (#368) — ingests Sentry error/performance signals, triages against a noise policy,
   files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
 - **Verifier/QA** (#331/#536) — verifies a merged, deployed change against a live environment,
-  then flips `For QA` to `Done` or `Failed`. @.agents/skills/verifier/SKILL.md
+  then flips `For QA` to `For Prod` or `Failed` — `Done` now happens later, at `promoter`'s
+  post-production confirmation. @.agents/skills/verifier/SKILL.md
 - **Promoter/Release** (#331/#512) — runs a frozen-candidate `develop → staging → main` promotion
   end to end, observes the candidate, and coordinates code-level repairs on `staging`
   (default again since #1404, 2026-09-02, reversing ADR 0074/#980's 2026-08-25 two-stage default; a

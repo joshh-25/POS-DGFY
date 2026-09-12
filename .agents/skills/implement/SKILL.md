@@ -157,7 +157,7 @@ handoffs and composite instructions".
 
 ## Board transitions
 
-Added 2026-08-15 (#331 board-lane wiring). Worker owns two of the eight `Status` lanes on project
+Added 2026-08-15 (#331 board-lane wiring). Worker owns two of the nine `Status` lanes on project
 #10 — the full lifecycle and the `Who moves it` ownership table live in
 `docs/process/ISSUE-TAXONOMY.md`'s "Board status semantics"; read it there rather than expecting
 this section to restate it.
