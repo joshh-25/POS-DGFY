@@ -13,6 +13,7 @@ import { resolveWorkflowCapabilitySettings } from '../../shared/utils/workflowCa
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import logger from '../../../config/logger.js';
+import { assertStaffAssignment } from '../../staff/index.js';
 import {
     applyDeliveryPersonnelAssignment,
     findOperationReplayEntry,
@@ -507,6 +508,7 @@ export const buildSetDeliveryRunPersonnelUseCase = ({
                     { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
                 );
             }
+            await assertStaffAssignment({ user, resourceType: 'delivery_run', resourceId: runId, transaction });
             if (run.location_id != null) {
                 await resolveLocationScope({
                     requestedLocationId: run.location_id,

@@ -61,6 +61,7 @@ const buildUserPayload = (user, workflowMode, extra = {}) => ({
   email: user.email,
   phone_number: user.phone_number || null,
   role: user.role,
+  staff_role_id: user.staff_role_id || null,
   role_preset_key: user.role_preset_key || null,
   ...serializeRolePresetMetadata(user, workflowMode),
   ...extra
@@ -116,8 +117,13 @@ const assertAcceptedUserEditable = (user, action) => {
 
 const findVisibleUserById = async (User, userId, queryOptions = {}) => {
   const { where = {}, ...rest } = queryOptions;
+  const include = Array.isArray(rest.include) ? rest.include : [];
+  if (!include.some((entry) => entry?.as === 'staffRole')) {
+    include.push({ model: dbStore.get('StaffRole'), as: 'staffRole', required: false });
+  }
   return User.findOne({
     ...rest,
+    include,
     where: buildVisibleWhere({ ...where, user_id: userId })
   });
 };
@@ -191,7 +197,7 @@ const mirrorInvitationToDgfyAccount = async ({
 export const getCurrentUser = async (userId) => {
   const User = dbStore.get('User');
   const user = await findVisibleUserById(User, userId, {
-    attributes: ['user_id', 'username', 'email', 'phone_number', 'role', 'role_preset_key', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin']
+    attributes: ['user_id', 'username', 'email', 'phone_number', 'role', 'role_preset_key', 'staff_role_id', 'is_active', 'last_login', 'created_at', 'permissions', 'is_master_admin']
   });
 
   if (!user) {
@@ -486,6 +492,7 @@ export const getAllUsers = async (options = {}) => {
   const User = dbStore.get('User');
   const includeInvitations = options?.includeInvitations === true;
   const users = await User.findAll({
+    include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }],
     attributes: [
       'user_id',
       'username',
@@ -493,6 +500,7 @@ export const getAllUsers = async (options = {}) => {
       'phone_number',
       'role',
       'role_preset_key',
+      'staff_role_id',
       'is_active',
       'last_login',
       'created_at',
@@ -1480,6 +1488,7 @@ export const listLocalCashiers = async (adminUserId) => {
   }
 
   const cashiers = await User.findAll({
+    include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }],
     attributes: [
       'user_id',
       'username',
@@ -1487,6 +1496,7 @@ export const listLocalCashiers = async (adminUserId) => {
       'phone_number',
       'role',
       'role_preset_key',
+      'staff_role_id',
       'is_active',
       'permissions',
       'is_master_admin',
@@ -1603,10 +1613,10 @@ export const provisionCashierFromGmail = async (adminUserId, cashierData = {}) =
 
   let tenantUser = null;
   if (membership?.tenant_user_id) {
-    tenantUser = await User.findOne({ where: { user_id: membership.tenant_user_id } }).catch(() => null);
+    tenantUser = await User.findOne({ where: { user_id: membership.tenant_user_id }, include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }] }).catch(() => null);
   }
   if (!tenantUser) {
-    tenantUser = await User.findOne({ where: { email } }).catch(() => null);
+    tenantUser = await User.findOne({ where: { email }, include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }] }).catch(() => null);
   }
 
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
@@ -2404,7 +2414,8 @@ export const getUsersForExport = async () => {
   const User = dbStore.get('User');
 
   const users = await User.findAll({
-    attributes: ['user_id', 'username', 'email', 'phone_number', 'role', 'role_preset_key', 'is_active', 'permissions', 'is_master_admin', 'created_at', 'last_login'],
+    include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }],
+    attributes: ['user_id', 'username', 'email', 'phone_number', 'role', 'role_preset_key', 'staff_role_id', 'is_active', 'permissions', 'is_master_admin', 'created_at', 'last_login'],
     where: buildVisibleWhere({
       [Op.or]: [
         { invitation_status: null },

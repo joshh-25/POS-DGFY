@@ -54,6 +54,7 @@ import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
 import { buildVoucherGovernedCalculation } from '../domain/posVoucherDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
+import { assertStaffAssignment } from '../../staff/index.js';
 // #712: direct ESM import of the singleton use case, matching the one existing cross-module
 // precedent (storeUseCases.js imports the same set from '../../vouchers/index.js').
 import {
@@ -10550,13 +10551,14 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     } }
                 );
             }
-            const activeShift = await assertOpenShiftForPosMutation({
+            const hasBroadPosTransaction = hasEffectivePermission(user, PERMISSIONS.POS.actions.TRANSACT_POS);
+            const activeShift = hasBroadPosTransaction ? await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId: actingUserId,
                 locationId: existing.location_id || null,
                 transaction,
                 lock: true
-            });
+            }) : null;
             const currentStatus = normalizeOnlineFulfillmentStatus(existing.fulfillment_status);
             if (!currentStatus) {
                 throw new DomainError(
@@ -10564,6 +10566,15 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     'Current fulfillment state is invalid',
                     { statusCode: 409 }
                 );
+            }
+
+            // Narrow native staff may only perform the assigned packing transition. Keep this
+            // check in the use case as well as the route gate so direct callers cannot bypass it.
+            if (!hasBroadPosTransaction) {
+                if (targetStatus !== 'packed') {
+                    throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Assigned staff may only pack orders.', { statusCode: 403, details: { reason_code: 'NOT_PERMITTED' } });
+                }
+                await assertStaffAssignment({ user, resourceType: 'order', resourceId: normalizedTransactionId, transaction });
             }
 
             validateOnlineOrderTransition({

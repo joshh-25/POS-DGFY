@@ -766,6 +766,7 @@ app.use(tenantHandler);
 // API routes
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
+import staffRoleRoutes from './routes/staffRoles.js';
 import itemRoutes from './routes/items.js';
 import supplierRoutes from './routes/suppliers.js';
 import purchaseOrderRoutes from './routes/purchaseOrders.js';
@@ -807,6 +808,7 @@ import onboardingRoutes from './routes/onboarding.js';
 // Auth routes (authLimiter applied selectively per-route in auth.js)
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/staff-roles', staffRoleRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/items', itemRoutes);
 app.use('/api/v1/suppliers', supplierRoutes);
