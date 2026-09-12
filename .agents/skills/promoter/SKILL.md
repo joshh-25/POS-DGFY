@@ -405,6 +405,32 @@ authorized via the PROD dispatch ask above — not a new deploy mutation, not a 
 not itself gated by the deploy-dispatch checkpoint. See the checkpoint table below for the explicit
 unattended classification and the reasoning for it.
 
+**Advance QA-verified issues to `Done` — after production confirmation and Release publication
+(#1681).** The candidate release note's `## Included` section is the authoritative inventory for
+this transition. Extract and de-duplicate issue references from that section only, excluding tokens
+whose text is explicitly `PR #N`; do not sweep every issue currently in `For Prod`, because another
+candidate may be awaiting production separately. For each extracted issue:
+
+1. Confirm with `gh issue view <N> --json state` that it is still open and with the project-item
+   query that its current Status is exactly `For Prod`.
+2. Set Status to `Done` with the project field mutation (`PVTSSF_lADODOdIe84BfZ_pzhZtHYs`, option
+   `98236657`), then explicitly run `gh issue close <N>`. Both actions are required: a Status write
+   alone leaves the issue open, while issue closure alone relies on the native workflow and does
+   not leave a durable role-level record of the intended transition.
+3. Re-read both surfaces and confirm Status `Done` plus issue state `CLOSED`. If either write fails
+   or read-back disagrees, report the issue in the promotion PR/tracking issue and leave a concrete
+   retry instruction; do not silently continue as though it shipped.
+
+Issues named in the release note but not currently open and `For Prod` are skipped and reported.
+Issues in `For Prod` but absent from this candidate's `## Included` section are left untouched. After
+the candidate issue set is extracted, enumerate every current `For Prod` item with
+`gh project item-list 10 --owner Sieitzz --format json --limit 2000` and compare its issue number
+with that set. Report every unmatched item as an **out-of-bundle/orphan requiring manual
+reconciliation** — including the case where the release-note bullet names only `PR #N` — and never
+close or advance it as part of this candidate. This explicit cross-check prevents the
+release-note inventory rule from silently losing a `Refs` issue whose bullet contains no issue
+number.
+
 **Sync `develop`'s version baselines from `main` (#1807) — after the parity gate and Release
 publication above, not before.** Closes a gap neither the pre-cut floor step nor the per-fix
 backport obligation (#1611) actually covers: both only fire the moment something *touches* an
@@ -470,6 +496,7 @@ logged before the merge, not after. Not a revival of ADR 0030's cryptographic si
 | Dispatching `tenant-schema-report.yml` (any environment, including PROD) | Unattended — read-only, `--mode report` only, no write path exists |
 | Running `node scripts/check-image-version-parity.js` after `deploy-main.yml` (ADR 0081 Decision 8, #1588) | Unattended — read-only, `docker buildx imagetools inspect` only, no push |
 | Publishing the GitHub Release (`gh release create release-<candidate_id> ...`) after the promotion parity gate confirms the deploy (#1278, ADR 0082) | Unattended — this is a post-deploy **record** of a deploy Pat already authorized at the PROD dispatch ask, not a mutation of a deployed environment and not a second deploy dispatch. Do not confuse it with the `deploy-main.yml` dispatch row below, which stays an every-time ask |
+| Advancing release-note issues from `For Prod` to `Done` and closing them after the parity gate and GitHub Release publication (#1681) | Unattended — the release note scopes the inventory, the candidate has already passed production deployment/parity, and this is the final board/issue record of that authorized deploy; read back Status and issue state for every item and report any mismatch |
 | Running `node scripts/sync-app-version-baselines.js` after the promotion parity gate / GitHub Release publication (#1807), and opening/merging the resulting sync PR into `develop` if any app is below `main`'s baseline | Unattended — read-only check; the sync PR is an ordinary `develop`-base PR, same tier as the pre-cut floor bump PR above. Never touches an app `develop` already matches or leads on |
 | Running `npm run preflight:runner` (Phase 233, #1365, H1) before the `deploy-main.yml` dispatch ask | Unattended — read-only (`gh api`/`curl`, self-cancelling `--canary` if used). An exit-`3` "flip required" result still requires logging the flip in the promotion PR before acting on it — that's a documentation step, not a new ask |
 | Running the compliance-preflight execute-and-resolve check (full-scan + stuck-handoff check) before cutting `to-staging/<candidate_id>` **or** `release/<label>` (#1648, 2026-09-06) | Unattended — read-only until it needs to resolve something; see "Frozen candidate and repair loop" and "Compliance preflight sweep" above |
@@ -519,8 +546,10 @@ formatter validates the active session. Otherwise omit it; never guess or use `u
 
 ## Board handling
 
-This role owns no `Status` lane — a promotion PR isn't a per-issue card. `pr-reviewer` still sets
-`For QA` on the issues bundled into whatever it promotes.
+This role owns the post-deploy `For Prod` → `Done` transition for issues listed in the candidate's
+`## Included` release-note section. A promotion PR isn't a per-issue card, and `pr-reviewer` still
+sets `For QA` on the issues bundled into whatever it promotes; this role completes only the
+production-confirmed transition, with the explicit issue close required by the taxonomy.
 
 ## Reference files
 

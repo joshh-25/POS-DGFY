@@ -44,8 +44,10 @@ different account.
 Mount `DGLAUNDRY_PARTNER_BASE_URL`, `DGLAUNDRY_INTEGRATION_SECRET` and
 `DGLAUNDRY_INTEGRATION_KEY_ID` only for local/sandbox HMAC fixtures. Production
 must set `DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1`, mount the
-provider verification public key and DGFY signing private key from the secret
-manager, and use the separate `DGLAUNDRY_PARTNER_TOKEN` as applicable. Never
+DGLaundry event verification public key and DGFY P-256 signing private key from
+the secret manager, and provide the short-lived DGLaundry partner access token
+through `DGLAUNDRY_PARTNER_ACCESS_TOKEN` (or its secret-file equivalent).
+Never
 place these values in source, browser storage, or a shared database.
 
 ## Qualification still required
