@@ -22784,3 +22784,52 @@ content differs from what was implemented and tested under the "303" label.
   command-level salvage wrapper, and comments; `scripts/check-pr-quality-workflow.js` remains
   unchanged; five-run timing evidence; this ledger entry.
 - Next eligible phase: 328 after Phase 327 completion.
+
+## Phase 328 - DeliveryRun date-range tenant schema registry parity (#1879)
+
+### Initiative and release
+
+Delivery Runs reliability follow-up in the current release, continuing Phase 260 (#1489).
+
+### Objective and scope
+
+Restore parity between the shipped DeliveryRun date-range migration and the API tenant-schema
+repair/provisioning registry. Register `delivery_runs.scheduled_date_end`, require the replacement
+`idx_delivery_runs_status_scheduled_range` index, update the whole-table fallback DDL, and add
+contract coverage so future registry drift fails in tests.
+
+No new migration is introduced: the existing Phase 260 migration is already shipped and remains
+the source of truth for upgraded tenant schemas.
+
+### Status
+
+`in_progress` — registry, version, and regression-test changes are implemented; live STAGING/PROD
+tenant report, repair, endpoint verification, and Sentry quiet-period evidence remain deployment
+acceptance gates.
+
+### Dependencies
+
+Phase 260's shipped date-range migration and the existing tenant-schema sync repair workflow.
+
+### Acceptance and validation evidence
+
+- [ ] `scheduled_date_end` is present in `REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_runs`.
+- [ ] `idx_delivery_runs_status_scheduled_range` is present in
+  `REQUIRED_TENANT_SCHEMA_INDEXES.delivery_runs`.
+- [ ] The `delivery_runs` fallback DDL matches the range column/index shape.
+- [ ] Focused migration and registry contract tests pass.
+- [ ] `npm run check:architecture`, tenant-schema coverage, compliance, documentation lint, and
+  API version-bump checks pass.
+- [ ] Post-deployment STAGING and PROD report mode shows zero affected tenants; the endpoint no
+  longer returns the missing-column error and no new `DGFY-BACKEND-C` events occur.
+
+### Links
+
+- Issue: #1879 (`Refs`; live deployment evidence remains open).
+- Existing migration: `apps/dgfy-migration-runner/migrations/20260907000001-add-delivery-run-scheduled-date-end.cjs`.
+- Registry: `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
+- Tests: `apps/dgfy-api/tests/deliveryRunScheduledDateEnd.migration.test.js`.
+
+### Next eligible phase
+
+329.

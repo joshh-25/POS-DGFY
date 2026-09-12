@@ -461,6 +461,13 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `delivery_run_id` INT NULL"
         })
     }),
+    delivery_runs: Object.freeze({
+        // Phase 260 (#1489): nullable range end; NULL preserves the existing single-day run
+        // contract, with the application treating scheduled_date as the effective end.
+        scheduled_date_end: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `scheduled_date_end` DATE NULL"
+        })
+    }),
     // Added by migration 20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs
     // (issue #178 phase 16): audits the new ops_disabled_capabilities
     // subtractive overlay alongside the pre-existing enabled-capabilities pair.
@@ -1151,6 +1158,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `delivery_run_id` int NOT NULL AUTO_INCREMENT,\n"
             + "  `label` varchar(120) NOT NULL,\n"
             + "  `scheduled_date` date DEFAULT NULL,\n"
+            + "  `scheduled_date_end` date DEFAULT NULL,\n"
             + "  `status` enum('draft','scheduled','dispatched','completed','cancelled') NOT NULL DEFAULT 'draft',\n"
             + "  `location_id` int DEFAULT NULL,\n"
             + "  `notes` text,\n"
@@ -1159,7 +1167,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
             + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY (`delivery_run_id`),\n"
-            + "  KEY `idx_delivery_runs_status_scheduled` (`status`,`scheduled_date`),\n"
+            + "  KEY `idx_delivery_runs_status_scheduled_range` (`status`,`scheduled_date`,`scheduled_date_end`),\n"
             + "  KEY `idx_delivery_runs_location_status` (`location_id`,`status`),\n"
             + "  CONSTRAINT `delivery_runs_ibfk_1` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `delivery_runs_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
@@ -2145,6 +2153,13 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_run_status` (`delivery_run_id`,`status`)"
         })
     }),
+    delivery_runs: Object.freeze({
+        // Phase 260 (#1489): scheduled_date is the range start, so the required index must include
+        // the nullable range end and use the migration's replacement name.
+        idx_delivery_runs_status_scheduled_range: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD INDEX `idx_delivery_runs_status_scheduled_range` (`status`,`scheduled_date`,`scheduled_date_end`)"
+        })
+    }),
     fnb_modifier_groups: Object.freeze({
         idx_fnb_modifier_groups_parent_option: Object.freeze({
             sql: "ALTER TABLE `fnb_modifier_groups` ADD INDEX `idx_fnb_modifier_groups_parent_option` (`parent_modifier_option_id`)"
@@ -2478,7 +2493,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-08.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-13.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
