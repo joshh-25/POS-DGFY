@@ -61,7 +61,6 @@
       "import": "./src/deliveryFee.js",
       "default": "./src/deliveryFee.js"
     }
-    }
   },
   "files": [
     "src",

@@ -32,6 +32,12 @@ real, priced breakdown rather than always returning the flat `store_delivery_fee
   hardcoded `0` (it is I/O-free by design, see its own header) -- the resolved waiver is folded in
   one layer up, by `resolveCheckoutContext` itself, after this function returns.
 
+- Phase 327 minimum-increment and finite-result hardening: the shared one-meter increment floor is
+  enforced by the API validator, calculated-config normalizer, POS/IMS serializers, and form
+  controls. The pure policy rejects any post-conversion zero-meter increment and refuses to return
+  a non-finite or invalid integer result. Existing valid configurations keep the same formula and
+  `DELIVERY_FEE_CALC_VERSION` remains 1; no tenant data or schema change is required.
+
 ## Phase 326 — contract freeze and confirmed gaps (2026-09-12)
 
 Phase 326 is a diagnostic and contract-freeze phase. It adds regression witnesses and records the
@@ -52,12 +58,11 @@ The contracts frozen for the delivery-fee flow are:
 5. A road-distance cache entry is valid only for the same tenant, location, origin, and destination
    coordinate. Only finite successful distances may be reused.
 
-The following gaps are reproduced by the Phase 326 tests and are deferred to later phases:
+The following gaps were reproduced by the Phase 326 tests. Phase 327 closes the increment gap; the
+remaining cache and radius gaps are deferred to later phases:
 
 - `PosTenantSetupModal` and `OnboardingSetupModal` use a truthiness fallback that changes an input
   radius of `0` to `5` before saving.
-- `increment_km: 0.0001` passes the current Joi/shared-form constraints, rounds to zero meters in
-  the integer-centavo policy, and currently produces non-finite fee math.
 - `roadDistanceProvider` omits the store origin from its cache key, so changing the store pin can
   reuse a distance calculated from the old origin.
 - The provider rounds destinations to three decimal degrees (roughly 111 meters of latitude), so
@@ -76,14 +81,26 @@ current effective mode is the fixed fallback for this snapshot.
 
 The source-of-truth constraints remain: `tenant_locations.delivery_radius_km` is a `DECIMAL(5,2)`
 with a database default of 5, the API accepts `0..100` km at two-decimal precision, and the shared
-calculated-fee serializer accepts `increment_km >= 0.0001` while the policy converts increments to
-whole meters. These constraints explain why the local data snapshot can contain no zero radius
-while the zero-radius and sub-meter witnesses are still reachable through the UI/API contract.
+calculated-fee serializer accepts `increment_km >= 0.001` (the one-meter policy floor) while the
+policy converts increments to whole meters. These constraints explain why the local data snapshot
+can contain no zero radius while the zero-radius witness remains reachable through the UI/API
+contract.
 
-Phase 327 owns minimum-increment validation and finite fee math; Phase 328 owns origin-aware,
-finite-result cache keys and collision policy; Phase 329 owns zero-radius persistence/defaults and
-the map/checkout distance-boundary behavior. No Phase 326 fix is complete until those phases replace
-the witnesses with corrected assertions.
+Phase 328 owns origin-aware, finite-result cache keys and collision policy; Phase 329 owns
+zero-radius persistence/defaults and the map/checkout distance-boundary behavior.
+
+## Phase 327 — minimum increment and finite-result validation (2026-09-12)
+
+Phase 327 closes the sub-meter increment gap identified by Phase 326. The canonical minimum is
+`0.001` km (one meter), shared through `@sieitzz/shared-constants/deliveryFee` and enforced at every
+write and form entry point. The pure policy validates the converted meter value before ceiling
+division and throws `NON_FINITE_RESULT` instead of returning `NaN` or `Infinity` if an overflowed or
+otherwise invalid result is ever reached. Valid formula inputs retain the existing integer-centavo
+calculation, fallback behavior, and algorithm version; no migration or data repair is required.
+
+The remaining Phase 326 gaps are intentionally deferred: Phase 328 addresses origin-aware cache
+identity and destination collision policy, and Phase 329 addresses zero-radius persistence and the
+map/checkout distance boundary.
 
 ## What's not here yet
 
