@@ -513,7 +513,7 @@ const balancePaymentProofParamsSchema = Joi.object({
     payment_id: Joi.number().integer().positive().required()
 });
 
-// Phase 329 (#1460): params-only schemas for the private packing-evidence list and stream
+// Phase 330 (#1460): params-only schemas for the private packing-evidence list and stream
 // routes. Multipart files are validated by the strict image uploader and the use case.
 const packingEvidenceParamsSchema = Joi.object({
     id: Joi.number().integer().positive().required()
@@ -522,6 +522,15 @@ const packingEvidenceParamsSchema = Joi.object({
 const packingEvidenceImageParamsSchema = packingEvidenceParamsSchema.keys({
     image_id: Joi.string().guid({ version: 'uuidv4' }).required()
 });
+
+const deliveryCompletionEvidenceImageParamsSchema = Joi.object({
+    id: Joi.number().integer().positive().required(),
+    image_id: Joi.number().integer().positive().required()
+});
+
+const deliveryCompletionEvidenceBodySchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional()
+}).unknown(false);
 
 const posCatalogOverrideParamSchema = Joi.object({
     item_id: Joi.number().integer().positive().required()
@@ -1412,6 +1421,8 @@ export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOr
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
 export const validatePosBalancePaymentProofParams = validateSchema(balancePaymentProofParamsSchema, 'params', 'validatedParams');
+export const validateDeliveryCompletionEvidenceBody = validateSchema(deliveryCompletionEvidenceBodySchema, 'body', 'validatedData');
+export const validateDeliveryCompletionEvidenceImageParams = validateSchema(deliveryCompletionEvidenceImageParamsSchema, 'params', 'validatedParams');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
 export const validateOnlineOrderReceiptAutoPrintClaim = validateSchema(onlineOrderReceiptAutoPrintClaimSchema, 'body', 'validatedData');
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');

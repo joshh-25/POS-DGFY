@@ -32,7 +32,7 @@ const packedOrder = (overrides = {}) => ({
   ...overrides
 });
 
-describe('POS packing evidence affordance (Phase 329, #1460)', () => {
+describe('POS packing evidence affordance (Phase 330, #1460)', () => {
   it('is absent before the packed transition and visible as optional after it', () => {
     const { rerender } = render(
       <PackingEvidenceControl order={{ ...packedOrder(), fulfillment_status: 'preparing', packed_at: null }} canTransactPos />

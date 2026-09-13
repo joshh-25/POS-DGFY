@@ -5,7 +5,7 @@ import path from 'path';
 import sharp from 'sharp';
 import dbStore from '../../../utils/dbStore.js';
 
-// Phase 329 (#1460): packing evidence is operational PII and must stay outside every public
+// Phase 330 (#1460): packing evidence is operational PII and must stay outside every public
 // static root. The storage key is tenant/order/UUID only; original filenames never reach disk.
 const ROOT = () => path.resolve(process.env.POS_PACKING_EVIDENCE_ROOT
     || path.join(process.cwd(), 'storage', 'pos-packing-evidence'));

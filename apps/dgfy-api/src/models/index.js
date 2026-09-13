@@ -46,6 +46,8 @@ import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
 import DeliveryRun from './DeliveryRun.js';
 import DeliveryRunPersonnel from './DeliveryRunPersonnel.js';
+import DeliveryCompletionEvidence from './DeliveryCompletionEvidence.js';
+import DeliveryCompletionEvidenceImage from './DeliveryCompletionEvidenceImage.js';
 import PosTransactionLine from './PosTransactionLine.js';
 import PosDiscountRule from './PosDiscountRule.js';
 import PosTransactionDiscount from './PosTransactionDiscount.js';
@@ -738,6 +740,12 @@ DeliveryPersonnel.hasMany(DeliveryRunPersonnel, { foreignKey: 'delivery_personne
 DeliveryRun.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 DeliveryRun.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 DeliveryRun.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+DeliveryJob.hasOne(DeliveryCompletionEvidence, { foreignKey: 'delivery_job_id', as: 'completionEvidence', onDelete: 'CASCADE' });
+DeliveryCompletionEvidence.belongsTo(DeliveryJob, { foreignKey: 'delivery_job_id', as: 'deliveryJob', onDelete: 'CASCADE' });
+DeliveryCompletionEvidence.belongsTo(User, { foreignKey: 'attached_by', as: 'attachedByUser', onDelete: 'SET NULL' });
+User.hasMany(DeliveryCompletionEvidence, { foreignKey: 'attached_by', as: 'deliveryCompletionEvidence' });
+DeliveryCompletionEvidence.hasMany(DeliveryCompletionEvidenceImage, { foreignKey: 'delivery_completion_evidence_id', as: 'images', onDelete: 'CASCADE' });
+DeliveryCompletionEvidenceImage.belongsTo(DeliveryCompletionEvidence, { foreignKey: 'delivery_completion_evidence_id', as: 'evidence', onDelete: 'CASCADE' });
 PosTransaction.hasMany(PosFiscalEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalEvents' });
 PosTransaction.hasMany(PosFiscalPrintEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalPrintEvents' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
@@ -1183,6 +1191,8 @@ const db = {
   DeliveryPersonnel,
   DeliveryRun,
   DeliveryRunPersonnel,
+  DeliveryCompletionEvidence,
+  DeliveryCompletionEvidenceImage,
   PosTransactionLine,
   PosDiscountRule,
   PosTransactionDiscount,

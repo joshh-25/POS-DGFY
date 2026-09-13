@@ -267,7 +267,7 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         packed_by: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_packed_by` FOREIGN KEY (`packed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
         }),
-        // Phase 329 (#1460): append-only metadata for private packing evidence files. The files
+        // Phase 330 (#1460): append-only metadata for private packing evidence files. The files
         // live outside public static roots; this JSON column stores only their safe metadata and
         // tenant-scoped storage keys.
         packing_evidence_images: Object.freeze({
@@ -1155,6 +1155,44 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  KEY `idx_delivery_jobs_provider_reference` (`provider`,`provider_delivery_id`),\n"
             + "  CONSTRAINT `delivery_jobs_ibfk_1` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `delivery_jobs_ibfk_2` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // #1462: tenant-local, append-only delivery-completion evidence. The parent is deliberately
+    // one-per-job and the child stores only normalized private image metadata; storage keys and
+    // hashes never leave the authenticated API surface. Keep these before delivery-run tables so
+    // repair-apply can create them on a partially provisioned tenant without a dependency gap.
+    delivery_completion_evidence: Object.freeze({
+        sql: "CREATE TABLE `delivery_completion_evidence` (\n"
+            + "  `delivery_completion_evidence_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_job_id` int NOT NULL,\n"
+            + "  `signature_file_path` varchar(800) DEFAULT NULL,\n"
+            + "  `signature_mime_type` varchar(120) DEFAULT NULL,\n"
+            + "  `signature_file_size_bytes` bigint DEFAULT NULL,\n"
+            + "  `signature_sha256` char(64) DEFAULT NULL,\n"
+            + "  `attached_by` int DEFAULT NULL,\n"
+            + "  `attached_at` datetime NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_completion_evidence_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_completion_evidence_job` (`delivery_job_id`),\n"
+            + "  CONSTRAINT `fk_delivery_completion_evidence_job` FOREIGN KEY (`delivery_job_id`) REFERENCES `delivery_jobs` (`delivery_job_id`) ON DELETE CASCADE ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_completion_evidence_attached_by` FOREIGN KEY (`attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    delivery_completion_evidence_images: Object.freeze({
+        sql: "CREATE TABLE `delivery_completion_evidence_images` (\n"
+            + "  `delivery_completion_evidence_image_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_completion_evidence_id` int NOT NULL,\n"
+            + "  `file_path` varchar(800) NOT NULL,\n"
+            + "  `mime_type` varchar(120) NOT NULL,\n"
+            + "  `file_size_bytes` bigint NOT NULL,\n"
+            + "  `sha256` char(64) NOT NULL,\n"
+            + "  `sort_order` int NOT NULL DEFAULT 0,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_completion_evidence_image_id`),\n"
+            + "  KEY `idx_delivery_completion_evidence_images_parent` (`delivery_completion_evidence_id`),\n"
+            + "  CONSTRAINT `fk_delivery_completion_evidence_images_parent` FOREIGN KEY (`delivery_completion_evidence_id`) REFERENCES `delivery_completion_evidence` (`delivery_completion_evidence_id`) ON DELETE CASCADE ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     // #1273/#1081 Phase 224: groups many delivery_jobs rows under one manual operational run.
@@ -2499,7 +2537,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-13.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-13.2';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

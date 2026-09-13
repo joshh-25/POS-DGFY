@@ -51,6 +51,28 @@ export const assertStaffAssignment = async ({ user, resourceType, resourceId, tr
     return;
   }
 
+  if (resourceType === 'delivery_job') {
+    if (!hasEffectivePermission(user, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS)) {
+      throw denied('You are not permitted to act on assigned delivery runs.', 'NOT_PERMITTED');
+    }
+
+    const deliveryJob = await dbStore.get('DeliveryJob').findByPk(resourceId, { transaction, lock: transaction ? true : undefined });
+    const personnel = await dbStore.get('DeliveryPersonnel').findOne({ where: { user_id: userId, is_active: true }, transaction });
+    const directMatch = personnel
+      && Number(deliveryJob?.delivery_personnel_id) === Number(personnel.delivery_personnel_id);
+    const runMembership = deliveryJob?.delivery_run_id && personnel && await dbStore.get('DeliveryRunPersonnel').findOne({
+      where: {
+        delivery_run_id: deliveryJob.delivery_run_id,
+        delivery_personnel_id: personnel.delivery_personnel_id
+      },
+      transaction
+    });
+    if (!deliveryJob || (!directMatch && !runMembership)) {
+      throw denied('This delivery job is no longer assigned to you.', 'NO_LONGER_ASSIGNED');
+    }
+    return;
+  }
+
   throw denied('The requested staff assignment is not supported.', 'NOT_PERMITTED');
 };
 

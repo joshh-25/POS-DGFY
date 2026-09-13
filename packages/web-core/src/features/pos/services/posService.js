@@ -896,7 +896,7 @@ export const fetchOrderBalancePaymentProof = async (posTransactionId, paymentId)
     return URL.createObjectURL(response.data);
 };
 
-// Phase 329 (#1460): optional packing evidence is uploaded after the order reaches `packed`.
+// Phase 330 (#1460): optional packing evidence is uploaded after the order reaches `packed`.
 // Keep the multipart field name aligned with the API's `.array('images', 6)` contract and fetch
 // private image bytes into object URLs so the authenticated Bearer header is preserved.
 export const uploadOrderPackingEvidence = async (posTransactionId, files, { terminal_id: terminalId } = {}) => {

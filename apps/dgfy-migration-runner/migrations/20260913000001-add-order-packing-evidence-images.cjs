@@ -1,6 +1,6 @@
 'use strict';
 
-// Phase 329 (#1460). One nullable JSON column stores append-only metadata for zero-or-more
+// Phase 330 (#1460). One nullable JSON column stores append-only metadata for zero-or-more
 // private packing evidence images attached after an online order reaches `packed`.
 //
 // `pos_transactions` is tenant-scoped, so this migration fans out over the connected landlord
