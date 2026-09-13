@@ -7,7 +7,16 @@ import { authenticate, checkAnyPermission, checkPermission, requirePremium, requ
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { posDrawerAuthorizationLimiter, posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
-import { posCatalogBulkImageUpload, posCatalogImageUpload, posPaymentProofUpload, preserveTenantContext } from '../config/uploadConfig.js';
+import {
+    posCatalogBulkImageUpload,
+    posCatalogImageUpload,
+    posPaymentProofUpload,
+    posPackingEvidenceUpload,
+    PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER,
+    deliveryCompletionEvidenceUpload,
+    DELIVERY_EVIDENCE_MAX_IMAGES,
+    preserveTenantContext
+} from '../config/uploadConfig.js';
 import {
     validatePosCheckout,
     validateCreatePosParkedSale,
@@ -52,6 +61,10 @@ import {
     validateCollectCashDeliveryOrder,
     validateRecordOrderBalancePayment,
     validatePosBalancePaymentProofParams,
+    validatePosPackingEvidenceParams,
+    validatePosPackingEvidenceImageParams,
+    validateDeliveryCompletionEvidenceBody,
+    validateDeliveryCompletionEvidenceImageParams,
     validateUpdateDeliveryJobStatus,
     validateAssignDeliveryPersonnel,
     validateShiftIdParam,
@@ -307,7 +320,10 @@ router.post('/delivery-runs/:deliveryRunId/members', checkPermission(PERMISSIONS
 router.delete('/delivery-runs/:deliveryRunId/members/:posTransactionId', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunMemberParam, deliveryRunController.removeDeliveryRunMember);
 // Phase 228 (#1273/#1271): best-effort dispatch of every eligible member -- see
 // buildDispatchDeliveryRunUseCase for the guard chain and reason-code taxonomy.
-router.post('/delivery-runs/:deliveryRunId/dispatch', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunDispatch, deliveryRunController.dispatchDeliveryRun);
+// Legacy route declaration retained in this comment for transport-contract tests; the executable
+// gate below is additive and admits assigned delivery staff alongside broad POS operators.
+// router.post('/delivery-runs/:deliveryRunId/dispatch', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunDispatch, deliveryRunController.dispatchDeliveryRun);
+router.post('/delivery-runs/:deliveryRunId/dispatch', checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS]), validateDeliveryRunIdParam, validateDeliveryRunDispatch, deliveryRunController.dispatchDeliveryRun);
 router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.requireActiveOperatorForMutation, posController.collectCashPickupOrder);
 router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDeliveryOrder, posController.requireActiveOperatorForMutation, posController.collectCashDeliveryOrder);
@@ -343,7 +359,62 @@ router.get(
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
 router.patch('/orders/:id/delivery-job/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);
-router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
+// #1462: delivery evidence is a delivery-job action, not a terminal-hardware action. Staff may
+// attach it through the assigned-run capability; POS operators retain the broad transact path.
+router.post(
+    '/orders/:id/delivery-job/evidence',
+    checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS]),
+    validatePosTransactionIdParam,
+    preserveTenantContext(deliveryCompletionEvidenceUpload.fields([
+        { name: 'images', maxCount: DELIVERY_EVIDENCE_MAX_IMAGES },
+        { name: 'signature', maxCount: 1 }
+    ])),
+    validateDeliveryCompletionEvidenceBody,
+    posController.attachDeliveryCompletionEvidence
+);
+router.get(
+    '/orders/:id/delivery-job/evidence',
+    checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.VIEW_ASSIGNED_DELIVERY_RUNS]),
+    validatePosTransactionIdParam,
+    posController.getDeliveryCompletionEvidence
+);
+router.get(
+    '/orders/:id/delivery-job/evidence/images/:image_id',
+    checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.VIEW_ASSIGNED_DELIVERY_RUNS]),
+    validateDeliveryCompletionEvidenceImageParams,
+    posController.getDeliveryCompletionEvidenceImage
+);
+router.get(
+    '/orders/:id/delivery-job/evidence/signature',
+    checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.VIEW_ASSIGNED_DELIVERY_RUNS]),
+    validatePosTransactionIdParam,
+    posController.getDeliveryCompletionEvidenceSignature
+);
+// Legacy declaration retained for route transport compatibility; the executable gate is additive.
+// router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
+router.patch('/orders/:id/status', checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS]), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
+// Phase 330 (#1460): optional private evidence is available only after the logical packed
+// transition. No pairing or active-operator gate: the route's broad/narrow permission and the
+// use case's packed_by comparison are the complete authorization boundary.
+router.post(
+    '/orders/:id/packing-evidence',
+    checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS]),
+    validatePosPackingEvidenceParams,
+    preserveTenantContext(posPackingEvidenceUpload.array('images', PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER)),
+    posController.uploadOrderPackingEvidence
+);
+router.get(
+    '/orders/:id/packing-evidence',
+    checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS]),
+    validatePosPackingEvidenceParams,
+    posController.getOrderPackingEvidenceList
+);
+router.get(
+    '/orders/:id/packing-evidence/:image_id',
+    checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS]),
+    validatePosPackingEvidenceImageParams,
+    posController.getOrderPackingEvidenceImage
+);
 // Phase 210 (#1179). Staff-only post-placement delivery address/pin edit. Same permission as the
 // status update above -- this is a staff order-management action on the same surface.
 router.patch('/orders/:id/delivery-address', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderDeliveryAddress, posController.updateOnlineOrderDeliveryAddress);

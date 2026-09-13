@@ -39,7 +39,6 @@ import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import {
-    advanceAssetImageFallback,
     resolveAppAssetUrl,
     resolveAssetUrl
 } from '@/src/utils/assetUrl.js';
@@ -2013,8 +2012,8 @@ export default function POSCheckoutTerminal({
                                                 alt={`${item.name} menu`}
                                                 sizes="(max-width: 768px) 96px, 80px"
                                                 className="h-full w-full object-cover object-center"
-                                                onError={(event) => {
-                                                    if (advanceAssetImageFallback(event, [posImageSources.configuredLargeSrc, fallbackPosImageSrc])) return;
+                                                fallbackSrcs={[posImageSources.configuredLargeSrc, fallbackPosImageSrc]}
+                                                onError={() => {
                                                     setCatalogImageErrors((previous) => {
                                                         const next = new Set(previous);
                                                         next.add(item.item_id);

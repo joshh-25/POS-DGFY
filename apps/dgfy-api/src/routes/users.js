@@ -20,6 +20,8 @@ import {
   validateUpdateUserLocationGrants,
   validateEmailChangeOtpRequest
 } from '../validators/userValidator.js';
+import { getEffectiveCapabilities, getStaffAssignments } from '../modules/staff/controllers/staffHandlers.js';
+import { validateStaffAssignmentsQuery } from '../validators/staffRoleValidator.js';
 
 const router = express.Router();
 
@@ -29,6 +31,8 @@ router.post('/me/email-otp/request', authenticate, emailOtpLimiter, validateEmai
 router.put('/me', authenticate, validateUpdateProfile, userController.updateProfile);
 router.put('/me/password', authenticate, validateChangePassword, userController.changePassword);
 router.put('/me/pos-day-close-pin', authenticate, validateUpdateOwnPosDayClosePin, userController.updateOwnPosDayClosePin);
+router.get('/me/capabilities', authenticate, validateStaffAssignmentsQuery, getEffectiveCapabilities);
+router.get('/me/assignments', authenticate, validateStaffAssignmentsQuery, getStaffAssignments);
 
 // Admin-only user management endpoints
 router.use(requireTenantCapability('tenant_ims_enabled', 'IMS'));

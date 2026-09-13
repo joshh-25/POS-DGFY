@@ -22784,3 +22784,220 @@ content differs from what was implemented and tested under the "303" label.
   command-level salvage wrapper, and comments; `scripts/check-pr-quality-workflow.js` remains
   unchanged; five-run timing evidence; this ledger entry.
 - Next eligible phase: 328 after Phase 327 completion.
+
+## Phase 328 - DeliveryRun date-range tenant schema registry parity (#1879)
+
+### Initiative and release
+
+Delivery Runs reliability follow-up in the current release, continuing Phase 260 (#1489).
+
+### Objective and scope
+
+Restore parity between the shipped DeliveryRun date-range migration and the API tenant-schema
+repair/provisioning registry. Register `delivery_runs.scheduled_date_end`, require the replacement
+`idx_delivery_runs_status_scheduled_range` index, update the whole-table fallback DDL, and add
+contract coverage so future registry drift fails in tests.
+
+No new migration is introduced: the existing Phase 260 migration is already shipped and remains
+the source of truth for upgraded tenant schemas.
+
+### Status
+
+`in_progress` — registry, version, and regression-test changes are implemented; live STAGING/PROD
+tenant report, repair, endpoint verification, and Sentry quiet-period evidence remain deployment
+acceptance gates.
+
+### Dependencies
+
+Phase 260's shipped date-range migration and the existing tenant-schema sync repair workflow.
+
+### Acceptance and validation evidence
+
+- [ ] `scheduled_date_end` is present in `REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_runs`.
+- [ ] `idx_delivery_runs_status_scheduled_range` is present in
+  `REQUIRED_TENANT_SCHEMA_INDEXES.delivery_runs`.
+- [ ] The `delivery_runs` fallback DDL matches the range column/index shape.
+- [ ] Focused migration and registry contract tests pass.
+- [ ] `npm run check:architecture`, tenant-schema coverage, compliance, documentation lint, and
+  API version-bump checks pass.
+- [ ] Post-deployment STAGING and PROD report mode shows zero affected tenants; the endpoint no
+  longer returns the missing-column error and no new `DGFY-BACKEND-C` events occur.
+
+### Links
+
+- Issue: #1879 (`Refs`; live deployment evidence remains open).
+- Existing migration: `apps/dgfy-migration-runner/migrations/20260907000001-add-delivery-run-scheduled-date-end.cjs`.
+- Registry: `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
+- Tests: `apps/dgfy-api/tests/deliveryRunScheduledDateEnd.migration.test.js`.
+
+### Next eligible phase
+
+329.
+
+## Phase 329 - Proof-of-delivery evidence and recipient signature (#1462)
+
+### Initiative and release
+
+Manual POS delivery evidence in the current release, under the delivery
+workflow parent #1178 and ADR 0034.
+
+### Objective and scope
+
+Add a tenant-local, append-only completion-evidence record for manual delivery
+jobs: zero or more private staff-captured images, one optional recipient
+signature, assignment-scoped write authorization, authenticated metadata and
+streaming reads, raw-file idempotent replay, and explicit retention posture.
+The change does not alter the delivered transition, order-completion gate,
+payment ledger, provider integration, or mobile/native UI.
+
+### Status
+
+`in_progress` — implementation, documentation, issue acceptance criteria, and
+static repository gates are complete. Full Jest and tenant-schema coverage are
+waiting on the local workspace's missing `node_modules` dependencies; live
+deployment verification remains a later QA/release gate.
+
+### Dependencies
+
+ADR 0034's manual delivery-job contract; ADR 0063's non-provider-verification
+evidence posture; #1178; #243's future retention/export/erasure work; the
+existing POS operation-replay and private payment-proof storage precedents.
+
+### Acceptance and validation evidence
+
+- [ ] Tenant migration creates both evidence tables across active tenant
+      databases and the repair registry remains in lockstep.
+- [ ] Authenticated upload/read routes preserve staff-image versus recipient-
+      signature distinction and never expose private storage paths or hashes.
+- [ ] Assignment authorization, attach-once behavior, idempotent replay,
+      conflict handling, validation, cleanup, and cross-order reads are covered
+      by focused tests.
+- [ ] EXIF/orientation metadata is absent from normalized stored objects.
+- [ ] `node --check` passes for every changed/new JavaScript or migration file;
+      architecture, controller-boundary, compliance, ADR, and documentation
+      gates pass.
+- [ ] Jest and tenant-schema coverage execute successfully once dependencies
+      are installed, followed by deployed QA verification.
+
+### Links
+
+- Issue: #1462 (`Refs`; acceptance criteria added 2026-09-13).
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md`.
+- Related ADR: `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`.
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-13-pos-delivery-completion-evidence.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260913000001-create-delivery-completion-evidence.cjs`.
+- Tests: `apps/dgfy-api/tests/posDeliveryCompletionEvidence.usecase.test.js`,
+  `apps/dgfy-api/tests/deliveryCompletionEvidenceStorage.test.js`,
+  `apps/dgfy-api/tests/createDeliveryCompletionEvidence.migration.test.js`.
+
+330.
+
+## Phase 330 - Optional packed-order packing evidence images (#1460)
+
+### Initiative and release
+
+Retail online-order fulfillment evidence in the current release.
+
+### Objective and scope
+
+Add an optional zero-or-more private image attachment contract for orders after the logical
+`packed` transition. The scope includes tenant-local JSON metadata, private EXIF-stripped WebP
+storage, six-image cumulative cap, normalized-output SHA retry dedupe, packed-by authorization
+for narrow `orders:pack` callers, authenticated list/stream reads, count-only existing order
+serialization, and a small POS queue upload/view affordance. F&B and Services retain their
+existing no-packed-step behavior.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, deployment,
+post-deployment tenant-schema/endpoint verification, and Sentry quiet-period evidence remain.
+
+### Dependencies
+
+Phase 211's `packed_by`/`packed_at` attribution and additive packed transition, ADR 0031's
+logical order-lifecycle authorization boundary, ADR 0034's fulfillment lifecycle, the existing
+tenant-schema migration fan-out/repair mechanism, and the private payment-proof storage precedent
+(used for shape only, not payment semantics).
+
+### Acceptance and validation evidence
+
+- [x] `packing_evidence_images` is added to the tenant migration, API model, and schema-repair
+      registry with idempotent active-tenant fan-out and an explicit file-orphan rollback note.
+- [x] Private normalized WebP storage, magic-byte validation, six-image count bound, normalized
+      SHA retry dedupe, row-locked read-modify-write, safe serializers, and authenticated streams
+      are implemented.
+- [x] Focused backend use-case tests pass (9/9), including duplicate, authorization, cross-tenant
+      read, zero-image, not-packed, count-limit, rollback, and magic-byte cases.
+- [x] Focused POS behavior tests pass (3/3), and the existing fulfillment UI regression pair
+      passes (16/16).
+- [x] `npm run check:architecture`, `npm run check:compliance`, all three consuming frontend
+      builds, API/migration syntax checks, and `git diff --check` pass locally.
+- [ ] PR review/merge, staging deployment, tenant-schema report, endpoint/UI verification, and
+      post-deployment Sentry quiet-period evidence.
+
+### Links
+
+- Issue: #1460 (`Refs`; behavior-changing independent QA remains after merge).
+- Handoff: `.tmp/plan-1460.md` (planning head `a15194157a6e2ff84e08879348733d542f999d24`).
+- Architecture: `docs/architecture/adr/0031-pos-terminal-pairing-and-order-lifecycle.md`,
+      `docs/architecture/adr/0034-manual-delivery-job-foundation.md`.
+- Compliance: `docs/compliance/impact-declarations/2026-09-13-pos-packing-evidence-images.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260913000001-add-order-packing-evidence-images.cjs`.
+- Tests: `apps/dgfy-api/tests/posPackingEvidence.usecase.test.js`,
+      `packages/web-core/src/features/pos/__tests__/packingEvidence.behavior.test.jsx`.
+
+### Next eligible phase
+
+331 after Phase 330 deployment acceptance is complete.
+
+## Phase 331 - Optional DeliveryRun transportation label (#1463)
+
+### Initiative and release
+
+Delivery Runs platform contract, current release, continuing the Phase 225 delivery-run foundation
+and Phase 328 tenant-schema registry parity work.
+
+### Objective and scope
+
+Add the optional nullable `delivery_runs.transportation_label` display descriptor as a bounded
+free-text field. Thread it through DeliveryRun create, update, list/detail serialization, tenant
+schema repair/provisioning, and backend regression coverage. Preserve the existing `TRANSACT_POS`
+permission and ensure no delivery-run behavior branches on the label's value. POS UI, vehicle
+entities, fleet management, route optimization, tracking, and a dedicated manifest endpoint remain
+out of scope.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; commit/PR review and deployed QA
+remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081's DeliveryRun contract, Phase 260/#1489's additive date-range migration pattern,
+and Phase 328/#1879's tenant-schema registry parity precedent.
+
+### Acceptance and validation evidence
+
+- [x] `transportation_label` is nullable `VARCHAR(120)`, added by a new idempotent migration and
+      registered in both tenant-schema repair and fresh-provisioning surfaces.
+- [x] Create/update validators, use cases, repository persistence, and list/detail serialization
+      cover set, null, and clear behavior without introducing a new permission or route.
+- [x] Migration, validator, use-case, serializer, dispatch, and write-through focused tests pass
+      locally: 6 suites, 88 tests.
+- [x] Tier 0 syntax, API version-bump, architecture, compliance, documentation, and tenant-schema
+      coverage gates pass on the final worktree diff; the backend focused suites pass 88/88 tests.
+- [ ] Deployed QA confirms tenant-schema report/repair parity and the POST/PATCH/GET contract.
+
+### Links
+
+- Issue: #1463 (`Refs`; standalone acceptance criteria require deployed QA).
+- Migration: `apps/dgfy-migration-runner/migrations/20260913000001-add-delivery-run-transportation-label.cjs`.
+- Registry: `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
+- Contract tests: `apps/dgfy-api/tests/deliveryRunTransportationLabel.migration.test.js` and
+  the existing DeliveryRun validator/use-case/serializer suites.
+- PR: #1888, `feature/1463-delivery-run-transportation-label` → `develop`.
+
+### Next eligible phase
+
+332.

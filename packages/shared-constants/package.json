@@ -48,6 +48,10 @@
     "./downpaymentDefaults": {
       "import": "./src/downpaymentDefaults.js",
       "default": "./src/downpaymentDefaults.js"
+    },
+    "./staffCapabilities": {
+      "import": "./src/staffCapabilities.js",
+      "default": "./src/staffCapabilities.js"
     }
   },
   "files": [

@@ -267,6 +267,12 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         packed_by: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_packed_by` FOREIGN KEY (`packed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
         }),
+        // Phase 330 (#1460): append-only metadata for private packing evidence files. The files
+        // live outside public static roots; this JSON column stores only their safe metadata and
+        // tenant-scoped storage keys.
+        packing_evidence_images: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packing_evidence_images` JSON NULL"
+        }),
         // Phase 236 (#1328, epic #1321): two additive columns capturing observation-only
         // server-side road distance at checkout. Kept in lockstep with migration
         // 20260902000001. Neither column feeds delivery-fee math anywhere in this codebase --
@@ -459,6 +465,18 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         // matching every other delivery_jobs repair entry in this block.
         delivery_run_id: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `delivery_run_id` INT NULL"
+        })
+    }),
+    delivery_runs: Object.freeze({
+        // Phase 260 (#1489): nullable range end; NULL preserves the existing single-day run
+        // contract, with the application treating scheduled_date as the effective end.
+        scheduled_date_end: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `scheduled_date_end` DATE NULL"
+        }),
+        // Phase 329 (#1463): nullable display-only transportation descriptor; no index because
+        // the value is never used for filtering, sorting, or dispatch behavior.
+        transportation_label: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `transportation_label` VARCHAR(120) NULL"
         })
     }),
     // Added by migration 20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs
@@ -1144,6 +1162,44 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `delivery_jobs_ibfk_2` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
+    // #1462: tenant-local, append-only delivery-completion evidence. The parent is deliberately
+    // one-per-job and the child stores only normalized private image metadata; storage keys and
+    // hashes never leave the authenticated API surface. Keep these before delivery-run tables so
+    // repair-apply can create them on a partially provisioned tenant without a dependency gap.
+    delivery_completion_evidence: Object.freeze({
+        sql: "CREATE TABLE `delivery_completion_evidence` (\n"
+            + "  `delivery_completion_evidence_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_job_id` int NOT NULL,\n"
+            + "  `signature_file_path` varchar(800) DEFAULT NULL,\n"
+            + "  `signature_mime_type` varchar(120) DEFAULT NULL,\n"
+            + "  `signature_file_size_bytes` bigint DEFAULT NULL,\n"
+            + "  `signature_sha256` char(64) DEFAULT NULL,\n"
+            + "  `attached_by` int DEFAULT NULL,\n"
+            + "  `attached_at` datetime NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_completion_evidence_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_completion_evidence_job` (`delivery_job_id`),\n"
+            + "  CONSTRAINT `fk_delivery_completion_evidence_job` FOREIGN KEY (`delivery_job_id`) REFERENCES `delivery_jobs` (`delivery_job_id`) ON DELETE CASCADE ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_completion_evidence_attached_by` FOREIGN KEY (`attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    delivery_completion_evidence_images: Object.freeze({
+        sql: "CREATE TABLE `delivery_completion_evidence_images` (\n"
+            + "  `delivery_completion_evidence_image_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_completion_evidence_id` int NOT NULL,\n"
+            + "  `file_path` varchar(800) NOT NULL,\n"
+            + "  `mime_type` varchar(120) NOT NULL,\n"
+            + "  `file_size_bytes` bigint NOT NULL,\n"
+            + "  `sha256` char(64) NOT NULL,\n"
+            + "  `sort_order` int NOT NULL DEFAULT 0,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_completion_evidence_image_id`),\n"
+            + "  KEY `idx_delivery_completion_evidence_images_parent` (`delivery_completion_evidence_id`),\n"
+            + "  CONSTRAINT `fk_delivery_completion_evidence_images_parent` FOREIGN KEY (`delivery_completion_evidence_id`) REFERENCES `delivery_completion_evidence` (`delivery_completion_evidence_id`) ON DELETE CASCADE ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     // #1273/#1081 Phase 224: groups many delivery_jobs rows under one manual operational run.
     // delivery_jobs.pos_transaction_id (above) stays UNIQUE, untouched by this table.
     delivery_runs: Object.freeze({
@@ -1151,15 +1207,17 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `delivery_run_id` int NOT NULL AUTO_INCREMENT,\n"
             + "  `label` varchar(120) NOT NULL,\n"
             + "  `scheduled_date` date DEFAULT NULL,\n"
+            + "  `scheduled_date_end` date DEFAULT NULL,\n"
             + "  `status` enum('draft','scheduled','dispatched','completed','cancelled') NOT NULL DEFAULT 'draft',\n"
             + "  `location_id` int DEFAULT NULL,\n"
             + "  `notes` text,\n"
             + "  `created_by` int DEFAULT NULL,\n"
             + "  `updated_by` int DEFAULT NULL,\n"
+            + "  `transportation_label` varchar(120) DEFAULT NULL,\n"
             + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
             + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY (`delivery_run_id`),\n"
-            + "  KEY `idx_delivery_runs_status_scheduled` (`status`,`scheduled_date`),\n"
+            + "  KEY `idx_delivery_runs_status_scheduled_range` (`status`,`scheduled_date`,`scheduled_date_end`),\n"
             + "  KEY `idx_delivery_runs_location_status` (`location_id`,`status`),\n"
             + "  CONSTRAINT `delivery_runs_ibfk_1` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `delivery_runs_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
@@ -2145,6 +2203,13 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_run_status` (`delivery_run_id`,`status`)"
         })
     }),
+    delivery_runs: Object.freeze({
+        // Phase 260 (#1489): scheduled_date is the range start, so the required index must include
+        // the nullable range end and use the migration's replacement name.
+        idx_delivery_runs_status_scheduled_range: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD INDEX `idx_delivery_runs_status_scheduled_range` (`status`,`scheduled_date`,`scheduled_date_end`)"
+        })
+    }),
     fnb_modifier_groups: Object.freeze({
         idx_fnb_modifier_groups_parent_option: Object.freeze({
             sql: "ALTER TABLE `fnb_modifier_groups` ADD INDEX `idx_fnb_modifier_groups_parent_option` (`parent_modifier_option_id`)"
@@ -2478,7 +2543,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-08.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-13.2';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

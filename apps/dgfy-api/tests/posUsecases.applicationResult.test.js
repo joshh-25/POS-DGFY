@@ -1718,7 +1718,8 @@ describe('pos use-cases application result contract', () => {
             receipt_printed_at: null,
             receipt_print_failure_reason: null,
             balance_payment_id: null,
-            has_payment_proof: false
+            has_payment_proof: false,
+            packing_evidence_count: 0
         }]);
     });
 

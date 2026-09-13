@@ -56,6 +56,17 @@ export const PERMISSIONS = {
         }
     },
 
+    // --- STAFF FULFILLMENT ---
+    STAFF_FULFILLMENT: {
+        label: "Staff Fulfillment",
+        actions: {
+            PACK_ASSIGNED_ORDERS: "orders:pack",
+            VIEW_ASSIGNED_ORDERS: "orders:view_assigned",
+            VIEW_ASSIGNED_DELIVERY_RUNS: "delivery_runs:view_assigned",
+            ACT_ASSIGNED_DELIVERY_RUNS: "delivery_runs:act"
+        }
+    },
+
     // --- POINT OF SALE ---
     POS: {
         label: "Point of Sale",

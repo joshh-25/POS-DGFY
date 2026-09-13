@@ -13,6 +13,9 @@ import { resolveWorkflowCapabilitySettings } from '../../shared/utils/workflowCa
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import logger from '../../../config/logger.js';
+import { PERMISSIONS } from '../../../config/permissions.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
+import { assertStaffAssignment } from '../../staff/index.js';
 import {
     applyDeliveryPersonnelAssignment,
     findOperationReplayEntry,
@@ -207,6 +210,7 @@ export const buildCreateDeliveryRunUseCase = ({
                 label,
                 scheduled_date: payload?.scheduled_date ?? null,
                 scheduled_date_end: payload?.scheduled_date_end ?? null,
+                transportation_label: payload?.transportation_label ?? null,
                 location_id: locationScope.location_id ?? null,
                 notes: payload?.notes ?? null,
                 created_by: actorUserId
@@ -387,6 +391,7 @@ export const buildUpdateDeliveryRunUseCase = ({
             if (payload?.scheduled_date !== undefined) updatePayload.scheduled_date = payload.scheduled_date;
             if (payload?.scheduled_date_end !== undefined) updatePayload.scheduled_date_end = payload.scheduled_date_end;
             if (payload?.notes !== undefined) updatePayload.notes = payload.notes;
+            if (payload?.transportation_label !== undefined) updatePayload.transportation_label = payload.transportation_label;
             if (payload?.status !== undefined) updatePayload.status = payload.status;
 
             // Range invariant against the MERGED effective state (existing row + this patch) --
@@ -1159,6 +1164,17 @@ export const buildDispatchDeliveryRunUseCase = ({
                     { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
                 );
             }
+            // Preserve broad POS behavior while requiring a live run assignment for the
+            // narrower delivery_runs:act capability.
+            const hasPermissionContext = Array.isArray(user?.permissions)
+                || Object.prototype.hasOwnProperty.call(user || {}, 'role')
+                || Object.prototype.hasOwnProperty.call(user || {}, 'is_master_admin')
+                || user?.staffRole !== undefined;
+            const hasBroadPosTransaction = !hasPermissionContext
+                || hasEffectivePermission(user, PERMISSIONS.POS.actions.TRANSACT_POS);
+            if (!hasBroadPosTransaction) {
+                await assertStaffAssignment({ user, resourceType: 'delivery_run', resourceId: runId, transaction });
+            }
             if (run.location_id != null) {
                 await resolveLocationScope({
                     requestedLocationId: run.location_id,
@@ -1220,13 +1236,13 @@ export const buildDispatchDeliveryRunUseCase = ({
 
             // Precondition 6: one open-shift check for the whole run.
             const runLocationId = parsePositiveInt(run.location_id);
-            const activeShift = await assertOpenShiftForPosMutation({
+            const activeShift = hasBroadPosTransaction ? await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId,
                 locationId: runLocationId,
                 transaction,
                 lock: true
-            });
+            }) : null;
 
             // Fan-out: classify every member (read-only) before writing anything for it.
             const dispatched = [];

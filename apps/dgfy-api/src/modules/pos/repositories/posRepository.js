@@ -6282,6 +6282,53 @@ export const posRepository = {
         return toPlain(row);
     },
 
+    async findDeliveryCompletionEvidenceByDeliveryJobId(deliveryJobId, options = {}) {
+        const DeliveryCompletionEvidence = dbStore.get('DeliveryCompletionEvidence');
+        const normalizedJobId = toPositiveInt(deliveryJobId);
+        if (!normalizedJobId) return null;
+
+        const row = await DeliveryCompletionEvidence.findOne({
+            where: { delivery_job_id: normalizedJobId },
+            include: [{
+                model: dbStore.get('DeliveryCompletionEvidenceImage'),
+                as: 'images',
+                required: false,
+                order: [['sort_order', 'ASC'], ['delivery_completion_evidence_image_id', 'ASC']]
+            }],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async createDeliveryCompletionEvidence(payload = {}, options = {}) {
+        const DeliveryCompletionEvidence = dbStore.get('DeliveryCompletionEvidence');
+        const row = await DeliveryCompletionEvidence.create(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async createDeliveryCompletionEvidenceImage(payload = {}, options = {}) {
+        const DeliveryCompletionEvidenceImage = dbStore.get('DeliveryCompletionEvidenceImage');
+        const row = await DeliveryCompletionEvidenceImage.create(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async findDeliveryCompletionEvidenceImageById(imageId, evidenceId, options = {}) {
+        const DeliveryCompletionEvidenceImage = dbStore.get('DeliveryCompletionEvidenceImage');
+        const normalizedImageId = toPositiveInt(imageId);
+        const normalizedEvidenceId = toPositiveInt(evidenceId);
+        if (!normalizedImageId || !normalizedEvidenceId) return null;
+
+        const row = await DeliveryCompletionEvidenceImage.findOne({
+            where: {
+                delivery_completion_evidence_image_id: normalizedImageId,
+                delivery_completion_evidence_id: normalizedEvidenceId
+            },
+            transaction: options.transaction
+        });
+        return toPlain(row);
+    },
+
     async listActiveDeliveryPersonnel({ locationId = null, transaction = null } = {}) {
         const DeliveryPersonnel = dbStore.get('DeliveryPersonnel');
         const normalizedLocationId = toPositiveInt(locationId);
