@@ -27,6 +27,7 @@ export const deliveryRunRepository = {
             label: payload.label,
             scheduled_date: payload.scheduled_date ?? null,
             scheduled_date_end: payload.scheduled_date_end ?? null,
+            transportation_label: payload.transportation_label ?? null,
             location_id: payload.location_id ?? null,
             notes: payload.notes ?? null,
             status: payload.status || 'draft',

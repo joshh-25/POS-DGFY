@@ -836,7 +836,8 @@ const createDeliveryRunSchema = Joi.object({
     scheduled_date: Joi.date().iso().optional(),
     scheduled_date_end: Joi.date().iso().min(Joi.ref('scheduled_date')).optional(),
     location_id: Joi.number().integer().positive().optional(),
-    notes: Joi.string().trim().max(2000).allow('', null).optional()
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    transportation_label: Joi.string().trim().max(120).allow('', null).optional()
 }).with('scheduled_date_end', 'scheduled_date');
 
 // Deliberately no Joi.ref cross-check between scheduled_date/scheduled_date_end here -- a PATCH
@@ -848,6 +849,7 @@ const updateDeliveryRunSchema = Joi.object({
     scheduled_date: Joi.date().iso().allow(null).optional(),
     scheduled_date_end: Joi.date().iso().allow(null).optional(),
     notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    transportation_label: Joi.string().trim().max(120).allow('', null).optional(),
     // dispatched/completed are deliberately excluded -- Phase 228 (#1271) owns those transitions.
     status: Joi.string().valid(...DELIVERY_RUN_UPDATABLE_STATUSES).optional()
 }).min(1);

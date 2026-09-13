@@ -210,6 +210,7 @@ export const buildCreateDeliveryRunUseCase = ({
                 label,
                 scheduled_date: payload?.scheduled_date ?? null,
                 scheduled_date_end: payload?.scheduled_date_end ?? null,
+                transportation_label: payload?.transportation_label ?? null,
                 location_id: locationScope.location_id ?? null,
                 notes: payload?.notes ?? null,
                 created_by: actorUserId
@@ -390,6 +391,7 @@ export const buildUpdateDeliveryRunUseCase = ({
             if (payload?.scheduled_date !== undefined) updatePayload.scheduled_date = payload.scheduled_date;
             if (payload?.scheduled_date_end !== undefined) updatePayload.scheduled_date_end = payload.scheduled_date_end;
             if (payload?.notes !== undefined) updatePayload.notes = payload.notes;
+            if (payload?.transportation_label !== undefined) updatePayload.transportation_label = payload.transportation_label;
             if (payload?.status !== undefined) updatePayload.status = payload.status;
 
             // Range invariant against the MERGED effective state (existing row + this patch) --
