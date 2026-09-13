@@ -20,6 +20,7 @@ import {
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
+import PackingEvidenceControl from './PackingEvidenceControl.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import { getRunAssignEligibility, getActiveRunMembership } from '../utils/deliveryRunEligibility.js';
 import {
@@ -640,6 +641,14 @@ function OrderCard({
           onSave={handleUpdateOnlineOrderDeliveryAddress}
         />
       </div>
+
+      <PackingEvidenceControl
+        order={order}
+        canTransactPos={canTransactPos}
+        canViewPos={canViewPos}
+        locked={locked}
+        isOnline={isOnline}
+      />
 
       <div>
         <div className="mt-4 pt-3 border-t border-slate-200 grid grid-cols-2 gap-2">

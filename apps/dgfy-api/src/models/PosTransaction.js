@@ -242,6 +242,10 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.DATE,
         allowNull: true
     },
+    packing_evidence_images: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
     payment_type: {
         // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
         // (#1085). Split-tender allocations copy their method onto this column

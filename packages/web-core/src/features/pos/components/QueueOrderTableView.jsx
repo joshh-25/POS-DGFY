@@ -15,6 +15,7 @@ import {
   parseDeliveryCoords
 } from '../utils/incomingQueueOrderFormatting.js';
 import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActions.js';
+import PackingEvidenceControl from './PackingEvidenceControl.jsx';
 
 // Phase 230 (#1288). The Active Queue's table view mode. Receives the same
 // sortedIncomingOrders array and the same handler props IncomingQueueWorkspace already threads to
@@ -163,6 +164,13 @@ export default function QueueOrderTableView({
                       className: `w-full ${button.props.className || ''}`
                     }))}
                   </div>
+                  <PackingEvidenceControl
+                    order={order}
+                    canTransactPos={canTransactPos}
+                    canViewPos={canViewPos}
+                    locked={locked}
+                    isOnline={isOnline}
+                  />
                   {!canTransactPos && (
                     <p className="mt-2 text-[11px] text-slate-500">Needs POS transact permission.</p>
                   )}
