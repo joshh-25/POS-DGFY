@@ -33,6 +33,14 @@ describe('Delivery run validators (Phase 225)', () => {
         expect(req.validatedData).toMatchObject({ label: 'Morning Run' });
     });
 
+    it('accepts an optional transportation label on create', () => {
+        const req = { body: { label: 'Morning Run', transportation_label: 'Truck 1' } };
+        const { res, next } = runValidator(validateDeliveryRunCreate, req);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toHaveBeenCalled();
+        expect(req.validatedData).toMatchObject({ transportation_label: 'Truck 1' });
+    });
+
     it('rejects a create payload without a label', () => {
         const req = { body: { notes: 'no label here' } };
         const { res, next } = runValidator(validateDeliveryRunCreate, req);
@@ -45,6 +53,23 @@ describe('Delivery run validators (Phase 225)', () => {
         const { res, next } = runValidator(validateDeliveryRunUpdate, req);
         expect(next).toHaveBeenCalledTimes(1);
         expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it('accepts setting and clearing the optional transportation label on update', () => {
+        for (const transportation_label of ['Van', null, '']) {
+            const req = { body: { transportation_label } };
+            const { res, next } = runValidator(validateDeliveryRunUpdate, req);
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.status).not.toHaveBeenCalled();
+            expect(req.validatedData).toMatchObject({ transportation_label });
+        }
+    });
+
+    it('rejects a transportation label longer than 120 characters', () => {
+        const req = { body: { label: 'Long Label', transportation_label: 'x'.repeat(121) } };
+        const { res, next } = runValidator(validateDeliveryRunCreate, req);
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(422);
     });
 
     it('rejects an update payload trying to set a dispatch-owned status', () => {
