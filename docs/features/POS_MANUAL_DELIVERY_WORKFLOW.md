@@ -135,7 +135,8 @@ whole-run dispatch.
 - `POST /pos/delivery-runs` creates a run in `draft` status (`pos:transact`).
 - `GET /pos/delivery-runs`, `GET /pos/delivery-runs/:deliveryRunId` read runs
   and their personnel/members (`pos:view`).
-- `PATCH /pos/delivery-runs/:deliveryRunId` edits label/date/notes and moves
+- `PATCH /pos/delivery-runs/:deliveryRunId` edits label/date/notes and the optional
+  `transportation_label` display descriptor, and moves
   between `draft`/`scheduled`/`cancelled` only -- `dispatched` and `completed`
   are rejected here; those transitions belong to Phase 228 (`pos:transact`).
 - `PUT /pos/delivery-runs/:deliveryRunId/personnel` replaces the **whole**
@@ -256,6 +257,9 @@ run exists -- its `draft`/`scheduled`/`cancelled` status); replace its personnel
 (exactly one person marked accountable, enforced client-side before the request is even sent, on
 top of the server's own enforcement); and, per member order, remove it from the run or move it to
 another run.
+
+The API-only `transportation_label` field is not surfaced as a POS input in this phase; the mobile
+consumer owns its UI against the platform contract.
 
 **Setting personnel before adding members is surfaced, not just enforced.** The server already
 409s `DELIVERY_RUN_ACCOUNTABLE_REQUIRED` if a run with no accountable person is asked to add a

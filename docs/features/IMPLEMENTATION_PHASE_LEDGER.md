@@ -22833,3 +22833,55 @@ Phase 260's shipped date-range migration and the existing tenant-schema sync rep
 ### Next eligible phase
 
 329.
+
+## Phase 329 - Optional DeliveryRun transportation label (#1463)
+
+### Initiative and release
+
+Delivery Runs platform contract, current release, continuing the Phase 225 delivery-run foundation
+and Phase 328 tenant-schema registry parity work.
+
+### Objective and scope
+
+Add the optional nullable `delivery_runs.transportation_label` display descriptor as a bounded
+free-text field. Thread it through DeliveryRun create, update, list/detail serialization, tenant
+schema repair/provisioning, and backend regression coverage. Preserve the existing `TRANSACT_POS`
+permission and ensure no delivery-run behavior branches on the label's value. POS UI, vehicle
+entities, fleet management, route optimization, tracking, and a dedicated manifest endpoint remain
+out of scope.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; commit/PR review and deployed QA
+remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081's DeliveryRun contract, Phase 260/#1489's additive date-range migration pattern,
+and Phase 328/#1879's tenant-schema registry parity precedent.
+
+### Acceptance and validation evidence
+
+- [x] `transportation_label` is nullable `VARCHAR(120)`, added by a new idempotent migration and
+      registered in both tenant-schema repair and fresh-provisioning surfaces.
+- [x] Create/update validators, use cases, repository persistence, and list/detail serialization
+      cover set, null, and clear behavior without introducing a new permission or route.
+- [x] Migration, validator, use-case, serializer, dispatch, and write-through focused tests pass
+      locally: 6 suites, 88 tests.
+- [x] Tier 0 syntax, API version-bump, architecture, compliance, documentation, and tenant-schema
+      coverage gates pass on the final worktree diff; the backend focused suites pass 88/88 tests.
+- [ ] Deployed QA confirms tenant-schema report/repair parity and the POST/PATCH/GET contract.
+
+### Links
+
+- Issue: #1463 (`Refs`; standalone acceptance criteria require deployed QA).
+- Migration: `apps/dgfy-migration-runner/migrations/20260913000001-add-delivery-run-transportation-label.cjs`.
+- Registry: `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
+- Contract tests: `apps/dgfy-api/tests/deliveryRunTransportationLabel.migration.test.js` and
+  the existing DeliveryRun validator/use-case/serializer suites.
+- PR: implementation branch `feature/1463-delivery-run-transportation-label`, opened against
+  `develop` after local validation.
+
+### Next eligible phase
+
+330.
