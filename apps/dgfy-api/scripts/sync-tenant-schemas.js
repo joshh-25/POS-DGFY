@@ -466,6 +466,11 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         // contract, with the application treating scheduled_date as the effective end.
         scheduled_date_end: Object.freeze({
             sql: "ALTER TABLE `delivery_runs` ADD COLUMN `scheduled_date_end` DATE NULL"
+        }),
+        // Phase 329 (#1463): nullable display-only transportation descriptor; no index because
+        // the value is never used for filtering, sorting, or dispatch behavior.
+        transportation_label: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `transportation_label` VARCHAR(120) NULL"
         })
     }),
     // Added by migration 20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs
@@ -1164,6 +1169,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `notes` text,\n"
             + "  `created_by` int DEFAULT NULL,\n"
             + "  `updated_by` int DEFAULT NULL,\n"
+            + "  `transportation_label` varchar(120) DEFAULT NULL,\n"
             + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
             + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY (`delivery_run_id`),\n"
@@ -2493,7 +2499,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-13.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-13.2';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
