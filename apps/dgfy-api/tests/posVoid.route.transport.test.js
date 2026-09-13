@@ -157,8 +157,13 @@ jest.unstable_mockModule('../src/middleware/rateLimiter.js', () => ({
 }));
 jest.unstable_mockModule('../src/config/uploadConfig.js', () => ({
     posCatalogBulkImageUpload: { array: () => passThrough },
-    posCatalogImageUpload: { single: () => passThrough },
+    posCatalogImageUpload: { single: () => passThrough, fields: () => passThrough },
     posPaymentProofUpload: { single: () => passThrough },
+    posPackingEvidenceUpload: { array: () => passThrough },
+    PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER: 6,
+    deliveryCompletionEvidenceUpload: { fields: () => passThrough },
+    DELIVERY_EVIDENCE_MAX_IMAGES: 5,
+    DELIVERY_EVIDENCE_SOURCE_MAX_BYTES: 15 * 1024 * 1024,
     preserveTenantContext: () => passThrough,
     STOREFRONT_ASSET_SOURCE_MAX_BYTES: 100 * 1024 * 1024
 }));

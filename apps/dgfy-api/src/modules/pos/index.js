@@ -17,6 +17,7 @@ import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js
 // already-proven-safe direction.
 import { settingsRepository } from '../settings/repositories/settingsRepository.js';
 import { posPaymentProofStorage } from './repositories/posPaymentProofStorage.js';
+import { posPackingEvidenceStorage } from './repositories/posPackingEvidenceStorage.js';
 import { deliveryCompletionEvidenceStorage } from './repositories/deliveryCompletionEvidenceStorage.js';
 import {
     inventoryStockCommandService,
@@ -90,6 +91,9 @@ import {
     buildRecordOrderBalancePaymentUseCase,
     buildAttachOrderBalancePaymentProofUseCase,
     buildGetOrderBalancePaymentProofUseCase,
+    buildAttachOrderPackingEvidenceUseCase,
+    buildGetOrderPackingEvidenceListUseCase,
+    buildGetOrderPackingEvidenceImageUseCase,
     buildAttachDeliveryCompletionEvidenceUseCase,
     buildGetDeliveryCompletionEvidenceUseCase,
     buildGetDeliveryCompletionEvidenceImageUseCase,
@@ -328,6 +332,15 @@ export const attachOrderBalancePaymentProofUseCase = buildAttachOrderBalancePaym
 export const getOrderBalancePaymentProofUseCase = buildGetOrderBalancePaymentProofUseCase({
     posRepository,
     proofStorage: posPaymentProofStorage
+});
+export const attachOrderPackingEvidenceUseCase = buildAttachOrderPackingEvidenceUseCase({
+    posRepository,
+    packingEvidenceStorage: posPackingEvidenceStorage
+});
+export const getOrderPackingEvidenceListUseCase = buildGetOrderPackingEvidenceListUseCase({ posRepository });
+export const getOrderPackingEvidenceImageUseCase = buildGetOrderPackingEvidenceImageUseCase({
+    posRepository,
+    packingEvidenceStorage: posPackingEvidenceStorage
 });
 export const attachDeliveryCompletionEvidenceUseCase = buildAttachDeliveryCompletionEvidenceUseCase({
     posRepository,

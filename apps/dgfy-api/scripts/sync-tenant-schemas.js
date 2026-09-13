@@ -267,6 +267,12 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         packed_by: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_packed_by` FOREIGN KEY (`packed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
         }),
+        // Phase 330 (#1460): append-only metadata for private packing evidence files. The files
+        // live outside public static roots; this JSON column stores only their safe metadata and
+        // tenant-scoped storage keys.
+        packing_evidence_images: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packing_evidence_images` JSON NULL"
+        }),
         // Phase 236 (#1328, epic #1321): two additive columns capturing observation-only
         // server-side road distance at checkout. Kept in lockstep with migration
         // 20260902000001. Neither column feeds delivery-fee math anywhere in this codebase --
