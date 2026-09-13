@@ -1106,6 +1106,7 @@ else
     warn "audit-tenant-index-headroom.js not found; skipped."
 fi
 run_step "Backfilling legacy role permissions across tenant databases..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/backfill-role-permissions.js"
+run_step "Seeding default staff capability roles across tenant databases..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/seed-default-staff-roles.js"
 
 # ===========================================================================
 # Storefront discovery index reconciliation

@@ -19,6 +19,10 @@ const DeliveryRun = sequelize.define('DeliveryRun', {
     type: DataTypes.DATEONLY,
     allowNull: true
   },
+  transportation_label: {
+    type: DataTypes.STRING(120),
+    allowNull: true
+  },
   status: {
     type: DataTypes.ENUM('draft', 'scheduled', 'dispatched', 'completed', 'cancelled'),
     allowNull: false,

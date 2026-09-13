@@ -1,5 +1,6 @@
 import sequelize from '../config/database.js';
 import User from './User.js';
+import StaffRole from './StaffRole.js';
 import Item from './Item.js';
 import Supplier from './Supplier.js';
 import PurchaseOrder from './PurchaseOrder.js';
@@ -45,6 +46,8 @@ import DeliveryJob from './DeliveryJob.js';
 import DeliveryPersonnel from './DeliveryPersonnel.js';
 import DeliveryRun from './DeliveryRun.js';
 import DeliveryRunPersonnel from './DeliveryRunPersonnel.js';
+import DeliveryCompletionEvidence from './DeliveryCompletionEvidence.js';
+import DeliveryCompletionEvidenceImage from './DeliveryCompletionEvidenceImage.js';
 import PosTransactionLine from './PosTransactionLine.js';
 import PosDiscountRule from './PosDiscountRule.js';
 import PosTransactionDiscount from './PosTransactionDiscount.js';
@@ -465,6 +468,9 @@ DgfyAffiliateCategoryRate.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tena
 // evidence; reads filter directly on tenant_id/enrollment_id instead of an include.
 
 // User associations
+User.belongsTo(StaffRole, { foreignKey: 'staff_role_id', as: 'staffRole', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+StaffRole.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+StaffRole.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
 User.hasMany(PurchaseOrder, { foreignKey: 'created_by', as: 'createdPurchaseOrders' });
 User.hasMany(JobOrder, { foreignKey: 'responsible_user', as: 'jobOrders' });
@@ -718,6 +724,7 @@ DeliveryPersonnel.hasMany(DeliveryJob, { foreignKey: 'delivery_personnel_id', as
 DeliveryPersonnel.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 DeliveryPersonnel.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser' });
 DeliveryPersonnel.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser' });
+DeliveryPersonnel.belongsTo(User, { foreignKey: 'user_id', as: 'user', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 DeliveryRun.hasMany(DeliveryJob, { foreignKey: 'delivery_run_id', as: 'deliveryJobs' });
 DeliveryJob.belongsTo(DeliveryRun, { foreignKey: 'delivery_run_id', as: 'deliveryRun', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 DeliveryRun.hasMany(DeliveryRunPersonnel, { foreignKey: 'delivery_run_id', as: 'personnel' });
@@ -733,6 +740,12 @@ DeliveryPersonnel.hasMany(DeliveryRunPersonnel, { foreignKey: 'delivery_personne
 DeliveryRun.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 DeliveryRun.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
 DeliveryRun.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser', onUpdate: 'RESTRICT', onDelete: 'SET NULL' });
+DeliveryJob.hasOne(DeliveryCompletionEvidence, { foreignKey: 'delivery_job_id', as: 'completionEvidence', onDelete: 'CASCADE' });
+DeliveryCompletionEvidence.belongsTo(DeliveryJob, { foreignKey: 'delivery_job_id', as: 'deliveryJob', onDelete: 'CASCADE' });
+DeliveryCompletionEvidence.belongsTo(User, { foreignKey: 'attached_by', as: 'attachedByUser', onDelete: 'SET NULL' });
+User.hasMany(DeliveryCompletionEvidence, { foreignKey: 'attached_by', as: 'deliveryCompletionEvidence' });
+DeliveryCompletionEvidence.hasMany(DeliveryCompletionEvidenceImage, { foreignKey: 'delivery_completion_evidence_id', as: 'images', onDelete: 'CASCADE' });
+DeliveryCompletionEvidenceImage.belongsTo(DeliveryCompletionEvidence, { foreignKey: 'delivery_completion_evidence_id', as: 'evidence', onDelete: 'CASCADE' });
 PosTransaction.hasMany(PosFiscalEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalEvents' });
 PosTransaction.hasMany(PosFiscalPrintEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalPrintEvents' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
@@ -1132,6 +1145,7 @@ const db = {
   sequelize,
   Sequelize: sequelize.Sequelize,
   User,
+  StaffRole,
   Item,
   Supplier,
   PurchaseOrder,
@@ -1177,6 +1191,8 @@ const db = {
   DeliveryPersonnel,
   DeliveryRun,
   DeliveryRunPersonnel,
+  DeliveryCompletionEvidence,
+  DeliveryCompletionEvidenceImage,
   PosTransactionLine,
   PosDiscountRule,
   PosTransactionDiscount,
@@ -1355,6 +1371,7 @@ export default db;
 export {
   sequelize,
   User,
+  StaffRole,
   Item,
   Supplier,
   PurchaseOrder,

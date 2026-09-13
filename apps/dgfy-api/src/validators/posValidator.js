@@ -513,6 +513,25 @@ const balancePaymentProofParamsSchema = Joi.object({
     payment_id: Joi.number().integer().positive().required()
 });
 
+// Phase 330 (#1460): params-only schemas for the private packing-evidence list and stream
+// routes. Multipart files are validated by the strict image uploader and the use case.
+const packingEvidenceParamsSchema = Joi.object({
+    id: Joi.number().integer().positive().required()
+});
+
+const packingEvidenceImageParamsSchema = packingEvidenceParamsSchema.keys({
+    image_id: Joi.string().guid({ version: 'uuidv4' }).required()
+});
+
+const deliveryCompletionEvidenceImageParamsSchema = Joi.object({
+    id: Joi.number().integer().positive().required(),
+    image_id: Joi.number().integer().positive().required()
+});
+
+const deliveryCompletionEvidenceBodySchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional()
+}).unknown(false);
+
 const posCatalogOverrideParamSchema = Joi.object({
     item_id: Joi.number().integer().positive().required()
 });
@@ -836,7 +855,8 @@ const createDeliveryRunSchema = Joi.object({
     scheduled_date: Joi.date().iso().optional(),
     scheduled_date_end: Joi.date().iso().min(Joi.ref('scheduled_date')).optional(),
     location_id: Joi.number().integer().positive().optional(),
-    notes: Joi.string().trim().max(2000).allow('', null).optional()
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    transportation_label: Joi.string().trim().max(120).allow('', null).optional()
 }).with('scheduled_date_end', 'scheduled_date');
 
 // Deliberately no Joi.ref cross-check between scheduled_date/scheduled_date_end here -- a PATCH
@@ -848,6 +868,7 @@ const updateDeliveryRunSchema = Joi.object({
     scheduled_date: Joi.date().iso().allow(null).optional(),
     scheduled_date_end: Joi.date().iso().allow(null).optional(),
     notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    transportation_label: Joi.string().trim().max(120).allow('', null).optional(),
     // dispatched/completed are deliberately excluded -- Phase 228 (#1271) owns those transitions.
     status: Joi.string().valid(...DELIVERY_RUN_UPDATABLE_STATUSES).optional()
 }).min(1);
@@ -1345,6 +1366,8 @@ export const validatePosCashierLogin = validateSchema(posCashierLoginSchema, 'bo
 export const validateSetupCashier = validateSchema(setupCashierSchema, 'body', 'validatedData');
 export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
+export const validatePosPackingEvidenceParams = validateSchema(packingEvidenceParamsSchema, 'params', 'validatedParams');
+export const validatePosPackingEvidenceImageParams = validateSchema(packingEvidenceImageParamsSchema, 'params', 'validatedParams');
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');
 export const validateUpdatePosCatalogOverride = validateSchema(updatePosCatalogOverrideSchema, 'body', 'validatedData');
 export const validateZReadingDateParam = validateSchema(zReadingDateParamSchema, 'params', 'validatedParams');
@@ -1400,6 +1423,8 @@ export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOr
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
 export const validatePosBalancePaymentProofParams = validateSchema(balancePaymentProofParamsSchema, 'params', 'validatedParams');
+export const validateDeliveryCompletionEvidenceBody = validateSchema(deliveryCompletionEvidenceBodySchema, 'body', 'validatedData');
+export const validateDeliveryCompletionEvidenceImageParams = validateSchema(deliveryCompletionEvidenceImageParamsSchema, 'params', 'validatedParams');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
 export const validateOnlineOrderReceiptAutoPrintClaim = validateSchema(onlineOrderReceiptAutoPrintClaimSchema, 'body', 'validatedData');
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');

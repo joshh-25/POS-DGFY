@@ -19,6 +19,10 @@ const DeliveryPersonnel = sequelize.define('DeliveryPersonnel', {
     type: DataTypes.INTEGER,
     allowNull: true
   },
+  user_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
   is_active: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
@@ -43,7 +47,8 @@ const DeliveryPersonnel = sequelize.define('DeliveryPersonnel', {
   updatedAt: 'updated_at',
   indexes: [
     { fields: ['display_name'] },
-    { fields: ['location_id', 'is_active'] }
+    { fields: ['location_id', 'is_active'] },
+    { fields: ['user_id'] }
   ]
 });
 

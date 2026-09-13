@@ -121,3 +121,11 @@ describe('serializeDeliveryRun summary (Phase 264, #1487)', () => {
         expect(serialized.summary.total_order_count).toBe(0);
     });
 });
+
+describe('serializeDeliveryRun transportation label (Phase 329, #1463)', () => {
+    it('includes the label when set and normalizes an absent value to null', () => {
+        expect(serializeDeliveryRun({ ...baseRun, transportation_label: 'Truck 1' }).transportation_label)
+            .toBe('Truck 1');
+        expect(serializeDeliveryRun(baseRun).transportation_label).toBeNull();
+    });
+});

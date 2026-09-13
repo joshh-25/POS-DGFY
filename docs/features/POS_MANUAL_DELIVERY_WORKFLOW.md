@@ -1,7 +1,7 @@
 ---
 status: authoritative
 owner: pos
-last_reviewed: 2026-09-01
+last_reviewed: 2026-09-13
 applies_to: pos_manual_delivery_workflow
 ---
 
@@ -82,6 +82,49 @@ cashier shift at the order location. The assignment endpoint is idempotency-key
 protected and writes the assignment plus the `pending_dispatch -> assigned`
 transition in one transaction.
 
+## Delivery-completion evidence (#1462)
+
+Delivery evidence is an optional, append-only operational record for a manual
+delivery job. It documents what an authorized actor captured at handover; it
+does not redefine the `delivered` transition, gate order completion, or claim
+that DGFY independently verified payment or recipient identity.
+
+The record has two explicit evidence channels:
+
+- `images`: zero or more staff-captured delivery images, bounded to five source
+  files at 15 MB per file; and
+- `signature`: zero or one recipient-supplied signature image.
+
+The backend stores these in separate tenant-local parent/child tables and
+returns only the delivery-job ID, image IDs/count, signature presence, actor,
+and timestamp. Storage paths, hashes, and private file metadata never leave
+the repository/use-case boundary. Every uploaded file is magic-byte validated,
+normalized to private WebP storage with EXIF/GPS metadata removed, and served
+only by authenticated `private, no-store` streams.
+
+The API boundary is:
+
+- `POST /pos/orders/:id/delivery-job/evidence` — `pos:transact` or
+  `delivery_runs:act`; no terminal pairing is required. A non-operator staff
+  member must be the job's direct registered assignee or a member of its run.
+- `GET /pos/orders/:id/delivery-job/evidence` — `pos:view` or
+  `delivery_runs:view_assigned`; returns metadata only.
+- `GET /pos/orders/:id/delivery-job/evidence/images/:image_id` and
+  `GET /pos/orders/:id/delivery-job/evidence/signature` — the same read
+  permissions; both stream only tenant-owned private objects.
+
+Evidence may be attached before or after `delivered`, but never to a failed or
+cancelled job. An all-empty submission is valid when the authorized actor has
+no image or signature to capture. The attach route fingerprints the raw file
+digests through the generic POS idempotency mechanism: an identical retry
+returns the original response without another row or file, while a changed
+payload conflicts. A genuinely new submission after an evidence row exists is
+rejected; replacement and deletion are not in scope.
+
+Retention is the life of the tenant/order record for this phase. No automated
+purge or erasure route ships here; bounded retention, export, and erasure work
+is deferred to #243, with manual operational purge available out-of-band.
+
 ## Phase 3 POS controls
 
 The POS Incoming Online Queue now provides the operator workflow for the API
@@ -135,7 +178,8 @@ whole-run dispatch.
 - `POST /pos/delivery-runs` creates a run in `draft` status (`pos:transact`).
 - `GET /pos/delivery-runs`, `GET /pos/delivery-runs/:deliveryRunId` read runs
   and their personnel/members (`pos:view`).
-- `PATCH /pos/delivery-runs/:deliveryRunId` edits label/date/notes and moves
+- `PATCH /pos/delivery-runs/:deliveryRunId` edits label/date/notes and the optional
+  `transportation_label` display descriptor, and moves
   between `draft`/`scheduled`/`cancelled` only -- `dispatched` and `completed`
   are rejected here; those transitions belong to Phase 228 (`pos:transact`).
 - `PUT /pos/delivery-runs/:deliveryRunId/personnel` replaces the **whole**
@@ -257,6 +301,9 @@ run exists -- its `draft`/`scheduled`/`cancelled` status); replace its personnel
 top of the server's own enforcement); and, per member order, remove it from the run or move it to
 another run.
 
+The API-only `transportation_label` field is not surfaced as a POS input in this phase; the mobile
+consumer owns its UI against the platform contract.
+
 **Setting personnel before adding members is surfaced, not just enforced.** The server already
 409s `DELIVERY_RUN_ACCOUNTABLE_REQUIRED` if a run with no accountable person is asked to add a
 member; this UI additionally shows an inline warning on the run's detail view whenever it has no
@@ -338,6 +385,35 @@ The existing completion guard remains mandatory:
 For the implementation phase, delivery confirmation must use the customer's
 tracking PIN or an equivalent server-verified confirmation. A cashier must not
 be able to claim delivery based only on a browser-side status change.
+
+## Courier cash custody and remittance (ADR 0083, #838)
+
+Collecting cash at handover and getting that cash back to the business are two
+separate facts. The payment flows above record that the customer paid; they do not
+record where the physical cash is afterward. That second leg is DGFY's
+operational/audit responsibility under
+`docs/architecture/adr/0083-courier-cash-custody-and-remittance.md`:
+
+- **Collection.** The courier's delivery-completion/handover action is the
+  authoritative collection event, attributed to the courier (a registered person
+  or a typed third-party name, per the assignment contract above) or to the
+  staff member recording on their behalf. It must never be inferred from order
+  `payment_status`, `amount_paid`, or run summary totals.
+- **Remittance.** Settlement is per run with order-level allocations: a courier
+  carrying several orders settles cash once at run end, confirmed by the
+  receiving location and receiving actor at hand-back.
+- **Variance.** Shortage/overage is an explicit append-only variance record,
+  resolved only under supervisor/manager authority. Duplicate remittance is
+  rejected; corrections are new reversal entries, never edits.
+- **Scope.** In-house personnel and typed third-party couriers only.
+  Provider-owned jobs stay read-only and outside this model; #870's
+  pre-dispatch/prepaid orders are "nothing to collect," not a remittance case.
+- **Boundary.** Custody and remittance records never touch `pos_order_payments`,
+  order payment status, cash-drawer reconciliation, revenue settlement, or
+  fiscal receipts — a parallel operational ledger, not an accounting change.
+
+No schema, endpoint, or UI for this ledger is authorized by this contract; that
+is follow-up implementation scope after the ADR lands.
 
 ## Failure behavior
 

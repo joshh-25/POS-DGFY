@@ -13,6 +13,7 @@ import {
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
+import PackingEvidenceControl from './PackingEvidenceControl.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
 import DeliveryRunDropPanel from './DeliveryRunDropPanel.jsx';
@@ -1409,6 +1410,14 @@ function IncomingQueueWorkspace({
                     onSave={handleUpdateOnlineOrderDeliveryAddress}
                   />
                 </div>
+
+                <PackingEvidenceControl
+                  order={order}
+                  canTransactPos={canTransactPos}
+                  canViewPos={canViewPos}
+                  locked={locked}
+                  isOnline={isOnline}
+                />
 
                 <div>
                   <div className="mt-4 pt-3 border-t border-slate-200 grid grid-cols-2 gap-2">

@@ -184,6 +184,27 @@ export const posPaymentProofUpload = buildStrictImageUpload({
     maxFiles: 1
 });
 
+// Phase 330 (#1460): optional private packing evidence captured after an online order is packed.
+// The route applies the same cap to its multipart field and the use case enforces the persisted
+// per-order limit after normalized-image SHA-256 dedupe.
+export const PACKING_EVIDENCE_SOURCE_MAX_BYTES = 15 * 1024 * 1024;
+export const PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER = 6;
+export const posPackingEvidenceUpload = buildStrictImageUpload({
+    maxBytes: PACKING_EVIDENCE_SOURCE_MAX_BYTES,
+    maxFiles: PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER
+});
+
+// #1462: delivery-completion evidence is private tenant evidence, not a public catalog asset.
+// Multer bounds the request before the use case applies magic-byte validation and normalizes each
+// image into a single private WebP object. The fields route separately so a client cannot submit
+// more than one recipient signature while still allowing the staff image batch.
+export const DELIVERY_EVIDENCE_SOURCE_MAX_BYTES = 15 * 1024 * 1024;
+export const DELIVERY_EVIDENCE_MAX_IMAGES = 5;
+export const deliveryCompletionEvidenceUpload = buildStrictImageUpload({
+    maxBytes: DELIVERY_EVIDENCE_SOURCE_MAX_BYTES,
+    maxFiles: DELIVERY_EVIDENCE_MAX_IMAGES + 1
+});
+
 export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: STOREFRONT_ASSET_SOURCE_MAX_BYTES, maxFiles: 1 });
 // Phase 301 (#265): these two single-image catalog uploads move from `.single('image')` to
 // `.fields([...])` at the route (routes/pos.js, routes/items.js) so a client can optionally also

@@ -26,7 +26,15 @@ export const normalizePermissionArray = (rawPermissions) => {
 
 export const resolveEffectivePermissions = (user) => {
   const explicitPermissions = normalizePermissionArray(user?.permissions);
+  const staffRolePermissions = normalizePermissionArray(user?.staffRole?.capabilities);
   const role = String(user?.role || 'staff').trim().toLowerCase();
+
+  // A tenant-assigned staff role is its own explicit role system. The legacy cashier floor/ceiling
+  // applies only when resolution falls through to the compatibility cashier role.
+  if (explicitPermissions.length === 0 && user?.staffRole?.is_active === true) {
+    return staffRolePermissions;
+  }
+
   if (role === 'cashier') {
     const cashierPermissions = explicitPermissions.length > 0
       ? explicitPermissions
@@ -35,9 +43,7 @@ export const resolveEffectivePermissions = (user) => {
       .filter((permission) => permission !== 'items:delete');
   }
 
-  if (explicitPermissions.length > 0) {
-    return explicitPermissions;
-  }
+  if (explicitPermissions.length > 0) return explicitPermissions;
 
   const defaults = DEFAULT_ROLE_PERMISSIONS[role];
   return Array.isArray(defaults) ? [...defaults] : [];

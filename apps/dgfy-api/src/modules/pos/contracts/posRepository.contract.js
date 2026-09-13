@@ -75,6 +75,10 @@ const REQUIRED_METHODS = [
     'updateOrderById',
     'createAddressChange',
     'updateDeliveryJobByOrderId',
+    'findDeliveryCompletionEvidenceByDeliveryJobId',
+    'createDeliveryCompletionEvidence',
+    'createDeliveryCompletionEvidenceImage',
+    'findDeliveryCompletionEvidenceImageById',
     'listActiveDeliveryPersonnel',
     'findActiveDeliveryPersonnelById',
     'assignDeliveryPersonnelToJob'
