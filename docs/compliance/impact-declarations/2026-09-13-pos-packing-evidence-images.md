@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ORDER_NOT_PACKED,PACKING_EVIDENCE_LIMIT_EXCEEDED,PACKING_EVIDENCE_IMAGE_REJECTED,NOT_YOUR_PACKING,NOT_PERMITTED
 policy_version: 2026.09.13
-verification_evidence: focused backend 9/9; focused UI 3/3; existing POS packed/balance regressions 31/31; API lint; architecture/compliance gates; POS/IMS/Storefront builds
+verification_evidence: focused backend 9/9; focused UI 3/3; route transport 9/9; existing POS packed/balance regressions 31/31; API lint; architecture/compliance gates; POS/IMS/Storefront builds
 rollback_note: Reverting the code stops new attachments and reads but does not delete existing private files; rolling back the nullable metadata column can orphan files under POS_PACKING_EVIDENCE_ROOT and requires manual out-of-band cleanup.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -75,7 +75,7 @@ Required evidence includes:
 - Tier 0 syntax checks, all three consuming frontend app builds, `npm run check:architecture`,
   `npm run check:compliance`, and `node scripts/check-app-version-bump.js`.
 
-Executed results: focused backend tests passed 9/9; focused UI behavior tests passed 3/3; existing
+Executed results: focused backend tests passed 9/9; route transport tests passed 9/9; focused UI behavior tests passed 3/3; existing
 packed-step/balance-payment regressions passed 31/31; API lint passed; architecture and compliance
 checks passed; and POS, IMS, and Storefront production builds passed. The broader API suite remains
 environment-limited here by missing MySQL credentials and pre-existing repository test doubles

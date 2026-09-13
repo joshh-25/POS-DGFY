@@ -896,6 +896,33 @@ export const fetchOrderBalancePaymentProof = async (posTransactionId, paymentId)
     return URL.createObjectURL(response.data);
 };
 
+// Phase 329 (#1460): optional packing evidence is uploaded after the order reaches `packed`.
+// Keep the multipart field name aligned with the API's `.array('images', 6)` contract and fetch
+// private image bytes into object URLs so the authenticated Bearer header is preserved.
+export const uploadOrderPackingEvidence = async (posTransactionId, files, { terminal_id: terminalId } = {}) => {
+    const form = new FormData();
+    Array.from(files || []).forEach((file) => form.append('images', file));
+    const response = await api.post(
+        `/pos/orders/${posTransactionId}/packing-evidence`,
+        form,
+        { headers: getRegisteredTerminalHeaders(terminalId) }
+    );
+    return response.data?.data;
+};
+
+export const fetchOrderPackingEvidenceList = async (posTransactionId) => {
+    const response = await api.get(`/pos/orders/${posTransactionId}/packing-evidence`);
+    return response.data?.data || { images: [], total_count: 0 };
+};
+
+export const fetchOrderPackingEvidenceImage = async (posTransactionId, imageId) => {
+    const response = await api.get(
+        `/pos/orders/${posTransactionId}/packing-evidence/${imageId}`,
+        { responseType: 'blob' }
+    );
+    return URL.createObjectURL(response.data);
+};
+
 export const updateDeliveryJobStatus = async (posTransactionId, payload = {}) => {
     const response = await api.patch(`/pos/orders/${posTransactionId}/delivery-job/status`, payload);
     return response.data?.data;
@@ -1035,6 +1062,9 @@ export default {
     recordOrderBalancePayment,
     uploadOrderBalancePaymentProof,
     fetchOrderBalancePaymentProof,
+    uploadOrderPackingEvidence,
+    fetchOrderPackingEvidenceList,
+    fetchOrderPackingEvidenceImage,
     updateDeliveryJobStatus,
     assignDeliveryPersonnel,
     updateOnlineOrderStatus,
