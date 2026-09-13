@@ -4,8 +4,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { execFileSync } = require('node:child_process');
-const { extractPayload, formatTag, modelLabel, valid, writeRecord, readRecord } = require('./ai-attribution');
+const {
+  extractPayload,
+  formatTag,
+  identityLabel,
+  readRecord,
+  runtimeLabel,
+  valid,
+  writeRecord,
+} = require('./ai-attribution');
 
 function worktree() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dgfy-ai-attribution-'));
@@ -13,31 +22,46 @@ function worktree() {
   return dir;
 }
 
-test('extracts model identity for every supported runtime', () => {
-  assert.deepEqual(extractPayload('claude-code', { model: 'claude-opus-4-1', session_id: 'a', cwd: '/work' }).model, 'claude-opus-4-1');
-  assert.equal(extractPayload('codex', { model: 'gpt-5.6-terra', sessionId: 'b', cwd: '/work' }).model, 'gpt-5.6-terra');
-  assert.equal(extractPayload('antigravity', { modelName: 'gemini-3-pro', id: 'c', cwd: '/work' }).model, 'gemini-3-pro');
-  assert.equal(extractPayload('opencode', { provider: 'openai', model: 'gpt-5.6-terra', id: 'd', cwd: '/work' }).model, 'openai/gpt-5.6-terra');
-  assert.equal(extractPayload('cursor', { model_id: 'cursor-model', session_id: 'e', cwd: '/work' }).model, 'cursor-model');
-  assert.equal(extractPayload('cursor', { model: 'fallback-model', session_id: 'f', cwd: '/work' }).model, 'fallback-model');
+test('extracts runtime and canonical model identity for every supported runtime', () => {
+  assert.deepEqual(extractPayload('claude-code', { model: 'claude-opus-4-1', session_id: 'a', cwd: '/work' }), {
+    runtime: 'claude-code', sessionId: 'a', worktree: '/work', modelId: 'claude-opus-4-1',
+  });
+  assert.equal(extractPayload('codex', { model: 'gpt-5.6-terra', sessionId: 'b', cwd: '/work' }).modelId, 'gpt-5.6-terra');
+  assert.equal(extractPayload('antigravity', { modelName: 'gemini-3-pro', id: 'c', cwd: '/work' }).modelId, 'gemini-3-pro');
+  assert.deepEqual(extractPayload('opencode', { providerID: 'openai', modelID: 'gpt-5.6-terra', id: 'd', cwd: '/work' }), {
+    runtime: 'opencode', sessionId: 'd', worktree: '/work', providerId: 'openai', modelId: 'gpt-5.6-terra',
+  });
+  assert.equal(extractPayload('cursor', { model_id: 'cursor-model', session_id: 'e', cwd: '/work' }).modelId, 'cursor-model');
+  assert.equal(extractPayload('cursor', { model: 'fallback-model', session_id: 'f', cwd: '/work' }).modelId, 'fallback-model');
 });
-test('maps verified known models and preserves unknown model IDs', () => {
-  assert.equal(modelLabel('gpt-5.6-terra'), 'Codex GPT-5.6 Terra');
-  assert.equal(modelLabel('vendor/new-model'), 'vendor/new-model');
-  assert.equal(formatTag({ model: 'gpt-5.6-terra' }, 'Opened', 'worker'), 'Opened by (Codex GPT-5.6 Terra, worker)');
-  assert.equal(formatTag({ model: 'vendor/new-model' }, 'Review', 'pr-reviewer'), 'Review (vendor/new-model, pr-reviewer)');
+test('formats runtime and canonical identity without friendly-name guessing', () => {
+  const codex = { runtime: 'codex', identities: [{ modelId: 'gpt-5.6-terra' }] };
+  const opencode = { runtime: 'opencode', identities: [{ providerId: 'opencode-go', modelId: 'muse-spark-1.3-contributor' }] };
+  assert.equal(runtimeLabel('claude-code'), 'Claude Code');
+  assert.equal(identityLabel(codex), 'gpt-5.6-terra');
+  assert.equal(formatTag(codex, 'Opened', 'worker'), 'Opened by (Codex, gpt-5.6-terra, worker)');
+  assert.equal(formatTag(opencode, 'Review', 'pr-reviewer'), 'Review (OpenCode, opencode-go/muse-spark-1.3-contributor, pr-reviewer)');
 });
 test('refuses blank, expired, and stale records', () => {
-  assert.equal(extractPayload('codex', { model: '   ', sessionId: 'x', cwd: '/work' }).model, '');
+  assert.equal(extractPayload('codex', { model: '   ', sessionId: 'x', cwd: '/work' }).modelId, '');
+  assert.equal(extractPayload('opencode', { modelID: 'muse-spark-1.3-contributor', sessionId: 'x', cwd: '/work' }).providerId, undefined);
   assert.equal(formatTag(null, 'Opened', 'worker'), '');
   assert.equal(valid({ version: 1, runtime: 'codex', sessionId: 'x', model: 'm', expiresAt: 0 }, Date.now()), false);
+});
+test('OpenCode refuses a model without a provider identity', () => {
+  const cwd = worktree();
+  try {
+    assert.equal(writeRecord({ runtime: 'opencode', sessionId: 'missing-provider', modelID: 'muse-spark-1.3-contributor', worktree: cwd }, cwd), null);
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
 });
 test('records are isolated per repo clone and reject a different clone', () => {
   const first = worktree();
   const second = worktree();
   try {
     assert.ok(writeRecord({ runtime: 'codex', sessionId: 'same-session', model: 'gpt-5.6-terra', worktree: first }, first));
-    assert.equal(readRecord({ runtime: 'codex', sessionId: 'same-session' }, first)?.model, 'gpt-5.6-terra');
+    assert.equal(readRecord({ runtime: 'codex', sessionId: 'same-session' }, first)?.identities[0].modelId, 'gpt-5.6-terra');
     assert.equal(readRecord({ runtime: 'codex', sessionId: 'same-session' }, second), null);
     assert.equal(writeRecord({ runtime: 'codex', sessionId: 'bad-tree', model: 'gpt-5.6-terra', worktree: first }, second), null);
   } finally {
@@ -56,7 +80,7 @@ test('records are visible across worktrees of the same repo clone', () => {
     execFileSync('git', ['commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: main, env: { ...process.env, ...identity } });
     execFileSync('git', ['worktree', 'add', '--quiet', linked, '-b', 'linked-branch'], { cwd: main });
     assert.ok(writeRecord({ runtime: 'codex', sessionId: 'shared-session', model: 'gpt-5.6-terra', worktree: main }, main));
-    assert.equal(readRecord({ runtime: 'codex', sessionId: 'shared-session' }, linked)?.model, 'gpt-5.6-terra');
+    assert.equal(readRecord({ runtime: 'codex', sessionId: 'shared-session' }, linked)?.identities[0].modelId, 'gpt-5.6-terra');
   } finally {
     fs.rmSync(linked, { recursive: true, force: true });
     fs.rmSync(main, { recursive: true, force: true });
@@ -75,8 +99,10 @@ test('Claude SessionStart adapter emits plain text naming the session and the re
     assert.ok(!out.startsWith('{'), 'plain-text hook output must not start with "{"');
     assert.match(out, /claude-fixture/);
     assert.match(out, /ai-attribution\.js format claude-code claude-fixture/);
+    assert.match(out, /runtime=Claude Code/);
+    assert.match(out, /identity=claude-sonnet-4-5/);
     const line = execFileSync(process.execPath, [formatter, 'format', 'claude-code', 'claude-fixture', 'Opened', 'worker'], { cwd, encoding: 'utf8' });
-    assert.equal(line, 'Opened by (Claude Sonnet 4.5, worker)');
+    assert.equal(line, 'Opened by (Claude Code, claude-sonnet-4-5, worker)');
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
@@ -92,8 +118,10 @@ test('Codex SessionStart adapter emits plain text naming the session and the rea
     assert.ok(!out.startsWith('{'), 'plain-text hook output must not start with "{"');
     assert.match(out, /codex-fixture/);
     assert.match(out, /ai-attribution\.js format codex codex-fixture/);
+    assert.match(out, /runtime=Codex/);
+    assert.match(out, /identity=gpt-5\.6-terra/);
     const line = execFileSync(process.execPath, [formatter, 'format', 'codex', 'codex-fixture', 'Review', 'pr-reviewer'], { cwd, encoding: 'utf8' });
-    assert.equal(line, 'Review (Codex GPT-5.6 Terra, pr-reviewer)');
+    assert.equal(line, 'Review (Codex, gpt-5.6-terra, pr-reviewer)');
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
@@ -109,7 +137,48 @@ test('SubagentStart injector hands a subagent the ready format command when a re
     const parsed = JSON.parse(out);
     assert.equal(parsed.hookSpecificOutput.hookEventName, 'SubagentStart');
     assert.match(parsed.hookSpecificOutput.additionalContext, /sub-fixture/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /runtime=Claude Code/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /identity=claude-sonnet-4-5/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /format claude-code sub-fixture/);
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('ambiguous sessions fail closed instead of attributing the latest model', () => {
+  const cwd = worktree();
+  try {
+    assert.ok(writeRecord({ runtime: 'opencode', sessionId: 'ambiguous', providerID: 'openai', modelID: 'gpt-5.6-terra', worktree: cwd }, cwd));
+    assert.ok(writeRecord({ runtime: 'opencode', sessionId: 'ambiguous', providerID: 'opencode-go', modelID: 'muse-spark-1.3-contributor', worktree: cwd }, cwd, Date.now() + 1));
+    const record = readRecord({ runtime: 'opencode', sessionId: 'ambiguous' }, cwd);
+    assert.equal(record.identities.length, 2);
+    assert.equal(formatTag(record, 'Review', 'pr-reviewer'), '');
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('OpenCode plugin records provider/model identity and injects the formatter command', async () => {
+  const cwd = worktree();
+  const root = path.resolve(__dirname, '..');
+  const pluginPath = path.join(cwd, 'dgfy-ai-attribution.mjs');
+  try {
+    fs.mkdirSync(path.join(cwd, 'scripts'), { recursive: true });
+    fs.copyFileSync(path.join(root, 'scripts', 'ai-attribution.js'), path.join(cwd, 'scripts', 'ai-attribution.js'));
+    fs.copyFileSync(path.join(root, '.opencode', 'plugins', 'dgfy-ai-attribution.js'), pluginPath);
+    const { default: createPlugin } = await import(`${pathToFileURL(pluginPath).href}?fixture=${Date.now()}`);
+    const hooks = await createPlugin({ worktree: cwd });
+    const input = {
+      sessionID: 'opencode-fixture',
+      model: { providerID: 'opencode-go', id: 'muse-spark-1.3-contributor' },
+    };
+    await hooks['chat.params'](input);
+    const output = { system: [] };
+    await hooks['experimental.chat.system.transform'](input, output);
+    const record = readRecord({ runtime: 'opencode', sessionId: 'opencode-fixture' }, cwd);
+    assert.deepEqual(record.identities, [{ providerId: 'opencode-go', modelId: 'muse-spark-1.3-contributor' }]);
+    assert.match(output.system[0], /runtime=OpenCode/);
+    assert.match(output.system[0], /format opencode opencode-fixture/);
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
