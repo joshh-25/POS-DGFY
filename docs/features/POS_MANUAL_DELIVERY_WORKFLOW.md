@@ -1,7 +1,7 @@
 ---
 status: authoritative
 owner: pos
-last_reviewed: 2026-09-01
+last_reviewed: 2026-09-13
 applies_to: pos_manual_delivery_workflow
 ---
 
@@ -338,6 +338,35 @@ The existing completion guard remains mandatory:
 For the implementation phase, delivery confirmation must use the customer's
 tracking PIN or an equivalent server-verified confirmation. A cashier must not
 be able to claim delivery based only on a browser-side status change.
+
+## Courier cash custody and remittance (ADR 0083, #838)
+
+Collecting cash at handover and getting that cash back to the business are two
+separate facts. The payment flows above record that the customer paid; they do not
+record where the physical cash is afterward. That second leg is DGFY's
+operational/audit responsibility under
+`docs/architecture/adr/0083-courier-cash-custody-and-remittance.md`:
+
+- **Collection.** The courier's delivery-completion/handover action is the
+  authoritative collection event, attributed to the courier (a registered person
+  or a typed third-party name, per the assignment contract above) or to the
+  staff member recording on their behalf. It must never be inferred from order
+  `payment_status`, `amount_paid`, or run summary totals.
+- **Remittance.** Settlement is per run with order-level allocations: a courier
+  carrying several orders settles cash once at run end, confirmed by the
+  receiving location and receiving actor at hand-back.
+- **Variance.** Shortage/overage is an explicit append-only variance record,
+  resolved only under supervisor/manager authority. Duplicate remittance is
+  rejected; corrections are new reversal entries, never edits.
+- **Scope.** In-house personnel and typed third-party couriers only.
+  Provider-owned jobs stay read-only and outside this model; #870's
+  pre-dispatch/prepaid orders are "nothing to collect," not a remittance case.
+- **Boundary.** Custody and remittance records never touch `pos_order_payments`,
+  order payment status, cash-drawer reconciliation, revenue settlement, or
+  fiscal receipts — a parallel operational ledger, not an accounting change.
+
+No schema, endpoint, or UI for this ledger is authorized by this contract; that
+is follow-up implementation scope after the ADR lands.
 
 ## Failure behavior
 
