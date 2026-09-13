@@ -513,6 +513,16 @@ const balancePaymentProofParamsSchema = Joi.object({
     payment_id: Joi.number().integer().positive().required()
 });
 
+// Phase 329 (#1460): params-only schemas for the private packing-evidence list and stream
+// routes. Multipart files are validated by the strict image uploader and the use case.
+const packingEvidenceParamsSchema = Joi.object({
+    id: Joi.number().integer().positive().required()
+});
+
+const packingEvidenceImageParamsSchema = packingEvidenceParamsSchema.keys({
+    image_id: Joi.string().guid({ version: 'uuidv4' }).required()
+});
+
 const posCatalogOverrideParamSchema = Joi.object({
     item_id: Joi.number().integer().positive().required()
 });
@@ -1345,6 +1355,8 @@ export const validatePosCashierLogin = validateSchema(posCashierLoginSchema, 'bo
 export const validateSetupCashier = validateSchema(setupCashierSchema, 'body', 'validatedData');
 export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
+export const validatePosPackingEvidenceParams = validateSchema(packingEvidenceParamsSchema, 'params', 'validatedParams');
+export const validatePosPackingEvidenceImageParams = validateSchema(packingEvidenceImageParamsSchema, 'params', 'validatedParams');
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');
 export const validateUpdatePosCatalogOverride = validateSchema(updatePosCatalogOverrideSchema, 'body', 'validatedData');
 export const validateZReadingDateParam = validateSchema(zReadingDateParamSchema, 'params', 'validatedParams');

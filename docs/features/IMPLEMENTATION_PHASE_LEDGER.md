@@ -22833,3 +22833,61 @@ Phase 260's shipped date-range migration and the existing tenant-schema sync rep
 ### Next eligible phase
 
 329.
+
+## Phase 329 - Optional packed-order packing evidence images (#1460)
+
+### Initiative and release
+
+Retail online-order fulfillment evidence in the current release.
+
+### Objective and scope
+
+Add an optional zero-or-more private image attachment contract for orders after the logical
+`packed` transition. The scope includes tenant-local JSON metadata, private EXIF-stripped WebP
+storage, six-image cumulative cap, normalized-output SHA retry dedupe, packed-by authorization
+for narrow `orders:pack` callers, authenticated list/stream reads, count-only existing order
+serialization, and a small POS queue upload/view affordance. F&B and Services retain their
+existing no-packed-step behavior.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, deployment,
+post-deployment tenant-schema/endpoint verification, and Sentry quiet-period evidence remain.
+
+### Dependencies
+
+Phase 211's `packed_by`/`packed_at` attribution and additive packed transition, ADR 0031's
+logical order-lifecycle authorization boundary, ADR 0034's fulfillment lifecycle, the existing
+tenant-schema migration fan-out/repair mechanism, and the private payment-proof storage precedent
+(used for shape only, not payment semantics).
+
+### Acceptance and validation evidence
+
+- [x] `packing_evidence_images` is added to the tenant migration, API model, and schema-repair
+      registry with idempotent active-tenant fan-out and an explicit file-orphan rollback note.
+- [x] Private normalized WebP storage, magic-byte validation, six-image count bound, normalized
+      SHA retry dedupe, row-locked read-modify-write, safe serializers, and authenticated streams
+      are implemented.
+- [x] Focused backend use-case tests pass (9/9), including duplicate, authorization, cross-tenant
+      read, zero-image, not-packed, count-limit, rollback, and magic-byte cases.
+- [x] Focused POS behavior tests pass (3/3), and the existing fulfillment UI regression pair
+      passes (16/16).
+- [x] `npm run check:architecture`, `npm run check:compliance`, all three consuming frontend
+      builds, API/migration syntax checks, and `git diff --check` pass locally.
+- [ ] PR review/merge, staging deployment, tenant-schema report, endpoint/UI verification, and
+      post-deployment Sentry quiet-period evidence.
+
+### Links
+
+- Issue: #1460 (`Refs`; behavior-changing independent QA remains after merge).
+- Handoff: `.tmp/plan-1460.md` (planning head `a15194157a6e2ff84e08879348733d542f999d24`).
+- Architecture: `docs/architecture/adr/0031-pos-terminal-pairing-and-order-lifecycle.md`,
+  `docs/architecture/adr/0034-manual-delivery-job-foundation.md`.
+- Compliance: `docs/compliance/impact-declarations/2026-09-13-pos-packing-evidence-images.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260913000001-add-order-packing-evidence-images.cjs`.
+- Tests: `apps/dgfy-api/tests/posPackingEvidence.usecase.test.js`,
+  `packages/web-core/src/features/pos/__tests__/packingEvidence.behavior.test.jsx`.
+
+### Next eligible phase
+
+330 after Phase 329 deployment acceptance is complete.

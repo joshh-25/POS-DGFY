@@ -7,7 +7,14 @@ import { authenticate, checkAnyPermission, checkPermission, requirePremium, requ
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { posDrawerAuthorizationLimiter, posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
-import { posCatalogBulkImageUpload, posCatalogImageUpload, posPaymentProofUpload, preserveTenantContext } from '../config/uploadConfig.js';
+import {
+    posCatalogBulkImageUpload,
+    posCatalogImageUpload,
+    posPaymentProofUpload,
+    posPackingEvidenceUpload,
+    PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER,
+    preserveTenantContext
+} from '../config/uploadConfig.js';
 import {
     validatePosCheckout,
     validateCreatePosParkedSale,
@@ -52,6 +59,8 @@ import {
     validateCollectCashDeliveryOrder,
     validateRecordOrderBalancePayment,
     validatePosBalancePaymentProofParams,
+    validatePosPackingEvidenceParams,
+    validatePosPackingEvidenceImageParams,
     validateUpdateDeliveryJobStatus,
     validateAssignDeliveryPersonnel,
     validateShiftIdParam,
@@ -349,6 +358,28 @@ router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.
 // Legacy declaration retained for route transport compatibility; the executable gate is additive.
 // router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
 router.patch('/orders/:id/status', checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS]), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
+// Phase 329 (#1460): optional private evidence is available only after the logical packed
+// transition. No pairing or active-operator gate: the route's broad/narrow permission and the
+// use case's packed_by comparison are the complete authorization boundary.
+router.post(
+    '/orders/:id/packing-evidence',
+    checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS]),
+    validatePosPackingEvidenceParams,
+    preserveTenantContext(posPackingEvidenceUpload.array('images', PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER)),
+    posController.uploadOrderPackingEvidence
+);
+router.get(
+    '/orders/:id/packing-evidence',
+    checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS]),
+    validatePosPackingEvidenceParams,
+    posController.getOrderPackingEvidenceList
+);
+router.get(
+    '/orders/:id/packing-evidence/:image_id',
+    checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS]),
+    validatePosPackingEvidenceImageParams,
+    posController.getOrderPackingEvidenceImage
+);
 // Phase 210 (#1179). Staff-only post-placement delivery address/pin edit. Same permission as the
 // status update above -- this is a staff order-management action on the same surface.
 router.patch('/orders/:id/delivery-address', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderDeliveryAddress, posController.updateOnlineOrderDeliveryAddress);

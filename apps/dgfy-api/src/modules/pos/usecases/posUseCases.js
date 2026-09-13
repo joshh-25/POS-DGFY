@@ -157,6 +157,11 @@ const POS_CATALOG_BULK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 // constant here rather than an import, matching this file's own convention for the catalog-image
 // limit above.
 const BALANCE_PROOF_SOURCE_MAX_BYTES = 15 * 1024 * 1024;
+// Phase 329 (#1460): keep the source cap local to this use-case module, matching the existing
+// balance-proof validation convention. The uploader and persisted count enforce the same six-file
+// limit at the transport and business layers respectively.
+const PACKING_EVIDENCE_SOURCE_MAX_BYTES = 15 * 1024 * 1024;
+const PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER = 6;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
@@ -615,6 +620,51 @@ export const toSerializable = (value) => (
         ? value.toJSON()
         : value
 );
+
+const normalizePackingEvidenceImages = (value) => normalizeJsonArray(value)
+    .filter((entry) => isPlainObject(entry) && String(entry.image_id || '').trim());
+
+const toPublicPosTransaction = (value) => {
+    const serialized = toSerializable(value) || {};
+    const { packing_evidence_images: _privateEvidence, ...safeTransaction } = serialized;
+    return {
+        ...safeTransaction,
+        packing_evidence_count: normalizePackingEvidenceImages(_privateEvidence).length
+    };
+};
+
+const hasPermissionContext = (user = {}) => (
+    Array.isArray(user?.permissions)
+    || Object.prototype.hasOwnProperty.call(user || {}, 'role')
+    || Object.prototype.hasOwnProperty.call(user || {}, 'is_master_admin')
+    || user?.staffRole !== undefined
+);
+
+const buildPackingEvidenceAuthorizationError = (reasonCode) => new DomainError(
+    DomainErrorCode.AUTHORIZATION_FAILED,
+    reasonCode === 'NOT_YOUR_PACKING'
+        ? 'Packing evidence can only be attached or viewed by the staff member who packed this order.'
+        : 'POS packing evidence permission is required.',
+    { statusCode: 403, details: { reason_code: reasonCode } }
+);
+
+const assertPackingEvidenceAccess = ({ order, user, broadPermission }) => {
+    if (!hasPermissionContext(user) || hasEffectivePermission(user, broadPermission)) return;
+    if (!hasEffectivePermission(user, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS)) {
+        throw buildPackingEvidenceAuthorizationError('NOT_PERMITTED');
+    }
+    if (parsePositiveInt(order?.packed_by) !== parsePositiveInt(user?.user_id)) {
+        throw buildPackingEvidenceAuthorizationError('NOT_YOUR_PACKING');
+    }
+};
+
+const toPublicPackingEvidenceMetadata = (entry) => ({
+    image_id: String(entry?.image_id || '').trim(),
+    mime_type: String(entry?.mime_type || 'image/webp').trim() || 'image/webp',
+    size_bytes: Number.isFinite(Number(entry?.size_bytes)) ? Number(entry.size_bytes) : null,
+    attached_at: entry?.attached_at || null,
+    attached_by: parsePositiveInt(entry?.attached_by)
+});
 
 const toPublicPosTransactionAdjustment = (value) => {
     const serialized = toSerializable(value) || {};
@@ -5480,8 +5530,9 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
                 ...data,
                 transactions: (data?.transactions || []).map((row) => {
                     const status = printStatuses?.[row?.pos_transaction_id];
+                    const safeRow = toPublicPosTransaction(row);
                     return {
-                        ...row,
+                        ...safeRow,
                         receipt_print_status: status?.status || 'pending',
                         receipt_printed_at: status?.printed_at || null,
                         receipt_print_failure_reason: status?.reason_code || null,
@@ -5779,7 +5830,7 @@ export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
                     { statusCode: 404 }
                 ));
             }
-            const serialized = toSerializable(data);
+            const serialized = toPublicPosTransaction(data);
             const adjustments = typeof posRepository?.listPosTransactionAdjustmentsForTransaction === 'function'
                 ? await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedId)
                 : [];
@@ -8879,7 +8930,7 @@ export const buildListIncomingOnlineOrdersUseCase = ({
                 : {};
             return ok({
                 orders: orders.map((order) => {
-                    const serialized = toSerializable(order);
+                    const serialized = toPublicPosTransaction(order);
                     const status = printStatuses?.[serialized?.pos_transaction_id];
                     const proofStatus = proofStatuses?.[serialized?.pos_transaction_id];
                     return {
@@ -8935,7 +8986,10 @@ export const buildListOnlineOrderHistoryUseCase = ({
                 page: query?.page,
                 limit: query?.limit
             });
-            return ok(history);
+            return ok({
+                ...history,
+                orders: (history?.orders || []).map(toPublicPosTransaction)
+            });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to list online order history'));
         }
@@ -9013,7 +9067,7 @@ export const buildGetAdminLocationMonitorUseCase = ({
 
             return ok({
                 location_id: locationScope.location_id,
-                orders: toSerializable(orders),
+                orders: orders.map(toPublicPosTransaction),
                 terminal_shifts: serializedTerminalShifts
             });
         } catch (error) {
@@ -9187,7 +9241,7 @@ const buildCollectCashOnlineOrderUseCase = ({
             }, { transaction });
 
             const responsePayload = {
-                order: toSerializable(updated),
+                order: toPublicPosTransaction(updated),
                 collection: {
                     order_method: orderMethod,
                     payment_timing: paymentTiming,
@@ -9514,7 +9568,7 @@ export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
             }, { transaction });
 
             const responsePayload = {
-                order: toSerializable(updated),
+                order: toPublicPosTransaction(updated),
                 settlement: {
                     order_method: orderMethod,
                     payment_method: paymentMethod,
@@ -9738,6 +9792,256 @@ export const buildGetOrderBalancePaymentProofUseCase = ({ posRepository, proofSt
             });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to read the proof of payment for this balance settlement'));
+        }
+    };
+};
+
+// Phase 329 (#1460): optional, append-only packing evidence for online orders. The JSON ledger
+// field is private metadata; callers receive only safe descriptors while the storage key and
+// normalized-output SHA remain inside this use-case/repository boundary.
+export const buildAttachOrderPackingEvidenceUseCase = ({ posRepository, packingEvidenceStorage }) => {
+    return async ({ posTransactionId, files = [], user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const uploadFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+
+        const cleanupTempFiles = async () => {
+            await Promise.all(uploadFiles.map(async (file) => {
+                if (!file?.path) return;
+                try {
+                    await fs.unlink(file.path);
+                } catch {
+                    // Ignore temporary-upload cleanup errors.
+                }
+            }));
+        };
+
+        if (!orderId || !cashierId) {
+            await cleanupTempFiles();
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A valid order and authenticated user are required.',
+                { statusCode: 422 }
+            ));
+        }
+        if (uploadFiles.length === 0) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'At least one packing evidence image is required.',
+                { statusCode: 422, details: { reason_code: 'PACKING_EVIDENCE_IMAGE_REQUIRED' } }
+            ));
+        }
+
+        let transaction = null;
+        const storedFiles = [];
+        try {
+            for (const file of uploadFiles) {
+                const validation = await validateImageUploadFile({
+                    file,
+                    maxBytes: PACKING_EVIDENCE_SOURCE_MAX_BYTES
+                });
+                if (!validation.ok) {
+                    logger.warn('[PosUseCases] Rejected packing evidence upload due to file validation failure', {
+                        event_type: 'security_signal',
+                        signal_code: 'packing_evidence_upload_rejected',
+                        reason: validation.reason,
+                        reported_mime: String(file?.mimetype || '').trim().toLowerCase() || null
+                    });
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Only valid image files may be attached as packing evidence.',
+                        { statusCode: 422, details: { reason_code: 'PACKING_EVIDENCE_IMAGE_REJECTED', reason: validation.reason } }
+                    );
+                }
+            }
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online order not found.', { statusCode: 404 });
+            }
+            if (!order.packed_at) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Packing evidence can only be attached after the order is packed.',
+                    { statusCode: 409, details: { reason_code: 'ORDER_NOT_PACKED' } }
+                );
+            }
+
+            assertPackingEvidenceAccess({
+                order,
+                user,
+                broadPermission: PERMISSIONS.POS.actions.TRANSACT_POS
+            });
+
+            const existingImages = normalizePackingEvidenceImages(order.packing_evidence_images);
+            const existingBySha = new Map(existingImages
+                .filter((entry) => String(entry.sha256 || '').trim())
+                .map((entry) => [String(entry.sha256).trim().toLowerCase(), entry]));
+            const newImages = [];
+            const newBySha = new Map();
+            const alreadyAttached = new Map();
+
+            for (const file of uploadFiles) {
+                const imageId = crypto.randomUUID();
+                const stored = await packingEvidenceStorage.store({
+                    orderId,
+                    tempPath: file.path,
+                    imageId
+                });
+                storedFiles.push(stored);
+                const sha256 = String(stored?.sha256 || '').trim().toLowerCase();
+                const duplicate = existingBySha.get(sha256) || newBySha.get(sha256);
+                if (duplicate) {
+                    alreadyAttached.set(String(duplicate.image_id), duplicate);
+                    await packingEvidenceStorage.remove(stored.storage_key);
+                    storedFiles.splice(storedFiles.lastIndexOf(stored), 1);
+                    continue;
+                }
+
+                const entry = {
+                    image_id: imageId,
+                    storage_key: stored.storage_key,
+                    mime_type: stored.mime_type,
+                    size_bytes: stored.size_bytes,
+                    sha256: stored.sha256,
+                    attached_at: new Date().toISOString(),
+                    attached_by: cashierId
+                };
+                newImages.push(entry);
+                newBySha.set(sha256, entry);
+            }
+
+            if (existingImages.length + newImages.length > PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    `An order may have at most ${PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER} packing evidence images.`,
+                    { statusCode: 409, details: { reason_code: 'PACKING_EVIDENCE_LIMIT_EXCEEDED', max_images: PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER } }
+                );
+            }
+
+            const combinedImages = [...existingImages, ...newImages];
+            if (newImages.length > 0) {
+                await posRepository.updateOrderById(orderId, {
+                    packing_evidence_images: combinedImages
+                }, { transaction });
+
+                // Audit only the successful new attachments. Storage keys, image ids, and raw file
+                // data are deliberately absent from the event metadata.
+                await posRepository.createAuditLog({
+                    user_id: cashierId,
+                    entity_type: 'pos_transaction',
+                    entity_id: orderId,
+                    action: 'UPDATE',
+                    changes: {
+                        event: 'order_packing_evidence_attached',
+                        count: newImages.length,
+                        images: newImages.map((entry) => ({
+                            sha256: entry.sha256,
+                            size_bytes: entry.size_bytes,
+                            mime_type: entry.mime_type
+                        }))
+                    },
+                    ip_address: auditContext.ipAddress || null,
+                    user_agent: auditContext.userAgent || null
+                }, { transaction });
+            }
+
+            await transaction.commit();
+            transaction = null;
+            storedFiles.length = 0;
+
+            return ok({
+                attached: newImages.map(toPublicPackingEvidenceMetadata),
+                already_attached: Array.from(alreadyAttached.values()).map(toPublicPackingEvidenceMetadata),
+                total_count: combinedImages.length
+            });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            await Promise.all(storedFiles.map(async (stored) => {
+                try {
+                    await packingEvidenceStorage.remove(stored.storage_key);
+                } catch {
+                    // Ignore cleanup errors for orphaned private files.
+                }
+            }));
+            return fail(mapPosUseCaseError(error, 'Failed to attach packing evidence to this order'));
+        } finally {
+            await cleanupTempFiles();
+        }
+    };
+};
+
+const resolvePackingEvidenceOrder = async ({ posRepository, orderId, transaction }) => {
+    const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction });
+    if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online order not found.', { statusCode: 404 });
+    }
+    return order;
+};
+
+export const buildGetOrderPackingEvidenceListUseCase = ({ posRepository }) => {
+    return async ({ posTransactionId, user = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        if (!orderId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'posTransactionId must be a positive integer.',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const order = await resolvePackingEvidenceOrder({ posRepository, orderId });
+            assertPackingEvidenceAccess({
+                order,
+                user,
+                broadPermission: PERMISSIONS.POS.actions.VIEW_POS
+            });
+            const images = normalizePackingEvidenceImages(order.packing_evidence_images);
+            return ok({
+                images: images.map(toPublicPackingEvidenceMetadata),
+                total_count: images.length
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list packing evidence for this order'));
+        }
+    };
+};
+
+export const buildGetOrderPackingEvidenceImageUseCase = ({ posRepository, packingEvidenceStorage }) => {
+    return async ({ posTransactionId, imageId, user = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const normalizedImageId = String(imageId || '').trim();
+        if (!orderId || !/^[0-9a-f-]{36}$/i.test(normalizedImageId)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A valid order and packing evidence image id are required.',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const order = await resolvePackingEvidenceOrder({ posRepository, orderId });
+            assertPackingEvidenceAccess({
+                order,
+                user,
+                broadPermission: PERMISSIONS.POS.actions.VIEW_POS
+            });
+            const image = normalizePackingEvidenceImages(order.packing_evidence_images)
+                .find((entry) => String(entry.image_id).trim().toLowerCase() === normalizedImageId.toLowerCase());
+            if (!image || !image.storage_key) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Packing evidence image not found.', { statusCode: 404 });
+            }
+
+            return ok({
+                mime_type: image.mime_type || 'image/webp',
+                size_bytes: Number.isFinite(Number(image.size_bytes)) ? Number(image.size_bytes) : null,
+                stream: packingEvidenceStorage.createReadStream(image.storage_key)
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to read packing evidence for this order'));
         }
     };
 };
@@ -10097,7 +10401,7 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 deliveryJob: updatedDeliveryJob
             };
             const responsePayload = {
-                order: toSerializable(updatedOrder),
+                order: toPublicPosTransaction(updatedOrder),
                 delivery_job: toSerializable(updatedDeliveryJob),
                 assignment: {
                     delivery_personnel: toSerializable(personnel),
@@ -10386,7 +10690,7 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                 deliveryJob: updatedDeliveryJob
             };
             const responsePayload = {
-                order: toSerializable(updatedOrder),
+                order: toPublicPosTransaction(updatedOrder),
                 delivery_job: toSerializable(updatedDeliveryJob),
                 status_transition: {
                     current_status: currentStatus,
@@ -10795,7 +11099,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 }
             }
             const replayPayload = {
-                order: toSerializable(updated),
+                order: toPublicPosTransaction(updated),
                 status_transition: {
                     current_status: currentStatus,
                     requested_status: targetStatus,
@@ -11021,7 +11325,7 @@ export const buildUpdateOnlineOrderDeliveryAddressUseCase = ({
             });
 
             const replayPayload = {
-                order: toSerializable(updated),
+                order: toPublicPosTransaction(updated),
                 address_change: {
                     previous_address: existing.delivery_address || null,
                     previous_latitude: existing.delivery_latitude ?? null,
