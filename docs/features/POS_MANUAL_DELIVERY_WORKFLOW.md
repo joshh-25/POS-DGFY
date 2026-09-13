@@ -82,6 +82,49 @@ cashier shift at the order location. The assignment endpoint is idempotency-key
 protected and writes the assignment plus the `pending_dispatch -> assigned`
 transition in one transaction.
 
+## Delivery-completion evidence (#1462)
+
+Delivery evidence is an optional, append-only operational record for a manual
+delivery job. It documents what an authorized actor captured at handover; it
+does not redefine the `delivered` transition, gate order completion, or claim
+that DGFY independently verified payment or recipient identity.
+
+The record has two explicit evidence channels:
+
+- `images`: zero or more staff-captured delivery images, bounded to five source
+  files at 15 MB per file; and
+- `signature`: zero or one recipient-supplied signature image.
+
+The backend stores these in separate tenant-local parent/child tables and
+returns only the delivery-job ID, image IDs/count, signature presence, actor,
+and timestamp. Storage paths, hashes, and private file metadata never leave
+the repository/use-case boundary. Every uploaded file is magic-byte validated,
+normalized to private WebP storage with EXIF/GPS metadata removed, and served
+only by authenticated `private, no-store` streams.
+
+The API boundary is:
+
+- `POST /pos/orders/:id/delivery-job/evidence` — `pos:transact` or
+  `delivery_runs:act`; no terminal pairing is required. A non-operator staff
+  member must be the job's direct registered assignee or a member of its run.
+- `GET /pos/orders/:id/delivery-job/evidence` — `pos:view` or
+  `delivery_runs:view_assigned`; returns metadata only.
+- `GET /pos/orders/:id/delivery-job/evidence/images/:image_id` and
+  `GET /pos/orders/:id/delivery-job/evidence/signature` — the same read
+  permissions; both stream only tenant-owned private objects.
+
+Evidence may be attached before or after `delivered`, but never to a failed or
+cancelled job. An all-empty submission is valid when the authorized actor has
+no image or signature to capture. The attach route fingerprints the raw file
+digests through the generic POS idempotency mechanism: an identical retry
+returns the original response without another row or file, while a changed
+payload conflicts. A genuinely new submission after an evidence row exists is
+rejected; replacement and deletion are not in scope.
+
+Retention is the life of the tenant/order record for this phase. No automated
+purge or erasure route ships here; bounded retention, export, and erasure work
+is deferred to #243, with manual operational purge available out-of-band.
+
 ## Phase 3 POS controls
 
 The POS Incoming Online Queue now provides the operator workflow for the API

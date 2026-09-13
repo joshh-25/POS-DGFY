@@ -22834,7 +22834,64 @@ Phase 260's shipped date-range migration and the existing tenant-schema sync rep
 
 329.
 
-## Phase 329 - Optional DeliveryRun transportation label (#1463)
+## Phase 329 - Proof-of-delivery evidence and recipient signature (#1462)
+
+### Initiative and release
+
+Manual POS delivery evidence in the current release, under the delivery
+workflow parent #1178 and ADR 0034.
+
+### Objective and scope
+
+Add a tenant-local, append-only completion-evidence record for manual delivery
+jobs: zero or more private staff-captured images, one optional recipient
+signature, assignment-scoped write authorization, authenticated metadata and
+streaming reads, raw-file idempotent replay, and explicit retention posture.
+The change does not alter the delivered transition, order-completion gate,
+payment ledger, provider integration, or mobile/native UI.
+
+### Status
+
+`in_progress` — implementation, documentation, issue acceptance criteria, and
+static repository gates are complete. Full Jest and tenant-schema coverage are
+waiting on the local workspace's missing `node_modules` dependencies; live
+deployment verification remains a later QA/release gate.
+
+### Dependencies
+
+ADR 0034's manual delivery-job contract; ADR 0063's non-provider-verification
+evidence posture; #1178; #243's future retention/export/erasure work; the
+existing POS operation-replay and private payment-proof storage precedents.
+
+### Acceptance and validation evidence
+
+- [ ] Tenant migration creates both evidence tables across active tenant
+      databases and the repair registry remains in lockstep.
+- [ ] Authenticated upload/read routes preserve staff-image versus recipient-
+      signature distinction and never expose private storage paths or hashes.
+- [ ] Assignment authorization, attach-once behavior, idempotent replay,
+      conflict handling, validation, cleanup, and cross-order reads are covered
+      by focused tests.
+- [ ] EXIF/orientation metadata is absent from normalized stored objects.
+- [ ] `node --check` passes for every changed/new JavaScript or migration file;
+      architecture, controller-boundary, compliance, ADR, and documentation
+      gates pass.
+- [ ] Jest and tenant-schema coverage execute successfully once dependencies
+      are installed, followed by deployed QA verification.
+
+### Links
+
+- Issue: #1462 (`Refs`; acceptance criteria added 2026-09-13).
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md`.
+- Related ADR: `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`.
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-13-pos-delivery-completion-evidence.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260913000001-create-delivery-completion-evidence.cjs`.
+- Tests: `apps/dgfy-api/tests/posDeliveryCompletionEvidence.usecase.test.js`,
+  `apps/dgfy-api/tests/deliveryCompletionEvidenceStorage.test.js`,
+  `apps/dgfy-api/tests/createDeliveryCompletionEvidence.migration.test.js`.
+
+## Phase 330 - Optional DeliveryRun transportation label (#1463)
 
 ### Initiative and release
 
@@ -22883,4 +22940,4 @@ and Phase 328/#1879's tenant-schema registry parity precedent.
 
 ### Next eligible phase
 
-330.
+331.
