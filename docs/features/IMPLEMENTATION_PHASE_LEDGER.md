@@ -22879,8 +22879,7 @@ and Phase 328/#1879's tenant-schema registry parity precedent.
 - Registry: `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
 - Contract tests: `apps/dgfy-api/tests/deliveryRunTransportationLabel.migration.test.js` and
   the existing DeliveryRun validator/use-case/serializer suites.
-- PR: implementation branch `feature/1463-delivery-run-transportation-label`, opened against
-  `develop` after local validation.
+- PR: #1888, `feature/1463-delivery-run-transportation-label` → `develop`.
 
 ### Next eligible phase
 
