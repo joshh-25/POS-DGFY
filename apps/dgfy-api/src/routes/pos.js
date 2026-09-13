@@ -7,7 +7,14 @@ import { authenticate, checkAnyPermission, checkPermission, requirePremium, requ
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { posDrawerAuthorizationLimiter, posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
-import { posCatalogBulkImageUpload, posCatalogImageUpload, posPaymentProofUpload, preserveTenantContext } from '../config/uploadConfig.js';
+import {
+    posCatalogBulkImageUpload,
+    posCatalogImageUpload,
+    posPaymentProofUpload,
+    deliveryCompletionEvidenceUpload,
+    DELIVERY_EVIDENCE_MAX_IMAGES,
+    preserveTenantContext
+} from '../config/uploadConfig.js';
 import {
     validatePosCheckout,
     validateCreatePosParkedSale,
@@ -52,6 +59,8 @@ import {
     validateCollectCashDeliveryOrder,
     validateRecordOrderBalancePayment,
     validatePosBalancePaymentProofParams,
+    validateDeliveryCompletionEvidenceBody,
+    validateDeliveryCompletionEvidenceImageParams,
     validateUpdateDeliveryJobStatus,
     validateAssignDeliveryPersonnel,
     validateShiftIdParam,
@@ -346,6 +355,37 @@ router.get(
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
 router.patch('/orders/:id/delivery-job/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);
+// #1462: delivery evidence is a delivery-job action, not a terminal-hardware action. Staff may
+// attach it through the assigned-run capability; POS operators retain the broad transact path.
+router.post(
+    '/orders/:id/delivery-job/evidence',
+    checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS]),
+    validatePosTransactionIdParam,
+    preserveTenantContext(deliveryCompletionEvidenceUpload.fields([
+        { name: 'images', maxCount: DELIVERY_EVIDENCE_MAX_IMAGES },
+        { name: 'signature', maxCount: 1 }
+    ])),
+    validateDeliveryCompletionEvidenceBody,
+    posController.attachDeliveryCompletionEvidence
+);
+router.get(
+    '/orders/:id/delivery-job/evidence',
+    checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.VIEW_ASSIGNED_DELIVERY_RUNS]),
+    validatePosTransactionIdParam,
+    posController.getDeliveryCompletionEvidence
+);
+router.get(
+    '/orders/:id/delivery-job/evidence/images/:image_id',
+    checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.VIEW_ASSIGNED_DELIVERY_RUNS]),
+    validateDeliveryCompletionEvidenceImageParams,
+    posController.getDeliveryCompletionEvidenceImage
+);
+router.get(
+    '/orders/:id/delivery-job/evidence/signature',
+    checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.VIEW_ASSIGNED_DELIVERY_RUNS]),
+    validatePosTransactionIdParam,
+    posController.getDeliveryCompletionEvidenceSignature
+);
 // Legacy declaration retained for route transport compatibility; the executable gate is additive.
 // router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
 router.patch('/orders/:id/status', checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS]), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
