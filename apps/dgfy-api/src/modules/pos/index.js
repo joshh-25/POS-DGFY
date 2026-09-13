@@ -17,6 +17,7 @@ import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js
 // already-proven-safe direction.
 import { settingsRepository } from '../settings/repositories/settingsRepository.js';
 import { posPaymentProofStorage } from './repositories/posPaymentProofStorage.js';
+import { deliveryCompletionEvidenceStorage } from './repositories/deliveryCompletionEvidenceStorage.js';
 import {
     inventoryStockCommandService,
     inventoryReservationService,
@@ -89,6 +90,10 @@ import {
     buildRecordOrderBalancePaymentUseCase,
     buildAttachOrderBalancePaymentProofUseCase,
     buildGetOrderBalancePaymentProofUseCase,
+    buildAttachDeliveryCompletionEvidenceUseCase,
+    buildGetDeliveryCompletionEvidenceUseCase,
+    buildGetDeliveryCompletionEvidenceImageUseCase,
+    buildGetDeliveryCompletionEvidenceSignatureUseCase,
     buildAssignDeliveryPersonnelUseCase,
     buildUpdateDeliveryJobStatusUseCase,
     buildUpdateOnlineOrderStatusUseCase,
@@ -323,6 +328,19 @@ export const attachOrderBalancePaymentProofUseCase = buildAttachOrderBalancePaym
 export const getOrderBalancePaymentProofUseCase = buildGetOrderBalancePaymentProofUseCase({
     posRepository,
     proofStorage: posPaymentProofStorage
+});
+export const attachDeliveryCompletionEvidenceUseCase = buildAttachDeliveryCompletionEvidenceUseCase({
+    posRepository,
+    evidenceStorage: deliveryCompletionEvidenceStorage
+});
+export const getDeliveryCompletionEvidenceUseCase = buildGetDeliveryCompletionEvidenceUseCase({ posRepository });
+export const getDeliveryCompletionEvidenceImageUseCase = buildGetDeliveryCompletionEvidenceImageUseCase({
+    posRepository,
+    evidenceStorage: deliveryCompletionEvidenceStorage
+});
+export const getDeliveryCompletionEvidenceSignatureUseCase = buildGetDeliveryCompletionEvidenceSignatureUseCase({
+    posRepository,
+    evidenceStorage: deliveryCompletionEvidenceStorage
 });
 export const assignDeliveryPersonnelUseCase = buildAssignDeliveryPersonnelUseCase({ posRepository });
 export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCase({ posRepository });
