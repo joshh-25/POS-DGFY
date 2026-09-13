@@ -95,9 +95,10 @@ tenant-admin compliance workflow.
   file.
 - `npm run check:architecture-guardrails` and
   `npm run check:controller-boundaries` pass.
-- Jest execution and tenant-schema coverage remain environment-blocked until
-  the repository's `node_modules` (including `jest` and `mysql2`) are installed;
-  no unexecuted test result is represented as a pass here.
+- Focused Jest execution passed: the use-case, migration, and storage suites
+  ran successfully with 13 tests passing. Tenant-schema coverage also passed
+  after the repository's API dependencies were installed with
+  `npm ci --ignore-scripts`.
 
 ## Residual Risks
 
