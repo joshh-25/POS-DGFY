@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/deliveryRunTransportationLabel.migrat
 rollback_note: The change is additive. Revert the API/model/serializer wiring after confirming no clients still send the field, then run the migration down() to remove the nullable transportation_label column; existing delivery-run rows are not modified or reinterpreted. No index or enum value is introduced.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-13T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-1463-POS-DELIVERY-RUN-TRANSPORTATION-LABEL
+preflight_run_at: 2026-09-13T11:43:13.434Z
+preflight_request_ref: PREFLIGHT-34755013653-2026-09-13-POS-DELIVERY-RUN-TRANSPORTATION-LABEL
 ---
 
 # Optional delivery-run transportation label
