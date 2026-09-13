@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-08-23
+last_reviewed: 2026-09-13
 applies_to: downpayment_checkout
 topic: downpayment_partial_payment_checkout
 ---
@@ -57,8 +57,11 @@ applies in percentage mode — in fixed mode it was a structurally redundant no-
    confirmation both in the UI (checkbox) and the request (`manual_payment_received: true`) per ADR
    0063 clause 6 `[binding]`, fails closed without it, and must never claim provider verification
    (`payment_provider: 'merchant_owned'`, `provider_event_id: null`) per clause 5. Writes ledger row
-   2: `pos_order_payments.kind = 'balance'`, linked to row 1 via `related_pos_order_payment_id`, in
+   2:    `pos_order_payments.kind = 'balance'`, linked to row 1 via `related_pos_order_payment_id`, in
    the same transaction that flips the order to `payment_status: 'paid'`, `balance_due: 0`.
+   Recording this settlement is the order payment event; it does not establish courier custody
+   or hand-back to the business — that separate leg is decided in ADR 0083
+   (`docs/architecture/adr/0083-courier-cash-custody-and-remittance.md`, #838).
 5. **Completion** — both the pickup and delivery completion paths require `balance_due === 0`, not
    merely a `paid` label, so an order can't complete with an unsettled balance
    (`assertDeliveryCompletionReadiness`, and the pickup branch of
@@ -122,7 +125,7 @@ branch, i.e. `develop` @ `178255e95` plus this phase's own docs-only changes), v
   **Mark Delivered was unavailable before settlement and available immediately after** -- the
   completion gate observed live, not just in tests. Completed. Final DB state: exactly two
   `pos_order_payments` rows (`downpayment` PHP 1000 via `qrph`/`paymongo`, `balance` PHP 212 via
-  `cash`/no provider), the second linked to the first via `related_pos_order_payment_id`.
+   `cash`/no provider), the second linked to the first via `related_pos_order_payment_id`.
 - **Reject/refund path**: a second identical order, rejected at POS instead of accepted. The
   confirmation dialog stated plainly: *"DGFY will request a refund of the PHP 1000.00 downpayment
   collected online... The PHP 212.00 balance was never charged"* -- confirming the refund scope is
@@ -160,6 +163,9 @@ branch, i.e. `develop` @ `178255e95` plus this phase's own docs-only changes), v
   one. Open.
 - **Order-confirmation email (#532)** — does not yet show (or exist to show) the downpayment split;
   descoped from Phase 151, tracked as its own greenfield surface.
+- **Courier custody/remittance ledger (ADR 0083, #838)** — decided, not built. The balance
+  settlement above remains the payment event; courier-held cash and its hand-back are a separate
+  operational/audit ledger whose schema and endpoints are follow-up implementation scope.
 
 ## 7. References
 
