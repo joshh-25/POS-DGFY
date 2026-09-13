@@ -11,9 +11,9 @@ policy_version: 2026.09.12
 verification_evidence: node --check changed JavaScript files,npm test --prefix apps/dgfy-api -- --runInBand tests/staffCapabilityContract.test.js,npm run check:architecture-guardrails --prefix apps/dgfy-api,npm run check:compliance --prefix apps/dgfy-api,git diff --check
 rollback_note: Revert the API/module commits and run the additive migration down paths only if the staff-role contract is not accepted; preserve existing users.permissions and do not delete assignment history outside the new nullable structures.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED
-preflight_run_at: 2026-09-12T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-1459-STAFF-CAPABILITY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-13T11:43:13.432Z
+preflight_request_ref: PREFLIGHT-34755013653-2026-09-12-STAFF-CAPABILITY-CONTRACT
 ---
 
 # Staff capability contract

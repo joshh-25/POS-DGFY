@@ -12,8 +12,8 @@ verification_evidence: focused ResponsiveImage and POS contract tests, shared fr
 rollback_note: Plainly revert the shared ResponsiveImage fallback state, the two POS call-site prop changes, and the three consumer version bumps. No endpoint, permission, persisted-data, schema, or migration behavior changes.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-13T01:14:55+08:00
-preflight_request_ref: NOT-EXECUTED-1880-POS-RESPONSIVE-IMAGE-DOM-RACE
+preflight_run_at: 2026-09-13T11:43:13.435Z
+preflight_request_ref: PREFLIGHT-34755013653-2026-09-13-POS-RESPONSIVE-IMAGE-DOM-RACE
 ---
 
 # POS ResponsiveImage DOM race fix (#1880)
