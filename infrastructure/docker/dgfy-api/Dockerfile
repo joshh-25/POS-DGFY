@@ -38,7 +38,10 @@ WORKDIR /app
 # entrypoint's tenant-schema-sync step and the exec'd node process. su-exec
 # lets entrypoint.sh drop from root to the unprivileged `app` user after
 # fixing bind-mount ownership (see entrypoint.sh).
-RUN apk add --no-cache curl tini su-exec \
+COPY infrastructure/docker/install-alpine-runtime-packages.sh /usr/local/bin/install-alpine-runtime-packages
+RUN chmod +x /usr/local/bin/install-alpine-runtime-packages \
+ && install-alpine-runtime-packages curl tini su-exec \
+ && rm /usr/local/bin/install-alpine-runtime-packages \
  && addgroup -S app && adduser -S app -G app
 
 COPY --from=deps /app/node_modules ./node_modules
