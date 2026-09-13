@@ -39,8 +39,13 @@ const addDispatchReadyOrder = (harness, { orderId, deliveryJobId, runId, fulfill
     })
 );
 
-const setupRunWithAccountable = async (harness, { locationId = 7 } = {}) => {
-    const run = await harness.deliveryRunRepository.createRun({ label: 'Run A', location_id: locationId, created_by: 12 });
+const setupRunWithAccountable = async (harness, { locationId = 7, transportationLabel = null } = {}) => {
+    const run = await harness.deliveryRunRepository.createRun({
+        label: 'Run A',
+        location_id: locationId,
+        transportation_label: transportationLabel,
+        created_by: 12
+    });
     await harness.deliveryRunRepository.replaceRunPersonnel(run.delivery_run_id, [
         { delivery_personnel_id: 21, is_accountable: true, created_by: 12, updated_by: 12 }
     ]);
@@ -88,6 +93,22 @@ describe('buildDispatchDeliveryRunUseCase -- run-level preconditions', () => {
         const result = await runInTenantContext(() => useCase({
             deliveryRunId: run.delivery_run_id,
             payload: { idempotency_key: 'dispatch-redispatch-not-locked' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.dispatched.map((entry) => entry.pos_transaction_id)).toEqual([501]);
+    });
+
+    it('dispatches a run with an arbitrary transportation label without branching on its value', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const run = await setupRunWithAccountable(harness, { transportationLabel: 'not-a-mode' });
+        addDispatchReadyOrder(harness, { orderId: 501, deliveryJobId: 601, runId: run.delivery_run_id });
+        const useCase = buildUseCase(harness);
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-arbitrary-label' },
             user: { user_id: 12 }
         }));
 

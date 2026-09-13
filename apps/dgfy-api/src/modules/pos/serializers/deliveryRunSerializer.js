@@ -118,6 +118,7 @@ export const serializeDeliveryRun = (run, { members = null, memberCount = null }
         status: plain.status,
         scheduled_date: plain.scheduled_date ?? null,
         scheduled_date_end: plain.scheduled_date_end ?? null,
+        transportation_label: plain.transportation_label ?? null,
         location_id: plain.location_id ?? null,
         notes: plain.notes ?? null,
         created_by: plain.created_by ?? null,

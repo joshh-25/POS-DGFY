@@ -60,10 +60,29 @@ describe('Delivery run use cases (Phase 225)', () => {
             status: 'draft',
             location_id: 7,
             created_by: 12,
+            transportation_label: null,
             personnel: [],
             members: []
         });
         expect(resolveLocationScope).toHaveBeenCalled();
+    });
+
+    it('creates and persists an optional transportation label', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const useCase = buildCreateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: jest.fn(async () => ({ location_id: 7 }))
+        });
+
+        const result = await useCase({
+            payload: { label: 'Morning Run', transportation_label: 'Truck 1' },
+            user: { user_id: 12 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.transportation_label).toBe('Truck 1');
+        expect((await deliveryRunRepository.getRunById(result.data.delivery_run_id)).transportation_label)
+            .toBe('Truck 1');
     });
 
     // Phase 260 (#1489): date-range scheduling.
@@ -191,6 +210,36 @@ describe('Delivery run use cases (Phase 225)', () => {
         }));
         expect(blocked.success).toBe(false);
         expect(blocked.error.details.reason_code).toBe('DELIVERY_RUN_LOCKED');
+    });
+
+    it('sets, changes, and clears the optional transportation label without affecting run status behavior', async () => {
+        const { deliveryRunRepository } = createDeliveryRunTestHarness();
+        const run = await deliveryRunRepository.createRun({
+            label: 'Run A',
+            location_id: 7,
+            created_by: 12,
+            transportation_label: 'Van'
+        });
+        const useCase = buildUpdateDeliveryRunUseCase({
+            deliveryRunRepository,
+            resolveLocationScope: createLocationScopeResolver({ 12: 7 })
+        });
+
+        const changed = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { transportation_label: 'Truck 1', status: 'scheduled' },
+            user: { user_id: 12 }
+        }));
+        expect(changed.success).toBe(true);
+        expect(changed.data).toMatchObject({ transportation_label: 'Truck 1', status: 'scheduled' });
+
+        const cleared = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { transportation_label: null },
+            user: { user_id: 12 }
+        }));
+        expect(cleared.success).toBe(true);
+        expect(cleared.data).toMatchObject({ transportation_label: null, status: 'scheduled' });
     });
 
     // Phase 260 (#1489): the range invariant is enforced against the MERGED effective state
