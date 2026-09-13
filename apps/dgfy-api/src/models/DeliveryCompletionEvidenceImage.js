@@ -38,7 +38,10 @@ const DeliveryCompletionEvidenceImage = sequelize.define('DeliveryCompletionEvid
     createdAt: 'created_at',
     updatedAt: 'updated_at',
     indexes: [
-        { fields: ['delivery_completion_evidence_id'] }
+        {
+            name: 'idx_delivery_completion_evidence_images_parent',
+            fields: ['delivery_completion_evidence_id']
+        }
     ]
 });
 
