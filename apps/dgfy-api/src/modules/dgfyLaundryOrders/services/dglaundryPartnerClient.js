@@ -44,7 +44,7 @@ export const signDglaundryPartnerRequest = ({ method, target, rawBody, idempoten
     return `"${component}": ${headers[component]}`;
   });
   baseLines.push(`"@signature-params": ${params}`);
-  const signature = crypto.sign('sha256', Buffer.from(baseLines.join('\n')), signingKey).toString('base64');
+  const signature = crypto.sign('sha256', Buffer.from(baseLines.join('\n')), { key: signingKey, dsaEncoding: 'ieee-p1363' }).toString('base64');
   return {
     ...headers,
     'signature-input': `sig1=${params}`,

@@ -241,6 +241,8 @@ const validateDglaundryProviderConfig = (env, errors) => {
     if (!hasValue(env, key)) addMissing(errors, key);
   }
   if (!hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY') && !hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE (or DGLAUNDRY_INTEGRATION_PUBLIC_KEY)');
+  if (!hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_KEY_ID')) addMissing(errors, 'DGLAUNDRY_PARTNER_REQUEST_KEY_ID');
+  if (!hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY') && !hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE (or DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY)');
   const redirect = String(env.DGFY_DGLAUNDRY_REDIRECT_URI || '').trim();
   if (redirect !== 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback') {
     errors.push('DGFY_DGLAUNDRY_REDIRECT_URI must be the registered HTTPS DGLaundry callback');
