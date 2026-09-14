@@ -23221,3 +23221,56 @@ ADR 0034; Phase 225/#1081 delivery-run membership; staff capability/assignment f
 ### Next eligible phase
 
 336 after Phase 335 acceptance evidence and deployed QA are complete.
+
+## Phase 336 - DGLaundry RFC 9421 provider transport interoperability (#519)
+
+### Initiative and release
+
+DGLaundry external runtime connection, current release, provider-side signed
+request compatibility.
+
+### Objective and scope
+
+Align the DGFY DGLaundry partner client and middleware with the shared
+`external-runtime-v0.1` request profile: P-256 ECDSA signatures are encoded as
+fixed-width 64-byte IEEE P1363 `r || s`, the incoming request is verified
+separately from its short-lived machine token, and distinct DGLaundry public
+keys are required for partner requests and Ed25519 provider events. Preserve
+the local HMAC fixture path and all ordinary DGFY tenant/payment behavior.
+
+### Status
+
+`in_progress` — focused implementation and provider tests pass locally; PR
+review, provider key installation, durable replay across instances, hosted
+qualification and deployed QA remain outstanding.
+
+### Dependencies
+
+ADR 0079 (proposed external runtime contract), DGLaundry PR #16, current
+DGLaundry event/request profiles, and the provider's existing machine-token and
+registration-intent routes.
+
+### Acceptance and validation evidence
+
+- [x] DGFY emits 64-byte P-256 IEEE P1363 partner request signatures.
+- [x] DGFY middleware verifies covered target/query/body components and rejects
+      missing keys, malformed/DER/altered/unknown-key/expired/replayed requests.
+- [x] Existing Ed25519 DGLaundry event tests and focused partner tests pass;
+      backend lint has zero errors.
+- [ ] Independent review, terminal-green repository checks, Redis/DB-backed
+      replay evidence, provider JWKS/client registration, and hosted
+      `laundry.surebizcorp.com` qualification remain required.
+
+### Links
+
+- Issue: #519 under epic #517
+- Provider PR: #1920
+- Consumer PR: Sieitzz/dglaundry#16
+- ADR: `docs/architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md`
+- Tests: `apps/dgfy-api/tests/dglaundryPartnerAuth.test.js`,
+      `apps/dgfy-api/tests/dglaundryPartnerClient.test.js`,
+      `apps/dgfy-api/tests/dglaundryEventSignature.test.js`
+
+### Next eligible phase
+
+337 after Phase 336 acceptance evidence and deployed QA are complete.
