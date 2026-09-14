@@ -31,6 +31,20 @@ describe('staff capability contract', () => {
   test('inactive staff role falls back to legacy role defaults', () => {
     expect(resolveEffectivePermissions({ role: 'staff', permissions: [], staffRole: { is_active: false, capabilities: ['orders:pack'] } })).toEqual(expect.arrayContaining(['items:view']));
   });
+  test('inactive staff role never escalates a cashier-base assignee to the full cashier preset (#1901)', () => {
+    const permissions = resolveEffectivePermissions({
+      role: 'cashier',
+      permissions: [],
+      staffRole: { is_active: false, capabilities: ['orders:pack'] }
+    });
+    expect(permissions).not.toContain('pos:transact');
+    expect(permissions).toContain('items:edit');
+    expect(permissions).not.toContain('items:delete');
+  });
+  test('cashier account with no staff-role assignment keeps the full cashier preset (#1901)', () => {
+    const permissions = resolveEffectivePermissions({ role: 'cashier', permissions: [] });
+    expect(permissions).toContain('pos:transact');
+  });
   test('cashier compatibility floor and ceiling survive explicit permissions', () => {
     const permissions = resolveEffectivePermissions({ role: 'cashier', permissions: ['items:delete'] });
     expect(permissions).toContain('items:edit');
@@ -44,6 +58,11 @@ describe('staff capability contract', () => {
   });
   test('narrow assignment guard returns stable denial reason without capability', async () => {
     await expect(assertStaffAssignment({ user: { user_id: 1, permissions: [] }, resourceType: 'order', resourceId: 1 })).rejects.toMatchObject({ code: 'AUTHORIZATION_FAILED', details: { reason_code: 'NOT_PERMITTED' } });
+  });
+  test('deactivating a staff role restores the narrow-assignment denial for a cashier-base account (#1901)', async () => {
+    const user = { user_id: 7, role: 'cashier', permissions: [], staffRole: { is_active: false, capabilities: ['orders:pack'] } };
+    await expect(assertStaffAssignment({ user, resourceType: 'order', resourceId: 1 }))
+      .rejects.toMatchObject({ code: 'AUTHORIZATION_FAILED', details: { reason_code: 'NOT_PERMITTED' } });
   });
   test('role validator preserves capability arrays for use-case catalog validation', () => {
     const { error } = validatorTestables.roleBody.validate({ name: 'Picker', capabilities: ['orders:pack'] });
