@@ -82,6 +82,24 @@ cashier shift at the order location. The assignment endpoint is idempotency-key
 protected and writes the assignment plus the `pending_dispatch -> assigned`
 transition in one transaction.
 
+The dedicated native assigned-delivery workspace (Sieitzz/dgfy-mobile #174/#178)
+uses the same status route with `delivery_runs:act`. A currently assigned
+registered delivery person may advance only that manual job through
+`assigned -> picked_up -> delivered` without a cash-drawer shift. The server
+rechecks direct assignment or current run membership and the actor's location
+grant inside the mutation transaction; direct run-less assignments are valid.
+The narrow path leaves `order.shift_id` unchanged and records a null shift in
+the audit event. Broad `pos:transact` operators retain the open-shift path, and
+no checkout, payment, drawer, assignment, full-queue, or provider-owned action
+is included in this exception.
+
+`GET /users/me/assignments?location_id=<id>` additively returns `delivery_jobs`
+for actors with `delivery_runs:view_assigned` or `delivery_runs:act`. Results
+are limited to manual jobs in `out_for_delivery` orders with status `assigned`,
+`picked_up`, or `delivered`, in the requested granted location and covered by
+the same assignment union. The projection contains only public order/customer/
+delivery fields; an absent location never broadens the query.
+
 ## Delivery-completion evidence (#1462)
 
 Delivery evidence is an optional, append-only operational record for a manual

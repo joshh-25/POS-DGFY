@@ -226,6 +226,21 @@ the existing POS operation-replay mechanism. Both member marking and run confirm
 `pos:transact`, matching the existing delivery-run mutation authority; no assigned-run-specific
 capability is introduced. `[default]`
 
+### 2026-09-14 — Assigned delivery staff lifecycle actions (#1549, Phase 335)
+
+An authenticated staff member with `delivery_runs:act` may advance a currently assigned manual
+delivery job through `assigned -> picked_up -> delivered` without an open POS shift. Assignment is
+rechecked inside the locked transaction: the actor must be the job's current direct registered
+assignee or a member of its current Delivery Run, and must hold a grant for the order location.
+Run-less direct assignments remain valid. The narrow path never claims or changes `order.shift_id`;
+its audit event records `shift_id: null` while retaining actor, location, transition, and timestamp.
+
+The existing `pos:transact` path is unchanged and still requires an owned open shift. This exception
+is limited to the delivery-job status route and does not extend to checkout, cash-drawer/payment
+operations, assignment, the full incoming queue, general order status, or provider-owned jobs.
+`GET /users/me/assignments` may expose only the actor's current manual delivery jobs in a validated
+location, using the same direct-assignee/run-membership rule and a public-safe order projection.
+
 Dispatch remains warn-only with respect to loading verification. It may dispatch members that are
 `pending`, `not_loaded`, or `exception`, and its response identifies the dispatched orders in those
 categories. Loading confirmation is an operator attestation and is not a dispatch precondition,
