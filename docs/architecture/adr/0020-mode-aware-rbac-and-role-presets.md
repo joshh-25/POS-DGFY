@@ -51,6 +51,16 @@ This decision follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUN
 
 ## Amendments
 
+### 2026-09-14 — Deactivated assigned staff roles revoke cashier-base access instead of restoring broad defaults
+
+Issue #1901 closes the inactive-assignment gap in the effective-permission fallback: a `cashier`-
+base account whose staff role is deactivated while the assignment remains in place resolves to the
+same view-only baseline as a `staff`-base account, while preserving the compatibility cashier
+`items:edit` floor and `items:delete` ceiling. It must not fall through to the full cashier preset
+or regain `pos:transact`; an account with no staff-role assignment remains on the existing full
+cashier default. `capabilities` from `GET /api/v1/users/me/capabilities` remains the authoritative
+effective set, while `staff_role.capabilities` remains informational raw role data.
+
 ### 2026-09-12 — Tenant staff capability catalog and assignment contract
 
 Issue #1459 adds an additive tenant `staff_roles` catalog with JSON capabilities and links a user
