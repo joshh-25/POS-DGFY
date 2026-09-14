@@ -23194,7 +23194,7 @@ queue, checkout, payment, drawer, assignment, provider, and schema boundaries.
 
 ### Status
 
-`planned` — eligible after Phase 334 acceptance and deployed-QA dependency is complete.
+`in_progress` — implementation and local validation are complete; PR review, merge, and deployed QA remain outstanding.
 
 ### Dependencies
 
