@@ -14,12 +14,26 @@ export default function DeliveryRunDispatchSummary({ result = null }) {
   const dispatched = Array.isArray(result.dispatched) ? result.dispatched : [];
   const skipped = Array.isArray(result.skipped) ? result.skipped : [];
   const failed = Array.isArray(result.failed) ? result.failed : [];
+  const loadingWarning = result.loading_warning || {};
+  const unloaded = Array.isArray(loadingWarning.unloaded_pos_transaction_ids)
+    ? loadingWarning.unloaded_pos_transaction_ids : [];
+  const exceptions = Array.isArray(loadingWarning.exception_pos_transaction_ids)
+    ? loadingWarning.exception_pos_transaction_ids : [];
 
-  if (dispatched.length === 0 && skipped.length === 0 && failed.length === 0) return null;
+  if (dispatched.length === 0 && skipped.length === 0 && failed.length === 0 && unloaded.length === 0 && exceptions.length === 0) return null;
 
   return (
     <div className="mt-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <p className="text-xs font-black uppercase tracking-wide text-slate-600">Last dispatch result</p>
+
+      {unloaded.length > 0 || exceptions.length > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Loading verification warning: {unloaded.length > 0 ? `${unloaded.length} not loaded/pending` : ''}
+          {unloaded.length > 0 && exceptions.length > 0 ? '; ' : ''}
+          {exceptions.length > 0 ? `${exceptions.length} exception(s)` : ''} — dispatch was not blocked.
+          <div className="mt-1">{[...unloaded, ...exceptions].map((id) => `#${id}`).join(', ')}</div>
+        </div>
+      ) : null}
 
       {dispatched.length > 0 ? (
         <ResultGroup

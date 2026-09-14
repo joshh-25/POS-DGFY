@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRightLeft, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, Check, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import { DELIVERY_JOB_STATUS_LABELS, FULFILLMENT_STATUS_LABELS } from './orderFulfillmentUi.js';
@@ -43,10 +43,12 @@ export default function DeliveryRunMembersList({
   run = null,
   otherRuns = [],
   disabled = false,
+  loadingDisabled = false,
   savingKey = '',
   dispatchResult = null,
   onRemoveMember = async () => false,
   onMoveMember = async () => false,
+  onMarkLoading = async () => false,
   // Phase 229 (#1289), §2.5: the split view's DeliveryRunDropPanel reuses this list read-only --
   // full run management (remove/move) stays on the Delivery Runs tab. Defaults to false so every
   // existing caller (DeliveryRunsWorkspacePanel.jsx) is unaffected.
@@ -88,12 +90,14 @@ export default function DeliveryRunMembersList({
             member={member}
             order={order}
             disabled={disabled}
+            loadingDisabled={loadingDisabled}
             savingKey={savingKey}
             moveTargets={moveTargets}
             dispatchOutcome={dispatchOutcomeByOrderId.get(rowKey) || null}
             readOnly={readOnly}
             onRequestRemove={() => setPendingRemoveId(rowKey)}
             onRequestMove={(targetRunId) => setPendingMove({ posTransactionId: rowKey, targetRunId })}
+            onMarkLoading={onMarkLoading}
           />
         );
       })}
@@ -134,11 +138,24 @@ export default function DeliveryRunMembersList({
   );
 }
 
-function MemberRow({ member, order, disabled, savingKey, moveTargets, dispatchOutcome, readOnly, onRequestRemove, onRequestMove }) {
+function MemberRow({ member, order, disabled, loadingDisabled, savingKey, moveTargets, dispatchOutcome, readOnly, onRequestRemove, onRequestMove, onMarkLoading }) {
   const [targetRunId, setTargetRunId] = React.useState('');
+  const [loadingState, setLoadingState] = React.useState(member.loading_state || 'pending');
+  const [exceptionReason, setExceptionReason] = React.useState(member.loading_exception_reason || '');
   const removeKey = `delivery-run-member-remove:${member.pos_transaction_id}`;
   const moveKey = `delivery-run-member-move:${member.pos_transaction_id}`;
-  const rowBusy = savingKey === removeKey || savingKey === moveKey;
+  const loadingKey = `delivery-run-member-loading:${member.pos_transaction_id}`;
+  const rowBusy = savingKey === removeKey || savingKey === moveKey || savingKey === loadingKey;
+
+  React.useEffect(() => {
+    setLoadingState(member.loading_state || 'pending');
+    setExceptionReason(member.loading_exception_reason || '');
+  }, [member.loading_state, member.loading_exception_reason]);
+
+  const normalizedReason = exceptionReason.trim();
+  const loadingChanged = loadingState !== (member.loading_state || 'pending')
+    || (loadingState === 'exception' ? normalizedReason : '') !== (member.loading_exception_reason || '');
+  const loadingReady = loadingState !== 'exception' || normalizedReason.length > 0;
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -168,6 +185,45 @@ function MemberRow({ member, order, disabled, savingKey, moveTargets, dispatchOu
       </div>
       {readOnly ? null : (
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1">
+            <label className="sr-only" htmlFor={`loading-state-${member.pos_transaction_id}`}>Loading state</label>
+            <select
+              id={`loading-state-${member.pos_transaction_id}`}
+              aria-label={`Loading state for order #${member.pos_transaction_id}`}
+              value={loadingState}
+              onChange={(event) => setLoadingState(event.target.value)}
+              disabled={loadingDisabled || rowBusy}
+              className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700"
+            >
+              <option value="pending">Not checked</option>
+              <option value="loaded">Loaded</option>
+              <option value="not_loaded">Not loaded</option>
+              <option value="exception">Exception</option>
+            </select>
+            {loadingState === 'exception' ? (
+              <input
+                aria-label={`Loading exception reason for order #${member.pos_transaction_id}`}
+                value={exceptionReason}
+                onChange={(event) => setExceptionReason(event.target.value)}
+                placeholder="Reason required"
+                maxLength={2000}
+                disabled={loadingDisabled || rowBusy}
+                className="h-8 w-36 rounded-md border border-slate-200 px-2 text-xs"
+              />
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={loadingDisabled || rowBusy || !loadingChanged || !loadingReady}
+              onClick={() => onMarkLoading(member.pos_transaction_id, {
+                loading_state: loadingState,
+                exception_reason: loadingState === 'exception' ? normalizedReason : null
+              })}
+            >
+              <Check className="mr-1 h-3.5 w-3.5" /> Mark
+            </Button>
+          </div>
           {moveTargets.length > 0 ? (
             <>
               <select
