@@ -7,10 +7,20 @@ import path from 'node:path';
 
 function modelIdentity(input) {
   const model = input?.model;
-  return {
+  const identity = {
     providerID: model?.providerID || input?.providerID,
     modelID: model?.modelID || model?.id || input?.modelID,
   };
+  if (process.env.DGFY_AI_ATTRIBUTION_DEBUG === '1') {
+    console.error(`[dgfy-ai-attribution] OpenCode model shape ${JSON.stringify({
+      sessionID: input?.sessionID || '',
+      inputKeys: Object.keys(input || {}).sort(),
+      modelKeys: Object.keys(model || {}).sort(),
+      providerID: identity.providerID || '',
+      modelID: identity.modelID || '',
+    })}`);
+  }
+  return identity;
 }
 
 function recordFor(worktree, input) {
@@ -48,6 +58,9 @@ export default async function dgfyAiAttribution({ worktree }) {
   }
 
   return {
+    'chat.message': async (input) => {
+      observedRecord(input);
+    },
     'chat.params': async (input) => {
       observedRecord(input);
     },

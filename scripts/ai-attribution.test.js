@@ -172,7 +172,7 @@ test('OpenCode plugin records provider/model identity and injects the formatter 
       sessionID: 'opencode-fixture',
       model: { providerID: 'opencode-go', modelID: 'muse-spark-1.3-contributor' },
     };
-    await hooks['chat.params'](input);
+    await hooks['chat.message'](input, { message: {}, parts: [] });
     const output = { system: [] };
     await hooks['experimental.chat.system.transform'](input, output);
     const record = readRecord({ runtime: 'opencode', sessionId: 'opencode-fixture' }, cwd);
