@@ -355,6 +355,24 @@ Retail-mode gated identically to the tab above, and cleared by the same mode-fli
 filter and the assign-to-run picker now share one `GET /pos/delivery-runs` fetch
 (`useDeliveryRunOptions`) so the two views can never disagree about which runs exist.
 
+## Loading verification and dispatcher attestation (Phase 333, #1461)
+
+The POS Delivery Runs workspace records loading per member before dispatch. Each tenant-local
+`delivery_jobs` row has one of four states: `pending` (no operator decision yet), `loaded`,
+`not_loaded`, or `exception`. An exception requires a reason, and changing to another state clears
+the previous reason. The actor and timestamp for the latest member mark are retained with the job.
+
+The API exposes `PATCH /pos/delivery-runs/:deliveryRunId/members/:posTransactionId/loading` and
+`POST /pos/delivery-runs/:deliveryRunId/loading-confirmation`, both authorized by `pos:transact`.
+Both mutations use the existing operation-replay/idempotency contract and append an audit event.
+The confirmation records the actor and timestamp at run level and can be repeated with a new key
+when a later attestation is needed.
+
+Loading confirmation is not a dispatch gate. Dispatch continues for loaded and unverified members,
+and returns a warning listing dispatched orders that remain `pending`/`not_loaded` or are marked
+`exception`. The POS UI surfaces those warnings and lets the operator update a member even after
+dispatch, while completed and cancelled runs remain unavailable for loading changes.
+
 ## Permissions and ownership
 
 - `pos:view` may read delivery status and assignment details.
