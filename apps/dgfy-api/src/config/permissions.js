@@ -77,6 +77,7 @@ export const PERMISSIONS = {
             PRICE_OVERRIDE_POS: "pos:price_override", // Override line-item sale price during checkout
             OVERRIDE_DELIVERY_FEE: "pos:delivery_fee_override", // Override an order's delivery fee while payment is unsettled (Phase 238, #1330)
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust", // Record cash in/out and shift cash adjustments
+            RESOLVE_DELIVERY_RUN_VARIANCE: "pos:delivery_run_variance_resolve", // Resolve a courier remittance variance (supervisor/manager authority)
             CLOSE_SHIFT_POS: "pos:shift_close", // Close the cashier's current terminal shift
             CLOSE_DAY_POS: "pos:close_day", // Close active terminal shift and generate day-end reconciliation
             REPRINT_POS_RECEIPT: "pos:reprint", // Reprint historical POS receipts

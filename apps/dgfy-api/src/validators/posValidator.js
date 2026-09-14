@@ -921,6 +921,39 @@ const deliveryRunLoadingConfirmSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required()
 });
 
+const deliveryRunRemittanceParamSchema = Joi.object({
+    deliveryRunId: Joi.number().integer().positive().required(),
+    remittanceId: Joi.number().integer().positive().required()
+});
+
+const deliveryRunRemittanceVarianceParamSchema = Joi.object({
+    deliveryRunId: Joi.number().integer().positive().required(),
+    remittanceId: Joi.number().integer().positive().required(),
+    varianceId: Joi.number().integer().positive().required()
+});
+
+const deliveryRunRemittanceAllocationSchema = Joi.object({
+    pos_transaction_id: Joi.number().integer().positive().required(),
+    remitted_amount: Joi.number().min(0).precision(4).required()
+});
+
+const deliveryRunRemittanceCreateSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    allocations: Joi.array()
+        .items(deliveryRunRemittanceAllocationSchema)
+        .min(1)
+        .max(500)
+        .unique('pos_transaction_id')
+        .required(),
+    variance_reason: Joi.string().trim().max(2000).allow('', null).optional()
+});
+
+const deliveryRunVarianceResolutionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    resolution_reason: Joi.string().trim().min(1).max(2000).required()
+});
+
 const deliveryRunListQuerySchema = Joi.object({
     status: Joi.string().valid('draft', 'scheduled', 'dispatched', 'completed', 'cancelled').optional(),
     scheduled_date_from: Joi.date().iso().optional(),
@@ -1434,6 +1467,10 @@ export const validateDeliveryRunMembersAdd = validateSchema(addDeliveryRunMember
 export const validateDeliveryRunDispatch = validateSchema(dispatchDeliveryRunSchema, 'body', 'validatedData');
 export const validateDeliveryRunMemberLoadingUpdate = validateSchema(deliveryRunMemberLoadingUpdateSchema, 'body', 'validatedData');
 export const validateDeliveryRunLoadingConfirm = validateSchema(deliveryRunLoadingConfirmSchema, 'body', 'validatedData');
+export const validateDeliveryRunRemittanceCreate = validateSchema(deliveryRunRemittanceCreateSchema, 'body', 'validatedData');
+export const validateDeliveryRunRemittanceParam = validateSchema(deliveryRunRemittanceParamSchema, 'params', 'validatedParams');
+export const validateDeliveryRunRemittanceVarianceParam = validateSchema(deliveryRunRemittanceVarianceParamSchema, 'params', 'validatedParams');
+export const validateDeliveryRunVarianceResolution = validateSchema(deliveryRunVarianceResolutionSchema, 'body', 'validatedData');
 export const validateDeliveryRunListQuery = validateSchema(deliveryRunListQuerySchema, 'query', 'validatedQuery');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');

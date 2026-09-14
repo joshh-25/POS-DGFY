@@ -11,7 +11,11 @@ import {
     removeDeliveryRunMemberUseCase,
     dispatchDeliveryRunUseCase,
     updateDeliveryRunMemberLoadingUseCase,
-    confirmDeliveryRunLoadingUseCase
+    confirmDeliveryRunLoadingUseCase,
+    createDeliveryRunRemittanceUseCase,
+    listDeliveryRunRemittancesUseCase,
+    getDeliveryRunRemittanceUseCase,
+    resolveDeliveryRunRemittanceVarianceUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
@@ -249,6 +253,97 @@ export const confirmDeliveryRunLoading = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Delivery run loading confirmed successfully.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createDeliveryRunRemittance = async (req, res, next) => {
+    try {
+        const result = await createDeliveryRunRemittanceUseCase({
+            deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: buildAuditContext(req)
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery run remittance confirmed successfully.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listDeliveryRunRemittances = async (req, res, next) => {
+    try {
+        const result = await listDeliveryRunRemittancesUseCase({
+            deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery run remittances retrieved successfully.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDeliveryRunRemittance = async (req, res, next) => {
+    try {
+        const result = await getDeliveryRunRemittanceUseCase({
+            deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
+            remittanceId: req.validatedParams?.remittanceId || req.params.remittanceId,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery run remittance retrieved successfully.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const resolveDeliveryRunRemittanceVariance = async (req, res, next) => {
+    try {
+        const result = await resolveDeliveryRunRemittanceVarianceUseCase({
+            deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
+            remittanceId: req.validatedParams?.remittanceId || req.params.remittanceId,
+            varianceId: req.validatedParams?.varianceId || req.params.varianceId,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: buildAuditContext(req)
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery run remittance variance resolved successfully.',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

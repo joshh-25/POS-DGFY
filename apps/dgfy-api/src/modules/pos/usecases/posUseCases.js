@@ -200,6 +200,8 @@ export const POS_OPERATION_KEYS = Object.freeze({
     DELIVERY_RUN_DISPATCH: 'terminal.delivery_run_dispatch',
     DELIVERY_RUN_MEMBER_LOADING: 'terminal.delivery_run_member_loading',
     DELIVERY_RUN_LOADING_CONFIRM: 'terminal.delivery_run_loading_confirm',
+    DELIVERY_RUN_REMITTANCE_CONFIRM: 'terminal.delivery_run_remittance_confirm',
+    DELIVERY_RUN_VARIANCE_RESOLVE: 'terminal.delivery_run_variance_resolve',
     DELIVERY_COMPLETION_EVIDENCE: 'terminal.delivery_completion_evidence'
 });
 
