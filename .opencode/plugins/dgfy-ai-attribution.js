@@ -2,17 +2,27 @@
 // The system transform makes the formatter command discoverable to the model; neither hook
 // intercepts GitHub commands or blocks a session when attribution cannot be proven.
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import path from 'node:path';
+
+function modelIdentity(input) {
+  const model = input?.model;
+  return {
+    providerID: model?.providerID || input?.providerID,
+    modelID: model?.modelID || model?.id || input?.modelID,
+  };
+}
 
 function recordFor(worktree, input) {
   const script = path.join(worktree, 'scripts', 'ai-attribution.js');
+  const { providerID, modelID } = modelIdentity(input);
   const result = spawnSync(process.execPath, [script, 'record', 'opencode'], {
     cwd: worktree,
     input: JSON.stringify({
       sessionId: input?.sessionID,
       worktree,
-      providerID: input?.model?.providerID,
-      modelID: input?.model?.id,
+      providerID,
+      modelID,
     }),
     encoding: 'utf8',
     stdio: ['pipe', 'pipe', 'ignore'],
@@ -20,22 +30,30 @@ function recordFor(worktree, input) {
   try { return JSON.parse((result.stdout || '').trim() || 'null'); } catch { return null; }
 }
 
-function identityLabel(record) {
-  if (!record || !Array.isArray(record.identities) || record.identities.length !== 1) return '';
-  const identity = record.identities[0];
-  return identity?.providerId && identity?.modelId
-    ? `${identity.providerId}/${identity.modelId}`
-    : '';
-}
-
 export default async function dgfyAiAttribution({ worktree }) {
+  const require = createRequire(path.join(worktree, 'scripts', 'ai-attribution.js'));
+  let attribution;
+  try { attribution = require(path.join(worktree, 'scripts', 'ai-attribution.js')); } catch { attribution = null; }
+  const cache = new Map();
+
+  function observedRecord(input) {
+    const sessionID = input?.sessionID;
+    const { providerID, modelID } = modelIdentity(input);
+    const key = `${providerID || ''}\0${modelID || ''}`;
+    const cached = sessionID && cache.get(sessionID);
+    if (cached?.key === key) return cached.record;
+    const record = recordFor(worktree, input);
+    if (sessionID) cache.set(sessionID, { key, record });
+    return record;
+  }
+
   return {
     'chat.params': async (input) => {
-      recordFor(worktree, input);
+      observedRecord(input);
     },
     'experimental.chat.system.transform': async (input, output) => {
-      const record = recordFor(worktree, input);
-      const identity = identityLabel(record);
+      const record = observedRecord(input);
+      const identity = attribution?.identityLabel?.(record) || '';
       if (!input?.sessionID || !identity || !Array.isArray(output?.system)) return;
       output.system.push(
         `AI attribution is active for this session (runtime=OpenCode, identity=${identity}). ` +
