@@ -229,3 +229,41 @@ test('Antigravity wrapper records the stream conversation and explicit model dyn
     fs.rmSync(cwd, { recursive: true, force: true });
   }
 });
+
+test('Antigravity native PreInvocation hook records the host-provided model dynamically', () => {
+  const cwd = worktree();
+  const root = path.resolve(__dirname, '..');
+  try {
+    const hook = path.join(root, '.agents', 'hooks', 'record-ai-attribution.js');
+    const payload = JSON.stringify({
+      conversationId: 'agy-native-fixture',
+      workspacePaths: [cwd],
+      modelName: 'fixture-native-model',
+    });
+    const output = execFileSync(process.execPath, [hook], { cwd, input: payload, encoding: 'utf8' });
+    const injected = JSON.parse(output);
+    assert.match(injected.injectSteps[0].ephemeralMessage, /runtime=Antigravity/);
+    assert.match(injected.injectSteps[0].ephemeralMessage, /identity=fixture-native-model/);
+    const record = readRecord({ runtime: 'antigravity', sessionId: 'agy-native-fixture' }, cwd);
+    assert.deepEqual(record.identities, [{ modelId: 'fixture-native-model' }]);
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('Antigravity native PreInvocation hook omits unresolved auto model', () => {
+  const cwd = worktree();
+  const root = path.resolve(__dirname, '..');
+  try {
+    const hook = path.join(root, '.agents', 'hooks', 'record-ai-attribution.js');
+    const output = execFileSync(process.execPath, [hook], {
+      cwd,
+      input: JSON.stringify({ conversationId: 'agy-auto-fixture', workspacePaths: [cwd], modelName: 'auto' }),
+      encoding: 'utf8',
+    });
+    assert.equal(output, '');
+    assert.equal(readRecord({ runtime: 'antigravity', sessionId: 'agy-auto-fixture' }, cwd), null);
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
