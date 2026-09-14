@@ -12,8 +12,8 @@ verification_evidence: node --check changed JavaScript files,npm test --prefix a
 rollback_note: Revert the API authorization, capability documentation, ADR, version, and declaration changes; no migration or persisted-data rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-14T11:45:00+08:00
-preflight_request_ref: NOT-EXECUTED-1901-STAFF-ROLE-DEACTIVATION
+preflight_run_at: 2026-09-14T14:44:11.700Z
+preflight_request_ref: PREFLIGHT-34857106198-2026-09-14-STAFF-ROLE-DEACTIVATION
 ---
 
 # Staff-role deactivation effective-permission fallback (#1901)
