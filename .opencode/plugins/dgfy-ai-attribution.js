@@ -8,7 +8,7 @@ import path from 'node:path';
 function modelIdentity(input) {
   const model = input?.model;
   const identity = {
-    providerID: model?.providerID || input?.providerID,
+    providerID: model?.providerID || input?.providerID || input?.provider?.info?.id || input?.provider?.id,
     modelID: model?.modelID || model?.id || input?.modelID,
   };
   if (process.env.DGFY_AI_ATTRIBUTION_DEBUG === '1') {
@@ -49,6 +49,7 @@ export default async function dgfyAiAttribution({ worktree }) {
   function observedRecord(input) {
     const sessionID = input?.sessionID;
     const { providerID, modelID } = modelIdentity(input);
+    if (!sessionID || !providerID || !modelID) return null;
     const key = `${providerID || ''}\0${modelID || ''}`;
     const cached = sessionID && cache.get(sessionID);
     if (cached?.key === key) return cached.record;
