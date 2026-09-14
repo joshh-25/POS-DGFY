@@ -36,9 +36,13 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    real, open, topically relevant issue** — `gh issue view N`, don't take the number on faith. A
    plausible-looking number is not verification; a wrong reference was caught and fixed by hand
    earlier in this repo's history precisely because it wasn't checked before it was pushed.
-   When the PR uses `Refs #N`, also verify that the issue passes the QA-able acceptance-criteria
-   gate described in the Board transition section below. A missing or non-real gate is a blocker to
-   the `Refs`/`For QA` path, not a reason to silently substitute `Closes`.
+   When the PR uses `Refs #N`, also check whether the issue passes the QA-able acceptance-criteria
+   gate described in the Board transition section below. A missing gate is never an `RF-` row in the
+   main `## Review` table and never turns the verdict `BLOCK` or withholds merge — it only means the
+   Board transition step can't write `For QA` yet (see that section for the separate,
+   distinctly-headed comment it produces instead). It is also never a reason to silently substitute
+   `Closes`, and never this role's job to add, edit, or suggest wording for the missing section —
+   that decision belongs to `pm` alone (#1908; `.agents/skills/pm/SKILL.md`).
 3. **Compliance** — run `npm run check:compliance` (wraps
    `scripts/check-compliance-impact.js` + `check-compliance-api-contracts.js`) against the PR's
    diff. A required-but-missing impact declaration is an automatic **BLOCK**, full stop — this is
@@ -262,7 +266,10 @@ Added 2026-08-15 (#331 board-lane wiring). Two triggers, not one — don't confl
 
     If the gate fails, **refuse the `For QA` write** and leave the issue open. Post a durable PR
     comment naming the issue, the missing gate, and the required PM follow-up; do not silently close
-    it or substitute another Status.
+    it or substitute another Status. **This is independent of the PR's own `## Review` verdict and
+    the merge decision — a missing acceptance-criteria section never turns an otherwise-mergeable PR
+    into `BLOCK`, and this role never writes or edits the missing section itself** (#1908); closing the
+    gap is `pm`'s to do.
 
     If the gate passes, set the issue's board `Status` to `For QA` and **leave it open** — that's
     deliberate, not an oversight to "fix" by closing it. The Verifier/QA role (`.agents/skills/verifier/SKILL.md`,

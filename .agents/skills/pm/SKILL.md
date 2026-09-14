@@ -126,6 +126,23 @@ either hard to notice or hard to undo:
 If a task doesn't trip any of these, proceed without pausing — filing, labeling, and routine field
 updates are the default case.
 
+## Acceptance-criteria ownership
+
+Added 2026-09-14 (#1908), generalizing the existing filing-time judgment call in "Filing procedure"
+below into an explicit, exclusive, lifelong ownership statement. `pm` is the **sole** role that
+decides whether an issue receives an `## Acceptance criteria` section — at filing time, and for the
+rest of the issue's life afterward (e.g., adding it later in response to a downstream role's
+escalation). Planner, Worker, Reviewer, Verifier, and every other role treat that decision as input,
+never as something they invent, append, or demand pre-merge to satisfy their own workflow. A
+downstream role that hits a genuine scope or verification ambiguity hands it to `pm` per `AGENTS.md`'s
+"Role handoffs and composite instructions," rather than converting the ambiguity into a blanket
+criteria requirement or a checkpoint of its own.
+
+Missing acceptance criteria never blocks planning, implementation, commits, PR creation, review, or
+merge — see `docs/process/ISSUE-TAXONOMY.md`'s "Issue linkage" section. The one place it has teeth is
+the Reviewer's post-merge `For QA` write, which stays gated exactly as before; `pm` unblocks that by
+adding the section, not by any downstream role working around the gap itself.
+
 ## Filing procedure
 
 1. Search first (above).
