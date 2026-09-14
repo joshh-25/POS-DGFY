@@ -240,6 +240,7 @@ is limited to the delivery-job status route and does not extend to checkout, cas
 operations, assignment, the full incoming queue, general order status, or provider-owned jobs.
 `GET /users/me/assignments` may expose only the actor's current manual delivery jobs in a validated
 location, using the same direct-assignee/run-membership rule and a public-safe order projection.
+`[default]`
 
 Dispatch remains warn-only with respect to loading verification. It may dispatch members that are
 `pending`, `not_loaded`, or `exception`, and its response identifies the dispatched orders in those

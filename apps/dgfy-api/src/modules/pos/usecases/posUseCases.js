@@ -10975,12 +10975,16 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                     });
                 }
             } else {
+                // The HTTP route admits only broad or assigned-delivery capability; retain a
+                // fail-closed guard for legacy/direct callers that provide a partial permission
+                // context, including the location boundary if this path is ever reached.
                 await assertStaffAssignment({
                     user,
                     resourceType: 'delivery_job',
                     resourceId: deliveryJob.delivery_job_id,
                     transaction
                 });
+                await assertStaffLocationAccess({ userId: cashierId, locationId: orderLocationId, transaction });
             }
             const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
             const hasPersonnel = Boolean(

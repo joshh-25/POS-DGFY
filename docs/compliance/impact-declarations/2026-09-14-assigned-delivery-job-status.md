@@ -46,8 +46,8 @@ tenant, location, payment, fiscal, and terminal boundaries.
 ## Verification Evidence
 
 Focused use-case, assignment projection, route-contract, syntax, architecture, compliance,
-documentation, and diff checks are required before the PR is opened. Deployed tenant isolation and
-native workspace QA remain post-merge verification.
+documentation, diff, and API patch-version checks are required before the PR is opened. Deployed
+tenant isolation and native workspace QA remain post-merge verification.
 
 Verification must cover direct and run-member assignment, run-less jobs, reassignment/deactivation,
 tenant and location isolation, invalid/provider transitions, idempotent replay, audit persistence,

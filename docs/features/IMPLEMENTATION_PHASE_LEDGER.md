@@ -23198,15 +23198,16 @@ queue, checkout, payment, drawer, assignment, provider, and schema boundaries.
 
 ### Dependencies
 
-Phase 334/#1887 acceptance and deployed QA; ADR 0034; staff capability/assignment foundation (#1459).
+ADR 0034; Phase 225/#1081 delivery-run membership; staff capability/assignment foundation (#1459).
 
 ### Acceptance and validation evidence
 
-- [ ] Narrow direct-assignee and run-member lifecycle success, run-less support, stable denials,
+- [x] Narrow direct-assignee and run-member lifecycle success, run-less support, stable denials,
       location/tenant isolation, provider/lifecycle guards, idempotent replay, and null-shift audit.
-- [ ] Additive `delivery_jobs` assignment projection is capability-, location-, and assignment-scoped
+- [x] Additive `delivery_jobs` assignment projection is capability-, location-, and assignment-scoped
       without changing `orders` or `delivery_runs` compatibility.
-- [ ] Focused API tests, architecture/compliance/docs gates, syntax checks, and diff checks pass.
+- [x] Focused API tests, architecture/compliance/docs gates, syntax checks, and diff checks pass.
+- [ ] PR review, merge, and deployed QA remain outstanding.
 
 ### Links
 
