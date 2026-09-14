@@ -465,6 +465,20 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         // matching every other delivery_jobs repair entry in this block.
         delivery_run_id: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `delivery_run_id` INT NULL"
+        }),
+        // Phase 333 (#1461): per-run loading verification. `pending` means the member has not
+        // been checked; it must remain distinct from an explicit `not_loaded` result.
+        loading_state: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_state` ENUM('pending','loaded','not_loaded','exception') NOT NULL DEFAULT 'pending'"
+        }),
+        loading_exception_reason: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_exception_reason` TEXT NULL"
+        }),
+        loading_marked_by: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_marked_by` INT NULL, ADD CONSTRAINT `fk_delivery_jobs_loading_marked_by` FOREIGN KEY (`loading_marked_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        }),
+        loading_marked_at: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_marked_at` DATETIME NULL"
         })
     }),
     delivery_runs: Object.freeze({
@@ -477,6 +491,12 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         // the value is never used for filtering, sorting, or dispatch behavior.
         transportation_label: Object.freeze({
             sql: "ALTER TABLE `delivery_runs` ADD COLUMN `transportation_label` VARCHAR(120) NULL"
+        }),
+        loading_confirmed_by: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `loading_confirmed_by` INT NULL, ADD CONSTRAINT `fk_delivery_runs_loading_confirmed_by` FOREIGN KEY (`loading_confirmed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        }),
+        loading_confirmed_at: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `loading_confirmed_at` DATETIME NULL"
         })
     }),
     // Added by migration 20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs
@@ -2201,6 +2221,9 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         idx_delivery_jobs_run_status: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_run_status` (`delivery_run_id`,`status`)"
+        }),
+        idx_delivery_jobs_run_loading_state: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_run_loading_state` (`delivery_run_id`,`loading_state`)"
         })
     }),
     delivery_runs: Object.freeze({

@@ -236,7 +236,27 @@ export const deliveryRunRepository = {
         });
         if (!row) return null;
 
-        await row.update({ delivery_run_id: null }, { transaction: options.transaction });
+        await row.update({
+            delivery_run_id: null,
+            loading_state: 'pending',
+            loading_exception_reason: null,
+            loading_marked_by: null,
+            loading_marked_at: null
+        }, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async updateDeliveryJobLoading(deliveryJobId, payload = {}, options = {}) {
+        const DeliveryJob = dbStore.get('DeliveryJob');
+        const normalizedId = toPositiveInt(deliveryJobId);
+        if (!normalizedId) return null;
+
+        const row = await DeliveryJob.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
         return toPlain(row);
     },
 

@@ -35,6 +35,10 @@ export const serializeDeliveryRunMember = (deliveryJob) => {
         provider: plain.provider,
         delivery_personnel_id: plain.delivery_personnel_id ?? null,
         delivery_personnel_name: plain.delivery_personnel_name ?? null,
+        loading_state: plain.loading_state || 'pending',
+        loading_exception_reason: plain.loading_exception_reason ?? null,
+        loading_marked_by: plain.loading_marked_by ?? null,
+        loading_marked_at: plain.loading_marked_at ?? null,
         assigned_by: plain.assigned_by ?? null,
         assigned_shift_id: plain.assigned_shift_id ?? null,
         assigned_at: plain.assigned_at ?? null,
@@ -97,6 +101,30 @@ const buildDeliveryRunSummary = (members) => {
     };
 };
 
+export const buildDeliveryRunLoadingSummary = (members) => {
+    const summary = {
+        pending_count: 0,
+        loaded_count: 0,
+        not_loaded_count: 0,
+        exception_count: 0,
+        total_count: 0
+    };
+
+    (Array.isArray(members) ? members : []).forEach((member) => {
+        const plain = toPlain(member) || {};
+        const loadingState = String(plain.loading_state || 'pending').trim().toLowerCase();
+        const key = `${loadingState}_count`;
+        if (!Object.prototype.hasOwnProperty.call(summary, key)) {
+            summary.pending_count += 1;
+        } else {
+            summary[key] += 1;
+        }
+        summary.total_count += 1;
+    });
+
+    return summary;
+};
+
 export const serializeDeliveryRun = (run, { members = null, memberCount = null } = {}) => {
     const plain = toPlain(run);
     if (!plain) return null;
@@ -111,6 +139,7 @@ export const serializeDeliveryRun = (run, { members = null, memberCount = null }
     // endpoint (serializeDeliveryRun(run, { memberCount })) never loads per-order money fields, so
     // resolvedMembers stays null there and this stays absent rather than reporting a false zero.
     const summary = resolvedMembers !== null ? buildDeliveryRunSummary(resolvedMembers) : null;
+    const loadingSummary = resolvedMembers !== null ? buildDeliveryRunLoadingSummary(resolvedMembers) : null;
 
     return {
         delivery_run_id: plain.delivery_run_id,
@@ -125,10 +154,12 @@ export const serializeDeliveryRun = (run, { members = null, memberCount = null }
         updated_by: plain.updated_by ?? null,
         created_at: plain.created_at ?? null,
         updated_at: plain.updated_at ?? null,
+        loading_confirmed_by: plain.loading_confirmed_by ?? null,
+        loading_confirmed_at: plain.loading_confirmed_at ?? null,
         personnel,
         ...(resolvedMembers !== null ? { members: resolvedMembers, member_count: resolvedMembers.length } : {}),
         ...(memberCount !== null ? { member_count: memberCount } : {}),
-        ...(summary !== null ? { summary } : {})
+        ...(summary !== null ? { summary, loading_summary: loadingSummary } : {})
     };
 };
 

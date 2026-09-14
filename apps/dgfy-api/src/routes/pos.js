@@ -127,6 +127,8 @@ import {
     validateDeliveryRunPersonnelSet,
     validateDeliveryRunMembersAdd,
     validateDeliveryRunDispatch,
+    validateDeliveryRunMemberLoadingUpdate,
+    validateDeliveryRunLoadingConfirm,
     validateDeliveryRunListQuery
 } from '../validators/posValidator.js';
 import * as deliveryRunController from '../modules/pos/controllers/deliveryRunHandlers.js';
@@ -318,6 +320,8 @@ router.patch('/delivery-runs/:deliveryRunId', checkPermission(PERMISSIONS.POS.ac
 router.put('/delivery-runs/:deliveryRunId/personnel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunPersonnelSet, deliveryRunController.setDeliveryRunPersonnel);
 router.post('/delivery-runs/:deliveryRunId/members', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunMembersAdd, deliveryRunController.addDeliveryRunMembers);
 router.delete('/delivery-runs/:deliveryRunId/members/:posTransactionId', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunMemberParam, deliveryRunController.removeDeliveryRunMember);
+router.patch('/delivery-runs/:deliveryRunId/members/:posTransactionId/loading', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunMemberParam, validateDeliveryRunMemberLoadingUpdate, deliveryRunController.updateDeliveryRunMemberLoading);
+router.post('/delivery-runs/:deliveryRunId/loading-confirmation', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunLoadingConfirm, deliveryRunController.confirmDeliveryRunLoading);
 // Phase 228 (#1273/#1271): best-effort dispatch of every eligible member -- see
 // buildDispatchDeliveryRunUseCase for the guard chain and reason-code taxonomy.
 // Legacy route declaration retained in this comment for transport-contract tests; the executable

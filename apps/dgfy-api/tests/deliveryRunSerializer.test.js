@@ -17,6 +17,8 @@ const buildMember = (overrides = {}) => ({
     pos_transaction_id: overrides.pos_transaction_id ?? 101,
     status: overrides.status ?? 'pending_dispatch',
     provider: 'manual',
+    loading_state: overrides.loading_state,
+    loading_exception_reason: overrides.loading_exception_reason ?? null,
     transaction: {
         pos_transaction_id: overrides.pos_transaction_id ?? 101,
         invoice_number: `INV-${overrides.pos_transaction_id ?? 101}`,
@@ -127,5 +129,41 @@ describe('serializeDeliveryRun transportation label (Phase 329, #1463)', () => {
         expect(serializeDeliveryRun({ ...baseRun, transportation_label: 'Truck 1' }).transportation_label)
             .toBe('Truck 1');
         expect(serializeDeliveryRun(baseRun).transportation_label).toBeNull();
+    });
+});
+
+describe('serializeDeliveryRun loading verification (Phase 333, #1461)', () => {
+    it('defaults missing state to pending and reports the four loading buckets', () => {
+        const members = [
+            buildMember({ pos_transaction_id: 1, loading_state: 'loaded' }),
+            buildMember({ pos_transaction_id: 2, loading_state: 'not_loaded' }),
+            buildMember({ pos_transaction_id: 3, loading_state: 'exception', loading_exception_reason: 'Damaged' }),
+            buildMember({ pos_transaction_id: 4 })
+        ];
+        const serialized = serializeDeliveryRun({ ...baseRun, deliveryJobs: members });
+
+        expect(serialized.loading_summary).toEqual({
+            pending_count: 1,
+            loaded_count: 1,
+            not_loaded_count: 1,
+            exception_count: 1,
+            total_count: 4
+        });
+        expect(serialized.members[2]).toMatchObject({
+            loading_state: 'exception',
+            loading_exception_reason: 'Damaged'
+        });
+    });
+
+    it('serializes run confirmation actor and timestamp', () => {
+        const serialized = serializeDeliveryRun({
+            ...baseRun,
+            loading_confirmed_by: 12,
+            loading_confirmed_at: '2026-09-14T00:00:00.000Z'
+        });
+        expect(serialized).toMatchObject({
+            loading_confirmed_by: 12,
+            loading_confirmed_at: '2026-09-14T00:00:00.000Z'
+        });
     });
 });
