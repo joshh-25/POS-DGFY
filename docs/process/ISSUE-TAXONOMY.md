@@ -350,7 +350,8 @@ Every PR needs a linked issue. A PR that advances an epic without finishing it s
 
 ### Issue linkage: `Closes #N` vs. `Refs #N`
 
-Amended 2026-09-12 (#1681). Which verb a PR uses decides whether its issue passes through the
+Amended 2026-09-12 (#1681); amended again 2026-09-14 (#1908) to fix the ownership boundary on
+the last two bullets below. Which verb a PR uses decides whether its issue passes through the
 `For QA` lane at all — see "What the board automates already" above for why: closing an issue forces
 `Status = Done`, which skips QA entirely.
 
@@ -365,13 +366,24 @@ Amended 2026-09-12 (#1681). Which verb a PR uses decides whether its issue passe
 - **A non-independent sub-task** — one that has no standalone acceptance criteria and is covered by
   a parent ticket's QA pass — uses `Closes #N` and goes straight to `Done` on merge. It must not be
   sent through `For QA` merely because its implementation changed code; the independently testable
-  parent is the tracked QA item.
-- **A behavior-changing issue without the required criteria is not a reason to use `Closes` as a
-  shortcut.** Add or correct the criteria before choosing `Refs`, or shape the work as a genuinely
-  non-independent sub-task with `pm`.
-- **When genuinely unsure whether deployed verification is required, use `Refs` only after the
-  linked issue passes the acceptance-criteria gate.** An issue that lingers in `For QA` an extra day
-  is recoverable; an issue that auto-closes on `Done` without anyone verifying it is not.
+  parent is the tracked QA item. **Whether an issue is this kind of sub-task, or one that should
+  carry its own criteria, is `pm`'s call** (`.agents/skills/pm/SKILL.md`) — Worker and Reviewer
+  don't infer it from the diff.
+- **Whether an issue carries an `## Acceptance criteria` section is `pm`'s decision alone, for the
+  whole life of the issue — not a precondition Planner, Worker, or Reviewer enforce before their own
+  step** (#1908). Pick `Closes` vs. `Refs` by whether the diff needs deployed verification (the two
+  bullets above), independent of whether the linked issue currently has a criteria section. A
+  behavior-changing issue with no criteria yet is **never** a reason to fall back to `Closes` — that
+  reintroduces the exact failure #555 and #771 caught (a diff needing verification auto-closing to
+  `Done` unseen). It is also never a reason to add, append, or demand the criteria yourself, or to
+  pause implementation, PR creation, or review to go get them — hand the gap to `pm` as input (per
+  `AGENTS.md`'s "Role handoffs and composite instructions") and proceed.
+- **If a `Refs`-linked issue doesn't yet pass the acceptance-criteria gate at merge time, that is
+  not a merge blocker.** The PR still opens, reviews, and merges normally; the Reviewer's post-merge
+  check (`.agents/skills/pr-reviewer/SKILL.md`, "Board transition — the QA handoff") simply can't
+  write `For QA` yet and flags the gap to `pm` instead. The card stays where it is until `pm` adds
+  the criteria and the transition is completed by hand — recoverable, unlike an issue that
+  auto-closed to `Done` unverified.
 
 This is a repo-wide rule, not just the `implement` skill's — any PR, agent-authored or not, follows
 it.
