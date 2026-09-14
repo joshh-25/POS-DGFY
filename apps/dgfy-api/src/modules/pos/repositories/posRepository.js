@@ -1018,6 +1018,10 @@ export const buildTransactionInclude = () => ([
         attributes: [
             'delivery_job_id',
             'delivery_run_id',
+            'loading_state',
+            'loading_exception_reason',
+            'loading_marked_by',
+            'loading_marked_at',
             'provider',
             'provider_delivery_id',
             'status',

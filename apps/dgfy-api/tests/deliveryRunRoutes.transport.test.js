@@ -10,6 +10,8 @@ const mockSetDeliveryRunPersonnelUseCase = jest.fn();
 const mockAddDeliveryRunMembersUseCase = jest.fn();
 const mockRemoveDeliveryRunMemberUseCase = jest.fn();
 const mockDispatchDeliveryRunUseCase = jest.fn();
+const mockUpdateDeliveryRunMemberLoadingUseCase = jest.fn();
+const mockConfirmDeliveryRunLoadingUseCase = jest.fn();
 
 jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     createDeliveryRunUseCase: mockCreateDeliveryRunUseCase,
@@ -19,7 +21,9 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     setDeliveryRunPersonnelUseCase: mockSetDeliveryRunPersonnelUseCase,
     addDeliveryRunMembersUseCase: mockAddDeliveryRunMembersUseCase,
     removeDeliveryRunMemberUseCase: mockRemoveDeliveryRunMemberUseCase,
-    dispatchDeliveryRunUseCase: mockDispatchDeliveryRunUseCase
+    dispatchDeliveryRunUseCase: mockDispatchDeliveryRunUseCase,
+    updateDeliveryRunMemberLoadingUseCase: mockUpdateDeliveryRunMemberLoadingUseCase,
+    confirmDeliveryRunLoadingUseCase: mockConfirmDeliveryRunLoadingUseCase
 }));
 
 let createDeliveryRun;
@@ -30,6 +34,8 @@ let setDeliveryRunPersonnel;
 let addDeliveryRunMembers;
 let removeDeliveryRunMember;
 let dispatchDeliveryRun;
+let updateDeliveryRunMemberLoading;
+let confirmDeliveryRunLoading;
 
 beforeAll(async () => {
     const mod = await import('../src/modules/pos/controllers/deliveryRunHandlers.js');
@@ -41,6 +47,8 @@ beforeAll(async () => {
     addDeliveryRunMembers = mod.addDeliveryRunMembers;
     removeDeliveryRunMember = mod.removeDeliveryRunMember;
     dispatchDeliveryRun = mod.dispatchDeliveryRun;
+    updateDeliveryRunMemberLoading = mod.updateDeliveryRunMemberLoading;
+    confirmDeliveryRunLoading = mod.confirmDeliveryRunLoading;
 });
 
 const createReq = (overrides = {}) => ({
@@ -223,6 +231,46 @@ describe('deliveryRunHandlers transport contracts', () => {
             })
         }));
     });
+
+    it('updateDeliveryRunMemberLoading forwards both path params and audit context', async () => {
+        mockUpdateDeliveryRunMemberLoadingUseCase.mockResolvedValue({
+            success: true,
+            data: { pos_transaction_id: 501, loading_state: 'loaded' }
+        });
+        const req = createReq({
+            validatedParams: { deliveryRunId: 1, posTransactionId: 501 },
+            validatedData: { idempotency_key: 'loading-transport-1', loading_state: 'loaded' }
+        });
+        const res = createRes();
+
+        await updateDeliveryRunMemberLoading(req, res, jest.fn());
+
+        expect(mockUpdateDeliveryRunMemberLoadingUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            deliveryRunId: 1,
+            posTransactionId: 501,
+            payload: req.validatedData,
+            auditContext: { ipAddress: '127.0.0.1', userAgent: 'test-agent' }
+        }));
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('confirmDeliveryRunLoading forwards the run id and audit context', async () => {
+        mockConfirmDeliveryRunLoadingUseCase.mockResolvedValue({ success: true, data: { loading_confirmed_by: 12 } });
+        const req = createReq({
+            validatedParams: { deliveryRunId: 1 },
+            validatedData: { idempotency_key: 'loading-confirm-transport-1' }
+        });
+        const res = createRes();
+
+        await confirmDeliveryRunLoading(req, res, jest.fn());
+
+        expect(mockConfirmDeliveryRunLoadingUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            deliveryRunId: 1,
+            payload: req.validatedData,
+            auditContext: { ipAddress: '127.0.0.1', userAgent: 'test-agent' }
+        }));
+        expect(res.status).toHaveBeenCalledWith(200);
+    });
 });
 
 describe('delivery run route registration (Phase 225)', () => {
@@ -231,7 +279,7 @@ describe('delivery run route registration (Phase 225)', () => {
         'utf8'
     );
 
-    it('exposes the 8 delivery run endpoints with pos:transact/pos:view permissions', () => {
+    it('exposes the delivery run endpoints with pos:transact/pos:view permissions', () => {
         expect(routeSource).toContain("router.post('/delivery-runs', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunCreate, deliveryRunController.createDeliveryRun);");
         expect(routeSource).toContain("router.get('/delivery-runs', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryRunListQuery, deliveryRunController.listDeliveryRuns);");
         expect(routeSource).toContain("router.get('/delivery-runs/:deliveryRunId', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryRunIdParam, deliveryRunController.getDeliveryRun);");
@@ -239,6 +287,8 @@ describe('delivery run route registration (Phase 225)', () => {
         expect(routeSource).toContain("router.put('/delivery-runs/:deliveryRunId/personnel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunPersonnelSet, deliveryRunController.setDeliveryRunPersonnel);");
         expect(routeSource).toContain("router.post('/delivery-runs/:deliveryRunId/members', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunMembersAdd, deliveryRunController.addDeliveryRunMembers);");
         expect(routeSource).toContain("router.delete('/delivery-runs/:deliveryRunId/members/:posTransactionId', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunMemberParam, deliveryRunController.removeDeliveryRunMember);");
+        expect(routeSource).toContain("router.patch('/delivery-runs/:deliveryRunId/members/:posTransactionId/loading', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunMemberParam, validateDeliveryRunMemberLoadingUpdate, deliveryRunController.updateDeliveryRunMemberLoading);");
+        expect(routeSource).toContain("router.post('/delivery-runs/:deliveryRunId/loading-confirmation', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunLoadingConfirm, deliveryRunController.confirmDeliveryRunLoading);");
         expect(routeSource).toContain("router.post('/delivery-runs/:deliveryRunId/dispatch', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunDispatch, deliveryRunController.dispatchDeliveryRun);");
     });
 });

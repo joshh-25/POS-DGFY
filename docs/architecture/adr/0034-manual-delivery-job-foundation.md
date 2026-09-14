@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-10
-last_reviewed: 2026-09-13
+last_reviewed: 2026-09-14
 review_by: 2027-01-10
 applies_to: architecture_decision
 topic: manual_delivery_job_foundation
@@ -211,3 +211,38 @@ Retention is explicitly set to the life of the tenant/order record for this phas
 or erasure endpoint ships here; manual operational purge remains possible out-of-band, and bounded
 retention, export, and erasure work is deferred to #243. This is a deliberate privacy decision for
 handwritten signatures and address imagery, not an omission. `[default]`
+
+### 2026-09-14 — Delivery-run loading verification (#1461, Phase 333)
+
+Manual delivery runs now carry a per-member loading verification state with four explicit values:
+`pending`, `loaded`, `not_loaded`, and `exception`. A member remains `pending` until an operator
+records a state; `not_loaded` is an explicit operational result and must not be conflated with an
+unmarked member. `exception` requires a non-empty reason, and changing to another state clears the
+old reason. The fields are tenant-local on `delivery_jobs`, with the marking actor and timestamp
+recorded for auditability. `[default]`
+
+The run-level confirmation records the authenticated actor and timestamp and is idempotent through
+the existing POS operation-replay mechanism. Both member marking and run confirmation use
+`pos:transact`, matching the existing delivery-run mutation authority; no assigned-run-specific
+capability is introduced. `[default]`
+
+### 2026-09-14 — Assigned delivery staff lifecycle actions (#1549, Phase 335)
+
+An authenticated staff member with `delivery_runs:act` may advance a currently assigned manual
+delivery job through `assigned -> picked_up -> delivered` without an open POS shift. Assignment is
+rechecked inside the locked transaction: the actor must be the job's current direct registered
+assignee or a member of its current Delivery Run, and must hold a grant for the order location.
+Run-less direct assignments remain valid. The narrow path never claims or changes `order.shift_id`;
+its audit event records `shift_id: null` while retaining actor, location, transition, and timestamp.
+
+The existing `pos:transact` path is unchanged and still requires an owned open shift. This exception
+is limited to the delivery-job status route and does not extend to checkout, cash-drawer/payment
+operations, assignment, the full incoming queue, general order status, or provider-owned jobs.
+`GET /users/me/assignments` may expose only the actor's current manual delivery jobs in a validated
+location, using the same direct-assignee/run-membership rule and a public-safe order projection.
+`[default]`
+
+Dispatch remains warn-only with respect to loading verification. It may dispatch members that are
+`pending`, `not_loaded`, or `exception`, and its response identifies the dispatched orders in those
+categories. Loading confirmation is an operator attestation and is not a dispatch precondition,
+fulfillment transition, payment rule, or provider integration. `[default]`

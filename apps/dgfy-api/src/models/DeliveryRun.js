@@ -43,6 +43,14 @@ const DeliveryRun = sequelize.define('DeliveryRun', {
   updated_by: {
     type: DataTypes.INTEGER,
     allowNull: true
+  },
+  loading_confirmed_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  loading_confirmed_at: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
   tableName: 'delivery_runs',

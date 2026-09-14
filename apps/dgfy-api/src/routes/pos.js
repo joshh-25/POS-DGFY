@@ -127,6 +127,12 @@ import {
     validateDeliveryRunPersonnelSet,
     validateDeliveryRunMembersAdd,
     validateDeliveryRunDispatch,
+    validateDeliveryRunMemberLoadingUpdate,
+    validateDeliveryRunLoadingConfirm,
+    validateDeliveryRunRemittanceCreate,
+    validateDeliveryRunRemittanceParam,
+    validateDeliveryRunRemittanceVarianceParam,
+    validateDeliveryRunVarianceResolution,
     validateDeliveryRunListQuery
 } from '../validators/posValidator.js';
 import * as deliveryRunController from '../modules/pos/controllers/deliveryRunHandlers.js';
@@ -318,6 +324,12 @@ router.patch('/delivery-runs/:deliveryRunId', checkPermission(PERMISSIONS.POS.ac
 router.put('/delivery-runs/:deliveryRunId/personnel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunPersonnelSet, deliveryRunController.setDeliveryRunPersonnel);
 router.post('/delivery-runs/:deliveryRunId/members', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunMembersAdd, deliveryRunController.addDeliveryRunMembers);
 router.delete('/delivery-runs/:deliveryRunId/members/:posTransactionId', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunMemberParam, deliveryRunController.removeDeliveryRunMember);
+router.patch('/delivery-runs/:deliveryRunId/members/:posTransactionId/loading', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunMemberParam, validateDeliveryRunMemberLoadingUpdate, deliveryRunController.updateDeliveryRunMemberLoading);
+router.post('/delivery-runs/:deliveryRunId/loading-confirmation', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunLoadingConfirm, deliveryRunController.confirmDeliveryRunLoading);
+router.post('/delivery-runs/:deliveryRunId/remittances', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunRemittanceCreate, deliveryRunController.createDeliveryRunRemittance);
+router.get('/delivery-runs/:deliveryRunId/remittances', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryRunIdParam, deliveryRunController.listDeliveryRunRemittances);
+router.get('/delivery-runs/:deliveryRunId/remittances/:remittanceId', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryRunRemittanceParam, deliveryRunController.getDeliveryRunRemittance);
+router.post('/delivery-runs/:deliveryRunId/remittances/:remittanceId/variances/:varianceId/resolution', checkPermission(PERMISSIONS.POS.actions.RESOLVE_DELIVERY_RUN_VARIANCE), validateDeliveryRunRemittanceVarianceParam, validateDeliveryRunVarianceResolution, deliveryRunController.resolveDeliveryRunRemittanceVariance);
 // Phase 228 (#1273/#1271): best-effort dispatch of every eligible member -- see
 // buildDispatchDeliveryRunUseCase for the guard chain and reason-code taxonomy.
 // Legacy route declaration retained in this comment for transport-contract tests; the executable
@@ -357,7 +369,7 @@ router.get(
     posController.getOrderBalancePaymentProof
 );
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
-router.patch('/orders/:id/delivery-job/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
+router.patch('/orders/:id/delivery-job/status', checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS]), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);
 // #1462: delivery evidence is a delivery-job action, not a terminal-hardware action. Staff may
 // attach it through the assigned-run capability; POS operators retain the broad transact path.

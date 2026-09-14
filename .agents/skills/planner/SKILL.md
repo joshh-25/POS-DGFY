@@ -22,6 +22,11 @@ loop. Use it explicitly as `/planner <open issue-or-epic-number>`.
   cannot be resolved from repository evidence. Do not post a routine “plan ready” comment. The
   comment must state the evidence, the exact decision needed, and the consequence of each option.
   On the first live run, report the proposed comment and wait for operator confirmation.
+- **Missing `## Acceptance criteria` on the linked issue is not, by itself, an implementation-
+  blocking ambiguity** (#1908) — whether an issue carries acceptance criteria is `pm`'s decision, not
+  Planner's to enforce. Do not set `status: needs-decision`, withhold the `/implement` handoff, or
+  post a comment solely because the section is absent; if it's relevant to Worker's later `Closes`
+  vs. `Refs` choice, note it under the plan's Risks/Non-goals and move on.
 
 ## Artifact
 

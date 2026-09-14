@@ -179,7 +179,13 @@ import {
     buildSetDeliveryRunPersonnelUseCase,
     buildAddDeliveryRunMembersUseCase,
     buildRemoveDeliveryRunMemberUseCase,
-    buildDispatchDeliveryRunUseCase
+    buildDispatchDeliveryRunUseCase,
+    buildUpdateDeliveryRunMemberLoadingUseCase,
+    buildConfirmDeliveryRunLoadingUseCase,
+    buildCreateDeliveryRunRemittanceUseCase,
+    buildListDeliveryRunRemittancesUseCase,
+    buildGetDeliveryRunRemittanceUseCase,
+    buildResolveDeliveryRunRemittanceVarianceUseCase
 } from './usecases/deliveryRunUseCases.js';
 
 const posCashierAttendanceRepository = createPosCashierAttendanceRepository();
@@ -365,6 +371,12 @@ export const setDeliveryRunPersonnelUseCase = buildSetDeliveryRunPersonnelUseCas
 export const addDeliveryRunMembersUseCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
 export const removeDeliveryRunMemberUseCase = buildRemoveDeliveryRunMemberUseCase({ posRepository, deliveryRunRepository });
 export const dispatchDeliveryRunUseCase = buildDispatchDeliveryRunUseCase({ posRepository, deliveryRunRepository });
+export const updateDeliveryRunMemberLoadingUseCase = buildUpdateDeliveryRunMemberLoadingUseCase({ posRepository, deliveryRunRepository });
+export const confirmDeliveryRunLoadingUseCase = buildConfirmDeliveryRunLoadingUseCase({ posRepository, deliveryRunRepository });
+export const createDeliveryRunRemittanceUseCase = buildCreateDeliveryRunRemittanceUseCase({ posRepository, deliveryRunRepository });
+export const listDeliveryRunRemittancesUseCase = buildListDeliveryRunRemittancesUseCase({ deliveryRunRepository });
+export const getDeliveryRunRemittanceUseCase = buildGetDeliveryRunRemittanceUseCase({ deliveryRunRepository });
+export const resolveDeliveryRunRemittanceVarianceUseCase = buildResolveDeliveryRunRemittanceVarianceUseCase({ posRepository, deliveryRunRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
