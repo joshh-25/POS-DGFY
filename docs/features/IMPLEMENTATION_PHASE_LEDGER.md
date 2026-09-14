@@ -23150,7 +23150,12 @@ ADR 0083's binding financial boundary.
 - [x] Transport validators, handlers, route permissions, models, serializers,
       repository methods, and API operation keys are covered by implementation
       wiring and focused transport tests.
-- [ ] `node --check`, API version-bump, architecture, compliance, documentation,
+- [x] Fresh tenant provisioning uses explicit MySQL-safe names for both
+      remittance-variance indexes; the prior unnamed allocation index generated
+      `ALTER TABLE ... ADD INDEX
+      delivery_run_remittance_variances_delivery_run_remittance_allocation_id`
+      and failed with `ER_TOO_LONG_IDENT` (errno 1059, SQLSTATE 42000).
+- [x] `node --check`, API version-bump, architecture, compliance, documentation,
       and final diff gates pass on the complete worktree; deployed tenant-schema
       and endpoint QA remain later verification steps.
 
@@ -23167,6 +23172,7 @@ ADR 0083's binding financial boundary.
 - Tests: `apps/dgfy-api/tests/deliveryRunRemittance.usecase.test.js`,
       `apps/dgfy-api/tests/createDeliveryRunRemittances.migration.test.js`,
       `apps/dgfy-api/tests/deliveryRunRemittance.transport.test.js`.
+- Follow-up fix: #1911 (fresh-tenant remittance-variance index identifier).
 
 ### Next eligible phase
 
