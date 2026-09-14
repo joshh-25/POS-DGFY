@@ -32,6 +32,46 @@ export const buildGetStaffAssignmentsUseCase = ({ repository }) => async ({ user
     const canViewOrders = permissions.includes('orders:view_assigned') || permissions.includes('orders:pack');
     const runs = canViewRuns ? await repository.listRunsFromPersonnel(personnel) : [];
     const orders = canViewOrders && normalizedLocationId ? await repository.listAssignedOrders({ userId: user.user_id, locationId: normalizedLocationId }) : [];
-    return ok({ delivery_runs: runs, orders });
+    const deliveryJobs = canViewRuns && normalizedLocationId && personnel
+      ? await repository.listAssignedDeliveryJobs({ deliveryPersonnelId: personnel.delivery_personnel_id, locationId: normalizedLocationId })
+      : [];
+    const safeDeliveryJobs = deliveryJobs.map((job) => ({
+      delivery_job_id: job.delivery_job_id,
+      pos_transaction_id: job.pos_transaction_id,
+      delivery_run_id: job.delivery_run_id || null,
+      provider: job.provider,
+      status: job.status,
+      delivery_personnel_id: job.delivery_personnel_id || null,
+      delivery_personnel_name: job.delivery_personnel_name || null,
+      assigned_at: job.assigned_at || null,
+      picked_up_at: job.picked_up_at || null,
+      delivered_at: job.delivered_at || null,
+      tracking_url: job.tracking_url || null,
+      delivery_run: job.deliveryRun ? {
+        delivery_run_id: job.deliveryRun.delivery_run_id,
+        label: job.deliveryRun.label,
+        status: job.deliveryRun.status,
+        scheduled_date: job.deliveryRun.scheduled_date || null,
+        scheduled_date_end: job.deliveryRun.scheduled_date_end || null
+      } : null,
+      order: job.transaction ? {
+        pos_transaction_id: job.transaction.pos_transaction_id,
+        invoice_number: job.transaction.invoice_number,
+        location_id: job.transaction.location_id,
+        customer_name: job.transaction.customer_name || null,
+        customer_phone: job.transaction.customer_phone || null,
+        delivery_address: job.transaction.delivery_address || null,
+        delivery_latitude: job.transaction.delivery_latitude || null,
+        delivery_longitude: job.transaction.delivery_longitude || null,
+        scheduled_for: job.transaction.scheduled_for || null,
+        special_instructions: job.transaction.special_instructions || null,
+        delivery_fee: job.transaction.delivery_fee,
+        total_amount: job.transaction.total_amount,
+        fulfillment_status: job.transaction.fulfillment_status,
+        order_method: job.transaction.order_method,
+        order_source: job.transaction.order_source
+      } : null
+    }));
+    return ok({ delivery_runs: runs, orders, delivery_jobs: safeDeliveryJobs });
   } catch (error) { return fail(map(error, 'Failed to load staff assignments')); }
 };

@@ -23177,3 +23177,47 @@ ADR 0083's binding financial boundary.
 ### Next eligible phase
 
 335 after Phase 334 acceptance evidence and deployed QA are complete.
+
+## Phase 335 - Assigned delivery staff lifecycle actions (#1549)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, dedicated native assigned-delivery workspace API.
+
+### Objective and scope
+
+Allow `delivery_runs:act` staff to advance currently assigned manual delivery jobs through
+`assigned -> picked_up -> delivered` without a POS shift, with locked-transaction assignment and
+location enforcement, explicit null shift audit attribution, and additive location-scoped
+`delivery_jobs` discovery on `/users/me/assignments`. Preserve the broad open-shift POS path and all
+queue, checkout, payment, drawer, assignment, provider, and schema boundaries.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, and deployed QA remain outstanding.
+
+### Dependencies
+
+ADR 0034; Phase 225/#1081 delivery-run membership; staff capability/assignment foundation (#1459).
+
+### Acceptance and validation evidence
+
+- [x] Narrow direct-assignee and run-member lifecycle success, run-less support, stable denials,
+      location/tenant isolation, provider/lifecycle guards, idempotent replay, and null-shift audit.
+- [x] Additive `delivery_jobs` assignment projection is capability-, location-, and assignment-scoped
+      without changing `orders` or `delivery_runs` compatibility.
+- [x] Focused API tests, architecture/compliance/docs gates, syntax checks, and diff checks pass.
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #1549
+- Handoff: `.tmp/plan-1549.md` (planning head `8d2698ac16e516eec2a867b73bced5c68d5fac97`)
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md`
+- Feature: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
+- Compliance: `docs/compliance/impact-declarations/2026-09-14-assigned-delivery-job-status.md`
+- Tests: `apps/dgfy-api/tests/posDeliveryJobStatus.usecase.test.js`, `apps/dgfy-api/tests/staffAssignments.usecase.test.js`, `apps/dgfy-api/tests/rbacRouteCoverage.contract.test.js`
+
+### Next eligible phase
+
+336 after Phase 335 acceptance evidence and deployed QA are complete.

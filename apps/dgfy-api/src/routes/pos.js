@@ -369,7 +369,7 @@ router.get(
     posController.getOrderBalancePaymentProof
 );
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
-router.patch('/orders/:id/delivery-job/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
+router.patch('/orders/:id/delivery-job/status', checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS]), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/delivery-job/assignment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateAssignDeliveryPersonnel, posController.assignDeliveryPersonnel);
 // #1462: delivery evidence is a delivery-job action, not a terminal-hardware action. Staff may
 // attach it through the assigned-run capability; POS operators retain the broad transact path.

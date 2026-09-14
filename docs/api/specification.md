@@ -3133,6 +3133,7 @@ List incoming online orders for POS fulfillment queue.
 |------|------|-------------|
 | `location_id` | number | Optional active location filter |
 | `limit` | number | Optional row limit (default 200, max 500) |
+| `shift_id` | number | Required active POS shift that supplies the queue location |
 
 **Response Notes**
 1. Returns orders still in operational queue (`placed`, `confirmed`, `preparing`, `ready_for_pickup`, `out_for_delivery`).
@@ -3324,7 +3325,7 @@ failure surfaces as `payment_action: 'refund_failed'` for administrator review.
 ### PATCH /pos/orders/:id/delivery-job/status
 Advance the manual delivery job for an online delivery order from the POS queue.
 
-**Permission**: `pos:transact`
+**Permission**: `pos:transact` or `delivery_runs:act`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Request Body**
@@ -3344,9 +3345,20 @@ Advance the manual delivery job for an online delivery order from the POS queue.
 1. The server allows only `pending_dispatch -> assigned -> picked_up -> delivered`; assignment must be completed through the assignment endpoint before `assigned`, `picked_up`, or `delivered`.
 2. The associated online order must already be `out_for_delivery`.
 3. The delivery job provider must be `manual`; provider-owned jobs are not writable through POS.
-4. Each successful transition records the acting cashier, shift/location context, timestamp, and audit evidence.
+4. Broad operators require an owned open shift and retain shift attribution. Assigned staff with `delivery_runs:act` must be the current direct assignee or a member of the current Delivery Run, hold a grant for the order location, and may act without a shift; their order shift remains unchanged and the audit `shift_id` is `null`.
 5. Successful responses include `data.delivery_job`, `data.status_transition`, `data.idempotent_replay`, and `data.replay_outcome`.
 6. The order completion endpoint still requires `deliveryJob.status=delivered`; marking the job delivered does not complete the order automatically.
+
+### GET /users/me/assignments
+Return authenticated staff assignments. Existing `orders` and `delivery_runs`
+fields remain unchanged. With `location_id` (required for delivery-job results)
+and either `delivery_runs:view_assigned` or `delivery_runs:act`, the response also
+contains `data.delivery_jobs`: manual jobs whose order is in the requested
+location, remains `out_for_delivery`, and whose job status is `assigned`,
+`picked_up`, or `delivered`. The actor must be the current direct registered
+assignee or a member of the current run. The additive projection exposes only
+public-safe order/customer/delivery fields; no location-less broad fallback is
+permitted.
 
 ### POST /pos/z-reading/close-day
 Generate the branch-scoped Z-reading summary for completed POS transactions. The branch is resolved from the registered terminal location and the authenticated user's location access.
