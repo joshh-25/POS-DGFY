@@ -5,6 +5,11 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
+// OpenCode is a native executable on supported installs. Its process.execPath is
+// therefore the OpenCode binary, not a JavaScript runtime capable of running the
+// attribution script.
+const NODE_COMMAND = 'node';
+
 function modelIdentity(input) {
   const model = input?.model;
   const identity = {
@@ -26,7 +31,7 @@ function modelIdentity(input) {
 function recordFor(worktree, input) {
   const script = path.join(worktree, 'scripts', 'ai-attribution.js');
   const { providerID, modelID } = modelIdentity(input);
-  const result = spawnSync(process.execPath, [script, 'record', 'opencode'], {
+  const result = spawnSync(NODE_COMMAND, [script, 'record', 'opencode'], {
     cwd: worktree,
     input: JSON.stringify({
       sessionId: input?.sessionID,

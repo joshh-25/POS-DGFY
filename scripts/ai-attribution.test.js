@@ -187,6 +187,7 @@ test('OpenCode plugin records provider/model identity and injects the formatter 
     assert.deepEqual(paramsRecord.identities, [{ providerId: 'fixture-provider', modelId: 'fixture-model' }]);
     assert.match(output.system[0], /runtime=OpenCode/);
     assert.match(output.system[0], /format opencode opencode-message-fixture/);
+    assert.doesNotMatch(fs.readFileSync(path.join(root, '.opencode', 'plugins', 'dgfy-ai-attribution.js'), 'utf8'), /spawnSync\(process\.execPath/);
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
