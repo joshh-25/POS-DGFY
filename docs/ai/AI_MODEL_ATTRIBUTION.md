@@ -64,15 +64,26 @@ agent never being told what to type.
 | --- | --- | --- | --- |
 | Claude Code | `.claude/hooks/record-ai-attribution.js`, activated in `.claude/settings.json` | `.claude/hooks/inject-ai-attribution-context.js`, activated in `.claude/settings.json` | `model` |
 | Codex | `.codex/hooks/session-start.js`, activated in `.codex/hooks.json` | none (descoped, see below) | `model` |
-| Antigravity | `node scripts/agy-with-attribution.js` wrapper around `agy --print --output-format stream-json` | none | live `conversation_id` plus explicit `--model`/`--effort` invocation values |
+| Antigravity | `.agents/hooks.json` `PreInvocation`; `scripts/agy-with-attribution.js` fallback for print mode | `injectSteps[].ephemeralMessage` | live `conversationId` plus verified `modelName` |
 | OpenCode | `.opencode/plugins/dgfy-ai-attribution.js` `chat.message`/`chat.params` | `experimental.chat.system.transform` | live provider/model fields from the hook payload |
 | Cursor | `.cursor/hooks/record-ai-attribution.js` and CLI wrapper | none | `model_id`, then `model`, from complete `stream-json` `init` |
 
 Claude Code and Codex remain activated. OpenCode is supported on the currently installed V1 plugin
 surface after provider/model and context-injection validation; this does not claim compatibility
-with a future V2-only plugin surface. Antigravity is supported for the wrapper's non-interactive
-stream path; interactive UI model selections remain unsupported because `agy` exposes no hook or
-machine-readable model-selection event for that path. Cursor remains best-effort through its CLI wrapper.
+with a future V2-only plugin surface. Antigravity is supported through its native `PreInvocation`
+lifecycle hook, which receives the live conversation ID and selected model name from the host. The
+wrapper remains available for direct non-interactive `agy` invocations. If Antigravity reports
+`modelName: "auto"` or omits the model, attribution stays omitted rather than guessing. Cursor
+remains best-effort through its CLI wrapper.
+
+### Antigravity lifecycle hook contract
+
+`.agents/hooks.json` registers `hooks/record-ai-attribution.js` for Antigravity's `PreInvocation`
+event. The hook consumes the host's camelCase payload (`conversationId`, `workspacePaths`, and
+`modelName`), records the verified runtime/model/session identity through the shared attribution
+writer, and returns the formatter instruction through `injectSteps[].ephemeralMessage`. It is
+fail-open: malformed input or an unresolved `auto` model produces no attribution and does not
+interrupt the Antigravity invocation.
 
 ### Why there's no SubagentStart write path for any runtime
 
