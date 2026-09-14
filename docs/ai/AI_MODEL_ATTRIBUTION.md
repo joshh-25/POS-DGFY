@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: developer_experience
-last_reviewed: 2026-08-25
+last_reviewed: 2026-09-14
 applies_to: ai_pr_and_review_attribution
 topic: verified_ai_model_attribution
 ---
@@ -11,14 +11,16 @@ topic: verified_ai_model_attribution
 
 Attribution is optional local proof of the active AI runtime and model. It never blocks work.
 
-`scripts/ai-attribution.js` atomically writes a mode-0600, versioned record under the active
+`scripts/ai-attribution.js` atomically writes a version-2, mode-0600 record under the active
 **repo clone's shared** Git metadata (`git rev-parse --git-common-dir`, not the per-worktree
-`--absolute-git-dir`). It binds the runtime, session ID, non-empty model ID, and eight-hour expiry.
-Records never enter Git. Formatting revalidates each binding and emits nothing for missing,
-expired, or ambiguous evidence.
+`--absolute-git-dir`). It binds the runtime, session ID, canonical provider/model identity, and
+eight-hour expiry. Records never enter Git. Formatting revalidates each binding and emits nothing
+for missing, expired, or ambiguous evidence.
 
-Known IDs use the utility's friendly map. A newly verified model remains its raw trusted ID, never
-`unknown-AI`.
+Runtime labels and model/provider IDs are both part of the formatted tag. IDs are displayed exactly
+as supplied by the runtime hook; the utility never rewrites them into a friendly name or emits
+`unknown-AI`. OpenCode requires both `providerID` and `model.id`; the other adapters currently
+provide a model ID without a provider ID.
 
 ## Why storage is repo-clone-wide, not per-worktree (#1047)
 
@@ -44,32 +46,44 @@ starts with `{` — a bare JSON record fails that schema and is silently dropped
 shown to the model. The agent was never actually told its own session ID; producing a correct tag
 required separately discovering it (e.g. reading the record file off disk directly).
 
-Both `.claude/hooks/record-ai-attribution.js` and `.codex/hooks/session-start.js` now emit
-deliberately **plain text** (never JSON) naming the session and the exact ready-to-run `format`
-command, e.g.:
+The session adapters emit deliberately **plain text** (never JSON) naming the runtime, canonical
+identity, session, and exact ready-to-run `format` command, e.g.:
 
 ```
-AI attribution recorded for this session (runtime=claude-code, model=claude-sonnet-4-5). To tag a
-PR body or comment, run: node scripts/ai-attribution.js format claude-code <session-id> <Opened|Review|Addressed> <role>
+AI attribution recorded for this session (runtime=Claude Code, identity=claude-sonnet-4-5). To tag
+a PR body or comment, run: node scripts/ai-attribution.js format claude-code <session-id> <Opened|Review|Addressed> <role>
 ```
 
 This is what SessionStart's plain-text-to-context behavior is documented to support. The manual
-`format` + paste step is an intentional, unchanged decision (see below) — this only fixes the agent
-never being told what to type.
+`format` + paste step remains intentional (see below); the runtime context injection only fixes the
+agent never being told what to type.
 
 ## Coverage — per runtime, per event
 
-| Runtime | SessionStart adapter | SubagentStart adapter | Verified input |
+| Runtime | SessionStart/dispatch adapter | Context injection | Verified input |
 | --- | --- | --- | --- |
 | Claude Code | `.claude/hooks/record-ai-attribution.js`, activated in `.claude/settings.json` | `.claude/hooks/inject-ai-attribution-context.js`, activated in `.claude/settings.json` | `model` |
 | Codex | `.codex/hooks/session-start.js`, activated in `.codex/hooks.json` | none (descoped, see below) | `model` |
-| Antigravity | `.antigravity/hooks/record-ai-attribution.js` invocation | none | `modelName` (best-effort; verify against a captured payload before enabling) |
-| OpenCode | `.opencode/plugins/dgfy-ai-attribution.js` `chat.params` | none | live `providerID` / `model.id` |
-| Cursor | `.cursor/hooks/record-ai-attribution.js` and CLI wrapper | none | `model_id`, then `model`, from complete `stream-json` `init` (best-effort; verify before enabling) |
+| Antigravity | `.agents/hooks.json` `PreInvocation`; `scripts/agy-with-attribution.js` fallback for print mode | `injectSteps[].ephemeralMessage` | live `conversationId` plus verified `modelName` |
+| OpenCode | `.opencode/plugins/dgfy-ai-attribution.js` `chat.message`/`chat.params` | `experimental.chat.system.transform` | live provider/model fields from the hook payload |
+| Cursor | `.cursor/hooks/record-ai-attribution.js` and CLI wrapper | none | `model_id`, then `model`, from complete `stream-json` `init` |
 
-Claude Code and Codex are activated. Antigravity, OpenCode, and Cursor remain research-first:
-capture and validate their payload shape before enabling them — unchanged from before #1047, and
-still out of this ticket's scope.
+Claude Code and Codex remain activated. OpenCode is supported on the currently installed V1 plugin
+surface after provider/model and context-injection validation; this does not claim compatibility
+with a future V2-only plugin surface. Antigravity is supported through its native `PreInvocation`
+lifecycle hook, which receives the live conversation ID and selected model name from the host. The
+wrapper remains available for direct non-interactive `agy` invocations. If Antigravity reports
+`modelName: "auto"` or omits the model, attribution stays omitted rather than guessing. Cursor
+remains best-effort through its CLI wrapper.
+
+### Antigravity lifecycle hook contract
+
+`.agents/hooks.json` registers `hooks/record-ai-attribution.js` for Antigravity's `PreInvocation`
+event. The hook consumes the host's camelCase payload (`conversationId`, `workspacePaths`, and
+`modelName`), records the verified runtime/model/session identity through the shared attribution
+writer, and returns the formatter instruction through `injectSteps[].ephemeralMessage`. It is
+fail-open: malformed input or an unresolved `auto` model produces no attribution and does not
+interrupt the Antigravity invocation.
 
 ### Why there's no SubagentStart write path for any runtime
 
@@ -94,14 +108,14 @@ output that actually reaches the subagent. Silent (no output) when no valid reco
    also affects `hooks.json` is unconfirmed. Treat Codex activation as best-effort until it's been
    observed firing in a real interactive session, the same standing as Antigravity/Cursor above.
 
-## The manual `format` step — kept, by design, not auto-injected (#1047)
+## The manual `format` step — kept, by design, not auto-run (#1047)
 
 Considered and rejected: having `implement`/`pr-reviewer`/`promoter` auto-run `format` and prepend
 its output to every `gh pr create`/`gh pr comment` call. That would mean rewriting how all three
 roles issue those commands — a materially larger, riskier behavior change than the actual observed
-failure (the agent not knowing what to type) warranted. The plain-text context fix above addresses
-the real cause directly; keeping the step manual and explicit keeps the "never block a session"
-property simple to reason about.
+failure (the agent not knowing what to type) warranted. Runtime context injection addresses that
+discoverability failure without taking ownership of GitHub writes; keeping the formatter invocation
+and paste step manual keeps the "never block a session" property simple to reason about.
 
 ## Not built: a check that flags a missing tag (#1047)
 
@@ -113,4 +127,5 @@ depend on the ephemeral record still existing.
 
 Run `node scripts/ai-attribution.js format <runtime> <session-id> Opened worker` and place non-empty
 output first under `## Summary`. Replace `Opened` with `Review` or `Addressed` for the appropriate
-comment. Empty output means omit the line.
+comment. Example output is `Opened by (OpenCode, opencode-go/muse-spark-1.3-contributor, worker)`.
+Empty output means omit the line.

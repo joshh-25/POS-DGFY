@@ -1,0 +1,10 @@
+{
+  "ai-attribution": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node hooks/record-ai-attribution.js"
+      }
+    ]
+  }
+}

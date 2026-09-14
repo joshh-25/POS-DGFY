@@ -23001,3 +23001,54 @@ and Phase 328/#1879's tenant-schema registry parity precedent.
 ### Next eligible phase
 
 332.
+
+---
+
+## Phase 332 - Runtime-aware verified AI attribution and OpenCode context injection (#1885)
+
+### Initiative and release
+
+Developer-experience attribution follow-up for AI-assisted pull requests and review comments.
+
+### Objective and scope
+
+Upgrade the local attribution record to preserve runtime plus canonical provider/model identity,
+make OpenCode's verified `providerID`/`model.id` visible to the model through its plugin context,
+and fail closed when a session observes missing or multiple identities. Update existing runtime
+adapters, tests, PR guidance, and the authoritative attribution documentation. Do not add automatic
+GitHub comment wrappers, retroactive comment edits, or a missing-tag CI check.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review remains outstanding.
+
+### Dependencies
+
+Phase 167/#1024's verified attribution contract, the shared `scripts/ai-attribution.js` utility,
+the current OpenCode V1 plugin surface, and the runtime hook contracts documented in
+`docs/ai/AI_MODEL_ATTRIBUTION.md`.
+
+### Acceptance and validation evidence
+
+- [x] Version-2 records preserve runtime, session, canonical provider/model identity, expiry, and
+      clone-wide storage; missing or ambiguous identities emit no tag.
+- [x] OpenCode captures `providerID`/`model.id` and injects the exact formatter command without
+      blocking a session or taking ownership of GitHub writes.
+- [x] Claude, Codex, Cursor, and Antigravity adapters remain schema-compatible; Antigravity is
+      not marked active without a verified hook registration/payload contract.
+- [x] Focused attribution and OpenCode plugin tests pass, including Muse Spark, missing provider,
+      multiple identities, context injection, and cross-worktree behavior.
+- [x] Documentation, architecture, compliance, agent-surface, syntax, version, and diff checks pass.
+- [ ] PR review and any follow-up validation are complete.
+
+### Implementation links
+
+- `scripts/ai-attribution.js`
+- `scripts/ai-attribution.test.js`
+- `.opencode/plugins/dgfy-ai-attribution.js`
+- `docs/ai/AI_MODEL_ATTRIBUTION.md`
+- `docs/ai/PR.md`
+
+### Next eligible phase
+
+333 after Phase 332 implementation and acceptance evidence are complete.
