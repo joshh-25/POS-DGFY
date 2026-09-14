@@ -907,6 +907,20 @@ const dispatchDeliveryRunSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required()
 });
 
+const deliveryRunMemberLoadingUpdateSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    loading_state: Joi.string().valid('pending', 'loaded', 'not_loaded', 'exception').required(),
+    exception_reason: Joi.when('loading_state', {
+        is: 'exception',
+        then: Joi.string().trim().min(1).max(2000).required(),
+        otherwise: Joi.string().trim().max(2000).allow('', null).optional()
+    })
+});
+
+const deliveryRunLoadingConfirmSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required()
+});
+
 const deliveryRunListQuerySchema = Joi.object({
     status: Joi.string().valid('draft', 'scheduled', 'dispatched', 'completed', 'cancelled').optional(),
     scheduled_date_from: Joi.date().iso().optional(),
@@ -1418,6 +1432,8 @@ export const validateDeliveryRunMemberParam = validateSchema(deliveryRunMemberPa
 export const validateDeliveryRunPersonnelSet = validateSchema(setDeliveryRunPersonnelSchema, 'body', 'validatedData');
 export const validateDeliveryRunMembersAdd = validateSchema(addDeliveryRunMembersSchema, 'body', 'validatedData');
 export const validateDeliveryRunDispatch = validateSchema(dispatchDeliveryRunSchema, 'body', 'validatedData');
+export const validateDeliveryRunMemberLoadingUpdate = validateSchema(deliveryRunMemberLoadingUpdateSchema, 'body', 'validatedData');
+export const validateDeliveryRunLoadingConfirm = validateSchema(deliveryRunLoadingConfirmSchema, 'body', 'validatedData');
 export const validateDeliveryRunListQuery = validateSchema(deliveryRunListQuerySchema, 'query', 'validatedQuery');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');

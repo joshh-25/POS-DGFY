@@ -198,6 +198,8 @@ export const POS_OPERATION_KEYS = Object.freeze({
     // correctly. See buildDispatchDeliveryRunUseCase's own idempotency comment for the full
     // two-layer design (durable replay + per-member ALREADY_DISPATCHED skip).
     DELIVERY_RUN_DISPATCH: 'terminal.delivery_run_dispatch',
+    DELIVERY_RUN_MEMBER_LOADING: 'terminal.delivery_run_member_loading',
+    DELIVERY_RUN_LOADING_CONFIRM: 'terminal.delivery_run_loading_confirm',
     DELIVERY_COMPLETION_EVIDENCE: 'terminal.delivery_completion_evidence'
 });
 

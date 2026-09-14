@@ -7,6 +7,8 @@ import {
     validateDeliveryRunPersonnelSet,
     validateDeliveryRunMembersAdd,
     validateDeliveryRunDispatch,
+    validateDeliveryRunMemberLoadingUpdate,
+    validateDeliveryRunLoadingConfirm,
     validateDeliveryRunListQuery
 } from '../src/validators/posValidator.js';
 
@@ -236,6 +238,40 @@ describe('Delivery run validators (Phase 225)', () => {
         const { res, next } = runValidator(validateDeliveryRunDispatch, req);
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(422);
+    });
+
+    it('accepts loading states and an exception reason', () => {
+        const req = {
+            body: {
+                idempotency_key: 'loading-validator-1',
+                loading_state: 'exception',
+                exception_reason: 'Damaged carton'
+            }
+        };
+        const { res, next } = runValidator(validateDeliveryRunMemberLoadingUpdate, req);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toHaveBeenCalled();
+        expect(req.validatedData).toMatchObject({ loading_state: 'exception', exception_reason: 'Damaged carton' });
+    });
+
+    it('requires an exception reason only for the exception loading state', () => {
+        const missingReason = runValidator(validateDeliveryRunMemberLoadingUpdate, {
+            body: { idempotency_key: 'loading-validator-2', loading_state: 'exception' }
+        });
+        expect(missingReason.next).not.toHaveBeenCalled();
+        expect(missingReason.res.status).toHaveBeenCalledWith(422);
+
+        const loaded = runValidator(validateDeliveryRunMemberLoadingUpdate, {
+            body: { idempotency_key: 'loading-validator-3', loading_state: 'loaded' }
+        });
+        expect(loaded.next).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts a loading confirmation payload with an idempotency key', () => {
+        const req = { body: { idempotency_key: 'loading-confirm-validator-1' } };
+        const { res, next } = runValidator(validateDeliveryRunLoadingConfirm, req);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toHaveBeenCalled();
     });
 
     it('accepts an empty list query and normalizes limit/page', () => {

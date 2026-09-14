@@ -25,7 +25,7 @@ const buildUseCase = (harness, overrides = {}) => buildDispatchDeliveryRunUseCas
 
 // A fully-assigned member: a completed personnel assignment + `packed` fulfillment status (clears
 // the retail packing gate) + pending_dispatch job status.
-const addDispatchReadyOrder = (harness, { orderId, deliveryJobId, runId, fulfillmentStatus = 'packed' }) => (
+const addDispatchReadyOrder = (harness, { orderId, deliveryJobId, runId, fulfillmentStatus = 'packed', loadingState = 'pending' }) => (
     harness.addOrder({
         orderId,
         deliveryJobId,
@@ -35,7 +35,8 @@ const addDispatchReadyOrder = (harness, { orderId, deliveryJobId, runId, fulfill
         deliveryPersonnelId: 21,
         assignedBy: 12,
         assignedShiftId: 9,
-        assignedAt: new Date('2026-08-31T08:00:00Z')
+        assignedAt: new Date('2026-08-31T08:00:00Z'),
+        loadingState
     })
 );
 
@@ -114,6 +115,27 @@ describe('buildDispatchDeliveryRunUseCase -- run-level preconditions', () => {
 
         expect(result.success).toBe(true);
         expect(result.data.dispatched.map((entry) => entry.pos_transaction_id)).toEqual([501]);
+    });
+
+    it('dispatches unverified members and returns a warn-only loading report', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const run = await setupRunWithAccountable(harness);
+        addDispatchReadyOrder(harness, { orderId: 501, deliveryJobId: 601, runId: run.delivery_run_id, loadingState: 'not_loaded' });
+        addDispatchReadyOrder(harness, { orderId: 502, deliveryJobId: 602, runId: run.delivery_run_id, loadingState: 'exception' });
+        const useCase = buildUseCase(harness);
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-loading-warning' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.dispatched.map((entry) => entry.pos_transaction_id)).toEqual([501, 502]);
+        expect(result.data.loading_warning).toEqual({
+            unloaded_pos_transaction_ids: [501],
+            exception_pos_transaction_ids: [502]
+        });
     });
 
     it('409s DELIVERY_RUN_ACCOUNTABLE_REQUIRED when no accountable person is set', async () => {

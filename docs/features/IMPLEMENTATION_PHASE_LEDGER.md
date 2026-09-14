@@ -23052,3 +23052,58 @@ the current OpenCode V1 plugin surface, and the runtime hook contracts documente
 ### Next eligible phase
 
 333 after Phase 332 implementation and acceptance evidence are complete.
+
+## Phase 333 - Delivery-run loading verification and dispatcher attestation (#1461)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, extending the Phase 225 delivery-run foundation.
+
+### Objective and scope
+
+Add tenant-local per-member loading states (`pending`, `loaded`, `not_loaded`, `exception`) with a
+required exception reason, marking actor/timestamp, a run-level loading confirmation actor/timestamp,
+idempotent audited API mutations, ordinary POS order-surface fields, and POS operator controls.
+Dispatch remains warn-only and reports unverified/exception dispatched members. Provider-owned
+delivery integrations, automated route optimization, and a new permission capability remain out of
+scope.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; commit/PR review and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership, Phase 228/#1273 dispatch fan-out, the tenant-schema
+migration/repair pattern, and ADR 0034's 2026-09-14 loading-verification amendment.
+
+### Acceptance and validation evidence
+
+- [ ] Tenant migration fans out loading columns, foreign keys, and index to landlord/active tenants;
+      tenant-schema repair registry remains in lockstep.
+- [ ] Member loading state, required/cleared exception reason, run confirmation actor/timestamp,
+      and same-key replay are covered by focused backend tests.
+- [ ] Dispatch succeeds with unverified members and returns explicit warning IDs; ordinary POS order
+      responses expose the loading fields.
+- [ ] POS UI records per-member state/reason, allows loading confirmation, and visibly warns without
+      blocking dispatch; focused behavior tests pass.
+- [ ] `node --check`, API/frontend builds, architecture, compliance, ADR, documentation, and
+      version-bump gates pass; deployed QA remains a later verification step.
+
+### Links
+
+- Issue: #1461 (`Refs`; acceptance criteria must be reconciled before PR because the issue body had
+  no `## Acceptance criteria` section when this phase started).
+- Handoff: `.tmp/plan-1461.md` (planning head `c603878a5989c2b275dbf16bad5add95743ca8ed`).
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md`.
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-14-pos-delivery-run-loading-verification.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260914000001-add-delivery-run-loading-verification.cjs`.
+- Tests: `apps/dgfy-api/tests/deliveryRunLoading.usecase.test.js`,
+      `apps/dgfy-api/tests/addDeliveryRunLoadingVerification.migration.test.js`,
+      `packages/web-core/src/features/pos/__tests__/deliveryRunLoading.behavior.test.jsx`.
+
+### Next eligible phase
+
+334 after Phase 333 acceptance evidence and deployed QA are complete.

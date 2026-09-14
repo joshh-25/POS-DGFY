@@ -9,7 +9,9 @@ import {
     setDeliveryRunPersonnelUseCase,
     addDeliveryRunMembersUseCase,
     removeDeliveryRunMemberUseCase,
-    dispatchDeliveryRunUseCase
+    dispatchDeliveryRunUseCase,
+    updateDeliveryRunMemberLoadingUseCase,
+    confirmDeliveryRunLoadingUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
@@ -200,6 +202,53 @@ export const removeDeliveryRunMember = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Member removed from delivery run successfully.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateDeliveryRunMemberLoading = async (req, res, next) => {
+    try {
+        const result = await updateDeliveryRunMemberLoadingUseCase({
+            deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
+            posTransactionId: req.validatedParams?.posTransactionId || req.params.posTransactionId,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: buildAuditContext(req)
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery run member loading updated successfully.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const confirmDeliveryRunLoading = async (req, res, next) => {
+    try {
+        const result = await confirmDeliveryRunLoadingUseCase({
+            deliveryRunId: req.validatedParams?.deliveryRunId || req.params.deliveryRunId,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: buildAuditContext(req)
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery run loading confirmed successfully.',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

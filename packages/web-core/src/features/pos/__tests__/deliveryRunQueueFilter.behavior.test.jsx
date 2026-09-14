@@ -20,7 +20,9 @@ vi.mock('../services/deliveryRunService.js', () => ({
   setDeliveryRunPersonnel: vi.fn(),
   addDeliveryRunMembers: vi.fn(),
   removeDeliveryRunMember: vi.fn(),
-  dispatchDeliveryRun: vi.fn()
+  dispatchDeliveryRun: vi.fn(),
+  updateDeliveryRunMemberLoading: vi.fn(),
+  confirmDeliveryRunLoading: vi.fn()
 }));
 
 vi.mock('sonner', () => ({

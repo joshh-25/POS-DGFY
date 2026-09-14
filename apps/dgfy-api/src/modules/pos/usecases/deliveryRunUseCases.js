@@ -8,7 +8,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapPosUseCaseError } from './posUseCaseError.js';
 import dbStore from '../../../utils/dbStore.js';
-import { serializeDeliveryRun } from '../serializers/deliveryRunSerializer.js';
+import { buildDeliveryRunLoadingSummary, serializeDeliveryRun, serializeDeliveryRunMember } from '../serializers/deliveryRunSerializer.js';
 import { resolveWorkflowCapabilitySettings } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
@@ -90,6 +90,7 @@ const RUN_DISPATCH_BLOCKED_STATUSES = Object.freeze(['completed', 'cancelled']);
 // TRANSITIONS (posUseCases.js) is not touched by this gate, so F&B (workflow mode !== 'retail'),
 // which skips this check entirely, is unaffected by construction.
 const PRE_PACKED_FULFILLMENT_STATUSES = Object.freeze(['placed', 'confirmed', 'preparing']);
+const DELIVERY_RUN_LOADING_STATES = Object.freeze(['pending', 'loaded', 'not_loaded', 'exception']);
 
 const isDeliveryAssignmentComplete = (deliveryJob) => {
     const hasPersonnel = Boolean(
@@ -1084,6 +1085,342 @@ export const buildRemoveDeliveryRunMemberUseCase = ({
     };
 };
 
+export const buildUpdateDeliveryRunMemberLoadingUseCase = ({
+    posRepository,
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ deliveryRunId, posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
+        const runId = parsePositiveInt(deliveryRunId);
+        const orderId = parsePositiveInt(posTransactionId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const loadingState = String(payload?.loading_state || '').trim().toLowerCase();
+        const exceptionReason = String(payload?.exception_reason || '').trim() || null;
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const requestHash = hashPayload({
+            delivery_run_id: runId,
+            pos_transaction_id: orderId,
+            loading_state: loadingState,
+            exception_reason: exceptionReason
+        });
+
+        if (!runId || !orderId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'deliveryRunId and posTransactionId must be positive integers',
+                { statusCode: 400 }
+            ));
+        }
+        if (!cashierId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+        if (!idempotencyKey) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'idempotency_key is required for delivery run loading changes',
+                { statusCode: 422 }
+            ));
+        }
+        if (!DELIVERY_RUN_LOADING_STATES.includes(loadingState)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `loading_state must be one of: ${DELIVERY_RUN_LOADING_STATES.join(', ')}`,
+                { statusCode: 422 }
+            ));
+        }
+        if (loadingState === 'exception' && !exceptionReason) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'exception_reason is required when loading_state is exception',
+                { statusCode: 422, details: { reason_code: 'DELIVERY_RUN_LOADING_REASON_REQUIRED' } }
+            ));
+        }
+
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_MEMBER_LOADING,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const sequelize = getSequelize();
+            transaction = await sequelize.transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_MEMBER_LOADING,
+                idempotencyKey,
+                requestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                return ok(transactionReplay);
+            }
+
+            const run = await deliveryRunRepository.getRunById(runId, { transaction, lock: true });
+            if (!run) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Delivery run was not found.',
+                    { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
+                );
+            }
+            if (run.location_id != null) {
+                await resolveLocationScope({
+                    requestedLocationId: run.location_id,
+                    userId: cashierId,
+                    operationLabel: 'Delivery run member loading update',
+                    transaction
+                });
+            }
+            if (RUN_DISPATCH_BLOCKED_STATUSES.includes(run.status)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This delivery run can no longer be updated.',
+                    { statusCode: 409, details: { reason_code: 'DELIVERY_RUN_LOCKED', status: run.status } }
+                );
+            }
+
+            const deliveryJob = await deliveryRunRepository.getDeliveryJobByOrderId(orderId, { transaction, lock: true });
+            if (!deliveryJob || parsePositiveInt(deliveryJob.delivery_run_id) !== runId) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'This order is not a member of the delivery run.',
+                    { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_MEMBER_NOT_FOUND' } }
+                );
+            }
+
+            const updatedDeliveryJob = await deliveryRunRepository.updateDeliveryJobLoading(
+                deliveryJob.delivery_job_id,
+                {
+                    loading_state: loadingState,
+                    loading_exception_reason: loadingState === 'exception' ? exceptionReason : null,
+                    loading_marked_by: cashierId,
+                    loading_marked_at: new Date()
+                },
+                { transaction, lock: true }
+            );
+            const runDetail = await deliveryRunRepository.getRunDetail(runId, { transaction });
+            const updatedMember = Array.isArray(runDetail?.deliveryJobs)
+                ? runDetail.deliveryJobs.find((job) => Number(job.pos_transaction_id) === orderId)
+                : null;
+            const responseMember = serializeDeliveryRunMember(updatedMember || { ...updatedDeliveryJob, transaction: deliveryJob.transaction });
+
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'delivery_job',
+                entity_id: parsePositiveInt(deliveryJob.delivery_job_id),
+                action: 'UPDATE',
+                changes: {
+                    event: 'delivery_run_member_loading_marked',
+                    pos_transaction_id: orderId,
+                    previous_state: deliveryJob.loading_state || 'pending',
+                    current_state: loadingState,
+                    has_exception_reason: Boolean(loadingState === 'exception' && exceptionReason)
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            const responsePayload = {
+                ...responseMember,
+                idempotency: {
+                    key: idempotencyKey,
+                    request_fingerprint: requestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_MEMBER_LOADING,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload,
+                createdBy: cashierId,
+                transaction
+            });
+            await transaction.commit();
+            return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_MEMBER_LOADING,
+                    idempotencyKey,
+                    requestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: cashierId
+                });
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to update delivery run member loading'));
+        }
+    };
+};
+
+export const buildConfirmDeliveryRunLoadingUseCase = ({
+    posRepository,
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ deliveryRunId, payload = {}, user = {}, auditContext = {} } = {}) => {
+        const runId = parsePositiveInt(deliveryRunId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const requestHash = hashPayload({ delivery_run_id: runId });
+
+        if (!runId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'deliveryRunId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        if (!cashierId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+        if (!idempotencyKey) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'idempotency_key is required for delivery run loading confirmation',
+                { statusCode: 422 }
+            ));
+        }
+
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_LOADING_CONFIRM,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const sequelize = getSequelize();
+            transaction = await sequelize.transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_LOADING_CONFIRM,
+                idempotencyKey,
+                requestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                return ok(transactionReplay);
+            }
+
+            const run = await deliveryRunRepository.getRunById(runId, { transaction, lock: true });
+            if (!run) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Delivery run was not found.',
+                    { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
+                );
+            }
+            if (run.location_id != null) {
+                await resolveLocationScope({
+                    requestedLocationId: run.location_id,
+                    userId: cashierId,
+                    operationLabel: 'Delivery run loading confirmation',
+                    transaction
+                });
+            }
+            if (RUN_DISPATCH_BLOCKED_STATUSES.includes(run.status)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This delivery run can no longer be confirmed.',
+                    { statusCode: 409, details: { reason_code: 'DELIVERY_RUN_LOCKED', status: run.status } }
+                );
+            }
+
+            const runDetail = await deliveryRunRepository.getRunDetail(runId, { transaction });
+            const memberJobs = Array.isArray(runDetail?.deliveryJobs) ? runDetail.deliveryJobs : [];
+            if (memberJobs.length === 0) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'The delivery run has no members to confirm.',
+                    { statusCode: 409, details: { reason_code: 'DELIVERY_RUN_EMPTY' } }
+                );
+            }
+
+            const loadingSummary = buildDeliveryRunLoadingSummary(memberJobs);
+            const confirmedAt = new Date();
+            await deliveryRunRepository.updateRun(runId, {
+                loading_confirmed_by: cashierId,
+                loading_confirmed_at: confirmedAt,
+                updated_by: cashierId
+            }, { transaction });
+
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'delivery_run',
+                entity_id: runId,
+                action: 'UPDATE',
+                changes: {
+                    event: 'delivery_run_loading_confirmed',
+                    loading_summary: loadingSummary
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            const refreshedRunDetail = await deliveryRunRepository.getRunDetail(runId, { transaction });
+            const responsePayload = {
+                ...serializeDeliveryRun(refreshedRunDetail),
+                loading_summary: loadingSummary,
+                idempotency: {
+                    key: idempotencyKey,
+                    request_fingerprint: requestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_LOADING_CONFIRM,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload,
+                createdBy: cashierId,
+                transaction
+            });
+            await transaction.commit();
+            return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_LOADING_CONFIRM,
+                    idempotencyKey,
+                    requestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: cashierId
+                });
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to confirm delivery run loading'));
+        }
+    };
+};
+
 // Phase 228 (#1273/#1271): best-effort delivery run dispatch. One outer transaction; every member
 // job is classified read-only against the guard chain below before any write happens for it, and
 // only the whole call's genuine infra failures roll back the transaction -- a per-order
@@ -1403,6 +1740,17 @@ export const buildDispatchDeliveryRunUseCase = ({
                 currentRunStatus = 'dispatched';
             }
 
+            const dispatchedIds = new Set(dispatched.map((entry) => entry.pos_transaction_id));
+            const dispatchedJobs = memberJobs.filter((job) => dispatchedIds.has(job.pos_transaction_id));
+            const loadingWarning = {
+                unloaded_pos_transaction_ids: dispatchedJobs
+                    .filter((job) => ['pending', 'not_loaded'].includes(String(job.loading_state || 'pending').trim().toLowerCase()))
+                    .map((job) => job.pos_transaction_id),
+                exception_pos_transaction_ids: dispatchedJobs
+                    .filter((job) => String(job.loading_state || 'pending').trim().toLowerCase() === 'exception')
+                    .map((job) => job.pos_transaction_id)
+            };
+
             await posRepository.createAuditLog({
                 user_id: cashierId,
                 entity_type: 'delivery_run',
@@ -1414,6 +1762,8 @@ export const buildDispatchDeliveryRunUseCase = ({
                     dispatched_pos_transaction_ids: dispatched.map((entry) => entry.pos_transaction_id),
                     skipped_pos_transaction_ids: skipped.map((entry) => entry.pos_transaction_id),
                     failed_pos_transaction_ids: failed.map((entry) => entry.pos_transaction_id),
+                    loading_warning_unloaded_count: loadingWarning.unloaded_pos_transaction_ids.length,
+                    loading_warning_exception_count: loadingWarning.exception_pos_transaction_ids.length,
                     previous_status: previousRunStatus,
                     current_status: currentRunStatus
                 },
@@ -1443,6 +1793,7 @@ export const buildDispatchDeliveryRunUseCase = ({
                 dispatched,
                 skipped,
                 failed,
+                loading_warning: loadingWarning,
                 run_status: {
                     previous: previousRunStatus,
                     current: currentRunStatus,

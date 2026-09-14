@@ -179,7 +179,9 @@ import {
     buildSetDeliveryRunPersonnelUseCase,
     buildAddDeliveryRunMembersUseCase,
     buildRemoveDeliveryRunMemberUseCase,
-    buildDispatchDeliveryRunUseCase
+    buildDispatchDeliveryRunUseCase,
+    buildUpdateDeliveryRunMemberLoadingUseCase,
+    buildConfirmDeliveryRunLoadingUseCase
 } from './usecases/deliveryRunUseCases.js';
 
 const posCashierAttendanceRepository = createPosCashierAttendanceRepository();
@@ -365,6 +367,8 @@ export const setDeliveryRunPersonnelUseCase = buildSetDeliveryRunPersonnelUseCas
 export const addDeliveryRunMembersUseCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
 export const removeDeliveryRunMemberUseCase = buildRemoveDeliveryRunMemberUseCase({ posRepository, deliveryRunRepository });
 export const dispatchDeliveryRunUseCase = buildDispatchDeliveryRunUseCase({ posRepository, deliveryRunRepository });
+export const updateDeliveryRunMemberLoadingUseCase = buildUpdateDeliveryRunMemberLoadingUseCase({ posRepository, deliveryRunRepository });
+export const confirmDeliveryRunLoadingUseCase = buildConfirmDeliveryRunLoadingUseCase({ posRepository, deliveryRunRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
