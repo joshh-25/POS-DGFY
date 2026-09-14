@@ -430,8 +430,20 @@ operational/audit responsibility under
   order payment status, cash-drawer reconciliation, revenue settlement, or
   fiscal receipts — a parallel operational ledger, not an accounting change.
 
-No schema, endpoint, or UI for this ledger is authorized by this contract; that
-is follow-up implementation scope after the ADR lands.
+The Phase 334 API implementation records that ledger without adding a collection
+endpoint or a UI. `POST /pos/delivery-runs/:deliveryRunId/remittances` atomically
+confirms one remittance, its order-level allocations, and any shortage/overage
+rows. The server derives expected cash as `cash_received - change_amount`; each
+requested member must be delivered, manual-provider, and have non-null cash
+evidence. The receiving location defaults to the run location and the action
+uses `pos:transact`, operation replay, and an audit event. `GET` list/detail
+routes expose the tenant-local record under `pos:view`.
+
+`POST /pos/delivery-runs/:deliveryRunId/remittances/:remittanceId/variances/:varianceId/resolution`
+adds an append-only reversal under
+`pos:delivery_run_variance_resolve`; it never updates the original variance.
+Provider-owned jobs, prepaid/non-cash orders, cancelled runs, and payment or
+fiscal records remain outside this ledger.
 
 ## Failure behavior
 
