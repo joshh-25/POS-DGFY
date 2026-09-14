@@ -64,14 +64,15 @@ agent never being told what to type.
 | --- | --- | --- | --- |
 | Claude Code | `.claude/hooks/record-ai-attribution.js`, activated in `.claude/settings.json` | `.claude/hooks/inject-ai-attribution-context.js`, activated in `.claude/settings.json` | `model` |
 | Codex | `.codex/hooks/session-start.js`, activated in `.codex/hooks.json` | none (descoped, see below) | `model` |
-| Antigravity | `.antigravity/hooks/record-ai-attribution.js` invocation | no checked-in activation contract | `modelName` only when supplied by a verified hook payload |
-| OpenCode | `.opencode/plugins/dgfy-ai-attribution.js` `chat.params` | `experimental.chat.system.transform` | live `providerID` / `model.id` |
+| Antigravity | `node scripts/agy-with-attribution.js` wrapper around `agy --print --output-format stream-json` | none | live `conversation_id` plus explicit `--model`/`--effort` invocation values |
+| OpenCode | `.opencode/plugins/dgfy-ai-attribution.js` `chat.message`/`chat.params` | `experimental.chat.system.transform` | live provider/model fields from the hook payload |
 | Cursor | `.cursor/hooks/record-ai-attribution.js` and CLI wrapper | none | `model_id`, then `model`, from complete `stream-json` `init` |
 
 Claude Code and Codex remain activated. OpenCode is supported on the currently installed V1 plugin
 surface after provider/model and context-injection validation; this does not claim compatibility
-with a future V2-only plugin surface. Antigravity remains research-first because this repository
-does not contain its hook registration contract. Cursor remains best-effort through its CLI wrapper.
+with a future V2-only plugin surface. Antigravity is supported for the wrapper's non-interactive
+stream path; interactive UI model selections remain unsupported because `agy` exposes no hook or
+machine-readable model-selection event for that path. Cursor remains best-effort through its CLI wrapper.
 
 ### Why there's no SubagentStart write path for any runtime
 
